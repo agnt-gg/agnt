@@ -46,32 +46,11 @@
               />
             </div>
           </div>
-
-          <!-- Category Filter Pills (hide for My Earnings tab) -->
-          <div v-if="currentLayout === 'grid' && activeTab !== 'my-earnings'" class="category-pills">
-            <button class="category-pill" :class="{ active: selectedCategory === 'all' }" @click="selectedCategory = 'all'">
-              All ({{ categoryCounts.all || 0 }})
-            </button>
-            <button
-              v-for="category in availableCategories"
-              :key="category"
-              class="category-pill"
-              :class="{ active: selectedCategory === category }"
-              @click="selectedCategory = category"
-            >
-              {{ category }} ({{ categoryCounts[category] || 0 }})
-            </button>
-          </div>
-
-          <!-- Results Count (hide for My Earnings tab) -->
-          <div v-if="currentLayout === 'grid' && activeTab !== 'my-earnings'" class="results-info">
-            Showing {{ displayedWorkflows.length }} of {{ filteredWorkflows.length }} {{ currentAssetTypeLabel }}
-          </div>
         </div>
 
         <!-- Main Content -->
         <div class="marketplace-content">
-          <main class="marketplace-main-content">
+          <main ref="mainContentEl" class="marketplace-main-content">
             <!-- Earnings Dashboard (My Earnings Tab) -->
             <div v-if="activeTab === 'my-earnings'" class="earnings-dashboard">
               <div class="earnings-header">
@@ -202,7 +181,10 @@
                 {{ item.title }}
               </template>
               <template #publisher="{ item }">
-                {{ item.publisher_pseudonym || 'Anonymous' }}
+                <button v-if="item.publisher_id" class="mk-card-author is-link" @click.stop="openProfile(item)">
+                  {{ item.publisher_pseudonym || 'Anonymous' }}
+                </button>
+                <span v-else>{{ item.publisher_pseudonym || 'Anonymous' }}</span>
               </template>
               <template #price="{ item }">
                 <span v-if="item.price > 0" class="price-badge paid">${{ item.price.toFixed(2) }}</span>
@@ -210,9 +192,12 @@
               </template>
               <template #rating="{ item }">
                 <div class="rating-display">
-                  <i class="fas fa-star"></i>
-                  {{ item.rating ? item.rating.toFixed(1) : '0.0' }}
-                  <span class="rating-count">({{ item.rating_count || 0 }})</span>
+                  <template v-if="item.rating_count > 0">
+                    <i class="fas fa-star"></i>
+                    {{ item.rating.toFixed(1) }}
+                    <span class="rating-count">({{ item.rating_count }})</span>
+                  </template>
+                  <span v-else class="mk-m-unrated">Unrated</span>
                 </div>
               </template>
               <template #downloads="{ item }">
@@ -229,221 +214,347 @@
               </template>
             </BaseTable>
 
-            <!-- Featured Section (only in grid view) -->
-            <div v-else-if="currentLayout === 'grid' && activeTab === 'featured' && featuredWorkflows.length > 0" class="featured-section">
-              <h2 class="section-title">
-                <i class="fas fa-star"></i>
-                Featured Workflows
-              </h2>
-              <div class="featured-grid">
-                <div
-                  v-for="workflow in featuredWorkflows"
-                  :key="workflow.id"
-                  class="featured-card"
-                  :class="{ selected: selectedWorkflow?.id === workflow.id }"
-                  @click="handleWorkflowClick(workflow)"
-                >
-                  <div class="featured-badge">
-                    <i class="fas fa-star"></i>
-                    Featured
+            <!-- ═══════════════════ GRID VIEW ═══════════════════ -->
+            <div v-else class="items-grid-container">
+              <!-- ═══════════ Publisher profile ═══════════
+                   Shown in place of the editorial layer + toolbar. Everything
+                   here is derived from the item list the screen already has. -->
+              <section v-if="profileUserId && profileInfo" class="mk-profile">
+                <button class="mk-back" @click="closeProfile">
+                  <i class="fas fa-arrow-left"></i> Back to marketplace
+                </button>
+
+                <div class="mk-prof-head">
+                  <div class="mk-prof-avatar" :style="avatarStyle(profileInfo.id)">{{ initials(profileInfo.name) }}</div>
+                  <div class="mk-prof-id">
+                    <h2 class="mk-prof-name">{{ profileInfo.name }}</h2>
+                    <div class="mk-prof-sub">
+                      <span><i class="fas fa-calendar-alt"></i> Publishing since {{ formatJoined(profileInfo.since) }}</span>
+                      <span v-if="profileInfo.categories.length">
+                        <i class="fas fa-tag"></i> {{ profileInfo.categories.slice(0, 3).join(' · ') }}
+                      </span>
+                    </div>
                   </div>
+                  <span v-if="profileInfo.isSelf" class="mk-prof-you"><i class="fas fa-user-circle"></i> This is you</span>
+                </div>
 
-                  <div class="workflow-content">
-                    <!-- Row 1: Avatar + Title/Publisher/Description -->
-                    <div class="workflow-header">
-                      <div class="workflow-avatar-container">
-                        <div v-if="workflow.preview_image" class="workflow-avatar">
-                          <img :src="workflow.preview_image" :alt="workflow.title" @error="workflow.preview_image = null" />
-                        </div>
-                        <div v-else class="workflow-avatar-placeholder">
-                          <i :class="getAssetIcon(workflow)"></i>
-                        </div>
-                      </div>
-
-                      <div class="workflow-info">                        <div class="workflow-title-row">
-                          <h3 class="workflow-name">{{ workflow.title }}</h3>
-                          <!-- trust system: pre-install trust badge for plugin items -->
-                          <Tooltip
-                            v-if="pluginTrust(workflow)"
-                            :title="trustTierLabel(pluginTrust(workflow).trustTier)"
-                            :text="trustTooltipText(pluginTrust(workflow))"
-                            position="top"
-                            width="300px"
-                          >
-                            <span class="trust-badge" :class="'trust-' + pluginTrust(workflow).trustTier">
-                              <span class="trust-dot"></span>
-                              {{ pluginTrust(workflow).trustTier }}
-                            </span>
-                          </Tooltip>
-                          <span v-if="workflow.price > 0" class="workflow-price">${{ workflow.price.toFixed(2) }}</span>
-                          <span v-else class="workflow-price free">FREE</span>
-                        </div>
-
-                        <div class="workflow-publisher">
-                          <i class="fas fa-user"></i>
-                          {{ workflow.publisher_pseudonym || 'Anonymous' }}
-                        </div>
-
-                        <p class="workflow-description">
-                          {{ workflow.description || 'No description available' }}
-                        </p>
-                      </div>
+                <div class="mk-prof-stats">
+                  <div class="mk-prof-stat">
+                    <div class="v">{{ profileInfo.count }}</div>
+                    <div class="k">Published</div>
+                  </div>
+                  <div class="mk-prof-stat">
+                    <div class="v">{{ formatNumber(profileInfo.installs) }}</div>
+                    <!-- scope is stated when there's more than one listing, so a
+                         client-derived total can never be mistaken for a server total -->
+                    <div class="k">Installs<span v-if="profileInfo.count > 1"> · across {{ profileInfo.count }} listings</span></div>
+                  </div>
+                  <div class="mk-prof-stat">
+                    <div class="v">
+                      <i v-if="profileInfo.ratingCount" class="fas fa-star"></i>
+                      {{ profileInfo.ratingCount ? profileInfo.rating.toFixed(1) : '—' }}
                     </div>
-
-                    <!-- Row 2: Ratings and Downloads -->
-                    <div class="workflow-meta">
-                      <div class="meta-item asset-type">
-                        <span class="workflow-type" :class="`type-${workflow.asset_type || 'workflow'}`">{{ getAssetTypeLabel(workflow) }}</span>
-                      </div>
-                      <div class="meta-item">
-                        <i class="fas fa-star"></i>
-                        <span>{{ workflow.rating ? workflow.rating.toFixed(1) : '0.0' }}</span>
-                        <span class="meta-count">({{ workflow.rating_count || 0 }})</span>
-                      </div>
-                      <div class="meta-item">
-                        <i class="fas fa-download"></i>
-                        <span>{{ formatNumber(workflow.downloads || 0) }}</span>
-                      </div>
-                      <div v-if="workflow.category" class="meta-item category">
-                        <i class="fas fa-tag"></i>
-                        <span>{{ workflow.category }}</span>
-                      </div>
-                    </div>
-
-                    <!-- Row 3: Install Button -->
-                    <button
-                      class="install-button"
-                      @click.stop="handleInstallWorkflow(workflow)"
-                      :disabled="isInstalled(workflow) || isPurchased(workflow)"
-                    >
-                      <i class="fas fa-download"></i>
-                      {{
-                        isInstalled(workflow)
-                          ? 'Installed'
-                          : isPurchased(workflow)
-                          ? 'Purchased'
-                          : workflow.price > 0
-                          ? 'Purchase & Install'
-                          : 'Install Now'
-                      }}
-                    </button>
+                    <div class="k">{{ profileInfo.ratingCount ? profileInfo.ratingCount + ' ratings' : 'No ratings yet' }}</div>
+                  </div>
+                  <div class="mk-prof-stat">
+                    <div class="v">{{ profileInfo.categories.length }}</div>
+                    <div class="k">Categor{{ profileInfo.categories.length === 1 ? 'y' : 'ies' }}</div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <!-- Category Cards View (only in grid view, hide for My Earnings) -->
-            <div v-if="currentLayout === 'grid' && activeTab !== 'my-earnings'" class="category-cards-container">
-              <div class="category-cards-grid">
-                <article
-                  v-for="(workflows, categoryName) in workflowsByCategory"
-                  :key="categoryName"
-                  class="category-card"
-                  :class="{ 'full-width': workflows.length >= 2 }"
-                  role="listitem"
-                  :aria-label="`${categoryName} Category`"
-                >
-                  <div class="category-header" @click="toggleCategoryCollapse(categoryName)">
-                    <div class="category-title">
-                      <span class="category-icon">{{ getCategoryInfo(categoryName).icon }}</span>
-                      {{ categoryName }}
+                <div v-if="!profileInfo.isSelf && profileInfo.installedByMe > 0" class="mk-prof-rel">
+                  <i class="fas fa-check-circle"></i>
+                  <span>
+                    You have <b>{{ profileInfo.installedByMe }}</b> of {{ profileInfo.name }}'s
+                    <b>{{ profileInfo.count }}</b> item{{ profileInfo.count === 1 ? '' : 's' }} installed.
+                  </span>
+                </div>
+              </section>
+
+              <!-- ── Live pulse strip (derived from real item data) ── -->
+              <div v-if="showEditorial" class="mk-pulse">
+                <span class="mk-pulse-live"><span class="mk-beacon"></span>Live</span>
+                <span><b>{{ formatNumber(pulseStats.installs) }}</b> total installs</span>
+                <span class="mk-dot">·</span>
+                <span><b>{{ pulseStats.builders }}</b> publishers</span>
+                <span class="mk-dot">·</span>
+                <span><b>{{ pulseStats.free }}</b> free</span>
+                <span class="mk-dot">·</span>
+                <span><b>{{ pulseStats.paid }}</b> paid</span>
+                <button v-if="pulseStats.fresh > 0" class="mk-pulse-cta" @click="showNewest">
+                  {{ pulseStats.fresh }} new this month <i class="fas fa-chevron-right"></i>
+                </button>
+              </div>
+
+              <!-- ── Spotlight ── -->
+              <section v-if="showSpotlight" class="mk-section">
+                <div class="mk-sec-head">
+                  <div class="mk-sec-title">Spotlight</div>
+                  <div class="mk-sec-sub">Featured picks, hand-selected and top-installed</div>
+                </div>
+                <div class="mk-spotlight">
+                  <article
+                    v-for="(item, idx) in spotlightItems"
+                    :key="'spot-' + item.id"
+                    class="mk-hero"
+                    :class="{ 'mk-hero-sm': idx > 0, selected: selectedWorkflow?.id === item.id }"
+                    @click="handleWorkflowClick(item)"
+                  >
+                    <div class="mk-art" :style="artStyle(item)">
+                      <img
+                        v-if="item.preview_image"
+                        class="mk-art-img"
+                        :src="item.preview_image"
+                        :alt="item.title"
+                        @error="item.preview_image = null"
+                      />
                     </div>
-                    <div class="category-header-right">
-                      <div class="category-count">{{ workflows.length }} workflows</div>
-                      <button class="collapse-toggle" :class="{ collapsed: isCategoryCollapsed(categoryName) }">
-                        <i class="fas fa-chevron-down"></i>
+                    <div class="mk-hero-glyph"><i :class="getAssetIcon(item)"></i></div>
+                    <div class="mk-hero-scrim"></div>
+                    <div class="mk-hero-top">
+                      <span class="mk-eyebrow" :class="{ alt: idx > 0 }">
+                        <i :class="idx === 0 ? 'fas fa-star' : 'fas fa-fire'"></i>
+                        {{ idx === 0 ? 'Top pick' : 'Trending' }}
+                      </span>
+                      <span v-if="pluginTrust(item)" class="mk-hero-badge">
+                        <i class="fas fa-shield-alt"></i> {{ pluginTrust(item).trustTier }}
+                      </span>
+                    </div>
+                    <div class="mk-hero-body">
+                      <h2 class="mk-hero-title">{{ item.title }}</h2>
+                      <div class="mk-hero-by">
+                        <i class="fas fa-user"></i>
+                        <!-- .stop: the whole hero is clickable and opens the detail panel -->
+                        <button
+                          v-if="item.publisher_id"
+                          class="mk-hero-author"
+                          :title="`View ${item.publisher_pseudonym || 'publisher'}'s profile`"
+                          @click.stop="openProfile(item)"
+                        >
+                          {{ item.publisher_pseudonym || 'Anonymous' }}
+                        </button>
+                        <span v-else>{{ item.publisher_pseudonym || 'Anonymous' }}</span>
+                        <span class="mk-dot">·</span> {{ getAssetTypeLabel(item) }}
+                      </div>
+                      <p class="mk-hero-desc">{{ item.tagline || item.description || 'No description available' }}</p>
+                      <div class="mk-hero-chips">
+                        <span v-if="item.category">{{ item.category }}</span>
+                        <span v-if="item.rating_count > 0">{{ item.rating_count }} ratings</span>
+                        <span>{{ item.price > 0 ? '$' + item.price.toFixed(2) : 'Free' }}</span>
+                      </div>
+                      <div class="mk-hero-foot">
+                        <button
+                          class="mk-hero-cta"
+                          :class="{ done: isInstalled(item) || isPurchased(item) }"
+                          data-sound="chaChingMoney"
+                          :disabled="isInstalled(item) || isPurchased(item) || installingIds.has(item.id)"
+                          @click.stop="installWithBusy(item)"
+                        >
+                          <i :class="installIcon(item)"></i>
+                          <span>{{ installLabel(item) }}</span>
+                        </button>
+                        <div class="mk-hero-stats">
+                          <span v-if="item.rating_count > 0"><i class="fas fa-star"></i><b>{{ item.rating.toFixed(1) }}</b></span>
+                          <span><i class="fas fa-download"></i><b>{{ formatNumber(item.downloads || 0) }}</b></span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <!-- ── Collections (derived from live categories — no hardcoded ids) ── -->
+              <section v-if="showCollections" class="mk-section">
+                <div class="mk-sec-head">
+                  <div class="mk-sec-title">Collections</div>
+                  <div class="mk-sec-sub">The most-installed set in each category — grab the whole stack</div>
+                </div>
+                <div class="mk-collections">
+                  <article v-for="c in collections" :key="'col-' + c.name" class="mk-collection" @click="filterToCategory(c.name)">
+                    <div class="mk-stack">
+                      <div v-for="it in c.items" :key="'st-' + it.id" class="mk-stack-chip" :style="iconStyle(it)">
+                        <i :class="getAssetIcon(it)"></i>
+                      </div>
+                    </div>
+                    <div class="mk-collection-main">
+                      <div class="mk-collection-name">{{ c.name }}</div>
+                      <div class="mk-collection-desc">{{ c.blurb }}</div>
+                    </div>                    <div class="mk-collection-foot">
+                      <span>{{ c.total }} items</span>
+                      <button class="mk-collection-cta" data-sound="chaChingMoney" @click.stop="installCollection(c)">
+                        <i :class="c.freeCount > 0 ? 'fas fa-download' : 'fas fa-arrow-right'"></i>
+                        {{ c.freeCount > 0 ? 'Install ' + c.freeCount + ' free' : 'Browse set' }}
+                      </button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <!-- ── Toolbar (inside the scroll container so gutters always match) ── -->
+              <div v-if="!profileUserId" class="mk-toolbar">
+                <div class="mk-tb-row mk-tb-controls">
+                  <div class="mk-count">
+                    Showing <b>{{ gridItems.length }}</b> of <b>{{ filteredWorkflows.length }}</b> {{ currentAssetTypeLabel }}
+                    <span v-if="showSpotlight" class="mk-count-note">· {{ spotlightItems.length }} in spotlight above</span>
+                  </div>
+                  <div class="mk-spacer"></div>
+                  <div class="mk-seg">
+                    <button
+                      v-for="opt in priceSegments"
+                      :key="opt.value"
+                      :class="{ on: (filters.priceRange || 'all') === opt.value }"
+                      @click="setPriceRange(opt.value)"
+                    >
+                      {{ opt.label }}
+                    </button>
+                  </div>
+                  <select class="mk-sort" :value="filters.sortBy || 'popular'" @change="setSortBy($event.target.value)">
+                    <option v-for="o in sortOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                </div>
+                <div class="mk-tb-row mk-tb-filters">
+                  <span class="mk-tb-label">Filter</span>
+                  <div class="mk-chip-rail">
+                    <div ref="chipRailEl" class="mk-chips" @scroll="syncRail">
+                      <button class="mk-chip" :class="{ on: selectedCategory === 'all' }" @click="selectedCategory = 'all'">
+                        All <span class="mk-chip-n">{{ categoryCounts.all || 0 }}</span>
+                      </button>
+                      <button
+                        v-for="category in availableCategories"
+                        :key="category"
+                        class="mk-chip"
+                        :class="{ on: selectedCategory === category }"
+                        @click="selectedCategory = category"
+                      >
+                        {{ category }} <span class="mk-chip-n">{{ categoryCounts[category] || 0 }}</span>
                       </button>
                     </div>
                   </div>
-                  <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
-                    <div class="workflows-grid">
-                      <div
-                        v-for="workflow in workflows"
-                        :key="workflow.id"
-                        class="workflow-card"
-                        :class="{
-                          selected: selectedWorkflow?.id === workflow.id,
-                          installed: isInstalled(workflow) || isPurchased(workflow),
-                        }"
-                        @click="handleWorkflowClick(workflow)"
+                  <button class="mk-rail-next" :class="{ hide: !railHasMore }" title="More categories" @click="scrollRail">
+                    <i class="fas fa-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- ── One flat grid: category never affects layout ── -->
+              <div class="mk-grid" :class="{ 'mk-grid-fit': profileUserId, solo: profileUserId && visibleItems.length === 1 }">
+                <template v-if="isLoading && !filteredWorkflows.length">
+                  <div v-for="n in 8" :key="'sk-' + n" class="mk-sk"></div>
+                </template>
+
+                <div v-else-if="!visibleItems.length" class="mk-empty">
+                  <div class="mk-empty-ico"><i :class="profileUserId ? 'fas fa-box-open' : 'fas fa-search'"></i></div>
+                  <h3>{{ profileUserId ? 'Nothing published yet' : 'Nothing matches that yet' }}</h3>
+                  <p>
+                    {{
+                      profileUserId
+                        ? 'This publisher has not shipped anything to the marketplace.'
+                        : 'Try a different category, clear the search, or browse everything.'
+                    }}
+                  </p>
+                  <button v-if="!profileUserId" class="mk-empty-cta" @click="resetFilters">
+                    <i class="fas fa-undo"></i> Reset filters
+                  </button>
+                </div>                <template v-else>
+                <article
+                  v-for="(item, idx) in visibleItems"
+                  :key="item.id"
+                  class="mk-card"
+                  :class="{ selected: selectedWorkflow?.id === item.id, installed: isInstalled(item) || isPurchased(item) }"
+                  :style="{ '--i': Math.min(idx, 14) }"
+                  @click="handleWorkflowClick(item)"
+                >
+                  <span v-if="isInstalled(item) || isPurchased(item)" class="mk-ribbon"><i class="fas fa-check"></i> Installed</span>
+
+                  <div class="mk-card-art" :style="artStyle(item)">
+                    <img
+                      v-if="item.preview_image"
+                      class="mk-art-img"
+                      :src="item.preview_image"
+                      :alt="item.title"
+                      @error="item.preview_image = null"
+                    />
+                    <div v-else class="mk-card-glyph"><i :class="getAssetIcon(item)"></i></div>
+                    <!-- An installed card keeps its TYPE badge: rank/trending/new and
+                         price stop being useful once you own it, but the type still is,
+                         and dropping the whole strip made that one card read as broken. -->
+                    <div class="mk-art-tags">
+                      <template v-if="!(isInstalled(item) || isPurchased(item))">
+                        <span v-if="rankBadge(item)" class="mk-tag rank">#{{ rankBadge(item) }} in {{ item.category }}</span>
+                        <span v-else-if="isTrending(item)" class="mk-tag hot"><i class="fas fa-fire"></i> Trending</span>
+                        <span v-else-if="isNew(item)" class="mk-tag new">New</span>
+                      </template>
+                      <span class="mk-tag">{{ getAssetTypeLabel(item) }}</span>
+                      <span
+                        v-if="!(isInstalled(item) || isPurchased(item))"
+                        class="mk-tag price"
+                        :class="{ free: !(item.price > 0) }"
                       >
-                        <div class="workflow-content">
-                          <!-- Row 1: Avatar + Title/Publisher/Description -->
-                          <div class="workflow-header">
-                            <div class="workflow-avatar-container">
-                              <div v-if="workflow.preview_image" class="workflow-avatar">
-                                <img :src="workflow.preview_image" :alt="workflow.title" @error="workflow.preview_image = null" />
-                              </div>
-                              <div v-else class="workflow-avatar-placeholder">
-                                <i :class="getAssetIcon(workflow)"></i>
-                              </div>
-                            </div>
-
-                            <div class="workflow-info">                              <div class="workflow-title-row">
-                                <h3 class="workflow-name">{{ workflow.title }}</h3>
-                                <!-- trust system: pre-install trust badge for plugin items -->
-                                <Tooltip
-                                  v-if="pluginTrust(workflow)"
-                                  :title="trustTierLabel(pluginTrust(workflow).trustTier)"
-                                  :text="trustTooltipText(pluginTrust(workflow))"
-                                  position="top"
-                                  width="300px"
-                                >
-                                  <span class="trust-badge" :class="'trust-' + pluginTrust(workflow).trustTier">
-                                    <span class="trust-dot"></span>
-                                    {{ pluginTrust(workflow).trustTier }}
-                                  </span>
-                                </Tooltip>
-                                <span v-if="workflow.price > 0" class="workflow-price">${{ workflow.price.toFixed(2) }}</span>
-                                <span v-else class="workflow-price free">FREE</span>
-                              </div>
-
-                              <div class="workflow-publisher">
-                                <i class="fas fa-user"></i>
-                                {{ workflow.publisher_pseudonym || 'Anonymous' }}
-                              </div>
-
-                              <p class="workflow-description">
-                                {{ workflow.tagline || workflow.description || 'No description available' }}
-                              </p>
-                            </div>
-                          </div>
-
-                          <!-- Row 2: Ratings and Downloads -->
-                          <div class="workflow-meta">
-                            <div class="meta-item asset-type">
-                              <span class="workflow-type" :class="`type-${workflow.asset_type || 'workflow'}`">{{
-                                getAssetTypeLabel(workflow)
-                              }}</span>
-                            </div>
-                            <div class="meta-item">
-                              <i class="fas fa-star"></i>
-                              <span>{{ workflow.rating ? workflow.rating.toFixed(1) : '0.0' }}</span>
-                              <span class="meta-count">({{ workflow.rating_count || 0 }})</span>
-                            </div>
-                            <div class="meta-item">
-                              <i class="fas fa-download"></i>
-                              <span>{{ formatNumber(workflow.downloads || 0) }}</span>
-                            </div>
-                          </div>
-
-                          <!-- Row 3: Install Button -->
-                          <button
-                            class="install-button"
-                            @click.stop="handleInstallWorkflow(workflow)"
-                            data-sound="chaChingMoney"
-                            :disabled="isInstalled(workflow) || isPurchased(workflow)"
-                          >
-                            <i class="fas fa-download"></i>
-                            {{
-                              isInstalled(workflow) ? 'Installed' : isPurchased(workflow) ? 'Purchased' : workflow.price > 0 ? 'Purchase' : 'Install'
-                            }}
-                          </button>
-                        </div>
-                      </div>
+                        {{ item.price > 0 ? '$' + item.price.toFixed(2) : 'FREE' }}
+                      </span>
                     </div>
                   </div>
+
+                  <div class="mk-card-icon" :style="iconStyle(item)"><i :class="getAssetIcon(item)"></i></div>
+
+                  <div class="mk-card-body">
+                    <h3 class="mk-card-title">{{ item.title }}</h3>
+                    <!-- the author is redundant on a profile: every card is theirs -->
+                    <div v-if="!profileUserId || pluginTrust(item)" class="mk-card-by">
+                      <button
+                        v-if="!profileUserId && item.publisher_id"
+                        class="mk-card-author is-link"
+                        :title="`View ${item.publisher_pseudonym || 'publisher'}'s profile`"
+                        @click.stop="openProfile(item)"
+                      >
+                        {{ item.publisher_pseudonym || 'Anonymous' }}
+                      </button>
+                      <span v-else-if="!profileUserId" class="mk-card-author">{{ item.publisher_pseudonym || 'Anonymous' }}</span>
+                      <!-- trust system: pre-install trust badge for plugin items -->
+                      <Tooltip
+                        v-if="pluginTrust(item)"
+                        :title="trustTierLabel(pluginTrust(item).trustTier)"
+                        :text="trustTooltipText(pluginTrust(item))"
+                        position="top"
+                        width="300px"
+                      >
+                        <span class="trust-badge" :class="'trust-' + pluginTrust(item).trustTier">
+                          <span class="trust-dot"></span>
+                          {{ pluginTrust(item).trustTier }}
+                        </span>
+                      </Tooltip>
+                    </div>
+                    <p class="mk-card-desc">{{ item.tagline || item.description || 'No description available' }}</p>
+                    <div class="mk-card-meta">
+                      <!-- an unrated item is "Unrated", never a fake 0.0 — most of
+                           the catalogue has no ratings yet, and 0.0 reads as bad -->
+                      <span v-if="item.rating_count > 0" class="mk-m mk-m-star">
+                        <i class="fas fa-star"></i>
+                        <b>{{ item.rating.toFixed(1) }}</b>
+                        <span class="mk-m-count">({{ item.rating_count }})</span>
+                      </span>
+                      <span v-else class="mk-m mk-m-unrated">Unrated</span>
+                      <span class="mk-m"><i class="fas fa-download"></i><b>{{ formatNumber(item.downloads || 0) }}</b></span>
+                      <span v-if="item.category" class="mk-cat">{{ item.category }}</span>
+                    </div>
+                  </div>
+
+                  <div class="mk-card-foot">
+                    <button
+                      class="mk-inst"
+                      :class="{ done: isInstalled(item) || isPurchased(item), busy: installingIds.has(item.id) }"
+                      data-sound="chaChingMoney"
+                      :disabled="isInstalled(item) || isPurchased(item) || installingIds.has(item.id)"
+                      @click.stop="installWithBusy(item)"
+                    >
+                      <i :class="installIcon(item)"></i>
+                      <span class="mk-lbl">{{ installLabel(item) }}</span>
+                    </button>                    <button class="mk-ghost" title="Quick look" @click.stop="handleWorkflowClick(item)">
+                      <i class="fas fa-eye"></i><span class="mk-glabel">Quick look</span>
+                    </button>
+                  </div>
                 </article>
+                </template>
               </div>
             </div>
           </main>
@@ -456,7 +567,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, inject, watch, onMounted } from 'vue';
+import { ref, computed, nextTick, inject, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTabControls from '../../../_components/BaseTabControls.vue';
@@ -481,7 +592,6 @@ export default {
     const selectedWorkflow = ref(null);
     const activeTab = ref('all');
     const currentLayout = ref('grid');
-    const hideEmptyCategories = ref(true);    const collapsedCategories = ref(new Set());
     const selectedCategory = ref('all');
 
     // trust system Layer 6: trust metadata for plugin cards, keyed by plugin
@@ -555,9 +665,7 @@ export default {
       { key: 'sales', label: 'Sales', width: '100px' },
       { key: 'revenue', label: 'Revenue', width: '120px' },
       { key: 'earnings', label: 'Your Earnings', width: '140px' },
-    ];
-
-    // Define tabs - NOW WITH ASSET TYPES
+    ];    // Define tabs - NOW WITH ASSET TYPES
     const tabs = [
       { id: 'all', name: 'All', icon: 'fas fa-list' },
       { id: 'workflows', name: 'Workflows', icon: 'fas fa-project-diagram' },
@@ -643,7 +751,10 @@ export default {
           break;
         case 'all':
           // Combine ALL asset types and remove duplicates by ID
-          const allItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value];
+          // Union every asset type — plugins included. The remote /marketplace/items
+          // endpoint already returns all four types; this union was workflows+agents+
+          // tools only, which silently hid every plugin from the All tab.
+          const allItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value];
           const uniqueIds = new Set();
           items = allItems.filter((item) => {
             if (uniqueIds.has(item.id)) {
@@ -656,7 +767,8 @@ export default {
         case 'free':
         case 'paid':
           // For free/paid, also combine all asset types and remove duplicates
-          const combinedItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value];
+          // Same union as 'all' — free/paid must not hide plugins either.
+          const combinedItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value];
           const seenIds = new Set();
           items = combinedItems.filter((item) => {
             if (seenIds.has(item.id)) {
@@ -794,35 +906,358 @@ export default {
       }
     });
 
-    // Group workflows by category
-    const workflowsByCategory = computed(() => {
-      const categories = {};
-      const workflows = displayedWorkflows.value;
+    /* ══════════════════════════════════════════════════════════════════
+       MARKETPLACE PRESENTATION LAYER
+       Everything below is derived client-side from data already in the
+       store. No new endpoints, no new state, no fabricated metrics.
+       ══════════════════════════════════════════════════════════════════ */
 
-      workflows.forEach((workflow) => {
-        const category = workflow.category || 'Uncategorized';
-        if (!categories[category]) {
-          categories[category] = [];
-        }
-        categories[category].push(workflow);
-      });
+    // Per-item install busy flags. Reassigned (not mutated) so reactivity is
+    // guaranteed regardless of collection-proxy behaviour.
+    const installingIds = ref(new Set());
 
-      // Sort categories alphabetically
-      const sortedCategories = {};
-      Object.keys(categories)
-        .sort((a, b) => a.localeCompare(b))
-        .forEach((key) => {
-          if (hideEmptyCategories.value) {
-            if (categories[key].length > 0) {
-              sortedCategories[key] = categories[key];
-            }
-          } else {
-            sortedCategories[key] = categories[key];
-          }
-        });
+    const chipRailEl = ref(null);
+    const railHasMore = ref(false);
 
-      return sortedCategories;
+    const priceSegments = [
+      { value: 'all', label: 'All' },
+      { value: 'free', label: 'Free' },
+      { value: 'paid', label: 'Paid' },
+    ];
+
+    // Values must match the switch in filteredWorkflows / the left panel.
+    const sortOptions = [
+      { value: 'popular', label: 'Most popular' },
+      { value: 'downloads', label: 'Most installed' },
+      { value: 'rating', label: 'Highest rated' },
+      { value: 'recent', label: 'Recently added' },
+      { value: 'price-low', label: 'Price: low → high' },
+      { value: 'price-high', label: 'Price: high → low' },
+    ];
+
+    // ── date helpers (Infinity when an item carries no usable date, so it
+    //    simply never qualifies as new/trending rather than producing NaN) ──
+    const DAY_MS = 86400000;
+    const itemDate = (i) => i.published_at || i.created_at || i.updated_at || null;
+    const daysSince = (i) => {
+      const d = itemDate(i);
+      if (!d) return Infinity;
+      const t = new Date(d).getTime();
+      return Number.isFinite(t) ? (Date.now() - t) / DAY_MS : Infinity;
+    };
+    const isNew = (i) => daysSince(i) <= 30;
+    const trendScore = (i) => (i.downloads || 0) / Math.max(daysSince(i), 7);
+
+    // Top ~15% by install-velocity, and only when the pool is big enough for
+    // "trending" to carry any information at all.
+    const trendingIds = computed(() => {
+      const pool = filteredWorkflows.value.filter((i) => Number.isFinite(daysSince(i)) && (i.downloads || 0) > 0);
+      if (pool.length < 6) return new Set();
+      const ranked = [...pool].sort((a, b) => trendScore(b) - trendScore(a));
+      return new Set(ranked.slice(0, Math.max(1, Math.ceil(ranked.length * 0.15))).map((i) => i.id));
     });
+    const isTrending = (i) => trendingIds.value.has(i.id);
+
+    // "#1 in <Category>" — suppressed for categories too small for a ranking
+    // to mean anything, and for items with zero installs.
+    const categoryRankMap = computed(() => {
+      const byCat = {};
+      for (const i of filteredWorkflows.value) {
+        const c = i.category;
+        if (!c) continue;
+        if (!byCat[c]) byCat[c] = [];
+        byCat[c].push(i);
+      }
+      const map = {};
+      for (const key of Object.keys(byCat)) {
+        const list = byCat[key];
+        if (list.length < 3) continue;
+        const top = [...list].sort((a, b) => (b.downloads || 0) - (a.downloads || 0))[0];
+        if (top && (top.downloads || 0) > 0) map[top.id] = 1;
+      }
+      return map;
+    });
+    const rankBadge = (i) => categoryRankMap.value[i.id] || null;
+
+    const pulseStats = computed(() => {
+      const all = marketplaceItems.value || [];
+      return {
+        installs: all.reduce((s, i) => s + (i.downloads || 0), 0),
+        builders: new Set(all.map((i) => i.publisher_pseudonym).filter(Boolean)).size,
+        free: all.filter((i) => !(i.price > 0)).length,
+        paid: all.filter((i) => i.price > 0).length,
+        fresh: all.filter((i) => daysSince(i) <= 30).length,
+      };
+    });
+
+    // The editorial layer only appears on an unfiltered Discover view, so the
+    // page never shows curation that contradicts an active filter.
+    const showEditorial = computed(
+      () =>
+        currentLayout.value === 'grid' &&
+        !profileUserId.value &&
+        activeTab.value === 'all' &&
+        !filters.value.search &&
+        selectedCategory.value === 'all' &&
+        (filters.value.priceRange || 'all') === 'all'
+    );
+
+    // Prefer the store's real featured list; fall back to top-3 by popularity.
+    // Requires exactly 3 so the 1-large + 2-small grid can never render a hole.
+    const spotlightItems = computed(() => {
+      if (!showEditorial.value) return [];
+      const pool = filteredWorkflows.value;
+      if (pool.length < 6) return [];
+      const byId = new Map(pool.map((i) => [i.id, i]));
+      const picks = [];
+      const push = (i) => {
+        if (i && picks.length < 3 && !picks.some((p) => p.id === i.id)) picks.push(i);
+      };
+      for (const f of featuredWorkflows.value) push(byId.get(f.id));
+      if (picks.length < 3) {
+        const ranked = [...pool].sort(
+          (a, b) => (b.downloads || 0) - (a.downloads || 0) || (b.rating || 0) - (a.rating || 0)
+        );
+        for (const i of ranked) push(i);
+      }
+      return picks.length === 3 ? picks : [];
+    });
+    const spotlightIds = computed(() => new Set(spotlightItems.value.map((i) => i.id)));
+    const showSpotlight = computed(() => spotlightItems.value.length === 3);
+
+    // Spotlit items are lifted out of the grid so the page never repeats itself.
+    const gridItems = computed(() =>
+      showSpotlight.value ? displayedWorkflows.value.filter((i) => !spotlightIds.value.has(i.id)) : displayedWorkflows.value
+    );
+
+    const collections = computed(() => {
+      if (!showEditorial.value) return [];
+      const byCat = {};
+      for (const i of filteredWorkflows.value) {
+        if (spotlightIds.value.has(i.id)) continue;
+        const c = i.category;
+        if (!c || c === 'Uncategorized') continue;
+        if (!byCat[c]) byCat[c] = [];
+        byCat[c].push(i);
+      }
+      return Object.keys(byCat)
+        .filter((c) => byCat[c].length >= 3)
+        .sort((a, b) => byCat[b].length - byCat[a].length || a.localeCompare(b))
+        .slice(0, 4)
+        .map((name) => {
+          const list = byCat[name];
+          const items = [...list].sort((a, b) => (b.downloads || 0) - (a.downloads || 0)).slice(0, 4);
+          const freeItems = items.filter((i) => !(i.price > 0) && !isInstalled(i) && !isPurchased(i));
+          return {
+            name,
+            total: list.length,
+            items,
+            freeItems,
+            freeCount: freeItems.length,
+            blurb: `The ${items.length} most-installed ${name.toLowerCase()} items on the marketplace.`,
+          };
+        });
+    });
+    const showCollections = computed(() => showEditorial.value && collections.value.length >= 2);
+
+    /* ══════════════════════════════════════════════════════════════════
+       PUBLISHER PROFILE
+       A view STATE of this screen (like activeTab / currentLayout), not a
+       separate route. That keeps the right panel, the install flow and every
+       filter working with zero changes, and needs no new endpoint: the item
+       list already carries publisher_id and publisher_pseudonym.
+       ══════════════════════════════════════════════════════════════════ */
+    const profileUserId = ref(null);
+    const mainContentEl = ref(null);
+
+    // Resolve from the real user store (store/features/user.js), which exposes the
+    // getUserId getter — not a guessed userAuth.user shape. Only used for the
+    // profile's "This is you" marker, so it degrades to never-self if unset.
+    const currentUserId = computed(
+      () =>
+        store.getters['user/getUserId'] ||
+        store.getters['user/currentUser']?.id ||
+        store.state.user?.currentUser?.id ||
+        null
+    );
+
+    // Deliberately reads marketplaceItems, not filteredWorkflows: a profile shows
+    // everything that publisher has shipped, independent of the active tab,
+    // search or category filter.
+    const profileItems = computed(() => {
+      if (!profileUserId.value) return [];
+      return (marketplaceItems.value || [])
+        .filter((i) => i.publisher_id === profileUserId.value)
+        .sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+    });
+
+    const profileInfo = computed(() => {
+      const list = profileItems.value;
+      if (!list.length) return null;
+      const rated = list.filter((i) => (i.rating_count || 0) > 0);
+      const totalRatings = rated.reduce((s, i) => s + (i.rating_count || 0), 0);
+      return {
+        id: profileUserId.value,
+        name: list[0].publisher_pseudonym || 'Anonymous',
+        count: list.length,
+        installs: list.reduce((s, i) => s + (i.downloads || 0), 0),
+        // weighted by rating_count — a lone 5.0 must not outrank a 4.8 from many
+        rating: totalRatings ? rated.reduce((s, i) => s + i.rating * i.rating_count, 0) / totalRatings : 0,
+        ratingCount: totalRatings,
+        categories: [...new Set(list.map((i) => i.category).filter(Boolean))],
+        since: list.reduce((min, i) => {
+          const d = itemDate(i);
+          return d && (!min || d < min) ? d : min;
+        }, null),
+        installedByMe: list.filter((i) => isInstalled(i) || isPurchased(i)).length,
+        isSelf: !!currentUserId.value && profileUserId.value === currentUserId.value,
+      };
+    });
+
+    // One source for the grid, so profile mode reuses the card markup verbatim.
+    const visibleItems = computed(() => (profileUserId.value ? profileItems.value : gridItems.value));
+
+    const openProfile = (item) => {
+      if (!item || !item.publisher_id) return; // anonymous publishers stay unlinked
+      playSound('typewriterKeyPress');
+      profileUserId.value = item.publisher_id;
+      selectedWorkflow.value = null;
+      addLine(`[Marketplace] Viewing publisher: ${item.publisher_pseudonym || 'Anonymous'}`, 'info');
+      nextTick(() => mainContentEl.value?.scrollTo({ top: 0 }));
+    };
+    const closeProfile = () => {
+      profileUserId.value = null;
+    };
+
+    const formatJoined = (value) => {
+      if (!value) return 'unknown';
+      // API dates arrive as 'YYYY-MM-DD HH:MM:SS'; normalise for Safari/Firefox
+      const d = new Date(String(value).replace(' ', 'T'));
+      return Number.isNaN(d.getTime()) ? 'unknown' : d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    };
+
+    // Identity mark, seeded the same deterministic way as the card art so a
+    // publisher and their catalogue read as one family. No upload infra needed.
+    // Both gradient stops are held at >=67% lightness deliberately: the initials
+    // are painted in fixed dark ink, and below that the worst-case hue (blue,
+    // ~240) drops to 1.99:1. At these values every possible publisher id clears
+    // AA 4.5 in every theme.
+    const avatarStyle = (id) => {
+      const seed = String(id || '')
+        .split('')
+        .reduce((a, c) => a + c.charCodeAt(0), 0);
+      const h = (seed * 29) % 360;
+      return {
+        backgroundImage: `linear-gradient(140deg, hsl(${h} 62% 70%), hsl(${(h + 52) % 360} 58% 67%))`,
+        color: '#0a0a14',
+      };
+    };
+    const initials = (name) =>
+      String(name || '?')
+        .split(/[\s&]+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase();
+
+    // ── install choreography ──────────────────────────────────────────────
+    const installLabel = (item) => {
+      if (isInstalled(item)) return 'Installed';
+      if (isPurchased(item)) return 'Purchased';
+      if (installingIds.value.has(item.id)) return item.price > 0 ? 'Opening…' : 'Installing…';
+      return item.price > 0 ? `Get · $${item.price.toFixed(2)}` : 'Install';
+    };
+    const installIcon = (item) => {
+      if (isInstalled(item) || isPurchased(item)) return 'fas fa-check';
+      if (installingIds.value.has(item.id)) return 'fas fa-spinner fa-spin';
+      return 'fas fa-download';
+    };
+    // Thin wrapper around the untouched handleInstallWorkflow — adds only the
+    // per-card busy flag; all payment / dependency / plugin logic is unchanged.
+    const installWithBusy = async (item) => {
+      if (!item || isInstalled(item) || isPurchased(item) || installingIds.value.has(item.id)) return;
+      const next = new Set(installingIds.value);
+      next.add(item.id);
+      installingIds.value = next;
+      try {
+        await handleInstallWorkflow(item);
+      } finally {
+        const done = new Set(installingIds.value);
+        done.delete(item.id);
+        installingIds.value = done;
+      }
+    };
+    const installCollection = async (c) => {
+      if (!c.freeItems.length) {
+        selectedCategory.value = c.name;
+        return;
+      }
+      for (const it of c.freeItems) {
+        // sequential on purpose: keeps terminal output ordered and avoids a
+        // burst of concurrent saves against the local API
+        // eslint-disable-next-line no-await-in-loop
+        await installWithBusy(it);
+      }
+    };
+
+    // ── toolbar handlers: always round-trip through the store so the left
+    //    panel and this toolbar can never disagree ──────────────────────────
+    const setPriceRange = (value) => store.dispatch('marketplace/updateFilters', { priceRange: value });
+    const setSortBy = (value) => store.dispatch('marketplace/updateFilters', { sortBy: value });
+    const showNewest = () => store.dispatch('marketplace/updateFilters', { sortBy: 'recent' });
+    const filterToCategory = (name) => {
+      selectedCategory.value = name;
+    };
+    const resetFilters = () => {
+      selectedCategory.value = 'all';
+      store.dispatch('marketplace/updateFilters', { search: '', priceRange: 'all', minRating: 0 });
+    };
+
+    // ── category rail overflow affordance ─────────────────────────────────
+    const syncRail = () => {
+      const el = chipRailEl.value;
+      railHasMore.value = el ? el.scrollWidth - el.clientWidth - el.scrollLeft > 2 : false;
+    };
+    const scrollRail = () => {
+      if (chipRailEl.value) chipRailEl.value.scrollBy({ left: 280, behavior: 'smooth' });
+    };
+
+    // ── deterministic per-item art ────────────────────────────────────────
+    // NOTE: this gradient is dark in EVERY theme, so anything painted on top
+    // of it must use literal white — never a theme token (which flips to dark
+    // ink in light/rose). See the art-ink rule in the style block.
+    const TYPE_HUE = { workflow: 192, agent: 150, tool: 45, plugin: 268 };
+    const hueFor = (item) => {
+      const base = TYPE_HUE[item.asset_type || 'workflow'] || 192;
+      const seed = String(item.id || item.title || '')
+        .split('')
+        .reduce((a, c) => a + c.charCodeAt(0), 0);
+      return (base + ((seed * 13) % 38)) % 360;
+    };
+    const artStyle = (item) => {
+      const h1 = hueFor(item);
+      const h2 = (h1 + 46) % 360;
+      return {
+        backgroundImage:
+          `radial-gradient(120% 130% at 12% 8%, hsl(${h1} 62% 52% / .95), transparent 62%),` +
+          `radial-gradient(120% 120% at 92% 96%, hsl(${h2} 62% 44% / .9), transparent 58%),` +
+          `linear-gradient(135deg, hsl(${h1} 38% 22%), hsl(${h2} 42% 13%))`,
+      };
+    };
+    const iconStyle = (item) => {
+      const h1 = hueFor(item);
+      return {
+        backgroundImage: `linear-gradient(140deg, hsl(${h1} 72% 58%), hsl(${(h1 + 40) % 360} 66% 42%))`,
+        color: '#0a0a14',
+      };
+    };    // Re-measure the rail whenever its contents or width can have changed.
+    watch([availableCategories, selectedCategory, activeTab, currentLayout], () => nextTick(syncRail));
+
+    // NOTE: tab counts were trialled here and removed — the badges pushed the
+    // fixed 1048px tab strip into overflow, clipping "My Earnings". The same
+    // numbers are already surfaced by the category rail ("All 29") and the
+    // results line ("Showing 26 of 29 items").
 
     // Helper methods
     const scrollToBottom = () => baseScreenRef.value?.scrollToBottom();
@@ -830,26 +1265,6 @@ export default {
     const addLine = (content, type = 'default') => {
       terminalLines.value.push({ content, type });
       nextTick(() => scrollToBottom());
-    };
-
-    const getCategoryInfo = (categoryName) => {
-      const categoryIcons = {
-        'Data Processing': '🔄',
-        Integration: '🔗',
-        'File Management': '📁',
-        Communication: '📧',
-        Analytics: '📊',
-        System: '⚙️',
-        Automation: '🤖',
-        Productivity: '📈',
-        Uncategorized: '📋',
-      };
-
-      return {
-        name: categoryName,
-        icon: categoryIcons[categoryName] || '🔧',
-        count: workflowsByCategory.value[categoryName]?.length || 0,
-      };
     };
 
     const formatNumber = (num) => {
@@ -918,12 +1333,16 @@ export default {
     };
 
     const handleSearch = (query) => {
+      // searching is a browse action — leave the profile so results aren't
+      // silently filtered out of view behind it
+      profileUserId.value = null;
       store.dispatch('marketplace/updateFilters', { search: query });
     };
 
     const selectTab = async (tabId) => {
       activeTab.value = tabId;
       selectedWorkflow.value = null;
+      profileUserId.value = null;
 
       // Update filters based on tab
       const filterUpdates = { search: filters.value.search };
@@ -995,41 +1414,6 @@ export default {
 
     const setLayout = (layout) => {
       currentLayout.value = layout;
-    };
-
-    const toggleHideEmptyCategories = () => {
-      hideEmptyCategories.value = !hideEmptyCategories.value;
-      addLine(`[Marketplace] ${hideEmptyCategories.value ? 'Hiding' : 'Showing'} empty categories`, 'info');
-    };
-
-    const toggleCategoryCollapse = (categoryName) => {
-      playSound('typewriterKeyPress');
-      if (collapsedCategories.value.has(categoryName)) {
-        collapsedCategories.value.delete(categoryName);
-      } else {
-        collapsedCategories.value.add(categoryName);
-      }
-    };
-
-    const isCategoryCollapsed = (categoryName) => {
-      return collapsedCategories.value.has(categoryName);
-    };
-
-    const allCategoriesCollapsed = computed(() => {
-      const categoryNames = Object.keys(workflowsByCategory.value);
-      return categoryNames.length > 0 && categoryNames.every((name) => collapsedCategories.value.has(name));
-    });
-
-    const toggleCollapseAll = () => {
-      const categoryNames = Object.keys(workflowsByCategory.value);
-
-      if (allCategoriesCollapsed.value) {
-        categoryNames.forEach((name) => collapsedCategories.value.delete(name));
-        addLine('[Marketplace] Expanded all categories', 'info');
-      } else {
-        categoryNames.forEach((name) => collapsedCategories.value.add(name));
-        addLine('[Marketplace] Collapsed all categories', 'info');
-      }
     };
 
     const handleInstallWorkflow = async (workflow) => {
@@ -1239,6 +1623,10 @@ export default {
         case 'install-workflow':
           await handleInstallWorkflow(payload);
           break;
+        case 'view-publisher':
+          // raised by the right panel's publisher line
+          openProfile(payload);
+          break;
         case 'close-workflow-details':
           selectedWorkflow.value = null;
           addLine(`[Marketplace] Closed workflow details`, 'info');
@@ -1324,7 +1712,11 @@ export default {
       // Non-blocking: fetch all data in parallel, then handle payment redirects
       store.dispatch('marketplace/updateFilters', { assetType: 'all' }).then(() => {
         return Promise.all([
-          store.dispatch('marketplace/fetchMarketplaceWorkflows'),
+          // fetchMarketplaceItems (not fetchMarketplaceWorkflows): the workflows-only
+          // fetch commits SET_MARKETPLACE_WORKFLOWS, which overwrites marketplaceItems
+          // with just workflows and leaves the All tab empty of agents/tools/plugins on
+          // first load. fetchMarketplaceItems populates all four type buckets.
+          store.dispatch('marketplace/fetchMarketplaceItems'),
           store.dispatch('marketplace/fetchFeaturedWorkflows'),
           store.dispatch('marketplace/fetchMyInstalls'),
           store.dispatch('marketplace/fetchMyPurchases'),
@@ -1400,11 +1792,30 @@ export default {
 
       // trust system: trust metadata for plugin card badges (non-blocking)
       loadPluginTrust();
-    });    return {
+
+      // category rail overflow affordance
+      nextTick(syncRail);
+      window.addEventListener('resize', syncRail);
+    });
+
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', syncRail);
+    });
+
+    return {
       baseScreenRef,
       simpleModal,
       terminalLines,
       selectedWorkflow,
+      profileUserId,
+      profileInfo,
+      visibleItems,
+      mainContentEl,
+      openProfile,
+      closeProfile,
+      formatJoined,
+      avatarStyle,
+      initials,
       pluginTrust,
       trustTierLabel,
       trustTooltipText,
@@ -1419,10 +1830,6 @@ export default {
       isLoading,
       myEarnings,
       filteredWorkflows,
-      workflowsByCategory,
-      hideEmptyCategories,
-      collapsedCategories,
-      allCategoriesCollapsed,
       selectedCategory,
       availableCategories,
       categoryCounts,
@@ -1432,15 +1839,10 @@ export default {
       handleSearch,
       selectTab,
       setLayout,
-      toggleHideEmptyCategories,
-      toggleCategoryCollapse,
-      isCategoryCollapsed,
-      toggleCollapseAll,
       handleInstallWorkflow,
       handlePanelAction,
       handleUserInputSubmit,
       initializeScreen,
-      getCategoryInfo,
       formatNumber,
       getAssetIcon,
       getAssetTypeLabel,
@@ -1451,6 +1853,34 @@ export default {
       startTutorial,
       onTutorialClose,
       emit,
+      installingIds,
+      chipRailEl,
+      railHasMore,
+      priceSegments,
+      sortOptions,
+      isNew,
+      isTrending,
+      rankBadge,
+      pulseStats,
+      showEditorial,
+      spotlightItems,
+      showSpotlight,
+      gridItems,
+      collections,
+      showCollections,
+      installLabel,
+      installIcon,
+      installWithBusy,
+      installCollection,
+      setPriceRange,
+      setSortBy,
+      showNewest,
+      filterToCategory,
+      resetFilters,
+      syncRail,
+      scrollRail,
+      artStyle,
+      iconStyle,
     };
   },
 };
@@ -1610,57 +2040,8 @@ body.dark .view-btn:not(:last-child) {
 }
 
 /* Category Pills */
-.category-pills {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-light-navy);
-}
-
-body.dark .category-pills {
-  border-bottom-color: var(--terminal-border-color);
-}
-
-.category-pill {
-  background: var(--color-darker-0);
-  border: 2px solid var(--terminal-border-color);
-  border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 0.85em;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--color-text);
-  white-space: nowrap;
-}
-
-.category-pill:hover {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.1);
-  transform: translateY(-1px);
-}
-
-.category-pill.active {
-  background: var(--color-green);
-  border-color: var(--color-green) !important;
-  /* color: var(--color-primary); */
-  /* font-weight: 600; */
-}
 
 /* Results Info */
-.results-info {
-  font-size: 0.9em;
-  color: var(--color-light-med-navy);
-  padding: 8px 12px;
-  background: rgba(127, 129, 147, 0.05);
-  border-radius: 6px;
-  border-left: 3px solid var(--color-green);
-}
-
-body.dark .results-info {
-  background: rgba(var(--green-rgb), 0.05);
-}
 
 .marketplace-content {
   display: flex;
@@ -1699,14 +2080,10 @@ body.dark .results-info {
 .marketplace-main-content > * {
   width: 100%;
   max-width: 1048px;
-  margin-right: -10px;
+  /* (scrollbar gutter hack removed: the toolbar now scrolls with the grid) */
 }
 
 /* Featured Section */
-.featured-section {
-  width: 100%;
-  margin-bottom: 32px;
-}
 
 .section-title {
   font-size: 18px;
@@ -1724,459 +2101,10 @@ body.dark .results-info {
   font-size: 16px;
 }
 
-.featured-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  margin-bottom: 16px;
-}
-
-.featured-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-darker-0);
-  border: 2px solid var(--color-yellow);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.15);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  min-height: 160px;
-}
-
-.featured-card:hover {
-  border-color: var(--color-yellow);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.3);
-}
-
-.featured-card.selected {
-  border-color: var(--color-yellow);
-  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4);
-}
-
-.featured-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: var(--color-yellow);
-  color: var(--color-darker-0);
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.5);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  z-index: 1;
-}
-
-.featured-badge i {
-  font-size: 10px;
-}
-
-/* Workflow Avatar */
-.workflow-avatar-container {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
-}
-
-.workflow-avatar {
-  width: 80px;
-  height: 80px;
-  overflow: hidden;
-  background: var(--color-darker-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 2px solid var(--terminal-border-color);
-  transition: all 0.3s ease;
-}
-
-.workflow-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-/* .featured-card:hover .workflow-avatar img,
-.workflow-card:hover .workflow-avatar img {
-  transform: scale(1.05);
-} */
-
-/* .featured-card:hover .workflow-avatar,
-.workflow-card:hover .workflow-avatar {
-  border-right-color: rgba(var(--green-rgb), 0.5);
-  box-shadow: inset -2px 0 12px rgba(var(--green-rgb), 0.2);
-} */
-
-.workflow-avatar-placeholder {
-  width: 80px;
-  height: 80px;
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.1), rgba(var(--green-rgb), 0.05));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-green);
-  font-size: 36px;
-  opacity: 0.5;
-  border-radius: 50%;
-  border: 2px solid var(--terminal-border-color);
-  transition: all 0.3s ease;
-}
-
-.featured-card:hover,
-.workflow-card:hover {
-  background: rgba(var(--green-rgb), 0.08);
-  border-color: rgba(var(--green-rgb), 0.2);
-  /* transform: translateY(-1px); */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-/* Workflow Content */
-.workflow-content {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-}
-
-.workflow-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex: 1;
-}
-
-.workflow-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-self: stretch;
-}
-
-.workflow-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.workflow-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0;
-  line-height: 1.3;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre-wrap;
-}
-
-.workflow-description {
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-  line-height: 1.45;
-  margin: 0;
-  display: -webkit-box;
-  /* -webkit-line-clamp: 2; */
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  flex: 1;
-}
-
-.workflow-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.meta-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--color-text);
-}
-
-.meta-item i {
-  font-size: 11px;
-  color: var(--color-green);
-}
-
-.meta-item.category i {
-  color: var(--color-text-muted);
-}
-
-.meta-item .fa-star {
-  color: var(--color-yellow);
-}
-
-.meta-count {
-  opacity: 0.6;
-  font-size: 11px;
-}
-
 /* Category Cards */
-.category-cards-container {
-  width: 100%;
-  padding: 0;
-}
-
-.category-cards-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  width: 100%;
-}
-
-.category-card {
-  padding: 0;
-  flex: 1 1 100%;
-  min-width: 100%;
-  box-sizing: border-box;
-  transition: all 0.3s ease;
-}
-
-.category-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
-  cursor: pointer;
-  user-select: none;
-  transition: all 0.2s ease;
-  width: calc(100% - 5px);
-}
-
-.category-header:hover {
-  background: rgba(var(--green-rgb), 0.05);
-  border-radius: 6px;
-  padding: 4px 6px;
-  margin: -4px -6px 14px -6px;
-}
-
-.category-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.collapse-toggle {
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  color: var(--color-green);
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  padding: 0;
-}
-
-.collapse-toggle:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.5);
-}
-
-.collapse-toggle.collapsed i {
-  transform: rotate(-90deg);
-}
-
-.collapse-toggle i {
-  font-size: 10px;
-  transition: transform 0.2s ease;
-}
-
-.category-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 16px;
-  color: var(--color-text-muted);
-  opacity: 0.95;
-}
-
-.category-icon {
-  font-size: 18px;
-  width: 24px;
-  height: 24px;
-  display: none;
-}
-
-.category-count {
-  padding: 6px 10px;
-  border-radius: 9px;
-  background: var(--color-darker-0);
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--color-secondary);
-  border: 1px solid var(--terminal-border-color);
-  opacity: 0.5;
-}
-
-.workflows-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 8px;
-  width: calc(100% - 5px);
-}
-
-.workflow-card {
-  display: flex;
-  flex-direction: column;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 12px;
-  overflow: hidden;
-  box-sizing: border-box;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  min-height: 150px;
-}
-
-.workflow-card.last-odd {
-  grid-column: 1 / -1;
-}
-
-.workflow-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.workflow-card.selected {
-  background: rgba(var(--green-rgb), 0.15);
-  border-color: var(--color-green);
-  /* box-shadow: 0 6px 20px rgba(var(--green-rgb), 0.2); */
-}
-
-.workflow-card.installed {
-  border-color: #a89a3f1c;
-}
-
-.workflow-card.selected.installed {
-  border-color: var(--color-green);
-}
-
-.workflow-card.installed .workflow-avatar-placeholder {
-  background: linear-gradient(135deg, rgb(226 239 25 / 10%), rgb(239 214 25 / 5%));
-  color: var(--color-yellow);
-  opacity: 1;
-  border: 2px solid #ffd70008;
-}
-
-.workflow-type {
-  padding: 4px 10px 3px;
-  border-radius: 16px;
-  font-size: 10px;
-  font-weight: 700;
-  background: rgba(127, 129, 147, 0.2);
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-  white-space: nowrap;
-  line-height: 1.4;
-}
 
 /* Asset Type Color Variants */
-.workflow-type.type-workflow {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
-}
 
-.workflow-type.type-agent {
-  background: rgba(236, 72, 153, 0.2);
-  color: var(--color-primary);
-}
-
-.workflow-type.type-tool {
-  background: rgba(245, 158, 11, 0.2);
-  color: var(--color-yellow);
-}
-
-.workflow-type.type-plugin {
-  background: rgba(139, 92, 246, 0.2);
-  color: var(--color-violet);
-}
-
-.workflow-price {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  background: rgba(245, 158, 11, 0.15);
-  color: var(--color-yellow);
-  flex-shrink: 0;
-  white-space: nowrap;
-  line-height: 1.4;
-  letter-spacing: 0.3px;
-}
-.workflow-price.free {
-  background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
-}
-
-.workflow-publisher {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
-
-.workflow-publisher i {
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-.install-button {
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  color: var(--color-green);
-  border: 1px solid var(--color-green);
-  font-weight: 700;
-  font-size: 11px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  margin-top: auto;
-}
-
-.install-button:hover {
-  background: var(--color-green);
-  color: var(--color-navy);
-  transform: translateY(-1px);
-}
-
-.install-button:active {
-  transform: translateY(0);
-}
-
-.install-button i {
-  font-size: 12px;
-}
-
-.install-button:disabled,
 .table-install-button:disabled {
   background: transparent;
   color: var(--color-yellow);
@@ -2464,16 +2392,1088 @@ body.dark .results-info {
 
 /* Responsive */
 @media (max-width: 640px) {
-  .workflow-card {
-    width: 100%;
-  }
-
-  .category-cards-grid {
-    gap: 12px;
-  }
 
   .earnings-summary {
     grid-template-columns: 1fr;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   MARKETPLACE GRID SYSTEM
+
+   ART-INK RULE — read before editing:
+   .mk-art and .mk-card-art paint a generated HSL gradient that is DARK in
+   EVERY theme. Anything drawn on top of them must use literal white or a
+   fixed dark scrim, never a theme token — --color-dull-white and friends
+   flip to dark ink in the light and rose themes and would vanish.
+   Everywhere ELSE in this block: theme tokens only, no hardcoded colour.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.items-grid-container {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 32px;
+}
+
+/* ─────────────────────── live pulse strip ─────────────────────── */
+.mk-pulse {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-bottom: 24px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-lg);
+  background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.06), transparent 55%);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+.mk-pulse b {
+  color: var(--color-text);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+}
+.mk-pulse-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.mk-beacon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-green);
+  animation: mkBeacon 2s infinite;
+}
+@keyframes mkBeacon {
+  0% { box-shadow: 0 0 0 0 rgba(var(--green-rgb), 0.55); }
+  70% { box-shadow: 0 0 0 9px rgba(var(--green-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--green-rgb), 0); }
+}
+.mk-dot { opacity: 0.35; }
+.mk-pulse-cta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--color-secondary);
+  font-family: var(--font-family-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
+}
+.mk-pulse-cta:hover { opacity: 0.75; }
+
+/* ─────────────────────── section headers ─────────────────────── */
+.mk-section { width: 100%; margin-bottom: 32px; }
+.mk-sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.mk-sec-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+.mk-sec-sub { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+
+/* ─────────────────────── spotlight ─────────────────────── */
+.mk-spotlight {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+}
+
+.mk-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0;
+  border: 1px solid var(--terminal-border-color);
+  min-height: 270px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 28px;
+  cursor: pointer;
+  transition: transform var(--transition-medium), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.mk-hero:first-child { grid-row: 1 / span 2; }
+.mk-hero:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--primary-rgb), 0.45);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+.mk-hero.selected { border-color: var(--color-primary); }
+.mk-hero-sm { min-height: 0; padding: 20px; }
+.mk-hero-sm .mk-hero-desc,
+.mk-hero-sm .mk-hero-chips,
+.mk-hero-sm .mk-hero-cta { display: none; }
+.mk-hero-sm .mk-hero-title { font-size: var(--font-size-lg); }
+.mk-hero-sm .mk-hero-glyph { font-size: 130px; right: -34px; bottom: -46px; opacity: 0.1; }
+
+.mk-art { position: absolute; inset: 0; z-index: 0; background-size: cover; background-position: center; }
+.mk-art-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mk-hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  /* art-ink rule: fixed dark scrim, identical in all themes */
+  background: linear-gradient(to top, rgba(7, 7, 16, 0.94) 4%, rgba(7, 7, 16, 0.72) 42%, rgba(7, 7, 16, 0.12) 92%);
+}
+.mk-hero-glyph {
+  position: absolute;
+  right: -46px;
+  bottom: -54px;
+  z-index: 0;
+  font-size: 210px;
+  line-height: 1;
+  color: #fff;
+  opacity: 0.13;
+  transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.mk-hero:hover .mk-hero-glyph { transform: scale(1.07) rotate(-5deg); }
+
+.mk-hero-top { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.mk-hero-sm .mk-hero-top { margin-bottom: 8px; }
+.mk-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  font-weight: var(--font-weight-bold);
+  padding: 5px 12px;
+  border-radius: var(--border-radius-full);
+  background: var(--color-primary);
+  color: var(--color-black-navy);
+}
+.mk-eyebrow.alt { background: var(--color-secondary); }
+.mk-hero-badge {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  padding: 4px 11px;
+  border-radius: var(--border-radius-full);
+  /* art-ink rule */
+  color: #fff;
+  background: rgba(7, 7, 16, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  text-transform: capitalize;
+}
+.mk-hero-body { position: relative; z-index: 1; }
+.mk-hero-title {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  margin: 0 0 6px;
+  color: #fff; /* art-ink rule */
+}
+
+.mk-hero-by {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  margin-bottom: 10px;
+  color: rgba(255, 255, 255, 0.75); /* art-ink rule */
+}
+/* ART-INK RULE: this link sits on the always-dark banner gradient, so its ink is
+   pinned to white. A theme token would flip to dark in light/rose and vanish. */
+.mk-hero-author {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: #fff;
+  opacity: 0.88;
+  transition: opacity var(--transition-fast);
+}
+.mk-hero-author:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.mk-hero-desc {
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  max-width: 440px;
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.86); /* art-ink rule */
+}
+.mk-hero-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.mk-hero-chips span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: var(--font-weight-semibold);
+  padding: 3px 10px;
+  border-radius: var(--border-radius-full);
+  /* art-ink rule */
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
+.mk-hero-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.mk-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--border-radius-full);
+  cursor: pointer;
+  font-family: var(--font-family-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  background: var(--color-primary);
+  color: var(--color-black-navy);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.mk-hero-cta:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(var(--primary-rgb), 0.4); }
+.mk-hero-cta.done,
+.mk-hero-cta:disabled {
+  background: rgba(var(--green-rgb), 0.16);
+  color: var(--color-green);
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+.mk-hero-stats { display: flex; gap: 16px; font-size: var(--font-size-xs); color: rgba(255, 255, 255, 0.75); }
+.mk-hero-stats span { display: flex; align-items: center; gap: 5px; }
+.mk-hero-stats b { color: #fff; font-family: var(--font-family-mono); } /* art-ink rule */
+
+/* ─────────────────────── collections ─────────────────────── */
+.mk-collections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.mk-collection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-lg);
+  /* A relative darkening layer follows the active theme instead of selecting
+     a fixed navy-family palette value. */
+  background: var(--color-darker-1);
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+.mk-collection:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--primary-rgb), 0.38);
+}
+.mk-stack { display: flex; }
+.mk-stack-chip {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  margin-left: -11px;
+  border: 1.5px solid var(--color-black-navy);
+  transition: transform var(--transition-fast);
+}
+.mk-stack-chip:first-child { margin-left: 0; }
+.mk-collection:hover .mk-stack-chip:first-child { transform: translateX(-3px); }
+.mk-collection:hover .mk-stack-chip:last-child { transform: translateX(3px); }
+.mk-collection-main { flex: 1; }
+.mk-collection-name { font-weight: var(--font-weight-semibold); font-size: var(--font-size-sm); color: var(--color-text); }
+/* SECONDARY-INK RULE (long-form text only):
+   --color-text-muted measures 3.1-4.4:1 against a raised card in the ember,
+   nord, midnight and hacker palettes — under AA at 12px. Deriving from each
+   theme's own --color-text at 72% keeps the palette correct while measuring
+   >=4.8:1 in all eight themes. Used only where there are no emphasised child
+   elements, since opacity cannot be reset by a descendant. */
+.mk-collection-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  opacity: 0.72;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.mk-collection-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+.mk-collection-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-2);
+  color: var(--color-text);
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.mk-collection:hover .mk-collection-cta {
+  background: var(--color-primary);
+  color: var(--color-black-navy);
+  border-color: var(--color-primary);
+}
+
+/* ─────────────────────── toolbar ─────────────────────── */
+/* Lives INSIDE the scroll container, so its gutters can never drift from
+   the grid's the way a separately-positioned bar would. */
+.mk-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 12px 0;
+  margin-bottom: 8px;
+  background: var(--color-background);
+  box-shadow: 0 1px 0 var(--terminal-border-color), 0 12px 22px -18px rgba(0, 0, 0, 0.9);
+}
+.mk-tb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mk-tb-controls { margin-bottom: 10px; }
+.mk-tb-filters { flex-wrap: nowrap; }
+.mk-spacer { flex: 1 1 auto; }
+.mk-count { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.mk-count b { color: var(--color-text); font-family: var(--font-family-mono); }
+.mk-count-note { opacity: 0.65; }
+.mk-tb-label {
+  flex: 0 0 auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-muted);
+}
+.mk-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  flex: 0 0 auto;
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-2);
+}
+.mk-seg button {
+  padding: 5px 13px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--border-radius-full);
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+}
+.mk-seg button:hover { color: var(--color-text); }
+.mk-seg button.on {
+  background: var(--color-darker-1);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--terminal-border-color);
+}
+.mk-sort {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 0 0 auto;
+  padding: 7px 30px 7px 14px;
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background-color: var(--color-darker-2);
+  color: var(--color-text);
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color var(--transition-fast);
+}
+.mk-sort:hover { border-color: var(--terminal-border-color-light); }
+.mk-sort:focus { outline: none; border-color: rgba(var(--primary-rgb), 0.45); }
+.mk-sort option { background: var(--color-dark-navy); color: var(--color-text); }
+
+.mk-chip-rail { position: relative; flex: 1 1 0; min-width: 0; }
+/* mask-image clips to the PADDING box — keep vertical inset or the pills get shaved */
+.mk-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding: 5px 4px 5px 0;
+  margin: -5px 0;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+}
+.mk-chips::-webkit-scrollbar { display: none; }
+.mk-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  white-space: nowrap;
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-1);
+  color: var(--color-text-muted);
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.mk-chip:hover { color: var(--color-text); border-color: var(--terminal-border-color-light); }
+.mk-chip.on {
+  color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), 0.45);
+  background: rgba(var(--primary-rgb), 0.1);
+}
+.mk-chip-n { font-family: var(--font-family-mono); font-size: 10px; opacity: 0.6; }
+/* sibling of the rail, never overlapping it */
+.mk-rail-next {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-2);
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+}
+.mk-rail-next:hover { color: var(--color-text); border-color: var(--terminal-border-color-light); }
+.mk-rail-next.hide { visibility: hidden; }
+
+/* ─────────────────────── the flat grid ─────────────────────── */
+/* ONE grid over every item. Category no longer influences layout, so a
+   category holding a single item can never produce a one-card row. */
+.mk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  width: 100%;
+  animation: mkGridIn 240ms ease-out;
+}
+@keyframes mkGridIn { from { opacity: 0; } to { opacity: 1; } }
+
+.mk-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-lg);
+  /* see .mk-collection: --color-navy is the only fill that stays "raised"
+     in all eight themes */
+  background: var(--color-navy);
+  cursor: pointer;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  /* Only the TRANSFORM is staggered. Opacity fades once on .mk-grid so a
+     stalled animation clock can never leave a card permanently invisible. */
+  animation: mkCardRise 300ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 14ms);
+}
+@keyframes mkCardRise { from { transform: translateY(9px); } to { transform: none; } }
+.mk-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(var(--primary-rgb), 0.4);
+  box-shadow: 0 16px 40px -14px rgba(0, 0, 0, 0.55);
+}
+.mk-card.installed { border-color: rgba(var(--green-rgb), 0.32); }
+.mk-card.selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+
+.mk-card-art { position: relative; height: 116px; flex: 0 0 auto; overflow: hidden; }
+.mk-card-glyph {
+  position: absolute;
+  right: -12px;
+  bottom: -22px;
+  font-size: 118px;
+  line-height: 1;
+  color: #fff; /* art-ink rule */
+  opacity: 0.17;
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity var(--transition-fast);
+}
+.mk-card:hover .mk-card-glyph { transform: scale(1.13) rotate(-6deg); opacity: 0.23; }
+.mk-art-tags { position: absolute; top: 11px; left: 12px; right: 12px; display: flex; align-items: center; gap: 6px; }
+.mk-tag {
+  font-size: 9.5px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  padding: 4px 9px;
+  border-radius: var(--border-radius-full);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* art-ink rule: fixed ink on the always-dark gradient */
+  color: #fff;
+  background: rgba(7, 7, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
+/* --color-red (#fe4e4e) puts white at only 3.87:1 at this size; this darkened
+   red measures 5.6:1 while still reading as the same alert red. */
+.mk-tag.hot { background: rgba(198, 40, 40, 0.95); border-color: transparent; }
+.mk-tag.new { background: rgba(18, 224, 255, 0.9); border-color: transparent; color: #06131a; }
+.mk-tag.rank { background: rgba(255, 215, 0, 0.92); border-color: transparent; color: #2a2000; }
+.mk-tag.price { margin-left: auto; font-family: var(--font-family-mono); font-size: 10.5px; letter-spacing: 0.02em; }
+.mk-tag.price.free { color: var(--color-green); border-color: rgba(25, 239, 131, 0.35); }
+
+.mk-card-icon {
+  position: absolute;
+  left: 16px;
+  top: 90px;
+  z-index: 2;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  border: 1.5px solid var(--color-black-navy);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  transition: transform var(--transition-fast);
+}
+.mk-card:hover .mk-card-icon { transform: translateY(-3px) scale(1.05); }
+
+/* padding-top must clear the overlapping icon tile (top 90 + height 52 = 142
+   against an art panel 116 tall, so 26px is the minimum) plus breathing room */
+.mk-card-body { padding: 34px 16px 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+.mk-card-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0 0 3px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mk-card-by {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-bottom: 9px;
+  min-height: 18px;
+}
+.mk-card-author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+/* Button reset — the author is a link to the publisher profile.
+   It does NOT inherit --color-text-muted like the surrounding byline: that
+   measures 3.1-4.4:1 on a card in ember/nord/midnight/hacker, which is under
+   the AA floor and unacceptable for something interactive. Derived from the
+   theme's own ink instead (SECONDARY-INK RULE). */
+.mk-card-author.is-link {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--color-text);
+  opacity: 0.82;
+  transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+.mk-card-author.is-link:hover {
+  opacity: 1;
+  color: var(--color-secondary);
+  text-decoration: underline;
+}
+
+.mk-card-desc {
+  font-size: var(--font-size-xs);
+  /* see SECONDARY-INK RULE above */
+  color: var(--color-text);
+  opacity: 0.72;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0 0 12px;
+  min-height: 38px;
+}
+.mk-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-bottom: 12px;
+  font-size: var(--font-size-xs);
+  /* SECONDARY-INK RULE. --color-text-muted here, further dimmed by a nested
+     opacity on .mk-m-count, measured 2.19:1 in ember — less than half the AA
+     floor. Deriving from the theme's own ink keeps the palette and clears AA
+     on both the card and the darker category chip in all eight themes. */
+  color: var(--color-text);
+  opacity: 0.82;
+}
+.mk-m { display: flex; align-items: center; gap: 5px; }
+.mk-m b { color: var(--color-text); font-weight: var(--font-weight-medium); }
+.mk-m-star i { color: var(--color-yellow); }
+/* kept only mildly secondary — opacity here multiplies with the parent's */
+.mk-m-count {
+  opacity: 0.9;
+}
+.mk-cat {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  background: var(--color-darker-2);
+  font-size: 10px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-card-foot { display: flex; gap: 8px; padding: 0 16px 16px; }
+.mk-inst {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-2);
+  color: var(--color-text);
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.mk-card:hover .mk-inst:not(:disabled) {
+  background: var(--color-primary);
+  color: var(--color-black-navy);
+  border-color: var(--color-primary);
+  box-shadow: 0 6px 18px rgba(var(--primary-rgb), 0.3);
+}
+.mk-inst.done,
+.mk-card:hover .mk-inst.done {
+  background: rgba(var(--green-rgb), 0.14);
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.4);
+  box-shadow: none;
+  cursor: default;
+}
+.mk-inst.busy { opacity: 0.75; cursor: progress; }
+.mk-ghost {
+  flex: 0 0 auto;
+  width: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-2);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.mk-ghost:hover {
+  color: var(--color-text);
+  border-color: var(--terminal-border-color-light);
+}
+/* the secondary action is icon-only in the grid, but grows a label whenever it
+   stops being a small square — a full-width icon-only button reads as a bug */
+.mk-glabel {
+  display: none;
+}
+.mk-m-unrated {
+  opacity: 0.7;
+}
+
+.mk-ribbon {
+  position: absolute;
+  top: 11px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--border-radius-full);
+  font-size: 9.5px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(25, 239, 131, 0.92);
+  color: #05140c; /* sits on a fixed green chip, not on a theme surface */
+}
+
+/* ─────────────────────── skeleton + empty ─────────────────────── */
+
+.mk-sk {
+  height: 268px;
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-navy);
+  position: relative;
+  overflow: hidden;
+}
+.mk-sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--color-lighter-0), transparent);
+  animation: mkShimmer 1.35s infinite;
+}
+@keyframes mkShimmer { 100% { transform: translateX(100%); } }
+
+.mk-empty { grid-column: 1 / -1; text-align: center; padding: 48px 24px; }
+.mk-empty-ico {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  background: var(--color-darker-2);
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted);
+}
+.mk-empty h3 { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); margin: 0 0 6px; color: var(--color-text); }
+.mk-empty p { font-size: var(--font-size-sm); color: var(--color-text-muted); margin: 0 0 16px; }
+.mk-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border: none;
+  border-radius: var(--border-radius-full);
+  cursor: pointer;
+  background: var(--color-primary);
+  color: var(--color-black-navy);
+  font-family: var(--font-family-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.mk-empty-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(var(--primary-rgb), 0.35); }
+
+/* ═══════════════════════ PUBLISHER PROFILE ═══════════════════════ */
+.mk-profile {
+  margin-bottom: var(--spacing-lg);
+}
+.mk-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  margin-bottom: var(--spacing-md);
+  border-radius: var(--border-radius-full);
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-2);
+  /* SECONDARY-INK RULE: --color-text-muted lands at 3.4-4.2:1 here in
+     ember/nord/midnight/rose, under AA for an interactive control. */
+  color: var(--color-text);
+  opacity: 0.78;
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.mk-back:hover {
+  opacity: 1;
+  border-color: var(--terminal-border-color-light);
+}
+
+.mk-prof-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-md);
+}
+/* generated identity mark — no avatar upload infrastructure needed for v1 */
+.mk-prof-avatar {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.mk-prof-id {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.mk-prof-name {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin: 0 0 5px;
+  color: var(--color-text);
+}
+.mk-prof-sub {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  /* SECONDARY-INK RULE: derived from the theme's own ink so it clears AA on
+     every surface (--color-text-muted lands ~3.1-4.4:1 in ember/nord/midnight) */
+  color: var(--color-text);
+  opacity: 0.68;
+}
+.mk-prof-sub span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mk-prof-you {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border-radius: var(--border-radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-secondary);
+  border: 1px solid rgba(var(--blue-rgb), 0.35);
+  background: rgba(var(--blue-rgb), 0.1);
+}
+
+.mk-prof-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--terminal-border-color);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+.mk-prof-stat {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 13px 16px;
+  background: var(--color-background);
+}
+.mk-prof-stat .v {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--color-text);
+}
+.mk-prof-stat .v i {
+  color: var(--color-yellow);
+  font-size: 15px;
+}
+.mk-prof-stat .k {
+  margin-top: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text);
+  opacity: 0.68;
+}
+
+.mk-prof-rel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: var(--spacing-md);
+  padding: 12px 16px;
+  border-radius: var(--border-radius-lg);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.07);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+.mk-prof-rel i {
+  color: var(--color-green);
+}
+.mk-prof-rel b {
+  font-family: var(--font-family-mono);
+}
+
+/* auto-FIT, not auto-fill: empty tracks collapse, so a publisher with two items
+   gets two half-width cards instead of two cards and a hole. */
+.mk-grid-fit {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+/* Most publishers ship exactly one item. Stretched full-width that becomes a
+   1100px poster, so a single listing lays out horizontally instead — it then
+   reads as a deliberate feature rather than a grid with a hole in it. */
+.mk-grid-fit.solo .mk-card {
+  flex-direction: row;
+  align-items: stretch;
+}
+.mk-grid-fit.solo .mk-card-art {
+  width: 250px;
+  height: auto;
+  flex: 0 0 auto;
+}
+.mk-grid-fit.solo .mk-card-icon {
+  top: auto;
+  bottom: 14px;
+}
+.mk-grid-fit.solo .mk-card-body {
+  padding: 18px var(--spacing-md) 0;
+  justify-content: center;
+}
+.mk-grid-fit.solo .mk-card-desc {
+  -webkit-line-clamp: 3;
+  min-height: 0;
+}
+.mk-grid-fit.solo .mk-card-meta .mk-cat {
+  margin-left: 0;
+}
+.mk-grid-fit.solo .mk-card-foot {
+  flex-direction: column;
+  justify-content: center;
+  width: 200px;
+  flex: 0 0 auto;
+  padding: 18px var(--spacing-md);
+}
+.mk-grid-fit.solo .mk-inst {
+  width: 100%;
+}
+.mk-grid-fit.solo .mk-ghost {
+  width: 100%;
+  height: 38px;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mk-grid-fit.solo .mk-ghost .mk-glabel {
+  display: inline;
+}
+@media (max-width: 820px) {
+  .mk-grid-fit.solo .mk-card {
+    flex-direction: column;
+  }
+  .mk-grid-fit.solo .mk-card-art {
+    width: auto;
+    height: 112px;
+  }
+  .mk-grid-fit.solo .mk-card-foot {
+    width: auto;
+    flex-direction: row;
+  }
+}
+
+/* ──────────────── light-theme ink correction (AA) ────────────────
+   In the light and rose themes --color-primary is a mid-tone, so 10-12px text
+   on it measures ~4.0:1 — under the AA floor for small text. These are AA-
+   corrected derivatives of each theme's own primary, applied ONLY to the small
+   chips that failed. The token itself is untouched, so nothing else in the app
+   shifts, and the rules are theme-scoped so they cannot leak into dark themes.
+   (A bare `body {}` rule can't be used here: scoped CSS would compile it to
+   `body[data-v-x]`, which never matches.) */
+body:not(.dark) .mk-eyebrow,
+body:not(.dark) .mk-empty-cta,
+body:not(.dark) .mk-hero-cta:not(.done):not(:disabled),
+body:not(.dark) .mk-card:hover .mk-inst:not(.done):not(:disabled),
+body:not(.dark) .mk-collection:hover .mk-collection-cta {
+  background: #a82a66;
+  border-color: #a82a66;
+  color: #fff;
+}
+body:not(.dark) .mk-chip.on {
+  color: #a82a66;
+  border-color: rgba(168, 42, 102, 0.45);
+}
+/* On a light page a white card on near-white needs a real (if quiet) shadow;
+   in the dark themes the border alone already separates it. */
+body:not(.dark) .mk-card,
+body:not(.dark) .mk-collection {
+  box-shadow: 0 1px 2px rgba(60, 60, 90, 0.09);
+}
+body:not(.dark) .mk-card:hover,
+body:not(.dark) .mk-collection:hover {
+  box-shadow: 0 12px 28px -12px rgba(60, 60, 90, 0.3);
+}
+body.rose .mk-eyebrow,
+body.rose .mk-empty-cta,
+body.rose .mk-hero-cta:not(.done):not(:disabled),
+body.rose .mk-card:hover .mk-inst:not(.done):not(:disabled),
+body.rose .mk-collection:hover .mk-collection-cta {
+  background: #9c3459;
+  border-color: #9c3459;
+  color: #fff;
+}
+body.rose .mk-chip.on {
+  color: #9c3459;
+  border-color: rgba(156, 52, 89, 0.45);
+}
+
+/* ─────────────────────── responsive ─────────────────────── */
+@media (max-width: 1080px) {
+  .mk-spotlight { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .mk-hero:first-child { grid-row: auto; }
+}
+@media (max-width: 720px) {
+  .mk-grid { grid-template-columns: 1fr; }
+  .mk-tb-controls { gap: 6px; }
+  .mk-pulse-cta { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-card,
+  .mk-grid,
+  .mk-beacon,
+  .mk-sk::after { animation: none; }
+  .mk-card:hover,
+  .mk-hero:hover { transform: none; }
+}
+
 </style>

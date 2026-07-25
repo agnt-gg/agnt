@@ -75,6 +75,16 @@
         </div>
       </div>
     </div> -->
+
+    <!-- Lightbox. Review images are stored as inline data URIs, and Chrome blocks
+         top-level navigation to a data: URL — so window.open() silently does
+         nothing for them. The image has to be shown in-page. -->
+    <div v-if="lightboxImage" class="image-lightbox" @click="closeImageModal">
+      <img :src="lightboxImage" alt="Review image" class="lightbox-img" @click.stop />
+      <button type="button" class="lightbox-close" title="Close" @click.stop="closeImageModal">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -103,6 +113,12 @@ export default {
     },
   },
   emits: ['vote', 'edit', 'delete'],
+  data() {
+    return { lightboxImage: null };
+  },
+  beforeUnmount() {
+    if (this.lightboxImage) window.removeEventListener('keydown', this.handleLightboxKey);
+  },
   methods: {
     getInitials(name) {
       if (!name) return 'A';
@@ -128,8 +144,15 @@ export default {
       return date.toLocaleDateString();
     },
     openImageModal(image) {
-      // TODO: Implement image modal/lightbox
-      window.open(image, '_blank');
+      this.lightboxImage = image;
+      window.addEventListener('keydown', this.handleLightboxKey);
+    },
+    closeImageModal() {
+      this.lightboxImage = null;
+      window.removeEventListener('keydown', this.handleLightboxKey);
+    },
+    handleLightboxKey(event) {
+      if (event.key === 'Escape') this.closeImageModal();
     },
   },
 };
@@ -295,6 +318,51 @@ export default {
 .review-image:hover {
   transform: scale(1.05);
   border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  /* fixed dark scrim: it covers the whole app, not a themed surface */
+  background: rgba(7, 7, 16, 0.85);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+}
+
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(7, 7, 16, 0.6);
+  color: #fff;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.lightbox-close:hover {
+  background: rgba(7, 7, 16, 0.9);
 }
 
 .review-footer {

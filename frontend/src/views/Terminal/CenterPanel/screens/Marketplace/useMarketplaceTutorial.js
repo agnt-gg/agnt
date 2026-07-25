@@ -31,7 +31,9 @@ export function useMarketplaceTutorial() {
       enforceStep: false,
     },
     {
-      target: '.category-cards-container',
+      // NOTE: must track the grid wrapper class in Marketplace.vue. enforceStep
+      // is false, so a stale selector here fails silently — rename both together.
+      target: '.items-grid-container',
       position: 'center',
       title: '🎯 Marketplace Items',
       content:

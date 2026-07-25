@@ -110,7 +110,15 @@
         <div class="workflow-meta">
           <span class="publisher">
             <i class="fas fa-user"></i>
-            {{ selectedWorkflow.publisher_pseudonym || 'Anonymous Publisher' }}
+            <button
+              v-if="selectedWorkflow.publisher_id"
+              class="publisher-link"
+              :title="`View ${selectedWorkflow.publisher_pseudonym || 'publisher'}'s profile`"
+              @click="viewPublisher"
+            >
+              {{ selectedWorkflow.publisher_pseudonym || 'Anonymous Publisher' }}
+            </button>
+            <template v-else>{{ selectedWorkflow.publisher_pseudonym || 'Anonymous Publisher' }}</template>
           </span>
           <span v-if="selectedWorkflow.price > 0" class="price">${{ selectedWorkflow.price.toFixed(2) }}</span>
           <span v-else class="price free">FREE</span>
@@ -478,6 +486,14 @@ export default {
       if (tool.icon) return `fas fa-${tool.icon}`;
       return 'fas fa-wrench';
     };
+    // The publisher profile is owned by the marketplace screen, so this panel just
+    // raises the intent — same pattern as every other cross-panel action here.
+    const viewPublisher = () => {
+      const item = localSelectedWorkflow.value;
+      if (!item || !item.publisher_id) return; // anonymous publishers stay unlinked
+      emit('panel-action', 'view-publisher', item);
+    };
+
     const handleInstall = async () => {
       if (props.selectedWorkflow) {
         try {
@@ -1056,6 +1072,7 @@ export default {
 
     return {
       handleInstall,
+      viewPublisher,
       openDemo,
       formatDate,
       showPublishModal,
@@ -1196,6 +1213,27 @@ export default {
   align-items: center;
   gap: 6px;
   color: var(--color-text-muted);
+}
+
+/* Button reset for the publisher profile link. It deliberately does NOT inherit
+   --color-text-muted from .publisher: that measures ~3.1-4.4:1 on a panel surface
+   in the ember/nord/midnight/hacker themes, which is under the AA floor and not
+   acceptable for something interactive. Derived from the theme's own ink instead. */
+.publisher-link {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--color-text);
+  opacity: 0.82;
+  transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.publisher-link:hover {
+  opacity: 1;
+  color: var(--color-secondary);
+  text-decoration: underline;
 }
 
 .publisher i {

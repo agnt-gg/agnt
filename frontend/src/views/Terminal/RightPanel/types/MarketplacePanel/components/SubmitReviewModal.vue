@@ -61,22 +61,56 @@
           <div class="char-count">{{ reviewText.length }}/2000</div>
         </div>
 
-        <!-- Image URLs (Optional) -->
+        <!-- Images (Optional) -->
         <div class="form-group">
           <label class="form-label">Images (Optional)</label>
-          <div class="image-inputs">
-            <div v-for="(image, index) in images" :key="index" class="image-input-row">
-              <input v-model="images[index]" type="url" class="form-input" placeholder="https://example.com/image.jpg" />
-              <button type="button" class="remove-btn" @click="removeImage(index)">
+
+          <div v-if="images.length" class="image-thumbs">
+            <div v-for="(image, index) in images" :key="index" class="image-thumb">
+              <img :src="image" :alt="`Review image ${index + 1}`" />
+              <button type="button" class="thumb-remove" title="Remove image" @click="removeImage(index)">
                 <i class="fas fa-times"></i>
               </button>
             </div>
-            <button v-if="images.length < 5" type="button" class="add-image-btn" @click="addImage">
-              <i class="fas fa-plus"></i>
-              Add Image URL
-            </button>
           </div>
-          <div class="help-text">Add up to 5 image URLs to showcase your experience</div>
+
+          <div
+            v-if="images.length < 5"
+            class="image-dropzone"
+            :class="{ 'is-dragging': isDragging, 'is-busy': isProcessingImages }"
+            role="button"
+            tabindex="0"
+            @click="openFilePicker"
+            @keydown.enter.prevent="openFilePicker"
+            @keydown.space.prevent="openFilePicker"
+            @dragenter.prevent="isDragging = true"
+            @dragover.prevent="isDragging = true"
+            @dragleave.prevent="onDragLeave"
+            @drop.prevent="handleDrop"
+          >
+            <template v-if="isProcessingImages">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span class="dz-title">Processing…</span>
+            </template>
+            <template v-else>
+              <i class="fas fa-image"></i>
+              <span class="dz-title">{{ isDragging ? 'Drop to attach' : 'Drag images here' }}</span>
+              <span class="dz-sub">or <u>browse</u> · paste with {{ pasteHint }}</span>
+            </template>
+          </div>
+
+          <!-- kept out of the tab order: the dropzone above is the labelled control -->
+          <input
+            ref="imageInput"
+            type="file"
+            accept="image/*"
+            multiple
+            tabindex="-1"
+            class="file-input"
+            @change="handleFileSelect"
+          />
+
+          <div class="help-text">{{ images.length }}/5 attached · PNG, JPG or GIF, up to 10MB each</div>
         </div>
 
         <!-- Error Message -->
@@ -124,6 +158,8 @@ export default {
       images: [],
       error: null,
       isSubmitting: false,
+      isDragging: false,
+      isProcessingImages: false,
     };
   },
   computed: {
@@ -133,6 +169,17 @@ export default {
     isValid() {
       return this.rating > 0 && this.reviewText.trim().length > 0;
     },
+    pasteHint() {
+      return typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl+V';
+    },
+  },
+  mounted() {
+    // Screenshots are the common case for a review image, and a screenshot is
+    // usually already on the clipboard — so paste is a first-class path here.
+    window.addEventListener('paste', this.handlePaste);
+  },
+  beforeUnmount() {
+    window.removeEventListener('paste', this.handlePaste);
   },
   watch: {
     isOpen(newVal) {
@@ -178,13 +225,125 @@ export default {
       };
       return texts[rating] || 'Select a rating';
     },
-    addImage() {
-      if (this.images.length < 5) {
-        this.images.push('');
+    openFilePicker() {
+      if (this.isProcessingImages) return;
+      this.$refs.imageInput.click();
+    },
+    onDragLeave(event) {
+      // dragleave also fires when crossing onto a child element, so only clear the
+      // state when the pointer has actually left the dropzone itself
+      if (!event.currentTarget.contains(event.relatedTarget)) this.isDragging = false;
+    },
+    handleDrop(event) {
+      this.isDragging = false;
+      this.addFiles(event.dataTransfer && event.dataTransfer.files);
+    },
+    handleFileSelect(event) {
+      this.addFiles(event.target.files);
+      event.target.value = ''; // so re-picking the same file still fires @change
+    },
+    handlePaste(event) {
+      if (!this.isOpen || this.images.length >= 5) return;
+      const items = (event.clipboardData && event.clipboardData.items) || [];
+      const files = [...items].filter((i) => i.kind === 'file' && i.type.match(/image.*/)).map((i) => i.getAsFile());
+      if (files.length) {
+        event.preventDefault();
+        this.addFiles(files);
       }
+    },
+    dataUrlKB(dataUrl) {
+      return ((dataUrl.length - (dataUrl.indexOf(',') + 1)) * 3) / 4 / 1024;
+    },
+    // Same shape as the avatar uploader in AgentForge: read -> draw to canvas at a
+    // bounded size -> data URI. Reviews are posted as data URIs because that is
+    // already how the marketplace stores images (preview_image is an inline
+    // 'data:image/jpeg;base64,...' string), so this needs no new upload endpoint.
+    compressImage(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Could not read "${file.name}".`));
+        reader.onload = (e) => {
+          const img = new window.Image();
+          img.onerror = () => reject(new Error(`"${file.name}" is not a readable image.`));
+          img.onload = () => {
+            // Far larger than an avatar — these are usually screenshots and detail
+            // matters — but still bounded so five of them stay a sane payload.
+            const MAX_SIZE = 1400;
+            let { width, height } = img;
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height = Math.round((height * MAX_SIZE) / width);
+                width = MAX_SIZE;
+              }
+            } else if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // PNG when it is small enough (screenshots of UI stay crisp), JPEG
+            // otherwise — stepping quality down rather than sending a huge payload.
+            let dataUrl = canvas.toDataURL('image/png');
+            if (this.dataUrlKB(dataUrl) > 200) dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            if (this.dataUrlKB(dataUrl) > 400) dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            resolve(dataUrl);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+    async addFiles(fileList) {
+      const dropped = Array.from(fileList || []);
+      if (!dropped.length) return;
+
+      this.error = null;
+      const images = dropped.filter((f) => f && f.type && f.type.match(/image.*/));
+      if (!images.length) {
+        this.error = 'Only image files can be attached.';
+        return;
+      }
+
+      const room = 5 - this.images.length;
+      if (room <= 0) {
+        this.error = 'You can attach up to 5 images.';
+        return;
+      }
+      const accepted = images.slice(0, room);
+
+      this.isProcessingImages = true;
+      const skipped = [];
+      try {
+        for (const file of accepted) {
+          if (file.size > 10 * 1024 * 1024) {
+            skipped.push(`"${file.name}" is larger than 10MB`);
+            continue;
+          }
+          // sequential on purpose: decoding several large images at once spikes memory
+          // eslint-disable-next-line no-await-in-loop
+          const dataUrl = await this.compressImage(file);
+          this.images.push(dataUrl);
+        }
+      } catch (err) {
+        skipped.push(err.message || 'one image could not be processed');
+      } finally {
+        this.isProcessingImages = false;
+      }
+
+      if (images.length > room) skipped.push(`only ${room} more image${room === 1 ? '' : 's'} would fit (5 maximum)`);
+      if (dropped.length > images.length) skipped.push('non-image files were ignored');
+      if (skipped.length) this.error = `Skipped: ${skipped.join('; ')}.`;
     },
     removeImage(index) {
       this.images.splice(index, 1);
+      this.error = null;
     },
     async handleSubmit() {
       if (!this.isValid) return;
@@ -392,61 +551,105 @@ export default {
   margin-top: 4px;
 }
 
-.image-inputs {
+/* hidden native input — the dropzone is the visible, labelled control */
+.file-input {
+  display: none;
+}
+
+.image-dropzone {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.image-input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.image-input-row .form-input {
-  flex: 1;
-}
-
-.remove-btn {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: var(--color-red);
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-}
-
-.remove-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.5);
-}
-
-.add-image-btn {
-  background: transparent;
+  gap: 4px;
+  padding: 18px 16px;
   border: 1px dashed var(--terminal-border-color);
-  color: var(--color-text-muted);
-  padding: 10px 16px;
   border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
   cursor: pointer;
+  text-align: center;
   transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 13px;
 }
 
-.add-image-btn:hover {
+.image-dropzone:hover,
+.image-dropzone:focus-visible {
   background: rgba(var(--green-rgb), 0.05);
   border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-text);
+}
+
+.image-dropzone.is-dragging {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: var(--color-green);
+  border-style: solid;
+  color: var(--color-text);
+}
+
+.image-dropzone.is-busy {
+  cursor: progress;
+}
+
+.image-dropzone i {
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.dz-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dz-sub {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.image-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.image-thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
+}
+
+.image-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  /* fixed dark chip: it sits on the user's image, not on a theme surface */
+  background: rgba(7, 7, 16, 0.72);
+  color: #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.thumb-remove:hover {
+  background: rgba(239, 68, 68, 0.95);
 }
 
 .help-text {
