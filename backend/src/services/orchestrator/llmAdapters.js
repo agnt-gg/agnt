@@ -4298,6 +4298,11 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
     // Models that support reasoning (o-series)
     this.reasoningModels = new Set(['o1', 'o1-mini', 'o1-preview', 'o3', 'o3-mini', 'o3-preview', 'gpt-5', 'gpt-5.1-codex-max']);
+
+    // Self-healing kill switch for `reasoning.summary`. Some organizations are
+    // not cleared to receive reasoning summaries; if the API rejects the field
+    // we flip this and retry without it rather than failing the turn.
+    this._reasoningSummaryDisabled = false;
   }
 
   /**
@@ -4666,6 +4671,113 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     return textContent;
   }
 
+  /**
+   * Reasoning-summary streaming.
+   *
+   * Reasoning models (gpt-5.x-codex, o-series) deliberately emit almost nothing
+   * on `output_text` while they work — their interim narration arrives ONLY on
+   * the `response.reasoning_summary_*` channel. We already ask for it via
+   * `reasoning.summary`, but the stream loops had no branch for those events,
+   * so every mid-task update was read off the wire and dropped. The visible
+   * symptom: a long run of tool calls in total silence followed by one big
+   * summary at the end, while other providers appear to narrate as they go.
+   *
+   * Forwarding these as `type: 'reasoning'` puts them on the same path the
+   * Anthropic adapter uses for `thinking_delta` — OrchestratorService turns it
+   * into a `reasoning_delta` SSE event and the UI appends it live.
+   *
+   * Summary text is deliberately NOT merged into `accumulatedContent`: it is
+   * narration, not the assistant's answer, and must never enter replayed history.
+   */
+  _createReasoningSummaryState() {
+    return { accumulated: '', partText: '' };
+  }
+
+  /**
+   * @returns {boolean} true when the event belonged to the reasoning-summary
+   *   channel and was fully handled here (caller should skip its own chain).
+   */
+  _handleReasoningSummaryEvent(event, state, onChunk) {
+    const type = event?.type;
+    if (
+      type !== 'response.reasoning_summary_part.added' &&
+      type !== 'response.reasoning_summary_text.delta' &&
+      type !== 'response.reasoning_summary_text.done'
+    ) {
+      return false;
+    }
+    if (!state) return true;
+
+    const emit = (delta) => {
+      if (!delta) return;
+      state.accumulated += delta;
+      if (onChunk) {
+        onChunk({ type: 'reasoning', delta, accumulated: state.accumulated });
+      }
+    };
+
+    if (type === 'response.reasoning_summary_part.added') {
+      // One response can carry several summary parts. Without a separator they
+      // render as a single run-on paragraph.
+      if (state.accumulated) emit('\n\n');
+      state.partText = '';
+      return true;
+    }
+
+    if (type === 'response.reasoning_summary_text.delta') {
+      const delta = typeof event.delta === 'string' ? event.delta : '';
+      state.partText += delta;
+      emit(delta);
+      return true;
+    }
+
+    // `...text.done` is normally a no-op — the deltas already carried the whole
+    // part. Backfill only for backends that emit the terminal event alone, and
+    // only when it cleanly extends what we already streamed; otherwise we would
+    // duplicate the entire part.
+    const full = typeof event.text === 'string' ? event.text : '';
+    if (full && full.length > state.partText.length && full.startsWith(state.partText)) {
+      emit(full.slice(state.partText.length));
+      state.partText = full;
+    }
+    return true;
+  }
+
+  /**
+   * Attach `summary: 'auto'` so the provider actually emits the narration the
+   * stream loops now consume. Honors the self-healing kill switch.
+   */
+  _withReasoningSummary(reasoningConfig) {
+    if (!reasoningConfig || this._reasoningSummaryDisabled) return reasoningConfig;
+    return { ...reasoningConfig, summary: 'auto' };
+  }
+
+  /**
+   * Detect a rejection that is specifically about the `summary` field, so the
+   * caller can drop it and retry instead of failing the whole turn. Deliberately
+   * narrow: it must mention summaries AND read like a capability rejection.
+   */
+  _isReasoningSummaryUnsupportedError(error) {
+    if (this._reasoningSummaryDisabled) return false;
+    const status = error?.status;
+    if (status && status !== 400 && status !== 403 && status !== 422) return false;
+    const haystack = [
+      error?.message,
+      error?.param,
+      error?.error?.message,
+      error?.error?.param,
+      error?.response?.data?.error?.message,
+      error?.response?.data?.error?.param,
+    ]
+      .filter((part) => typeof part === 'string')
+      .join(' ')
+      .toLowerCase();
+    if (!haystack.includes('summar')) return false;
+    return /unsupported|not supported|does not support|unknown parameter|unrecognized|invalid|must be verified|verified organization|not allowed|no access/.test(
+      haystack,
+    );
+  }
+
   async call(messages, tools, context = {}) {
     let lastError;
     messages = BaseAdapter._sanitizeOutbound(messages, 'openai-responses');
@@ -4699,7 +4811,9 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         }
 
         if (this.supportsReasoning()) {
-          requestParams.reasoning = buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' };
+          requestParams.reasoning = this._withReasoningSummary(
+            buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' },
+          );
         }
 
         console.log(`[OpenAI Responses] Calling model '${this.model}' with Responses API`);
@@ -4736,6 +4850,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Only the `summary` field was rejected — drop it and retry immediately
+        // without consuming the transient-error retry budget. The turn still
+        // works, just without live narration.
+        if (this._isReasoningSummaryUnsupportedError(error)) {
+          this._reasoningSummaryDisabled = true;
+          console.warn(`[OpenAI Responses] Model '${this.model}' rejected reasoning.summary; retrying without live narration`);
+          attempt--;
+          continue;
+        }
 
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(`OpenAI Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
@@ -4790,6 +4914,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       let accumulatedToolCalls = [];
       let streamUsage = null;
       let replayableOutputItems = undefined;
+      const reasoningState = this._createReasoningSummaryState();
 
       try {
         // Gate vision injection on the model's vision capability; non-vision models
@@ -4826,7 +4951,9 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         }
 
         if (this.supportsReasoning()) {
-          requestParams.reasoning = buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' };
+          requestParams.reasoning = this._withReasoningSummary(
+            buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' },
+          );
         }
 
         console.log(`[OpenAI Responses] Streaming call to model '${this.model}'`);
@@ -4839,6 +4966,12 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           if (abortSignal?.aborted) {
             console.log('[OpenAI Responses Stream] Aborted by client disconnect');
             break;
+          }
+
+          // Interim narration (reasoning summaries) is checked first so it can
+          // never be swallowed by a later branch in the chain.
+          if (this._handleReasoningSummaryEvent(event, reasoningState, onChunk)) {
+            continue;
           }
 
           // Handle different event types from Responses API
@@ -4943,6 +5076,15 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Only the `summary` field was rejected — drop it and retry immediately
+        // without consuming the transient-error retry budget.
+        if (this._isReasoningSummaryUnsupportedError(error)) {
+          this._reasoningSummaryDisabled = true;
+          console.warn(`[OpenAI Responses] Model '${this.model}' rejected reasoning.summary; retrying without live narration`);
+          attempt--;
+          continue;
+        }
 
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(`OpenAI Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
@@ -5254,7 +5396,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // returns null — fall back to the Codex CLI's documented default effort.
     if (this.supportsReasoning()) {
       const reasoningConfig = buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' };
-      params.reasoning = { ...reasoningConfig, summary: 'auto' };
+      params.reasoning = this._withReasoningSummary(reasoningConfig);
     }
 
     // Add text verbosity control
@@ -5285,11 +5427,18 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     let responseId = null;
     let streamUsage = null;
     let replayableOutputItems = undefined;
+    const reasoningState = this._createReasoningSummaryState();
 
     for await (const event of stream) {
       if (abortSignal?.aborted) {
         console.log('[Codex Stream] Aborted by client disconnect');
         break;
+      }
+
+      // Codex narrates its work exclusively on the reasoning-summary channel.
+      // Handle it before the content/tool chain so it is never dropped.
+      if (this._handleReasoningSummaryEvent(event, reasoningState, onChunk)) {
+        continue;
       }
 
       if (event.type === 'response.output_item.added') {
@@ -5340,7 +5489,14 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       }
     }
 
-    return { accumulatedContent, accumulatedToolCalls, responseId, usage: streamUsage || undefined, replayableOutputItems };
+    return {
+      accumulatedContent,
+      accumulatedToolCalls,
+      responseId,
+      usage: streamUsage || undefined,
+      replayableOutputItems,
+      reasoningSummary: reasoningState.accumulated || undefined,
+    };
   }
 
   /**
@@ -5390,6 +5546,15 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Only the `summary` field was rejected — drop it and retry without
+        // consuming the transient-error retry budget.
+        if (this._isReasoningSummaryUnsupportedError(error)) {
+          this._reasoningSummaryDisabled = true;
+          console.warn('[Codex Responses] Backend rejected reasoning.summary; retrying without live narration');
+          attempt--;
+          continue;
+        }
 
         // Context-window overrun: shed the oldest atomic turn (which drops
         // its _responsesOutputItems blob with it — protocol safe; we never
@@ -5496,6 +5661,15 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Only the `summary` field was rejected — drop it and retry without
+        // consuming the transient-error retry budget.
+        if (this._isReasoningSummaryUnsupportedError(error)) {
+          this._reasoningSummaryDisabled = true;
+          console.warn('[Codex Responses Stream] Backend rejected reasoning.summary; retrying without live narration');
+          attempt--;
+          continue;
+        }
 
         // Context-window overrun: shed the oldest atomic turn (which drops
         // its _responsesOutputItems blob with it — protocol safe; we never
