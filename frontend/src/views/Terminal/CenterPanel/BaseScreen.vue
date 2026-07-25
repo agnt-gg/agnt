@@ -1,18 +1,10 @@
 <template>
   <div
     class="terminal-content"
-    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen, 'is-drag-over': isDragOver }"
+    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen }"
     ref="terminalContentRef"
     tabindex="-1"
-    @dragenter.prevent="onDragEnter"
-    @dragover.prevent="onDragOver"
-    @dragleave="onDragLeave"
-    @drop.prevent="onDrop"
   >
-    <div v-if="isDragOver" class="drop-overlay">
-      <i class="fas fa-cloud-upload-alt"></i>
-      <span>Drop files to attach</span>
-    </div>
     <!-- Global Banners - Rate Limit Banner first (more urgent) -->
     <RateLimitBanner />
     <!-- <PromoBanner /> -->
@@ -47,9 +39,17 @@
       <div
         class="main-panel"
         ref="mainPanelRef"
-        :class="{ 'centered-content': hidePanels }"
+        :class="{ 'centered-content': hidePanels, 'is-drag-over': isDragOver }"
         :style="!isMobile && !hidePanels ? { width: `${mainContentWidth}px` } : {}"
+        @dragenter.prevent="onDragEnter"
+        @dragover.prevent="onDragOver"
+        @dragleave="onDragLeave"
+        @drop.prevent="onDrop"
       >
+        <div v-if="isDragOver" class="drop-overlay">
+          <i class="fas fa-cloud-upload-alt"></i>
+          <span>Drop files to attach</span>
+        </div>
         <div class="mobile-panel-toggle" v-if="isMobile" @click="togglePanel">
           <span class="hamburger-bar"></span>
           <span class="hamburger-bar"></span>
@@ -352,22 +352,29 @@ export default {
     const isTextareaExpanded = ref(false);
 
     // --- OS drag-and-drop for file attach ---
-    // Mirrors UnifiedChatContainer.vue. Gate every handler on
-    // `types.includes('Files')` so in-page drags (sidebar conversation-to-
-    // group moves, @mention picker, message reorder) sail through untouched.
-    // Overriding dropEffect on a non-file drag would clobber the child's
-    // 'move' with our 'copy'; browsers then cancel the drop because it no
-    // longer matches effectAllowed.
+    // Scoped to the main-panel (center column) and only active on screens
+    // that render a chat input. Non-chat screens (Agents, Workflows,
+    // Marketplace, etc.) share the same BaseScreen shell but have no
+    // chip row / send button to receive files, so painting the overlay
+    // there was pure noise.
+    //
+    // Handlers also gate on `types.includes('Files')` so in-page drags
+    // (sidebar conversation-to-group moves, @mention picker, node
+    // reorder) sail through untouched. Overriding dropEffect on a
+    // non-file drag would clobber the child's 'move' with our 'copy',
+    // and browsers then cancel the drop because it no longer matches
+    // effectAllowed.
     const isDragOver = ref(false);
     let dragLeaveTimer = null;
+    const canAcceptFileDrop = () => !!props.showInput;
     const isFileDrag = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
     const onDragEnter = (e) => {
-      if (!isFileDrag(e)) return;
+      if (!canAcceptFileDrop() || !isFileDrag(e)) return;
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = true;
     };
     const onDragOver = (e) => {
-      if (!isFileDrag(e)) return;
+      if (!canAcceptFileDrop() || !isFileDrag(e)) return;
       e.dataTransfer.dropEffect = 'copy';
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = true;
@@ -379,7 +386,7 @@ export default {
       dragLeaveTimer = setTimeout(() => { isDragOver.value = false; dragLeaveTimer = null; }, 50);
     };
     const onDrop = (e) => {
-      if (!isFileDrag(e)) return;
+      if (!canAcceptFileDrop() || !isFileDrag(e)) return;
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = false;
       const files = Array.from(e.dataTransfer?.files || []);
@@ -1363,13 +1370,13 @@ export default {
   border: none !important;
 }
 
-.terminal-content.is-drag-over {
-  outline: 2px dashed var(--color-green) !important;
+.main-panel.is-drag-over {
+  outline: 2px dashed var(--color-green);
   outline-offset: -8px;
   border-radius: 8px;
 }
 
-.terminal-content > .drop-overlay {
+.main-panel > .drop-overlay {
   position: absolute;
   inset: 0;
   z-index: 100;
@@ -1383,7 +1390,7 @@ export default {
   font-size: 0.95em;
   pointer-events: none;
 }
-.terminal-content > .drop-overlay i { font-size: 2.2em; opacity: 0.85; }
+.main-panel > .drop-overlay i { font-size: 2.2em; opacity: 0.85; }
 
 .custom-bg .terminal-content {
   width: calc(100% - 8px);
