@@ -144,10 +144,119 @@ export function getCodeToolSchemas() {
   ];
 }
 
+// ------------------------------------------------------ path serialization ---
+
 /**
- * Execute a code tool function
+ * Per-path serialization for the file tools.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The orchestrator dispatches every tool call in one assistant message
+ * CONCURRENTLY — `toolCalls.map(async ...)` feeding a single `Promise.all`
+ * (OrchestratorService.js). `edit_file` is a read-modify-write: it reads the
+ * whole file, splices the edits in memory, and writes the whole buffer back.
+ * Two concurrent calls against the same path therefore interleave as
+ *
+ *     A:  read v0 ----------> write v0+A
+ *     B:  ....... read v0 -------------------> write v0+B      A is gone
+ *
+ * and BOTH report success, because each one genuinely found its search string
+ * in the copy it read. That is a lost update with no error anywhere: the caller
+ * is told the edit landed and the file says otherwise. Being silent, it is
+ * typically discovered much later — as a missing function or an undefined
+ * symbol — long after the turn that caused it.
+ *
+ * Serializing on the path turns that into
+ *
+ *     A:  read v0 -> write v0+A
+ *     B:                        read v0+A -> write v0+A+B
+ *
+ * so both edits survive. If A invalidated B's search string, B now fails LOUDLY
+ * (reported in `failed[]`) instead of silently discarding A's work — which is
+ * the correct outcome, because an edit computed against a stale view of the
+ * file should not be applied.
+ *
+ * The key is the RESOLVED ABSOLUTE PATH, so work on different files still runs
+ * fully in parallel. Only same-file work queues.
+ *
+ * NOT re-entrant, and does not need to be: every case body calls `fs.*`
+ * directly and never re-enters executeCodeFunction, so a held lock can never
+ * wait on itself.
+ */
+const _pathLocks = new Map();
+
+/**
+ * Windows paths are case-insensitive — `C:\A\b.js` and `c:\a\B.js` are the same
+ * file and must map to the same lock. Without this the serialization silently
+ * does nothing for exactly the callers most likely to vary the casing.
+ */
+function pathLockKey(absPath) {
+  return process.platform === 'win32' ? absPath.toLowerCase() : absPath;
+}
+
+/**
+ * Run `fn` with exclusive access to `key`. Waiters are served in arrival order.
+ */
+async function withPathLock(key, fn) {
+  const prev = _pathLocks.get(key) || Promise.resolve();
+
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const tail = prev.then(() => held);
+  _pathLocks.set(key, tail);
+
+  // Wait for our turn. A previous holder's REJECTION must not cascade into
+  // ours: `prev` is a queue position, never a result we consume.
+  await prev.catch(() => {});
+
+  try {
+    return await fn();
+  } finally {
+    release();
+    // Only the last waiter clears the entry, so the map cannot grow without
+    // bound over a long session. The identity check is safe because nothing
+    // else can run between release() and here (single-threaded, no await).
+    if (_pathLocks.get(key) === tail) _pathLocks.delete(key);
+  }
+}
+
+/**
+ * Tools whose work must not interleave on a single path.
+ *
+ * `edit_file` and `write_file` mutate. `read_file` is included so a read can
+ * never observe a half-written file mid-`writeFile` and return a torn document.
+ *
+ * `list_files` is deliberately absent: it is a directory scan rather than file
+ * I/O, and a path lock over a directory would carry different semantics.
+ */
+const PATH_SERIALIZED_TOOLS = new Set(['read_file', 'write_file', 'edit_file']);
+
+/**
+ * Execute a code tool function.
+ *
+ * Thin wrapper: acquires the per-path lock for path-scoped tools, then runs the
+ * real implementation. Every other tool dispatches straight through.
  */
 export async function executeCodeFunction(name, args) {
+  if (!PATH_SERIALIZED_TOOLS.has(name) || typeof args?.path !== 'string') {
+    return executeCodeFunctionUnlocked(name, args);
+  }
+
+  let key;
+  try {
+    key = pathLockKey(validatePath(args.path, await getWorkspaceRoot()));
+  } catch {
+    // Path is invalid (escapes the workspace, etc.). Run unlocked so the case
+    // body raises the same error it always has, from the same place.
+    return executeCodeFunctionUnlocked(name, args);
+  }
+
+  return withPathLock(key, () => executeCodeFunctionUnlocked(name, args));
+}
+
+async function executeCodeFunctionUnlocked(name, args) {
   // Ensure workspace exists
   const WORKSPACE_ROOT = await getWorkspaceRoot();
   await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
