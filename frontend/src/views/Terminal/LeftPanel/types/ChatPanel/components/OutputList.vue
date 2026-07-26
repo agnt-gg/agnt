@@ -989,30 +989,35 @@ export default {
       const wasViewingDeleted = (activeOutputId.value && itemsToDelete.has(activeOutputId.value)) ||
         (currentContentId && itemsToDelete.has(currentContentId));
 
-      try {
-        // Delete all highlighted outputs in parallel
-        await Promise.all(Array.from(itemsToDelete).map((id) => store.dispatch('contentOutputs/deleteOutput', id)));
+      // Optimistic: remove locally so the sidebar updates immediately.
+      // Snapshot the removed rows so we can restore them on failure.
+      const idsArray = Array.from(itemsToDelete);
+      const removedSnapshot = idsArray
+        .map((id) => outputs.value.find((o) => o.id === id))
+        .filter(Boolean);
+      idsArray.forEach((id) => store.commit('contentOutputs/REMOVE_OUTPUT', id));
+      clearSelection();
+      activeOutputId.value = null;
+      if (wasViewingDeleted) {
+        router.push('/chat');
+        window.dispatchEvent(new CustomEvent('trigger-new-chat'));
+      }
 
-        clearSelection();
-        activeOutputId.value = null;
-
-        // If the currently viewed chat was among the deleted, reset to fresh chat
-        if (wasViewingDeleted) {
-          router.push('/chat');
-          window.dispatchEvent(new CustomEvent('trigger-new-chat'));
-        }
-
-        await simpleModal.value.showModal({
-          title: 'Success',
-          message: `${count} conversation${count > 1 ? 's' : ''} deleted successfully`,
-          confirmText: 'OK',
-          showCancel: false,
-        });
-      } catch (error) {
-        console.error('Error deleting outputs:', error);
+      // Fire deletes in parallel; revert any that fail. No "Success" modal —
+      // the items vanishing from the list is the confirmation.
+      const results = await Promise.allSettled(
+        idsArray.map((id) => store.dispatch('contentOutputs/deleteOutput', id)),
+      );
+      const failed = [];
+      results.forEach((res, i) => {
+        if (res.status === 'rejected') failed.push(removedSnapshot[i]);
+      });
+      if (failed.length > 0) {
+        console.error('Delete failed for', failed.length, 'output(s)');
+        failed.forEach((o) => o && store.commit('contentOutputs/ADD_OUTPUT', o));
         await simpleModal.value.showModal({
           title: 'Error',
-          message: 'Failed to delete some conversations',
+          message: `Failed to delete ${failed.length} conversation${failed.length > 1 ? 's' : ''}`,
           confirmText: 'OK',
           showCancel: false,
         });
@@ -1119,33 +1124,31 @@ export default {
       }
 
       const wasActive = activeOutputId.value === outputId || route.query['content-id'] === outputId;
+      activeMenu.value = null;
 
-      try {
-        await store.dispatch('contentOutputs/deleteOutput', outputId);
-        activeMenu.value = null;
+      // Optimistic: snapshot the row, remove from the sidebar immediately,
+      // and if we were viewing it, jump to a fresh chat. Fire the DELETE
+      // in the background; only surface an error modal if it fails.
+      // The item vanishing from the list is the confirmation — no
+      // "Success" modal to click through.
+      const removedSnapshot = outputs.value.find((o) => o.id === outputId);
+      store.commit('contentOutputs/REMOVE_OUTPUT', outputId);
+      if (wasActive) {
+        activeOutputId.value = null;
+        router.push('/chat');
+        window.dispatchEvent(new CustomEvent('trigger-new-chat'));
+      }
 
-        // If the deleted output was the currently viewed chat, reset to fresh chat
-        if (wasActive) {
-          activeOutputId.value = null;
-          router.push('/chat');
-          window.dispatchEvent(new CustomEvent('trigger-new-chat'));
-        }
-
-        await simpleModal.value.showModal({
-          title: 'Success',
-          message: 'Output deleted successfully',
-          confirmText: 'OK',
-          showCancel: false,
-        });
-      } catch (error) {
+      store.dispatch('contentOutputs/deleteOutput', outputId).catch(async (error) => {
         console.error('Error deleting output:', error);
+        if (removedSnapshot) store.commit('contentOutputs/ADD_OUTPUT', removedSnapshot);
         await simpleModal.value.showModal({
           title: 'Error',
           message: 'Failed to delete output',
           confirmText: 'OK',
           showCancel: false,
         });
-      }
+      });
     }
 
     // Close menu when clicking outside
