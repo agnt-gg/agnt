@@ -405,7 +405,11 @@ export default {
     const isSelectionMode = computed(() => selectedOutputIds.value.size > 0);
     const selectedCount = computed(() => selectedOutputIds.value.size);
 
-    // Filter + sort helper
+    // Filter + sort helper. Unread items always float to the top so a
+    // fresh assistant turn (or a manual "Mark as Unread" from the 3-dot
+    // menu) behaves exactly like a new message would — dot + top slot.
+    // Within the unread and read sections, the user's chosen sort order
+    // still applies.
     function filterAndSort(list) {
       return list
         .filter((output) => {
@@ -414,6 +418,10 @@ export default {
           return title.includes(searchQuery.value.toLowerCase());
         })
         .sort((a, b) => {
+          const aUnread = unreadOutputIds.value.has(a.id) ? 1 : 0;
+          const bUnread = unreadOutputIds.value.has(b.id) ? 1 : 0;
+          if (aUnread !== bUnread) return bUnread - aUnread;
+
           let aValue;
           let bValue;
           if (sortKey.value === 'content') {
@@ -939,12 +947,14 @@ export default {
       return streamingOutputIds.value.has(outputId);
     }
 
-    // Check if output has an unread change. Suppressed while active (the
-    // user is looking at it — they'd see it clear as they arrive) and
-    // while streaming (the pulsing indicator already tells them).
+    // Check if output has an unread change. Only suppressed while
+    // streaming (the pulsing indicator already tells them). We DON'T
+    // suppress on active — a manual "Mark as Unread" from the 3-dot
+    // menu should show the dot immediately, even on the chat the user
+    // is currently viewing; SET_ACTIVE_CONVERSATION will clear it the
+    // next time they open the item.
     function isOutputUnread(outputId) {
       if (!unreadOutputIds.value.has(outputId)) return false;
-      if (isActive(outputId)) return false;
       if (isOutputStreaming(outputId)) return false;
       return true;
     }
