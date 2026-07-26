@@ -5,6 +5,8 @@ import os from 'os';
 import WebhookModel from '../WebhookModel.js';
 import pathManager from '../../utils/PathManager.js';
 import { setupFullTextSearch } from './fts.js';
+import { migrateLegacyDatabase } from './legacyMigration.js';
+import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
 
 // Canonical data dir comes from PathManager (see PRD-060). PathManager itself
 // already creates the directory and falls back to a temp dir on failure.
@@ -32,66 +34,10 @@ try {
 
 // One-time migration shim (PRD-060 §6.3). If a legacy or buggy install left
 // agnt.db at a non-canonical location and the canonical path has no DB yet,
-// copy it (plus WAL/SHM sidecars) into place. Copy-not-move keeps the legacy
-// file around for manual recovery if anything goes wrong.
-const buildLegacyLocations = () => {
-  const locs = [];
-  const home = os.homedir();
-  if (process.platform === 'win32') {
-    // Benny's bug: false /app/data hit on Windows resolved to C:\app\data
-    locs.push('C:\\app\\data');
-    if (process.env.APPDATA) {
-      locs.push(path.join(process.env.APPDATA, 'AGNT', 'Data'));
-    }
-    // System-wide installs and Electron localappdata variants
-    if (process.env.PROGRAMDATA) {
-      locs.push(path.join(process.env.PROGRAMDATA, 'AGNT', 'Data'));
-    }
-    if (process.env.LOCALAPPDATA) {
-      locs.push(path.join(process.env.LOCALAPPDATA, 'AGNT', 'Data'));
-    }
-    // Pre-PRD-060 emergency fallbacks (see prior database/index.js fallback paths)
-    if (process.env.USERPROFILE) {
-      locs.push(path.join(process.env.USERPROFILE, 'Documents', 'AGNT_Data'));
-      locs.push(path.join(process.env.USERPROFILE, 'AGNT_Data'));
-    }
-  }
-  if (process.platform === 'darwin' && home) {
-    locs.push(path.join(home, 'Library', 'Application Support', 'AGNT', 'Data'));
-    // Pre-PRD-060 macOS fallback
-    locs.push(path.join(home, 'Documents', 'AGNT_Data'));
-  }
-  if (process.platform === 'linux' && home) {
-    locs.push(path.join(home, '.config', 'AGNT', 'Data'));
-    // Pre-PRD-060 linux fallback
-    locs.push(path.join(home, 'AGNT_Data'));
-  }
-  return locs.filter((p) => p && p !== dbDir);
-};
-
-const targetDbForMigration = path.join(dbDir, 'agnt.db');
-if (!fs.existsSync(targetDbForMigration)) {
-  for (const legacy of buildLegacyLocations()) {
-    const legacyDb = path.join(legacy, 'agnt.db');
-    if (fs.existsSync(legacyDb)) {
-      try {
-        console.warn(`📦 AGNT migrating orphaned DB from ${legacy} → ${dbDir}`);
-        fs.mkdirSync(dbDir, { recursive: true });
-        fs.copyFileSync(legacyDb, targetDbForMigration);
-        for (const ext of ['-wal', '-shm']) {
-          const src = legacyDb + ext;
-          if (fs.existsSync(src)) {
-            fs.copyFileSync(src, targetDbForMigration + ext);
-          }
-        }
-        console.log('✓ Data migration completed successfully');
-      } catch (error) {
-        console.error('Migration failed:', error);
-      }
-      break; // only migrate from one source
-    }
-  }
-}
+// copy it into place. See legacyMigration.js — this used to be an unguarded
+// copyFileSync that would happily start a 30 GB copy with no free-space
+// check and leave a truncated database behind if it died partway.
+migrateLegacyDatabase({ dbDir });
 
 // Database path in user's data directory
 const dbPath = path.join(dbDir, 'agnt.db');
@@ -1629,6 +1575,17 @@ const dbReady = skipSchemaInit
   })
   .then(() => {
     console.log('All migrations completed successfully');
+  })
+  .then(async () => {
+    // Heal duplicate widget_layouts route pages and make (user_id, route)
+    // structurally unique. See widgetLayoutDedupe.js for the full history —
+    // a frontend race leaked one orphaned page row per cold start. Non-fatal:
+    // a database that can't be deduped is still a usable database.
+    try {
+      await ensureWidgetLayoutRouteUniqueness(db);
+    } catch (error) {
+      console.error('widget_layouts dedupe failed (non-fatal):', error.message);
+    }
   })
   .then(async () => {
     // Set up FTS5 search indexes (memory layer) before announcing readiness.
