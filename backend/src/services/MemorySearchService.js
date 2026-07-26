@@ -25,19 +25,45 @@ const dbGet = (sql, params = []) =>
   });
 
 /**
- * Sanitize a user-provided query for FTS5. Strips everything that isn't
- * alphanumeric, hyphen, or underscore, then prefix-matches each surviving
- * token (implicit AND). Empty result = caller should fall back to the
- * date-only path.
+ * Sanitize a user-provided query for FTS5.
+ *
+ * The rule that matters: an FTS5 *bareword* may contain only letters, digits,
+ * underscores and non-ASCII characters. A hyphen is NOT legal in a bareword —
+ * FTS5 parses `foo-bar` as a column filter and the statement dies with
+ * "no such column: bar". So the previous implementation, which deliberately
+ * preserved hyphens, emitted un-runnable SQL for every hyphenated query:
+ * project names (agnt-pro), model ids (claude-opus-5), ISO dates (2026-07-25),
+ * UUIDs, and ordinary hyphenated English all threw.
+ *
+ * The fix is to mirror the unicode61 tokenizer that built the index: every
+ * non-alphanumeric character is a SEPARATOR, never something to delete.
+ * Deleting is what turned "gpt-5.6-luna" into "gpt-56-luna", and the token
+ * `56` can never match the indexed tokens [5][6].
+ *
+ * A word that splits into several parts becomes a quoted phrase so the
+ * compound keeps its adjacency — "gba-recomp" stays a unit instead of decaying
+ * into an AND across two very common words. The trailing `*` makes the final
+ * token of each term a prefix match, which is what callers expect.
+ *
+ * Empty result = caller should fall back to the date-only path.
  */
 function sanitizeFtsQuery(q) {
   if (!q || typeof q !== 'string') return '';
-  const tokens = q
-    .split(/\s+/)
-    .map((t) => t.replace(/[^a-zA-Z0-9_-]/g, '').trim())
-    .filter((t) => t.length >= 2);
-  if (tokens.length === 0) return '';
-  return tokens.map((t) => `${t}*`).join(' ');
+  const terms = [];
+  for (const word of q.split(/\s+/)) {
+    const parts = word.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+    if (parts.length === 0) continue;
+    if (parts.length === 1) {
+      // Single bareword: keep the >= 2 char floor that suppresses noise tokens.
+      if (parts[0].length >= 2) terms.push(`${parts[0]}*`);
+    } else {
+      // Compound: adjacency constrains the short parts, so no length floor.
+      // Quoting is also what keeps a stray double-quote from reaching FTS5 —
+      // the split above has already dropped every non-alphanumeric character.
+      terms.push(`"${parts.join(' ')}"*`);
+    }
+  }
+  return terms.join(' ');
 }
 
 function truncate(s, n = 200) {
@@ -483,6 +509,7 @@ async function search({ userId, q, since, until, sources, limit = 50 }) {
   const perSourceLimit = Math.max(5, Math.ceil(limit / requested.length) * 2);
   const ftsQuery = sanitizeFtsQuery(q);
 
+  const failures = [];
   const tasks = requested.map(async (src) => {
     try {
       if (ftsQuery) {
@@ -491,11 +518,28 @@ async function search({ userId, q, since, until, sources, limit = 50 }) {
       return await RECENT_BY_KIND[src]({ since, until, userId, limit: perSourceLimit });
     } catch (err) {
       console.warn(`[MemorySearch] ${src} failed:`, err.message);
+      failures.push({ source: src, message: err.message });
       return [];
     }
   });
 
   const grouped = await Promise.all(tasks);
+
+  // A query that fails on EVERY source is a broken query, not an empty result
+  // set. Swallowing it here is how a hard FTS5 syntax error used to reach the
+  // caller as a confident "0 results" — indistinguishable from "nothing
+  // matched", and impossible to debug from the outside. Partial failure still
+  // returns whatever did succeed.
+  if (requested.length > 0 && failures.length === requested.length) {
+    const err = new Error(
+      `Memory search failed on all ${requested.length} source(s): ${failures[0].message}`
+    );
+    err.code = 'MEMORY_SEARCH_FAILED';
+    err.failures = failures;
+    err.ftsQuery = ftsQuery;
+    throw err;
+  }
+
   const merged = grouped.flat();
 
   if (ftsQuery) {
