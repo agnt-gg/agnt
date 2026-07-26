@@ -11,6 +11,7 @@ import CodexAuthManager from './CodexAuthManager.js';
 import GeminiCliAuthManager from './GeminiCliAuthManager.js';
 import AntigravityAuthManager from './AntigravityAuthManager.js';
 import GrokBuildAuthManager from './GrokBuildAuthManager.js';
+import CursorCliAuthManager from './CursorCliAuthManager.js';
 
 // ─────────────────────────── SCHEME MAP ───────────────────────────
 
@@ -38,6 +39,11 @@ const AUTH_SCHEME_MAP = {
   },
   'grok-build': {
     manager: GrokBuildAuthManager,
+    local: true,
+    caps: ['status', 'disconnect', 'device-auth', 'refresh'],
+  },
+  'cursor-cli': {
+    manager: CursorCliAuthManager,
     local: true,
     caps: ['status', 'disconnect', 'device-auth', 'refresh'],
   },

@@ -441,6 +441,33 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+  // ─────────────────────────── CURSOR AGENT CLI ───────────────────────────
+  {
+    key: 'cursor-cli',
+    name: 'Cursor',
+    baseURL: 'https://api2.cursor.sh/v1',
+    sdkType: 'openai',
+    authScheme: 'cursor-cli',
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+    },
+    recommendedModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto'],
+    fallbackModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto', 'gpt-5.2', 'claude-opus-5-high'],
+    modelMetadata: {
+      'composer-2.5': {
+        contextWindow: 256000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
+    },
+    compat: {},
+    sdkOptions: {},
+  },
+
   // ─────────────────────────── GROQ ───────────────────────────
   {
     key: 'groq',

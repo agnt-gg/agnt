@@ -61,6 +61,7 @@ const BUILT_IN_PROVIDERS = [
   { key: 'gemini-cli', displayName: 'Gemini-CLI' },
   { key: 'grokai', displayName: 'GrokAI' },
   { key: 'grok-build', displayName: 'Grok-Build' },
+  { key: 'cursor-cli', displayName: 'Cursor' },
   { key: 'groq', displayName: 'Groq' },
   { key: 'kimi', displayName: 'Kimi' },
   { key: 'kimi-code', displayName: 'Kimi-Code' },
@@ -950,7 +951,7 @@ export default {
 
       const revalidate = async () => {
         const token = localStorage.getItem('token');
-        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli' || providerLower === 'antigravity' || providerLower === 'grok-build';
+        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli' || providerLower === 'antigravity' || providerLower === 'grok-build' || providerLower === 'cursor-cli';
         if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
@@ -1050,7 +1051,7 @@ export default {
 
       // 2. Bust client-version cache for CLI-subscription providers so the
       //    subsequent /models call uses the freshest upstream CLI version.
-      const CLI_KEYS = ['openai-codex', 'claude-code', 'kimi-code', 'grok-build'];
+      const CLI_KEYS = ['openai-codex', 'claude-code', 'kimi-code', 'grok-build', 'cursor-cli'];
       if (CLI_KEYS.includes(providerLower)) {
         try {
           await fetch(`${API_CONFIG.BASE_URL}/admin/client-versions/refresh`, {

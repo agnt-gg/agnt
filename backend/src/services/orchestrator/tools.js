@@ -21,6 +21,7 @@ import GrokBuildCliService from '../ai/GrokBuildCliService.js';
 import GrokBuildCliSessionManager from '../ai/GrokBuildCliSessionManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
 import CodexCliSessionManager from '../ai/CodexCliSessionManager.js';
+import CursorCliService from '../ai/CursorCliService.js';
 import jwt from 'jsonwebtoken';import ParameterResolver from '../../workflow/ParameterResolver.js';
 import CustomToolModel from '../../models/CustomToolModel.js';
 import { runCustomTool, isCustomToolSuccess, toToolSchema } from './customToolRunner.js';
@@ -760,6 +761,150 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         return JSON.stringify({
           success: false,
           error: error.message || 'grok_exec failed',
+        });
+      }
+    },
+  },
+
+  cursor_exec: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'cursor_exec',
+        description:
+          'Runs a prompt using the local Cursor Agent CLI (`cursor-agent`). Requires the CLI installed and authenticated (`cursor-agent login`). Best for coding tasks, refactors, and repo-aware edits inside a sandboxed workdir. Uses your Cursor subscription (not an API key). Default model composer-2.5 (Cursor-native, avoids Anthropic usage caps).',
+        parameters: {
+          type: 'object',
+          properties: {
+            prompt: {
+              type: 'string',
+              description: 'The prompt / task for Cursor Agent.',
+            },
+            model: {
+              type: 'string',
+              description:
+                "Cursor model id (default from AGNT_CURSOR_DEFAULT_MODEL or 'composer-2.5'). Examples: composer-2.5, auto, gpt-5.2, cursor-grok-4.5-high, claude-opus-5-high. Anthropic models may hit subscription usage caps.",
+            },
+            cwd: {
+              type: 'string',
+              description:
+                'Working directory. Defaults to AGNT_CURSOR_WORKDIR sandbox (~/services/agnt-cursor-work). Never the whole home dir.',
+            },
+            resume: {
+              type: 'boolean',
+              default: false,
+              description:
+                'If true, resume the previous Cursor session for this conversation (or an explicit sessionId).',
+            },
+            sessionScope: {
+              type: 'string',
+              enum: ['conversation', 'user'],
+              default: 'conversation',
+              description:
+                "Session scope. 'conversation' keeps a session per conversation; 'user' shares one per user.",
+            },
+            sessionId: {
+              type: 'string',
+              description: 'Optional explicit Cursor session id to --resume.',
+            },
+            force: {
+              type: 'boolean',
+              default: true,
+              description: 'Pass --force (auto-approve tool/command execution). AGNT is the outer approval layer.',
+            },
+            timeoutMs: {
+              type: 'number',
+              default: 300000,
+              description: 'Hard timeout in milliseconds (default 300000 = 5 min).',
+            },
+            extraArgs: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional extra CLI arguments. Use with caution.',
+            },
+          },
+          required: ['prompt'],
+        },
+      },
+    },
+    execute: async (
+      {
+        prompt,
+        model = CursorCliService.getDefaultModel(),
+        cwd,
+        resume = false,
+        sessionScope = 'conversation',
+        sessionId = null,
+        force = true,
+        timeoutMs = 300000,
+        extraArgs = [],
+      },
+      _authToken,
+      context
+    ) => {
+      try {
+        const auth = await CursorCliService.checkAuth();
+        if (!auth.loggedIn) {
+          return JSON.stringify({
+            success: false,
+            error:
+              'Cursor Agent CLI is not authenticated on this machine. Run: cursor-agent login (in a terminal).',
+            raw: auth.raw || null,
+          });
+        }
+
+        const resolvedCwd = cwd
+          ? path.resolve(cwd)
+          : CursorCliService.getDefaultWorkdir();
+        try {
+          const stat = await fs.stat(resolvedCwd);
+          if (!stat.isDirectory()) {
+            return JSON.stringify({
+              success: false,
+              error: `cwd is not a directory: ${resolvedCwd}`,
+            });
+          }
+        } catch {
+          try {
+            await fs.mkdir(resolvedCwd, { recursive: true });
+          } catch {
+            return JSON.stringify({
+              success: false,
+              error: `cwd does not exist or is not accessible: ${resolvedCwd}`,
+            });
+          }
+        }
+
+        const result = await CursorCliService.runExec({
+          prompt,
+          model,
+          cwd: resolvedCwd,
+          force,
+          resume,
+          sessionId,
+          timeoutMs,
+          extraArgs: Array.isArray(extraArgs) ? extraArgs : [],
+        });
+
+        return JSON.stringify({
+          success: result.success !== false,
+          provider: 'cursor-cli',
+          model,
+          cwd: resolvedCwd,
+          sessionId: result.sessionId || null,
+          requestId: result.requestId || null,
+          text: result.text || '',
+          usage: result.usage || null,
+          durationMs: result.durationMs ?? null,
+          exitCode: result.exitCode ?? 0,
+          ...(result.error ? { error: result.error } : {}),
+          ...(result.raw ? { raw: result.raw } : {}),
+        });
+      } catch (error) {
+        console.error('cursor_exec tool failed:', error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || 'cursor_exec failed',
         });
       }
     },

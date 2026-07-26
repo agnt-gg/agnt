@@ -57,6 +57,7 @@ export const TOOL_GROUPS = {
     'execute_shell_command',
     'codex_exec',
     'grok_exec',
+    'cursor_exec',
   ],
   agnt_platform: [
     'agnt_workflows',

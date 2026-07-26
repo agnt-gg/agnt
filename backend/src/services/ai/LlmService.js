@@ -7,6 +7,9 @@ import CodexAuthManager from '../auth/CodexAuthManager.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import { createGrokBuildCliClient } from './GrokBuildCliClient.js';
 import GrokBuildCliService from './GrokBuildCliService.js';
+import CursorCliAuthManager from '../auth/CursorCliAuthManager.js';
+import { createCursorCliClient } from './CursorCliClient.js';
+import CursorCliService from './CursorCliService.js';
 import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
 import AntigravityAuthManager from '../auth/AntigravityAuthManager.js';
@@ -487,6 +490,20 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       conversationId: options.conversationId,
       authToken: options.authToken,
       alwaysApprove: true,
+    });
+  }
+
+  // Cursor Agent CLI — always spawn local `cursor-agent` binary (subscription login)
+  if (lowerCaseProvider === 'cursor-cli') {
+    const status = await CursorCliAuthManager.checkApiUsable();
+    if (!status.apiUsable) {
+      throw new Error('Cursor CLI is not authenticated. Run: cursor-agent login (or connect via Settings).');
+    }
+    return createCursorCliClient({
+      defaultModel: process.env.AGNT_CURSOR_DEFAULT_MODEL || CursorCliService.getDefaultModel(),
+      cwd: options.cwd || CursorCliService.getDefaultWorkdir(),
+      userId: options.userId,
+      conversationId: options.conversationId,
     });
   }
 
