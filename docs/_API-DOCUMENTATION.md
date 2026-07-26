@@ -43,6 +43,11 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Webhook Routes](#webhook-routes)
 - [Widget Definition Routes](#widget-definition-routes)
 - [Workflow Routes](#workflow-routes)
+- [System Routes](#system-routes)
+- [Image Routes](#image-routes)
+- [Local File Routes](#local-file-routes)
+- [Conversation Settings Routes](#conversation-settings-routes)
+- [Admin Routes](#admin-routes)
 - [Artifacts](#artifacts)
 
 ---
@@ -143,6 +148,39 @@ console.log(JSON.stringify(data, null, 2));
 ```
 
 > **Important:** Each context has its own way to get the token — don't mix them. `localStorage` only exists in the browser. `req.session` only exists in Express handlers. `process.env.AGNT_AUTH_TOKEN` only exists in orchestrator-spawned processes.
+
+---
+
+### List Connected Providers
+
+**GET** `/api/auth/connected`
+
+- **Authentication**: Optional — env-sourced providers are install-global and return even for unauthenticated callers; per-user rows are included when a bearer token resolves a userId
+- **Description**: List OAuth/API-key providers currently connected. Shape mirrors the remote `/auth/connected` response so the frontend can merge both sources without normalization.
+- **Response**:
+
+```json
+[
+  { "providerId": "openai", "connected": true }
+]
+```
+
+### Notify Provider Changed
+
+**POST** `/api/auth/providers/notify-changed`
+
+- **Authentication**: None
+- **Description**: The UI posts provider CRUD to the cloud API directly, so the local backend never sees the write. This endpoint lets a client tell the local backend "a provider changed" so every connected tab refreshes via Socket.IO.
+- **Body**:
+
+```json
+{
+  "event": "created | updated | deleted",
+  "providerId": "openai"
+}
+```
+
+- **Response**: `{ "success": true }` — `400` if `event` is not one of the three valid values
 
 ---
 
@@ -2172,6 +2210,16 @@ Base path: `/api/executions`
 
 ---
 
+### Get Conversation Summary
+
+**GET** `/conversation/:conversationId/summary`
+
+- **Authentication**: Required
+- **Description**: Per-conversation monitoring summary — aggregates tokens, cache usage, and cost across all executions in the conversation
+- **Response**: Aggregate totals object for the conversation
+
+---
+
 ## Evolution / Insight Routes
 
 Base path: `/api/insights`
@@ -2563,6 +2611,90 @@ The unified evolution system extracts actionable insights from agent chats, goal
 {
   "success": true,
   "deleted": true
+}
+```
+
+---
+
+### Run Core Evolution Loop
+
+**POST** `/api/evolution/core/run`
+
+- **Authentication**: Required
+- **Description**: Runs the built-in evolution loop in recommendation-first mode. GA work is synchronous/CPU-bound, so all numeric inputs are defensively clamped server-side.
+- **Body** (all optional):
+
+```json
+{
+  "lookbackDays": 7,
+  "pendingInsightLimit": 250,
+  "populationSize": 24,
+  "generations": 10,
+  "eliteCount": 6,
+  "apply": false
+}
+```
+
+  - Clamps: `lookbackDays` 1–90, `pendingInsightLimit` 1–5000, `populationSize` 1–200, `generations` 1–50, `eliteCount` 1–populationSize
+- **Response**:
+
+```json
+{
+  "success": true,
+  "recommendation": {}
+}
+```
+
+### List Core Evolution Runs
+
+**GET** `/api/evolution/core/runs`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): 1–2000, default 200
+- **Response**: `{ "success": true, "runs": [...] }`
+
+### List Performance Snapshots
+
+**GET** `/api/evolution/core/snapshots`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): 1–2000, default 200
+- **Description**: Recent user-scoped evolution performance snapshots
+- **Response**: `{ "success": true, "snapshots": [...] }`
+
+### Get All Memories
+
+**GET** `/api/insights/memory`
+
+- **Authentication**: Required
+- **Description**: All agent memories for the current user, across all agents
+- **Parameters**:
+  - `limit` (query, optional): 1–50000, default 5000
+  - `sort` (query, optional): `recent` (default) or `relevance`
+- **Response**:
+
+```json
+{
+  "success": true,
+  "memories": [],
+  "count": 0
+}
+```
+
+### Delete Orphaned Memories
+
+**DELETE** `/api/insights/memory/orphaned`
+
+- **Authentication**: Required
+- **Description**: Deletes every memory whose `agent_id` no longer exists (i.e. the agent was deleted). The special ids `orchestrator` and `__orchestrator__` are always preserved.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "deleted": 7
 }
 ```
 
@@ -3185,6 +3317,48 @@ Provides a sandboxed file system for the built-in code editor. All file paths ar
 
 ---
 
+### Search Files
+
+**GET** `/search`
+
+- **Authentication**: Required
+- **Description**: Recursively searches file/directory names under `dir` (default: workspace root). Case-insensitive substring match on the name. Returns a `truncated` flag when the result cap or entry-scan cap is hit (safety valve for pathological workspaces).
+- **Parameters**:
+  - `q` (query, required): search substring
+  - `dir` (query, optional): subdirectory relative to workspace root
+- **Response**:
+
+```json
+{
+  "items": [],
+  "truncated": false
+}
+```
+
+### Serve Raw File
+
+**GET** `/raw`
+
+- **Authentication**: Required
+- **Description**: Serves a workspace file with its native content type (images, videos, etc.) via streaming. Path traversal outside the workspace root is rejected with `403`.
+- **Parameters**:
+  - `path` (query, required): file path relative to workspace root
+- **Response**: File bytes with the detected `Content-Type`; `400` if `path` is missing
+
+### Upload Files
+
+**POST** `/upload`
+
+- **Authentication**: Required
+- **Content-Type**: `multipart/form-data`
+- **Description**: OS drag-and-drop uploads. Files land inside `dir` (relative to workspace root; empty string = root). Name collisions get a `" (n)"` suffix before the extension.
+- **Body**:
+  - `dir` (string, optional): target directory relative to workspace root
+  - `files` (file[]): one or more files
+- **Response**: List of stored files. `400` if no files are uploaded or `dir` resolves to a file instead of a directory
+
+---
+
 ## Goal Routes
 
 Base path: `/api/goals`
@@ -3642,6 +3816,24 @@ Base path: `/api/goals`
       "createdAt": "2024-01-01T00:00:00Z"
     }
   ]
+}
+```
+
+---
+
+### Get All Goals (Summary)
+
+**GET** `/summary`
+
+- **Authentication**: Required
+- **Description**: Lightweight goal list — summary rows for rendering lists without loading full task payloads
+- **Parameters**:
+  - `includeDeleted` (query, optional): `true` to include soft-deleted goals
+- **Response**:
+
+```json
+{
+  "goals": []
 }
 ```
 
@@ -4205,6 +4397,120 @@ The `overall` field is one of: `healthy`, `degraded` (some unhealthy/degraded), 
   ]
 }
 ```
+
+---
+
+### Get Schema Version
+
+**GET** `/schema-version`
+
+- **Authentication**: None
+- **Description**: Hash of the current model schema — clients poll this to know when cached model lists are stale
+- **Response**:
+
+```json
+{
+  "success": true,
+  "version": "<schema-hash>"
+}
+```
+
+### List Models (legacy OpenRouter shape)
+
+**GET** `/models`
+
+- **Authentication**: None
+- **Description**: Legacy alias — forces `provider=openrouter` and re-dispatches to `GET /:provider/models`
+
+### Refresh Models (legacy OpenRouter shape)
+
+**POST** `/models/refresh`
+
+- **Authentication**: None
+- **Description**: Legacy alias — forces `provider=openrouter` and re-dispatches to `POST /:provider/models/refresh`
+
+### Get Model Categories
+
+**GET** `/models/categories`
+
+- **Authentication**: None
+- **Description**: Static model category list
+- **Response**:
+
+```json
+{
+  "success": true,
+  "categories": [
+    { "id": "all", "name": "All Models", "description": "All available models" },
+    { "id": "programming", "name": "Programming", "description": "Models optimized for code generation and programming tasks" },
+    { "id": "creative", "name": "Creative", "description": "Models optimized for creative writing and content generation" },
+    { "id": "reasoning", "name": "Reasoning", "description": "Models optimized for logical reasoning and problem solving" }
+  ]
+}
+```
+
+### Get Model Metadata (provider)
+
+**GET** `/:provider/metadata`
+
+- **Authentication**: None
+- **Description**: Metadata for all models of a provider
+- **Response**:
+
+```json
+{
+  "success": true,
+  "provider": "openai",
+  "metadata": []
+}
+```
+
+### Get Model Metadata (single model)
+
+**GET** `/:provider/metadata/:modelId`
+
+- **Authentication**: None
+- **Parameters**:
+  - `inputTokens`, `outputTokens` (query, optional): when both are present the response includes a `cost` estimate
+- **Response** (`metadata` is `null` for unknown models):
+
+```json
+{
+  "success": true,
+  "provider": "openai",
+  "model": "gpt-4o",
+  "metadata": {},
+  "reasoning": false,
+  "cost": {}
+}
+```
+
+### Get Provider Health
+
+**GET** `/provider-health`
+
+- **Authentication**: None
+- **Description**: Current health status and summary for all providers
+- **Response**:
+
+```json
+{
+  "success": true,
+  "providers": {}
+}
+```
+
+### Check Provider Health
+
+**POST** `/provider-health/check`
+
+- **Authentication**: Optional — the user is resolved from the bearer token when present
+- **Description**: Triggers a fresh provider health check
+- **Response**: Updated provider health
+
+### OpenRouter legacy mount
+
+The same router is also mounted at **`/api/openrouter`** for backward compatibility (`server.js` line 189). Every endpoint in this section is reachable under either base — `/api/models` is canonical, `/api/openrouter` is the legacy alias.
 
 ---
 
@@ -4970,6 +5276,133 @@ Base path: `/api/plugins`
 
 ---
 
+### Get Plugin Assets
+
+**GET** `/:name/assets`
+
+- **Authentication**: Required
+- **Description**: Ecosystem assets a plugin currently owns (agents, workflows, skills, widgets) with per-asset `is_user_modified` flags — powers the uninstall confirmation modal so the user can see what will be deleted vs preserved
+- **Response**:
+
+```json
+{
+  "success": true,
+  "assets": [
+    {
+      "asset_type": "agent",
+      "asset_slug": "my-agent",
+      "local_id": "uuid",
+      "installed_at": "2024-01-01T00:00:00Z",
+      "deprecated_at": null,
+      "is_user_modified": 0
+    }
+  ]
+}
+```
+
+### Bundle Plugin from Assets
+
+**POST** `/bundle-from-assets`
+
+- **Authentication**: Required
+- **Description**: Builds a `.agnt` archive (base64) plus a generated manifest from selected local assets. Optional `install: true` also installs the bundle on this instance.
+- **Response**: `{ "archive": "<base64>", "manifest": {...} }`
+
+### Check Plugin Auth Requirements
+
+**POST** `/install-file/check-auth`
+
+- **Authentication**: Required
+- **Description**: Scans a bundle's `authProvider` declarations across its tools so the install UI can prompt the user to configure missing providers before completing extraction
+- **Body**:
+
+```json
+{
+  "fileData": "<base64 .agnt archive>"
+}
+```
+
+- **Response**: Required/missing auth providers for the bundle
+
+### Inspect Plugin
+
+**GET** `/inspect/:name`
+
+- **Authentication**: None
+- **Description**: The disclosure report the install-consent modal renders: integrity state, detected capabilities (with file:line evidence), declared permissions, the undeclared diff, and the trust tier the plugin would receive
+- **Response**: Inspection report object
+
+### Install Plugin from GitHub
+
+**POST** `/install-github`
+
+- **Authentication**: None
+- **Description**: Pulls a plugin directly from GitHub through the same staged/validated/permission-gated install path. Returns `{ requiresConfirmation: true }` on a moved repo and `{ requiresConsent: true }` on permission escalation.
+
+### Get Update Settings
+
+**GET** `/update-settings`
+
+- **Authentication**: None
+- **Description**: Auto-update scheduler settings
+- **Response**: `{ "success": true, "settings": {...} }`
+
+### Set Update Settings
+
+**POST** `/update-settings`
+
+- **Authentication**: None
+- **Body**:
+
+```json
+{
+  "autoCheck": true,
+  "intervalHours": 24
+}
+```
+
+- **Response**: `{ "success": true, "settings": {...} }`
+
+### Set Per-Plugin Update Policy
+
+**POST** `/update-policy/:name`
+
+- **Authentication**: None
+- **Description**: Per-plugin auto-update policy, stored on the registry entry (merge semantics preserve it across installs/updates). `404` if the plugin isn't installed, `400` on an invalid policy.
+- **Body**:
+
+```json
+{
+  "policy": "auto | notify | pinned"
+}
+```
+
+- **Response**: `{ "success": true, "name": "...", "policy": "..." }`
+
+### Check for Plugin Updates
+
+**GET** `/updates`
+
+- **Authentication**: None
+- **Description**: Compares every installed plugin's version against the marketplace catalog. Non-semver installed versions (`local`, `latest`, `unknown`) surface as status `unknown-version` — never compared, never auto-updated over.
+- **Response**: Per-plugin update status list
+
+### Update Plugin
+
+**POST** `/update/:name`
+
+- **Authentication**: None
+- **Description**: Updates a single plugin via the staged-install path (stage → validate → permission-diff gate → atomic swap). An update requesting NEW permissions returns `{ requiresConsent: true, permissionDiff }` and changes nothing on disk until re-called with `acceptedPermissions: true`. On success all plugin processes are reloaded.
+- **Body**:
+
+```json
+{
+  "acceptedPermissions": false
+}
+```
+
+---
+
 ## Schedule Routes
 
 Base path: `/api/schedules`
@@ -5689,7 +6122,7 @@ Base path: `/api/speech`
 
 ## Stream Routes
 
-Base path: `/api/streams`
+Base path: `/api/stream`
 
 ### Health Check
 
@@ -6363,6 +6796,40 @@ Base path: `/api/users`
   - `token` (query): JWT token
 - **Description**: Get real-time connection health updates via SSE
 - **Response**: Server-sent events stream
+
+---
+
+### Get Security Policy
+
+**GET** `/security-policy`
+
+- **Authentication**: Required
+- **Description**: The current user's security policy
+- **Response**: Security policy object
+
+### Update Security Policy
+
+**PUT** `/security-policy`
+
+- **Authentication**: Required
+- **Description**: Update the current user's security policy
+- **Response**: Updated security policy object
+
+### Reset Security Policy
+
+**DELETE** `/security-policy`
+
+- **Authentication**: Required
+- **Description**: Reset the current user's security policy to defaults
+- **Response**: Confirmation object
+
+### Get Security Audit
+
+**GET** `/security-audit`
+
+- **Authentication**: Required
+- **Description**: Security audit information for the current user
+- **Response**: Security audit object
 
 ---
 
@@ -7269,6 +7736,183 @@ Base path: `/api/workflows`
     "oldestVersion": "2024-01-01T00:00:00Z",
     "newestVersion": "2024-03-01T00:00:00Z"
   }
+}
+```
+
+---
+
+### Export Workflow
+
+**GET** `/:id/export`
+
+- **Authentication**: Required
+- **Description**: Exports a workflow as a portable envelope (PRD-057). `403` if the workflow is not shareable and belongs to another user; `404` if not found.
+- **Response**: Workflow envelope JSON
+
+### Import Workflow
+
+**POST** `/import`
+
+- **Authentication**: Required
+- **Description**: Imports a workflow envelope (PRD-057). `201` on success; `400` on a malformed envelope. Reports tool types referenced by the workflow that aren't installed locally.
+- **Body**: `{ "envelope": {...} }` (or the envelope object directly)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "workflowId": "uuid",
+  "missingToolTypes": []
+}
+```
+
+---
+
+## System Routes
+
+Base path: `/api/system`
+
+System-level operations: status and restart.
+
+### Get System Status
+
+**GET** `/status`
+
+- **Authentication**: None — intentionally unauthenticated: the frontend polls this while the backend drains/reboots, and the Electron supervisor may check it too. Exposes nothing sensitive (state/pid/uptime).
+- **Response**: RestartManager status object (state, pid, uptime)
+
+### Restart Backend
+
+**POST** `/restart`
+
+- **Authentication**: Required
+- **Description**: Initiates a backend restart. Responds `202` first, then starts the drain — the 2s grace period guarantees the response flushes before the socket dies. Backend is back in ~10–20 seconds. `409` if a restart is already in progress.
+- **Body**:
+
+```json
+{
+  "reason": "optional reason string"
+}
+```
+
+- **Response** (202):
+
+```json
+{
+  "success": true,
+  "message": "Restart initiated. Backend will be back in ~10-20 seconds.",
+  "gracePeriodMs": 2000
+}
+```
+
+---
+
+## Image Routes
+
+Base path: `/api/images`
+
+Serves images generated by the image-generation tools.
+
+### Get Image
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Description**: Serves a stored generated image by id with the correct content type and `Cache-Control: private, max-age=31536000, immutable`. `404` if not found.
+- **Response**: Image bytes
+
+---
+
+## Local File Routes
+
+Base path: `/api/local-file`
+
+Streams local files over HTTP with Range support. The chat renderer rewrites `file:///` URLs to this endpoint so `<video>` seeking, large images, and PDF embeds work.
+
+### Serve Local File
+
+**GET** `/?path=<path>` or **GET** `/<path>`
+
+- **Authentication**: None
+- **Description**: Two equivalent forms — legacy query-string (`/api/local-file?path=...`) and path-based (`/api/local-file/<path>`). Supports HTTP Range requests (`206 Partial Content`) for media seeking.
+- **Response**: File bytes (`200` or `206`); `416` on an invalid range; `500` on failure
+
+---
+
+## Conversation Settings Routes
+
+Base path: `/api/conversations`
+
+Per-conversation bindings (active skill / active goal).
+
+### Get Conversation Settings
+
+**GET** `/:id/settings`
+
+- **Authentication**: Required
+- **Description**: The conversation's bound skill/goal IDs (`null` if unset)
+- **Response**:
+
+```json
+{
+  "conversationId": "uuid",
+  "activeSkillId": null,
+  "activeGoalId": null
+}
+```
+
+### Update Conversation Settings
+
+**PATCH** `/:id/settings`
+
+- **Authentication**: Required
+- **Description**: Attach or detach the conversation's skill/goal bindings. Pass `null` to detach; omit a field to leave it unchanged.
+- **Body**:
+
+```json
+{
+  "activeSkillId": "skill-id | null",
+  "activeGoalId": "goal-id | null"
+}
+```
+
+- **Response**: Updated settings object (same shape as GET)
+
+---
+
+## Admin Routes
+
+Base path: `/api/admin`
+
+Administrative operations.
+
+### Get Client Versions
+
+**GET** `/client-versions`
+
+- **Authentication**: None
+- **Description**: Inspected CLI/client versions for supported providers
+- **Response**:
+
+```json
+{
+  "success": true,
+  "providers": {}
+}
+```
+
+### Refresh Client Versions
+
+**POST** `/client-versions/refresh`
+
+- **Authentication**: None
+- **Description**: Re-inspects all client versions
+- **Response**:
+
+```json
+{
+  "success": true,
+  "refreshed": {}
 }
 ```
 
