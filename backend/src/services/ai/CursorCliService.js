@@ -45,6 +45,23 @@ function resolveCursorBin() {
   return 'cursor-agent'; // fall back to PATH
 }
 
+// Only expose the binary's own directory on PATH when it is an actual path
+// (contains a separator). Never prepend '.' — that would let a stray
+// cursor-agent in the CWD be executed (security).
+function binDirForPath(bin) {
+  if (bin && bin.includes(path.sep)) {
+    const d = path.dirname(bin);
+    if (d && d !== '.') return d;
+  }
+  return null;
+}
+
+function pathEnv(bin) {
+  const d = binDirForPath(bin);
+  const base = process.env.PATH || '';
+  return d ? `${d}${path.delimiter}${base}` : base;
+}
+
 function getDefaultWorkdir() {
   const configured = process.env.AGNT_CURSOR_WORKDIR;
   const dir = configured ? expandUserPath(configured) : path.join(os.homedir(), 'services/agnt-cursor-work');
@@ -128,7 +145,7 @@ async function runExec({
 
     const child = spawn(bin, args, {
       cwd: workdir,
-      env: { ...process.env, HOME: os.homedir(), PATH: `${path.dirname(bin)}:${process.env.PATH || ''}` },
+      env: { ...process.env, HOME: os.homedir(), PATH: pathEnv(bin) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

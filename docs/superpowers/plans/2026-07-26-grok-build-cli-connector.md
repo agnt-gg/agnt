@@ -9,13 +9,13 @@
 **Tech Stack:** Node.js (ESM), child_process spawn, existing AuthDispatcher / ProviderAuthRoutes / LlmService patterns, Vuex `appAuth`, Vitest/Jest-style unit tests matching nearby `*.test.js` files.
 
 **Assumptions (verified on this machine 2026-07-26):**
-- Binary: `/Users/tom/.local/bin/grok` → `~/.grok/bin/grok` (v **0.1.219**)
+- Binary: `grok` (resolve via PATH; e.g. `~/.local/bin/grok`) (v **0.1.219**)
 - Creds: `~/.grok/auth.json` (OIDC; **re-authenticated** 2026-07-26)
 - Headless: `grok -p "<prompt>" --output-format streaming-json --always-approve -m grok-build`
 - Login: `grok login` / `grok login --device-auth` / `grok login --oauth`
 - Logout: `grok logout`
 - Models: `grok models` → default **`grok-4.5`** (was `grok-build` on older CLI; live verified 2026-07-26)
-- Creds: re-authenticated as `rmocius@me.com` (OIDC, valid)
+- Creds: re-authenticated as `<your-account>` (OIDC, valid)
 - Existing API provider `grokai` (bearer `XAI_API_KEY` → `api.x.ai`) stays **unchanged** and separate
 
 ---
@@ -219,7 +219,7 @@ describe('GrokBuildAuthManager', () => {
 - [ ] **Step 2: Run tests — expect fail**
 
 ```bash
-cd /Users/tom/.agnt-server/backend && npm test -- GrokBuildAuthManager.test.js
+cd ~/.agnt-server/backend && npm test -- GrokBuildAuthManager.test.js
 ```
 
 Expected: FAIL (module missing)
@@ -557,7 +557,7 @@ export default new GrokBuildAuthManager();
 - [ ] **Step 4: Run tests — expect pass**
 
 ```bash
-cd /Users/tom/.agnt-server/backend && npm test -- GrokBuildAuthManager.test.js
+cd ~/.agnt-server/backend && npm test -- GrokBuildAuthManager.test.js
 ```
 
 - [ ] **Step 5: Manual status check**
@@ -660,7 +660,7 @@ Parser strategy:
 - [ ] **Step 4: Run unit tests**
 
 ```bash
-cd /Users/tom/.agnt-server/backend && npm test -- GrokBuildCliService.test.js
+cd ~/.agnt-server/backend && npm test -- GrokBuildCliService.test.js
 ```
 
 - [ ] **Step 5: Commit**
@@ -890,9 +890,9 @@ git commit -m "feat(grok-build): expose Grok Build as local CLI provider in UI"
 
 ```bash
 # Grok Build CLI connector
-GROK_BIN=/Users/tom/.local/bin/grok
-GROK_HOME=/Users/tom/.grok
-AGNT_GROK_WORKDIR=/Users/tom/services/agnt-grok-work
+GROK_BIN=~/.local/bin/grok
+GROK_HOME=~/.grok
+AGNT_GROK_WORKDIR=~/services/agnt-grok-work
 AGNT_GROK_DEFAULT_MODEL=grok-build
 # Optional fallback if CLI OIDC unavailable:
 # XAI_API_KEY=xai-...
@@ -901,7 +901,7 @@ AGNT_GROK_DEFAULT_MODEL=grok-build
 - [ ] **Step 1: Ensure sandbox workdir exists**
 
 ```bash
-mkdir -p /Users/tom/services/agnt-grok-work
+mkdir -p ~/services/agnt-grok-work
 ```
 
 - [ ] **Step 2: Commit env example only**

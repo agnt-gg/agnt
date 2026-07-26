@@ -387,10 +387,10 @@ router.get('/:provider/models', async (req, res) => {
       else if (providerLower === 'grok-build') {
         const { default: GrokBuildAuthManager } = await import('../services/auth/GrokBuildAuthManager.js');
         const status = await GrokBuildAuthManager.checkApiUsable();
-        if (!status.available && !status.apiUsable) {
+        if (!status.apiUsable) {
           return res.status(400).json({
             success: false,
-            error: 'Grok Build CLI is not authenticated. Run: grok login --oauth',
+            error: status.error || 'Grok Build CLI is not authenticated. Run: grok login --oauth',
           });
         }
         let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
