@@ -4,6 +4,9 @@ import { GoogleGenAI } from '@google/genai';
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
+import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
+import { createGrokBuildCliClient } from './GrokBuildCliClient.js';
+import GrokBuildCliService from './GrokBuildCliService.js';
 import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
 import AntigravityAuthManager from '../auth/AntigravityAuthManager.js';
@@ -466,6 +469,24 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       baseURL: 'https://chatgpt.com/backend-api/codex',
       defaultHeaders: headers,
       fetch: codexFetch,
+    });
+  }
+
+  // Grok Build CLI — always spawn local `grok` binary (subscription OAuth)
+  if (lowerCaseProvider === 'grok-build') {
+    const status = await GrokBuildAuthManager.checkApiUsable();
+    if (!status.apiUsable) {
+      throw new Error(
+        'Grok Build CLI is not authenticated. Run: grok login --oauth (or connect via Settings).'
+      );
+    }
+    return createGrokBuildCliClient({
+      defaultModel: process.env.AGNT_GROK_DEFAULT_MODEL || GrokBuildCliService.getDefaultModel(),
+      cwd: options.cwd || GrokBuildCliService.getDefaultWorkdir(),
+      userId: options.userId,
+      conversationId: options.conversationId,
+      authToken: options.authToken,
+      alwaysApprove: true,
     });
   }
 

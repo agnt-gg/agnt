@@ -382,6 +382,24 @@ router.get('/:provider/models', async (req, res) => {
         const cfg = getProviderConfig('antigravity');
         const models = [...(cfg?.fallbackModels || [])];
         return res.json({ success: true, models, cached: false, count: models.length });
+      }
+      // Grok Build CLI — local subscription; list via `grok models` or static fallback
+      else if (providerLower === 'grok-build') {
+        const { default: GrokBuildAuthManager } = await import('../services/auth/GrokBuildAuthManager.js');
+        const status = await GrokBuildAuthManager.checkApiUsable();
+        if (!status.available && !status.apiUsable) {
+          return res.status(400).json({
+            success: false,
+            error: 'Grok Build CLI is not authenticated. Run: grok login --oauth',
+          });
+        }
+        let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
+        if (models.length === 0) {
+          const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
+          const cfg = getProviderConfig('grok-build');
+          models = [...(cfg?.fallbackModels || ['grok-4.5'])];
+        }
+        return res.json({ success: true, models, cached: false, count: models.length });
       } else {
         // Standard providers: extract user ID from auth token.
         // keyOptional providers tolerate missing auth/key — the dynamic fetch

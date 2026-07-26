@@ -6078,6 +6078,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
 
     case 'deepseek':
     case 'grokai':
+    case 'grok-build':
     case 'groq':
     case 'kimi':
     case 'kimi-code':

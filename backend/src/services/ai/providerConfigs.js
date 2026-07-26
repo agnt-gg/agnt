@@ -412,6 +412,35 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+
+  // ─────────────────────────── GROK BUILD CLI ───────────────────────────
+  {
+    key: 'grok-build',
+    name: 'Grok Build',
+    // Not used for HTTP — CLI owns the network path. Kept for registry completeness.
+    baseURL: 'https://cli-chat-proxy.grok.com/v1',
+    sdkType: 'openai',
+    authScheme: 'grok-build',
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+    },
+    recommendedModels: ['grok-4.5'],
+    fallbackModels: ['grok-4.5'],
+    modelMetadata: {
+      'grok-4.5': {
+        contextWindow: 512000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
+    },
+    compat: {},
+    sdkOptions: {},
+  },
+
   // ─────────────────────────── GROQ ───────────────────────────
   {
     key: 'groq',

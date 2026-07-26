@@ -10,6 +10,7 @@ import ClaudeCodeAuthManager from './ClaudeCodeAuthManager.js';
 import CodexAuthManager from './CodexAuthManager.js';
 import GeminiCliAuthManager from './GeminiCliAuthManager.js';
 import AntigravityAuthManager from './AntigravityAuthManager.js';
+import GrokBuildAuthManager from './GrokBuildAuthManager.js';
 
 // ─────────────────────────── SCHEME MAP ───────────────────────────
 
@@ -34,6 +35,11 @@ const AUTH_SCHEME_MAP = {
     manager: AntigravityAuthManager,
     local: true,
     caps: ['status', 'disconnect', 'refresh', 'oauth-loopback', 'gcp-project'],
+  },
+  'grok-build': {
+    manager: GrokBuildAuthManager,
+    local: true,
+    caps: ['status', 'disconnect', 'device-auth', 'refresh'],
   },
 
   // REMOTE — proxied to agnt.gg for token management
