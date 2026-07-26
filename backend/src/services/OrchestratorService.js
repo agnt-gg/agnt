@@ -65,24 +65,95 @@ export function clearSteer(conversationId) {
   return pendingSteers.delete(conversationId);
 }
 
-function applySteerToLastToolResult(messages, steerText) {
-  const tail = `\n\n[USER STEER (mid-run, not tool output): ${steerText}]`;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role !== 'tool') continue;
-    if (typeof msg.content === 'string') {
-      msg.content = msg.content + tail;
-    } else if (Array.isArray(msg.content)) {
-      msg.content = [...msg.content, { type: 'text', text: tail }];
-    } else {
-      // Unknown content shape — fall back to a sibling user message.
-      messages.push({ role: 'user', content: tail });
-    }
-    return true;
+// Minimal synthetic assistant turn used to restore strict user/assistant
+// alternation on Anthropic before the steer lands as its own user turn.
+// Deliberately states only what it is — it must not put reasoning or content
+// into the model's mouth.
+const STEER_BRIDGE_TEXT = '(Mid-run instruction received from the user.)';
+
+/**
+ * Deliver a mid-run steer as a first-class USER turn, shaped for whichever
+ * provider produced the tool results currently at the tail of `messages`.
+ *
+ * WHY THIS IS NOT A `role:'tool'` APPEND ANY MORE
+ * ------------------------------------------------
+ * The previous implementation scanned backwards for a `role:'tool'` message
+ * and appended the steer text to its content. Only OpenAI-style adapters ever
+ * emit that role. `AnthropicAdapter.formatToolResults` returns
+ * `{ role:'user', content:[tool_result...] }` and `GeminiAdapter` returns
+ * `{ role:'user', parts:[functionResponse...] }` — so on those providers the
+ * scan found no anchor and fell through to pushing a bare
+ * `{ role:'user', content:<string> }`.
+ *
+ * On Anthropic that stray user message is then merged into the tool_result
+ * message by `_normalizeHistoryMessages` (llmAdapters.js), producing
+ * `[tool_result, ..., text]` — the exact shape Anthropic documents as
+ * "never add text blocks immediately after tool results", and which
+ * llmAdapters.js:1570-1584 already flags as a known cause of degenerate
+ * end_turn responses. Net effect: the steer rendered correctly in the UI but
+ * never actually steered the model.
+ *
+ * Returns a short tag describing the shape used (for logs + tests).
+ */
+function applySteerAsUserTurn(messages, steerText) {
+  const text = `[USER STEER — mid-run instruction from the user, not tool output]\n${steerText}`;
+  const last = messages[messages.length - 1];
+
+  // Anthropic: tool results are a user message of tool_result blocks. A second
+  // user message would be merged into it, so bridge with a minimal assistant
+  // turn to keep the steer a separate, first-class user turn.
+  if (
+    last && last.role === 'user' && Array.isArray(last.content) &&
+    last.content.some((b) => b && b.type === 'tool_result')
+  ) {
+    messages.push({ role: 'assistant', content: [{ type: 'text', text: STEER_BRIDGE_TEXT }] });
+    messages.push({ role: 'user', content: text });
+    return 'anthropic-bridged';
   }
-  // No tool message to anchor onto — push as a standalone user nudge.
-  messages.push({ role: 'user', content: tail });
-  return true;
+
+  // Gemini: parts-based history. A `content` field would be dropped on
+  // conversion, and a second consecutive user turn risks a role-alternation
+  // rejection, so append a text part to the same user turn.
+  if (last && Array.isArray(last.parts)) {
+    last.parts = [...last.parts, { text }];
+    return 'gemini-parts';
+  }
+
+  // OpenAI-style (chat completions + Responses/Codex): a user turn may legally
+  // follow `role:'tool'` results, and that is the semantically honest shape —
+  // the steer is user input, not tool output.
+  messages.push({ role: 'user', content: text });
+  return 'user-turn';
+}
+
+// Open a fresh assistant bubble after a steer landed, and return its id.
+//
+// A turn streams into ONE assistant message for its whole life. The client
+// renders an ordered transcript, so a steer appended at the tail sits BELOW an
+// assistant bubble that is still receiving deltas -- meaning every word the
+// agent says in response to the steer renders ABOVE the steer that caused it.
+// Minting a new id splits the turn at the seam:
+//
+//   [assistant: pre-steer]  [user: steer]  [assistant: post-steer]
+//
+// Callers MUST assign the return value to the live assistantMessageId so that
+// all later content_delta / tool_start / tool_end / final_content events
+// address the continuation bubble instead of the sealed one.
+export { applySteerAsUserTurn, STEER_BRIDGE_TEXT };
+
+export function openSteerContinuation(sendEvent, { round, agentMeta = {} } = {}) {
+  const id = `msg-asst-${Date.now()}-s${round}`;
+  sendEvent('assistant_message', {
+    id,
+    assistantMessageId: id,
+    role: 'assistant',
+    content: '',
+    toolCalls: [],
+    timestamp: Date.now(),
+    steerContinuation: true,
+    ...agentMeta,
+  });
+  return id;
 }
 
 
@@ -2282,13 +2353,34 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // LLM call without us starting a new turn.
       const steerText = drainSteer(conversationId);
       if (steerText) {
-        applySteerToLastToolResult(messages, steerText);
-        sendEvent('steering_applied', { content: steerText, round: currentRound });
-        console.log(`[Steering] Applied steer at round ${currentRound} (${steerText.length} chars)`);
+        const steerShape = applySteerAsUserTurn(messages, steerText);
+        // Carry the OUTGOING message id so the client can seal that bubble
+        // (clear its spinner) before the continuation bubble opens below.
+        sendEvent('steering_applied', {
+          content: steerText,
+          round: currentRound,
+          assistantMessageId,
+        });
+        console.log(`[Steering] Applied steer at round ${currentRound} (${steerText.length} chars, shape=${steerShape})`);
       }
 
       // Send tool execution summary for this round
       sendEvent('tool_executions', { assistantMessageId, tool_executions: toolExecutionDetails, round: currentRound });
+
+      // Split the assistant turn at the steer seam.
+      //
+      // A turn used to stream into exactly ONE bubble for its entire life, so
+      // every delta produced AFTER a steer was appended to a bubble that
+      // already sat ABOVE the steer message in the ordered transcript. The
+      // steer therefore appeared to land after the very work it caused.
+      // Minting a new id makes all subsequent content_delta / tool_start /
+      // tool_end / final_content events land in a fresh bubble BELOW the steer.
+      //
+      // Ordering matters: this runs AFTER tool_executions so that round's
+      // summary still attaches to the bubble that actually produced it.
+      if (steerText) {
+        assistantMessageId = openSteerContinuation(sendEvent, { round: currentRound, agentMeta });
+      }
 
       // Dynamic tool loading: check if discover_tools requested new categories
       if (conversationContext._requestedToolCategories && conversationContext._requestedToolCategories.size > 0) {

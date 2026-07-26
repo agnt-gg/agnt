@@ -192,8 +192,19 @@ describe('AnthropicAdapter wire payload', () => {
 
     expect(findOrphanToolUse(wire)).toEqual([]);
     expect(findOrphanToolResult(wire)).toEqual([]);
-    // 3 rounds -> 3 assistant + 3 tool_result carriers, with the trailing
-    // "carry on" merged into the final user message by the alternation pass.
-    expect(wire.filter((m) => m.role === 'assistant').length).toBe(3);
+    // 3 rounds -> 3 assistant tool_use turns + 3 tool_result carriers.
+    //
+    // This assertion previously expected 3 assistants and described the
+    // trailing "carry on" as "merged into the final user message by the
+    // alternation pass". That merge IS the PRD-082 anti-pattern
+    // ([tool_result..., text]) -- the fixture was pinning the bug. The
+    // repair pass now splits it out behind a synthetic bridge turn, so the
+    // correct count is 3 + 1.
+    expect(wire.filter((m) => m.role === 'assistant').length).toBe(4);
+
+    const bridge = wire.at(-2);
+    expect(bridge.role).toBe('assistant');
+    expect(bridge.content).toEqual([{ type: 'text', text: BaseAdapter.TOOL_RESULT_BRIDGE_TEXT }]);
+    expect(wire.at(-1)).toEqual({ role: 'user', content: [{ type: 'text', text: 'carry on' }] });
   });
 });

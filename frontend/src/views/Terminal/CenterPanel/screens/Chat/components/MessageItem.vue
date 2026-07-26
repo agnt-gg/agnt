@@ -1,5 +1,5 @@
 <template>
-  <div class="message-wrapper" :class="[message.role, { compact, editing: isEditing }]" ref="messageRef">
+  <div class="message-wrapper" :class="[message.role, { compact, editing: isEditing, steered: !!message.steered }]" ref="messageRef">
     <img v-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
     <div class="message-content">
       <div class="message-card">
@@ -41,6 +41,13 @@
             <span>Reasoning</span>
           </button>
           <div v-if="showReasoning && message.reasoning" class="reasoning-content" ref="reasoningContentRef">{{ message.reasoning }}</div>
+          <!-- Mid-run steer: this message interrupted a streaming turn. The
+               orchestrator splits the assistant bubble here, so the card is
+               literally a cut in the agent's output. -->
+          <div v-if="message.steered" class="steer-badge">
+            <i class="fas fa-arrow-rotate-right"></i>
+            <span>Steered mid-run</span>
+          </div>
           <!-- Interleaved content: text and tool calls rendered in order -->
           <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
             <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
@@ -3121,6 +3128,33 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   border: 1px solid var(--terminal-border-color);
   /* border-right: 3px solid var(--color-blue); */
   margin-left: auto;
+}
+
+/* Mid-run steer. This user message landed WHILE the assistant was streaming;
+   the orchestrator seals the bubble above and opens a fresh one below, so the
+   transcript reads in true chronological order. Style it as the seam it is,
+   using the same green language as the "Steer pending" input chip. */
+.message-wrapper.user.steered .message-card {
+  background: rgba(var(--green-rgb, 25, 239, 131), 0.07);
+  border: 1px solid rgba(var(--green-rgb, 25, 239, 131), 0.28);
+  border-right: 2px solid var(--color-green);
+}
+
+.steer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--color-green);
+  font-size: 0.68em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+
+.steer-badge i {
+  font-size: 0.9em;
 }
 
 .message-text {

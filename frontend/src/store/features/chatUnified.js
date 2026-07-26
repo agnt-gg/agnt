@@ -712,7 +712,7 @@ export default {
 /**
  * Translate raw SSE events from chatService into store mutations.
  */
-function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent }) {
+export function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent }) {
   switch (eventName) {
     case 'conversation_started':
       commit('SET_CONVERSATION_ID', { channelKey, conversationId: data.conversationId });
@@ -720,6 +720,17 @@ function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEven
 
     case 'steering_applied':
       commit('CLEAR_PENDING_STEER', { channelKey });
+      // Seal the outgoing assistant bubble. The backend mints a NEW
+      // assistantMessageId immediately after this event so the post-steer
+      // output renders BELOW the steer; final_content only ever clears the
+      // LAST id, so without this the pre-steer bubble would spin forever.
+      if (data.assistantMessageId) {
+        commit('SET_MESSAGE_STATE', {
+          channelKey,
+          messageId: data.assistantMessageId,
+          status: null,
+        });
+      }
       // Surface the steer text as a real user message in the transcript at
       // the round it landed. Without this, the steer is buried inside the
       // tool-result content (Hermes pattern) and the user never sees what

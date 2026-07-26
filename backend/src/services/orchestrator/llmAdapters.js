@@ -324,6 +324,91 @@ class BaseAdapter {
   }
 
   /**
+   * Minimal synthetic assistant turn inserted when a user turn has to be split
+   * away from the tool results preceding it. Deliberately contentless: it must
+   * not put reasoning, claims, or an answer into the model's mouth.
+   */
+  static TOOL_RESULT_BRIDGE_TEXT = '(Continuing.)';
+
+  /**
+   * Split any user message shaped [tool_result..., <other blocks>] into two
+   * turns separated by a minimal synthetic assistant turn.
+   *
+   * WHY
+   * ---
+   * Anthropic's guidance is explicit: never place text blocks immediately after
+   * tool results. It teaches the model to expect user input after every tool
+   * use and is a documented cause of degenerate 2-3 token end_turn responses
+   * (PRD-082). The shape arises naturally whenever a user message follows a
+   * tool-result carrier with no assistant turn between them - the alternation
+   * merge in _normalizeHistoryMessages folds the two together. Mid-run steering
+   * hit this, but so does any ordinary follow-up typed during a tool round.
+   *
+   * The merge cannot simply be skipped: Anthropic also rejects consecutive
+   * same-role messages. So the repair runs after it - keep the tool_result
+   * blocks attached to the assistant tool_use that produced them, emit a
+   * minimal assistant turn, then carry the remaining blocks as their own user
+   * turn. Both invariants hold simultaneously.
+   *
+   * Properties this pass is required to have, and which the tests pin:
+   *  - Identity (by reference-equal content) when the shape is absent.
+   *  - Idempotent: no output user message has content after its last
+   *    tool_result, so a second pass cannot find anything to split.
+   *  - Pairing-preserving: tool_result blocks stay immediately after their
+   *    originating assistant message, so tool_use/tool_result pairing and
+   *    strict alternation both survive.
+   *
+   * @param {Array<Object>} messages Anthropic-shaped, post-merge history.
+   * @returns {Array<Object>} History with the anti-pattern removed.
+   */
+  static _splitTextAfterToolResults(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+    let splitCount = 0;
+    const out = [];
+
+    for (const msg of messages) {
+      if (!msg || msg.role !== 'user' || !Array.isArray(msg.content)) {
+        out.push(msg);
+        continue;
+      }
+
+      const lastResultIdx = msg.content.map((b) => b?.type).lastIndexOf('tool_result');
+      // No tool results, or nothing trailing them: already correct.
+      if (lastResultIdx === -1 || lastResultIdx === msg.content.length - 1) {
+        out.push(msg);
+        continue;
+      }
+
+      const head = msg.content.slice(0, lastResultIdx + 1);
+      // Whitespace-only text blocks are dropped rather than promoted into a
+      // turn of their own - manufacturing an assistant turn to carry nothing
+      // would add noise to every subsequent request.
+      const trailing = msg.content
+        .slice(lastResultIdx + 1)
+        .filter((b) => !(b && b.type === 'text' && String(b.text || '').trim() === ''));
+
+      out.push({ ...msg, content: head });
+      if (trailing.length > 0) {
+        out.push({
+          role: 'assistant',
+          content: [{ type: 'text', text: BaseAdapter.TOOL_RESULT_BRIDGE_TEXT }],
+        });
+        out.push({ role: 'user', content: trailing });
+      }
+      splitCount++;
+    }
+
+    if (splitCount > 0) {
+      console.log(
+        `[Adapter Guard] anthropic: split ${splitCount} user message(s) carrying ` +
+        `content after tool_result blocks into separate turns (PRD-082 anti-pattern).`
+      );
+    }
+    return out;
+  }
+
+  /**
    * Makes a call to the LLM.
    * @param {Array<Object>} messages The conversation history.
    * @param {Array<Object>} tools The available tools in OpenAI format.
@@ -1579,9 +1664,13 @@ class AnthropicAdapter extends BaseAdapter {
     //
     // A fully correct fix is non-trivial because Anthropic also requires
     // alternating user/assistant — we can't just split the merged message
-    // without inserting a synthetic assistant turn. Left as a follow-up;
-    // the [Anthropic Pre-Call] diagnostic will surface when this shape
-    // appears so we can prioritize.
+    // without inserting a synthetic assistant turn.
+    //
+    // FIXED: the merge below still runs (it has to - Anthropic rejects
+    // consecutive same-role messages), and a repair pass then splits any
+    // resulting [tool_result..., text] user message into two turns with a
+    // minimal synthetic assistant turn between them. That satisfies both
+    // constraints at once. See BaseAdapter._splitTextAfterToolResults.
     const merged = [];
     for (const msg of converted) {
       const last = merged[merged.length - 1];
@@ -1594,7 +1683,7 @@ class AnthropicAdapter extends BaseAdapter {
       }
     }
 
-    return merged;
+    return BaseAdapter._splitTextAfterToolResults(merged);
   }
 
   async call(messages, tools) {

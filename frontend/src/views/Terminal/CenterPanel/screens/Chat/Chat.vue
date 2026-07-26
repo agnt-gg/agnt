@@ -1121,6 +1121,18 @@ export default {
         case 'conversation_started':
           if (isActiveView) currentConversationId.value = data.conversationId;
           break;
+        case 'steering_applied':
+          // Seal the pre-steer bubble. The backend mints a NEW
+          // assistantMessageId immediately after this event so post-steer
+          // output renders BELOW the steer message; final_content only clears
+          // the LAST id, which would leave this one stuck on
+          // "...is processing results..." for the rest of the session.
+          // Every tool in this round has already emitted tool_end by the time
+          // the steer drains, so runningToolCalls needs no cleanup here.
+          if (isActiveView && data.assistantMessageId) {
+            delete messageStates.value[data.assistantMessageId];
+          }
+          break;
         case 'assistant_message': {
           if (!isActiveView) break;
           const name = data.agentName || 'Annie';

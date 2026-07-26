@@ -2770,7 +2770,7 @@ export default {
  * Handle stream events scoped to a specific conversation.
  * All mutations target the conversation slot, not global state.
  */
-function handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, conversationId) {
+export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, conversationId) {
   switch (eventName) {
     case 'conversation_started':
       // Migration already handled in processStream.
