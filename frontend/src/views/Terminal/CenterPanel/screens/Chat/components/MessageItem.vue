@@ -311,7 +311,6 @@
 <script>
 import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, defineAsyncComponent } from 'vue';
 import { useStore } from 'vuex';
-import showdown from 'showdown';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/atom-one-dark.css';
 
@@ -321,89 +320,14 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 const ProviderSetup = defineAsyncComponent(() => import('./ProviderSetup.vue'));
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import morphdom from 'morphdom';
+import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
+import { vMorphHtml } from '@/utils/morphHtmlDirective';
 import { API_CONFIG } from '@/../user.config.js';
 import {
   buildLocalFileUrl as sharedBuildLocalFileUrl,
   fileUrlToLocalFileUrl as sharedFileUrlToLocalFileUrl,
   rewriteLocalFileURLsInHTML as sharedRewriteLocalFileURLsInHTML,
 } from '@/utils/localFileUrl.js';
-
-// --- v-morph-html directive ---
-// Uses morphdom to diff/patch DOM instead of innerHTML replacement (v-html).
-// Preserves stateful elements (Chart.js canvases, iframes, MathJax) during streaming.
-const PRESERVE_SELECTORS = [
-  '.html-inline-preview-wrapper',
-  '[data-buttons-added]',
-  '[data-image-buttons-added]',
-  '.math-container[data-math-rendered]',
-].join(',');
-
-// A viz container is "rendered" once its output element exists. Preserving on data-source-code
-// alone strands stubs that lost their canvas (morphdom + duplicate-id race during streaming).
-function isRenderedVizContainer(el) {
-  if (!el || !el.classList) return false;
-  if (el.classList.contains('chartjs-container')) return !!el.querySelector('canvas');
-  if (el.classList.contains('d3-container')) return !!el.querySelector('.d3-chart');
-  if (el.classList.contains('threejs-container')) return !!el.querySelector('canvas.threejs-canvas');
-  if (el.classList.contains('mermaid-container')) return !!el.querySelector('svg');
-  return false;
-}
-
-function shouldPreserve(el) {
-  if (!el || el.nodeType !== 1) return false;
-  if (el.tagName === 'CANVAS') return true;
-  if (el.tagName === 'IFRAME') return true;
-  if (isRenderedVizContainer(el)) return true;
-  try {
-    return el.matches(PRESERVE_SELECTORS);
-  } catch {
-    return false;
-  }
-}
-
-const vMorphHtml = {
-  mounted(el, binding) {
-    el.innerHTML = binding.value || '';
-    el._morphHtml = binding.value;
-  },
-  updated(el, binding) {
-    const newHtml = binding.value || '';
-    if (newHtml === el._morphHtml) return;
-    el._morphHtml = newHtml;
-
-    if (!el.childNodes.length) {
-      el.innerHTML = newHtml;
-      return;
-    }
-
-    const wrapper = document.createElement(el.tagName);
-    wrapper.innerHTML = newHtml;
-
-    morphdom(el, wrapper, {
-      childrenOnly: true,
-      onBeforeElUpdated(fromEl, toEl) {
-        if (shouldPreserve(fromEl)) return false;
-        if (fromEl.tagName === 'CODE' && fromEl.classList.contains('hljs') && fromEl.textContent === toEl.textContent) return false;
-        return true;
-      },
-      onBeforeNodeDiscarded(node) {
-        if (node.nodeType === 1 && shouldPreserve(node)) return false;
-        if (node.nodeType === 1) {
-          try {
-            if (node.matches('.viz-action-buttons')) {
-              // Keep action buttons only when their container is still a rendered viz; otherwise
-              // the parent is a stub being replaced and the buttons go with it.
-              return !isRenderedVizContainer(node.parentElement);
-            }
-            if (node.matches('.assistant-image-wrapper, .html-code-actions')) return false;
-          } catch {}
-        }
-        return true;
-      },
-    });
-  },
-};
 
 // Lazy-loaded heavy library caches (loaded on first use)
 let _hljs = null;
@@ -514,59 +438,6 @@ const loadThreeJs = async () => {
   }
   return { THREE: _THREE, THREE_ADDONS: _THREE_ADDONS, OrbitControls: _OrbitControls };
 };
-
-// Simple showdown converter like in response.js
-const markdownConverter = new showdown.Converter({
-  tables: true,
-  strikethrough: true,
-  literalMidWordUnderscores: true,
-  omitExtraWLInCodeBlocks: false,
-  simpleLineBreaks: true,
-  ghCodeBlocks: true,
-  preserveIndent: true,
-  extensions: [
-    function () {
-      return [
-        {
-          type: 'output',
-          filter: function (text) {
-            // Simple hash for deterministic IDs from content
-            const hashCode = (s) => {
-              let h = 0;
-              for (let i = 0; i < s.length; i++) {
-                h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-              }
-              return Math.abs(h).toString(36);
-            };
-
-            // Convert ```chartjs code blocks into chart containers
-            let blockIndex = 0;
-            let result = text.replace(/<pre><code class="[^"]*language-chartjs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, config) => {
-              const id = 'chart-' + hashCode(config) + '-' + blockIndex++;
-              return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${config}</code></div>`;
-            });
-            // Convert ```d3 code blocks into D3 containers
-            result = result.replace(/<pre><code class="[^"]*language-d3[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
-              const id = 'd3-' + hashCode(code) + '-' + blockIndex++;
-              return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${code}</code></div>`;
-            });
-            // Convert ```threejs code blocks into Three.js containers
-            result = result.replace(/<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
-              const id = 'three-' + hashCode(code) + '-' + blockIndex++;
-              return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
-            });
-            // Convert ```mermaid code blocks into Mermaid containers (PRD-017)
-            result = result.replace(/<pre><code class="[^"]*language-mermaid[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
-              const id = 'mermaid-' + hashCode(code) + '-' + blockIndex++;
-              return `<div class="mermaid-container" data-mermaid-id="${id}"><code class="mermaid-code" style="display:none">${code}</code></div>`;
-            });
-            return result;
-          },
-        },
-      ];
-    },
-  ],
-});
 
 export default {
   name: 'MessageItem',
@@ -1805,187 +1676,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     // Legacy alias for backward compatibility
     const sanitizeHTML = addTargetBlankToLinks;
 
-    // --- Fenced code block extraction (handles nested fences) ---
-    // Showdown can't handle nested fences (```markdown containing ```bash etc.)
-    // We extract outermost blocks first, let showdown process the rest, then restore.
-    // Uses a stack: ```lang pushes, bare ``` pops. When stack empties, outermost block is complete.
-    const fencedBlockStore = [];
-
-    const extractFencedBlocks = (text) => {
-      fencedBlockStore.length = 0;
-      const lines = text.split('\n');
-      const result = [];
-      const fenceStack = []; // stack of { char, len }
-      let blockLines = [];
-      let blockLang = '';
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const stripped = line.trimStart();
-        const fenceMatch = stripped.match(/^(`{3,}|~{3,})(.*)/);
-
-        if (!fenceMatch) {
-          if (fenceStack.length > 0) {
-            blockLines.push(line);
-          } else {
-            result.push(line);
-          }
-          continue;
-        }
-
-        const char = fenceMatch[1][0];
-        const len = fenceMatch[1].length;
-        const info = fenceMatch[2].trim();
-
-        // Closing fence: no info string, same char, >= same length as top of stack
-        if (!info && fenceStack.length > 0) {
-          const top = fenceStack[fenceStack.length - 1];
-          if (top.char === char && len >= top.len) {
-            fenceStack.pop();
-            if (fenceStack.length === 0) {
-              // Outermost fence closed — save the block
-              fencedBlockStore.push({ content: blockLines.join('\n'), lang: blockLang });
-              result.push(`<!--CBLK${fencedBlockStore.length - 1}-->`);
-              blockLines = [];
-              blockLang = '';
-              continue;
-            } else {
-              // Inner fence closed — keep as block content
-              blockLines.push(line);
-              continue;
-            }
-          }
-        }
-
-        // Opening fence
-        if (fenceStack.length === 0) {
-          // Outermost opening
-          blockLang = info.split(/\s/)[0] || '';
-          blockLines = [];
-        } else {
-          // Inner opening — keep as block content
-          blockLines.push(line);
-        }
-        fenceStack.push({ char, len });
-      }
-
-      // Unclosed outermost fence (streaming)
-      if (fenceStack.length > 0 && blockLines.length > 0) {
-        fencedBlockStore.push({ content: blockLines.join('\n'), lang: blockLang, unclosed: true });
-        result.push(`<!--CBLK${fencedBlockStore.length - 1}-->`);
-      }
-
-      return result.join('\n');
-    };
-
-    const restoreFencedBlocks = (html) => {
-      const hashCode = (s) => {
-        let h = 0;
-        for (let i = 0; i < s.length; i++) {
-          h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-        }
-        return Math.abs(h).toString(36);
-      };
-      let vizIdx = 0;
-
-      return html.replace(/(?:<p>\s*)?<!--CBLK(\d+)-->(?:\s*<\/p>)?/g, (_, idx) => {
-        const block = fencedBlockStore[parseInt(idx)];
-        if (!block) return '';
-
-        const escaped = block.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        // Sanitize language name to prevent injection
-        const safeLang = (block.lang || '').replace(/[^a-zA-Z0-9_+-]/g, '');
-
-        // Unclosed blocks (still streaming) — show as code until closing fence arrives
-        if (block.unclosed) {
-          const langClass = safeLang ? ` class="${safeLang} language-${safeLang}"` : '';
-          return `<pre><code${langClass}>${escaped}</code></pre>`;
-        }
-
-        // Handle special viz languages (morphdom preserves these during streaming)
-        if (safeLang === 'chartjs') {
-          const id = 'chart-' + hashCode(block.content) + '-' + vizIdx++;
-          return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${escaped}</code></div>`;
-        }
-        if (safeLang === 'd3') {
-          const id = 'd3-' + hashCode(block.content) + '-' + vizIdx++;
-          return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${escaped}</code></div>`;
-        }
-        if (safeLang === 'threejs') {
-          const id = 'three-' + hashCode(block.content) + '-' + vizIdx++;
-          return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${escaped}</code></div>`;
-        }
-        if (safeLang === 'mermaid') {
-          const id = 'mermaid-' + hashCode(block.content) + '-' + vizIdx++;
-          return `<div class="mermaid-container" data-mermaid-id="${id}"><code class="mermaid-code" style="display:none">${escaped}</code></div>`;
-        }
-
-        const langClass = safeLang ? ` class="${safeLang} language-${safeLang}"` : '';
-        return `<pre><code${langClass}>${escaped}</code></pre>`;
-      });
-    };
-
-    // Protect math from showdown (which eats backslashes). HTML comments survive all contexts.
-    // Code blocks are already extracted upstream, so only inline math needs protection here.
-    const mathStore = [];
-    const protectMath = (text) => {
-      mathStore.length = 0;
-      const save = (match) => {
-        mathStore.push(match);
-        return `<!--M${mathStore.length - 1}-->`;
-      };
-      text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
-      text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
-      text = text.replace(/\\\([\s\S]+?\\\)/g, save);
-      return text;
-    };
-    const restoreMath = (html) => {
-      let mathIdx = 0;
-      return html.replace(/<!--M(\d+)-->/g, (_, i) => {
-        let m = (mathStore[parseInt(i)] || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        // Hash the content for a stable ID across re-renders
-        let h = 0;
-        for (let c = 0; c < m.length; c++) h = ((h << 5) - h + m.charCodeAt(c)) | 0;
-        const id = 'math-' + Math.abs(h).toString(36) + '-' + mathIdx++;
-        // Wrap in stable container — morphdom preserves these after MathJax typesets them
-        if (m.startsWith('$$') && m.endsWith('$$')) {
-          return `<div class="math-container" id="${id}">\\[${m.slice(2, -2)}\\]</div>`;
-        } else if (m.startsWith('\\[') && m.endsWith('\\]')) {
-          return `<div class="math-container" id="${id}">${m}</div>`;
-        } else if (m.startsWith('\\(') && m.endsWith('\\)')) {
-          return `<span class="math-container" id="${id}">${m}</span>`;
-        }
-        return m;
-      });
-    };
-
-    // Wrapper to suppress showdown's noisy "maximum nesting of 10 spans" console.error
-    // This warning fires during streaming when incomplete markdown creates recursive span patterns - harmless
-    const safeMarkdownToHtml = (text) => {
-      const origError = console.error;
-      console.error = (...args) => {
-        if (typeof args[0] === 'string' && args[0].includes('maximum nesting')) return;
-        origError.apply(console, args);
-      };
-      try {
-        // 1. Extract fenced code blocks (handles nested fences that showdown can't)
-        const withoutBlocks = extractFencedBlocks(text);
-        // 2. Protect math from showdown mangling
-        const safe = protectMath(withoutBlocks);
-        // 3. Convert markdown → HTML
-        let html = restoreMath(markdownConverter.makeHtml(safe));
-        // 4. Restore code blocks as proper <pre><code> (or viz containers)
-        html = restoreFencedBlocks(html);
-        return html;
-      } catch (e) {
-        // Showdown can stack-overflow on pathological content (deeply nested spans, etc.)
-        console.warn('[MessageItem] Markdown rendering failed, falling back to escaped text:', e.message);
-        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-      } finally {
-        console.error = origError;
-      }
-    };
+    // Markdown -> HTML lives in @/utils/markdownPipeline.js so it can be unit-tested
+    // without mounting this component. Passing `streaming` makes it tag code blocks
+    // whose closing fence has not arrived yet with data-streaming="true";
+    // highlightCode() uses that marker to skip them (see STREAMING CONTRACT there).
+    const safeMarkdownToHtml = (text) => renderMarkdown(text, { streaming: !!props.status });
 
     // Detect if content is HTML
     const isHTMLContent = (content) => {
@@ -2368,7 +2063,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       nextTick(async () => {
         if (messageRef.value) {
           // Highlight all code blocks, including those with v-html
-          const codeBlocks = messageRef.value.querySelectorAll('pre code:not(.hljs)');
+          // Blocks still being written are excluded by HIGHLIGHTABLE_CODE_SELECTOR.
+          // Highlighting them is wasted O(n^2) work AND the cause of the streaming
+          // flash: highlight.js adds .hljs out of band, the next morphdom patch
+          // strips it, repeat — several times a second.
+          const codeBlocks = messageRef.value.querySelectorAll(HIGHLIGHTABLE_CODE_SELECTOR);
           if (codeBlocks.length > 0) {
             const hljs = await loadHljs();
             codeBlocks.forEach((block) => {
@@ -2459,30 +2158,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         return sanitizeHTML(text);
       }
 
-      let content = text;
-
-      // Handle incomplete code blocks (odd number of ``` fences)
-      const openingFences = (content.match(/```/g) || []).length;
-
-      if (openingFences % 2 !== 0) {
-        if (props.status) {
-          const lastFenceIndex = content.lastIndexOf('```');
-          const completedContent = content.substring(0, lastFenceIndex);
-          const incompleteBlock = content.substring(lastFenceIndex);
-
-          let renderedCompleted = '';
-          if (completedContent.trim()) {
-            let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
-            renderedCompleted = safeMarkdownToHtml(processedCompleted);
-            renderedCompleted = addTargetBlankToLinks(renderedCompleted);
-          }
-          return renderedCompleted + '<pre><code>' + incompleteBlock.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
-        } else {
-          content += '\n```';
-        }
-      }
-
-      let processedContent = content.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
+      let processedContent = text.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
       let renderedHtml = safeMarkdownToHtml(processedContent);
 
       // Resolve image references AFTER markdown conversion.
@@ -3239,6 +2915,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
 .message-text :deep(pre code.hljs) {
   opacity: 1;
+}
+
+/* A code block that is still streaming has not been highlighted yet. Give it
+   highlight.js's base foreground colour so that when the closing fence lands and
+   hljs runs, the only visible change is token colours appearing — not the whole
+   block changing shade. */
+.message-text :deep(pre code[data-streaming]) {
+  color: #abb2bf;
 }
 
 .message-text :deep(h1),
