@@ -8,6 +8,13 @@ function getAuthHeaders() {
     : { 'Content-Type': 'application/json' };
 }
 
+// Routes with a create already in flight. The "does this route have a page?"
+// check and the POST that follows it are separated by an await, so two
+// dispatches for the same route can interleave and both pass the check. This
+// set closes that window — it is the reason the guard below is reliable rather
+// than merely usually-right.
+const creatingRoutes = new Set();
+
 const state = {
   pages: [],
   activePageId: null,
@@ -240,7 +247,18 @@ const actions = {
   /**
    * Create page from a default layout.
    */
-  async createPageFromDefault({ commit, state }, { screenName, defaultWidgets }) {
+  async createPageFromDefault({ commit, state, getters }, { screenName, defaultWidgets }) {
+    // Idempotent by route. A screen has exactly one page; asking twice must
+    // never produce two. Callers can therefore dispatch this freely without
+    // having to reason about whether someone else already did.
+    const existing = getters.pageForRoute(screenName);
+    if (existing) {
+      commit('SET_ACTIVE_PAGE', existing.id);
+      return existing.id;
+    }
+    if (creatingRoutes.has(screenName)) return null;
+    creatingRoutes.add(screenName);
+
     const pageId = 'page_' + Math.random().toString(36).slice(2, 8);
 
     const nameMap = {
@@ -318,6 +336,11 @@ const actions = {
       });
     } catch (err) {
       console.error('Failed to create page in backend:', err);
+    } finally {
+      // Release the route lock even if the POST failed, otherwise a single
+      // network blip would permanently block this screen from ever getting a
+      // page for the rest of the session.
+      creatingRoutes.delete(screenName);
     }
 
     return pageId;

@@ -58,6 +58,36 @@ class LayoutService {
         page_id,
       });
     } catch (error) {
+      // (user_id, route) is uniquely indexed — see widgetLayoutDedupe.js. A
+      // client racing itself into a second page for the same route is not an
+      // error condition, it's a question already answered: hand back the page
+      // that exists. This keeps a stale or retrying client correct instead of
+      // leaving it holding a page id the database refused.
+      if (/SQLITE_CONSTRAINT|UNIQUE constraint/i.test(error?.message || '')) {
+        try {
+          const userId = this._getUserId(req);
+          const existing = await new Promise((resolve, reject) => {
+            db.get(
+              `SELECT * FROM widget_layouts
+                WHERE user_id IS ? AND route = ?
+                ORDER BY page_order ASC, created_at ASC
+                LIMIT 1`,
+              [userId, req.body?.route ?? null],
+              (err, row) => (err ? reject(err) : resolve(row)),
+            );
+          });
+          if (existing) {
+            return res.status(200).json({
+              message: 'Layout already exists for this route',
+              deduplicated: true,
+              id: existing.id,
+              page_id: existing.page_id,
+            });
+          }
+        } catch (lookupError) {
+          console.error('Error resolving existing layout after constraint:', lookupError);
+        }
+      }
       console.error('Error creating layout:', error);
       res.status(500).json({ error: 'Failed to create layout', details: error.message });
     }
