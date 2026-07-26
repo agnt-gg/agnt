@@ -5,6 +5,42 @@ import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js'
 import { executeTool } from '../../../services/orchestrator/tools.js';
 import { randomUUID } from 'crypto';
 
+/**
+ * Normalize a conversationHistory parameter into a message array.
+ *
+ * ParameterResolver.resolveTemplate() runs every string param through
+ * String.replace(), and JSON.stringify()s any object/array it resolves. So a
+ * wired `{{Worker.conversationHistory}}` arrives here as JSON TEXT, not an
+ * array. Spreading that string into `messages` would expand it one character
+ * per element and poison the request. Anything that isn't a well-formed array
+ * of {role, content} turns is discarded rather than silently corrupting the
+ * conversation.
+ */
+export function normalizeConversationHistory(raw) {
+  if (!raw) return [];
+
+  let value = raw;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      console.warn('[agnt-agent] conversationHistory was a non-JSON string; ignoring it.');
+      return [];
+    }
+  }
+
+  if (!Array.isArray(value)) {
+    console.warn(`[agnt-agent] conversationHistory resolved to ${typeof value}, expected array; ignoring it.`);
+    return [];
+  }
+
+  return value.filter(
+    (turn) => turn && typeof turn === 'object' && !Array.isArray(turn) && typeof turn.role === 'string' && turn.content !== undefined
+  );
+}
+
 class AgentTool extends BaseAction {
   static schema = {
     title: 'Agent Chat',
@@ -22,6 +58,12 @@ class AgentTool extends BaseAction {
         type: 'string',
         inputType: 'textarea',
         description: 'The message to send to the agent',
+      },
+      conversationHistory: {
+        type: 'array',
+        inputType: 'text',
+        description:
+          "Optional prior turns to prepend, as [{role, content}]. Wire this node's own conversationHistory output back in (e.g. {{Worker.conversationHistory}}) to make the agent RESIDENT — it keeps context across loop iterations and stays cache-warm. Leave empty for an EPHEMERAL agent that starts from a clean context every call.",
       },
     },
     outputs: {
@@ -115,9 +157,11 @@ class AgentTool extends BaseAction {
       const agentToolSchemas = agentContext.availableTools || [];
 
       // Prepare messages with system prompt and conversation history
+      const priorHistory = normalizeConversationHistory(params.conversationHistory);
+
       const messages = [
         { role: 'system', content: agentContext.systemPrompt },
-        ...(params.conversationHistory || []),
+        ...priorHistory,
         {
           role: 'user',
           content: params.message,
@@ -255,7 +299,7 @@ class AgentTool extends BaseAction {
         toolExecutions: toolExecutions,
         toolsUsed: toolExecutions.length,
         conversationHistory: [
-          ...(params.conversationHistory || []),
+          ...priorHistory,
           {
             role: 'user',
             content: params.message,
