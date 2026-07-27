@@ -8,7 +8,7 @@ import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { updateEstimateCalibration } from '../utils/contextManager.js';
-import { isSubscriptionProvider } from './ai/providerConfigs.js';
+import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConfigs.js';
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest } from './orchestrator/contextManifest.js';
@@ -1462,6 +1462,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // the tools and the chat (128k-200k tiers), where the alternative was the
     // context manager's emergency recovery deleting the user's conversation.
     let toolCapResult = null;
+    // Providers whose transport cannot carry tool schemas at all (the one-shot
+    // print CLIs: grok-build, cursor-cli) get an empty surface. Their clients
+    // silently drop options.tools, so anything sent here is pure budget waste
+    // — and worse, the tool instructions in the prompt make the model narrate
+    // calls that never execute.
+    if (!providerSupportsTools(normalizedProvider) && finalToolSchemas.length > 0) {
+      console.log(
+        `[ToolBudget] ${normalizedProvider} cannot receive tool schemas (CLI transport) — ` +
+        `sending 0/${finalToolSchemas.length} tools.`
+      );
+      finalToolSchemas = [];
+    }
     {
       const { availableTokens } = getContextBudget(model, normalizedProvider);
       // The system prompt is not conversation and not tools — it ships on every

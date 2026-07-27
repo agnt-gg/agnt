@@ -444,7 +444,12 @@ const PROVIDER_CONFIGS = [
     sdkType: 'openai',
     authScheme: 'grok-build',
     capabilities: {
-      text: { supportsStreaming: true, supportsTools: true },
+      // supportsTools is FALSE because the transport cannot carry them: the
+      // local `grok` CLI is a one-shot print interface with no function-calling
+      // surface, and GrokBuildCliClient has no way to forward schemas. Shipping
+      // tools anyway makes the model narrate calls that never execute.
+      // The orchestrator reads this via providerSupportsTools() below.
+      text: { supportsStreaming: true, supportsTools: false },
     },
     recommendedModels: ['grok-4.5'],
     fallbackModels: ['grok-4.5'],
@@ -455,7 +460,7 @@ const PROVIDER_CONFIGS = [
         inputCostPer1M: 0,
         outputCostPer1M: 0,
         supportsVision: false,
-        supportsTools: true,
+        supportsTools: false, // CLI transport — see capabilities.text above
         reasoning: true,
       },
     },
@@ -471,7 +476,10 @@ const PROVIDER_CONFIGS = [
     sdkType: 'openai',
     authScheme: 'cursor-cli',
     capabilities: {
-      text: { supportsStreaming: true, supportsTools: true },
+      // supportsTools FALSE for the same reason as grok-build: `cursor-agent -p`
+      // prints one result and exposes no function-calling interface, so
+      // CursorCliClient cannot forward schemas.
+      text: { supportsStreaming: true, supportsTools: false },
     },
     recommendedModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto'],
     fallbackModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto', 'gpt-5.2', 'claude-opus-5-high'],
@@ -482,7 +490,7 @@ const PROVIDER_CONFIGS = [
         inputCostPer1M: 0,
         outputCostPer1M: 0,
         supportsVision: false,
-        supportsTools: true,
+        supportsTools: false, // CLI transport — see capabilities.text above
         reasoning: true,
       },
     },
@@ -1695,6 +1703,21 @@ export const SUBSCRIPTION_PROVIDERS = new Set([
 
 export function isSubscriptionProvider(providerKey) {
   return SUBSCRIPTION_PROVIDERS.has(String(providerKey || '').toLowerCase());
+}
+
+/**
+ * Whether a provider's chat transport can carry tool/function schemas at all.
+ *
+ * Defaults PERMISSIVE (true) for unknown providers and for providers that
+ * don't declare the capability — the historical behaviour. Only an explicit
+ * `capabilities.text.supportsTools: false` opts a provider out. The
+ * subscription-CLI connectors (grok-build, cursor-cli) opt out because their
+ * clients drive one-shot print CLIs and silently drop any tools they are
+ * given; sending schemas there makes the model hallucinate tool calls.
+ */
+export function providerSupportsTools(providerKey) {
+  const cfg = getProviderConfig(String(providerKey || '').toLowerCase());
+  return cfg?.capabilities?.text?.supportsTools !== false;
 }
 
 /**
