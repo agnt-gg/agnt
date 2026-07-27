@@ -18,6 +18,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
+import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const DEFAULT_MODEL = process.env.AGNT_CURSOR_DEFAULT_MODEL || 'cursor-grok-4.5-high';
 const DEFAULT_TIMEOUT_MS = Number(process.env.AGNT_CURSOR_TIMEOUT_MS || 300000); // 5 min
@@ -78,11 +79,13 @@ function getDefaultModel() {
  * Runs `cursor-agent status` and looks for a "Logged in" marker.
  */
 async function checkAuth({ timeoutMs = 25000 } = {}) {
-  const bin = resolveCursorBin();
+  // Invocation, not bare bin: on Windows the CLI is a .cmd shim Node cannot
+  // spawn; resolveCursorInvocation returns the underlying node.exe + index.js.
+  const invocation = resolveCursorInvocation();
   return new Promise((resolve) => {
     let out = '';
     let settled = false;
-    const child = spawn(bin, ['status'], {
+    const child = spawn(invocation.command, [...invocation.args, 'status'], {
       env: { ...process.env, HOME: os.homedir() },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -125,7 +128,7 @@ async function runExec({
   if (!prompt || !String(prompt).trim()) {
     throw new Error('cursor_exec: prompt is required');
   }
-  const bin = resolveCursorBin();
+  const invocation = resolveCursorInvocation();
   const workdir = cwd ? expandUserPath(cwd) : getDefaultWorkdir();
   try { fs.mkdirSync(workdir, { recursive: true }); } catch { /* ignore */ }
 
@@ -143,9 +146,9 @@ async function runExec({
     let resultObj = null;
     let settled = false;
 
-    const child = spawn(bin, args, {
+    const child = spawn(invocation.command, [...invocation.args, ...args], {
       cwd: workdir,
-      env: { ...process.env, HOME: os.homedir(), PATH: pathEnv(bin) },
+      env: { ...process.env, HOME: os.homedir(), PATH: pathEnv(invocation.command) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

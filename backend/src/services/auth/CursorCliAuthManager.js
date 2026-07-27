@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import generateUUID from '../../utils/generateUUID.js';
+import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000;
 const DEVICE_SESSION_TTL_MS = 15 * 60 * 1000;
@@ -79,9 +80,11 @@ class CursorCliAuthManager {
   }
 
   async _runCursor(args, { timeoutMs = 30000 } = {}) {
-    const bin = this.getCursorBin();
+    // Invocation, not bare bin: on Windows the CLI is a .cmd shim Node cannot
+    // spawn; resolveCursorInvocation returns the underlying node.exe + index.js.
+    const invocation = resolveCursorInvocation();
     return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, {
+      const child = spawn(invocation.command, [...invocation.args, ...args], {
         env: { ...process.env, HOME: os.homedir() },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -127,9 +130,11 @@ class CursorCliAuthManager {
       return this.apiCheckCache.value;
     }
 
-    const bin = this.getCursorBin();
-    let cliPresent = bin === 'cursor-agent';
-    try { cliPresent = cliPresent || fs.existsSync(bin); } catch { /* ignore */ }
+    const invocation = resolveCursorInvocation();
+    // A resolved args prefix (Windows node.exe + index.js) proves a real
+    // install; otherwise fall back to the historical checks.
+    let cliPresent = invocation.args.length > 0 || invocation.command === 'cursor-agent';
+    try { cliPresent = cliPresent || fs.existsSync(invocation.command); } catch { /* ignore */ }
 
     let loggedIn = false;
     let email = null;
@@ -203,8 +208,8 @@ class CursorCliAuthManager {
     };
     this.deviceSessions.set(sessionId, session);
 
-    const bin = this.getCursorBin();
-    const child = spawn(bin, ['login'], {
+    const invocation = resolveCursorInvocation();
+    const child = spawn(invocation.command, [...invocation.args, 'login'], {
       env: { ...process.env, HOME: os.homedir() },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

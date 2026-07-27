@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import generateUUID from '../../utils/generateUUID.js';
+import { grokBinCandidates } from '../../utils/cliInvocation.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000;
 const DEVICE_SESSION_TTL_MS = 15 * 60 * 1000;
@@ -42,13 +43,9 @@ function resolveGrokBin() {
   const envBin = typeof process.env.GROK_BIN === 'string' ? process.env.GROK_BIN.trim() : '';
   if (envBin) return envBin;
 
-  const home = os.homedir();
-  const candidates = [
-    path.join(home, '.local', 'bin', 'grok'),
-    path.join(home, '.grok', 'bin', 'grok'),
-    '/opt/homebrew/bin/grok',
-    '/usr/local/bin/grok',
-  ];
+  // Platform-aware: on Windows the installer ships grok.exe, which the
+  // extensionless POSIX candidates never matched.
+  const candidates = grokBinCandidates();
   for (const candidate of candidates) {
     try {
       if (fs.existsSync(candidate)) return candidate;
