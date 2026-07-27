@@ -43,6 +43,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import WorkflowDesignerComponent from './components/WorkflowDesigner/WorkflowDesigner.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import generateUUID from '@/views/_utils/generateUUID.js';
+import { isAddressedToWorkflow } from '@/utils/workflowBroadcast.js';
 
 export default {
   name: 'WorkflowForgeScreen',
@@ -452,11 +453,25 @@ export default {
     // --- Lifecycle Hooks ---
     // Listen for workflow-updated events
     const handleWorkflowUpdated = (event) => {
-      if (workflowDesigner.value && event.detail) {
-        // Update the workflow designer with the new workflow state
-        workflowDesigner.value.handleWorkflowGenerator(event.detail);
-        // DON'T call updatePanelProps - let the designer handle it
+      if (!workflowDesigner.value || !event.detail) return;
+
+      // This event arrives via a user-wide socket broadcast, so it can be for a
+      // workflow this canvas is NOT showing (another tab, another panel, a
+      // late-arriving update after navigating away). Applying it blind replaces
+      // the open canvas and reassigns activeWorkflowId inside
+      // handleWorkflowGenerator() — which then redirects the next save to the
+      // wrong workflow. Verify the event is addressed to us before applying.
+      const activeId = workflowDesigner.value.activeWorkflowId;
+      if (!isAddressedToWorkflow(event.detail, activeId)) {
+        console.warn(
+          `[WorkflowForge] Ignoring workflow-updated for "${event.detail?.id ?? 'unknown'}" — this canvas is showing "${activeId ?? 'none'}".`
+        );
+        return;
       }
+
+      // Update the workflow designer with the new workflow state
+      workflowDesigner.value.handleWorkflowGenerator(event.detail);
+      // DON'T call updatePanelProps - let the designer handle it
     };
 
     // Listen for workflow-started events from chat

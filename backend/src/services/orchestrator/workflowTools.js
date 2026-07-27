@@ -106,6 +106,20 @@ export const TOOLS = {
           return JSON.stringify({ success: false, error: 'No workflow state available' });
         }
 
+        // The workflow this chat session is actually editing. Everything below
+        // is addressed to this id and nothing else.
+        const targetId = workflowId || workflowState.id || null;
+
+        // Guard: the model must not retarget another workflow. This result is
+        // broadcast to every tab the user has open, so a mismatched id here
+        // would push workflow A's canvas into a window showing workflow B.
+        if (workflow.id && targetId && workflow.id !== targetId) {
+          return JSON.stringify({
+            success: false,
+            error: `Refusing to update: payload targets workflow "${workflow.id}" but this chat is editing "${targetId}". Omit the id, or open the intended workflow first.`,
+          });
+        }
+
         // Validate workflow structure
         if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
           return JSON.stringify({ success: false, error: 'Workflow must have a nodes array' });
@@ -148,7 +162,7 @@ export const TOOLS = {
         const updatedWorkflow = {
           ...workflowState,
           ...workflow,
-          id: workflowState.id, // ALWAYS preserve original workflow ID
+          id: targetId, // ALWAYS preserve the workflow this session is editing
           zoomLevel: workflow.zoomLevel || workflowState.zoomLevel || 1,
           canvasOffsetX: workflow.canvasOffsetX !== undefined ? workflow.canvasOffsetX : workflowState.canvasOffsetX || 0,
           canvasOffsetY: workflow.canvasOffsetY !== undefined ? workflow.canvasOffsetY : workflowState.canvasOffsetY || 0,
@@ -164,7 +178,7 @@ export const TOOLS = {
         const userId = getUserIdFromToken(authToken);
         if (userId) {
           broadcastToUser(userId, RealtimeEvents.WORKFLOW_UPDATED, {
-            id: workflowId,
+            id: targetId,
             name: updatedWorkflow.name,
             userId: userId,
             timestamp: new Date().toISOString(),

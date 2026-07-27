@@ -2879,7 +2879,19 @@ body.dark button#workflow-magic-button {
 </style>
 
 <style>
-header {
+/* Page-scoped, like every other rule in this GLOBAL (unscoped) block.
+ *
+ * This was previously a bare `header { display: none !important }`. Being
+ * unscoped AND !important, it hid EVERY <header> element in the entire
+ * application from the moment this chunk loaded — not just on this page, and
+ * not just in this component. It silently blanked the One Canvas pane headers
+ * (title, maximise, close) the instant a workflow surface was opened, which is
+ * exactly the kind of defect that is invisible in review and impossible to
+ * attribute from the symptom.
+ *
+ * The body[data-page=...] prefix restores the original intent — hide the shell
+ * header while the Workflow Forge page is open — with no reach beyond it. */
+body[data-page='terminal-workflow-forge'] header {
   display: none !important;
 }
 

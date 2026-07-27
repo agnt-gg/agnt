@@ -2,6 +2,7 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { debounce } from 'lodash-es';
 import { API_CONFIG } from '../tt.config.js';
 import { useStore } from 'vuex';
+import { dispatchWorkflowUpdated } from '../utils/workflowBroadcast.js';
 
 // Singleton socket instance
 let socket = null;
@@ -255,12 +256,14 @@ export function useRealtimeSync() {
         store.commit('workflows/UPDATE_WORKFLOW', data.workflow);
       }
 
-      // CRITICAL: If workflowState is included, dispatch window event for real-time canvas update
+      // CRITICAL: If workflowState is included, dispatch window event for real-time canvas update.
+      // This broadcast reaches EVERY tab/panel the user has open, so the event
+      // must be ADDRESSED with its target workflow id — consumers refuse any
+      // payload that isn't for the workflow they're showing. See
+      // utils/workflowBroadcast.js for the contract.
       if (data.workflowState && data.id) {
-        console.log('[Realtime] Dispatching workflow-updated window event with full state');
-        window.dispatchEvent(new CustomEvent('workflow-updated', {
-          detail: data.workflowState
-        }));
+        console.log('[Realtime] Dispatching workflow-updated window event for workflow', data.id);
+        dispatchWorkflowUpdated(data.id, data.workflowState);
 
         // Also update canvas store if this is the active workflow
         try {
