@@ -224,6 +224,10 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'zai':
           await this.startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client);
           break;
+        // CLI transports: OpenAI-compat chat.completions only — no .responses
+        // API, so they must NOT join the startCodexResponsesStream group.
+        case 'grok-build':
+        case 'cursor-cli':
         case 'openrouter':
         case 'togetherai':
           await this.startOpenAiLikeStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client, provider);
@@ -789,6 +793,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
         'openai-codex': DEFAULT_CODEX_MODEL,
+        'grok-build': 'grok-4.5',
+        'cursor-cli': 'cursor-grok-4.5-high',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -851,6 +857,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'kimi-code':
         case 'minimax':
         case 'zai':
+        case 'grok-build':
+        case 'cursor-cli':
           response = await client.chat.completions.create({
             model: selectedModel,
             messages: [
@@ -1254,6 +1262,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
         'openai-codex': DEFAULT_CODEX_MODEL,
+        'grok-build': 'grok-4.5',
+        'cursor-cli': 'cursor-grok-4.5-high',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1323,6 +1333,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'kimi-code':
         case 'minimax':
         case 'zai':
+        case 'grok-build':
+        case 'cursor-cli':
           completion = await client.chat.completions.create({
             model: selectedModel,
             messages: [
@@ -1537,6 +1549,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
         'openai-codex': DEFAULT_CODEX_MODEL,
+        'grok-build': 'grok-4.5',
+        'cursor-cli': 'cursor-grok-4.5-high',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1599,6 +1613,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'kimi-code':
         case 'minimax':
         case 'zai':
+        case 'grok-build':
+        case 'cursor-cli':
           response = await client.chat.completions.create({
             model: selectedModel,
             messages: [
@@ -1758,6 +1774,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
         'openai-codex': DEFAULT_CODEX_MODEL,
+        'grok-build': 'grok-4.5',
+        'cursor-cli': 'cursor-grok-4.5-high',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1863,6 +1881,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'kimi-code':
         case 'minimax':
         case 'zai':
+        case 'grok-build':
+        case 'cursor-cli':
           completion = await client.chat.completions.create({
             model: selectedModel,
             messages: [

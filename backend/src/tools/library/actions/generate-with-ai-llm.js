@@ -89,6 +89,19 @@ const PROVIDER_CONFIG = {
     supportsImageGen: false,
     supportsImageEdit: false,
   },
+  // Subscription CLI transports (local grok / cursor-agent processes). Like
+  // codex, they must come from createLlmClient — there is no HTTP path at all.
+  // Text-only: the CLIs accept no image input.
+  'grok-build': {
+    supportsVision: false,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
+  'cursor-cli': {
+    supportsVision: false,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
   anthropic: {
     baseURL: undefined,
     defaultModel: 'claude-3-5-sonnet-20240620',
@@ -512,6 +525,19 @@ class GenerateWithAiLlm extends BaseAction {
         break;
       case 'kimi-code':
         response = await this.generateWithKimiCode({ ...params, prompt: fullPrompt });
+        break;
+      case 'grok-build':
+        // Local CLI transport — client MUST come from createLlmClient.
+        response = await this.generateWithManagedOpenAiLike(
+          { ...params, prompt: fullPrompt },
+          { provider: 'grok-build', defaultModel: 'grok-4.5' },
+        );
+        break;
+      case 'cursor-cli':
+        response = await this.generateWithManagedOpenAiLike(
+          { ...params, prompt: fullPrompt },
+          { provider: 'cursor-cli', defaultModel: 'cursor-grok-4.5-high' },
+        );
         break;
       case 'chutes':
         response = await this.generateWithChutes({ ...params, prompt: fullPrompt });

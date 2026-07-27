@@ -569,6 +569,38 @@ router.post('/:provider/models/refresh', async (req, res) => {
         });
       }
       apiKey = CodexAuthManager.getAccessToken();
+    } else if (providerLower === 'grok-build') {
+      // CLI transport: refresh means re-asking the local CLI, never HTTP — the
+      // config baseURL is decorative and GenericProviderService must not be hit.
+      const { default: GrokBuildAuthManager } = await import('../services/auth/GrokBuildAuthManager.js');
+      const status = await GrokBuildAuthManager.checkApiUsable({ forceRefresh: true });
+      if (!status.apiUsable) {
+        return res.status(400).json({
+          success: false,
+          error: status.error || 'Grok Build CLI is not authenticated. Run: grok login --oauth',
+        });
+      }
+      let models = Array.isArray(status.models) && status.models.length > 0 ? [...status.models] : [];
+      if (models.length === 0) {
+        const cfg = getProviderConfig('grok-build');
+        models = [...(cfg?.fallbackModels || ['grok-4.5'])];
+      }
+      return res.json({ success: true, models, cached: false, count: models.length });
+    } else if (providerLower === 'cursor-cli') {
+      const { default: CursorCliAuthManager } = await import('../services/auth/CursorCliAuthManager.js');
+      const status = await CursorCliAuthManager.checkApiUsable({ forceRefresh: true });
+      if (!status.apiUsable) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cursor CLI is not authenticated. Run: cursor-agent login',
+        });
+      }
+      let models = await CursorCliAuthManager.listModels({ timeoutMs: 20000 });
+      if (models.length === 0) {
+        const cfg = getProviderConfig('cursor-cli');
+        models = [...(cfg?.fallbackModels || ['cursor-grok-4.5-high'])];
+      }
+      return res.json({ success: true, models, cached: false, count: models.length });
     } else if (!hasHardcodedModels) {
       // keyOptional providers tolerate missing auth/key on refresh too — the
       // forced fetch fails fast upstream and the fallback ladder answers.
