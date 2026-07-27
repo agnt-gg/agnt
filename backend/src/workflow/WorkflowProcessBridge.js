@@ -13,6 +13,10 @@ class WorkflowProcessBridge {
     this.isReady = false;
     this.statusUpdateListeners = [];
     this.readyPromise = null;
+    // Single-flight guard: the 'exit' auto-restart and a manual restart can
+    // both be in flight at once. Without this they each spawn a workflow
+    // process and BOTH arm every trigger, double-firing every workflow.
+    this.restartPromise = null;
   }
 
   spawn() {
@@ -22,7 +26,11 @@ class WorkflowProcessBridge {
 
       console.log('Spawning workflow process at:', workflowProcessPath);
 
-      this.workflowProcess = fork(workflowProcessPath, [], {
+      // Bind every handler below to THIS child, never to `this.workflowProcess`.
+      // That field is reassigned by restart(); a handler that re-reads it later
+      // acts on whatever process happens to be current at fire time, which is
+      // how the force-kill timer used to SIGKILL its own replacement.
+      const child = fork(workflowProcessPath, [], {
         stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
         env: {
           ...process.env,
@@ -33,40 +41,64 @@ class WorkflowProcessBridge {
           AGNT_SKIP_DB_INIT: '1',
         },
       });
+      this.workflowProcess = child;
 
       // Handle messages from workflow process
-      this.workflowProcess.on('message', (message) => {
+      child.on('message', (message) => {
         this.handleMessage(message);
       });
 
       // Handle process errors
-      this.workflowProcess.on('error', (error) => {
+      child.on('error', (error) => {
         console.error('Workflow process error:', error);
-        this.isReady = false;
-      });
-
-      // Handle process exit
-      this.workflowProcess.on('exit', (code, signal) => {
-        console.log(`Workflow process exited with code ${code} and signal ${signal}`);
-        this.isReady = false;
-
-        // Auto-restart on unexpected exit
-        if (code !== 0 && code !== null) {
-          console.log('Workflow process crashed. Restarting in 5 seconds...');
-          setTimeout(() => {
-            this.restart().catch((err) => {
-              console.error('Failed to restart workflow process:', err);
-            });
-          }, 5000);
+        if (this.workflowProcess === child) {
+          this.isReady = false;
         }
       });
 
+      // Handle process exit
+      child.on('exit', (code, signal) => {
+        console.log(`Workflow process exited with code ${code} and signal ${signal}`);
+
+        // A superseded process dying must never clobber the state of the
+        // healthy replacement that took its place.
+        if (this.workflowProcess !== child) {
+          console.log('Ignoring exit from superseded workflow process.');
+          return;
+        }
+        this.isReady = false;
+
+        // shutdown() tags the process it is deliberately tearing down, so a
+        // planned teardown is never mistaken for a crash.
+        if (child.__agntExpectedExit) {
+          console.log('Workflow process exit was expected - not auto-restarting.');
+          return;
+        }
+
+        // Signal deaths (SIGKILL/SIGTERM, OOM-killer, force-kill) report
+        // code === null. The old guard `code !== 0 && code !== null` skipped
+        // every one of them, so a killed workflow process never came back.
+        const crashed = code !== 0 || signal !== null;
+        if (!crashed) {
+          return;
+        }
+
+        console.log(
+          `Workflow process crashed (code=${code}, signal=${signal}). Restarting in 5 seconds...`
+        );
+        setTimeout(() => {
+          this.restart().catch((err) => {
+            console.error('Failed to restart workflow process:', err);
+          });
+        }, 5000);
+      });
+
       // Handle stdout/stderr
-      this.workflowProcess.stdout.on('data', (data) => {
+      child.stdout.on('data', (data) => {
         console.log(`[Workflow Process]: ${data.toString().trim()}`);
       });
 
-      this.workflowProcess.stderr.on('data', (data) => {
+      child.stderr.on('data', (data) => {
         console.error(`[Workflow Process Error]: ${data.toString().trim()}`);
       });
 
@@ -84,7 +116,7 @@ class WorkflowProcessBridge {
         }
       };
 
-      this.workflowProcess.once('message', readyHandler);
+      child.once('message', readyHandler);
     });
 
     return this.readyPromise;
@@ -240,28 +272,62 @@ class WorkflowProcessBridge {
   }
 
   async shutdown() {
-    if (!this.workflowProcess) {
+    // Pin the process we are tearing down. Re-reading this.workflowProcess
+    // inside the timer let the force-kill land on a replacement spawned by
+    // restart() ~1.6s later, SIGKILLing a healthy process.
+    const proc = this.workflowProcess;
+    if (!proc) {
       return;
     }
 
     console.log('Shutting down workflow process...');
+
+    // Tag BEFORE any await so an immediate exit is still classified as planned.
+    proc.__agntExpectedExit = true;
+
+    // Force kill if still running after 5 seconds. Closes over `proc`, so it
+    // can only ever target the process this call was asked to shut down.
+    const forceKill = setTimeout(() => {
+      if (!proc.killed) {
+        console.log('Force killing workflow process...');
+        proc.kill('SIGKILL');
+      }
+    }, 5000);
+
+    // Register the cancel BEFORE awaiting: if the child exits while the
+    // SHUTDOWN round-trip is in flight, a listener attached afterwards would
+    // miss the already-emitted event and leave the timer armed.
+    proc.once('exit', () => clearTimeout(forceKill));
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      clearTimeout(forceKill);
+    }
 
     try {
       await this.sendMessage('SHUTDOWN', {}, 10000);
     } catch (error) {
       console.error('Error during graceful shutdown:', error);
     }
-
-    // Force kill if still running after 5 seconds
-    setTimeout(() => {
-      if (this.workflowProcess && !this.workflowProcess.killed) {
-        console.log('Force killing workflow process...');
-        this.workflowProcess.kill('SIGKILL');
-      }
-    }, 5000);
   }
 
+  /**
+   * Single-flight restart. Concurrent callers join the in-flight attempt
+   * instead of spawning a second workflow process that would re-arm every
+   * trigger a second time.
+   */
   async restart() {
+    if (this.restartPromise) {
+      console.log('Workflow process restart already in progress - joining it.');
+      return this.restartPromise;
+    }
+
+    this.restartPromise = this._performRestart().finally(() => {
+      this.restartPromise = null;
+    });
+
+    return this.restartPromise;
+  }
+
+  async _performRestart() {
     console.log('Restarting workflow process...');
 
     if (this.workflowProcess) {
