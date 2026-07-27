@@ -1,5 +1,19 @@
 import { API_CONFIG } from '@/tt.config.js';
-import { generateInstanceId, findEmptySlot } from '@/canvas/gridUtils.js';
+import { generateInstanceId, findEmptySlot, clampInstance } from '@/canvas/gridUtils.js';
+
+/**
+ * Clamp every instance in a layout array.
+ *
+ * Applied in the MUTATIONS rather than the actions on purpose: mutations are
+ * the only way geometry reaches state, so the grid invariant holds for every
+ * caller — the load path, the catalog, drag/resize, default + template
+ * layouts, and any future action written by someone who has not read this
+ * file. Enforcing it in each action would be a rule you must remember; here
+ * it is a property of the store.
+ */
+function clampLayout(layout) {
+  return Array.isArray(layout) ? layout.map((w) => clampInstance(w)) : [];
+}
 
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
@@ -53,11 +67,15 @@ const mutations = {
   },
 
   SET_LAYOUT(state, { pageId, layout }) {
-    state.layouts = { ...state.layouts, [pageId]: layout };
+    state.layouts = { ...state.layouts, [pageId]: clampLayout(layout) };
   },
 
   SET_ALL_LAYOUTS(state, layouts) {
-    state.layouts = layouts;
+    const clamped = {};
+    for (const [pageId, layout] of Object.entries(layouts || {})) {
+      clamped[pageId] = clampLayout(layout);
+    }
+    state.layouts = clamped;
   },
 
   SET_LOADED(state, loaded) {
@@ -87,7 +105,7 @@ const mutations = {
     if (!state.layouts[pageId]) {
       state.layouts = { ...state.layouts, [pageId]: [] };
     }
-    state.layouts[pageId].push(widget);
+    state.layouts[pageId].push(clampInstance(widget));
   },
 
   REMOVE_WIDGET(state, { pageId, instanceId }) {
@@ -99,7 +117,9 @@ const mutations = {
   UPDATE_WIDGET(state, { pageId, instanceId, updates }) {
     if (state.layouts[pageId]) {
       const widget = state.layouts[pageId].find((w) => w.instanceId === instanceId);
-      if (widget) Object.assign(widget, updates);
+      // Clamp the MERGED result: a position update and a size update each look
+      // valid alone but can combine into an out-of-bounds footprint.
+      if (widget) Object.assign(widget, clampInstance({ ...widget, ...updates }));
     }
   },
 };

@@ -95,14 +95,30 @@ export default {
     // see widgetDefinitions store. Trigger a one-shot fetch the first time
     // this widget renders, then read source reactively from the store so the
     // computed re-runs once the source lands.
-    if (props.definition?.id) {
-      store.dispatch('widgetDefinitions/ensureDefinitionLoaded', props.definition.id);
-    }
     const liveDefinition = computed(() =>
       props.definition?.id ? store.getters['widgetDefinitions/getDefinitionById'](props.definition.id) : null
     );
     const sourceCode = computed(
       () => liveDefinition.value?.source_code ?? props.definition?.source_code ?? ''
+    );
+
+    // Re-hydrate whenever the source is missing — not just once at mount.
+    //
+    // A one-shot dispatch in setup() only covers the FIRST render. If the
+    // catalog is re-fetched later (opening a widget picker, the Widget
+    // Manager, any refresh), the list response has no `source_code`, this
+    // computed collapses to '' and the iframe goes blank permanently because
+    // nothing asks for the body again. Watching the value means the widget
+    // repairs itself no matter who invalidated it.
+    //
+    // Safe against loops: ensureDefinitionLoaded early-returns once the key
+    // exists (even when empty) and coalesces concurrent callers.
+    watch(
+      () => [props.definition?.id, sourceCode.value],
+      ([id, src]) => {
+        if (id && !src) store.dispatch('widgetDefinitions/ensureDefinitionLoaded', id);
+      },
+      { immediate: true },
     );
 
     // ── Widget SDK bridge ──

@@ -6,7 +6,25 @@
  * (dynamic definitions rendered via CustomWidgetRenderer).
  */
 
+import { ref } from 'vue';
+
 const registry = new Map();
+
+/**
+ * Bumped on every register/unregister.
+ *
+ * The registry is a plain Map, so a `computed(() => getWidget(id))` captures no
+ * dependency and NEVER re-evaluates — it is frozen at whatever the registry
+ * held on first render. Custom widgets are registered asynchronously (when the
+ * definitions fetch resolves), so any frame that rendered before that lookup
+ * returns undefined forever: no name, no icon, no default size. It shows up as
+ * a widget window with a completely blank header.
+ *
+ * Touch this ref inside such a computed to make the lookup live. WidgetCatalog
+ * already carried a private `refreshKey` for exactly this reason — this is the
+ * shared version of that workaround.
+ */
+export const registryVersion = ref(0);
 
 /**
  * Register a widget definition.
@@ -25,6 +43,7 @@ const registry = new Map();
  */
 export function registerWidget(id, definition) {
   registry.set(id, { id, ...definition });
+  registryVersion.value++;
 }
 
 /**
@@ -33,6 +52,7 @@ export function registerWidget(id, definition) {
  */
 export function unregisterWidget(id) {
   registry.delete(id);
+  registryVersion.value++;
 }
 
 /**

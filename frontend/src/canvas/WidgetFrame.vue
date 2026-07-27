@@ -9,6 +9,7 @@
       'is-screen-widget': isScreenWidget && !isCustomPage,
     }"
     :style="frameStyle"
+    :data-instance-id="widget.instanceId"
     @mousedown="bringToFront"
     ref="frameRef"
   >
@@ -38,7 +39,7 @@
 <script>
 import { ref, computed, onBeforeUnmount } from 'vue';
 import { gridToPixel, snapToGrid, snapSizeToGrid, clampToGrid, GRID_COLS, GRID_ROWS, GRID_GAP } from './gridUtils.js';
-import { getWidget } from './widgetRegistry.js';
+import { getWidget, registryVersion } from './widgetRegistry.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
@@ -58,7 +59,14 @@ export default {
     let dragState = null;
     let resizeState = null;
 
-    const widgetDef = computed(() => getWidget(props.widget.widgetId));
+    // registryVersion makes this lookup reactive. Custom widgets register
+    // asynchronously (after the definitions fetch), and without a dependency
+    // this computed would keep returning the `undefined` it got on first
+    // render — leaving the window header blank forever.
+    const widgetDef = computed(() => {
+      registryVersion.value;
+      return getWidget(props.widget.widgetId);
+    });
     const isScreenWidget = computed(() => widgetDef.value?.isScreenWidget === true);
     // On custom pages, all widgets get header + resize. On default pages, screen widgets are fixed.
     const showControls = computed(() => props.isCustomPage || !isScreenWidget.value);
@@ -119,8 +127,10 @@ export default {
       const dx = e.clientX - dragState.startX;
       const dy = e.clientY - dragState.startY;
 
-      const newPixelX = dragState.origCol * props.cellWidth + GRID_GAP + dx;
-      const newPixelY = dragState.origRow * props.cellHeight + GRID_GAP + dy;
+      // Must match gridToPixel's origin exactly (no GAP) or every drag starts
+      // one gap off and the widget jumps on mousedown.
+      const newPixelX = dragState.origCol * props.cellWidth + dx;
+      const newPixelY = dragState.origRow * props.cellHeight + dy;
 
       const snapped = snapToGrid(newPixelX, newPixelY, props.cellWidth, props.cellHeight);
       const clamped = clampToGrid(snapped.col, snapped.row, props.widget.cols, props.widget.rows);
@@ -184,8 +194,13 @@ export default {
       const def = widgetDef.value;
       const minCols = def?.minSize?.cols || 1;
       const minRows = def?.minSize?.rows || 1;
-      const cols = Math.max(minCols, Math.min(snapped.cols, GRID_COLS - props.widget.col));
-      const rows = Math.max(minRows, Math.min(snapped.rows, GRID_ROWS - props.widget.row));
+      // Order matters: apply minSize FIRST, then let the grid bound win.
+      // `Math.max(min, Math.min(span, bound))` applied the min LAST, so a
+      // widget whose minSize exceeded the span remaining at its column
+      // (col 10 + minCols 4 = 14 > 12) resized straight past the canvas edge
+      // and could no longer be grabbed back.
+      const cols = Math.max(1, Math.min(Math.max(minCols, snapped.cols), GRID_COLS - props.widget.col));
+      const rows = Math.max(1, Math.min(Math.max(minRows, snapped.rows), GRID_ROWS - props.widget.row));
 
       // Live preview
       const el = frameRef.value;
@@ -242,6 +257,13 @@ export default {
 <style scoped>
 .widget-frame {
   position: absolute;
+  /* border-box is LOAD-BEARING for grid geometry. gridToPixel computes the
+   * frame's total footprint (cellWidth-derived, GRID_GAP-spaced); with the
+   * default content-box the 1px border below GROWS the rendered box 2px past
+   * that math, which eats the trailing gaps: left/top land at 4px but
+   * right/bottom/inter-widget collapse to 2px (measured). The border must
+   * live INSIDE the computed box. */
+  box-sizing: border-box;
   background: var(--color-background);
   border: 1px solid var(--terminal-border-color, var(--color-dull-navy));
   border-radius: 0;
@@ -290,6 +312,13 @@ export default {
   overflow: auto;
   position: relative;
   min-height: 0;
+  /* Full screens mounted as widget content carry their own z-indexes (e.g.
+   * a positioned .main-panel). Without isolation those participate in the
+   * FRAME's stacking context and paint over the .wf-resize grip — measured
+   * via elementFromPoint: the grip was unreachable on every screen widget.
+   * isolate flattens all content z-indexes into one atomic layer, so the
+   * grip's z-index always wins. */
+  isolation: isolate;
 }
 
 /* ── Resize handle (diagonal grip lines) ── */
@@ -331,6 +360,7 @@ export default {
   cursor: grab;
   user-select: none;
   border-bottom: 1px solid var(--terminal-border-color);
+  background: rgba(var(--color-background-rgb, 0, 0, 0), 0.93);
 }
 
 .wf-hdr:active {

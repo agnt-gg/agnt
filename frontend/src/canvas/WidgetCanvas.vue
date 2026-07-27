@@ -6,13 +6,13 @@
         v-for="c in gridCols - 1"
         :key="'col-' + c"
         class="grid-line-v"
-        :style="{ left: c * cellWidth + GRID_GAP + 'px' }"
+        :style="{ left: c * cellWidth - GRID_GAP / 2 + 'px' }"
       ></div>
       <div
         v-for="r in gridRows - 1"
         :key="'row-' + r"
         class="grid-line-h"
-        :style="{ top: r * cellHeight + GRID_GAP + 'px' }"
+        :style="{ top: r * cellHeight - GRID_GAP / 2 + 'px' }"
       ></div>
     </div>
 

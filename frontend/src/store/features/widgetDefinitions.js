@@ -56,9 +56,39 @@ const getters = {
 
 const mutations = {
   SET_DEFINITIONS(state, definitions) {
-    state.definitions = definitions;
+    // DO NOT replace hydrated rows with de-hydrated ones.
+    //
+    // GET /widget-definitions deliberately strips `source_code`
+    // (WidgetDefinitionService.getAllWidgets) to keep this store flat. A plain
+    // wholesale replace therefore DE-HYDRATES every definition that had
+    // already been loaded — and CustomWidgetRenderer reads its source from
+    // here, so the instant anything re-fetches the catalog, every mounted
+    // custom widget renders a blank iframe. It never recovers on its own,
+    // because ensureDefinitionLoaded is dispatched once from setup() and
+    // nothing re-triggers it.
+    //
+    // That is why opening a widget picker "crashed" live widgets: the picker
+    // refreshes the catalog, and the refresh silently emptied them.
+    //
+    // Carry forward source we ALREADY hold, but only when the row is unchanged
+    // (`updated_at` identical) — a stale body is worse than a re-fetch. Memory
+    // stays flat: nothing new is retained, only what was already resident.
+    const prior = new Map();
+    for (const d of state.definitions) {
+      if (d && d.id && 'source_code' in d) prior.set(d.id, d);
+    }
+
+    state.definitions = definitions.map((def) => {
+      if (!def || 'source_code' in def) return def;
+      const held = prior.get(def.id);
+      if (held && held.updated_at === def.updated_at) {
+        return { ...def, source_code: held.source_code };
+      }
+      return def;
+    });
+
     // Sync all definitions to the widget registry so catalog picks them up
-    for (const def of definitions) {
+    for (const def of state.definitions) {
       syncToRegistry(def);
     }
   },
