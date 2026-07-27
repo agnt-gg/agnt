@@ -52,6 +52,8 @@ describe('fatal pipe / crash dedupe', () => {
     expect(isBenignPipeError(new Error('write broken pipe after parent exit'))).toBe(true);
     expect(isBenignPipeError(new Error('something else blew up'))).toBe(false);
     expect(isBenignPipeError(Object.assign(new Error('x'), { code: 'ENOENT' }))).toBe(false);
+    // EIO is generic (disk/FS/etc.) — must still dump for diagnostics
+    expect(isBenignPipeError(Object.assign(new Error('read EIO'), { code: 'EIO' }))).toBe(false);
   });
 
   it('dedupes identical crash dumps within the window', () => {

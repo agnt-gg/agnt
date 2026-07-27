@@ -4,15 +4,16 @@
  * One call at the top of each process wires up: the recorder, the console
  * bridge, process-level fatal handlers, and a final flush on exit.
  *
- * `fatalPolicy` differs by process on purpose:
- *   backend  — 'exit': a process in an undefined state must not keep serving.
- *              The supervisor in main.js respawns it. Today this is 'stay',
- *              which produces a zombie backend that looks alive and isn't.
+ * `fatalPolicy` (default for all processes: 'stay'; opt into 'exit' via
+ * AGNT_FATAL_POLICY=exit or an explicit installDiagnostics option):
+ *   backend  — default 'stay' for compatibility with today's restart semantics.
+ *              Preferred long-term is 'exit' so a process in an undefined state
+ *              does not keep serving (main.js can respawn it). Flipping the
+ *              default is intentional and separate from this module's dumps.
  *   workflow — 'stay': the parent bridge owns restart, and an in-flight
- *              workflow is often still salvageable.
+ *              workflow is often still salvageable. (Override with AGNT_FATAL_POLICY.)
  *   main     — 'stay': quitting is decided by Electron lifecycle code.
  *
- * Default fatal policy remains 'stay' (opt into exit via AGNT_FATAL_POLICY).
  * This module also:
  *   - skips full crash dumps for benign pipe/stream errors (EPIPE storms)
  *   - dedupes identical crash dumps within a short window
@@ -43,11 +44,11 @@ export const EXIT_PARENT_GONE = 74;
 export function isBenignPipeError(err) {
   if (!err) return false;
   const code = err.code || err.errno;
+  // Do not treat generic EIO as benign — it can be real disk/FS failure.
   if (
     code === 'EPIPE' ||
     code === 'ERR_STREAM_DESTROYED' ||
-    code === 'ERR_IPC_CHANNEL_CLOSED' ||
-    code === 'EIO'
+    code === 'ERR_IPC_CHANNEL_CLOSED'
   ) {
     return true;
   }
