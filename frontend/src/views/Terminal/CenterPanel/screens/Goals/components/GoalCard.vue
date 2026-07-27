@@ -80,6 +80,7 @@
 import { computed } from 'vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { serverAge } from '@/utils/serverTime.js';
 
 const AGING_THRESHOLDS = {
   warning: 24 * 60 * 60 * 1000,
@@ -137,7 +138,10 @@ export default {
     const agingClass = computed(() => {
       if (TERMINAL_STATUSES.includes(props.goal.status)) return '';
       if (!props.goal.created_at) return '';
-      const age = Date.now() - new Date(props.goal.created_at).getTime();
+      // serverAge, not a raw subtraction: `created_at` is a naive UTC string,
+      // so `new Date()` reads it as local time and the age comes out negative
+      // west of Greenwich — every goal then looks brand new. See serverTime.js.
+      const age = serverAge(props.goal.created_at);
       if (age > AGING_THRESHOLDS.stale) return 'aged-stale';
       if (age > AGING_THRESHOLDS.danger) return 'aged-danger';
       if (age > AGING_THRESHOLDS.warning) return 'aged-warning';

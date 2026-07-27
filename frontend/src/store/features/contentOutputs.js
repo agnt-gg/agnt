@@ -2,6 +2,8 @@ import { API_CONFIG } from '@/tt.config.js';
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+import { toServerDate } from '@/utils/serverTime.js';
+
 export default {
   namespaced: true,
   state: {
@@ -13,10 +15,13 @@ export default {
   },
   mutations: {
     SET_OUTPUTS(state, { outputs, totalCount, append = false }) {
+      // Boundary conversion. Server timestamps are naive UTC strings from
+      // SQLite's CURRENT_TIMESTAMP; `new Date()` would read them as local time
+      // and place every row hours in the future. See utils/serverTime.js.
       const mappedOutputs = outputs.map((output) => ({
         ...output,
-        created_at: output.created_at ? new Date(output.created_at) : null,
-        updated_at: output.updated_at ? new Date(output.updated_at) : null,
+        created_at: toServerDate(output.created_at),
+        updated_at: toServerDate(output.updated_at),
       }));
 
       if (append) {
@@ -40,8 +45,8 @@ export default {
     ADD_OUTPUT(state, output) {
       state.outputs.unshift({
         ...output,
-        created_at: output.created_at ? new Date(output.created_at) : null,
-        updated_at: output.updated_at ? new Date(output.updated_at) : null,
+        created_at: toServerDate(output.created_at),
+        updated_at: toServerDate(output.updated_at),
       });
     },
     /**

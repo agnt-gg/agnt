@@ -30,6 +30,7 @@
 <script>
 import { formatDistanceToNow } from 'date-fns';
 import Tooltip from '../../../../_components/Tooltip.vue';
+import { parseServerTime } from '@/utils/serverTime.js';
 
 export default {
   name: 'AgentActivity',
@@ -52,7 +53,11 @@ export default {
     },
 
     formatActivityTime(timestamp) {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+      // Naive server timestamps are UTC; `new Date()` would read them as local
+      // and render "in 4 hours" for something that just happened.
+      const parsed = parseServerTime(timestamp);
+      if (!parsed) return '';
+      return formatDistanceToNow(new Date(parsed), { addSuffix: true });
     },
   },
 };
