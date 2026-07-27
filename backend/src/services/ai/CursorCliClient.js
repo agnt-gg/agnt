@@ -103,6 +103,15 @@ export function createCursorCliClient({
             sessionStore.set(resolvedSessionKey, result.sessionId);
           }
 
+          // runExec has a split contract: it REJECTS on timeout/auth/spawn but
+          // RESOLVES { success: false, error } on usage limits and bare CLI
+          // exits. Reading .text off that shape rendered a silent empty
+          // assistant message — a usage-limit looked like the model said
+          // nothing. Surface it as the error it is.
+          if (result && result.success === false) {
+            throw new Error(result.error || 'Cursor CLI returned no result');
+          }
+
           const content = result.text || '';
 
           if (options.stream) {

@@ -99,6 +99,26 @@ class CursorCliAuthManager {
   }
 
   /**
+   * List model ids known to the CLI via `cursor-agent models`.
+   * Public API for routes — callers must not reach into _runCursor.
+   * Returns [] on any failure; callers fall back to the static config list.
+   */
+  async listModels({ timeoutMs = 20000 } = {}) {
+    try {
+      const probe = await this._runCursor(['models'], { timeoutMs });
+      return `${probe.stdout}`
+        .split('\n')
+        .map((line) => {
+          const m = line.match(/^\s*([a-z0-9][a-z0-9._-]+)\s+-\s+/i);
+          return m ? m[1] : null;
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Health check via `cursor-agent status`.
    */
   async checkApiUsable({ forceRefresh = false } = {}) {

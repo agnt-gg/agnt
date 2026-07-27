@@ -411,21 +411,11 @@ router.get('/:provider/models', async (req, res) => {
             error: 'Cursor CLI is not authenticated. Run: cursor-agent login',
           });
         }
-        let models = [];
-        try {
-          const probe = await CursorCliAuthManager._runCursor(['models'], { timeoutMs: 20000 });
-          models = `${probe.stdout}`
-            .split('\n')
-            .map((line) => {
-              const m = line.match(/^\s*([a-z0-9][a-z0-9._-]+)\s+-\s+/i);
-              return m ? m[1] : null;
-            })
-            .filter(Boolean);
-        } catch { /* fall through to static */ }
+        let models = await CursorCliAuthManager.listModels({ timeoutMs: 20000 });
         if (models.length === 0) {
           const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
           const cfg = getProviderConfig('cursor-cli');
-          models = [...(cfg?.fallbackModels || ['composer-2.5'])];
+          models = [...(cfg?.fallbackModels || ['cursor-grok-4.5-high'])];
         }
         return res.json({ success: true, models, cached: false, count: models.length });
       } else {

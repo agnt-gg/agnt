@@ -484,6 +484,19 @@ const PROVIDER_CONFIGS = [
     recommendedModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto'],
     fallbackModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto', 'gpt-5.2', 'claude-opus-5-high'],
     modelMetadata: {
+      // The DEFAULT model. Cursor does not publish per-model context limits
+      // for its proxy; composer parity (256k) is a conservative floor. Without
+      // an entry the generic 128k fallback applied — halving the tool/context
+      // budget of the model every cursor-cli chat starts on.
+      'cursor-grok-4.5-high': {
+        contextWindow: 256000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: false, // CLI transport — see capabilities.text above
+        reasoning: true,
+      },
       'composer-2.5': {
         contextWindow: 256000,
         maxOutputTokens: 65536,
@@ -1692,6 +1705,10 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
  *   gemini-cli   - authScheme 'gemini-cli', Google account OAuth.
  *   antigravity  - subscription-included (already priced at 0).
  *   kimi-code    - subscription CLI (already priced null).
+ *   grok-build   - authScheme 'grok-build', local `grok` CLI OIDC session
+ *                  (xAI subscription); models priced at 0.
+ *   cursor-cli   - authScheme 'cursor-cli', local `cursor-agent login`
+ *                  session (Cursor subscription); models priced at 0.
  */
 export const SUBSCRIPTION_PROVIDERS = new Set([
   'claude-code',
@@ -1699,6 +1716,8 @@ export const SUBSCRIPTION_PROVIDERS = new Set([
   'gemini-cli',
   'antigravity',
   'kimi-code',
+  'grok-build',
+  'cursor-cli',
 ]);
 
 export function isSubscriptionProvider(providerKey) {

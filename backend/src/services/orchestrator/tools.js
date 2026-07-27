@@ -902,7 +902,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'cursor_exec',
         description:
-          'Runs a prompt using the local Cursor Agent CLI (`cursor-agent`). Requires the CLI installed and authenticated (`cursor-agent login`). Best for coding tasks, refactors, and repo-aware edits inside a sandboxed workdir. Uses your Cursor subscription (not an API key). Default model composer-2.5 (Cursor-native, avoids Anthropic usage caps).',
+          'Runs a prompt using the local Cursor Agent CLI (`cursor-agent`). Requires the CLI installed and authenticated (`cursor-agent login`). Best for coding tasks, refactors, and repo-aware edits inside a sandboxed workdir. Uses your Cursor subscription (not an API key). Default model cursor-grok-4.5-high (override with AGNT_CURSOR_DEFAULT_MODEL).',
         parameters: {
           type: 'object',
           properties: {
@@ -913,7 +913,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             model: {
               type: 'string',
               description:
-                "Cursor model id (default from AGNT_CURSOR_DEFAULT_MODEL or 'composer-2.5'). Examples: composer-2.5, auto, gpt-5.2, cursor-grok-4.5-high, claude-opus-5-high. Anthropic models may hit subscription usage caps.",
+                "Cursor model id (default from AGNT_CURSOR_DEFAULT_MODEL or 'cursor-grok-4.5-high'). Examples: cursor-grok-4.5-high, composer-2.5, auto, gpt-5.2, claude-opus-5-high. Anthropic models may hit subscription usage caps.",
             },
             cwd: {
               type: 'string',
