@@ -32,6 +32,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { augmentEnvPath } from '../../utils/envPath.js';
+import { coerceArgumentTypes } from '../../utils/argumentCoercion.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -4948,8 +4949,11 @@ async function executeToolInner(toolName, args, authToken, context) {
     if (nativeTool) {
       console.log(`Executing native orchestrator tool: ${toolName}`);
 
-      // Validate arguments against schema
-      const validation = validateToolArguments(toolName, resolvedArgs, nativeTool.schema);
+      // Repair lossless type mismatches (e.g. "440" -> 440) before validating —
+      // models emit stringified scalars constantly and a hard reject wastes a
+      // full model round-trip on an error the runtime can fix deterministically.
+      const coercedArgs = coerceArgumentTypes(resolvedArgs, nativeTool.schema);
+      const validation = validateToolArguments(toolName, coercedArgs, nativeTool.schema);
       if (!validation.valid) {
         console.error(`Tool validation failed for ${toolName}:`, validation.error);
         return JSON.stringify({
@@ -4963,7 +4967,7 @@ async function executeToolInner(toolName, args, authToken, context) {
 
       // Execute the tool with error handling
       try {
-        const result = await nativeTool.execute(resolvedArgs, authToken, context);
+        const result = await nativeTool.execute(coercedArgs, authToken, context);
         return result;
       } catch (toolError) {
         console.error(`Tool execution error for ${toolName}:`, toolError);
@@ -5032,8 +5036,10 @@ async function executeToolInner(toolName, args, authToken, context) {
       const toolSource = registryTool.isPlugin ? `plugin (${registryTool.pluginName})` : 'registry';
       console.log(`[Orchestrator] Executing ${toolSource} tool: ${registryToolName}`);
 
-      // Validate arguments against registry tool schema
-      const validation = validateToolArguments(registryToolName, args, registryTool.openApiSchema);
+      // Same lossless coercion as the native path — registry/plugin schemas
+      // use the identical { function: { parameters } } shape.
+      const coercedArgs = coerceArgumentTypes(args, registryTool.openApiSchema);
+      const validation = validateToolArguments(registryToolName, coercedArgs, registryTool.openApiSchema);
       if (!validation.valid) {
         console.error(`Registry tool validation failed for ${registryToolName}:`, validation.error);
         return JSON.stringify({
@@ -5045,7 +5051,7 @@ async function executeToolInner(toolName, args, authToken, context) {
         });
       }
 
-      const params = { ...args };
+      const params = { ...coercedArgs };
 
       // Get userId from context first (passed from agnt-agent.js), fallback to decoding authToken
       // Supports multiple JWT field names: id, userId, user_id, sub
