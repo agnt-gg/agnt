@@ -8,6 +8,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import { resolveSocketIdentity, SocketIdentitySource } from './src/utils/socketIdentity.js';
 
 // Import plugin system
 import PluginInstaller from './src/plugins/PluginInstaller.js';
@@ -479,19 +480,45 @@ function startServer() {
     io.on('connection', (socket) => {
       console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
-      // Handle user authentication and room joining
+      // Handle user authentication and room joining.
+      //
+      // Identity is derived from the bearer token, NEVER from the payload's
+      // `userId`. Every realtime fan-out targets `user:<id>` rooms, so trusting
+      // a client-supplied id would let any socket join any user's room and read
+      // their live chat stream, tool calls and goal progress. See
+      // src/utils/socketIdentity.js for the full policy (and why a stale client
+      // with no token is still tolerated on local desktop installs).
       socket.on('authenticate', (data) => {
-        const { userId } = data;
-        if (userId) {
-          // Join user-specific room
-          socket.join(`user:${userId}`);
-          socket.userId = userId; // Store userId on socket
-          console.log(`[Socket.IO] User ${userId} authenticated and joined room user:${userId}`);
-          socket.emit('authenticated', { success: true, userId });
-        } else {
-          console.log(`[Socket.IO] Authentication failed - no userId provided`);
-          socket.emit('authenticated', { success: false, error: 'No userId provided' });
+        const identity = resolveSocketIdentity(data);
+
+        if (!identity.ok) {
+          console.warn(`[Socket.IO] Authentication rejected for ${socket.id}: ${identity.reason}`);
+          socket.emit('authenticated', { success: false, error: identity.reason });
+          return;
         }
+
+        const { userId } = identity;
+
+        // Re-authenticating as someone else must not leave the socket in the
+        // previous user's room — otherwise identity switching leaks backwards.
+        if (socket.userId && socket.userId !== userId) {
+          socket.leave(`user:${socket.userId}`);
+        }
+
+        socket.join(`user:${userId}`);
+        socket.userId = userId;
+        socket.identityVerified = identity.verified;
+
+        if (identity.source === SocketIdentitySource.UNVERIFIED_CLAIM) {
+          console.warn(
+            `[Socket.IO] User ${userId} joined user:${userId} via UNVERIFIED legacy claim ` +
+            `(no token sent — stale client). Set SOCKET_AUTH_STRICT=true to refuse these.`,
+          );
+        } else {
+          console.log(`[Socket.IO] User ${userId} authenticated and joined room user:${userId}`);
+        }
+
+        socket.emit('authenticated', { success: true, userId, verified: identity.verified });
       });
 
       // Mid-run steering: user types a message while a turn is streaming.

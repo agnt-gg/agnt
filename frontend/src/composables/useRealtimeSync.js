@@ -66,12 +66,21 @@ export function useRealtimeSync() {
   const userId = computed(() => store.state.userAuth?.user?.id);
 
   /**
-   * Authenticate socket with user ID
+   * Authenticate the socket.
+   *
+   * The token is authoritative — the backend derives the user id from it and
+   * ignores the `userId` field entirely (see backend/src/utils/socketIdentity.js).
+   * `userId` is still sent so older backends keep working during a rolling
+   * upgrade; it carries no authority on a current backend.
    */
   const authenticate = () => {
     if (socket && socket.connected && userId.value && !isAuthenticated.value) {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.warn('[Realtime] No auth token available — realtime updates may be refused.');
+      }
       console.log('[Realtime] Authenticating with userId:', userId.value);
-      socket.emit('authenticate', { userId: userId.value });
+      socket.emit('authenticate', { userId: userId.value, token });
     }
   };
 
