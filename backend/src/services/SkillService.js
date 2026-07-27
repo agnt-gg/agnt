@@ -2,6 +2,7 @@ import SkillModel from '../models/SkillModel.js';
 import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { parseSkillMd, serializeSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
+import { skillCatalogGist } from '../utils/skillCatalogGist.js';
 
 /**
  * PRD-057: Programmatic skill import from SKILL.md text.
@@ -77,14 +78,16 @@ class SkillService {
 
   /**
    * Build a compact XML catalog of available skills (Tier 1 - progressive disclosure).
-   * Only includes name + description for minimal token usage.
+   * One line per skill: "- name: gist". Full descriptions cost >13k tokens
+   * at ~100 skills; the gist keeps just enough trigger signal
+   * (activate_skill returns the full playbook).
    * @param {Array<{name: string, description: string, source?: string}>} skills
    */
   static buildSkillCatalog(skills) {
     if (!skills || skills.length === 0) return '';
 
     const entries = skills
-      .map((s) => `  <skill name="${s.name}" source="${s.source || 'database'}">\n    <description>${s.description || ''}</description>\n  </skill>`)
+      .map((s) => `- ${s.name}: ${skillCatalogGist(s.description)}`)
       .join('\n');
 
     return `<available-skills>\n${entries}\n</available-skills>`;
@@ -95,8 +98,8 @@ class SkillService {
    */
   static buildSkillActivationInstructions() {
     return `SKILL ACTIVATION INSTRUCTIONS:
-You have skills available (listed above in <available-skills>). Skills provide specialized instructions for specific tasks.
-- When a user's request matches a skill's description, call the activate_skill tool with the skill's name to load its full instructions.
+You have skills available (listed above in <available-skills> as one-line gists). Each line is an abbreviated summary - a skill's full playbook loads only when activated.
+- When a user's request plausibly matches a skill's gist, call the activate_skill tool with the skill's name to load its full instructions. Activation is cheap - if unsure whether a skill applies, activate it and check rather than guessing.
 - Only activate skills that are relevant to the current task.
 - Once activated, follow the skill's instructions carefully.
 - You can activate multiple skills if needed for a complex task.
