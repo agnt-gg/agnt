@@ -1,4 +1,6 @@
 import 'dotenv/config';
+// Self-configures as proc:'workflow' via IS_WORKFLOW_PROCESS.
+import '../diagnostics/bootstrap.js';
 import { dbReady } from '../models/database/index.js';
 import ProcessManager from './ProcessManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';

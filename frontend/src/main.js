@@ -28,6 +28,45 @@ registerAllWidgets();
 // Initialize axios rate limit interceptor
 initializeAxiosInterceptor(store);
 
+// ============================================================================
+// DIAGNOSTICS — renderer error capture
+// ============================================================================
+// Installed BEFORE mount so an error thrown during initial render is caught.
+// The renderer has no fs access; window.electron.reportError relays to main,
+// which writes to the same JSONL timeline as the backend and workflow child.
+// In web/Docker builds window.electron is absent and every call is a no-op.
+const reportClientError = (level, src, msg, err, extra = {}) => {
+  try {
+    window.electron?.reportError?.({
+      level,
+      src,
+      msg: String(msg || '').slice(0, 400),
+      url: window.location?.hash,
+      ...extra,
+      err: err ? { name: err.name, msg: err.message, stack: err.stack } : undefined,
+    });
+  } catch {
+    /* an error reporter must never throw inside an error handler */
+  }
+};
+
+window.addEventListener('error', (event) => {
+  reportClientError('ERROR', 'window', event.message, event.error, {
+    line: event.lineno,
+    col: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+  reportClientError('ERROR', 'promise', 'unhandled rejection', reason);
+});
+
+app.config.errorHandler = (err, _instance, info) => {
+  reportClientError('ERROR', 'vue', info, err, { componentStack: info });
+  console.error(err); // keep the devtools behaviour developers rely on
+};
+
 // MOUNT IMMEDIATELY - show the app shell before data loading
 // This eliminates the blank screen while API calls complete
 app.mount('#app');

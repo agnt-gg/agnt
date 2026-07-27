@@ -1,4 +1,7 @@
 import 'dotenv/config';
+// MUST stay directly under dotenv: import hoisting means diagnostics are live
+// before any other module's top-level code can throw.
+import './src/diagnostics/bootstrap.js';
 import cors from 'cors';
 import express from 'express';
 import compression from 'compression';

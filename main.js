@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard } from 'electron';
+import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard, crashReporter } from 'electron';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +13,31 @@ import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ============================================================================
+// DIAGNOSTICS
+// ============================================================================
+// One boot id for this app launch, exported into the env so the backend and
+// the workflow child inherit it. Every record from every process then shares
+// a correlation key with no IPC required.
+import { randomUUID } from 'crypto';
+import { installDiagnostics, diagnosticsDir } from './backend/src/diagnostics/install.js';
+import { installElectronCrashHooks } from './backend/src/diagnostics/electronHooks.js';
+
+const BOOT_ID = randomUUID();
+process.env.AGNT_BOOT_ID = BOOT_ID;
+
+const { recorder } = installDiagnostics({
+  proc: 'main',
+  dir: diagnosticsDir(app.getPath('userData')),
+  bootId: BOOT_ID,
+  getState: () => ({
+    backendPid: backendProcess?.pid,
+    supervisorState: supervisor?.state,
+    windowOpen: Boolean(mainWindow && !mainWindow.isDestroyed()),
+    appVersion: typeof APP_VERSION === 'string' ? APP_VERSION : undefined,
+  }),
+});
 
 // Platform-specific ffmpeg binary paths
 const getFfmpegPath = () => {
@@ -184,6 +209,16 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
 
   // Unsanctioned nonzero exit: pre-existing crash behavior, unchanged.
   if (code !== 0 && code !== null) {
+    // Persist the dying backend's output. Without this the only artifact is
+    // whatever happens to be in a developer's terminal scrollback — and in a
+    // packaged build there is no terminal at all.
+    recorder.dumpCrash('backend-exit', new Error(`backend exited with code ${code}`), {
+      code,
+      signal,
+      supervisorState: supervisor.state,
+      stderrTail: (lastStderr || '').slice(-4000),
+      stdoutTail: (lastStdout || '').slice(-2000),
+    });
     console.error('Backend process crashed!');
     console.error('Exit code:', code);
     if (signal) console.error('Signal:', signal);
@@ -288,6 +323,24 @@ ipcMain.handle('check-for-updates', async () => {
 
 ipcMain.handle('get-app-version', () => {
   return APP_VERSION;
+});
+
+// Renderer diagnostics relay. The renderer is sandboxed with no fs access, so
+// window.onerror / unhandledrejection / Vue errorHandler reach disk via main.
+ipcMain.on('diagnostics:client-error', (_event, payload = {}) => {
+  try {
+    recorder.write(payload.level || 'ERROR', payload.src || 'renderer', payload.msg || 'client error', {
+      err: payload.err,
+      data: {
+        url: payload.url,
+        line: payload.line,
+        col: payload.col,
+        componentStack: payload.componentStack,
+      },
+    });
+  } catch (err) {
+    console.warn('diagnostics relay failed:', err.message);
+  }
 });
 
 ipcMain.on('open-download-page', () => {
@@ -872,6 +925,20 @@ function waitForBackend(callback) {
 }
 
 app.on('ready', () => {
+  // Native minidumps (V8/native aborts never reach JS) plus the four Electron
+  // death modes: render-process-gone, child-process-gone, gpu crash, and a
+  // frozen window. Windows are auto-watched via 'browser-window-created', so
+  // createWindow() and the activate path are both covered with no wiring.
+  installElectronCrashHooks(recorder, {
+    app,
+    crashReporter,
+    getState: () => ({
+      backendPid: backendProcess?.pid,
+      supervisorState: supervisor.state,
+      appVersion: APP_VERSION,
+    }),
+  });
+
   // Serve agnt-file:///<absolute-path> by streaming the file from disk with
   // proper Range-request support so <video> seeking works.
   protocol.handle('agnt-file', async (request) => {

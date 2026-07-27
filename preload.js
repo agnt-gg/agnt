@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('electron', {
   revealInFolder: (fullPath) => ipcRenderer.send('shell:show-item-in-folder', fullPath),
   openPath: (fullPath) => ipcRenderer.send('shell:open-path', fullPath),
 
+  // Diagnostics relay. The renderer is sandboxed and has no fs, so client-side
+  // errors reach disk through main. Fire-and-forget by design: a failing error
+  // reporter must never itself throw inside an error handler.
+  reportError: (payload) => ipcRenderer.send('diagnostics:client-error', payload),
+
   // Listen for update notifications from main process
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('update-available', (event, updateInfo) => callback(updateInfo));
