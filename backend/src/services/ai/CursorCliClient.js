@@ -12,8 +12,24 @@ import CursorCliService from './CursorCliService.js';
 
 const RESUME_MESSAGE_LIMIT = 12;
 
-// In-memory session map: sessionKey -> cursor session_id (for --resume continuity)
+// In-memory session map: sessionKey -> cursor session_id (for --resume
+// continuity). Bounded LRU: one entry per conversation would otherwise grow
+// for the life of the process. Losing an entry only costs session resume —
+// the next turn replays the recent transcript as a fresh prompt, which is
+// exactly what a backend restart already does. (Grok persists its sessions
+// via CodexThreadModel; wiring Cursor into that store is a follow-up.)
+const SESSION_STORE_MAX = 500;
 const sessionStore = new Map();
+
+function rememberSession(key, sessionId) {
+  // Re-insert to refresh recency; Maps iterate in insertion order, so the
+  // first key is always the least recently used.
+  sessionStore.delete(key);
+  sessionStore.set(key, sessionId);
+  while (sessionStore.size > SESSION_STORE_MAX) {
+    sessionStore.delete(sessionStore.keys().next().value);
+  }
+}
 
 function normalizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
@@ -100,7 +116,7 @@ export function createCursorCliClient({
           });
 
           if (result?.sessionId) {
-            sessionStore.set(resolvedSessionKey, result.sessionId);
+            rememberSession(resolvedSessionKey, result.sessionId);
           }
 
           // runExec has a split contract: it REJECTS on timeout/auth/spawn but

@@ -95,11 +95,13 @@ class GrokBuildCliSessionManager {
           const rows = await CodexThreadModel.listAll();
           let loaded = 0;
           for (const row of rows) {
-            if (row.provider && String(row.provider).toLowerCase() !== DEFAULT_PROVIDER) {
-              continue;
-            }
-            // Also accept rows explicitly tagged grok-build; skip pure codex rows
-            if (row.provider && !String(row.provider).toLowerCase().includes('grok')) {
+            // CodexThreadModel.normalizeProvider treats a missing provider as
+            // 'openai-codex' (legacy rows predate the column). Mirror that
+            // here: only rows explicitly tagged grok-build belong to us. The
+            // previous pair of guards let untagged legacy Codex rows through
+            // and be adopted as Grok sessions.
+            const rowProvider = String(row.provider || 'openai-codex').toLowerCase();
+            if (rowProvider !== DEFAULT_PROVIDER) {
               continue;
             }
             const sessionKey = this.getSessionKey({

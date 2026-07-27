@@ -33,7 +33,10 @@ function ensureDirectory(dirPath) {
   }
 }
 
-ensureDirectory(DEFAULT_GROK_WORKDIR);
+// Deliberately NO ensureDirectory() at module scope: tools.js imports this
+// file unconditionally, so an import-time mkdir would write to the user's
+// home directory on every backend boot (and in every test run) whether or
+// not Grok Build is ever used. runExec ensures the workdir when it runs.
 
 function safeJsonParse(line) {
   try {
