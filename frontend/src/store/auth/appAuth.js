@@ -6,7 +6,7 @@ import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 
 // CLI provider IDs that use local filesystem auth
-const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity'];
+const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
 
 // Tell the local backend a provider changed so it can fan a Socket.IO
 // event out to every other connected client (other tabs / chat panels)
@@ -248,6 +248,24 @@ const actions = {
           instructions: 'Uses your Google account via the Antigravity gateway (Gemini 3.x + Claude models). OAuth only — no API key.',
           localOnly: true,
         },
+        {
+          id: 'grok-build',
+          name: 'Grok Build',
+          icon: 'grok-ai',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses the local Grok Build CLI (~/.grok). Sign in with grok login (OAuth or device code). Separate from the Grok AI API key provider.',
+          localOnly: true,
+        },
+        {
+          id: 'cursor-cli',
+          name: 'Cursor',
+          icon: 'cursor',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses the local Cursor Agent CLI (~/.cursor). Sign in with `cursor-agent login`. Uses your Cursor subscription — no API key.',
+          localOnly: true,
+        },
       ];
 
       const existingIds = new Set(remoteProviders.map((p) => p.id));
@@ -299,6 +317,24 @@ const actions = {
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses your Google account via the Antigravity gateway (Gemini 3.x + Claude models). OAuth only — no API key.',
+          localOnly: true,
+        },
+        {
+          id: 'grok-build',
+          name: 'Grok Build',
+          icon: 'grok-ai',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses the local Grok Build CLI (~/.grok). Sign in with grok login (OAuth or device code). Separate from the Grok AI API key provider.',
+          localOnly: true,
+        },
+        {
+          id: 'cursor-cli',
+          name: 'Cursor',
+          icon: 'cursor',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses the local Cursor Agent CLI (~/.cursor). Sign in with `cursor-agent login`. Uses your Cursor subscription — no API key.',
           localOnly: true,
         },
       ]);

@@ -116,6 +116,10 @@ export default {
           deepseek: 'deepseek',
           togetherai: 'together-ai',
           grokai: 'grok-ai',
+          'grok-build': 'grok-ai',
+          grokbuild: 'grok-ai',
+          'cursor-cli': 'cursor',
+          cursor: 'cursor',
         };
 
         return {
