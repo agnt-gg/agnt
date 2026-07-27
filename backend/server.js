@@ -138,6 +138,13 @@ app.use(compression({
     return compression.filter(req, res);
   },
 }));
+// Reachability witness. One assignment per request, only for non-loopback
+// callers. It exists so the Phone Access panel can answer "has my phone
+// actually reached this machine?" instead of failing silently.
+app.use((req, _res, next) => {
+  RemoteAccessConfig.recordExternalRequest(req);
+  next();
+});
 app.use(bodyParser.json({ limit: config.bodyParserLimit }));
 app.use(bodyParser.urlencoded({ limit: config.bodyParserLimit, extended: true }));
 app.use(sessionMiddleware);
@@ -602,6 +609,10 @@ function startServer() {
     // BIND_HOST in the environment / Dockerfile).
     const bind = RemoteAccessConfig.resolveBindHost();
     const server = httpServer.listen(config.port, bind.host, () => {
+      // Ground truth from the OS. Everything that answers "is my phone able to
+      // reach this?" reads from here, not from our intent — the two diverge the
+      // moment someone flips the setting without restarting.
+      RemoteAccessConfig.recordActualBind(server.address());
       console.log(`Master server listening on ${bind.host}:${config.port} (bind source: ${bind.source})`);
       if (bind.lanEnabled) {
         const urls = RemoteAccessConfig.lanAddresses().map((a) => `http://${a.address}:${config.port}`);

@@ -27,6 +27,7 @@ import crypto from 'crypto';
 import { requireAuthHeader, extractToken, verifyAuthToken } from '../utils/authGuard.js';
 import { rateLimit } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
+import NetworkIdentity from '../services/NetworkIdentity.js';
 
 const router = express.Router();
 
@@ -70,22 +71,41 @@ function consumeCode(code) {
 // ---------------------------------------------------------------------------
 // GET /api/pairing/status  — where am I reachable, and is LAN access on?
 // ---------------------------------------------------------------------------
-router.get('/status', requireAuthHeader, (req, res) => {
-  const bind = RemoteAccessConfig.resolveBindHost();
-  const persisted = RemoteAccessConfig.readConfig();
+router.get('/status', requireAuthHeader, async (req, res) => {
+  const desired = RemoteAccessConfig.resolveBindHost();
+  const actual = RemoteAccessConfig.getActualBind();
   const port = process.env.PORT || 3333;
   const addresses = RemoteAccessConfig.lanAddresses();
 
+  // The toggle writes config; the socket is already open and does not move.
+  // So the only honest source for "is my phone able to reach this right now?"
+  // is the ACTUAL bound address, never the config we would bind next time.
+  //
+  // An earlier version reported `desired` here and computed restartRequired by
+  // comparing the config file against itself — always false. The panel then hid
+  // the restart prompt and rendered a QR code for a LAN address nothing was
+  // listening on: a valid code, a dead URL, and no way for the user to tell.
+  const reachable = actual ? actual.lanEnabled : desired.lanEnabled;
+  const restartRequired = RemoteAccessConfig.isRestartRequired();
+
   res.json({
     success: true,
-    lanEnabled: bind.lanEnabled,
-    bindHost: bind.host,
-    bindSource: bind.source,
+    // What is true right now — this gates the QR code.
+    lanEnabled: reachable,
+    bindHost: actual ? actual.host : desired.host,
+    bindSource: desired.source,
+    restartRequired,
     port: Number(port),
-    // The toggle writes config; the bind host only changes on restart. When
-    // they disagree the UI must say "restart to apply" rather than silently
-    // showing a URL that cannot connect.
-    restartRequired: persisted.lanEnabled !== bind.lanEnabled,
+    // What the saved setting asks for, so the toggle reflects the user's choice
+    // even while a restart is pending.
+    desiredLanEnabled: desired.lanEnabled,
+    // Name the network so "connect your phone to the same Wi-Fi" becomes an
+    // instruction the user can actually check. null on wired/unknown setups,
+    // where the UI falls back to generic wording.
+    networkName: await NetworkIdentity.getNetworkName(),
+    // Has anything other than this machine reached us? Splits "the phone never
+    // got here" from "it got here and something later went wrong".
+    lastExternalRequest: RemoteAccessConfig.getLastExternalRequest(),
     addresses,
     urls: addresses.map((a) => `http://${a.address}:${port}`),
   });
@@ -102,18 +122,29 @@ router.post('/lan-access', requireAuthHeader, (req, res) => {
     console.error('[pairing] failed to persist LAN setting:', err);
     return res.status(500).json({ success: false, error: 'Could not save the setting' });
   }
-  const bind = RemoteAccessConfig.resolveBindHost();
-  const envPinned = bind.source === 'env';
+  const desired = RemoteAccessConfig.resolveBindHost();
+  const actual = RemoteAccessConfig.getActualBind();
+  const envPinned = desired.source === 'env';
+
+  // Same correctness rule as /status: compare against the OPEN SOCKET. The
+  // previous version compared `enabled` with a bind host recomputed from the
+  // config we had just written, so it was always false and the UI never asked
+  // for the restart that actually applies the change.
+  const restartRequired = !envPinned && RemoteAccessConfig.isRestartRequired();
+
   res.json({
     success: true,
-    lanEnabled: enabled,
+    lanEnabled: actual ? actual.lanEnabled : enabled,
+    desiredLanEnabled: enabled,
     // BIND_HOST in the environment outranks the toggle; say so instead of
     // letting the user flip a switch that silently does nothing.
     envPinned,
-    restartRequired: !envPinned && enabled !== bind.lanEnabled,
+    restartRequired,
     message: envPinned
       ? 'Saved, but BIND_HOST is set in the environment and takes precedence.'
-      : 'Saved. Restart the backend to apply.',
+      : restartRequired
+        ? 'Saved. Restart the backend to apply it.'
+        : 'Saved.',
   });
 });
 
@@ -133,6 +164,20 @@ router.post(
     const token = extractToken(req);
     if (!token) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    // Refuse to mint a code the phone cannot possibly redeem. The QR encodes a
+    // LAN address, so if the socket is loopback-only the code is valid, the URL
+    // is dead, and the failure surfaces on the phone as a bare connection error
+    // with nothing on the desktop to explain it. Fail here, where we can say why.
+    const actualBind = RemoteAccessConfig.getActualBind();
+    if (actualBind && !actualBind.lanEnabled) {
+      return res.status(409).json({
+        success: false,
+        error: 'This server is only listening on localhost, so a phone cannot reach it.',
+        restartRequired: RemoteAccessConfig.isRestartRequired(),
+        bindHost: actualBind.host,
+      });
     }
 
     const code = crypto.randomBytes(16).toString('hex'); // 128 bits

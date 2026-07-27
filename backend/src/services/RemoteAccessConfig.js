@@ -67,6 +67,97 @@ export function resolveBindHost() {
   return { host: LOOPBACK, source: 'default', lanEnabled: false };
 }
 
+// ---------------------------------------------------------------------------
+// ACTUAL BIND — what the OS says we are listening on, not what we asked for.
+// ---------------------------------------------------------------------------
+// The bind decision is made once, at startup. Flipping the config afterwards
+// changes what we WOULD bind, and nothing else — the socket is already open.
+// Without recording the real address there is no way to answer "do I need to
+// restart?", and an earlier version of this file tried to answer it by
+// comparing the live config file against itself (always equal, always false).
+let actualBind = null;
+
+/**
+ * Record the real listening address. Call once from the listen() callback with
+ * `server.address()`.
+ * @param {{address?: string, port?: number}|null} addr
+ */
+export function recordActualBind(addr) {
+  if (!addr || typeof addr.address !== 'string') return;
+  const host = addr.address;
+  actualBind = {
+    host,
+    port: addr.port,
+    // '0.0.0.0' / '::' mean every interface. Anything else that is not loopback
+    // is a specific external interface, which is also LAN-reachable.
+    lanEnabled: host !== LOOPBACK && host !== '::1' && host !== 'localhost',
+  };
+}
+
+/** @returns {{host: string, port: number, lanEnabled: boolean}|null} */
+export function getActualBind() {
+  return actualBind;
+}
+
+/** Test seam. */
+export function _resetActualBind() {
+  actualBind = null;
+}
+
+/**
+ * Does the running process need a restart for the current config to take effect?
+ *
+ * Compares DESIRED (config/env, read now) against ACTUAL (the open socket).
+ * Returns false when the actual bind is unknown — an unrecorded bind means we
+ * are not the server process (unit tests, imports), and inventing a restart
+ * prompt there would be noise.
+ */
+export function isRestartRequired() {
+  if (!actualBind) return false;
+  return resolveBindHost().lanEnabled !== actualBind.lanEnabled;
+}
+
+// ---------------------------------------------------------------------------
+// REACHABILITY WITNESS — has anything other than this machine connected?
+// ---------------------------------------------------------------------------
+// One boolean's worth of truth that turns an invisible failure into a visible
+// one. Without it, "my phone can't connect" is indistinguishable from "the
+// server is broken", and the user has no way to tell which half to fix.
+//
+// Deliberately keeps only the MOST RECENT hit: the question is "did my phone
+// get here?", which needs no history. Storing a log of every client would be
+// both useless for that and a privacy footgun.
+let lastExternalRequest = null;
+
+const LOOPBACK_ADDRS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+/** Strip the IPv6-mapped-IPv4 prefix Node reports on dual-stack sockets. */
+export function normalizeIp(ip) {
+  if (typeof ip !== 'string') return '';
+  return ip.replace(/^::ffff:/i, '').trim();
+}
+
+/**
+ * Record a request if it came from somewhere other than this machine.
+ * Runs on every request, so it stays trivial: one regex-free comparison.
+ * @param {{ip?: string, path?: string, socket?: {remoteAddress?: string}}} req
+ */
+export function recordExternalRequest(req) {
+  const ip = normalizeIp(req?.ip || req?.socket?.remoteAddress || '');
+  if (!ip || LOOPBACK_ADDRS.has(ip) || ip.startsWith('127.')) return;
+  lastExternalRequest = { ip, path: String(req?.path || '').slice(0, 120), at: Date.now() };
+}
+
+/** @returns {{ip: string, path: string, at: number}|null} */
+export function getLastExternalRequest() {
+  return lastExternalRequest;
+}
+
+/** Test seam. */
+export function _resetExternalRequest() {
+  lastExternalRequest = null;
+}
+
 /**
  * Non-internal IPv4 addresses this host can be reached on.
  * @returns {Array<{ address: string, iface: string }>}
@@ -92,4 +183,20 @@ export function lanAddresses() {
   return out.sort((a, b) => score(a.address) - score(b.address));
 }
 
-export default { readConfig, writeConfig, resolveBindHost, lanAddresses, LOOPBACK, ALL_INTERFACES, CONFIG_PATH };
+export default {
+  readConfig,
+  writeConfig,
+  resolveBindHost,
+  lanAddresses,
+  recordActualBind,
+  getActualBind,
+  isRestartRequired,
+  recordExternalRequest,
+  getLastExternalRequest,
+  normalizeIp,
+  _resetActualBind,
+  _resetExternalRequest,
+  LOOPBACK,
+  ALL_INTERFACES,
+  CONFIG_PATH,
+};

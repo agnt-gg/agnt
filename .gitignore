@@ -124,3 +124,13 @@ PR_BODY.md
 # yt-dlp cookie jars - may contain session tokens (NEVER commit)
 cookies.txt
 **/cookies.txt
+
+# Runtime state written by RemoteAccessConfig (the Phone Access LAN toggle).
+# Lives in the backend's cwd, which is backend/ in dev — so it lands in the
+# repo on every machine that runs AGNT from a clone. Per-install, not source.
+remote-access.json
+backend/remote-access.json
+
+# Desktop connection choice (Electron userData in packaged builds, but the
+# resolver accepts a cwd-relative path in dev too).
+connection.json

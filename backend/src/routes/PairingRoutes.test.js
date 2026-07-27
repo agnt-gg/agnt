@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import http from 'http';
 import jwt from 'jsonwebtoken';
 import PairingRoutes, { _resetPairing } from './PairingRoutes.js';
 import { _resetRateLimits } from '../utils/rateLimit.js';
+import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
 
 const SECRET = 'pairing-test-secret';
 let server;
@@ -139,5 +140,88 @@ describe('pairing — status', () => {
     expect(typeof body.bindHost).toBe('string');
     expect(Array.isArray(body.urls)).toBe(true);
     body.urls.forEach((u) => expect(u).toMatch(/^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/));
+  });
+});
+
+describe('pairing — reachability vs intent (the QR that could not work)', () => {
+  // THE BUG: /status computed
+  //     restartRequired: persisted.lanEnabled !== bind.lanEnabled
+  // where resolveBindHost() derives its answer from readConfig() — the same
+  // file. The two sides could never disagree, so restartRequired was always
+  // false. The panel therefore hid the restart prompt and rendered a QR code
+  // for a LAN address the process was not listening on: a perfectly valid code,
+  // a dead URL, and nothing on screen to explain the failure.
+  let prevBindHost;
+
+  beforeEach(() => {
+    prevBindHost = process.env.BIND_HOST;
+    RemoteAccessConfig._resetActualBind();
+  });
+
+  afterEach(() => {
+    if (prevBindHost === undefined) delete process.env.BIND_HOST;
+    else process.env.BIND_HOST = prevBindHost;
+    RemoteAccessConfig._resetActualBind();
+  });
+
+  it('reports restartRequired when the config wants LAN but the socket is loopback', async () => {
+    process.env.BIND_HOST = '0.0.0.0'; // desired: reachable
+    RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port: 3333 }); // actual: not
+
+    const body = await (await call('GET', '/api/pairing/status', { auth: token() })).json();
+    expect(body.restartRequired).toBe(true);
+    // lanEnabled must describe REALITY, because it is what gates the QR code.
+    expect(body.lanEnabled).toBe(false);
+    expect(body.desiredLanEnabled).toBe(true);
+    expect(body.bindHost).toBe('127.0.0.1');
+  });
+
+  it('reports no restart needed once the socket matches the config', async () => {
+    process.env.BIND_HOST = '0.0.0.0';
+    RemoteAccessConfig.recordActualBind({ address: '0.0.0.0', port: 3333 });
+
+    const body = await (await call('GET', '/api/pairing/status', { auth: token() })).json();
+    expect(body.restartRequired).toBe(false);
+    expect(body.lanEnabled).toBe(true);
+  });
+
+  it('reports restartRequired when LAN was turned OFF but the socket is still open to it', async () => {
+    process.env.BIND_HOST = '127.0.0.1'; // desired: loopback
+    RemoteAccessConfig.recordActualBind({ address: '0.0.0.0', port: 3333 }); // actual: still exposed
+
+    const body = await (await call('GET', '/api/pairing/status', { auth: token() })).json();
+    expect(body.restartRequired).toBe(true);
+    // Still genuinely reachable until the restart happens — say so.
+    expect(body.lanEnabled).toBe(true);
+  });
+
+  it('REFUSES to mint a pairing code while the socket is loopback-only', async () => {
+    process.env.BIND_HOST = '0.0.0.0';
+    RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port: 3333 });
+
+    const res = await call('POST', '/api/pairing/code', { auth: token() });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.restartRequired).toBe(true);
+    // No code is handed out at all — a QR nobody can redeem is worse than none.
+    expect(body.code).toBeUndefined();
+  });
+
+  it('mints normally once the socket is actually reachable', async () => {
+    process.env.BIND_HOST = '0.0.0.0';
+    RemoteAccessConfig.recordActualBind({ address: '0.0.0.0', port: 3333 });
+
+    const res = await call('POST', '/api/pairing/code', { auth: token() });
+    expect(res.status).toBe(200);
+    expect((await res.json()).code).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it('does not invent a restart prompt when the bind was never recorded', async () => {
+    // e.g. routes mounted in a test harness with no real listen(). Unknown is
+    // not the same as "wrong", and a spurious banner would be noise.
+    process.env.BIND_HOST = '0.0.0.0';
+    const body = await (await call('GET', '/api/pairing/status', { auth: token() })).json();
+    expect(body.restartRequired).toBe(false);
   });
 });

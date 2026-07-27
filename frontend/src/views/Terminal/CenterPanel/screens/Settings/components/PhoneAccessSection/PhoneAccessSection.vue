@@ -2,11 +2,14 @@
   <div class="phone-access">
     <div class="pa-header">
       <div>
-        <h3 class="pa-title"><i class="fas fa-mobile-screen-button"></i> Phone Access</h3>
+        <h3 class="pa-title"><i class="fas fa-mobile-alt"></i> Phone Access</h3>
         <p class="pa-sub">Run this AGNT instance from your phone on the same network.</p>
       </div>
+      <!-- Bound to the SAVED setting, not the live socket: after switching on,
+           the socket has not moved until the backend restarts, and a toggle that
+           springs back to off is indistinguishable from "it did not save". -->
       <label class="pa-switch" :class="{ disabled: busy || envPinned }">
-        <input type="checkbox" :checked="lanEnabled" :disabled="busy || envPinned" @change="onToggle" />
+        <input type="checkbox" :checked="desiredLanEnabled" :disabled="busy || envPinned" @change="onToggle" />
         <span class="pa-slider"></span>
       </label>
     </div>
@@ -16,22 +19,26 @@
       <span><code>BIND_HOST</code> is set in the environment and overrides this toggle.</span>
     </p>
 
-    <p v-if="!lanEnabled && !envPinned" class="pa-note">
-      <i class="fas fa-shield-halved"></i>
+    <p v-if="!desiredLanEnabled && !envPinned" class="pa-note">
+      <i class="fas fa-shield-alt"></i>
       <span>AGNT is bound to <code>127.0.0.1</code> — reachable only from this machine.</span>
     </p>
 
     <div v-if="restartRequired" class="pa-restart">
       <div class="pa-restart-text">
-        <i class="fas fa-rotate"></i>
-        <span>Restart the backend to apply the new binding.</span>
+        <i class="fas fa-sync-alt"></i>
+        <span>
+          <strong>Restart required.</strong>
+          AGNT is still listening on <code>{{ bindHost || '127.0.0.1' }}</code> only, so
+          your phone can't reach it yet.
+        </span>
       </div>
       <button class="pa-btn pa-btn-primary" :disabled="busy" @click="onRestart">Restart now</button>
     </div>
 
     <template v-if="lanEnabled && !restartRequired">
       <div v-if="!urls.length" class="pa-note pa-note-warn">
-        <i class="fas fa-triangle-exclamation"></i>
+        <i class="fas fa-exclamation-triangle"></i>
         <span>No network address found. Connect to Wi-Fi or Ethernet.</span>
       </div>
 
@@ -48,13 +55,50 @@
             <template v-else>Expired</template>
           </div>
 
+          <!-- Did anything actually reach this machine? Without this the user
+               cannot tell "wrong network" from "server broken", and blames
+               the half that is working. -->
+          <div v-if="code" class="pa-witness" :class="phoneSeen ? 'ok' : waitedLong ? 'warn' : ''">
+            <template v-if="phoneSeen">
+              <i class="fas fa-check-circle"></i>
+              <span>A device reached this computer &mdash; <code>{{ phoneSeen }}</code></span>
+            </template>
+            <template v-else-if="waitedLong">
+              <i class="fas fa-exclamation-triangle"></i>
+              <span>
+                Nothing has reached this computer yet. Check your phone is on
+                <strong>{{ networkName || "this Wi-Fi" }}</strong>, not mobile data, and not on a VPN.
+              </span>
+            </template>
+            <template v-else>
+              <i class="fas fa-sync-alt fa-spin"></i>
+              <span>Waiting for your phone&hellip;</span>
+            </template>
+          </div>
+
           <button class="pa-btn" :disabled="busy" @click="onGenerate">
             {{ code ? 'New code' : 'Generate pairing code' }}
           </button>
         </div>
 
         <div class="pa-info-col">
-          <div class="pa-step"><span class="pa-num">1</span><span>Make sure your phone is on the same Wi-Fi.</span></div>
+          <!-- The hard prerequisite, stated first and loudest. Everything
+               else in this panel is irrelevant if it is not satisfied, and
+               burying it in a list of equal-weight "steps" is what let a
+               phone-on-cellular look like a broken server. -->
+          <div class="pa-req">
+            <i class="fas fa-wifi"></i>
+            <div class="pa-req-body">
+              <div class="pa-req-title">
+                <template v-if="networkName">
+                  Your phone must be on Wi-Fi <strong>{{ networkName }}</strong>
+                </template>
+                <template v-else>Your phone must be on the same Wi-Fi as this computer</template>
+              </div>
+              <div class="pa-req-sub">Mobile data and VPNs will not reach this address.</div>
+            </div>
+          </div>
+
           <div class="pa-step"><span class="pa-num">2</span><span>Scan the code with your camera.</span></div>
           <div class="pa-step"><span class="pa-num">3</span><span>The link signs the phone in automatically.</span></div>
 
@@ -74,7 +118,7 @@
       </div>
     </template>
 
-    <p v-if="error" class="pa-note pa-note-error"><i class="fas fa-circle-exclamation"></i><span>{{ error }}</span></p>
+    <p v-if="error" class="pa-note pa-note-error"><i class="fas fa-exclamation-circle"></i><span>{{ error }}</span></p>
   </div>
 </template>
 
@@ -83,7 +127,14 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { toSvg } from '@/utils/qrcode.js';
 import pairingService from '@/services/pairingService.js';
 
+// Two distinct facts, deliberately not collapsed into one:
+//   lanEnabled        - the socket we are ACTUALLY listening on (gates the QR)
+//   desiredLanEnabled - the saved setting (drives the toggle)
+// They differ exactly while a restart is pending, which is the state that
+// previously reported itself as "all good" and produced an unreachable QR code.
 const lanEnabled = ref(false);
+const desiredLanEnabled = ref(false);
+const bindHost = ref('');
 const envPinned = ref(false);
 const restartRequired = ref(false);
 const urls = ref([]);
@@ -93,9 +144,28 @@ const now = ref(Date.now());
 const busy = ref(false);
 const error = ref('');
 const copied = ref('');
+// Named network + reachability witness: the two facts that turn "it doesn't
+// work" into a specific, checkable statement.
+const networkName = ref('');
+const lastExternalRequest = ref(null);
+const codeShownAt = ref(0);
 let ticker = null;
+let statusTicks = 0;
 
 const secondsLeft = computed(() => Math.max(0, Math.ceil((expiresAt.value - now.value) / 1000)));
+
+// Only count a hit that arrived AFTER this code was displayed. A stale hit
+// from an earlier session would report success for a phone that never
+// connected — a false green is worse than no signal at all.
+const phoneSeen = computed(() => {
+  const hit = lastExternalRequest.value;
+  if (!hit || !codeShownAt.value || hit.at < codeShownAt.value) return null;
+  return hit.ip;
+});
+
+// Long enough that a phone genuinely connecting is not nagged, short enough
+// that someone staring at a dead QR is not left guessing.
+const waitedLong = computed(() => codeShownAt.value > 0 && now.value - codeShownAt.value > 15000);
 
 const qrSvg = computed(() => {
   if (!code.value || secondsLeft.value <= 0) return '';
@@ -112,6 +182,12 @@ async function refresh() {
   try {
     const s = await pairingService.getStatus();
     lanEnabled.value = s.lanEnabled;
+    // Older backends do not send desiredLanEnabled; fall back so the toggle
+    // reflects something sane rather than silently reading undefined.
+    desiredLanEnabled.value = s.desiredLanEnabled ?? s.lanEnabled;
+    bindHost.value = s.bindHost || '';
+    networkName.value = s.networkName || '';
+    lastExternalRequest.value = s.lastExternalRequest || null;
     restartRequired.value = s.restartRequired;
     urls.value = s.urls || [];
     envPinned.value = s.bindSource === 'env';
@@ -122,6 +198,13 @@ async function refresh() {
 
 function friendly(e) {
   if (e?.response?.status === 401) return 'Session expired — sign in again.';
+  // 409: the server refused to mint a code because it is loopback-only, so the
+  // QR would have encoded an address nothing is listening on.
+  if (e?.response?.status === 409) {
+    restartRequired.value = e.response.data?.restartRequired ?? true;
+    bindHost.value = e.response.data?.bindHost || bindHost.value;
+    return e.response.data?.error || 'This server is not reachable from your network yet.';
+  }
   return e?.response?.data?.error || e?.message || 'Something went wrong.';
 }
 
@@ -132,12 +215,14 @@ async function onToggle(evt) {
   try {
     const r = await pairingService.setLanAccess(next);
     lanEnabled.value = r.lanEnabled;
+    desiredLanEnabled.value = r.desiredLanEnabled ?? next;
+    bindHost.value = r.bindHost || bindHost.value;
     envPinned.value = !!r.envPinned;
     restartRequired.value = !!r.restartRequired;
     if (!r.restartRequired) await refresh();
   } catch (e) {
     error.value = friendly(e);
-    evt.target.checked = lanEnabled.value; // revert the visual state
+    evt.target.checked = desiredLanEnabled.value; // revert the visual state
   } finally {
     busy.value = false;
   }
@@ -151,6 +236,9 @@ async function onGenerate() {
     code.value = c;
     expiresAt.value = c.expiresAt;
     now.value = Date.now();
+    // Anchor for the witness: only connections after this instant count.
+    codeShownAt.value = Date.now();
+    lastExternalRequest.value = null;
   } catch (e) {
     error.value = friendly(e);
   } finally {
@@ -189,7 +277,11 @@ async function copy(url) {
 
 onMounted(() => {
   refresh();
-  ticker = setInterval(() => { now.value = Date.now(); }, 1000);
+  ticker = setInterval(() => {
+    // Poll the witness while a code is live, so the panel reflects the phone
+    // within a few seconds instead of only on a manual refresh.
+    statusTicks++;
+    if (code.value && statusTicks % 3 === 0) refresh(); now.value = Date.now(); }, 1000);
 });
 onBeforeUnmount(() => clearInterval(ticker));
 </script>
@@ -422,6 +514,65 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 .pa-url code {
   font-size: 13px;
+}
+
+.pa-req {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-primary, #19ef83) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #19ef83) 45%, transparent);
+}
+
+.pa-req > i {
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--color-primary, #19ef83);
+}
+
+.pa-req-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pa-req-title {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text, #e0e0e0);
+}
+
+.pa-req-title strong {
+  color: var(--color-primary, #19ef83);
+}
+
+.pa-req-sub {
+  font-size: 12px;
+  color: var(--color-light-med-navy, #8b93a7);
+}
+
+.pa-witness {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 208px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-light-med-navy, #8b93a7);
+}
+
+.pa-witness.ok {
+  color: var(--color-primary, #19ef83);
+}
+
+.pa-witness.warn {
+  color: #ffd700;
+}
+
+.pa-witness code {
+  color: inherit;
 }
 
 .pa-fineprint {
