@@ -28,7 +28,13 @@ const fatalPolicy = process.env.AGNT_FATAL_POLICY === 'exit' ? 'exit' : 'stay';
 
 /** Cheap, high-signal state for crash records. Must never throw. */
 function getState() {
-  const state = { proc, argv1: process.argv[1] };
+  const state = {
+    proc,
+    argv1: process.argv[1],
+    // Helps distinguish parent-gone vs app bugs in crash JSON when dumps do occur
+    connected: process.connected,
+    ppid: process.ppid,
+  };
   try {
     state.cwd = process.cwd();
   } catch {
