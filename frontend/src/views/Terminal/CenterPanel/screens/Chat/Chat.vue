@@ -1561,7 +1561,7 @@ export default {
           messages: displayMessages.value.map((msg) => ({
             id: msg.id,
             role: msg.role,
-            content: resolveImageReferences(msg.content), // Resolve image refs before saving
+            content: msg.content,
             timestamp: msg.timestamp,
             metadata: msg.metadata || [],
             toolCalls: msg.toolCalls || [],
@@ -1605,13 +1605,6 @@ export default {
         return null;
       }
     };
-
-    // Yield to the browser for a real paint frame. Vue's `nextTick` only
-    // flushes the microtask queue; the browser doesn't actually paint
-    // until the next animation frame. We need the spinner to be visible
-    // BEFORE the heavy SCOPED_SET_MESSAGES commit runs, so we force a
-    // real frame between flipping `bulkLoading` and committing.
-    const waitForPaint = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
     const loadSavedOutput = async (contentId) => {
       const token = localStorage.getItem('token');

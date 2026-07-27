@@ -1671,7 +1671,6 @@ export default {
       const agentName = conv ? conv.agentName : state.currentAgentName;
       const savedOutputId = conv ? conv.savedOutputId : state.savedOutputId;
       const savedOutputTitle = conv ? conv.savedOutputTitle : state.savedOutputTitle;
-      const imageCache = conv ? conv.imageCache : state.imageCache;
       const currentConvId = conv ? conv.conversationId : state.currentConversationId;
 
       if (!state.autosaveEnabled || isSaving) return;
@@ -1744,16 +1743,13 @@ export default {
             : agentPrefix + 'Untitled Conversation';
         }
 
-        const resolveImageReferences = (content) => {
-          if (!content || typeof content !== 'string') return content;
-          const imageRefPattern = /\{\{IMAGE_REF:([^}]+)\}\}/g;
-          return content.replace(imageRefPattern, (match, imageId) => {
-            const cached = imageCache.get(imageId);
-            if (cached && cached.data) return cached.data;
-            return match;
-          });
-        };
-
+        // Persist {{IMAGE_REF:id}} tokens AS-IS — do NOT inline base64 here.
+        // Generated images are already written to disk server-side at
+        // generation time (ImageStorage), and MessageItem resolves refs to
+        // /api/images/:id (immutable, browser-cached) when the in-memory
+        // cache misses. Inlining made image-heavy blobs ~6x larger (measured:
+        // 85% of a typical 5.5MB conversation was duplicated base64) and
+        // slowed every autosave, load, and JSON.parse round-trip.
         const conversationData = {
           conversationId: currentConvId,
           title: conversationTitle,
@@ -1763,7 +1759,7 @@ export default {
           messages: messages.map((msg) => ({
             id: msg.id,
             role: msg.role,
-            content: resolveImageReferences(msg.content),
+            content: msg.content,
             timestamp: msg.timestamp,
             metadata: msg.metadata || [],
             toolCalls: msg.toolCalls || [],

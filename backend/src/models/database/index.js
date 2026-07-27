@@ -1635,6 +1635,46 @@ const dbReady = skipSchemaInit
       console.error('Error syncing webhooks:', error);
     }
   })
+  .then(() => {
+    // One-time remediation for pre-2026-07 conversation blobs that carry
+    // inline base64 images (the frontend used to inline at save time; it no
+    // longer does). Extracts images into ImageStorage and rewrites blobs to
+    // {{IMAGE_REF}} tokens. Idle-gated and deferred — boot cost is zero —
+    // and every row is byte-verified on disk before its blob is touched.
+    // Dynamic import: a defect in the backfill module must never break boot.
+    // Installs with no legacy blobs scan once, find nothing, and no-op.
+    try {
+      import('../../services/storage/ConversationImageBackfill.js')
+        .then(({ scheduleConversationImageBackfill }) =>
+          import('../../services/ImageStorage.js').then((imageStorage) => {
+            scheduleConversationImageBackfill({
+              dbAll: (sql, params = []) =>
+                new Promise((resolve, reject) => db.all(sql, params, (e, r) => (e ? reject(e) : resolve(r || [])))),
+              dbRun: (sql, params = []) =>
+                dbRunWithRetry(
+                  () =>
+                    new Promise((resolve, reject) =>
+                      db.run(sql, params, function (e) {
+                        if (e) reject(e);
+                        else resolve(this.changes);
+                      })
+                    )
+                ),
+              saveBase64Image: imageStorage.saveBase64Image,
+              findImageFile: imageStorage.findImageFile,
+              walPath: dbPath + '-wal',
+              backupDir: path.join(dbDir, 'backfill-backups'),
+              log: (msg) => console.log(msg),
+            });
+          })
+        )
+        .catch((error) => {
+          console.error('[migrations] conversation image backfill failed to schedule (non-fatal):', error.message);
+        });
+    } catch (error) {
+      console.error('[migrations] conversation image backfill scheduling error (non-fatal):', error.message);
+    }
+  })
   .catch((error) => {
     console.error('Error creating tables or running migrations:', error);
   });
