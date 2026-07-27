@@ -100,6 +100,19 @@ export function getWidgetToolSchemas() {
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'list_widgets',
+        description: "List the user's widget library: every saved widget definition (id, name, category, type, description, updated_at). Call this to answer \"what widgets do I have?\", to find a widget id for load_widget or open_canvas_widget, or before creating something that might already exist. Source code is omitted — use load_widget for one widget's full detail.",
+        parameters: {
+          type: 'object',
+          properties: {
+            category: { type: 'string', description: "Optional category filter (e.g. 'custom', 'dashboard', 'home')." },
+          },
+        },
+      },
+    },
   ];
 }
 
@@ -111,6 +124,37 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
     let result;
 
     switch (functionName) {
+      case 'list_widgets': {
+        // The read side of the widget surface. Without it, agents resorted to
+        // raw /widget-definitions API calls via code tools — which fail in
+        // sandboxed runtimes and leak transport details into conversations.
+        if (!userId) {
+          result = { success: false, error: 'No userId in context — listing widgets requires an authenticated user.' };
+          break;
+        }
+        const { default: WidgetDefinitionModel } = await import('../../models/WidgetDefinitionModel.js');
+        const rows = await WidgetDefinitionModel.findByUserId(userId);
+        const category = typeof args?.category === 'string' ? args.category.toLowerCase() : null;
+        const widgets = rows
+          .filter((w) => !category || (w.category || 'custom').toLowerCase() === category)
+          .map((w) => ({
+            id: w.id,
+            name: w.name,
+            category: w.category || 'custom',
+            widget_type: w.widget_type || 'html',
+            description: w.description || '',
+            is_shared: !!w.is_shared,
+            updated_at: w.updated_at,
+          }));
+        result = {
+          success: true,
+          count: widgets.length,
+          widgets,
+          hint: 'Use an id with load_widget for full detail, or with open_canvas_widget to place it on the One Canvas workspace.',
+        };
+        break;
+      }
+
       case 'edit_widget_code': {
         try {
           const currentSource = widgetState?.source_code || '';

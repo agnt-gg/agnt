@@ -167,6 +167,38 @@ export function useRealtimeSync() {
       }
     });
 
+    // Canvas awareness tools (get_canvas_state / inspect_canvas_widget /
+    // open|close|move_canvas_widget). Same first-response-wins protocol as the
+    // tutorial scan above:
+    //   • READS — any tab can answer (state lives in shared localStorage);
+    //     visible tab replies immediately, hidden tabs delay so it wins.
+    //     A hidden tab CAN answer inspect only if it has the frame rendered;
+    //     the bridge returns found:false otherwise, which still beats a
+    //     timeout when no better tab exists.
+    //   • WRITES — the bridge returns null in hidden tabs (localStorage is
+    //     shared: N executing tabs would apply the write N times). If no
+    //     visible tab exists, the server times out with an honest error.
+    socket.on('canvas:request', async ({ requestId, action, args } = {}) => {
+      console.log('[Realtime] canvas:request', requestId, action, 'visible=', document.visibilityState);
+      try {
+        const { handleCanvasRequest } = await import('@/views/Terminal/CenterPanel/screens/Workspace/canvasBridge.js');
+        const respond = async () => {
+          const result = await handleCanvasRequest(action, args);
+          if (result === null) return; // this tab must stay silent
+          socket.emit('canvas:response', { requestId, result });
+          console.log('[Realtime] canvas:response sent', requestId, result?.success);
+        };
+        if (document.visibilityState === 'visible') {
+          respond();
+        } else {
+          setTimeout(respond, 250);
+        }
+      } catch (e) {
+        console.error('[Realtime] canvas request failed:', e);
+        socket.emit('canvas:response', { requestId, result: { success: false, error: `Canvas handler error: ${e.message}` } });
+      }
+    });
+
     socket.on('tutorial:start', (data) => {
       console.log('[Realtime] tutorial:start broadcast received', data);
       try {

@@ -119,6 +119,7 @@ export const TOOL_GROUPS = {
     'update_widget_config',
     'save_widget',
     'load_widget',
+    'list_widgets',
     'get_agnt_api',
   ],
   artifact_code: [
@@ -165,6 +166,22 @@ export const TOOL_GROUPS = {
     'end_guided_tour',
     'scan_page_elements',
   ],
+  canvas: [
+    'get_canvas_state',
+    'inspect_canvas_widget',
+    'open_canvas_widget',
+    'close_canvas_widget',
+    'move_canvas_widget',
+    // Full widget CRUD rides along: "build me a game canvas" means forging
+    // widgets AND placing them — splitting those across trigger groups forced
+    // agents through discover_tools (or worse, raw API calls) mid-task.
+    'list_widgets',
+    'generate_widget',
+    'edit_widget_code',
+    'save_widget',
+    'update_widget_config',
+    'load_widget',
+  ],
 };
 
 /**
@@ -185,6 +202,7 @@ export const GROUP_TRIGGERS = {
   email: /\b(email|e-mail|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
   memory: /\b(remember|memory|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|history|trace|traces|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
   tutorial: /\b(tour|tutorial|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
+  canvas: /\b(canvas|workspace|widget|window|pane|tab|open\s+(?:the\s+)?(?:traces|goals|dashboard|memory|artifacts)|looking\s+at|on\s+(?:my|the)\s+screen)\b/i,
 };
 
 /**
@@ -204,6 +222,7 @@ export const GROUP_DESCRIPTIONS = {
   email: 'Send emails via SMTP',
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
+  canvas: 'See and arrange the One Canvas workspace: read open widget windows, inspect their contents, open/close/move them',
 };
 
 /**

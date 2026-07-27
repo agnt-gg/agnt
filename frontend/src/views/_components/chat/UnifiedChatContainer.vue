@@ -27,7 +27,7 @@
             :message="message"
             :status="getStatusFor(message)"
             :runningTools="getRunningToolsFor(message)"
-            :show-avatar="false"
+            :show-avatar="showAvatar"
             :compact="messageItemMode === 'compact'"
             :image-cache="imageCache"
             :data-cache="dataCache"
@@ -154,6 +154,12 @@ export default {
     placeholder: { type: String, default: 'Ask Annie...' },
     initialSuggestions: { type: Array, default: () => [] },
     showSuggestions: { type: Boolean, default: true },
+    // Assistant avatar in the message gutter. Defaults OFF because the five
+    // sidebar panels are narrow and have never shown it — changing that
+    // default would silently reflow every one of them. The full-width Chat
+    // screen DOES show it (MessageItem's own default), so surfaces aiming for
+    // Chat parity opt in explicitly.
+    showAvatar: { type: Boolean, default: false },
     showVoiceInput: { type: Boolean, default: true },
     // Defaults to true — every chat now matches orchestrator capabilities
     // (file attach, provider selector, tool selector). Panels can opt out.
@@ -611,11 +617,19 @@ export default {
   line-height: 1.5;
 }
 
+/* Horizontal padding on all three surfaces below was previously 0, so message
+   bubbles, suggestion chips and the composer all sat flush against the
+   container's edge — fine on the full-width Chat screen (which supplies its
+   own 16px via .conversation-canvas) but visibly broken in every narrow host:
+   the five sidebar panels and the workspace chat rail.
+   The Workspace solo view zeroes this out again, because it reproduces the
+   Chat screen exactly and would otherwise double up. */
 .message-flow {
   display: flex;
   flex-direction: column;
   gap: 16px;
   flex: 1 1 auto;
+  padding: 8px;
 }
 
 .message-enter-active { transition: opacity 0.3s ease-out, transform 0.3s ease-out; }
@@ -624,7 +638,7 @@ export default {
 .message-leave-to { opacity: 0; transform: translateY(15px); }
 
 .quick-actions-wrapper {
-  padding: 12px 0;
+  padding: 12px 8px 0;
   border-top: 1px solid var(--terminal-border-color);
 }
 
@@ -634,7 +648,7 @@ export default {
 }
 
 .chat-input-container {
-  padding: 16px 0 0 2px;
+  padding: 8px;
   border-top: 1px solid var(--terminal-border-color);
 }
 

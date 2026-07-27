@@ -339,6 +339,19 @@ export default {
 
     // --- Mobile & Panel State ---
     const isMobile = inject('isMobile');
+
+    // --- Panel geometry scope ---
+    // Standalone, panel widths are app-global state (vuex theme) and that is
+    // correct: there is one set of sidebars. Embedded in a widget window
+    // there are many, and a drag in one must not resize the rest — so the
+    // host can supply a private { get, set } store instead. No scope
+    // provided == the app == exactly the behaviour that shipped.
+    const panelWidthScope = inject('panelWidthScope', null);
+    const scopeGet = (key, fallback) => {
+      if (!panelWidthScope) return fallback;
+      const v = panelWidthScope.get(key);
+      return v === undefined || v === null ? fallback : v;
+    };
     const isPanelOpen = ref(false);
 
     // --- Speech Recognition ---
@@ -410,34 +423,93 @@ export default {
     const onCancelSteer = () => store.dispatch('chat/cancelSteer');
 
     // --- 3-Panel System State ---
-    const actualLeftPanelWidth = ref(store.getters['theme/actualLeftPanelWidth'] || 384);
-    const mainContentWidth = ref(store.getters['theme/mainContentWidth'] || 0);
-    const rightPanelWidth = ref(store.getters['theme/rightPanelWidth'] || 384);
+    const actualLeftPanelWidth = ref(scopeGet('leftWidth', store.getters['theme/actualLeftPanelWidth'] || 384));
+    const mainContentWidth = ref(scopeGet('mainWidth', store.getters['theme/mainContentWidth'] || 0));
+    const rightPanelWidth = ref(scopeGet('rightWidth', store.getters['theme/rightPanelWidth'] || 384));
     const showLeftPanel = ref(store.getters['theme/showLeftPanel']);
     const showRightPanel = ref(store.getters['theme/showRightPanel']);
-    const leftPanelCollapsed = ref(store.getters['theme/leftPanelCollapsed']);
-    const rightPanelCollapsed = ref(store.getters['theme/rightPanelCollapsed']);
+    const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
+    const rightPanelCollapsed = ref(scopeGet('rightCollapsed', store.getters['theme/rightPanelCollapsed']));
 
     // Track if user manually set panel widths (vs auto-adjusted)
     // If the stored width matches a "minimum" value (200, 280), it was likely auto-shrunk
     const isLeftPanelUserSized = ref(
-      localStorage.getItem('leftPanelUserSized') === 'true' || (actualLeftPanelWidth.value !== 200 && actualLeftPanelWidth.value !== 280),
+      scopeGet(
+        'leftUserSized',
+        localStorage.getItem('leftPanelUserSized') === 'true' || (actualLeftPanelWidth.value !== 200 && actualLeftPanelWidth.value !== 280),
+      ),
     );
     const isRightPanelUserSized = ref(
-      localStorage.getItem('rightPanelUserSized') === 'true' || (rightPanelWidth.value !== 200 && rightPanelWidth.value !== 280),
+      scopeGet(
+        'rightUserSized',
+        localStorage.getItem('rightPanelUserSized') === 'true' || (rightPanelWidth.value !== 200 && rightPanelWidth.value !== 280),
+      ),
     );
+
+    // --- Persistence, scope-aware ---
+    // ONE seam per stored value. Every write below goes through these, so
+    // "where do panel widths live" is answered in one place rather than at
+    // fourteen scattered store.dispatch calls.
+    const persistLeftWidth = (w) => {
+      if (panelWidthScope) return panelWidthScope.set('leftWidth', w);
+      return store.dispatch('theme/setActualLeftPanelWidth', w);
+    };
+    const persistRightWidth = (w) => {
+      if (panelWidthScope) return panelWidthScope.set('rightWidth', w);
+      return store.dispatch('theme/setThreePanelWidths', {
+        actualLeftWidth: actualLeftPanelWidth.value,
+        mainWidth: mainContentWidth.value,
+        rightWidth: w,
+      });
+    };
+    const persistMainWidth = (w) => {
+      if (panelWidthScope) return panelWidthScope.set('mainWidth', w);
+      return store.dispatch('theme/setMainContentWidth', w);
+    };
+    const persistLeftCollapsed = (v) => {
+      if (panelWidthScope) return panelWidthScope.set('leftCollapsed', v);
+      return store.dispatch('theme/setLeftPanelCollapsed', v);
+    };
+    const persistRightCollapsed = (v) => {
+      if (panelWidthScope) return panelWidthScope.set('rightCollapsed', v);
+      return store.dispatch('theme/setRightPanelCollapsed', v);
+    };
+    const persistLeftUserSized = (v) => {
+      isLeftPanelUserSized.value = v;
+      if (panelWidthScope) return panelWidthScope.set('leftUserSized', v);
+      localStorage.setItem('leftPanelUserSized', String(v));
+    };
+    const persistRightUserSized = (v) => {
+      isRightPanelUserSized.value = v;
+      if (panelWidthScope) return panelWidthScope.set('rightUserSized', v);
+      localStorage.setItem('rightPanelUserSized', String(v));
+    };
+
+    // The width the panels actually live inside. Standalone this IS the
+    // viewport (.terminal-content is full-bleed); inside a widget window it
+    // is the window. Sizing against window.innerWidth in a 600px pane is
+    // what made embedded panels look nothing like the real ones.
+    const layoutWidth = () => terminalContentRef.value?.clientWidth || window.innerWidth;
 
     // --- Dual Resize System State ---
     const isResizing = ref(false);
     const currentResizeHandle = ref(null); // 'left' or 'right'
     const isLeftSwitchMode = ref(false);
     const isRightSwitchMode = ref(false);
+    // Collapsed BY THE LAYOUT because it didn't fit, as opposed to collapsed
+    // by the user. Only the former is undone automatically.
+    const leftAutoCollapsed = ref(false);
+    const rightAutoCollapsed = ref(false);
     const switchThreshold = 80;
 
     // Responsive minimum widths - smaller for screens like MacBook Air (1200px)
     const minLeftPanelWidth = 280;
     const minRightPanelWidth = 280;
     const minMainWidth = 480;
+
+    // Width of a collapsed panel. Must stay in step with the two inline
+    // `'16px'` bindings in the template above — the notch the user drags to.
+    const COLLAPSED_PANEL_PX = 16;
 
     // Snap notch: panels snap to default width when dragged within this range
     const defaultPanelWidth = 384;
@@ -752,11 +824,11 @@ export default {
       if (!newCollapsed) {
         const responsiveDefault = getResponsiveDefaultPanelWidth();
         actualLeftPanelWidth.value = responsiveDefault;
-        store.dispatch('theme/setActualLeftPanelWidth', responsiveDefault);
+        persistLeftWidth(responsiveDefault);
         calculateMainContentWidth();
       }
 
-      store.dispatch('theme/setLeftPanelCollapsed', newCollapsed);
+      persistLeftCollapsed(newCollapsed);
       leftPanelCollapsed.value = newCollapsed;
     };
 
@@ -767,15 +839,11 @@ export default {
       if (!newCollapsed) {
         const responsiveDefault = getResponsiveDefaultPanelWidth();
         rightPanelWidth.value = responsiveDefault;
-        store.dispatch('theme/setThreePanelWidths', {
-          actualLeftWidth: actualLeftPanelWidth.value,
-          mainWidth: mainContentWidth.value,
-          rightWidth: responsiveDefault,
-        });
+        persistRightWidth(responsiveDefault);
         calculateMainContentWidth();
       }
 
-      store.dispatch('theme/setRightPanelCollapsed', newCollapsed);
+      persistRightCollapsed(newCollapsed);
       rightPanelCollapsed.value = newCollapsed;
     };
 
@@ -856,7 +924,7 @@ export default {
         calculateMainContentWidth();
 
         // Save to store
-        store.dispatch('theme/setActualLeftPanelWidth', newLeftWidth);
+        persistLeftWidth(newLeftWidth);
       }
     };
 
@@ -869,16 +937,15 @@ export default {
         if (!newCollapsed) {
           const responsiveDefault = getResponsiveDefaultPanelWidth();
           actualLeftPanelWidth.value = responsiveDefault;
-          store.dispatch('theme/setActualLeftPanelWidth', responsiveDefault);
+          persistLeftWidth(responsiveDefault);
           calculateMainContentWidth();
         }
 
-        store.dispatch('theme/setLeftPanelCollapsed', newCollapsed);
+        persistLeftCollapsed(newCollapsed);
         leftPanelCollapsed.value = newCollapsed;
       } else {
         // User manually resized the panel - mark it as user-sized
-        isLeftPanelUserSized.value = true;
-        localStorage.setItem('leftPanelUserSized', 'true');
+        persistLeftUserSized(true);
       }
 
       isResizing.value = false;
@@ -943,11 +1010,7 @@ export default {
         calculateMainContentWidth();
 
         // Save to store
-        store.dispatch('theme/setThreePanelWidths', {
-          actualLeftWidth: actualLeftPanelWidth.value,
-          mainWidth: mainContentWidth.value,
-          rightWidth: rightPanelWidth.value,
-        });
+        persistRightWidth(rightPanelWidth.value);
       }
     };
 
@@ -960,20 +1023,15 @@ export default {
         if (!newCollapsed) {
           const responsiveDefault = getResponsiveDefaultPanelWidth();
           rightPanelWidth.value = responsiveDefault;
-          store.dispatch('theme/setThreePanelWidths', {
-            actualLeftWidth: actualLeftPanelWidth.value,
-            mainWidth: mainContentWidth.value,
-            rightWidth: responsiveDefault,
-          });
+          persistRightWidth(responsiveDefault);
           calculateMainContentWidth();
         }
 
-        store.dispatch('theme/setRightPanelCollapsed', newCollapsed);
+        persistRightCollapsed(newCollapsed);
         rightPanelCollapsed.value = newCollapsed;
       } else {
         // User manually resized the panel - mark it as user-sized
-        isRightPanelUserSized.value = true;
-        localStorage.setItem('rightPanelUserSized', 'true');
+        persistRightUserSized(true);
       }
 
       isResizing.value = false;
@@ -994,20 +1052,25 @@ export default {
       const containerWidth = terminalContentRef.value.clientWidth;
       let usedWidth = 0;
 
+      // A COLLAPSED panel occupies its 16px notch, not the width it will
+      // return to when reopened. Billing main for the stored expanded width
+      // while the panel renders at 16px left ~368px of the container unused
+      // — invisible in the full-window app (main is flex and absorbed it)
+      // and very visible in a narrow widget window.
       if (showLeftPanel.value) {
-        usedWidth += actualLeftPanelWidth.value + 8; // 8px for handle
+        usedWidth += (leftPanelCollapsed.value ? COLLAPSED_PANEL_PX : actualLeftPanelWidth.value) + 8; // 8px for handle
       }
       if (showRightPanel.value) {
-        usedWidth += rightPanelWidth.value + 8; // 8px for handle
+        usedWidth += (rightPanelCollapsed.value ? COLLAPSED_PANEL_PX : rightPanelWidth.value) + 8; // 8px for handle
       }
 
       mainContentWidth.value = Math.max(minMainWidth, containerWidth - usedWidth);
-      store.dispatch('theme/setMainContentWidth', mainContentWidth.value);
+      persistMainWidth(mainContentWidth.value);
     };
 
     // Get responsive default panel width based on screen size
     const getResponsiveDefaultPanelWidth = () => {
-      const screenWidth = window.innerWidth;
+      const screenWidth = layoutWidth();
 
       // Scale down only when necessary, keep 384px as the target for larger screens
       if (screenWidth >= 1920) {
@@ -1028,7 +1091,41 @@ export default {
 
     const initializePanelWidths = () => {
       if (terminalContentRef.value) {
-        const screenWidth = window.innerWidth;
+        const screenWidth = layoutWidth();
+
+        // A panel that cannot coexist with usable main content collapses to
+        // its 16px notch rather than crushing the screen — the same notch the
+        // user gets by dragging the handle outward, so nothing new is
+        // invented. Auto-collapse is tracked separately from a deliberate
+        // one, so the panel returns when the room does but a user who closed
+        // it keeps it closed. Left resolves first and right is measured
+        // against left's resolved cost, so the outcome is deterministic.
+        if (!isMobile.value) {
+          const notch = COLLAPSED_PANEL_PX;
+          const rightCost = showRightPanel.value ? (rightPanelCollapsed.value ? notch : minRightPanelWidth) + 8 : 0;
+          const leftFits = screenWidth - minMainWidth - rightCost - 8 >= minLeftPanelWidth;
+          if (showLeftPanel.value && !leftFits && !leftPanelCollapsed.value) {
+            leftAutoCollapsed.value = true;
+            leftPanelCollapsed.value = true;
+            persistLeftCollapsed(true);
+          } else if (showLeftPanel.value && leftFits && leftAutoCollapsed.value && leftPanelCollapsed.value) {
+            leftAutoCollapsed.value = false;
+            leftPanelCollapsed.value = false;
+            persistLeftCollapsed(false);
+          }
+
+          const leftCost = showLeftPanel.value ? (leftPanelCollapsed.value ? notch : minLeftPanelWidth) + 8 : 0;
+          const rightFits = screenWidth - minMainWidth - leftCost - 8 >= minRightPanelWidth;
+          if (showRightPanel.value && !rightFits && !rightPanelCollapsed.value) {
+            rightAutoCollapsed.value = true;
+            rightPanelCollapsed.value = true;
+            persistRightCollapsed(true);
+          } else if (showRightPanel.value && rightFits && rightAutoCollapsed.value && rightPanelCollapsed.value) {
+            rightAutoCollapsed.value = false;
+            rightPanelCollapsed.value = false;
+            persistRightCollapsed(false);
+          }
+        }
 
         // Calculate maximum safe panel width (leaving room for main content)
         const maxPanelWidth = Math.floor((screenWidth - minMainWidth - 16) / 2);
@@ -1040,13 +1137,12 @@ export default {
         if (actualLeftPanelWidth.value > maxPanelWidth) {
           // Panel is too large for current screen - shrink it (auto-adjustment)
           actualLeftPanelWidth.value = Math.max(minLeftPanelWidth, maxPanelWidth);
-          isLeftPanelUserSized.value = false;
-          localStorage.setItem('leftPanelUserSized', 'false');
-          store.dispatch('theme/setActualLeftPanelWidth', actualLeftPanelWidth.value);
+          persistLeftUserSized(false);
+          persistLeftWidth(actualLeftPanelWidth.value);
         } else if (!isLeftPanelUserSized.value && actualLeftPanelWidth.value < responsiveDefault && responsiveDefault <= maxPanelWidth) {
           // Panel was auto-shrunk before, screen is now larger - expand to responsive default
           actualLeftPanelWidth.value = responsiveDefault;
-          store.dispatch('theme/setActualLeftPanelWidth', actualLeftPanelWidth.value);
+          persistLeftWidth(actualLeftPanelWidth.value);
         }
         // If user manually sized the panel, preserve their preference
 
@@ -1054,21 +1150,12 @@ export default {
         if (rightPanelWidth.value > maxPanelWidth) {
           // Panel is too large for current screen - shrink it (auto-adjustment)
           rightPanelWidth.value = Math.max(minRightPanelWidth, maxPanelWidth);
-          isRightPanelUserSized.value = false;
-          localStorage.setItem('rightPanelUserSized', 'false');
-          store.dispatch('theme/setThreePanelWidths', {
-            actualLeftWidth: actualLeftPanelWidth.value,
-            mainWidth: mainContentWidth.value,
-            rightWidth: rightPanelWidth.value,
-          });
+          persistRightUserSized(false);
+          persistRightWidth(rightPanelWidth.value);
         } else if (!isRightPanelUserSized.value && rightPanelWidth.value < responsiveDefault && responsiveDefault <= maxPanelWidth) {
           // Panel was auto-shrunk before, screen is now larger - expand to responsive default
           rightPanelWidth.value = responsiveDefault;
-          store.dispatch('theme/setThreePanelWidths', {
-            actualLeftWidth: actualLeftPanelWidth.value,
-            mainWidth: mainContentWidth.value,
-            rightWidth: rightPanelWidth.value,
-          });
+          persistRightWidth(rightPanelWidth.value);
         }
         // If user manually sized the panel, preserve their preference
 
@@ -1076,9 +1163,31 @@ export default {
       }
     };
 
-    // --- Window Resize Handler ---
+    // --- Layout Resize Handler ---
+    // A ResizeObserver on the container is strictly more correct than a
+    // window listener: it fires when the window resizes (the container is
+    // full-bleed) AND when only the container changes — a widget window
+    // being dragged, a sibling panel opening — which a window listener
+    // cannot see at all.
+    let layoutObserver = null;
     const handleWindowResize = () => {
       initializePanelWidths();
+    };
+    const observeLayout = () => {
+      if (typeof ResizeObserver === 'undefined' || !terminalContentRef.value) {
+        window.addEventListener('resize', handleWindowResize);
+        return;
+      }
+      layoutObserver = new ResizeObserver(() => initializePanelWidths());
+      layoutObserver.observe(terminalContentRef.value);
+    };
+    const unobserveLayout = () => {
+      if (layoutObserver) {
+        layoutObserver.disconnect();
+        layoutObserver = null;
+      } else {
+        window.removeEventListener('resize', handleWindowResize);
+      }
     };
 
     // --- Lifecycle ---
@@ -1086,7 +1195,7 @@ export default {
       setDataPage();
       await nextTick();
       initializePanelWidths();
-      window.addEventListener('resize', handleWindowResize);
+      observeLayout();
       terminalContentRef.value?.addEventListener('click', handleContainerClick);
       // Only focus input if showInput is true
       if (props.showInput) {
@@ -1134,7 +1243,7 @@ export default {
           stopRightResize();
         }
       }
-      window.removeEventListener('resize', handleWindowResize);
+      unobserveLayout();
       if (terminalContentRef.value) {
         terminalContentRef.value.removeEventListener('click', handleContainerClick);
       }
@@ -1966,7 +2075,72 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   .main-panel {
     width: 100% !important;
     height: 100%;
+    /* height:100% resolves against the parent's CONTENT box, and .main-panel is
+       content-box, so its 24px of vertical padding was added on top of a
+       already-full-height box: 811px of space, 835px of panel, 24px of
+       overflow. The composer sits at the bottom, so that overflow landed
+       exactly on the send/attach/mic row and clipped 6px off every button. */
+    box-sizing: border-box;
     transition: filter 0.3s ease;
+    /* .main-panel declares min-width: 320px for desktop three-panel layout.
+       min-width WINS over width, !important or not, so on any viewport with
+       less than 320px of available width the panel overflowed its container
+       and carried the composer and send button off-screen with it. */
+    min-width: 0;
+    /* NOTE: padding is deliberately NOT set here. Fourteen
+       `body[data-page='...'] .main-panel` rules above score (0,2,0) and
+       outrank this (0,1,0) selector, so any padding declared here is dead on
+       every real page. Safe-area insets live on .input-container instead. */
+  }
+
+  /* Anything tappable gets a real target. Measured 55 sub-40px controls on
+     the chat screen at 390px before this. */
+  .main-panel button,
+  .main-panel .icon-button,
+  .main-panel [role='button'] {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  .mobile-panel-toggle {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 11px 8px;
+    box-sizing: border-box;
+  }
+
+  /* Composer: two rows on a phone.
+
+     In one row the five 40px action buttons plus the prompt consume ~275px of
+     a 329px line, leaving the text field 54px — narrow enough that the
+     placeholder truncated to "Type a" and typing a sentence scrolled a
+     three-word window. Giving the field a 100% flex basis puts it on its own
+     row and wraps the buttons underneath, right-aligned. */
+  .input-line {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    justify-content: flex-end;
+  }
+
+  /* The `>` prompt is decoration; on 390px it is width we need for the field. */
+  .input-line .prompt {
+    display: none;
+  }
+
+  /* Home-indicator / notch clearance. index.html sets viewport-fit=cover,
+       which is what makes these env() values non-zero in the first place.
+       Applied to the composer rather than .main-panel because the per-page
+       padding rules outrank .main-panel, and because the composer is the
+       bottom-most element — it is the thing the home indicator overlaps. */
+  .input-container {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+
+  .input-line .input-highlight-container {
+    flex: 1 1 100%;
+    min-width: 0;
   }
 
   .panel-active .main-panel {

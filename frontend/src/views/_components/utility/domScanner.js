@@ -104,9 +104,12 @@ export function buildSelector(el) {
   return null;
 }
 
-export function scanInteractiveElements({ filter } = {}) {
+export function scanInteractiveElements({ filter, root } = {}) {
   const filterLower = (filter || '').toLowerCase();
-  const candidates = document.querySelectorAll(INTERACTIVE_SELECTOR);
+  // `root` scopes the scan to one subtree (e.g. a single widget frame on the
+  // One Canvas page). Selectors are still built against document — they must
+  // stay resolvable by document.querySelector for highlight/tour targets.
+  const candidates = (root || document).querySelectorAll(INTERACTIVE_SELECTOR);
   const seen = new Set();
   const results = [];
 

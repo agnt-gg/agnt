@@ -15,6 +15,11 @@
   >
     <!-- Drag header: always on custom pages, hidden for screen widgets on default pages -->
     <div v-if="showControls" class="wf-hdr" @mousedown="onDragStart">
+      <!-- Host-supplied leading controls. Empty on custom pages, so this is
+           a no-op there; the workspace canvas fills it with per-window
+           back/forward. Kept as a slot rather than props because the frame
+           has no business knowing what navigation means. -->
+      <slot name="header-lead"></slot>
       <span class="wf-icon"><i :class="widgetDef?.icon"></i></span>
       <span class="wf-title">{{ widgetDef?.name }}</span>
       <div class="wf-ctrl">

@@ -51,6 +51,17 @@ export function registerAllWidgets() {
     isScreenWidget: true,
   });
 
+  registerWidget('workspace-chat', {
+    name: 'Chat',
+    icon: 'fas fa-comments',
+    category: 'home',
+    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Workspace/WorkspaceChatWidget.vue')),
+    defaultSize: { cols: 4, rows: 8 },
+    minSize: { cols: 3, rows: 4 },
+    description: 'Workspace conversation',
+    isScreenWidget: true,
+  });
+
   registerWidget('dashboard', {
     name: 'Dashboard',
     icon: 'fas fa-tachometer-alt',
@@ -114,6 +125,28 @@ export function registerAllWidgets() {
     defaultSize: { cols: 12, rows: 8 },
     minSize: { cols: 4, rows: 3 },
     description: 'Execution trace history',
+    isScreenWidget: true,
+  });
+
+  registerWidget('artifacts', {
+    name: 'Artifacts',
+    icon: 'fas fa-cube',
+    category: 'home',
+    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Artifacts/Artifacts.vue')),
+    defaultSize: { cols: 12, rows: 8 },
+    minSize: { cols: 4, rows: 3 },
+    description: 'Artifact browser and preview',
+    isScreenWidget: true,
+  });
+
+  registerWidget('memory', {
+    name: 'Memory',
+    icon: 'fas fa-brain',
+    category: 'home',
+    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Memory/Memory.vue')),
+    defaultSize: { cols: 12, rows: 8 },
+    minSize: { cols: 4, rows: 3 },
+    description: 'Agent memory browser',
     isScreenWidget: true,
   });
 

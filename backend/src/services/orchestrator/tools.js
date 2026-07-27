@@ -14,6 +14,7 @@ import { getCodeToolSchemas, executeCodeFunction } from './codeTools.js';
 import { getToolForgeToolSchemas, executeToolForgeTool } from './toolForgeTools.js';
 import { getWidgetToolSchemas, executeWidgetTool } from './widgetTools.js';
 import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js';
+import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
@@ -4417,6 +4418,7 @@ function injectAsyncParams(schema) {
   const toolForgeToolSchemas = getToolForgeToolSchemas();
   const widgetToolSchemas = getWidgetToolSchemas();
   const tutorialToolSchemas = getTutorialToolSchemas();
+  const canvasToolSchemas = getCanvasToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
 
@@ -4456,6 +4458,7 @@ function injectAsyncParams(schema) {
     ...toolForgeToolSchemas,
     ...widgetToolSchemas,
     ...tutorialToolSchemas,
+    ...canvasToolSchemas,
     ...registryToolSchemas,
     ...pluginToolSchemas,
     ...customToolSchemas,
@@ -4671,6 +4674,12 @@ async function executeToolInner(toolName, args, authToken, context) {
     if (tutorialToolNames.has(toolName)) {
       console.log(`Executing tutorial tool: ${toolName}`);
       const result = await executeTutorialTool(toolName, resolvedArgs, authToken, context);
+      return JSON.stringify(result);
+    }
+
+    if (isCanvasTool(toolName)) {
+      console.log(`Executing canvas tool: ${toolName}`);
+      const result = await executeCanvasTool(toolName, resolvedArgs, authToken, context);
       return JSON.stringify(result);
     }
 

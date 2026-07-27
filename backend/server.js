@@ -568,6 +568,17 @@ function startServer() {
         }
       });
 
+      // Canvas tool response from a client tab (get_canvas_state /
+      // inspect_canvas_widget / open|close|move_canvas_widget). Same
+      // first-response-wins registry as the tutorial scan — the pending map is
+      // generic over requestId, so both rails share it safely.
+      socket.on('canvas:response', async ({ requestId, result } = {}) => {
+        if (!socket.userId || !requestId) return;
+        const { resolvePendingScan } = await import('./src/services/orchestrator/tutorialScanRegistry.js');
+        const ok = resolvePendingScan(requestId, result ?? { success: false, error: 'Empty canvas response' });
+        console.log(`[Socket.IO] canvas:response ${requestId} ${ok ? 'accepted' : 'ignored (already resolved or expired)'} from user ${socket.userId}`);
+      });
+
       socket.on('disconnect', () => {
         if (socket.userId) {
           console.log(`[Socket.IO] User ${socket.userId} disconnected: ${socket.id}`);
