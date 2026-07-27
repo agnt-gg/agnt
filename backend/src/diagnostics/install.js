@@ -8,8 +8,10 @@
  * AGNT_FATAL_POLICY=exit or an explicit installDiagnostics option):
  *   backend  — default 'stay' for compatibility with today's restart semantics.
  *              Preferred long-term is 'exit' so a process in an undefined state
- *              does not keep serving (main.js can respawn it). Flipping the
- *              default is intentional and separate from this module's dumps.
+ *              does not keep serving (main.js can respawn it); until then a
+ *              fatal leaves a zombie backend that looks alive and isn't.
+ *              Flipping the default is intentional and separate from this
+ *              module's dumps.
  *   workflow — 'stay': the parent bridge owns restart, and an in-flight
  *              workflow is often still salvageable. (Override with AGNT_FATAL_POLICY.)
  *   main     — 'stay': quitting is decided by Electron lifecycle code.
@@ -64,6 +66,13 @@ function crashDedupeKey(reason, err) {
 }
 
 /**
+ * Single-slot dedupe: only the most recent crash signature is remembered. This
+ * suppresses one error repeating — the EPIPE-storm case it exists for — but
+ * deliberately does NOT suppress two errors alternating A→B→A→B. That is a
+ * known floor, not an oversight: a map keyed by signature needs its own
+ * eviction policy or it becomes an unbounded leak on a process that is already
+ * failing. Do not assume this is a general storm guard.
+ *
  * @returns {boolean} true if this crash should be dumped (first in window)
  */
 export function shouldDumpCrash(reason, err, now = Date.now()) {
