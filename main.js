@@ -7,12 +7,32 @@ import { Readable } from 'stream';
 
 // DEBUG: Show which main.js is being loaded
 console.log('=== LOADING MAIN.JS FROM:', import.meta.url, '===');
-import http from 'http'; // Import http to poll the backend
 import https from 'https'; // Import https for update checks
 import dotenv from 'dotenv';
+import {
+  initDesktopConnection,
+  getUiLoadUrl,
+  prepareConnectionForLaunch,
+  waitForBackendReady,
+  recoverOnActivate,
+  stopDesktopConnection,
+} from './electron/desktop-connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load root .env early so USE_EXTERNAL_BACKEND / BACKEND_URL work before boot.
+// Packaged builds still prefer userData desktop-connection.json from Settings.
+if (!app.isPackaged) {
+  const rootEnvPath = path.join(__dirname, '.env');
+  if (fs.existsSync(rootEnvPath)) {
+    try {
+      dotenv.config({ path: rootEnvPath });
+    } catch (err) {
+      console.warn('[connection] Could not load root .env:', err.message);
+    }
+  }
+}
 
 // ============================================================================
 // DIAGNOSTICS
@@ -125,6 +145,54 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow;
 let backendProcess;
+let windowControlIpcRegistered = false;
+/** webContents ids that already have F11/Escape handlers */
+const chromeAttached = new Set();
+
+/**
+ * Wire F11 / Escape / title freeze once per BrowserWindow webContents.
+ */
+function attachMainWindowChrome() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const id = mainWindow.webContents.id;
+  if (chromeAttached.has(id)) return;
+  chromeAttached.add(id);
+  mainWindow.webContents.once('destroyed', () => chromeAttached.delete(id));
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F11' && !input.alt && !input.control && !input.meta && !input.shift) {
+      const isFullScreen = mainWindow.isFullScreen();
+      mainWindow.setFullScreen(!isFullScreen);
+      event.preventDefault();
+    }
+    if (input.key === 'Escape' && mainWindow.isFullScreen()) {
+      mainWindow.setFullScreen(false);
+      event.preventDefault();
+    }
+  });
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+}
+
+/** Register window control IPC once (createWindow may run multiple times). */
+function registerWindowControlIpc() {
+  if (windowControlIpcRegistered) return;
+  windowControlIpcRegistered = true;
+
+  ipcMain.on('minimize-window', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+  ipcMain.on('maximize-window', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) mainWindow.unmaximize();
+      else mainWindow.maximize();
+    }
+  });
+  ipcMain.on('close-window', () => {
+    if (mainWindow) mainWindow.close();
+  });
+}
 
 // ============================================================================
 // BACKEND SUPERVISOR - sanctioned self-restart support
@@ -188,7 +256,8 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
     // "restart yourself" doubles as credential hot-reload).
     setTimeout(() => {
       startBackend();
-      waitForBackend(() => {
+      waitForBackendReady().then((ok) => {
+        if (!ok) return;
         supervisor.state = 'running';
         console.log('Backend respawned and healthy.');
         notifyRenderer('backend:restarted');
@@ -832,9 +901,10 @@ function createWindow() {
     });
   });
 
-  // Load the URL that is serving your API and frontend.
-  const port = process.env.PORT || 3333;
-  mainWindow.loadURL(`http://localhost:${port}`);
+  // Load the UI (local co-located backend or external-mode local proxy origin).
+  const loadUrl = getUiLoadUrl();
+  console.log('[connection] Loading UI from:', loadUrl);
+  mainWindow.loadURL(loadUrl);
 
   mainWindow.center();
   mainWindow.show();
@@ -842,89 +912,19 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
-
-  // Add IPC listeners for window controls.
-  ipcMain.on('minimize-window', () => {
-    if (mainWindow) mainWindow.minimize();
-  });
-
-  ipcMain.on('maximize-window', () => {
-    if (mainWindow) {
-      if (mainWindow.isMaximized()) {
-        mainWindow.unmaximize();
-      } else {
-        mainWindow.maximize();
-      }
-    }
-  });
-
-  ipcMain.on('close-window', () => {
-    if (mainWindow) mainWindow.close();
-  });
-}
-
-// Polls the backend at localhost:3333 until it responds, then calls the callback.
-function waitForBackend(callback) {
-  const port = process.env.PORT || 3333;
-  const options = {
-    hostname: '127.0.0.1', // Use IP instead of localhost
-    port: parseInt(port),
-    path: '/api/health',
-    method: 'GET',
-    timeout: 30000, // 30s per request — backend may block the event loop during plugin/skill init
-  };
-
-  let isBackendReady = false;
-  let retryCount = 0;
-
-  // PRD-105 P2: flat fast polling. A refused localhost connection costs ~1ms,
-  // so there is no resource to protect with backoff — exponential delays were
-  // adding 2-4s of dead air AFTER the backend was already up (the backend
-  // routinely became ready inside the 4s gap between attempts 3 and 4).
-  const getRetryDelay = () => 250;
-
-  const attempt = () => {
-    console.log(`Attempting to connect to backend (attempt ${retryCount + 1})...`);
-    const req = http.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      res.on('end', () => {
-        if (res.statusCode === 200 && !isBackendReady) {
-          console.log('Backend is ready');
-          isBackendReady = true;
-          callback();
-        } else if (!isBackendReady) {
-          retryCount++;
-          const delay = getRetryDelay();
-          console.log(`Backend not ready (status ${res.statusCode}). Retry ${retryCount} in ${delay}ms`);
-          setTimeout(attempt, delay);
-        }
-      });
-    });
-
-    req.on('error', (error) => {
-      retryCount++;
-      const delay = getRetryDelay();
-      console.log(`Backend connection error (${error.message}). Retry ${retryCount} in ${delay}ms`);
-      setTimeout(attempt, delay);
-    });
-
-    req.on('timeout', () => {
-      // Just destroy — the resulting 'error' event handles the retry, so this
-      // doesn't double-fire (was causing back-to-back "timed out" / "socket
-      // hang up" retry pairs).
-      req.destroy();
-    });
-
-    req.end();
-  };
-
-  attempt();
 }
 
 app.on('ready', () => {
+  initDesktopConnection({
+    app,
+    BrowserWindow,
+    dialog,
+    ipcMain,
+    dirname: __dirname,
+    getMainWindow: () => mainWindow,
+  });
+  registerWindowControlIpc();
+
   // Native minidumps (V8/native aborts never reach JS) plus the four Electron
   // death modes: render-process-gone, child-process-gone, gpu crash, and a
   // frozen window. Windows are auto-watched via 'browser-window-created', so
@@ -1023,36 +1023,13 @@ app.on('ready', () => {
     }
   });
 
-  // Start the backend process from within Electron.
-  startBackend();
-
-  // Instead of a fixed delay, poll until the backend is ready.
-  waitForBackend(() => {
+  // Hybrid connection: local Express OR external proxy UI + remote API.
+  prepareConnectionForLaunch({ startBackend }).then((ready) => {
+    if (!ready) return;
     supervisor.state = 'running';
     console.log('Backend is ready. Creating main window...');
     createWindow();
-
-    // Register local shortcuts after the window is created.
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (input.key === 'F11' && !input.alt && !input.control && !input.meta && !input.shift) {
-        const isFullScreen = mainWindow.isFullScreen();
-        mainWindow.setFullScreen(!isFullScreen);
-        event.preventDefault();
-      }
-      if (input.key === 'Escape' && mainWindow.isFullScreen()) {
-        mainWindow.setFullScreen(false);
-        event.preventDefault();
-      }
-    });
-
-    // Remove global shortcut registrations
-    // globalShortcut.register('F11', () => { ... });
-    // globalShortcut.register('Escape', () => { ... });
-
-    // Prevent default page title updates.
-    mainWindow.on('page-title-updated', (event) => {
-      event.preventDefault();
-    });
+    attachMainWindowChrome();
   });
 });
 
@@ -1063,9 +1040,15 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  if (!app.isReady() || BrowserWindow.getAllWindows().length > 0) return;
+  recoverOnActivate({
+    createWindow,
+    attachChrome: attachMainWindowChrome,
+  }).then(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      supervisor.state = 'running';
+    }
+  });
 });
 
 app.on('will-quit', () => {
@@ -1074,5 +1057,6 @@ app.on('will-quit', () => {
     console.log('Shutting down backend process...');
     backendProcess.kill();
   }
+  stopDesktopConnection();
   globalShortcut.unregisterAll();
 });

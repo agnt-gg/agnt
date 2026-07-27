@@ -832,6 +832,10 @@ docker run --rm \
 
 ## Troubleshooting
 
+### Crash dumps / diagnostics filling disk
+
+See **[DIAGNOSTICS.md](DIAGNOSTICS.md)** for locations, `AGNT_FATAL_POLICY`, EPIPE handling, and how to clear `diagnostics/crashes/`.
+
 ### Container Won't Start
 
 Check logs:

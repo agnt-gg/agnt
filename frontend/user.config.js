@@ -53,14 +53,21 @@ export const AI_PROVIDERS_CONFIG = {
 // };
 
 // Semi Local Configuration
-// Dynamically detect backend URL based on how the frontend is served
-const isDevServer = typeof window !== 'undefined' && window.location.port === '5173';
-const backendBaseUrl = isDevServer
-  ? 'http://localhost:3333/api'
-  : `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3333'}/api`;
+// Co-located: origin/api. Vite dev (5173): localhost:3333/api.
+// Electron external mode: UI+proxy on 127.0.0.1:19333 — still origin/api (same-origin).
+function resolveBackendBaseUrl() {
+  const isDevServer = typeof window !== 'undefined' && window.location.port === '5173';
+  if (isDevServer) {
+    return 'http://localhost:3333/api';
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3333';
+  return `${origin}/api`;
+}
 
 export const API_CONFIG = {
-  BASE_URL: backendBaseUrl, // dynamically set based on frontend port
+  get BASE_URL() {
+    return resolveBackendBaseUrl();
+  },
   FRONTEND_URL: 'http://localhost:5173', // local frontend url (dev server)
   WEBHOOK_URL: 'https://api.agnt.gg', // remote webhook url
   REMOTE_URL: 'https://api.agnt.gg', // remote url for sharing, login, app auths, and webhooks

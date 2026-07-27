@@ -169,6 +169,19 @@
           </div>
         </div>
 
+        <!-- Connection Section (desktop hybrid / external backend) -->
+        <div v-else-if="activeSection === 'connection'" class="settings-content" data-section="connection">
+          <div class="content-header">
+            <h2 class="content-title">Connection</h2>
+            <p class="content-subtitle">Local backend or remote AGNT server</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <ConnectionSettings />
+            </div>
+          </div>
+        </div>
+
         <!-- Tours Section -->
         <div v-else-if="activeSection === 'tours'" class="settings-content" data-section="tours">
           <div class="content-header">
@@ -214,7 +227,28 @@
         </div>
       </template>
       <template v-else>
-        <LoginSection @login-success="handleLoginSuccess" />
+        <!-- Unauthenticated: sign-in, or Connection (external mode recovery without login) -->
+        <div v-if="activeSection === 'connection'" class="settings-content" data-section="connection">
+          <div class="content-header">
+            <h2 class="content-title">Connection</h2>
+            <p class="content-subtitle">Local backend or remote AGNT server</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <ConnectionSettings />
+            </div>
+            <div class="settings-section full-width guest-connection-actions">
+              <button type="button" class="back-to-sign-in" @click="activeSection = 'login'">
+                ← Back to sign in
+              </button>
+            </div>
+          </div>
+        </div>
+        <LoginSection
+          v-else
+          @login-success="handleLoginSuccess"
+          @open-connection="activeSection = 'connection'"
+        />
       </template>
 
       <!-- Tutorial - Only show when logged in -->
@@ -243,6 +277,7 @@ import CreditPurchase from '../../../../_components/common/CreditPurchase.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import TourSettings from './components/TourSettings/TourSettings.vue';
 import SoundsSettings from './components/SoundsSettings/SoundsSettings.vue';
+import ConnectionSettings from './components/ConnectionSettings/ConnectionSettings.vue';
 import SecuritySettings from './components/SecuritySettings/SecuritySettings.vue';
 import AgntScoreBreakdown from './components/AgntScoreBreakdown/AgntScoreBreakdown.vue';
 import ProfileSection from './components/ProfileSection/ProfileSection.vue';
@@ -265,6 +300,7 @@ export default {
     ResourcesSection,
     TourSettings,
     SoundsSettings,
+    ConnectionSettings,
     SecuritySettings,
     AgntScoreBreakdown,
     ProfileSection,
@@ -294,6 +330,8 @@ export default {
       if (requestedSection) {
         activeSection.value = requestedSection;
         localStorage.removeItem('settings-initial-section'); // Clean up
+      } else if (!isLoggedIn.value) {
+        activeSection.value = 'login';
       }
 
       // Non-blocking: refresh all data in parallel in background
@@ -442,6 +480,28 @@ body.dark .settings-section.full-width {
 /* .lower-section {
   padding: 24px !important;
 } */
+
+.guest-connection-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 0;
+}
+
+.back-to-sign-in {
+  appearance: none;
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.back-to-sign-in:hover {
+  border-color: var(--color-primary);
+}
 
 .settings-content {
   display: flex;

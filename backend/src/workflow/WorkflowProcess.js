@@ -37,6 +37,13 @@ function safeSend(message) {
     process.send(message);
     return true;
   } catch (err) {
+    // EPIPE / closed channel — parent is gone; exit so we don't keep throwing.
+    const code = err?.code;
+    if (code === 'EPIPE' || code === 'ERR_IPC_CHANNEL_CLOSED' || /broken pipe/i.test(err?.message || '')) {
+      console.warn('[WorkflowProcess] IPC channel closed — exiting worker');
+      setTimeout(() => process.exit(0), 10).unref?.();
+      return false;
+    }
     console.warn('[WorkflowProcess] IPC send failed:', err.message);
     return false;
   }
@@ -265,17 +272,10 @@ ProcessManager.on('workflowStatusUpdate', (workflowId, statusData) => {
   });
 });
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception in workflow process:', error);
-  // Don't exit - let the parent process handle restart if needed
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection in workflow process at:', promise, 'reason:', reason);
-  // Don't exit - let the parent process handle restart if needed
-});
+// Fatal handling (uncaughtException / unhandledRejection) is owned by
+// diagnostics/bootstrap.js: EPIPE is treated as benign, crash dumps are
+// deduped, and workflow workers exit so WorkflowProcessBridge can restart.
+// Do not register a second "stay alive" handler here — that caused crash storms.
 
 // Memory monitoring
 setInterval(() => {

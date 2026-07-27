@@ -72,14 +72,21 @@ http://your-domain.com:3333
 
 #### Access Method 2: Native Desktop App (Optional)
 
+> **Desktop connection (Settings or env)**  
+> Point Electron at the Docker/server backend with either:
+> - **In-app:** Settings → Configuration → **Connection** (toggle external backend, set URL, Test, Save, Restart), or  
+> - **Env / launch:** `USE_EXTERNAL_BACKEND=true BACKEND_URL=http://SERVER_IP:3333`  
+> Env wins for that process over the saved file (`desktop-connection.json` in app data).  
+> If the remote is unreachable at launch, the app opens a **connection setup** screen so you can fix the URL, switch back to local, or retry—without deleting config by hand.  
+>  
+> **UI vs API:** In external mode the desktop app serves **its own packaged frontend** on a fixed local origin (`http://127.0.0.1:19333`) and **reverse-proxies** `/api` + `/socket.io` to `BACKEND_URL`. That keeps Settings → Connection in *this* build, same-origin auth/localStorage, and works with older remotes (no CORS setup required).  
+>  
+> **Sign-in / empty agents:** `http://127.0.0.1:19333` is a **new browser origin**. A token saved for `http://SERVER:3333` in Safari/Chrome is **not** reused. Sign in once in the desktop app (banner explains this). Empty agents/chat until then does **not** mean the remote database was wiped. Use **Settings → Connection** from the banner if the remote URL is wrong.
+
 **Option A: Use Electron Full** (~348MB AppImage)
 1. Download from [agnt.gg/downloads](https://agnt.gg/downloads)
 2. Install on user's desktop
-3. Configure to use external backend:
-   ```bash
-   USE_EXTERNAL_BACKEND=true
-   BACKEND_URL=http://SERVER_IP:3333
-   ```
+3. Configure to use external backend (Settings → Connection, or env above)
 4. Launch AGNT
 
 **Option B: Use Electron Lite** (~344MB AppImage)
@@ -309,6 +316,23 @@ docker-compose restart
 BACKEND_URL=http://SERVER_IP:3333  # Good
 BACKEND_URL=http://localhost:3333  # Bad (points to client)
 ```
+
+If the remote is down at launch, AGNT shows a **connection setup** window (fix URL, switch to local, test, save & restart). You can also open Settings → Connection after a successful local boot (and while signed out via the external-mode banner).
+
+### Signed in to the server in a browser, but desktop shows empty agents
+
+**Cause:** External mode UI origin is `http://127.0.0.1:19333`, not `http://SERVER:3333`. Login tokens are per-origin.
+
+**Fix:**
+1. Confirm Settings → Connection points at the correct `BACKEND_URL` and Test succeeds.
+2. Sign in again inside the desktop app (same account as on the server).
+3. Agents/chat should load from the remote DB.
+
+### Crash files filling `diagnostics/crashes` (workflow worker / EPIPE)
+
+Older builds could dump a large crash JSON on every **broken pipe** while the worker stayed alive. Current builds treat EPIPE as benign, dedupe dumps, and exit workflow workers so the parent restarts them.
+
+See **[DIAGNOSTICS.md](DIAGNOSTICS.md)** (`AGNT_FATAL_POLICY`, cleanup commands).
 
 ### Different users see different data
 

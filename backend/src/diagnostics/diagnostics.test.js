@@ -9,6 +9,11 @@ import { installConsoleBridge } from './consoleBridge.js';
 import { withContext } from './context.js';
 import { sweep, purgeLegacyLogs } from './retention.js';
 import { readRecords, readCrashes } from './read.js';
+import {
+  isBenignPipeError,
+  shouldDumpCrash,
+  _resetDiagnosticsInstallForTests,
+} from './install.js';
 
 let DIR;
 
@@ -29,6 +34,38 @@ beforeEach(() => {
 afterEach(() => {
   fs.rmSync(DIR, { recursive: true, force: true });
   vi.restoreAllMocks();
+  _resetDiagnosticsInstallForTests();
+});
+
+/* ------------------------------------------------------------------ *
+ * Fatal handling — EPIPE must not produce crash-file storms
+ * ------------------------------------------------------------------ */
+describe('fatal pipe / crash dedupe', () => {
+  it('treats EPIPE / broken pipe / destroyed stream as benign', () => {
+    expect(isBenignPipeError(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))).toBe(true);
+    expect(isBenignPipeError(Object.assign(new Error('x'), { code: 'ERR_STREAM_DESTROYED' }))).toBe(true);
+    expect(isBenignPipeError(new Error('write broken pipe after parent exit'))).toBe(true);
+    expect(isBenignPipeError(new Error('something else blew up'))).toBe(false);
+    expect(isBenignPipeError(Object.assign(new Error('x'), { code: 'ENOENT' }))).toBe(false);
+  });
+
+  it('dedupes identical crash dumps within the window', () => {
+    _resetDiagnosticsInstallForTests();
+    const err = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+    // shouldDumpCrash is for non-benign dumps; use a real app error
+    const boom = new Error('kaboom');
+    expect(shouldDumpCrash('uncaughtException', boom, 1000)).toBe(true);
+    expect(shouldDumpCrash('uncaughtException', boom, 2000)).toBe(false);
+    expect(shouldDumpCrash('uncaughtException', boom, 3000)).toBe(false);
+    // After window elapses, dump again
+    expect(shouldDumpCrash('uncaughtException', boom, 1000 + 60_000 + 1)).toBe(true);
+  });
+
+  it('does not dedupe different errors', () => {
+    _resetDiagnosticsInstallForTests();
+    expect(shouldDumpCrash('uncaughtException', new Error('a'), 1)).toBe(true);
+    expect(shouldDumpCrash('uncaughtException', new Error('b'), 2)).toBe(true);
+  });
 });
 
 /* ------------------------------------------------------------------ *

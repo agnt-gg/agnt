@@ -75,22 +75,52 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Server configuration
+// Static allowlist + loopback any-port. Electron hybrid desktop UI uses
+// reverse-proxy same-origin (no CORS needed for that path); loopback origins
+// still help Vite (5173) and any direct loopback tooling. Socket.IO shares this.
+const corsStaticOrigins = [
+  process.env.FRONTEND_DEV_URL,
+  process.env.FRONTEND_DIST_URL,
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3333',
+  'http://127.0.0.1:33333',
+  'http://localhost:5173',
+  'http://localhost:3333',
+  'http://localhost:33333',
+  'https://agnt.gg',
+  'https://www.agnt.gg',
+  'https://alpha.agnt.gg',
+  'https://www.alpha.agnt.gg',
+].filter(Boolean);
+
+function isLoopbackOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  try {
+    const u = new URL(origin);
+    return (
+      (u.protocol === 'http:' || u.protocol === 'https:') &&
+      (u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '[::1]')
+    );
+  } catch {
+    return false;
+  }
+}
+
 const config = {
   port: process.env.PORT || 3333,
   corsOptions: {
-    origin: [
-      process.env.FRONTEND_DEV_URL,
-      process.env.FRONTEND_DIST_URL,
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:3333',
-      'http://127.0.0.1:33333',
-      'http://localhost:3333',
-      'http://localhost:33333',
-      'https://agnt.gg',
-      'https://www.agnt.gg',
-      'https://alpha.agnt.gg',
-      'https://www.alpha.agnt.gg',
-    ],
+    origin(origin, callback) {
+      // Non-browser / same-origin tools often omit Origin
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (corsStaticOrigins.includes(origin) || isLoopbackOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,

@@ -24,6 +24,12 @@ Choose your installation method and get AGNT running in under 5 minutes.
 |-------|------------|----------|
 | **[Hybrid Mode](QUICKSTART_HYBRID.md)** | Docker + Electron + Web | Mix native apps + browser + shared backend |
 
+### 🔧 Ops & internals
+
+| Guide | Best For |
+|-------|----------|
+| **[Diagnostics & fatal policy](DIAGNOSTICS.md)** | Crash dumps, EPIPE, `AGNT_FATAL_POLICY`, log locations |
+
 ---
 
 ## 🤔 Which Guide Should I Use?

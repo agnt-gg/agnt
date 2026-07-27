@@ -919,6 +919,8 @@ On startup, AGNT logs the resolved data path:
 | [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)          | Detailed build guide.                      |
 | [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup.                  |
 | [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment and hosting.             |
+| [🔀 Hybrid Mode](docs/QUICKSTART_HYBRID.md)                   | Shared backend + Electron/browser clients. |
+| [🩺 Diagnostics & fatal policy](docs/DIAGNOSTICS.md)          | Crash dumps, EPIPE, `AGNT_FATAL_POLICY`.   |
 | [🪶 Docker Lite Mode](docs/LITE_MODE.md)                      | Docker without browser automation.         |
 | [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Desktop builds without browser automation. |
 | [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins.                   |

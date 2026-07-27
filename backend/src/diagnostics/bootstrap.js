@@ -10,13 +10,12 @@
  * WorkflowProcess.js is exactly one line each. Observability should not require
  * restructuring the thing it observes.
  *
- * NOTE ON FATAL POLICY — this ships as 'stay', which is byte-for-byte today's
- * behaviour: uncaught exceptions are logged and the process keeps running.
- * That is almost certainly wrong (a process in an undefined state should not
- * keep serving; the supervisor in main.js exists precisely to respawn it), but
- * flipping it changes restart semantics, and bundling a behaviour change into
- * an observability change is how you end up unable to tell which one broke
- * things. Set AGNT_FATAL_POLICY=exit to opt in.
+ * FATAL POLICY
+ *   - workflow workers default to **exit** after a real fatal (parent bridge
+ *     restarts them). 'stay' after EPIPE previously caused crash-file storms.
+ *   - backend still defaults to **stay** for compatibility with existing
+ *     deployments; set AGNT_FATAL_POLICY=exit to opt the backend into exit+respawn.
+ *   - AGNT_FATAL_POLICY=exit|stay always wins when set.
  */
 import PathManager from '../utils/PathManager.js';
 import { installDiagnostics } from './install.js';
@@ -24,11 +23,22 @@ import { installDiagnostics } from './install.js';
 const isWorkflow = process.env.IS_WORKFLOW_PROCESS === 'true';
 const proc = isWorkflow ? 'workflow' : 'backend';
 
-const fatalPolicy = process.env.AGNT_FATAL_POLICY === 'exit' ? 'exit' : 'stay';
+const envPolicy = process.env.AGNT_FATAL_POLICY;
+const fatalPolicy =
+  envPolicy === 'exit' || envPolicy === 'stay'
+    ? envPolicy
+    : isWorkflow
+      ? 'exit'
+      : 'stay';
 
 /** Cheap, high-signal state for crash records. Must never throw. */
 function getState() {
-  const state = { proc, argv1: process.argv[1] };
+  const state = {
+    proc,
+    argv1: process.argv[1],
+    connected: process.connected,
+    ppid: process.ppid,
+  };
   try {
     state.cwd = process.cwd();
   } catch {

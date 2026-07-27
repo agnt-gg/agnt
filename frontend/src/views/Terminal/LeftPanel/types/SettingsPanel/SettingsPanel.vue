@@ -57,6 +57,15 @@
             <i class="fas fa-volume-up"></i>
             <span>Sounds</span>
           </button>
+          <button
+            class="nav-item"
+            :class="{ active: activeSection === 'connection' }"
+            @click="handleNavClick('connection')"
+            data-nav="connection"
+          >
+            <i class="fas fa-network-wired"></i>
+            <span>Connection</span>
+          </button>
           <button class="nav-item" :class="{ active: activeSection === 'tours' }" @click="handleNavClick('tours')" data-nav="tours">
             <i class="fas fa-route"></i>
             <span>Tours</span>
@@ -90,7 +99,7 @@
 </template>
 
 <script>
-import { ref, computed, toRefs } from 'vue';
+import { ref, toRefs } from 'vue';
 
 export default {
   name: 'SettingsPanel',

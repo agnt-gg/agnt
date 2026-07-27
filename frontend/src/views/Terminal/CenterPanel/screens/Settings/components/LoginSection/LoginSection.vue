@@ -11,11 +11,26 @@
     />
 
     <div v-if="!isAuthenticated" class="auth-content">
+      <ExternalModeBanner
+        :is-authenticated="false"
+        :show-connection-link="true"
+        @open-connection="openConnectionSettings"
+      />
+
       <!-- Email Login Form -->
       <div v-if="!showCodeModal">
         <header class="auth-header">
           <h2>Sign in to AGNT</h2>
-          <p class="auth-subtitle">Secure, passwordless access to your workspace.</p>
+          <p class="auth-subtitle">
+            <template v-if="isExternalMode && remoteHostLabel">
+              Sign in to load your workspace from
+              <span class="remote-host-inline">{{ remoteHostLabel }}</span>.
+            </template>
+            <template v-else-if="isExternalMode">
+              External backend mode — sign in to load agents and chat from the remote server.
+            </template>
+            <template v-else> Secure, passwordless access to your workspace. </template>
+          </p>
         </header>
 
         <div class="login-options">
@@ -107,18 +122,26 @@ import { useRouter } from 'vue-router';
 import axios from 'axios';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
+import ExternalModeBanner from '../ExternalModeBanner/ExternalModeBanner.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { useDesktopConnection } from '@/composables/useDesktopConnection.js';
 
 export default {
   name: 'AuthSection',
-  components: { SvgIcon, TermsPrivacyModal },
+  components: { SvgIcon, TermsPrivacyModal, ExternalModeBanner },
+  emits: ['login-success', 'open-connection'],
   setup(props, { emit }) {
     const store = useStore();
     const router = useRouter();
+    const { isExternalMode, remoteHostLabel } = useDesktopConnection();
 
     const isAuthenticated = computed(() => store.getters['userAuth/isAuthenticated']);
     const user = computed(() => store.state.userAuth.user);
     const displayPseudonym = computed(() => store.getters['userAuth/userPseudonym']);
+
+    const openConnectionSettings = () => {
+      emit('open-connection');
+    };
 
     // Email magic link state
     const email = ref('');
@@ -356,6 +379,9 @@ export default {
       isAuthenticated,
       user,
       displayPseudonym,
+      isExternalMode,
+      remoteHostLabel,
+      openConnectionSettings,
       email,
       isLoading,
       errorMessage,
@@ -470,6 +496,14 @@ body.dark .auth-section {
   font-size: 13px;
   color: var(--color-text-muted);
   opacity: 0.85;
+}
+
+.remote-host-inline {
+  color: var(--color-primary);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-size: 0.95em;
+  -webkit-text-fill-color: var(--color-primary);
+  word-break: break-all;
 }
 
 .login-options {

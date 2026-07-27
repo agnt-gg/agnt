@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AGNT — Connection Setup</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #070710;
+        --panel: rgba(18, 22, 40, 0.95);
+        --border: rgba(80, 120, 200, 0.28);
+        --text: #e8ecf8;
+        --muted: #9aa3bd;
+        --primary: #5b9dff;
+        --primary-rgb: 91, 157, 255;
+        --danger: #ff7b7b;
+        --ok: #3dd68c;
+        --warn: #ffc400;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 600px at 20% -10%, rgba(var(--primary-rgb), 0.18), transparent),
+          radial-gradient(900px 500px at 100% 0%, rgba(120, 80, 255, 0.12), transparent), var(--bg);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(560px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.45rem;
+        font-weight: 650;
+      }
+      .lead {
+        margin: 0 0 20px;
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 0.95rem;
+      }
+      .error-box {
+        display: none;
+        margin-bottom: 18px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 123, 123, 0.4);
+        background: rgba(255, 123, 123, 0.08);
+        color: #ffc9c9;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      .error-box.show {
+        display: block;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .field {
+        margin-bottom: 16px;
+      }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(var(--primary-rgb), 0.06);
+        margin-bottom: 16px;
+      }
+      .toggle-row p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+      input[type='url'],
+      input[type='text'] {
+        width: 100%;
+        padding: 11px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.28);
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.9rem;
+      }
+      input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.2);
+      }
+      input:disabled {
+        opacity: 0.5;
+      }
+      .switch {
+        position: relative;
+        width: 48px;
+        height: 26px;
+        flex-shrink: 0;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .slider {
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        background: rgba(127, 129, 147, 0.35);
+        border-radius: 26px;
+        border: 1px solid var(--border);
+        transition: 0.2s;
+      }
+      .slider:before {
+        content: '';
+        position: absolute;
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: 0.2s;
+      }
+      .switch input:checked + .slider {
+        background: var(--primary);
+        border-color: var(--primary);
+      }
+      .switch input:checked + .slider:before {
+        transform: translateX(22px);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font: inherit;
+        font-size: 0.9rem;
+        cursor: pointer;
+        color: var(--text);
+        background: transparent;
+        transition: 0.15s ease;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: rgba(var(--primary-rgb), 0.22);
+        border-color: rgba(var(--primary-rgb), 0.5);
+        color: #cfe3ff;
+      }
+      button.primary:hover:not(:disabled) {
+        background: rgba(var(--primary-rgb), 0.35);
+      }
+      button.ghost {
+        margin-left: auto;
+      }
+      .msg {
+        min-height: 1.3em;
+        margin-top: 14px;
+        font-size: 0.88rem;
+        color: var(--muted);
+      }
+      .msg.ok {
+        color: var(--ok);
+      }
+      .msg.err {
+        color: var(--danger);
+      }
+      .hint {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.45;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.85em;
+        color: #c5d4ff;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="eyebrow">AGNT desktop · cold start</div>
+      <h1>Cannot reach backend</h1>
+      <p class="lead">
+        The desktop app is configured for a remote server, but health check failed. Fix the URL, switch to local mode, or
+        retry after the server is up.
+      </p>
+
+      <div id="errorBox" class="error-box"></div>
+
+      <div class="toggle-row">
+        <div>
+          <strong>Use external backend</strong>
+          <p>Off = start local backend on next launch. On = connect to the URL below.</p>
+        </div>
+        <label class="switch" title="Use external backend">
+          <input id="useExternal" type="checkbox" checked />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="backendUrl">Backend URL</label>
+        <input id="backendUrl" type="url" placeholder="http://192.168.1.50:3333" spellcheck="false" autocomplete="off" />
+      </div>
+
+      <div class="actions">
+        <button id="testBtn" type="button">Test connection</button>
+        <button id="saveBtn" class="primary" type="button">Save &amp; restart</button>
+        <button id="retryBtn" type="button">Retry current</button>
+        <button id="quitBtn" class="ghost" type="button">Quit</button>
+      </div>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="hint">
+        External mode: this app’s UI stays local; only the API hits the remote (<code>/api/health</code> required).<br />
+        Equivalent env: <code>USE_EXTERNAL_BACKEND=true BACKEND_URL=http://SERVER:3333</code><br />
+        In-app later: Settings → Configuration → Connection.
+      </div>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const errorBox = document.getElementById('errorBox');
+      const useExternalEl = document.getElementById('useExternal');
+      const backendUrlEl = document.getElementById('backendUrl');
+      const msgEl = document.getElementById('msg');
+      const testBtn = document.getElementById('testBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const retryBtn = document.getElementById('retryBtn');
+      const quitBtn = document.getElementById('quitBtn');
+
+      const api = window.electron;
+
+      function setMsg(text, kind) {
+        msgEl.textContent = text || '';
+        msgEl.className = 'msg' + (kind ? ' ' + kind : '');
+      }
+
+      function syncUrlEnabled() {
+        backendUrlEl.disabled = !useExternalEl.checked;
+      }
+
+      useExternalEl.addEventListener('change', syncUrlEnabled);
+
+      async function load() {
+        const bootError = params.get('error');
+        const healthUrl = params.get('healthUrl');
+        if (bootError || healthUrl) {
+          errorBox.classList.add('show');
+          errorBox.textContent = [bootError, healthUrl ? `Tried: ${healthUrl}` : ''].filter(Boolean).join('\n');
+        }
+
+        if (!api?.getConnectionConfig) {
+          setMsg('Electron bridge unavailable. Relaunch the desktop app.', 'err');
+          return;
+        }
+
+        try {
+          const cfg = await api.getConnectionConfig();
+          const form = cfg.form || cfg.stored || {};
+          useExternalEl.checked = form.useExternalBackend !== false ? Boolean(form.useExternalBackend || cfg.useExternalBackend) : false;
+          if (!form.useExternalBackend && !cfg.useExternalBackend) {
+            useExternalEl.checked = true; // cold-start is for external failure
+          }
+          backendUrlEl.value = form.backendUrl || cfg.backendUrl || params.get('backendUrl') || '';
+          syncUrlEnabled();
+          if (cfg.envOverrides) {
+            setMsg('Env vars override Settings for this process until cleared.', '');
+          }
+        } catch (err) {
+          setMsg(err.message || 'Failed to load connection config', 'err');
+        }
+      }
+
+      testBtn.addEventListener('click', async () => {
+        if (!api?.testConnection) return;
+        testBtn.disabled = true;
+        setMsg('Testing…');
+        try {
+          const url = useExternalEl.checked ? backendUrlEl.value.trim() : '';
+          const result = await api.testConnection({ backendUrl: url || undefined });
+          if (result.ok) {
+            setMsg(`Health OK (${result.latencyMs ?? '?'} ms) — ${result.backendUrl}`, 'ok');
+          } else {
+            setMsg(result.error || 'Health check failed', 'err');
+          }
+        } catch (err) {
+          setMsg(err.message || 'Test failed', 'err');
+        } finally {
+          testBtn.disabled = false;
+        }
+      });
+
+      saveBtn.addEventListener('click', async () => {
+        if (!api?.setConnectionConfig || !api?.relaunchApp) return;
+        saveBtn.disabled = true;
+        setMsg('Saving…');
+        try {
+          const result = await api.setConnectionConfig({
+            useExternalBackend: useExternalEl.checked,
+            backendUrl: backendUrlEl.value.trim(),
+          });
+          if (!result.ok) {
+            setMsg(result.error || 'Save failed', 'err');
+            saveBtn.disabled = false;
+            return;
+          }
+          setMsg('Saved. Restarting…', 'ok');
+          await api.relaunchApp();
+        } catch (err) {
+          setMsg(err.message || 'Save failed', 'err');
+          saveBtn.disabled = false;
+        }
+      });
+
+      retryBtn.addEventListener('click', async () => {
+        if (!api?.relaunchApp) return;
+        retryBtn.disabled = true;
+        setMsg('Restarting with current settings…');
+        try {
+          await api.relaunchApp();
+        } catch (err) {
+          setMsg(err.message || 'Relaunch failed', 'err');
+          retryBtn.disabled = false;
+        }
+      });
+
+      quitBtn.addEventListener('click', async () => {
+        if (api?.quitApp) {
+          await api.quitApp();
+        } else if (api?.send) {
+          api.send('close-window');
+        } else {
+          window.close();
+        }
+      });
+
+      load();
+    </script>
+  </body>
+</html>
