@@ -9,6 +9,14 @@ import { installConsoleBridge } from './consoleBridge.js';
 import { withContext } from './context.js';
 import { sweep, purgeLegacyLogs } from './retention.js';
 import { readRecords, readCrashes } from './read.js';
+import {
+  isBenignPipeError,
+  shouldDumpCrash,
+  shouldExitForParentGone,
+  isWorkflowChildProcess,
+  EXIT_PARENT_GONE,
+  _resetDiagnosticsInstallForTests,
+} from './install.js';
 
 let DIR;
 
@@ -29,6 +37,57 @@ beforeEach(() => {
 afterEach(() => {
   fs.rmSync(DIR, { recursive: true, force: true });
   vi.restoreAllMocks();
+  _resetDiagnosticsInstallForTests();
+  delete process.env.IS_WORKFLOW_PROCESS;
+});
+
+/* ------------------------------------------------------------------ *
+ * Fatal handling — EPIPE / dump storms (scoped: no fatalPolicy flips)
+ * ------------------------------------------------------------------ */
+describe('fatal pipe / crash dedupe', () => {
+  it('treats EPIPE / broken pipe / destroyed stream / closed IPC as benign', () => {
+    expect(isBenignPipeError(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))).toBe(true);
+    expect(isBenignPipeError(Object.assign(new Error('x'), { code: 'ERR_STREAM_DESTROYED' }))).toBe(true);
+    expect(isBenignPipeError(Object.assign(new Error('x'), { code: 'ERR_IPC_CHANNEL_CLOSED' }))).toBe(true);
+    expect(isBenignPipeError(new Error('write broken pipe after parent exit'))).toBe(true);
+    expect(isBenignPipeError(new Error('something else blew up'))).toBe(false);
+    expect(isBenignPipeError(Object.assign(new Error('x'), { code: 'ENOENT' }))).toBe(false);
+  });
+
+  it('dedupes identical crash dumps within the window', () => {
+    _resetDiagnosticsInstallForTests();
+    const boom = new Error('kaboom');
+    expect(shouldDumpCrash('uncaughtException', boom, 1000)).toBe(true);
+    expect(shouldDumpCrash('uncaughtException', boom, 2000)).toBe(false);
+    expect(shouldDumpCrash('uncaughtException', boom, 3000)).toBe(false);
+    // After window elapses, dump again
+    expect(shouldDumpCrash('uncaughtException', boom, 1000 + 60_000 + 1)).toBe(true);
+  });
+
+  it('does not dedupe different errors', () => {
+    _resetDiagnosticsInstallForTests();
+    expect(shouldDumpCrash('uncaughtException', new Error('a'), 1)).toBe(true);
+    expect(shouldDumpCrash('uncaughtException', new Error('b'), 2)).toBe(true);
+  });
+
+  it('uses a distinct nonzero exit code for parent-gone (not 0 or 1)', () => {
+    expect(EXIT_PARENT_GONE).toBe(74);
+    expect(EXIT_PARENT_GONE).not.toBe(0);
+    expect(EXIT_PARENT_GONE).not.toBe(1);
+  });
+
+  it('exits only for workflow children when parent/IPC is gone', () => {
+    delete process.env.IS_WORKFLOW_PROCESS;
+    expect(isWorkflowChildProcess()).toBe(false);
+    expect(shouldExitForParentGone(Object.assign(new Error('EPIPE'), { code: 'EPIPE' }))).toBe(false);
+
+    process.env.IS_WORKFLOW_PROCESS = 'true';
+    expect(isWorkflowChildProcess()).toBe(true);
+    // ERR_IPC_CHANNEL_CLOSED always means parent side is gone
+    expect(
+      shouldExitForParentGone(Object.assign(new Error('channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }))
+    ).toBe(true);
+  });
 });
 
 /* ------------------------------------------------------------------ *
