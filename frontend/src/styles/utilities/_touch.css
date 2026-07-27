@@ -1,0 +1,62 @@
+/**
+ * Touch-target floor for narrow viewports.
+ *
+ * WHY GLOBAL, AND WHY NOT PER-COMPONENT
+ * Measured on the chat screen at 390x844: 55 interactive controls were under
+ * 40px in at least one dimension. Fixing them component-by-component fixes
+ * today's 55 and none of tomorrow's — every new panel, dropdown and icon
+ * button starts the count again. One rule at the layout layer holds the floor
+ * for the whole app, including components that do not exist yet.
+ *
+ * Apple HIG says 44pt, Material says 48dp. 40px is the floor here on purpose:
+ * it is a real improvement over 17-24px controls without re-flowing dense
+ * toolbars into unusable stacks, and the controls that most need the room
+ * (the composer send button, the sidebar rail) are set to 44px explicitly by
+ * their own components.
+ *
+ * Desktop is entirely unaffected — everything below is inside the breakpoint.
+ */
+
+@media (max-width: 800px) {
+  button,
+  [role='button'],
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea,
+  .nav-item,
+  .icon-button {
+    min-height: 40px;
+  }
+
+  /* Square up narrow controls so a target is never a 21px sliver.
+
+     This is deliberately NOT an attempt to identify "icon buttons". Three
+     narrower attempts each missed a real case in this codebase: a hand-listed
+     set of class names missed every button added after it was written;
+     `:has(> i:only-child)` missed buttons whose glyph is in a <span>; and
+     `:not(:has(*))` missed those same span-wrapped glyphs from the other side.
+
+     min-width is a FLOOR. On a button that is already wider than 40px it
+     changes nothing at all, so applying it to every button is both simpler
+     than the classification it replaces and provably complete. */
+  button,
+  [role='button'] {
+    min-width: 40px;
+  }
+
+  /* A textarea that grows with content must not be pinned open at 40px when
+     the composer wants a single line — min-height on a scrolling textarea
+     fights the autosize logic. The composer sets its own height. */
+  .input-container textarea,
+  .chat-input textarea {
+    min-height: 0;
+  }
+
+  /* Checkbox and radio hit areas come from their label, not the control. */
+  label:has(> input[type='checkbox']),
+  label:has(> input[type='radio']) {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

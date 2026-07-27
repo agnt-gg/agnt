@@ -69,6 +69,8 @@ import { sessionMiddleware } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 import { stashSteer, clearSteer } from './src/services/OrchestratorService.js';
 import SystemRoutes from './src/routes/SystemRoutes.js';
+import PairingRoutes from './src/routes/PairingRoutes.js';
+import RemoteAccessConfig from './src/services/RemoteAccessConfig.js';
 import RestartManager from './src/services/RestartManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -218,6 +220,7 @@ app.use('/api/contracts', ContractRoutes);
 app.use('/api/mutations', MutationHistoryRoutes);
 app.use('/api/evolution', EvolutionCoreRoutes);
 app.use('/api/system', SystemRoutes);
+app.use('/api/pairing', PairingRoutes);
 
 // PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
 dbReady.then(() => {
@@ -591,9 +594,21 @@ function startServer() {
     // Export io instance for use in other modules
     global.io = io;
 
-    // Start server FIRST so health check responds immediately
-    const server = httpServer.listen(config.port, () => {
-      console.log(`Master server listening on port ${config.port}`);
+    // Start server FIRST so health check responds immediately.
+    //
+    // BIND HOST: loopback by default. Binding 0.0.0.0 unconditionally meant
+    // every install was reachable from every network the machine ever joined.
+    // LAN exposure is now an explicit choice (Settings -> Phone Access, or
+    // BIND_HOST in the environment / Dockerfile).
+    const bind = RemoteAccessConfig.resolveBindHost();
+    const server = httpServer.listen(config.port, bind.host, () => {
+      console.log(`Master server listening on ${bind.host}:${config.port} (bind source: ${bind.source})`);
+      if (bind.lanEnabled) {
+        const urls = RemoteAccessConfig.lanAddresses().map((a) => `http://${a.address}:${config.port}`);
+        console.log(`[RemoteAccess] LAN access ENABLED${urls.length ? ` — reachable at ${urls.join(', ')}` : ''}`);
+      } else {
+        console.log('[RemoteAccess] LAN access disabled — loopback only.');
+      }
       console.log(`[Socket.IO] Real-time sync enabled`);
       retries = 0; // Reset retries on successful start
       // Warm the upstream CLI version cache so the first Claude Code / Codex /

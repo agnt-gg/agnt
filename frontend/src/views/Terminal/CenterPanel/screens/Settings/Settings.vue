@@ -104,6 +104,19 @@
           </div>
         </div>
 
+        <!-- Phone Access Section -->
+        <div v-else-if="activeSection === 'phone-access'" class="settings-content" data-section="phone-access">
+          <div class="content-header">
+            <h2 class="content-title">Phone Access</h2>
+            <p class="content-subtitle">Run this AGNT instance from your phone over your local network</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <PhoneAccessSection />
+            </div>
+          </div>
+        </div>
+
         <!-- Leaderboard Section -->
         <div v-else-if="activeSection === 'leaderboard'" class="settings-content" data-section="leaderboard">
           <div class="content-header">
@@ -247,6 +260,7 @@ import SecuritySettings from './components/SecuritySettings/SecuritySettings.vue
 import AgntScoreBreakdown from './components/AgntScoreBreakdown/AgntScoreBreakdown.vue';
 import ProfileSection from './components/ProfileSection/ProfileSection.vue';
 import ReferralsSection from './components/ReferralsSection/ReferralsSection.vue';
+import PhoneAccessSection from './components/PhoneAccessSection/PhoneAccessSection.vue';
 import LeaderboardSection from './components/LeaderboardSection/LeaderboardSection.vue';
 import { useSettingsTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';

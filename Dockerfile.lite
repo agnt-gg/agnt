@@ -131,6 +131,7 @@ COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Expose backend port
+ENV BIND_HOST=0.0.0.0
 EXPOSE 3333
 
 # Health check

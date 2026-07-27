@@ -30,6 +30,9 @@
 /* Utility styles */
 @import './utilities/_utilities.css';
 @import './utilities/_helpers.css';
+/* Touch-target floor for phone viewports. Entirely inside a max-width:800px
+   query, so desktop layout is byte-identical. */
+@import './utilities/_touch.css';
 
 /* Original CSS files to be migrated */
 @import '../base/css/main.css';

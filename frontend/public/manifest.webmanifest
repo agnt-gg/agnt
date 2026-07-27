@@ -1,0 +1,31 @@
+{
+  "name": "AGNT",
+  "short_name": "AGNT",
+  "description": "Run your AGNT instance from anywhere on your network.",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#12121c",
+  "theme_color": "#12121c",
+  "icons": [
+    {
+      "src": "/images/agnt-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/agnt-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/agnt-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

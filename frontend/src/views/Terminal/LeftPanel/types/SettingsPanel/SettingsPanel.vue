@@ -45,6 +45,15 @@
       <div class="nav-section" data-section="configuration">
         <h4>Configuration</h4>
         <div class="nav-items">
+          <button
+            class="nav-item"
+            :class="{ active: activeSection === 'phone-access' }"
+            @click="handleNavClick('phone-access')"
+            data-nav="phone-access"
+          >
+            <i class="fas fa-mobile-screen-button"></i>
+            <span>Phone Access</span>
+          </button>
           <button class="nav-item" :class="{ active: activeSection === 'theme' }" @click="handleNavClick('theme')" data-nav="theme">
             <i class="fas fa-palette"></i>
             <span>Theme</span>

@@ -136,6 +136,10 @@ RUN ln -sf /app/backend/.env /app/.env
 COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Bind all interfaces inside the container. The server defaults to loopback
+# for desktop installs; in a container the network namespace is the isolation
+# boundary and the published port is the explicit opt-in.
+ENV BIND_HOST=0.0.0.0
 # Expose backend port
 EXPOSE 3333
 

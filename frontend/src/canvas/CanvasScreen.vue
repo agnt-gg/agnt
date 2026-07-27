@@ -1451,6 +1451,83 @@ export default {
   background: rgba(var(--red-rgb), 0.15);
   border-color: rgba(var(--red-rgb), 0.4);
 }
+
+/* ═══════════════════ NARROW VIEWPORTS ═══════════════════
+   Measured on a 390x844 phone viewport: the sidebar's expanded state is
+   persisted, so a desktop session that left it expanded hands the phone a
+   120px rail (133px with padding and border) out of 390px — a third of the
+   screen — and pushed the entire three-panel container off to x=133 with a
+   257px width, which in turn overflowed the composer and put the send button
+   at x=427, past the right edge and unclickable.
+
+   The rail stays (navigation must remain reachable), but collapses to the
+   44px icon strip regardless of the persisted expanded state.
+
+   These rules MUST live in the scoped block: Vue appends [data-v-*] to scoped
+   selectors, so the same selector written in the global block below scores one
+   less specificity point than .cv-sidebar.expanded[data-v-*] and silently
+   loses. */
+@media (max-width: 800px) {
+  .cv-sidebar,
+  .cv-sidebar.expanded {
+    width: 44px;
+    min-width: 44px;
+    align-items: center;
+    padding: 6px 0;
+  }
+
+  .cv-sidebar.expanded .cv-sb-label {
+    display: none;
+  }
+
+  /* width:100% (not auto) so the tap target spans the whole 44px rail. With
+     `auto` the button shrinks to its 20px icon and you get a 20x44 target —
+     technically present, practically a miss on a moving thumb. */
+  .cv-sidebar.expanded .cv-sb-page,
+  .cv-sidebar.expanded .cv-sb-add,
+  .cv-sidebar.expanded .cv-sb-toggle {
+    width: 100%;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .cv-sidebar :deep(.tooltip-container) {
+    width: 100%;
+  }
+
+  /* Touch targets: 44px is the Apple HIG / Material minimum. */
+  .cv-sb-page,
+  .cv-sb-add,
+  .cv-sb-toggle {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* The page-tab strip is 33px tall with 17px tabs — both below any usable
+     touch size, and once the global 40px floor applies to its buttons they
+     overflow the strip and clip. ~11px of vertical space buys tabs that can
+     actually be hit.
+
+     The TOOLBAR has to grow too, not just the strip: a 44px strip centred
+     inside a 33px toolbar resolves to top:-6px and pushes the tab above the
+     viewport, which is how this first went wrong. */
+  .cv-toolbar {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .cv-nav-panels {
+    align-items: center;
+    min-height: 44px;
+    padding: 0 6px;
+  }
+
+  .cv-pbtn {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+  }
+}
 </style>
 
 <style>

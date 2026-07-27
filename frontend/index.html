@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to real
+         values on notched devices; without it they are all 0 and the composer
+         sits under the home indicator. maximum-scale is deliberately NOT set:
+         blocking pinch-zoom is an accessibility failure. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#12121c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AGNT" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/images/agnt-icon-180.png" />
     <title>AGNT.gg</title>
     <!-- PRD-105 P3a: FontAwesome self-hosted (was cdnjs — render-blocking
          cross-origin CSS that stalled first paint and broke offline launch) -->

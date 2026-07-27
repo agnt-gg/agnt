@@ -4,6 +4,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import Terminal from '@/views/Terminal/Terminal.vue';
 const DocsView = () => import('@/views/Docs/Docs.vue');
 import OAuthCallback from '@/views/_components/utility/OAuthCallback.vue';
+const PairView = () => import('@/views/Pair/Pair.vue');
 import store from '@/store/state';
 import { createAuthGuard } from './authGuard.js';
 
@@ -175,6 +176,13 @@ const router = createRouter({
       name: 'TerminalAutonomy',
       component: Terminal,
       meta: { requiresAuth: true, terminalScreen: 'AutonomyScreen' },
+    },
+    {
+      // Device pairing landing page. NOT requiresAuth — the whole point is
+      // that the phone arrives with no session and trades the code for one.
+      path: '/pair',
+      name: 'Pair',
+      component: PairView,
     },
     {
       path: '/oauth-callback',
