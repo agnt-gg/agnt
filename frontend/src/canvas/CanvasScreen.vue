@@ -255,6 +255,14 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Each section has one sidebar icon and one or more sub-tabs in the toolbar.
 const MAIN_SECTIONS = [
   { id: 'chat', icon: 'fas fa-comments', label: 'Chat', screens: [{ screen: 'ChatScreen', label: 'CHAT' }] },
+  // One-Canvas prototype. Additive: lives beside the existing screens so it
+  // can be evaluated without replacing anything.
+  {
+    id: 'workspace',
+    icon: 'fas fa-layer-group',
+    label: 'Canvas',
+    screens: [{ screen: 'WorkspaceScreen', label: 'ONE CANVAS' }],
+  },
   {
     id: 'dashboard',
     icon: 'fas fa-tachometer-alt',
@@ -648,18 +656,34 @@ export default {
       store.dispatch('widgetLayout/resetPageToDefault', { pageId: page.id, defaultWidgets: dw });
     }
 
-    // Ensure a page exists for the current screen (synchronous for instant render)
-    function ensurePageForScreen(screenName) {
+    // Ensure a page exists for the current screen (synchronous for instant render).
+    //
+    // `allowCreate` is what keeps this from minting duplicate pages. Until
+    // fetchLayouts() resolves, the store's `pages` array is EMPTY, so
+    // `pageForRoute` cannot tell "no page exists" from "pages aren't loaded
+    // yet" — it answers null either way. Creating on that answer wrote a new
+    // row + POST /api/layouts on every cold start, which the subsequent
+    // SET_PAGES then discarded: one orphaned row per launch.
+    //
+    // ACTIVATING an already-known page is safe at any time; only CREATION has
+    // to wait for the truth. Deferring it costs nothing visually, because
+    // section screens render through the <slot/> below, not through
+    // WidgetCanvas — the page row only backs the toolbar title and the page
+    // switcher entry.
+    function ensurePageForScreen(screenName, { allowCreate = true } = {}) {
       // Route-driven navigation → we're on a section page, not a custom page
       onCustomPage.value = false;
       const existingPage = store.getters['widgetLayout/pageForRoute'](screenName);
       if (existingPage) {
         store.dispatch('widgetLayout/setActivePage', existingPage.id);
-      } else {
-        const defaultWidgets = getDefaultLayout(screenName);
-        // Don't await - commits happen synchronously, API save is background
-        store.dispatch('widgetLayout/createPageFromDefault', { screenName, defaultWidgets });
+        return;
       }
+      // Not loaded yet — the post-fetch pass below will create it if it's
+      // genuinely missing.
+      if (!allowCreate) return;
+      const defaultWidgets = getDefaultLayout(screenName);
+      // Don't await - commits happen synchronously, API save is background
+      store.dispatch('widgetLayout/createPageFromDefault', { screenName, defaultWidgets });
     }
 
     // When screenName changes (route change), switch to the correct page
@@ -679,15 +703,17 @@ export default {
 
       document.addEventListener('click', closeCtx);
 
-      if (!store.getters['widgetLayout/isLoaded']) {
-        // Fire and forget - don't block render. Store already has localStorage data.
-        // Once layouts finish loading, re-ensure current screen page exists
+      const layoutsLoaded = store.getters['widgetLayout/isLoaded'];
+      if (!layoutsLoaded) {
+        // Fire and forget - don't block render. Once layouts finish loading we
+        // know the truth, so this pass is the one allowed to create.
         store.dispatch('widgetLayout/fetchLayouts').then(() => {
           ensurePageForScreen(props.screenName);
         });
       }
-      // Synchronous - commits happen immediately, API calls are background
-      ensurePageForScreen(props.screenName);
+      // Synchronous pass for instant render: activate what we already know,
+      // but never create before the fetch above has told us what exists.
+      ensurePageForScreen(props.screenName, { allowCreate: layoutsLoaded });
     });
 
     onBeforeUnmount(() => {
@@ -1007,7 +1033,10 @@ export default {
   padding: 6px 0;
   gap: 2px;
   user-select: none;
-  transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
+  transition:
+    width 0.18s ease,
+    min-width 0.18s ease,
+    padding 0.18s ease;
 }
 
 .cv-sidebar.expanded {
@@ -1112,10 +1141,12 @@ export default {
 }
 
 @keyframes cv-sb-marquee {
-  0%, 15% {
+  0%,
+  15% {
     transform: translateX(0);
   }
-  55%, 70% {
+  55%,
+  70% {
     transform: translateX(var(--marquee-distance, 0px));
   }
   100% {
