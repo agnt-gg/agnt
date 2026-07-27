@@ -125,7 +125,13 @@ describe('CodexResponsesAdapter', () => {
 
   it('sheds oversized replayed Codex output before sending the request', async () => {
     let capturedParams;
-    const hugeArguments = JSON.stringify({ code: 'x'.repeat(520_000) });
+    // Realistic escaped source, NOT degenerate filler. 'x'.repeat(n) tokenizes
+    // at ~8.0 chars/token, so the original 520KB blob was only ~65k real tokens
+    // and comfortably fitted gpt-5.5's 400k window — it tripped the old
+    // chars/1.6 estimator, not the model. Real code measures ~2.58 chars/token,
+    // so ~1.24M chars is ~480k real tokens: a genuine, unambiguous overflow that
+    // must be shed under any honest accounting.
+    const hugeArguments = JSON.stringify({ code: 'const value = compute(index);\n'.repeat(41_500) });
     const client = {
       responses: {
         create: async (params) => {

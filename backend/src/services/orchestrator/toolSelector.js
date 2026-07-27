@@ -1,3 +1,5 @@
+import { estimateToolTokens } from '../../utils/contextManager.js';
+
 /**
  * Dynamic Tool Selector — Fewest Tools First
  *
@@ -406,6 +408,235 @@ export function getGuidanceForCategories(categories) {
     }
   }
   return guidance;
+}
+
+/**
+ * Fraction of a model's input budget that must remain available for the
+ * CONVERSATION after tool schemas are accounted for. Tools are infrastructure;
+ * the conversation is the product. A 295-tool surface is ~120k real tokens,
+ * which alone exceeds the entire window of a 128k model — without a cap the
+ * context manager is forced into emergency recovery and deletes the chat.
+ */
+// Floor = one full-size tool result. AGNT's default toolOutputCap is 100,000
+// chars, which the shared estimator scores at 100_000 / 3.5 * 1.12 = 32,000
+// tokens. Reserving at least that much guarantees a tool round can always land
+// in the conversation instead of being crushed by the tool schemas.
+const CONVERSATION_RESERVE_FLOOR_TOKENS = 32_000;
+// Scales the reserve on larger windows so long chats keep breathing room.
+// JUDGEMENT CALL, not a measurement: 0.15 sits above the floor from ~213k
+// windows upward. It was 0.25, which — once the system prompt became a separate
+// reservation — over-reserved badly enough to cap Codex at 257 of 296 tools on
+// a request that really only used 131k of a 272k window.
+const CONVERSATION_RESERVE_FRACTION = 0.15;
+
+/**
+ * How many tokens of tool schema a model can afford, given its available
+ * input budget (contextWindow minus output reserve minus safety margin).
+ */
+export function computeToolBudget(availableTokens, { reservedTokens = 0 } = {}) {
+  // Clamp the floor to what the model actually has. On a 32k window the 32,000
+  // token floor exceeds the entire input budget, so an unclamped reserve makes
+  // the subtraction meaningless (it would be "negative room" either way). The
+  // clamped form states the real conclusion: every available token is spoken
+  // for, so the tool budget is 0 and only the force-added minimum set ships.
+  const reserve = Math.min(
+    Math.max(0, availableTokens),
+    Math.max(
+      CONVERSATION_RESERVE_FLOOR_TOKENS,
+      Math.floor(availableTokens * CONVERSATION_RESERVE_FRACTION),
+    ),
+  );
+  // reservedTokens is the SYSTEM PROMPT. It is not conversation and it is not
+  // negotiable — it ships on every request. Live measurement on gpt-4o: the
+  // assembled prompt (base + memories + skills catalog + workspace context) is
+  // ~31.6k tokens. Omitting it from the reservation left the context manager
+  // with 28,307 tokens for a 31,645-token system prompt, so it fired emergency
+  // recovery and dropped the conversation anyway — the exact failure the cap
+  // exists to prevent, just moved one layer down.
+  return Math.max(0, availableTokens - reservedTokens - reserve);
+}
+
+/**
+ * Hard ceiling on the NUMBER of tools a provider will accept, independent of
+ * token cost.
+ *
+ * The OpenAI Chat Completions API rejects more than 128 functions outright:
+ *   400 Invalid 'tools': array too long. Expected an array with maximum
+ *       length 128, but got an array with length 158 instead.
+ * Verified live 2026-07-26 against openai/gpt-4o AND groq/llama-3.3-70b.
+ * The OpenAI-compatible providers mirror this limit.
+ *
+ * It is a TRANSPORT constraint, not a provider one: in the same session the
+ * Responses API (openai-codex/gpt-5.6-sol) accepted all 296 tools. Anthropic
+ * and Gemini use their own schemas and impose no comparable documented cap.
+ * Applying 128 blindly would silently hide 168 tools from Codex, so the
+ * Responses transport and the native-schema providers are exempt.
+ */
+export const CHAT_COMPLETIONS_TOOL_COUNT_LIMIT = 128;
+
+const NATIVE_SCHEMA_PROVIDERS = new Set([
+  'anthropic', 'claude-code',        // Anthropic tool blocks
+  'gemini', 'gemini-cli', 'antigravity', // Gemini functionDeclarations
+]);
+
+export function getToolCountLimit(provider, { usesResponsesApi = false } = {}) {
+  if (usesResponsesApi) return null;                       // Responses API: no cap observed
+  if (NATIVE_SCHEMA_PROVIDERS.has(provider)) return null;  // non-OpenAI schema
+  return CHAT_COMPLETIONS_TOOL_COUNT_LIMIT;
+}
+
+/**
+ * Cap a tool-schema array to a token budget WITHOUT breaking prompt caching.
+ *
+ * Every major provider caches on the longest common PREFIX of the serialized
+ * request, and the tools array sits at or near the front of that prefix. A
+ * selection that changes between turns therefore invalidates the entire cached
+ * prompt — which costs far more than the tools it saves. Two rules keep the
+ * prefix intact:
+ *
+ *   1. NO-OP WHEN IT FITS. If the full surface is under budget the input array
+ *      is returned by identity. Large-window models (Sonnet 5, Gemini, GPT-5.6,
+ *      Codex Sol) therefore see zero behavioural change.
+ *   2. PIN AND APPEND. When a cap IS required, the chosen order is pinned for
+ *      the conversation and replayed verbatim on later turns; anything new
+ *      (discover_tools loads) is APPENDED, never inserted. The common prefix
+ *      only ever grows.
+ *
+ * Priority when the cap bites: DEFAULT_TOOLS first (discover_tools lives here,
+ * so the model can always recover what was hidden), then tools the model has
+ * explicitly loaded this conversation, then registry order until the budget is
+ * exhausted. Nothing is lost — only deferred behind discover_tools.
+ *
+ * @param {Array} schemas          Deduped tool schemas, registry order.
+ * @param {object} opts
+ * @param {number} opts.budgetTokens   Max tokens the tool array may occupy.
+ * @param {string[]|null} opts.pinnedNames  Ordered names pinned on a prior turn.
+ * @param {Set<string>|null} opts.loadedToolNames  Names loaded via discover_tools.
+ * @returns {{ schemas: Array, capped: boolean, toolTokens: number, pinnedNames: string[]|null, hiddenCount: number }}
+ */
+export function capToolsToBudget(schemas, { budgetTokens, pinnedNames = null, loadedToolNames = null, maxToolCount = null } = {}) {
+  const all = Array.isArray(schemas) ? schemas : [];
+  const fullTokens = estimateToolTokens(all);
+  const countLimit = Number.isFinite(maxToolCount) && maxToolCount > 0 ? maxToolCount : Infinity;
+
+  // ONLY a non-finite budget means "the caller did not specify one". Zero is a
+  // legitimate, meaningful value: it says this model cannot afford ANY optional
+  // tools once the system prompt and conversation are reserved. Treating 0 as
+  // "unlimited" is what let a 32k-window model receive 64k tokens of schemas.
+  const budgetSpecified = Number.isFinite(budgetTokens);
+  const tokensFit = !budgetSpecified || fullTokens <= budgetTokens;
+  const countFits = all.length <= countLimit;
+
+  // Rule 1: it fits on BOTH axes — change nothing at all.
+  if (tokensFit && countFits) {
+    return { schemas: all, capped: false, toolTokens: fullTokens, pinnedNames: null, hiddenCount: 0 };
+  }
+
+  const byName = new Map();
+  for (const s of all) {
+    const n = s?.function?.name;
+    if (n && !byName.has(n)) byName.set(n, s);
+  }
+
+  const chosen = [];
+  const taken = new Set();
+  let used = 0;
+
+  const tryAdd = (name, { force = false } = {}) => {
+    if (!name || taken.has(name)) return false;
+    const schema = byName.get(name);
+    if (!schema) return false;
+    // The COUNT limit is a hard provider constraint — exceeding it returns a
+    // 400 and the user gets nothing at all. Even force-added tools must respect
+    // it; a missing tool is recoverable via discover_tools, a rejected request
+    // is not.
+    if (chosen.length >= countLimit) return false;
+    const cost = estimateToolTokens([schema]);
+    if (!force && tokensFit === false && used + cost > budgetTokens) return false;
+    chosen.push(schema);
+    taken.add(name);
+    used += cost;
+    return true;
+  };
+
+  // Slots that must survive the pin replay.
+  //
+  // At the provider's hard COUNT ceiling the pin alone can fill every slot. If
+  // it is replayed unconditionally, a tool the model just loaded via
+  // discover_tools is pushed past the limit and silently dropped — the request
+  // succeeds, no error is raised, and the tool simply is not there. That makes
+  // discover_tools a no-op exactly when it matters most, and breaks the promise
+  // that hidden tools remain reachable.
+  //
+  // Reserve one slot per not-yet-pinned default or explicitly-loaded tool, then
+  // replay the pin only up to the remaining room. The prefix stays byte-identical
+  // up to the eviction point (the longest common prefix still achievable) and the
+  // new tool lands at the tail, where breaking the cache boundary costs least.
+  // The reserve is itself capped at half the limit so a large discover_tools load
+  // can never evict the entire established prefix in one turn.
+  // Compare against the part of the pin that will actually FIT, not the whole
+  // pin. discover_tools appends the new name to the pin, so a naive
+  // "is it in the pin?" test reports it as already covered while it in fact
+  // sits at position 129 of a 128-slot array — which is exactly how it was
+  // being silently dropped.
+  const pinnedList = Array.isArray(pinnedNames) ? pinnedNames : [];
+
+  // Priority names are the ones that must be present no matter what: the
+  // always-on defaults (discover_tools among them) and everything the model has
+  // explicitly loaded this conversation. Deduplicated — a name can be in both.
+  const priorityNames = new Set([
+    ...DEFAULT_TOOLS,
+    ...(loadedToolNames || []),
+  ].filter((n) => byName.has(n)));
+
+  // The reserve is self-referential: how many slots we must hold back depends on
+  // how much of the pin we replay, which is itself countLimit minus the reserve.
+  // A previously-loaded tool sitting at the TAIL of the pin falls outside the
+  // shortened replay and then consumes one of the very slots we reserved, so a
+  // single pass under-counts and the newest load is still dropped. Iterate to a
+  // fixed point instead; the reserve only ever grows, so this converges in a
+  // couple of rounds and is bounded regardless.
+  const maxReserve = Number.isFinite(countLimit) ? Math.floor(countLimit / 2) : 0;
+  let reserve = 0;
+  if (Number.isFinite(countLimit)) {
+    for (let i = 0; i < 8; i++) {
+      const head = new Set(pinnedList.slice(0, Math.max(0, countLimit - reserve)));
+      let need = 0;
+      for (const n of priorityNames) if (!head.has(n)) need++;
+      const next = Math.min(need, maxReserve);
+      if (next === reserve) break;
+      reserve = next;
+    }
+  }
+  const pinnedCap = Number.isFinite(countLimit) ? Math.max(0, countLimit - reserve) : Infinity;
+
+  // Rule 2: replay the pinned order first so the prefix is byte-stable.
+  if (Array.isArray(pinnedNames)) {
+    for (const name of pinnedNames) {
+      if (chosen.length >= pinnedCap) break;
+      tryAdd(name, { force: true });
+    }
+  }
+
+  // Always-available defaults (discover_tools is in here — it is the escape
+  // hatch back to everything we are about to hide, so it is force-added).
+  for (const name of DEFAULT_TOOLS) tryAdd(name, { force: true });
+
+  // Tools the model explicitly loaded this conversation.
+  if (loadedToolNames) {
+    for (const name of loadedToolNames) tryAdd(name, { force: true });
+  }
+
+  // Fill the remainder in registry order — deterministic across turns.
+  for (const s of all) tryAdd(s?.function?.name);
+
+  return {
+    schemas: chosen,
+    capped: true,
+    toolTokens: used,
+    pinnedNames: chosen.map((s) => s.function.name),
+    hiddenCount: all.length - chosen.length,
+  };
 }
 
 /**

@@ -1612,6 +1612,36 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
 }
 
 /**
+ * Providers billed by a flat subscription rather than per token.
+ *
+ * These authenticate with a CLI/OAuth session (a seat you already pay for),
+ * not a metered API key, so per-token cost is NOT money the user is charged.
+ * They still carry per-token metadata because "what this would have cost on
+ * the metered API" is genuinely useful — but the UI must label it as notional
+ * rather than presenting it as a bill.
+ *
+ * Evidence per entry:
+ *   claude-code  - authScheme 'claude-code', sends the oauth-2025-04-20 beta
+ *                  header; inherits anthropic's metered prices via
+ *                  PROVIDER_METADATA_FALLBACK.
+ *   openai-codex - authScheme 'codex', ChatGPT session; inherits openai's.
+ *   gemini-cli   - authScheme 'gemini-cli', Google account OAuth.
+ *   antigravity  - subscription-included (already priced at 0).
+ *   kimi-code    - subscription CLI (already priced null).
+ */
+export const SUBSCRIPTION_PROVIDERS = new Set([
+  'claude-code',
+  'openai-codex',
+  'gemini-cli',
+  'antigravity',
+  'kimi-code',
+]);
+
+export function isSubscriptionProvider(providerKey) {
+  return SUBSCRIPTION_PROVIDERS.has(String(providerKey || '').toLowerCase());
+}
+
+/**
  * Check if a model is a reasoning/thinking model.
  * Returns false if metadata not available.
  */

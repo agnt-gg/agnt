@@ -1348,6 +1348,10 @@ class AnthropicAdapter extends BaseAdapter {
     this.provider = provider.toLowerCase();
     this.reasoningValue = options.reasoningValue || 'default';
     this.maxRetries = 3;
+    // Prompt-overflow shrink budget (mirrors CodexResponsesAdapter's
+    // maxContextShrinkRetries). Each shrink drops oldest message units and
+    // retries without consuming the transient-error retry budget.
+    this.maxContextShrinkRetries = 4;
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
 
@@ -1965,6 +1969,82 @@ Please carefully check the tool schema and ensure all parameters match the expec
   }
 
   /**
+   * Anthropic's hard context rejection. Distinct from other 400s: the request
+   * is structurally valid, it is simply bigger than the window, so the ONLY
+   * correct recovery is sending less — never a blind retry.
+   */
+  _isPromptTooLongError(error) {
+    return error?.status === 400 && /prompt is too long/i.test(error?.message || '');
+  }
+
+  /**
+   * Drop the oldest message units until enough is gone to clear the wall.
+   *
+   * The 400 message tells us exactly how far over we are ("N tokens > M
+   * maximum"), so the drop target is derived from the provider's own count,
+   * not the estimator that just missed. Chars are converted at a deliberately
+   * conservative 3.0 chars/token: denser content drops MORE than the target,
+   * and if it still misses, the next 400 recomputes from its own numbers.
+   *
+   * Pairing-safe: after removing a leading message, any now-leading user
+   * messages carrying tool_result blocks are swept too, so no tool_result
+   * ever arrives without its tool_use ("unexpected tool_use_id" 400).
+   * Returns a NEW array — the caller's canonical history (persisted to
+   * conversation_logs by the orchestrator) is never mutated.
+   */
+  _shrinkForPromptTooLong(messagesArr, error) {
+    const m = /prompt is too long:\s*(\d+)\s*tokens\s*>\s*(\d+)\s*maximum/i.exec(error?.message || '');
+    const realTokens = m ? parseInt(m[1], 10) : null;
+    const maxTokens = m ? parseInt(m[2], 10) : null;
+    const overshoot = realTokens && maxTokens ? realTokens - maxTokens : null;
+    const targetDropTokens = overshoot
+      ? Math.ceil(overshoot * 1.25) + 2000
+      : Math.ceil(((maxTokens || 200000)) * 0.15);
+    const targetDropChars = targetDropTokens * 3.0;
+
+    const kept = [...messagesArr];
+    const isSystem = (msg) => msg?.role === 'system';
+    const hasToolResult = (msg) =>
+      Array.isArray(msg?.content) && msg.content.some((b) => b?.type === 'tool_result');
+    const sizeOf = (msg) => {
+      try { return JSON.stringify(msg).length; } catch { return 0; }
+    };
+    const nonSystemCount = () => kept.filter((msg) => !isSystem(msg)).length;
+    const firstNonSystemIdx = () => kept.findIndex((msg) => !isSystem(msg));
+
+    let droppedChars = 0;
+    let dropped = 0;
+    // Always keep the last 2 non-system messages — the live exchange.
+    while (droppedChars < targetDropChars && nonSystemCount() > 2) {
+      const idx = firstNonSystemIdx();
+      if (idx === -1) break;
+      droppedChars += sizeOf(kept[idx]);
+      kept.splice(idx, 1);
+      dropped++;
+      // Sweep orphaned tool_results now at the front.
+      let next = firstNonSystemIdx();
+      while (next !== -1 && hasToolResult(kept[next]) && nonSystemCount() > 2) {
+        droppedChars += sizeOf(kept[next]);
+        kept.splice(next, 1);
+        dropped++;
+        next = firstNonSystemIdx();
+      }
+    }
+    // The keep-last-2 floor can stop the loop with a tool_result stranded at
+    // the front (its tool_use was in the dropped region). An orphaned
+    // tool_result guarantees another 400, so validity beats the floor here:
+    // sweep leading tool_results as long as one non-system message survives.
+    let front = firstNonSystemIdx();
+    while (front !== -1 && hasToolResult(kept[front]) && nonSystemCount() > 1) {
+      droppedChars += sizeOf(kept[front]);
+      kept.splice(front, 1);
+      dropped++;
+      front = firstNonSystemIdx();
+    }
+    return { messages: kept, dropped, droppedChars, overshoot };
+  }
+
+  /**
    * Makes a streaming call to Anthropic's API with real-time token updates.
    * @param {Array<Object>} messages The conversation history.
    * @param {Array<Object>} tools The available tools in OpenAI format.
@@ -1980,6 +2060,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
     // When Fable/Mythos refuses, we swap this.model, strip thinking blocks
     // from history, and `continue streamingAttemptLoop` to retry on Opus 4.8.
     let fallbackAttempted = false;
+    let shrinkAttempts = 0;
     const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
 
     // Handle vision images - inject into the last user message if model supports vision
@@ -2788,6 +2869,27 @@ Please carefully check the tool schema and ensure all parameters match the expec
         };
       } catch (error) {
         lastError = error;
+
+        // Prompt overflow: the preflight estimator undercounted and the
+        // request hit Anthropic's hard wall. Retrying unchanged can never
+        // succeed — drop the oldest history units (the 400 itself says how
+        // far over we are) and rebuild. Mirrors the Codex shrink path; does
+        // not consume the transient-error retry budget.
+        if (this._isPromptTooLongError(error) && shrinkAttempts < this.maxContextShrinkRetries) {
+          const before = currentMessages.length;
+          const shrink = this._shrinkForPromptTooLong(currentMessages, error);
+          if (shrink.dropped > 0) {
+            currentMessages = shrink.messages;
+            shrinkAttempts++;
+            console.warn(
+              `[Anthropic] Prompt too long${shrink.overshoot ? ` (${shrink.overshoot} tokens over)` : ''} — ` +
+              `dropped ${shrink.dropped} oldest message(s) (${before} -> ${currentMessages.length}), ` +
+              `retrying (shrink ${shrinkAttempts}/${this.maxContextShrinkRetries})`
+            );
+            attempt--;
+            continue streamingAttemptLoop;
+          }
+        }
 
         // Check if this is the last attempt or if the error is not retryable
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
@@ -4441,6 +4543,31 @@ class OpenAIResponsesAdapter extends BaseAdapter {
    * adapter has its own image injection but this code path bypassed it.
    * https://developers.openai.com/api/docs/guides/images-vision
    */
+  /**
+   * Normalize Responses-API usage into the Chat-Completions shape the rest of
+   * AGNT accounts in.
+   *
+   * Chat Completions reports cached prompt reads as
+   *   usage.prompt_tokens_details.cached_tokens
+   * The Responses API — used by gpt-5.x AND every Codex model — reports the
+   * identical number as
+   *   usage.input_tokens_details.cached_tokens
+   * OrchestratorService.accumulateUsage() only read the former, so every cache
+   * hit on this transport was accumulated as zero and prompt-cache health was
+   * invisible on exactly the provider where it mattered most. Mirror the field
+   * instead of teaching every consumer both shapes.
+   */
+  _normalizeResponsesUsage(usage) {
+    if (!usage) return undefined;
+    const cached = usage.input_tokens_details?.cached_tokens
+      ?? usage.prompt_tokens_details?.cached_tokens;
+    if (cached === undefined || cached === null) return usage;
+    return {
+      ...usage,
+      prompt_tokens_details: { ...(usage.prompt_tokens_details || {}), cached_tokens: cached },
+    };
+  }
+
   _transformMessagesToInput(messages, imageData = null) {
     // Extract system message as instructions
     const systemMessage = messages.find((m) => m.role === 'system');
@@ -4934,7 +5061,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           responseMessage: normalizedMessage,
           toolCalls: toolCalls,
           _responsesApiId: response.id, // Store for potential conversation continuation
-          usage: response.usage || undefined,
+          usage: this._normalizeResponsesUsage(response.usage),
           ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
@@ -5160,7 +5287,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         return {
           responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
-          usage: streamUsage || undefined,
+          usage: this._normalizeResponsesUsage(streamUsage),
           ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
@@ -5262,29 +5389,94 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   }
 
   _getCodexPreflightInputBudget() {
-    // The ChatGPT Codex backend counts Responses framing, tool schemas, and
-    // encrypted reasoning replay much higher than our message estimator. Keep
-    // a large response/reasoning reserve and a conservative serialized-payload
-    // margin so oversized stateless replay is shed before the stream starts.
+    // Reserve a quarter of the window for the response, because Codex reasoning
+    // models routinely spend tens of thousands of output tokens on hidden
+    // chain-of-thought before emitting any visible content.
+    //
+    // The extra serialized-payload margin is 0.95, not the previous 0.86. That
+    // 14% pad existed to compensate for a blunt global chars/1.6 estimator; now
+    // that _estimateCodexRequestTokens() measures each component against its
+    // own measured ratio — and each of those already carries 12-19% headroom —
+    // stacking another 14% on top was double-counting, and it stole ~28k tokens
+    // of usable conversation window for nothing.
     const contextWindow = this._getCodexContextWindow();
     const outputReserve = Math.min(96_000, Math.floor(contextWindow * 0.25));
-    return Math.max(16_000, Math.floor((contextWindow - outputReserve) * 0.86));
+    return Math.max(16_000, Math.floor((contextWindow - outputReserve) * 0.95));
+  }
+
+  /**
+   * Per-component chars/token ratios, measured against o200k_base (the gpt-5.x
+   * / Codex tokenizer) on real AGNT payloads, 2026-07-25:
+   *
+   *   tool schemas         4.75   (295-tool live surface; p05 per-tool 4.49)
+   *   instructions/prose   3.91
+   *   plain message items  ~4.0   (prose plus a thin JSON wrapper)
+   *   function args/results 2.58  (escaped code) .. 3.17 (JSON results)
+   *   encrypted reasoning  1.46   (random base64)
+   *
+   * A single global divisor cannot serve a 3.3x spread. The previous chars/1.6
+   * was simultaneously wrong in BOTH directions: it overcounted tool schemas by
+   * 2.97x — inventing a 375k-token request out of a real 128k one and driving
+   * the preflight to delete conversation history to "fix" an overflow that did
+   * not exist — while UNDERCOUNTING random base64 by 1.10x, failing at the very
+   * job (bounding encrypted reasoning replay) it was introduced for.
+   *
+   * Each divisor below sits ~12-19% under its measured ratio, so every class is
+   * still deliberately overestimated — just not by a factor of three.
+   */
+  static CODEX_CPT_SCHEMA = 4.0;   // measured 4.75
+  static CODEX_CPT_PROSE = 3.5;    // measured 3.91
+  static CODEX_CPT_STRUCTURED = 2.5; // measured 2.58 (escaped code, worst case)
+  static CODEX_CPT_OPAQUE = 1.3;   // measured 1.46 (random base64)
+
+  /**
+   * True for input items whose payload is opaque high-entropy text — encrypted
+   * reasoning blobs — which tokenize near 1:1 and must never be estimated with
+   * a prose ratio.
+   */
+  _isOpaqueInputItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (item.type === 'reasoning') return true;
+    if (typeof item.encrypted_content === 'string') return true;
+    return false;
+  }
+
+  /**
+   * Cost of the parts of the request that shedding conversation CANNOT reduce.
+   */
+  _estimateCodexFixedOverhead(params) {
+    if (!params) return 0;
+    const C = CodexResponsesAdapter;
+    let total = 0;
+    try {
+      total += Math.ceil(JSON.stringify(params.tools || []).length / C.CODEX_CPT_SCHEMA);
+    } catch { /* unserializable tools — ignore, the input estimate still applies */ }
+    total += Math.ceil(String(params.instructions || '').length / C.CODEX_CPT_PROSE);
+    return total;
   }
 
   _estimateCodexRequestTokens(params) {
     if (!params) return 0;
-    let serialized;
-    try {
-      serialized = JSON.stringify(params);
-    } catch {
-      serialized = String(params);
+    const C = CodexResponsesAdapter;
+    let total = this._estimateCodexFixedOverhead(params);
+
+    const input = Array.isArray(params.input) ? params.input : [];
+    for (const item of input) {
+      let serialized;
+      try {
+        serialized = JSON.stringify(item);
+      } catch {
+        serialized = String(item);
+      }
+      if (!serialized) continue;
+
+      const ratio = this._isOpaqueInputItem(item)
+        ? C.CODEX_CPT_OPAQUE
+        : (item?.type === 'message' ? C.CODEX_CPT_PROSE : C.CODEX_CPT_STRUCTURED);
+      total += Math.ceil(serialized.length / ratio);
     }
 
-    // This intentionally overestimates compared with normal prose tokenizers.
-    // Codex replay payloads contain JSON, base64-ish encrypted blobs, and
-    // escaped function arguments, and production logs showed ~2x undercounts
-    // when using the shared chars/3.5 estimator.
-    return Math.ceil(serialized.length / 1.6);
+    return total;
   }
 
   _buildCodexParamsWithinBudget(messages, tools, imageData = null, logPrefix = 'Codex Responses') {
@@ -5293,6 +5485,28 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     const budget = this._getCodexPreflightInputBudget();
     let estimatedTokens = this._estimateCodexRequestTokens(params);
     let shrinkAttempts = 0;
+
+    // Shedding can only remove INPUT items. If the fixed overhead — tool
+    // schemas plus instructions — already exceeds the budget on its own, then
+    // no amount of dropping conversation can bring the request under it, and
+    // every turn dropped is pure damage for zero benefit.
+    //
+    // That is precisely how this loop used to blind the model: with a large
+    // tool surface the fixed overhead alone was scored at 214% of budget, so
+    // the loop burned all 8 shrink attempts eating history it could never
+    // recover enough from, and a 3-message chat reached the model as a single
+    // orphaned sentence. Refuse to start, and let the provider's own token
+    // accounting (via the reactive shed handlers in call/callStream) decide
+    // whether a genuine overflow exists.
+    const fixedOverhead = this._estimateCodexFixedOverhead(params);
+    if (estimatedTokens > budget && fixedOverhead >= budget) {
+      console.warn(
+        `[${logPrefix} Preflight] Fixed overhead (tools + instructions) is ${fixedOverhead} tokens ` +
+        `against a ${budget}-token budget; shedding conversation cannot help. ` +
+        `Sending history intact — reduce the active tool surface for this model.`
+      );
+      return { params, workingMessages, estimatedTokens, budget, shrinkAttempts };
+    }
 
     while (estimatedTokens > budget && shrinkAttempts < this.maxContextShrinkRetries) {
       const shrunk = this._dropOldestTurn(workingMessages);
@@ -5582,7 +5796,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       accumulatedContent,
       accumulatedToolCalls,
       responseId,
-      usage: streamUsage || undefined,
+      usage: this._normalizeResponsesUsage(streamUsage),
       replayableOutputItems,
       reasoningSummary: reasoningState.accumulated || undefined,
     };
@@ -5824,7 +6038,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
  * @param {string} model The model name
  * @returns {boolean} True if the model uses the Responses API
  */
-function requiresResponsesApi(model) {
+export function requiresResponsesApi(model) {
   if (!model) return false;
 
   const modelLower = model.toLowerCase();

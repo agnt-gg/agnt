@@ -12,6 +12,14 @@
 
 const STORAGE_KEY = 'agnt_chat_channel_configs';
 
+// Sentinel stored in a channel's `enabledTools` meaning "the user wants
+// everything" — deliberately NOT an enumerated list. Enumerating the full
+// registry freezes today's tool set into localStorage and forces the backend
+// to ship every schema on every turn (~120k tokens); the sentinel lets the
+// backend keep its lean lazy-discovery default while still recording that
+// the user made a deliberate choice.
+export const AUTO_ENABLED_TOOLS = 'auto';
+
 // Per-chat-type SPECIALTY tool sets. These are the page-specific tools that
 // every sidebar chat MUST have access to — they're presented in the tool
 // selector under a locked "Specialty Tools" category that the user cannot
@@ -169,6 +177,10 @@ export function setChannelModel(channelKey, model) {
 }
 
 export function setChannelEnabledTools(channelKey, names) {
+  if (names === AUTO_ENABLED_TOOLS) {
+    setChannelConfig(channelKey, { enabledTools: AUTO_ENABLED_TOOLS });
+    return;
+  }
   setChannelConfig(channelKey, { enabledTools: Array.isArray(names) ? names : [] });
 }
 
@@ -205,6 +217,11 @@ export function resolveChannelEnabledTools(channelKey) {
   const specialty = getSpecialtyToolNames(channelKey) || [];
 
   const cfg = getChannelConfig(channelKey);
+  if (cfg && cfg.enabledTools === AUTO_ENABLED_TOOLS) {
+    // Explicit "all tools" choice. Do NOT fall through to the legacy global
+    // list — undefined tells the backend to use its lazy discovery default.
+    return undefined;
+  }
   if (cfg && Array.isArray(cfg.enabledTools)) {
     // Saved channel — specialty is the only forced inclusion (it's locked
     // in the UI). Saved enabledTools reflects the user's per-channel toggle

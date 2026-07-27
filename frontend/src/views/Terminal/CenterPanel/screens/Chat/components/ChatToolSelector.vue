@@ -119,7 +119,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { API_CONFIG } from '@/../user.config.js';
-import { getChannelConfig, setChannelEnabledTools, getDefaultEnabledTools, getSpecialtyToolNames, UNIVERSAL_DEFAULT_ON_TOOLS } from '@/services/chatChannelConfig.js';
+import { getChannelConfig, setChannelEnabledTools, getDefaultEnabledTools, getSpecialtyToolNames, UNIVERSAL_DEFAULT_ON_TOOLS, AUTO_ENABLED_TOOLS } from '@/services/chatChannelConfig.js';
 
 // Legacy global keys, kept as a fallback for any chat without a channelKey
 // (and for backwards compatibility with users who never visited a per-channel
@@ -252,11 +252,28 @@ export default {
       });
       if (props.channelKey) {
         // Per-channel persistence — each chat surface gets its own list.
-        setChannelEnabledTools(props.channelKey, enabled);
+        if (!hasSpecialty.value && disabled.length === 0) {
+          // Everything is checked and nothing is page-locked: that's "all
+          // tools", not a narrowed list. Persist the auto sentinel so the
+          // backend keeps its lean discovery default instead of receiving an
+          // enumerated whitelist that freezes today's registry and ships
+          // every schema on every turn.
+          setChannelEnabledTools(props.channelKey, AUTO_ENABLED_TOOLS);
+        } else {
+          setChannelEnabledTools(props.channelKey, enabled);
+        }
       } else {
         // No channelKey (rare — only legacy mounts) → fall back to globals.
-        localStorage.setItem(GLOBAL_ENABLED_KEY, JSON.stringify(enabled));
-        localStorage.setItem(GLOBAL_DISABLED_KEY, JSON.stringify(disabled));
+        if (disabled.length === 0) {
+          // All checked = no narrowing. Clear the legacy globals instead of
+          // writing an enumerated "everything" list (the original source of
+          // the full-whitelist problem).
+          localStorage.removeItem(GLOBAL_ENABLED_KEY);
+          localStorage.removeItem(GLOBAL_DISABLED_KEY);
+        } else {
+          localStorage.setItem(GLOBAL_ENABLED_KEY, JSON.stringify(enabled));
+          localStorage.setItem(GLOBAL_DISABLED_KEY, JSON.stringify(disabled));
+        }
       }
     };
 
@@ -271,6 +288,9 @@ export default {
     var readSavedEnabled = function () {
       if (props.channelKey) {
         var cfg = getChannelConfig(props.channelKey);
+        // Auto sentinel = "all tools" -> null, which the caller renders as
+        // the all-checked state. Deliberately skips the legacy global list.
+        if (cfg && cfg.enabledTools === AUTO_ENABLED_TOOLS) return null;
         if (cfg && Array.isArray(cfg.enabledTools)) return cfg.enabledTools;
         var sidebarDefault = getDefaultEnabledTools(props.channelKey);
         if (sidebarDefault) return sidebarDefault;

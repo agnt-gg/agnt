@@ -13,7 +13,7 @@
           <div class="seg seg-system" :style="{ width: systemPct + '%' }" :title="`System: ${formatNumber(breakdown.systemTokens)}`"></div>
           <div class="seg seg-tools" :style="{ width: toolsPct + '%' }" :title="`Tools: ${formatNumber(breakdown.toolTokens)}`"></div>
           <div class="seg seg-messages" :style="{ width: messagesPct + '%' }" :title="`Messages: ${formatNumber(breakdown.messagesTokens)}`"></div>
-          <div class="seg seg-output" :style="{ width: outputPct + '%' }" :title="`Output buffer: ${formatNumber(breakdown.outputBufferTokens)}`"></div>
+          <div class="seg seg-output" :style="{ width: outputPct + '%' }" :title="`Output reserve: ${formatNumber(breakdown.outputBufferTokens)} (held for the reply, not part of the request total)`"></div>
         </template>
         <div v-else class="seg usage-fill" :class="getUsageClass()" :style="{ width: utilizationPercent + '%' }"></div>
       </div>
@@ -42,7 +42,7 @@
       </div>
       <div class="legend-row">
         <span class="legend-dot dot-output"></span>
-        <span class="legend-label">Output buffer</span>
+        <span class="legend-label">Output reserve</span>
         <span class="legend-value">{{ formatNumber(breakdown.outputBufferTokens) }}</span>
       </div>
     </div>
@@ -75,10 +75,65 @@
       </div>
     </div>
 
-    <div v-if="hasTotals && totalCost > 0" class="cost-row cost-row-total">
-      <span class="cost-label">Total Cost</span>
-      <span class="cost-value">${{ totalCost < 0.01 ? totalCost.toFixed(6) : totalCost.toFixed(4) }}</span>
+    <div v-if="hasTotals && hasSavings" class="cost-row cost-row-baseline">
+      <span class="cost-label">{{ isInvestment ? 'Baseline (no cache)' : 'Without Caching' }}</span>
+      <span class="cost-value baseline-value" :class="{ struck: !isInvestment }">{{ formatUsd(totalUncachedCost) }}</span>
     </div>
+
+    <div v-if="hasTotals && totalCost > 0" class="cost-row cost-row-total">
+      <span class="cost-label">{{ hasSavings ? paidLabel : totalLabel }}</span>
+      <span class="cost-value" :class="{ notional: isNotional }">{{ formatUsd(totalCost) }}</span>
+    </div>
+
+    <div v-if="hasTotals && isNotional" class="cost-row cost-row-total">
+      <span class="cost-label">You Paid</span>
+      <span class="cost-value paid-nothing"><span class="paid-note">subscription</span>$0.00</span>
+    </div>
+
+    <div v-if="hasTotals && hasSavings" class="savings-block" :class="{ investment: isInvestment }">
+      <div class="savings-head">
+        <span class="savings-label">{{ isInvestment ? 'Cache Investment' : 'Saved by Caching' }}</span>
+        <span class="savings-amount">
+          {{ formatUsd(totalSaved) }}
+          <span v-if="!isInvestment" class="savings-pct">{{ totalSavedPct.toFixed(1) }}%</span>
+          <span v-else class="savings-pct">more</span>
+        </span>
+      </div>
+      <div v-if="!isInvestment" class="savings-track">
+        <div class="savings-free" :style="{ width: (100 - paidPct) + '%' }"></div>
+        <div class="savings-paid" :style="{ width: paidPct + '%' }"></div>
+      </div>
+      <div v-if="isInvestment" class="savings-note">
+        Writing the cache prefix costs more up front &mdash; it pays back on the next turn.
+      </div>
+      <div v-else-if="isNotional" class="savings-note">
+        Caching cut the metered figure first; your seat absorbed the rest.
+      </div>
+    </div>
+
+    <div v-if="showSubscriptionSavings" class="savings-block subscription">
+      <div class="savings-head">
+        <span class="savings-label">Saved by Subscription</span>
+        <span class="savings-amount">{{ formatUsd(subscriptionSaved) }}</span>
+      </div>
+      <div class="savings-total">
+        <span class="savings-total-label">Total avoided</span>
+        <span class="savings-total-value">{{ formatUsd(totalAvoided) }}</span>
+      </div>
+    </div>
+
+    <div v-if="hasModelMix" class="model-mix">
+      <div class="model-mix-head">
+        <span>{{ modelMix.length }} models &middot; {{ isNotional ? 'metered split' : 'cost split' }}</span>
+        <span class="model-mix-total">{{ formatUsd(modelMixTotal) }}</span>
+      </div>
+      <div v-for="m in modelMix" :key="m.model" class="model-mix-row">
+        <span class="model-mix-name">{{ m.model }}</span>
+        <span class="model-mix-calls">{{ m.calls }} {{ m.calls === 1 ? 'call' : 'calls' }}</span>
+        <span class="model-mix-cost">{{ formatUsd(m.cost) }}</span>
+      </div>
+    </div>
+
 
     <!-- Last Call (per-turn debug row) -->
     <div v-if="tokenUsage || cacheMetrics || (estimatedCost != null && estimatedCost > 0)" class="section-divider last-call-divider">Last Call</div>
@@ -110,7 +165,10 @@
 
     <div v-if="estimatedCost != null && estimatedCost > 0" class="cost-row subtle">
       <span class="cost-label">Cost</span>
-      <span class="cost-value">${{ estimatedCost < 0.01 ? estimatedCost.toFixed(6) : estimatedCost.toFixed(4) }}</span>
+      <span class="cost-value">
+        <span v-if="showLastBaseline" class="baseline-inline">was {{ formatUsd(costBreakdown.uncached) }}</span>
+        {{ formatUsd(estimatedCost) }}
+      </span>
     </div>
 
     <div v-if="lastManaged" class="last-managed">
@@ -122,6 +180,8 @@
 
 <script>
 import { computed } from 'vue';
+
+const USD_PREFIX = '$';
 
 export default {
   name: 'ContextMonitor',
@@ -159,6 +219,28 @@ export default {
     totalCost: {
       type: Number,
       default: 0,
+    },
+    // What this conversation would have cost with caching disabled.
+    // null = not priceable (unknown model / no cache pricing) -> row hidden.
+    totalUncachedCost: {
+      type: Number,
+      default: null,
+    },
+    // Per-turn { actual, uncached, saved } for the Last Call section.
+    costBreakdown: {
+      type: Object,
+      default: null,
+    },
+    // Every model that served this conversation, costliest first.
+    modelMix: {
+      type: Array,
+      default: () => [],
+    },
+    // true = subscription seat (cost is notional), false = metered (real
+    // money), null = mixed or unknown.
+    subscriptionBased: {
+      type: Boolean,
+      default: null,
     },
     totalCacheMetrics: {
       type: Object,
@@ -214,11 +296,72 @@ export default {
       return c && ((c.cacheReadTokens || 0) > 0 || (c.cacheCreationTokens || 0) > 0);
     });
 
+    // Savings is a real signed quantity: writing a cache prefix costs 1.25x
+    // on Anthropic, so the first turn of a conversation is legitimately more
+    // expensive than not caching. Showing that as "investment" is honest;
+    // clamping it to zero would not be.
+    // A subscription seat is already paid for, so per-token figures are
+    // "what this would have cost on the metered API" - not a bill. Saying
+    // "You Paid $209.84" of a Claude Max seat is simply false.
+    const isNotional = computed(() => props.subscriptionBased === true);
+    const paidLabel = computed(() => (isNotional.value ? 'Metered API Would Charge' : 'You Paid'));
+    const totalLabel = computed(() => (isNotional.value ? 'Metered API Would Charge' : 'Total Cost'));
+    // On a seat the metered-equivalent cost IS the saving: it is the amount
+    // the subscription absorbed. Caching already reduced it before this point,
+    // so the two layers sum to the full uncached baseline.
+    const subscriptionSaved = computed(() => (isNotional.value ? (props.totalCost || 0) : 0));
+    const totalAvoided = computed(() => {
+      if (!isNotional.value) return totalSaved.value || 0;
+      return props.totalUncachedCost != null ? props.totalUncachedCost : subscriptionSaved.value;
+    });
+    const showSubscriptionSavings = computed(() => isNotional.value && subscriptionSaved.value > 0);
+    const hasModelMix = computed(() => (props.modelMix || []).length > 1);
+    const modelMixTotal = computed(() =>
+      (props.modelMix || []).reduce((acc, m) => acc + (Number(m.cost) || 0), 0));
+
+    const totalSaved = computed(() => {
+      if (props.totalUncachedCost == null) return null;
+      return props.totalUncachedCost - (props.totalCost || 0);
+    });
+    const totalSavedPct = computed(() => {
+      const base = props.totalUncachedCost;
+      if (base == null || base <= 0) return 0;
+      return (totalSaved.value / base) * 100;
+    });
+    // Hide entirely at exactly zero - a provider with no cache pricing would
+    // otherwise render a meaningless zero saving.
+    const hasSavings = computed(() => totalSaved.value != null && Math.abs(totalSaved.value) > 1e-9);
+    const isInvestment = computed(() => (totalSaved.value || 0) < 0);
+    // Share of the counterfactual bill actually paid - drives the mini track.
+    const paidPct = computed(() => {
+      const base = props.totalUncachedCost;
+      if (!base || base <= 0) return 100;
+      return Math.min(100, Math.max(0, ((props.totalCost || 0) / base) * 100));
+    });
+
+    // Only label the per-turn baseline when it is genuinely a "was" — i.e.
+    // higher than what was paid. On a write turn it is lower and the wording
+    // would mislead.
+    const showLastBaseline = computed(() => {
+      const b = props.costBreakdown;
+      return !!b && b.uncached != null && b.uncached > (props.estimatedCost || 0);
+    });
+
+    const formatUsd = (n) => {
+      const v = Math.abs(Number(n) || 0);
+      return USD_PREFIX + (v < 0.01 ? v.toFixed(6) : v.toFixed(4));
+    };
+
+    // Agentic tool loops re-send the whole context every round, so a single
+    // conversation reaches hundreds of millions of tokens. Stopping at 'k'
+    // rendered 170,781,100 as "170781.1k" - technically correct, unreadable.
     const formatNumber = (num) => {
-      if (num >= 1000) {
-        return (num / 1000).toFixed(1) + 'k';
-      }
-      return num.toString();
+      const n = Number(num) || 0;
+      const abs = Math.abs(n);
+      if (abs >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+      if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (abs >= 1000) return (n / 1000).toFixed(1) + 'k';
+      return String(n);
     };
 
     return {
@@ -228,6 +371,21 @@ export default {
       totalCacheHitClass,
       hasTotals,
       hasTotalCache,
+      totalSaved,
+      totalSavedPct,
+      hasSavings,
+      isInvestment,
+      paidPct,
+      showLastBaseline,
+      isNotional,
+      paidLabel,
+      totalLabel,
+      subscriptionSaved,
+      totalAvoided,
+      showSubscriptionSavings,
+      hasModelMix,
+      modelMixTotal,
+      formatUsd,
       breakdown,
       hasBreakdown,
       systemPct,
@@ -281,7 +439,10 @@ export default {
 .usage-bar {
   width: 100%;
   height: 6px;
-  background: var(--color-darker-1);
+  /* Must be recessed relative to the card, not equal to it, or the meter has
+     no visible extent and low fills look like stray pixels. */
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 6px;
@@ -310,8 +471,8 @@ export default {
 }
 
 .seg-output {
-  background: var(--color-text-muted);
-  opacity: 0.3;
+  background: rgba(255, 255, 255, 0.42);
+  opacity: 1;
 }
 
 .context-legend {
@@ -351,8 +512,8 @@ export default {
 }
 
 .legend-dot.dot-output {
-  background: var(--color-text-muted);
-  opacity: 0.4;
+  background: rgba(255, 255, 255, 0.55);
+  opacity: 1;
 }
 
 .legend-label {
@@ -528,6 +689,204 @@ export default {
 }
 
 /* Emphasized total cost */
+.cost-row-baseline .cost-value.baseline-value,
+.baseline-inline {
+  /* Fixed rgba rather than a theme token: --color-text-muted resolves very
+     dim in some themes, and this number is the anchor of the comparison. */
+  color: rgba(255, 255, 255, 0.68);
+  margin-right: 6px;
+}
+
+.baseline-value.struck {
+  text-decoration: line-through;
+  text-decoration-color: rgba(229, 61, 143, 0.75);
+  text-decoration-thickness: 1.5px;
+}
+
+/* No strike here: at this size the line merges with the digit crossbars.
+   The "was" label already carries the meaning. */
+.baseline-inline {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.paid-nothing {
+  color: var(--green, #19ef83);
+}
+
+/* Not money that was charged - must not outrank the $0.00 beneath it. */
+.cost-value.notional {
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+}
+
+.paid-note {
+  margin-right: 6px;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.savings-block.subscription {
+  background: rgba(18, 224, 255, 0.06);
+  border-left-color: var(--cyan, #12e0ff);
+}
+
+.savings-block.subscription .savings-amount {
+  color: var(--cyan, #12e0ff);
+}
+
+.savings-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.savings-total-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.savings-total-value {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #e8e8f0);
+}
+
+.model-mix {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.model-mix-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+}
+
+.model-mix-total {
+  font-family: var(--font-family-mono, monospace);
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.model-mix-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 0;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 10px;
+}
+
+.model-mix-name {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-mix-calls {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.model-mix-cost {
+  color: rgba(255, 255, 255, 0.72);
+  min-width: 52px;
+  text-align: right;
+}
+
+.savings-block {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(25, 239, 131, 0.06);
+  border-left: 2px solid var(--green, #19ef83);
+}
+
+.savings-block.investment {
+  background: rgba(255, 149, 0, 0.06);
+  border-left-color: var(--gold, #ff9500);
+}
+
+.savings-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.savings-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
+}
+
+.savings-amount {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--green, #19ef83);
+}
+
+.savings-block.investment .savings-amount {
+  color: var(--gold, #ff9500);
+}
+
+.savings-pct {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.92;
+  margin-left: 5px;
+}
+
+.savings-track {
+  display: flex;
+  height: 4px;
+  margin-top: 7px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* The SAVED share is the quantity the label reports, so it gets the solid
+   emphasis fill and leads the bar. The paid share is the muted remainder.
+   Previously this was inverted: a hatched "saved" portion read as empty
+   track, making a 77.2% saving look like a 22.8% one. */
+.savings-free {
+  background: var(--green, #19ef83);
+}
+
+.savings-paid {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.savings-block.subscription .savings-free {
+  background: var(--cyan, #12e0ff);
+}
+
+.savings-note {
+  margin-top: 6px;
+  font-size: 9px;
+  line-height: 1.45;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.55));
+}
+
 .cost-row-total .cost-value {
   font-size: 0.85em;
   font-weight: 600;

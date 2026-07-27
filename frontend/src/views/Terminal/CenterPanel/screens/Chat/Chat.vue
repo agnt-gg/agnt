@@ -21,31 +21,49 @@
         <!-- Context Monitoring Panel -->
         <div v-if="!isMobile" class="monitoring-panel" :class="{ collapsed: isMonitoringCollapsed }">
           <div class="monitoring-header" @click="toggleMonitoringPanel">
-            <span class="monitoring-title">System Monitoring</span>
+            <span class="monitoring-title">Context &amp; Cost</span>
             <span class="monitoring-toggle" :class="{ expanded: !isMonitoringCollapsed }">
               {{ isMonitoringCollapsed ? '▶' : '▼' }}
             </span>
           </div>
           <div class="monitoring-content" v-show="!isMonitoringCollapsed">
-            <ContextMonitor
-              :contextStatus="contextStatus"
-              :lastManaged="lastContextManaged"
-              :tokenUsage="lastTokenUsage"
-              :cacheMetrics="lastCacheMetrics"
-              :estimatedCost="lastEstimatedCost"
-              :totalTokenUsage="totalTokenUsage"
-              :totalCost="totalCost"
-              :totalCacheMetrics="totalCacheMetrics"
-              :executionsCount="executionsCount"
-            />
-            <SystemHealthPanel
-              :contextManaged="contextManaged"
-              :errorsCaught="errorsCaught"
-              :toolTruncations="toolTruncations"
-              :toolsLoadedCount="toolsLoadedCount"
-              :cacheMetrics="lastCacheMetrics"
-            />
-            <ActivityFeed :activities="systemActivities" @clear="clearActivities" />
+            <!-- Column 1: cost -->
+            <div class="monitoring-column monitoring-column-cost">
+              <ContextMonitor
+                :contextStatus="contextStatus"
+                :lastManaged="lastContextManaged"
+                :tokenUsage="lastTokenUsage"
+                :cacheMetrics="lastCacheMetrics"
+                :estimatedCost="lastEstimatedCost"
+                :totalTokenUsage="totalTokenUsage"
+                :totalCost="totalCost"
+                :totalUncachedCost="totalUncachedCost"
+                :costBreakdown="lastCostBreakdown"
+                :modelMix="modelMix"
+                :subscriptionBased="subscriptionBased"
+                :totalCacheMetrics="totalCacheMetrics"
+                :executionsCount="executionsCount"
+              />
+            </div>
+
+            <!-- Column 2: what is loaded, and whether the machinery around it
+                 is healthy — both answer "what is the system doing right now". -->
+            <div class="monitoring-column monitoring-column-inventory">
+              <ContextManifest :manifest="lastManifest" />
+              <SystemHealthPanel
+                :contextManaged="contextManaged"
+                :lastManaged="lastContextManaged"
+                :errorsCaught="errorsCaught"
+                :toolTruncations="toolTruncations"
+                :toolsLoadedCount="toolsLoadedCount"
+                :cacheMetrics="lastCacheMetrics"
+              />
+            </div>
+
+            <!-- Column 3: system activity -->
+            <div class="monitoring-column monitoring-column-activity">
+              <ActivityFeed :activities="systemActivities" @clear="clearActivities" />
+            </div>
           </div>
         </div>
 
@@ -62,8 +80,14 @@
               <div class="spinner"></div>
             </div>
             <div v-else class="conversation-container">
-              <TransitionGroup :name="bulkLoading ? '' : 'message'" tag="div" class="message-flow">
-                <template v-for="message in displayMessages" :key="message.id">
+              <div v-if="hiddenMessageCount > 0" class="show-earlier-row">
+                <button type="button" class="show-earlier-btn" @click="showEarlierMessages">
+                  <i class="fas fa-chevron-up"></i>
+                  Show earlier messages ({{ hiddenMessageCount }})
+                </button>
+              </div>
+              <TransitionGroup :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
+                <template v-for="message in windowedMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
                   <div v-if="message.kind === 'skill-pill'" class="inline-pill-row">
                     <div class="inline-context-pill" :class="{ 'is-detached': message.detached, 'is-skill': true }">
@@ -130,6 +154,7 @@
                     :runningTools="getRunningToolsForMessage(message)"
                     :imageCache="imageCache"
                     :dataCache="dataCache"
+                    :expandedToolCalls="expandedToolCalls"
                     :avatarUrl="
                       message.agentIcon &&
                       (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/'))
@@ -203,6 +228,7 @@ export default {
     QuickActions,
     ChatActions,
     ContextMonitor,
+    ContextManifest,
     SystemHealthPanel,
     ActivityFeed,
     GoalProgressWidget,
@@ -259,10 +285,30 @@ export default {
       if (validMsgs.length < allMsgs.length) {
         console.warn('[ChatScreen] Some messages were filtered out due to missing or invalid IDs.');
       }
-      return validMsgs.map((msg) => ({
-        ...msg,
-        expandedToolCalls: expandedToolCalls.value[msg.id] || [],
-      }));
+      // Return the store objects with STABLE identity — no per-recompute
+      // cloning. The old `{...msg, expandedToolCalls}` map created fresh
+      // objects for every message on every recompute (including every
+      // streaming chunk), so Vue could never skip re-rendering unchanged
+      // MessageItems. Tool-call expansion state is passed to MessageItem as a
+      // separate prop instead (see the template).
+      return validMsgs;
+    });
+
+    // ---- Windowed rendering ------------------------------------------------
+    // Only the most recent messages mount on conversation open; older ones
+    // mount on demand via the "Show earlier" control. This caps cold-open
+    // cost (markdown parse + sanitize + MathJax per MessageItem) at
+    // O(window) instead of O(conversation length). All non-template logic
+    // (autosave, lookups, history building) still uses the full list.
+    const MESSAGE_WINDOW_INITIAL = 30;
+    const MESSAGE_WINDOW_STEP = 50;
+    const visibleWindow = ref(MESSAGE_WINDOW_INITIAL);
+    const suppressMessageTransition = ref(false);
+
+    const windowedMessages = computed(() => {
+      const msgs = displayMessages.value;
+      if (msgs.length <= visibleWindow.value) return msgs;
+      return msgs.slice(msgs.length - visibleWindow.value);
     });
 
     const hiddenMessageCount = computed(() => Math.max(0, displayMessages.value.length - visibleWindow.value));
@@ -480,6 +526,9 @@ export default {
         hitRate: '0',
       },
       executionsCount: 0,
+      // Itemized inventory of the last request (context_manifest event):
+      // which prompt sections, which tools and why, what was hidden.
+      lastManifest: null,
       systemActivities: [],
     });
 
@@ -489,7 +538,16 @@ export default {
     const getMonitoringState = (convId) => {
       if (!convId) return null;
       if (!monitoringStates[convId]) {
-        monitoringStates[convId] = defaultMonitoringState();
+        const slot = defaultMonitoringState();
+        // Seed the last request size the backend reported for this
+        // conversation. Done synchronously at slot creation so it is present
+        // before any watcher or async hydrate runs; a live context_status
+        // event overwrites it on the next turn.
+        const cached = loadContextStatus(convId);
+        if (cached) {
+          slot.contextStatus = { ...slot.contextStatus, ...cached };
+        }
+        monitoringStates[convId] = slot;
       }
       return monitoringStates[convId];
     };
@@ -512,7 +570,12 @@ export default {
     const lastEstimatedCost = computed(() => activeMonitoring.value.lastEstimatedCost);
     const totalTokenUsage = computed(() => activeMonitoring.value.totalTokenUsage);
     const totalCost = computed(() => activeMonitoring.value.totalCost);
+    const totalUncachedCost = computed(() => activeMonitoring.value.totalUncachedCost);
+    const lastCostBreakdown = computed(() => activeMonitoring.value.lastCostBreakdown);
     const totalCacheMetrics = computed(() => activeMonitoring.value.totalCacheMetrics);
+    const lastManifest = computed(() => activeMonitoring.value.lastManifest);
+    const modelMix = computed(() => Object.values(activeMonitoring.value.modelMix || {}).sort((a, b) => b.cost - a.cost));
+    const subscriptionBased = computed(() => activeMonitoring.value.subscriptionBased);
     const executionsCount = computed(() => activeMonitoring.value.executionsCount);
     const systemActivities = computed(() => activeMonitoring.value.systemActivities);
 
@@ -1227,9 +1290,12 @@ export default {
               model: data.model,
               messagesCount: data.messagesCount,
               // Per-component breakdown so ContextMonitor can render a
-              // segmented bar (system / tools / messages / output buffer).
+              // segmented bar (system / tools / messages / output reserve).
               breakdown: data.breakdown || null,
             };
+            // Survive a page reload — otherwise the panel reads "0 / 1.0M"
+            // until the user happens to send another message.
+            saveContextStatus(streamConvId, ms.contextStatus);
           }
           break;
         case 'context_managed':
@@ -1245,11 +1311,10 @@ export default {
               type: 'context',
               text: `Context reduced: ${data.originalTokens.toLocaleString()} → ${data.managedTokens.toLocaleString()} tokens`,
             });
-            const convIdForTimeout = streamConvId;
-            cleanup.setTimeout(() => {
-              const s = monitoringStates[convIdForTimeout];
-              if (s) s.contextManaged = false;
-            }, 5000);
+            // Deliberately NOT reset after a timeout. Trimming is a durable
+            // fact about this conversation, not a 5-second blink - the old
+            // auto-reset meant the one moment worth seeing was almost always
+            // missed, and the indicator sat on "Idle" forever afterwards.
           }
           break;
         case 'tool_output_managed':
@@ -1280,6 +1345,9 @@ export default {
           }
           if (isActiveView) isProcessing.value = false;
           break;
+        case 'context_manifest':
+          if (ms) ms.lastManifest = data || null;
+          break;
         case 'agent_execution_completed':
           if (ms) {
             ms.lastTokenUsage = data.tokenUsage || null;
@@ -1297,6 +1365,26 @@ export default {
             }
             if (data.estimatedCost != null) {
               ms.totalCost += Number(data.estimatedCost) || 0;
+            }
+            ms.lastCostBreakdown = data.costBreakdown || null;
+            if (data.model) {
+              const entry = ms.modelMix[data.model] || { model: data.model, provider: data.provider, calls: 0, cost: 0 };
+              entry.calls += 1;
+              entry.cost += Number(data.estimatedCost) || 0;
+              ms.modelMix = { ...ms.modelMix, [data.model]: entry };
+            }
+            if (data.subscriptionBased != null) {
+              // Mixed metered + subscription turns -> null, since neither
+              // "you paid" nor "notional" is true of the whole conversation.
+              ms.subscriptionBased = ms.subscriptionBased == null || ms.subscriptionBased === data.subscriptionBased
+                ? data.subscriptionBased
+                : null;
+            }
+            if (data.costBreakdown && data.costBreakdown.uncached != null) {
+              // Seed from the actual running total the first time we can price
+              // a turn, so the baseline covers the same turns totalCost does.
+              if (ms.totalUncachedCost == null) ms.totalUncachedCost = ms.totalCost - (Number(data.estimatedCost) || 0);
+              ms.totalUncachedCost += Number(data.costBreakdown.uncached) || 0;
             }
             if (data.cacheMetrics) {
               ms.totalCacheMetrics.cacheReadTokens += data.cacheMetrics.cacheReadTokens || 0;
@@ -1570,22 +1658,10 @@ export default {
           ? safeTruncate(firstUserMessage.content, 100, '...')
           : 'Untitled Conversation';
 
-        // Helper function to resolve image references in content
-        const resolveImageReferences = (content) => {
-          if (!content || typeof content !== 'string') return content;
-
-          const imageRefPattern = /\{\{IMAGE_REF:([^}]+)\}\}/g;
-          return content.replace(imageRefPattern, (match, imageId) => {
-            const cached = imageCache.value.get(imageId);
-            if (cached && cached.data) {
-              console.log(`[Save] Resolved image reference: ${imageId}`);
-              return cached.data; // Return the actual data URL
-            }
-            console.warn(`[Save] Image reference not found in cache: ${imageId}`);
-            return match; // Keep the reference if not found
-          });
-        };
-
+        // Persist {{IMAGE_REF:id}} tokens AS-IS — do NOT inline base64.
+        // Images are already persisted to disk server-side at generation time
+        // and MessageItem resolves refs to /api/images/:id on render. Inlining
+        // made image-heavy conversation blobs ~6x larger and slowed loads.
         const conversationData = {
           conversationId: currentConversationId.value,
           title: conversationTitle,
@@ -2277,17 +2353,25 @@ export default {
     // recorded state (they'll update on their next stream event).
     watch(
       () => [store.state.aiProvider?.selectedProvider, store.state.aiProvider?.selectedModel],
-      () => {
+      ([, model], previous) => {
+        // The aiProvider store hydrates asynchronously, so the first firing is
+        // usually undefined -> 'claude-opus-5'. That is the store settling, not
+        // the user switching models, and treating it as a switch wiped the
+        // restored request size on every single page load.
+        if (!previous || previous[1] == null) return;
+
         const convId = store.state.chat.activeConversationId;
         if (!convId) return;
         const ms = getMonitoringState(convId);
-        const model = store.state.aiProvider?.selectedModel;
+        // Only the LIMIT is model-dependent. The last measured request size and
+        // its breakdown remain the best known values, so preserve them rather
+        // than blanking the panel. Mirrors updateContextWindow().
         ms.contextStatus = {
-          currentTokens: 0,
-          tokenLimit: getContextWindowForModel(model),
-          utilizationPercent: 0,
+          ...ms.contextStatus,
           model: model || 'N/A',
-          messagesCount: 0,
+          // Unknown model => 0 (renders as unknown). Never inherit the previous
+          // model's limit — that left K3 displaying a stale 64K.
+          tokenLimit: getContextWindowForModel(model) || 0,
         };
       },
     );
@@ -2399,8 +2483,10 @@ export default {
       lastTokenUsage,
       lastCacheMetrics,
       lastEstimatedCost,
+      lastCostBreakdown,
       totalTokenUsage,
       totalCost,
+      totalUncachedCost,
       totalCacheMetrics,
       lastManifest,
       modelMix,
@@ -2674,6 +2760,9 @@ export default {
   border-bottom: 1px solid rgba(127, 129, 147, 0.1);
   transition: all 0.3s ease;
   border-radius: 0;
+  /* The columns below respond to THIS panel's width, not the viewport's —
+     the chat pane is far narrower than the window that contains it. */
+  container-type: inline-size;
 }
 
 .monitoring-panel.collapsed {
@@ -2715,17 +2804,34 @@ export default {
 }
 
 .monitoring-content {
-  display: flex;
+  /* Three equal columns, stated rather than emerged. Flex-wrap made the third
+     column's position a function of available width, so Activity dropped to
+     its own row whenever the pane was under ~856px — which it usually is. */
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   padding: 0 16px 8px 16px;
-  flex-wrap: wrap;
+  /* Columns size to their own content rather than stretching to the tallest,
+     so Health and Activity don't grow blank space to match the cost column. */
+  align-items: start;
   transition: all 0.3s ease;
   border-radius: 0;
 }
 
-.monitoring-content > * {
-  flex: 1;
-  min-width: 280px;
+.monitoring-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* min-width:0 lets a track actually reach its 1fr share; without it a long
+     tool name or model id would blow the column out past its share. */
+  min-width: 0;
+}
+
+/* Genuinely too narrow for three — stack rather than shave each to ~180px. */
+@container (max-width: 560px) {
+  .monitoring-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .conversation-canvas-wrapper {

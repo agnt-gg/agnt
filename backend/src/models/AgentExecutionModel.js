@@ -1,5 +1,7 @@
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
+import { uncachedCostForRow } from '../utils/cacheSavings.js';
+import { isSubscriptionProvider } from '../services/ai/providerConfigs.js';
 
 // Helper function to retry database operations on SQLITE_BUSY
 const retryOnBusy = (operation, maxRetries = 3, delay = 100) => {
@@ -505,8 +507,23 @@ class AgentExecutionModel {
         );
       });
 
-      Promise.all([aggQuery, latestQuery])
-        .then(([agg, latest]) => {
+      // Per-row pricing inputs so the cache-savings baseline can be
+      // reconstructed for conversations that predate cost tracking — provider,
+      // model and the cache token columns were already being stored, so this
+      // needs no migration and no new column.
+      const rowsQuery = new Promise((res, rej) => {
+        db.all(
+          `SELECT provider, model, input_tokens, output_tokens,
+                  cache_read_tokens, cache_creation_tokens, estimated_cost
+           FROM agent_executions
+           WHERE conversation_id = ? AND user_id = ?`,
+          [conversationId, userId],
+          (err, rows) => err ? rej(err) : res(rows || [])
+        );
+      });
+
+      Promise.all([aggQuery, latestQuery, rowsQuery])
+        .then(([agg, latest, rows]) => {
           if (!agg.executions_count) {
             resolve(null); // No executions for this conversation
             return;
@@ -559,10 +576,45 @@ class AgentExecutionModel {
             };
           }
 
+          // Sum the uncached baseline across every turn. Rows that cannot be
+          // priced fall back to their recorded cost, so savings is understated
+          // rather than invented.
+          let totalUncachedCost = 0;
+          for (const row of rows) totalUncachedCost += uncachedCostForRow(row);
+
+          // Per-model breakdown. A conversation routinely spans several models
+          // (measured: 52% of multi-turn conversations), and they can differ 2x
+          // in price - claude-fable-5 is $10/M against claude-opus-5's $5/M.
+          // Labelling the whole rollup with a single model name misattributes
+          // the cost and makes the totals look impossible to reconcile.
+          const byModel = new Map();
+          let anySubscription = false;
+          let anyMetered = false;
+          for (const row of rows) {
+            if (!row.model) continue;
+            const entry = byModel.get(row.model) || {
+              model: row.model, provider: row.provider, calls: 0, cost: 0, inputTokens: 0,
+            };
+            entry.calls += 1;
+            entry.cost += Number(row.estimated_cost) || 0;
+            entry.inputTokens += Number(row.input_tokens) || 0;
+            byModel.set(row.model, entry);
+            if (isSubscriptionProvider(row.provider)) anySubscription = true;
+            else anyMetered = true;
+          }
+          const models = [...byModel.values()].sort((a, b) => b.cost - a.cost);
+
           resolve({
             conversationId,
             executionsCount: agg.executions_count,
             cumulative: {
+              models,
+              // true  = every turn ran on a subscription seat (cost is notional)
+              // false = every turn was metered (cost is real money)
+              // null  = mixed, so neither claim is safe to make
+              subscriptionBased: anySubscription && anyMetered ? null : anySubscription,
+              uncachedCost: totalUncachedCost,
+              savedCost: totalUncachedCost - (agg.total_estimated_cost || 0),
               inputTokens: agg.total_input_tokens,
               outputTokens: agg.total_output_tokens,
               totalTokens: agg.total_tokens,

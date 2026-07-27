@@ -13,6 +13,45 @@ const CHARS_PER_TOKEN = 3.5;
 const TOKEN_ESTIMATE_SAFETY_FACTOR = 1.12;
 const MESSAGE_OVERHEAD_TOKENS = 12;
 
+// Dense JSON — tool schemas above all — tokenizes FAR more efficiently than
+// prose. Repeated structural keys ("type":"string", "description":, "required":)
+// collapse to single BPE tokens, so the prose ratio structurally OVERcounts them.
+//
+// Measured against o200k_base over the live 295-tool surface (2026-07-25):
+//   whole array           4.75 chars/token
+//   per-tool p05          4.49
+//   worst random subset   4.63   (30 samples, n = 10..295)
+//   worst single tool     3.89   (generate_image)
+// The shared prose estimator scored the same block at 3.125 chars/token — a
+// 1.52x overcount (182,251 vs a real 120,021). That inflation drove
+// availableTokens NEGATIVE on every model with a <=200k window, clamped the
+// budget to MIN_AVAILABLE_TOKENS, and made Strategy 4 delete the user's
+// conversation on chats as short as two turns.
+//
+// 4.0 keeps ~19% headroom against the measured whole-array ratio, which covers
+// cross-tokenizer drift (Anthropic / Llama tokenizers differ from o200k) while
+// no longer hallucinating an overflow that does not exist.
+const CHARS_PER_TOKEN_JSON_SCHEMA = 4.0;
+
+/**
+ * Estimate tokens for a tool-schema array using the dense-JSON ratio.
+ *
+ * Deliberately NOT estimateTokens(): that applies the prose ratio plus a 1.12
+ * safety factor, which is correct for message content and wrong by 1.52x for
+ * schemas. Keep the two estimators separate so neither has to compromise.
+ */
+function estimateToolTokens(tools) {
+  if (!tools) return 0;
+  let serialized;
+  try {
+    serialized = JSON.stringify(tools);
+  } catch {
+    serialized = String(tools);
+  }
+  if (!serialized) return 0;
+  return Math.ceil(serialized.length / CHARS_PER_TOKEN_JSON_SCHEMA);
+}
+
 // Fallback token limit when model metadata isn't available
 const DEFAULT_TOKEN_LIMIT = 128000;
 const RESPONSE_BUFFER = 8000;
@@ -454,18 +493,48 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
 /**
  * Manage context size to fit within token limits
  */
-function manageContext(messages, model, tools = [], provider = null) {
+function manageContext(messages, model, tools = [], provider = null, options = {}) {
   const { contextWindow, outputBuffer, availableTokens: tokenLimit } = getContextBudget(model, provider);
 
-  // Estimate tokens for tools
-  const toolTokens = estimateTokens(JSON.stringify(tools));
+  // Ground-truth calibration. The chars-ratio estimator structurally
+  // undercounts dense content (unicode-heavy transcripts, escaped code,
+  // in-flight tool rounds) and the provider's tokenizer counts harsher than
+  // o200k — measured 1.6x on a live conversation that sailed past the 94%
+  // margin into a provider 400. The orchestrator derives this ratio from the
+  // REAL prompt sizes the provider reports every round (see
+  // updateEstimateCalibration); dividing the budget by it moves the
+  // compression trigger to where the PROVIDER's count hits the wall.
+  // Clamped >= 1: a generous estimator is safe, only tighten when it lies low.
+  const calibration = Math.min(3, Math.max(1, Number(options.calibration) || 1));
+  const calibratedLimit = Math.floor(tokenLimit / calibration);
 
-  // Calculate available tokens with safety check to prevent negative values
-  let availableTokens = tokenLimit - toolTokens;
+  // Estimate tokens for tools using the dense-JSON ratio (see
+  // CHARS_PER_TOKEN_JSON_SCHEMA) rather than the prose ratio.
+  const toolTokens = estimateToolTokens(tools);
+
+  // Calculate available tokens with safety check to prevent negative values.
+  //
+  // The floor is PROPORTIONAL, not a flat 1,000. A flat floor meant that any
+  // caller whose tool surface exceeded the window (e.g. 295 schemas against a
+  // 128k model) collapsed the conversation budget to ~1k tokens, which forces
+  // Strategy 4 and destroys the chat. Reserving a fraction of the model's own
+  // input budget instead keeps a usable conversation even when the caller has
+  // not pre-capped its tools — this is the defence-in-depth backstop for paths
+  // that call manageContext() directly (LlmExecutionService et al).
   const MIN_AVAILABLE_TOKENS = 1000;
-  if (availableTokens < MIN_AVAILABLE_TOKENS) {
-    console.warn(`Available tokens (${availableTokens}) below minimum, adjusting to ${MIN_AVAILABLE_TOKENS}`);
-    availableTokens = MIN_AVAILABLE_TOKENS;
+  const CONVERSATION_FLOOR_FRACTION = 0.2;
+  const conversationFloor = Math.max(
+    MIN_AVAILABLE_TOKENS,
+    Math.floor(calibratedLimit * CONVERSATION_FLOOR_FRACTION),
+  );
+  let availableTokens = calibratedLimit - toolTokens;
+  if (availableTokens < conversationFloor) {
+    console.warn(
+      `[Context Manager] Tool surface (${toolTokens} tokens) leaves only ${availableTokens} ` +
+      `of ${tokenLimit} for conversation; raising to the ${conversationFloor}-token floor. ` +
+      `Cap the tool surface for this model to avoid provider-side overflow.`
+    );
+    availableTokens = conversationFloor;
   }
 
   let managedMessages = [...messages];
@@ -535,18 +604,13 @@ function manageContext(messages, model, tools = [], provider = null) {
     // handled the same way for completeness.
     if (currentTokens > availableTokens) {
       console.warn('Emergency context recovery required');
-      const systemMessage = managedMessages.find((m) => m.role === 'system');
+      let systemMessage = managedMessages.find((m) => m.role === 'system');
 
-      // Shrink the system message if it alone exceeds the limit
-      if (systemMessage) {
-        const sysTokens = estimateMessagesTokens([systemMessage]);
-        if (sysTokens > availableTokens * 0.7) {
-          console.warn('System message too large, shrinking for emergency recovery');
-          if (typeof systemMessage.content === 'string') {
-            systemMessage.content = truncateContent(systemMessage.content, Math.floor(availableTokens * 0.5));
-          }
-        }
-      }
+      // NOTE: the system prompt is deliberately NOT touched here. It carries
+      // the assistant's operating instructions, injected skills, and tool
+      // guidance; truncating it produces an assistant that is both amnesiac
+      // AND lobotomised. It is shrunk only as an absolute last resort, after
+      // the message tail has already been reduced to its minimum (below).
 
       // Walk the non-system tail from the end to find the smallest safe
       // suffix that preserves tool-call pairing.
@@ -604,6 +668,29 @@ function manageContext(messages, model, tools = [], provider = null) {
 
       managedMessages = [systemMessage, ...tail].filter(Boolean);
       currentTokens = estimateMessagesTokens(managedMessages);
+
+      // LAST RESORT: the tail is already at its irreducible minimum and we are
+      // still over budget, so the system prompt itself must be the thing that
+      // does not fit. Give it everything the tail is not using.
+      //
+      // CRITICAL: clone before mutating. `managedMessages` is a shallow copy of
+      // the caller's array, so writing to systemMessage.content in place would
+      // corrupt the caller's `messages` — which OrchestratorService persists
+      // verbatim to conversation_logs.full_history.
+      if (currentTokens > availableTokens && systemMessage && typeof systemMessage.content === 'string') {
+        const tailTokens = estimateMessagesTokens(tail);
+        const sysAllowance = Math.max(MIN_AVAILABLE_TOKENS, availableTokens - tailTokens);
+        if (estimateMessagesTokens([systemMessage]) > sysAllowance) {
+          console.warn(
+            `[Context Manager] LAST RESORT: message tail is minimal and still over budget; ` +
+            `truncating the system prompt to ${sysAllowance} tokens.`
+          );
+          const shrunkSystem = { ...systemMessage, content: truncateContent(systemMessage.content, sysAllowance) };
+          managedMessages = managedMessages.map((m) => (m === systemMessage ? shrunkSystem : m));
+          systemMessage = shrunkSystem;
+          currentTokens = estimateMessagesTokens(managedMessages);
+        }
+      }
     }
 
     // Final safety: ensure at least one non-system message exists
@@ -643,6 +730,8 @@ function manageContext(messages, model, tools = [], provider = null) {
     tokenLimit: availableTokens,
     contextWindow,
     wasManaged: currentTokens < estimateMessagesTokens(messages),
+    // Effective estimate->real correction applied to the budget this turn.
+    calibration,
     // Per-component breakdown for accurate "what Anthropic sees" reporting
     systemTokens,
     toolTokens,
@@ -850,4 +939,53 @@ function manageToolOutput(toolOutput, maxTokens = 999999999) {
   return sanitizedOutput;
 }
 
-export { estimateTokens, getTokenLimit, estimateMessagesTokens, truncateContent, manageContext, manageToolOutput };
+/**
+ * The REAL prompt size the provider just billed, from any usage shape:
+ *   Anthropic:        input_tokens (uncached only) + cache_read + cache_creation
+ *   OpenAI Chat:      prompt_tokens (already the total)
+ *   OpenAI Responses: input_tokens (already the total; no creation field)
+ */
+function extractRealPromptTokens(usage) {
+  if (!usage) return 0;
+  if (typeof usage.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
+    return usage.prompt_tokens;
+  }
+  return (
+    (usage.input_tokens || 0) +
+    (usage.cache_read_input_tokens || 0) +
+    (usage.cache_creation_input_tokens || 0)
+  );
+}
+
+/**
+ * Fold one round's ground truth into the per-conversation calibration ratio.
+ *
+ * ratio = real prompt tokens / our estimate of the same request. EMA (0.5/0.5)
+ * so one anomalous round can't whipsaw the budget; clamped to [0.5, 3] so a
+ * degenerate report can't collapse or explode it. Small rounds (<5k tokens on
+ * either side) are ignored — fixed per-message overhead dominates there and
+ * the ratio is noise.
+ *
+ * @returns {number|undefined} the updated calibration, or the prior unchanged
+ * when this round carries no usable signal.
+ */
+function updateEstimateCalibration(prior, usage, estimatedTotal) {
+  const real = extractRealPromptTokens(usage);
+  if (!(real >= 5000) || !(estimatedTotal >= 5000)) return prior;
+  const ratio = Math.min(3, Math.max(0.5, real / estimatedTotal));
+  if (typeof prior !== 'number' || !Number.isFinite(prior)) return ratio;
+  return prior * 0.5 + ratio * 0.5;
+}
+
+export {
+  estimateTokens,
+  estimateToolTokens,
+  getTokenLimit,
+  getContextBudget,
+  estimateMessagesTokens,
+  truncateContent,
+  manageContext,
+  manageToolOutput,
+  extractRealPromptTokens,
+  updateEstimateCalibration,
+};

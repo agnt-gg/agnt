@@ -5,9 +5,13 @@ import { executeTool } from './orchestrator/tools.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
-import { createLlmAdapter } from './orchestrator/llmAdapters.js';
-import { getModelCost } from './ai/providerConfigs.js';
-import { manageContext } from '../utils/contextManager.js';
+import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
+import { computeCacheSavings } from '../utils/cacheSavings.js';
+import { updateEstimateCalibration } from '../utils/contextManager.js';
+import { isSubscriptionProvider } from './ai/providerConfigs.js';
+import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
+import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
+import { buildContextManifest } from './orchestrator/contextManifest.js';
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
 import log from '../utils/logger.js';
 import OpenAI from 'openai';
@@ -1074,6 +1078,33 @@ async function universalChatHandler(req, res, context = {}) {
     if (priorContext._loadedToolGroups) {
       conversationContext._loadedToolGroups = new Set(priorContext._loadedToolGroups);
     }
+    // Tool-surface pin. When the tool array had to be capped to fit the model's
+    // window, the exact ORDERED selection is replayed on every later turn so the
+    // cached prompt prefix stays byte-identical. Losing this would re-derive a
+    // possibly different array each turn and miss the cache on every request.
+    if (Array.isArray(priorContext._pinnedToolNames)) {
+      conversationContext._pinnedToolNames = [...priorContext._pinnedToolNames];
+    }
+    // First-seen tool order for the discovery path (chatConfigs
+    // applyStableToolOrder). Replayed so each turn's tools array is an exact
+    // prefix-extension of the previous turn's — required for prompt caching.
+    if (Array.isArray(priorContext._toolOrder)) {
+      conversationContext._toolOrder = [...priorContext._toolOrder];
+    }
+    // Prior turn's prompt/tool fingerprints so the manifest can report whether
+    // the cached prefix actually survived into this turn.
+    if (priorContext._manifestFingerprints) {
+      conversationContext._manifestFingerprints = priorContext._manifestFingerprints;
+    }
+    // Estimate->real token calibration learned from provider usage reports.
+    // Persisted so the compression trigger stays honest from turn 1 of the
+    // next turn instead of relearning the conversation's density each time.
+    if (typeof priorContext._estimateCalibration === 'number') {
+      conversationContext._estimateCalibration = priorContext._estimateCalibration;
+    }
+    if (priorContext._loadedToolNames) {
+      conversationContext._loadedToolNames = new Set(priorContext._loadedToolNames);
+    }
     if (priorContext.activatedSkills) {
       conversationContext.activatedSkills = new Set(priorContext.activatedSkills);
     }
@@ -1422,10 +1453,56 @@ IMPORTANT: The image data is already available in the system context. You don't 
       finalToolSchemas = finalToolSchemas.filter((t) => t.function?.name !== 'mcp_client');
     }
 
+    // Cap the tool surface to what this model can actually afford, leaving a
+    // guaranteed reserve for the conversation itself.
+    //
+    // This is a NO-OP whenever the full surface fits — every large-window model
+    // (Sonnet 5, Opus 5, Gemini 2.5, GPT-5.6, Codex Sol) is completely
+    // unaffected. It engages only for models that physically cannot hold both
+    // the tools and the chat (128k-200k tiers), where the alternative was the
+    // context manager's emergency recovery deleting the user's conversation.
+    let toolCapResult = null;
+    {
+      const { availableTokens } = getContextBudget(model, normalizedProvider);
+      // The system prompt is not conversation and not tools — it ships on every
+      // request and must be reserved before the tool surface is sized.
+      const systemPromptTokens = estimateTokens(systemPrompt || '');
+      const toolBudget = computeToolBudget(availableTokens, { reservedTokens: systemPromptTokens });
+      // Chat Completions rejects >128 functions outright; the Responses API and
+      // the native-schema providers (Anthropic, Gemini) do not.
+      const usesResponsesApi = normalizedProvider === 'openai-codex'
+        || (normalizedProvider === 'openai' && requiresResponsesApi(model));
+      const maxToolCount = getToolCountLimit(normalizedProvider, { usesResponsesApi });
+      const capResult = capToolsToBudget(finalToolSchemas, {
+        budgetTokens: toolBudget,
+        pinnedNames: conversationContext._pinnedToolNames || null,
+        loadedToolNames: conversationContext._loadedToolNames || null,
+        maxToolCount,
+      });
+      if (capResult.capped) {
+        console.warn(
+          `[ToolBudget] ${normalizedProvider}/${model}: tool surface ${estimateToolTokens(finalToolSchemas)} tokens ` +
+          `/ ${finalToolSchemas.length} tools exceeds the ${toolBudget}-token allowance ` +
+          `(of ${availableTokens} available, ${systemPromptTokens} reserved for the system prompt)` +
+          `${maxToolCount ? ` or the ${maxToolCount}-tool provider limit` : ''}. ` +
+          `Sending ${capResult.schemas.length}/${finalToolSchemas.length} tools (${capResult.toolTokens} tokens); ` +
+          `${capResult.hiddenCount} remain reachable via discover_tools.`
+        );
+        finalToolSchemas = capResult.schemas;
+        conversationContext._pinnedToolNames = capResult.pinnedNames;
+      }
+      // Retained for the manifest: how many tools were dropped to fit is a
+      // real correctness signal that used to end at the console.warn above.
+      toolCapResult = capResult;
+    }
+
     conversationContext.finalToolSchemas = finalToolSchemas;
 
-    // Generate assistant message ID early (needed for image extraction events)
-    const assistantMessageId = `msg-asst-${Date.now()}`;
+    // Generate assistant message ID early (needed for image extraction events).
+    // MUTABLE by design: a mid-run user steer splits the turn into multiple
+    // assistant bubbles so the transcript reads in true chronological order.
+    // See the steer drain inside the tool loop below.
+    let assistantMessageId = `msg-asst-${Date.now()}`;
 
     // CRITICAL: Sanitize message history to extract embedded images
     // This prevents images from previous conversations from bloating the context window
@@ -1463,27 +1540,58 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     // Apply context management
-    const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
+    const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+      calibration: conversationContext._estimateCalibration || 1,
+    });
 
     // Send context status.
     // `currentTokens` / `utilizationPercent` are retained for backwards
     // compatibility but now reflect the TRUE per-request input size
     // (system + tools + messages), not just the messages-array estimate.
     // The breakdown fields drive the segmented bar in the frontend.
+    // Report CALIBRATED numbers once real usage has shown the estimator
+    // undercounts — the panel must show what the provider will count, not the
+    // guess. (A user watched "62%" while Anthropic counted 100% and rejected.)
+    const displayCalibration = conversationContext._estimateCalibration > 1
+      ? conversationContext._estimateCalibration
+      : 1;
+    const scaleForDisplay = (n) => Math.round((n || 0) * displayCalibration);
     sendEvent('context_status', {
-      currentTokens: contextResult.totalRequestTokens,
+      currentTokens: scaleForDisplay(contextResult.totalRequestTokens),
       tokenLimit: contextResult.contextWindow,
-      utilizationPercent: (contextResult.totalRequestTokens / contextResult.contextWindow) * 100,
+      utilizationPercent: (scaleForDisplay(contextResult.totalRequestTokens) / contextResult.contextWindow) * 100,
       model: model,
       messagesCount: contextResult.messages.length,
       breakdown: {
-        systemTokens: contextResult.systemTokens,
-        toolTokens: contextResult.toolTokens,
-        messagesTokens: contextResult.messagesTokens,
+        systemTokens: scaleForDisplay(contextResult.systemTokens),
+        toolTokens: scaleForDisplay(contextResult.toolTokens),
+        messagesTokens: scaleForDisplay(contextResult.messagesTokens),
         outputBufferTokens: contextResult.outputBufferTokens,
-        totalRequestTokens: contextResult.totalRequestTokens,
+        totalRequestTokens: scaleForDisplay(contextResult.totalRequestTokens),
+        calibration: displayCalibration,
       },
     });
+
+    // Itemized inventory of everything in this request: which prompt sections,
+    // which tools and why, what was hidden or dropped, and whether the cached
+    // prompt prefix survived. All of it was already computed above.
+    try {
+      const { manifest, fingerprints } = buildContextManifest({
+        systemPrompt,
+        promptSections: conversationContext._promptSections || [],
+        toolSchemas: finalToolSchemas,
+        toolProvenance: conversationContext._toolProvenance || {},
+        toolSurfaceMeta: conversationContext._toolSurfaceMeta || {},
+        contextResult,
+        capResult: toolCapResult,
+        prior: conversationContext._manifestFingerprints || null,
+      });
+      conversationContext._manifestFingerprints = fingerprints;
+      sendEvent('context_manifest', manifest);
+    } catch (manifestError) {
+      // Never let an observability feature break a chat turn.
+      console.warn('[ContextManifest] Failed to build manifest:', manifestError.message);
+    }
 
     if (contextResult.wasManaged) {
       console.log(`Context automatically managed: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
@@ -1545,9 +1653,17 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // OpenAI / others: prompt_tokens is already the full total
         const input = usage.prompt_tokens || usage.input_tokens || 0;
         tokenAccumulator.inputTokens += input;
-        // OpenAI cached tokens (subset of prompt_tokens)
-        if (usage.prompt_tokens_details?.cached_tokens) {
-          tokenAccumulator.cacheReadTokens += usage.prompt_tokens_details.cached_tokens;
+        // Cached-prompt reads. Chat Completions reports these under
+        // `prompt_tokens_details.cached_tokens`; the Responses API — which is
+        // what OpenAI gpt-5.x and ALL Codex models use — reports the identical
+        // figure under `input_tokens_details.cached_tokens`. Reading only the
+        // Chat Completions shape meant every Codex cache hit was accumulated as
+        // zero, so no dashboard could ever show whether Codex caching worked.
+        const cachedReadTokens = usage.prompt_tokens_details?.cached_tokens
+          ?? usage.input_tokens_details?.cached_tokens
+          ?? 0;
+        if (cachedReadTokens > 0) {
+          tokenAccumulator.cacheReadTokens += cachedReadTokens;
         }
       }
 
@@ -1605,6 +1721,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
       conversationContext // Pass context for vision image handling
     );
     accumulateUsage(initialUsage);
+    // Fold this round's REAL prompt size (provider-reported) into the
+    // estimate calibration used by every subsequent manageContext call.
+    conversationContext._estimateCalibration = updateEstimateCalibration(
+      conversationContext._estimateCalibration,
+      initialUsage,
+      contextResult.totalRequestTokens
+    );
 
     // Handle API errors that the adapter recovered from (401, 429, etc.)
     // Also catches the wasEmpty branch — adapters mark empty responses with
@@ -2389,10 +2512,32 @@ IMPORTANT: The image data is already available in the system context. You don't 
           const allSchemas = await (await import('./orchestrator/tools.js')).getAvailableToolSchemas();
           const newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories);
           let addedCount = 0;
+          if (!conversationContext._loadedToolNames) {
+            conversationContext._loadedToolNames = new Set();
+          }
           for (const schema of newSchemas) {
-            if (!finalToolSchemas.some((s) => s.function?.name === schema.function?.name)) {
+            const schemaName = schema.function?.name;
+            if (schemaName) conversationContext._loadedToolNames.add(schemaName);
+            if (!finalToolSchemas.some((s) => s.function?.name === schemaName)) {
               finalToolSchemas.push(schema);
               addedCount++;
+              // APPEND to the pin (never insert). The cached prompt prefix is
+              // preserved up to the append point; re-ordering would invalidate
+              // the whole cached tools block instead of just extending it.
+              if (Array.isArray(conversationContext._pinnedToolNames) && schemaName) {
+                conversationContext._pinnedToolNames.push(schemaName);
+              }
+              // Register the append in the discovery-path order log too so
+              // the NEXT turn emits this tool at the same position instead of
+              // re-sorting it into registry order (which would invalidate the
+              // cached prompt prefix).
+              if (
+                Array.isArray(conversationContext._toolOrder) &&
+                schemaName &&
+                !conversationContext._toolOrder.includes(schemaName)
+              ) {
+                conversationContext._toolOrder.push(schemaName);
+              }
             }
           }
           // Track newly loaded groups
@@ -2438,7 +2583,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // store: false stateless requests with no prompt cache to preserve;
       // it also replays encrypted reasoning blobs every turn that count
       // against the window. Never revert reductions for Codex.
-      let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
+      let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+        calibration: conversationContext._estimateCalibration || 1,
+      });
       const cacheGate = 0.95;
       const originalRequestTokens = loopContextResult.originalTokens + loopContextResult.toolTokens;
       const originalUtilization = loopContextResult.contextWindow > 0
@@ -2472,18 +2619,23 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       // Emit updated context status so the UI reflects the growing message
       // history after each tool round (user sees tool_result bytes added).
+      const loopDisplayCal = conversationContext._estimateCalibration > 1
+        ? conversationContext._estimateCalibration
+        : 1;
+      const loopScale = (n) => Math.round((n || 0) * loopDisplayCal);
       sendEvent('context_status', {
-        currentTokens: loopContextResult.totalRequestTokens,
+        currentTokens: loopScale(loopContextResult.totalRequestTokens),
         tokenLimit: loopContextResult.contextWindow,
-        utilizationPercent: (loopContextResult.totalRequestTokens / loopContextResult.contextWindow) * 100,
+        utilizationPercent: (loopScale(loopContextResult.totalRequestTokens) / loopContextResult.contextWindow) * 100,
         model: model,
         messagesCount: loopContextResult.messages.length,
         breakdown: {
-          systemTokens: loopContextResult.systemTokens,
-          toolTokens: loopContextResult.toolTokens,
-          messagesTokens: loopContextResult.messagesTokens,
+          systemTokens: loopScale(loopContextResult.systemTokens),
+          toolTokens: loopScale(loopContextResult.toolTokens),
+          messagesTokens: loopScale(loopContextResult.messagesTokens),
           outputBufferTokens: loopContextResult.outputBufferTokens,
-          totalRequestTokens: loopContextResult.totalRequestTokens,
+          totalRequestTokens: loopScale(loopContextResult.totalRequestTokens),
+          calibration: loopDisplayCal,
         },
       });
 
@@ -2523,6 +2675,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
       accumulateUsage(nextResponse.usage);
+      conversationContext._estimateCalibration = updateEstimateCalibration(
+        conversationContext._estimateCalibration,
+        nextResponse.usage,
+        loopContextResult.totalRequestTokens
+      );
 
       // If the adapter recovered from an error (e.g. 429 rate limit), the error
       // message was returned as responseMessage.content but was never streamed
@@ -2602,7 +2759,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
           );
           messages = followUpCompacted.messages;
         }
-        const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider);
+        const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+          calibration: conversationContext._estimateCalibration || 1,
+        });
         // Do NOT reassign `messages` — the adapter call below reads
         // followUpContext.messages directly; `messages` must stay intact
         // for full_history persistence.
@@ -2628,6 +2787,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
         );
 
         accumulateUsage(followUpResponse.usage);
+        conversationContext._estimateCalibration = updateEstimateCalibration(
+          conversationContext._estimateCalibration,
+          followUpResponse.usage,
+          followUpContext.totalRequestTokens
+        );
         if (followUpResponse.responseMessage.content) {
           finalContentForLogging = scrubEmptyPlaceholder(
             extractDisplayText(followUpResponse.responseMessage.content)
@@ -2727,7 +2891,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // overcharged 10× in the displayed/persisted cost.
         let tokenUsageForDb = null;
         if (tokenAccumulator.totalTokens > 0) {
-          const costInfo = getModelCost(
+          // Actual cost AND the "if nothing had been cached" baseline, from the
+          // same pricing function so the two can never drift. The delta is what
+          // caching saved (negative on a prefix-write turn — see cacheSavings.js).
+          const costInfo = computeCacheSavings(
             normalizedProvider,
             model,
             tokenAccumulator.inputTokens,
@@ -2742,7 +2909,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
             inputTokens: tokenAccumulator.inputTokens,
             outputTokens: tokenAccumulator.outputTokens,
             totalTokens: tokenAccumulator.totalTokens,
-            estimatedCost: costInfo?.totalCost || 0,
+            estimatedCost: costInfo?.actualCost || 0,
+            uncachedCost: costInfo ? costInfo.uncachedCost : null,
+            savedCost: costInfo ? costInfo.savedCost : null,
             cacheReadTokens: tokenAccumulator.cacheReadTokens,
             cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
           };
@@ -2783,6 +2952,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
               : '0',
           } : undefined,
           estimatedCost: tokenUsageForDb?.estimatedCost || 0,
+          // Which model actually served THIS turn. The panel header shows the
+          // currently-selected model, which is not necessarily the one that ran
+          // earlier turns - without this the rollup misattributes cost.
+          provider: normalizedProvider,
+          model,
+          subscriptionBased: isSubscriptionProvider(normalizedProvider),
+          // What caching cost/saved this turn. null = model has no pricing
+          // metadata, so the panel shows nothing rather than a fake $0.00.
+          costBreakdown: tokenUsageForDb && tokenUsageForDb.uncachedCost != null ? {
+            actual: tokenUsageForDb.estimatedCost || 0,
+            uncached: tokenUsageForDb.uncachedCost,
+            saved: tokenUsageForDb.savedCost,
+          } : null,
         });
 
         console.log(`[Agent Execution] Completed execution ${agentExecutionId} with status ${finalStatus}, ${toolCallsCount} tool calls`);

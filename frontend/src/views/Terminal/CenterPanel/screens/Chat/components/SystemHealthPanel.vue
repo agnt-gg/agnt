@@ -8,7 +8,7 @@
       <div class="health-item" :class="getContextStatus()">
         <span class="indicator"></span>
         <span class="item-label">Context Management</span>
-        <span class="item-status">{{ contextManaged ? 'Active' : 'Idle' }}</span>
+        <span class="item-status">{{ contextStatusText }}</span>
       </div>
 
       <div class="health-item" :class="getErrorRecoveryStatus()">
@@ -48,6 +48,11 @@ export default {
       type: Boolean,
       default: false,
     },
+    // Last trim performed in this conversation, if any.
+    lastManaged: {
+      type: Object,
+      default: null,
+    },
     errorsCaught: {
       type: Number,
       default: 0,
@@ -79,8 +84,23 @@ export default {
       return 'No hits';
     });
 
+    // "Idle" implied something was waiting to happen. Nothing is: on a
+    // large-window model the request simply fits, and no trimming is needed.
+    // Saying so is more useful than an indicator that never changes - and
+    // once a trim HAS happened, the reduction stays visible instead of
+    // blinking for five seconds and reverting.
+    const contextStatusText = computed(() => {
+      if (props.lastManaged?.reduction > 0) {
+        const r = props.lastManaged.reduction;
+        const short = r >= 1e6 ? (r / 1e6).toFixed(1) + 'M' : r >= 1000 ? (r / 1000).toFixed(1) + 'k' : String(r);
+        return `trimmed ${short}`;
+      }
+      return props.contextManaged ? 'Active' : 'Not needed';
+    });
+
     const getContextStatus = () => {
-      return props.contextManaged ? 'active' : 'idle';
+      if (props.lastManaged?.reduction > 0) return 'active';
+      return props.contextManaged ? 'active' : 'healthy';
     };
 
     const getErrorRecoveryStatus = () => {
@@ -109,6 +129,7 @@ export default {
 
     return {
       cacheStatusText,
+      contextStatusText,
       getContextStatus,
       getErrorRecoveryStatus,
       getToolStatus,

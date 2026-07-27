@@ -2,6 +2,7 @@ import { getAvailableToolSchemas } from './tools.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS } from './toolSelector.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
 import { loadWorkspaceContextSection } from './workspaceContext.js';
+import { estimateTokens } from '../../utils/contextManager.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
   'discover_tools',
@@ -346,6 +347,76 @@ function isUniversalToolName(name) {
   return false;
 }
 
+// "All tools" is a MODE, not a list. The frontend historically enumerated
+// every tool as the orchestrator default, so a whitelist covering (nearly)
+// the entire registry doesn't mean the user narrowed anything — it means "no
+// opinion", persisted eagerly. Honouring it verbatim routes around the lazy
+// discovery system (DEFAULT_TOOLS + keyword groups + discover_tools) and
+// ships the full ~300-schema surface (~120k tokens) on every turn. At or
+// above this coverage the whitelist degrades to auto/discovery mode; any
+// explicitly unchecked names survive as a deny-list so deliberate opt-outs
+// still stick. 0.95 catches stale "everything" saves and legacy global lists
+// while leaving genuinely curated selections alone.
+const FULL_COVERAGE_AUTO_THRESHOLD = 0.95;
+
+// Append-only tool ordering for the discovery path. Without this, a newly
+// matched keyword group interleaves its tools at their registry positions,
+// shifting every later schema and invalidating the provider's cached prompt
+// prefix from the first moved entry onward. We remember first-seen order per
+// conversation (_toolOrder — persisted across turns like _loadedToolGroups)
+// and emit previously seen tools in their original order, then new arrivals
+// appended — so each turn's tools array is an exact prefix-extension of the
+// last. discover_tools mid-turn appends register their names directly (see
+// OrchestratorService dynamic loading) so the next turn replays the same
+// order.
+// Record WHY each tool made it into the request, plus the shape of the
+// surface as a whole. The selection rules already know all of this — without
+// capturing it here the reason is lost by the time the panel renders, and
+// "why is my context 120k" becomes unanswerable from the UI.
+function recordToolManifest(context, { schemas, registryTotal, mode, provenance, groups, deniedCount }) {
+  context._toolProvenance = provenance || {};
+  context._toolSurfaceMeta = {
+    registryTotal: registryTotal || 0,
+    mode,
+    groups: groups ? [...groups] : [],
+    deniedCount: deniedCount || 0,
+  };
+  return schemas;
+}
+
+function applyStableToolOrder(context, schemas) {
+  const priorOrder = Array.isArray(context._toolOrder) ? context._toolOrder : [];
+  const byName = new Map();
+  const unnamed = [];
+  for (const s of schemas) {
+    const n = s.function?.name;
+    if (n && !byName.has(n)) byName.set(n, s);
+    else if (!n) unnamed.push(s);
+  }
+  const ordered = [];
+  const seen = new Set();
+  for (const n of priorOrder) {
+    const s = byName.get(n);
+    if (s && !seen.has(n)) {
+      ordered.push(s);
+      seen.add(n);
+    }
+  }
+  const appended = [];
+  for (const [n, s] of byName) {
+    if (!seen.has(n)) {
+      ordered.push(s);
+      seen.add(n);
+      appended.push(n);
+    }
+  }
+  // Names absent this turn (e.g. a plugin briefly uninstalled) keep their
+  // slot in _toolOrder so a later return doesn't reshuffle the array.
+  const priorSet = new Set(priorOrder);
+  context._toolOrder = [...priorOrder, ...appended.filter((n) => !priorSet.has(n))];
+  return [...ordered, ...unnamed];
+}
+
 // mcp_client is a universal capability — every sidebar chat needs awareness
 // of MCP servers regardless of its specialty. Including it in every list so
 // the strict-scoping introduced in v0.5.7 doesn't accidentally hide it.
@@ -450,7 +521,23 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   console.log(
     `[UnifiedChat] Saved-agent tool surface for ${context.agentId}: ${filteredSchemas.length} tools (${assignedToolNames.length} pinned, groups: [${[...allGroups].join(', ')}])`
   );
-  return filteredSchemas;
+  const agentProv = {};
+  const assigned = new Set(assignedToolNames);
+  for (const s of filteredSchemas) {
+    const n = s.function?.name;
+    if (!n) continue;
+    if (assigned.has(n)) agentProv[n] = { reason: 'assigned' };
+    else if (AGENT_DEFAULT_TOOLS.has(n)) agentProv[n] = { reason: 'default' };
+    else if (isUniversalToolName(n)) agentProv[n] = { reason: 'universal' };
+    else agentProv[n] = { reason: 'group' };
+  }
+  return recordToolManifest(context, {
+    schemas: applyStableToolOrder(context, filteredSchemas),
+    registryTotal: allSchemas.length,
+    mode: 'agent',
+    provenance: agentProv,
+    groups: allGroups,
+  });
 }
 
 async function getUnifiedToolSchemas(context) {
@@ -475,14 +562,41 @@ async function getUnifiedToolSchemas(context) {
   // a real selection, not a missing one (see OrchestratorService where the
   // distinction is preserved). Only `null`/missing falls through to the
   // no-selection branch below.
+  let denyNames = null;
   if (context.enabledTools instanceof Set) {
-    const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
-    const filteredSchemas = allSchemas.filter((s) => {
-      const name = s.function?.name;
-      return name && allowed.has(name);
-    });
-    console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + ${UNIVERSAL_TOOLS.size} universal) -> ${filteredSchemas.length} tools`);
-    return filteredSchemas;
+    const namedSchemas = allSchemas.filter((s) => s.function?.name);
+    const coveredCount = namedSchemas.reduce(
+      (acc, s) => acc + (context.enabledTools.has(s.function.name) ? 1 : 0),
+      0
+    );
+    const coverage = namedSchemas.length > 0 ? coveredCount / namedSchemas.length : 1;
+    if (coverage >= FULL_COVERAGE_AUTO_THRESHOLD) {
+      // Near-full coverage = "all tools" mode, not a curated list. Degrade to
+      // the lazy discovery path below; keep explicit opt-outs as a deny-list.
+      denyNames = new Set();
+      for (const s of namedSchemas) {
+        const name = s.function.name;
+        if (!context.enabledTools.has(name) && !isUniversalToolName(name)) denyNames.add(name);
+      }
+      console.log(
+        `[UnifiedChat] enabledTools covers ${(coverage * 100).toFixed(1)}% of ${namedSchemas.length} tools -> auto (discovery) mode${denyNames.size ? ` with ${denyNames.size} opt-outs` : ''}`
+      );
+    } else {
+      const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
+      const filteredSchemas = allSchemas.filter((s) => {
+        const name = s.function?.name;
+        return name && allowed.has(name);
+      });
+      console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + ${UNIVERSAL_TOOLS.size} universal) -> ${filteredSchemas.length} tools`);
+      const prov = {};
+      for (const s of filteredSchemas) {
+        const n = s.function?.name;
+        if (n) prov[n] = { reason: isUniversalToolName(n) && !context.enabledTools.has(n) ? 'universal' : 'selected' };
+      }
+      return recordToolManifest(context, {
+        schemas: filteredSchemas, registryTotal: namedSchemas.length, mode: 'whitelist', provenance: prov,
+      });
+    }
   }
 
   // No explicit selection from the client. For sidebar chats, fall back to
@@ -498,7 +612,14 @@ async function getUnifiedToolSchemas(context) {
       return name && (allowed.has(name) || isUniversalToolName(name));
     });
     console.log(`[UnifiedChat] Sidebar specialty fallback (no enabledTools sent) -> ${filteredSchemas.length} tools`);
-    return filteredSchemas;
+    const prov = {};
+    for (const s of filteredSchemas) {
+      const n = s.function?.name;
+      if (n) prov[n] = { reason: specialty.has ? (specialty.has(n) ? 'specialty' : 'universal') : 'specialty' };
+    }
+    return recordToolManifest(context, {
+      schemas: filteredSchemas, registryTotal: allSchemas.length, mode: 'specialty', provenance: prov,
+    });
   }
 
   const latestUserMessage = context.latestUserMessage || '';
@@ -508,16 +629,24 @@ async function getUnifiedToolSchemas(context) {
   const allGroups = new Set([...previousGroups, ...matchedGroups, ...forcedGroups]);
 
   const groupToolNames = new Set();
+  // First group to contribute a tool is the one credited in the manifest.
+  const groupOfTool = new Map();
   for (const group of allGroups) {
     const tools = getToolsForCategories(allSchemas, [group]);
     for (const t of tools) {
-      if (t.function?.name) groupToolNames.add(t.function.name);
+      const n = t.function?.name;
+      if (!n) continue;
+      groupToolNames.add(n);
+      if (!groupOfTool.has(n)) groupOfTool.set(n, group);
     }
   }
 
   const filteredSchemas = allSchemas.filter((schema) => {
     const name = schema.function?.name;
     if (!name) return false;
+    // Auto-degraded whitelist: explicitly unchecked tools stay off even in
+    // discovery mode — the deny-list wins over DEFAULT_TOOLS and groups.
+    if (denyNames && denyNames.has(name)) return false;
     if (DEFAULT_TOOLS.has(name)) return true;
     // UNIVERSAL_TOOLS ride along on the orchestrator/keyword path too —
     // without this the tutorial tools only loaded when the user message
@@ -529,7 +658,29 @@ async function getUnifiedToolSchemas(context) {
 
   context._loadedToolGroups = allGroups;
   console.log(`[UnifiedChat] Tool groups: [${[...allGroups].join(', ')}] -> ${filteredSchemas.length} tools`);
-  return filteredSchemas;
+
+  const loadedNames = context._loadedToolNames || new Set();
+  const prov = {};
+  for (const s of filteredSchemas) {
+    const n = s.function?.name;
+    if (!n) continue;
+    // Order matters: a tool pulled in mid-conversation by discover_tools is
+    // reported as discovered even if a group later covers it, because that is
+    // the event that actually changed the surface.
+    if (loadedNames.has(n)) prov[n] = { reason: 'discovered' };
+    else if (DEFAULT_TOOLS.has(n)) prov[n] = { reason: 'default' };
+    else if (groupOfTool.has(n)) prov[n] = { reason: 'group', group: groupOfTool.get(n) };
+    else if (isUniversalToolName(n)) prov[n] = { reason: 'universal' };
+    else prov[n] = { reason: 'default' };
+  }
+  return recordToolManifest(context, {
+    schemas: applyStableToolOrder(context, filteredSchemas),
+    registryTotal: allSchemas.length,
+    mode: denyNames ? 'auto-degraded' : 'auto',
+    provenance: prov,
+    groups: allGroups,
+    deniedCount: denyNames ? denyNames.size : 0,
+  });
 }
 
 const unifiedConfig = {
@@ -544,6 +695,17 @@ const unifiedConfig = {
     const customInstructionsSection = await loadCustomInstructionsSection(context);
     const workspaceSection = await loadWorkspaceContextSection();
     const asyncToolsEnabled = await loadAsyncToolsEnabled(context);
+
+    // Size each dynamic section BEFORE assembly. These are the parts that
+    // vary per user/conversation; the panel subtracts them from the total to
+    // show how much is the hand-written prompt itself.
+    context._promptSections = [
+      { id: 'memory', label: 'Memory', tokens: estimateTokens(memorySection || ''), frozen: true },
+      { id: 'skills', label: 'Skills catalog', tokens: estimateTokens(skillsCatalogSection || ''), frozen: true },
+      { id: 'custom', label: 'Custom instructions', tokens: estimateTokens(customInstructionsSection || ''), frozen: true },
+      { id: 'workspace', label: 'Workspace context', tokens: estimateTokens(workspaceSection || ''), frozen: false },
+      { id: 'agent', label: 'Agent override', tokens: estimateTokens(agentOverride || ''), frozen: true },
+    ];
 
     return buildUnifiedSystemPrompt(context, {
       skillsCatalogSection,
