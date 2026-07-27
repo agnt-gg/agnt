@@ -21,7 +21,13 @@ const DEFAULT_GROK_WORKDIR =
 
 const FALLBACK_DEFAULT_MODEL = 'grok-4.5';
 const DEFAULT_TIMEOUT_MS = Number(process.env.AGNT_GROK_TIMEOUT_MS) || 15 * 60 * 1000;
-const PROMPT_FILE_THRESHOLD = 80 * 1024;
+// Above this size the prompt goes through --prompt-file instead of argv.
+// Windows caps the ENTIRE command line at 32,767 UTF-16 chars (CreateProcess),
+// so the original 80KB threshold could never engage there — a full-size
+// orchestrator system prompt (~40KB) died with spawn ENAMETOOLONG before the
+// fallback was ever consulted. 28KB leaves headroom for the other args.
+// POSIX keeps 80KB (ARG_MAX is ~2MB; the file adds latency, use it sparingly).
+const PROMPT_FILE_THRESHOLD = process.platform === 'win32' ? 28 * 1024 : 80 * 1024;
 
 function ensureDirectory(dirPath) {
   try {
