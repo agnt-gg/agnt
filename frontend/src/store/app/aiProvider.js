@@ -50,6 +50,12 @@ const MODEL_CACHE_VERSION_FALLBACK = 12;
   }
 })();
 
+// Display order is ENFORCED here, not by where entries are typed. The literal
+// below was hand-alphabetized, so every new provider silently landed wherever
+// its author appended it (PR #50 put Cursor between Grok-Build and Groq — the
+// "Cursor is in the G's" bug). Sorting at the boundary makes insertion position
+// irrelevant. localeCompare ignores punctuation at the primary strength, so
+// Grok-Build/GrokAI order by their letters rather than by the hyphen.
 const BUILT_IN_PROVIDERS = [
   { key: 'anthropic', displayName: 'Anthropic' },
   { key: 'antigravity', displayName: 'Antigravity' },
@@ -72,7 +78,7 @@ const BUILT_IN_PROVIDERS = [
   { key: 'openrouter', displayName: 'OpenRouter' },
   { key: 'togetherai', displayName: 'TogetherAI' },
   { key: 'zai', displayName: 'Z.AI' },
-];
+].sort((a, b) => a.displayName.localeCompare(b.displayName, 'en', { sensitivity: 'base' }));
 
 // ─────────────────────────── DERIVED EXPORTS ───────────────────────────
 
