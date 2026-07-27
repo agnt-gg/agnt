@@ -93,6 +93,7 @@
                     <div class="output-content" @click="handleOutputClick(output.id, $event)">
                       <div class="output-preview">
                         <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
+                        <span v-else-if="isOutputUnread(output.id)" class="unread-dot" title="Unread changes"></span>
                         {{ getPreviewText(output.content, output) }}
                       </div>
                       <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
@@ -179,6 +180,7 @@
                 <div class="output-content" @click="handleOutputClick(output.id, $event)">
                   <div class="output-preview">
                     <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
+                    <span v-else-if="isOutputUnread(output.id)" class="unread-dot" title="Unread changes"></span>
                     {{ getPreviewText(output.content, output) }}
                   </div>
                   <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
@@ -282,10 +284,11 @@
 
 <script>
 import { useRoute, useRouter } from 'vue-router';
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, inject } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, inject, watch } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { sortOutputs } from './outputSort.js';
 
 export default {
   name: 'OutputList',
@@ -331,6 +334,37 @@ export default {
     // else. Rendered as a static green dot on the item; cleared when the
     // user opens that conversation.
     const unreadOutputIds = computed(() => store.getters['chat/unreadOutputIds'] || new Set());
+
+    // Client-side activity timestamps, written on three events: a save, a run
+    // completing, and a manual "Mark as Unread". The first two also move
+    // `updated_at` server-side, so the bump is really about latency — the item
+    // rises now rather than after the refetch. The third has no server-side
+    // write at all, so the bump is the ONLY record that anything happened.
+    //
+    // The sort takes max(updated_at, bump) — see outputSort.js. Reading an item
+    // clears the unread flag but deliberately does NOT touch this map, so the
+    // item keeps its position instead of resorting under the cursor. The map
+    // resets on reload, where DB `updated_at` order takes over on its own.
+    const bumpTimestamps = ref({});
+    // Set by toggleUnread before a manual 3-dot "Mark as Unread" so the
+    // watcher below doesn't chime at the user's own click.
+    const suppressUnreadSoundFor = ref(null);
+    watch(unreadOutputIds, (newSet, oldSet) => {
+      if (!newSet || newSet.size === 0) return;
+      const next = { ...bumpTimestamps.value };
+      let changed = false;
+      let autoUnread = false;
+      newSet.forEach((id) => {
+        if (!oldSet || !oldSet.has(id)) {
+          next[id] = Date.now();
+          changed = true;
+          if (id !== suppressUnreadSoundFor.value) autoUnread = true;
+        }
+      });
+      if (changed) bumpTimestamps.value = next;
+      suppressUnreadSoundFor.value = null;
+      if (autoUnread) playSound('chatUnread');
+    });
 
     // Get outputs from store
     const outputs = computed(() => store.getters['contentOutputs/outputs']);
@@ -405,43 +439,22 @@ export default {
     const isSelectionMode = computed(() => selectedOutputIds.value.size > 0);
     const selectedCount = computed(() => selectedOutputIds.value.size);
 
-    // Filter + sort helper. Unread items always float to the top so a
-    // fresh assistant turn (or a manual "Mark as Unread" from the 3-dot
-    // menu) behaves exactly like a new message would — dot + top slot.
-    // Within the unread and read sections, the user's chosen sort order
-    // still applies.
+    // Filter + sort helper, shared by all three lists (grouped, ungrouped,
+    // and flat). Ordering lives in outputSort.js so it can be tested without
+    // mounting the component; see that file for why a save and a manual
+    // "Mark as Unread" have to compete on one axis rather than in two tiers.
     function filterAndSort(list) {
-      return list
-        .filter((output) => {
-          if (!searchQuery.value) return true;
-          const title = getPreviewText(output.content, output).toLowerCase();
-          return title.includes(searchQuery.value.toLowerCase());
-        })
-        .sort((a, b) => {
-          const aUnread = unreadOutputIds.value.has(a.id) ? 1 : 0;
-          const bUnread = unreadOutputIds.value.has(b.id) ? 1 : 0;
-          if (aUnread !== bUnread) return bUnread - aUnread;
-
-          let aValue;
-          let bValue;
-          if (sortKey.value === 'content') {
-            aValue = getPreviewText(a.content, a);
-            bValue = getPreviewText(b.content, b);
-          } else if (sortKey.value === 'updated_at' || sortKey.value === 'created_at') {
-            // Sort by updated_at if present, fall back to created_at for legacy rows.
-            // Compare as numbers so Date objects and ISO strings both work.
-            const aDate = a.updated_at || a.created_at;
-            const bDate = b.updated_at || b.created_at;
-            aValue = aDate ? new Date(aDate).getTime() : 0;
-            bValue = bDate ? new Date(bDate).getTime() : 0;
-          } else {
-            aValue = a[sortKey.value];
-            bValue = b[sortKey.value];
-          }
-          if (aValue < bValue) return sortOrder.value === 'asc' ? -1 : 1;
-          if (aValue > bValue) return sortOrder.value === 'asc' ? 1 : -1;
-          return 0;
-        });
+      const filtered = list.filter((output) => {
+        if (!searchQuery.value) return true;
+        const title = getPreviewText(output.content, output).toLowerCase();
+        return title.includes(searchQuery.value.toLowerCase());
+      });
+      return sortOutputs(filtered, {
+        sortKey: sortKey.value,
+        sortOrder: sortOrder.value,
+        bumps: bumpTimestamps.value,
+        previewOf: (output) => getPreviewText(output.content, output),
+      });
     }
 
     const sortedOutputs = computed(() => filterAndSort(outputs.value));
@@ -970,6 +983,7 @@ export default {
       if (unreadOutputIds.value.has(outputId)) {
         store.commit('chat/CLEAR_OUTPUT_UNREAD', outputId);
       } else {
+        suppressUnreadSoundFor.value = outputId;
         store.commit('chat/MARK_OUTPUT_UNREAD', outputId);
       }
     }
@@ -1220,9 +1234,15 @@ export default {
       });
     }
 
-    // Handle conversation saved event
-    function handleConversationSaved() {
-      // Refresh the outputs list when a conversation is saved
+    // A conversation was saved — which also covers "a run finished", because
+    // completion triggers an autosave. Record the bump locally so the item
+    // rises immediately instead of waiting for the refetch round-trip; the
+    // refreshed `updated_at` then carries the same position on its own.
+    function handleConversationSaved(event) {
+      const savedId = event?.detail?.id;
+      if (savedId) {
+        bumpTimestamps.value = { ...bumpTimestamps.value, [savedId]: Date.now() };
+      }
       store.dispatch('contentOutputs/refreshOutputs');
     }
 
@@ -1832,7 +1852,6 @@ body.dark .create-output-btn {
 .output-item.active {
   border-color: var(--color-primary);
   background: rgba(var(--primary-rgb), 0.08);
-  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
 }
 
 .output-item.active:hover {
@@ -1841,7 +1860,39 @@ body.dark .create-output-btn {
 
 /* Streaming item styling */
 .output-item.streaming {
-  border-color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), 0.35);
+}
+
+.output-item.streaming::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 8px;
+  padding: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 35%,
+    var(--color-primary) 50%,
+    transparent 65%,
+    transparent 100%
+  );
+  background-size: 250% 100%;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: shimmer-border 2s linear infinite;
+}
+
+@keyframes shimmer-border {
+  0% { background-position: 200% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .streaming-indicator {
@@ -1872,7 +1923,6 @@ body.dark .create-output-btn {
 .output-item.selected {
   border-color: var(--color-primary);
   background: rgba(var(--primary-rgb), 0.08);
-  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
 }
 
 .output-item.selected:hover {

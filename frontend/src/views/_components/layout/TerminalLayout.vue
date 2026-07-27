@@ -187,6 +187,7 @@ export default {
       typewriterKeyPress: '/sounds/typewriter-keypress.mp3',
       chaChingMoney: '/sounds/cha-ching-money.mp3',
       getOuttaHereNerd: '/sounds/go-on-nerd-go-outside.mp3',
+      chatUnread: '/sounds/success-chime.mp3',
       // Add other sounds here like:
       // keyPress: '/sounds/key-press.mp3',
       // notification: '/sounds/notification.mp3',
