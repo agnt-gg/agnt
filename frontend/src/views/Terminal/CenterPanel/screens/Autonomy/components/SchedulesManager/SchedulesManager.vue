@@ -26,7 +26,7 @@
             <span><i class="far fa-clock"></i> next: {{ formatDate(s.next_run) }}</span>
             <span v-if="s.last_run"><i class="fas fa-history"></i> last: {{ formatDate(s.last_run) }}</span>
             <span v-if="s.last_status" :class="['status-chip', s.last_status]">{{ s.last_status }}</span>
-            <span><i class="fas fa-repeat"></i> {{ s.run_count }} runs</span>
+            <span><i class="fas fa-redo"></i> {{ s.run_count }} runs</span>
             <span class="tz">{{ s.timezone }}</span>
           </div>
         </div>

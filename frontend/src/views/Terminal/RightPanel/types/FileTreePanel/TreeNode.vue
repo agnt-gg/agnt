@@ -70,7 +70,7 @@ const EXTENSION_ICONS = {
   py: 'fab fa-python',
   html: 'fab fa-html5',
   css: 'fab fa-css3-alt',
-  json: 'fas fa-brackets-curly',
+  json: 'fas fa-code',
   md: 'fas fa-file-alt',
   vue: 'fab fa-vuejs',
   svg: 'fas fa-image',

@@ -56,7 +56,7 @@
           "
           @click="setAutoOpen(!autoOpen)"
         >
-          <i class="fas fa-wand-magic-sparkles"></i>
+          <i class="fas fa-magic"></i>
           auto
         </button>
 

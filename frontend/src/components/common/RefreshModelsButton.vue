@@ -49,8 +49,8 @@ export default {
 
     const iconClass = computed(() => {
       if (justSucceeded.value) return 'fas fa-check';
-      if (hasError.value) return 'fas fa-triangle-exclamation';
-      return 'fas fa-arrows-rotate';
+      if (hasError.value) return 'fas fa-exclamation-triangle';
+      return 'fas fa-sync-alt';
     });
 
     const labelText = computed(() => {

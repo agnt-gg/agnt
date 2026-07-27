@@ -31,7 +31,7 @@ const title = computed(() =>
   state.value === 'done' ? 'Paired' : state.value === 'error' ? "Couldn't pair" : 'Pairing…'
 );
 const iconClass = computed(() =>
-  state.value === 'done' ? 'fa-circle-check' : state.value === 'error' ? 'fa-circle-exclamation' : 'fa-spinner fa-spin'
+  state.value === 'done' ? 'fa-check-circle' : state.value === 'error' ? 'fa-exclamation-circle' : 'fa-spinner fa-spin'
 );
 
 const goHome = () => router.replace('/chat');

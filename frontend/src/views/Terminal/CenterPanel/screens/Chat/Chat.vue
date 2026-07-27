@@ -712,8 +712,8 @@ export default {
         verdict: 'fas fa-gavel',
         loop_completed: 'fas fa-flag-checkered',
         loop_error: 'fas fa-exclamation-triangle',
-        iteration_start: 'fas fa-rotate',
-        iteration_end: 'fas fa-rotate',
+        iteration_start: 'fas fa-sync-alt',
+        iteration_end: 'fas fa-sync-alt',
         attached: 'fas fa-bullseye',
       })[kind] || 'fas fa-bullseye';
 

@@ -69,7 +69,7 @@
           <!-- Mid-turn steer pending: user submitted while a turn was streaming.
                Will fire as a fresh user turn the moment the stream ends. -->
           <div v-if="pendingSteer" class="steering-chip">
-            <i class="fas fa-arrow-rotate-right"></i>
+            <i class="fas fa-sync-alt"></i>
             <span class="steering-chip-text" :title="pendingSteer">Steer pending: "{{ pendingSteer }}"</span>
             <button type="button" class="steering-chip-cancel" @click="onCancelSteer" title="Cancel steer">
               <i class="fas fa-times"></i>

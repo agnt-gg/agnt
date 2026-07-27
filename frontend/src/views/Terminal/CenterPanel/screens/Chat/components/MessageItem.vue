@@ -45,7 +45,7 @@
                orchestrator splits the assistant bubble here, so the card is
                literally a cut in the agent's output. -->
           <div v-if="message.steered" class="steer-badge">
-            <i class="fas fa-arrow-rotate-right"></i>
+            <i class="fas fa-sync-alt"></i>
             <span>Steered mid-run</span>
           </div>
           <!-- Interleaved content: text and tool calls rendered in order -->

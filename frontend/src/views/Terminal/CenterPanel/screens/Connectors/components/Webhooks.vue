@@ -11,7 +11,7 @@
     <div v-if="isLoading" class="loading">Loading webhooks...</div>
 
     <div v-else-if="webhooks.length === 0 && isPro" class="no-webhooks">
-      <i class="fas fa-webhook"></i>
+      <i class="fas fa-plug"></i>
       <p style="color: var(--color-green); font-weight: 600">🚀 Webhook Server Enabled</p>
       <p class="hint">Webhooks are automatically created when you add a Webhook Trigger node to a workflow</p>
     </div>

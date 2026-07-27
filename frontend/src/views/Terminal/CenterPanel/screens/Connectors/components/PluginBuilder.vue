@@ -38,7 +38,7 @@
           <span class="provider-value">{{ selectedProvider }} / {{ selectedModel }}</span>
         </div>
         <BaseButton variant="primary" @click="generatePlugin" :disabled="!pluginDescription || isGenerating">
-          <i class="fas" :class="isGenerating ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+          <i class="fas" :class="isGenerating ? 'fa-spinner fa-spin' : 'fa-magic'"></i>
           {{ isGenerating ? 'Generating...' : 'Generate Plugin' }}
         </BaseButton>
       </div>

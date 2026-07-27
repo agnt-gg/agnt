@@ -52,7 +52,7 @@
 
     <div class="chat-input-container">
       <div v-if="pendingSteer" class="steering-chip">
-        <i class="fas fa-arrow-rotate-right"></i>
+        <i class="fas fa-sync-alt"></i>
         <span class="steering-chip-text" :title="pendingSteer">Steer pending: "{{ pendingSteer }}"</span>
         <button type="button" class="steering-chip-cancel" @click="onCancelSteer" title="Cancel steer">
           <i class="fas fa-times"></i>
