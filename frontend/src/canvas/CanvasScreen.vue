@@ -1536,6 +1536,17 @@ body.custom-bg .cv-dashboard {
   background: transparent !important;
 }
 
+/* On the ONE CANVAS page only, the slotted .ws-root sits flush against the
+   tab bar above it — no top margin, sides and bottom keep the custom-bg
+   4px gutter. Keyed by the page's own data-page identifier (set by
+   Workspace.vue, protected from embedded-screen stomps by BaseScreen's
+   isInsideWidgetCanvas guard), so no other slotted screen is affected.
+   Global block because body-scoped selectors can't live in scoped CSS;
+   (0,4,1) outranks the scoped 4px rule's (0,4,0). */
+body.custom-bg[data-page='terminal-workspace'] .cv-dashboard > :not(.widget-canvas) {
+  margin: 0 4px 4px;
+}
+
 /* ═══════════════════ TOOLBAR PROVIDER SELECTOR ═══════════════════ */
 .cv-toolbar-selector .provider-dropdown {
   margin-top: 0 !important;

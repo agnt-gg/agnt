@@ -323,7 +323,14 @@ export default {
       return `terminal-${kebab}`;
     });
 
+    // A BaseScreen embedded inside a widget window (custom pages, the
+    // workspace canvas) is one of N screens on someone else's page — it must
+    // not claim the body-level page identifier. Before this guard, whichever
+    // embedded screen mounted last stomped data-page, so page-scoped CSS on
+    // the HOST page was impossible.
+    const insideWidgetCanvas = inject('isInsideWidgetCanvas', false);
     const setDataPage = () => {
+      if (insideWidgetCanvas) return;
       if (dataPage.value) {
         document.body.setAttribute('data-page', dataPage.value);
       }

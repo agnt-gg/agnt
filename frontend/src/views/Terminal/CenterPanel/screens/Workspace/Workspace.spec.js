@@ -1020,6 +1020,15 @@ describe('Workspace.vue', () => {
     expect(ws.active.value.widgets.find((w) => w.instanceId === tracesId).widgetId).toBe('traces');
   });
 
+  it('claims its own page identifier: body[data-page="terminal-workspace"]', async () => {
+    // Same derivation scheme BaseScreen uses (WorkspaceScreen →
+    // terminal-workspace); the workspace has to set it itself because its
+    // root is not a BaseScreen.
+    document.body.setAttribute('data-page', 'terminal-chat'); // whatever was there before
+    await mountPage();
+    expect(document.body.getAttribute('data-page')).toBe('terminal-workspace');
+  });
+
   it('gives each window an isolated panel scope backed by its own instance', async () => {
     const wrapper = await mountPage();
     const { useWorkspaces } = await import('./useWorkspaces.js');
@@ -1240,6 +1249,36 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(src).not.toMatch(/@screen-change="\(\)\s*=>\s*\{\}"/);
     expect(src).toContain('@screen-change="(s, o) => onEmbedScreenChange(s, o, instance.instanceId)"');
     expect(src).toContain('@navigate="(s, o) => onEmbedScreenChange(s, o, instance.instanceId)"');
+  });
+
+  it('embedded BaseScreens cannot stomp the host page identifier', () => {
+    // Every screen inside a canvas window is a BaseScreen and used to call
+    // setDataPage on mount — whichever window mounted last owned the body
+    // attribute, making page-scoped CSS impossible on /workspace AND on
+    // custom pages. The guard keys off the same isInsideWidgetCanvas flag
+    // both hosts already provide.
+    const fs2 = require('node:fs');
+    const path2 = require('node:path');
+    const base = fs2.readFileSync(path2.join(__dirname, '../../BaseScreen.vue'), 'utf8');
+    const i = base.indexOf('const setDataPage = () => {');
+    expect(i).toBeGreaterThan(-1);
+    expect(base).toContain("inject('isInsideWidgetCanvas', false)");
+    expect(base.slice(i, base.indexOf('};', i)), 'setDataPage must bail when embedded').toContain('if (insideWidgetCanvas) return;');
+    // And both hosts really do provide the flag.
+    expect(read('Workspace.vue')).toContain("provide('isInsideWidgetCanvas', true)");
+  });
+
+  it('zeroes the ws-root top margin ONLY via the workspace page identifier', () => {
+    const fs2 = require('node:fs');
+    const path2 = require('node:path');
+    const cs = fs2.readFileSync(path2.join(__dirname, '../../../../../canvas/CanvasScreen.vue'), 'utf8');
+    const rule = cs.match(/body\.custom-bg\[data-page='terminal-workspace'\] \.cv-dashboard > :not\(\.widget-canvas\) \{[^}]*\}/);
+    expect(rule, 'page-scoped margin override missing from CanvasScreen.vue').toBeTruthy();
+    expect(rule[0]).toContain('margin: 0 4px 4px;');
+    // The override must be keyed by the identifier — an unscoped variant
+    // would change every slotted screen.
+    const unscoped = cs.replace(/\/\*[\s\S]*?\*\//g, '').match(/\n\s*body\.custom-bg \.cv-dashboard > :not\(\.widget-canvas\) \{/);
+    expect(unscoped, 'the margin-top override must not exist unkeyed').toBeNull();
   });
 
   it('window-nav chevrons share WidgetFrame’s control metrics', () => {

@@ -196,7 +196,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, provide, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, provide, onMounted, onActivated, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import WidgetFrame from '@/canvas/WidgetFrame.vue';
@@ -688,7 +688,17 @@ export default {
       if (e.key === 'Escape' && paletteOpen.value) paletteOpen.value = false;
     };
 
+    // The page's CSS identifier, exactly what BaseScreen would derive for
+    // 'WorkspaceScreen'. Workspace doesn't use BaseScreen at its root, so it
+    // has to claim data-page itself — and embedded BaseScreens are barred
+    // from stomping it (they check isInsideWidgetCanvas before writing).
+    // Set on mount AND on KeepAlive re-activation, mirroring BaseScreen.
+    const WORKSPACE_DATA_PAGE = 'terminal-workspace';
+    const setDataPage = () => document.body.setAttribute('data-page', WORKSPACE_DATA_PAGE);
+    onActivated(setDataPage);
+
     onMounted(() => {
+      setDataPage();
       window.addEventListener('keydown', onKeydown);
       updateCellDimensions();
       if (typeof ResizeObserver !== 'undefined') {
