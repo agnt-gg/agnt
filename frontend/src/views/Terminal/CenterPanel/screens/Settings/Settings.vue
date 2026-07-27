@@ -104,6 +104,19 @@
           </div>
         </div>
 
+        <!-- Connection Section -->
+        <div v-else-if="activeSection === 'connection'" class="settings-content" data-section="connection">
+          <div class="content-header">
+            <h2 class="content-title">Connection</h2>
+            <p class="content-subtitle">Use AGNT running on this computer, or on a remote server</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <ConnectionSection />
+            </div>
+          </div>
+        </div>
+
         <!-- Phone Access Section -->
         <div v-else-if="activeSection === 'phone-access'" class="settings-content" data-section="phone-access">
           <div class="content-header">
@@ -261,6 +274,7 @@ import AgntScoreBreakdown from './components/AgntScoreBreakdown/AgntScoreBreakdo
 import ProfileSection from './components/ProfileSection/ProfileSection.vue';
 import ReferralsSection from './components/ReferralsSection/ReferralsSection.vue';
 import PhoneAccessSection from './components/PhoneAccessSection/PhoneAccessSection.vue';
+import ConnectionSection from './components/ConnectionSection/ConnectionSection.vue';
 import LeaderboardSection from './components/LeaderboardSection/LeaderboardSection.vue';
 import { useSettingsTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
@@ -284,6 +298,8 @@ export default {
     ProfileSection,
     ReferralsSection,
     LeaderboardSection,
+    PhoneAccessSection,
+    ConnectionSection,
     PopupTutorial,
   },
   emits: ['screen-change', 'start-tour'],

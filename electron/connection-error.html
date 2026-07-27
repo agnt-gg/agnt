@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AGNT — can't reach that server</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh;
+        display: flex; align-items: center; justify-content: center;
+        background: #12121c; color: #e0e0e0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        padding: 32px;
+      }
+      .card {
+        width: 100%; max-width: 440px;
+        background: #1b1b2b; border: 1px solid #2e3350; border-radius: 16px;
+        padding: 32px;
+      }
+      .mark {
+        width: 56px; height: 56px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(255, 215, 0, 0.14); color: #ffd700;
+        font-size: 26px; margin-bottom: 20px;
+      }
+      h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+      p { margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #8b93a7; }
+      code {
+        display: block; padding: 10px 12px; margin-bottom: 20px;
+        background: #12121c; border: 1px solid #2e3350; border-radius: 8px;
+        font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+        color: #e0e0e0; word-break: break-all;
+      }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      button {
+        flex: 1 1 auto; min-height: 42px; min-width: 120px;
+        padding: 10px 18px; border-radius: 10px; border: 1px solid #2e3350;
+        background: #12121c; color: #e0e0e0;
+        font-family: inherit; font-size: 14px; cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: #19ef83; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.primary { background: #19ef83; border-color: #19ef83; color: #04120a; font-weight: 600; }
+      .hint { margin: 18px 0 0; font-size: 12px; color: #6b7285; line-height: 1.6; }
+      .hint b { color: #8b93a7; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="mark">!</div>
+      <h1>Can't reach that AGNT server</h1>
+      <p>
+        The desktop app is set to use a remote backend, but it didn't respond.
+        Check the machine is on, AGNT is running there, and that phone/LAN access
+        is enabled in its settings.
+      </p>
+      <code id="url">—</code>
+
+      <div class="row">
+        <button class="primary" id="retry">Try again</button>
+        <button id="local">Use this computer</button>
+      </div>
+
+      <p class="hint">
+        <b>Use this computer</b> switches back to a local backend and restarts the
+        app. Your remote data is untouched — you can point back at it any time from
+        <b>Settings → Connection</b>.
+      </p>
+    </div>
+
+    <script>
+      // The preload rides the BrowserWindow, not the origin, so window.electron
+      // is available here even though the app never reached the remote frontend.
+      // That is the whole reason this page can offer a way out.
+      const api = window.electron?.connection;
+      const urlEl = document.getElementById('url');
+      const retryBtn = document.getElementById('retry');
+      const localBtn = document.getElementById('local');
+
+      api?.get?.().then((cfg) => {
+        urlEl.textContent = cfg?.url || 'unknown';
+      });
+
+      retryBtn.addEventListener('click', () => {
+        retryBtn.disabled = true;
+        retryBtn.textContent = 'Reconnecting…';
+        api?.relaunch?.();
+      });
+
+      localBtn.addEventListener('click', async () => {
+        localBtn.disabled = true;
+        localBtn.textContent = 'Switching…';
+        await api?.set?.({ mode: 'local' });
+        api?.relaunch?.();
+      });
+    </script>
+  </body>
+</html>

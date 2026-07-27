@@ -23,6 +23,11 @@ const __dirname = path.dirname(__filename);
 import { randomUUID } from 'crypto';
 import { installDiagnostics, diagnosticsDir } from './backend/src/diagnostics/install.js';
 import { installElectronCrashHooks } from './backend/src/diagnostics/electronHooks.js';
+import {
+  resolveConnection,
+  writeConfig as writeConnectionConfig,
+  normalizeRemoteUrl,
+} from './electron/connectionConfig.js';
 
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
@@ -127,6 +132,52 @@ let mainWindow;
 let backendProcess;
 
 // ============================================================================
+// CONNECTION — local backend (default) vs remote backend
+// ============================================================================
+// The remote backend serves its own frontend, so "use a remote backend" is
+// just pointing the window at a different origin: no proxy, no second origin,
+// no CORS change, no version skew. Resolved once here; three guards below read
+// it. Unconfigured => { mode: 'local' } => today's behaviour, byte for byte.
+let connection = { mode: 'local', url: null, source: 'default' };
+try {
+  connection = resolveConnection({ userDataPath: app.getPath('userData') });
+  if (connection.invalid) console.warn('[connection]', connection.invalid);
+  console.log(
+    connection.mode === 'remote'
+      ? `[connection] remote backend: ${connection.url} (from ${connection.source})`
+      : '[connection] local backend'
+  );
+} catch (err) {
+  console.error('[connection] resolution failed, falling back to local:', err.message);
+}
+const isRemoteMode = () => connection.mode === 'remote' && Boolean(connection.url);
+
+// Polling options for the startup health check. Local mode gets {} — the exact
+// behaviour it has today. Remote mode is bounded and, on failure, shows a page
+// offering retry / switch-to-local.
+//
+// It deliberately does NOT fall back to a local backend: that would silently
+// boot a second, empty database and present it as the user's instance, which is
+// the precise "where did all my agents go?" confusion this feature exists to
+// remove. Fail loud, offer a way out.
+function remoteWaitOptions() {
+  if (!isRemoteMode()) return {};
+  return {
+    baseUrl: connection.url,
+    maxAttempts: 24, // ~12s of polling before we tell the user
+    onFail: () => {
+      supervisor.state = 'running';
+      createWindow();
+      try {
+        mainWindow.loadFile(path.join(__dirname, 'electron', 'connection-error.html'));
+      } catch (err) {
+        console.error('Failed to show the connection error page:', err.message);
+      }
+    },
+  };
+}
+
+// ============================================================================
 // BACKEND SUPERVISOR - sanctioned self-restart support
 // ============================================================================
 // Exit code 42 from the backend means "respawn me" (see
@@ -187,6 +238,14 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
     // FRESH env snapshot (startBackend rebuilds .env layering from disk, so
     // "restart yourself" doubles as credential hot-reload).
     setTimeout(() => {
+      // GUARD 1: in remote mode there is no local backend to respawn. This
+      // branch is only reachable via handleBackendExit, which itself can only
+      // fire for a process we forked — but the guard is kept explicit so the
+      // invariant survives future edits to the supervisor.
+      if (isRemoteMode()) {
+        console.log('Remote backend mode — nothing to respawn.');
+        return;
+      }
       startBackend();
       waitForBackend(() => {
         supervisor.state = 'running';
@@ -833,8 +892,13 @@ function createWindow() {
   });
 
   // Load the URL that is serving your API and frontend.
+  //
+  // GUARD 3: this single line was the desktop app's only assumption about
+  // WHICH backend it belongs to. In remote mode the backend on the other
+  // machine serves its own frontend, so the app is same-origin with it and
+  // auth, sockets and OAuth behave exactly as they do in a browser.
   const port = process.env.PORT || 3333;
-  mainWindow.loadURL(`http://localhost:${port}`);
+  mainWindow.loadURL(isRemoteMode() ? connection.url : `http://localhost:${port}`);
 
   mainWindow.center();
   mainWindow.show();
@@ -863,19 +927,97 @@ function createWindow() {
   });
 }
 
-// Polls the backend at localhost:3333 until it responds, then calls the callback.
-function waitForBackend(callback) {
+// ============================================================================
+// CONNECTION IPC — drives Settings → Connection
+// ============================================================================
+// Registered at module scope (not inside createWindow) so the connection error
+// page can use them too: that page loads when there is no frontend to talk to,
+// and it is the user's only escape hatch back to a working app.
+ipcMain.handle('connection:get', () => ({
+  mode: connection.mode,
+  url: connection.url,
+  source: connection.source,
+  // An env-pinned value outranks the UI. Say so rather than letting someone
+  // change a setting that silently does nothing.
+  envPinned: connection.source === 'env',
+  invalid: connection.invalid || null,
+  localPort: Number(process.env.PORT || 3333),
+}));
+
+// Probed from the MAIN process on purpose: no origin, therefore no CORS, and
+// it works before the user has committed to the URL.
+ipcMain.handle('connection:test', async (_evt, rawUrl) => {
+  const check = normalizeRemoteUrl(rawUrl);
+  if (!check.ok) return { ok: false, error: `That doesn't look like a server address (${check.reason}).` };
+
+  const started = Date.now();
+  try {
+    const res = await net.fetch(`${check.url}/api/health`, { method: 'GET' });
+    const latencyMs = Date.now() - started;
+    if (!res.ok) return { ok: false, url: check.url, latencyMs, error: `Server answered ${res.status}.` };
+    return { ok: true, url: check.url, latencyMs };
+  } catch (err) {
+    return { ok: false, url: check.url, error: `Couldn't reach it — ${err.message}` };
+  }
+});
+
+ipcMain.handle('connection:set', (_evt, next) => {
+  if (connection.source === 'env') {
+    return { ok: false, error: 'AGNT_REMOTE_URL is set in the environment and takes precedence.' };
+  }
+  try {
+    const out = writeConnectionConfig(app.getPath('userData'), next);
+    if (!out.ok) return { ok: false, error: out.reason };
+    return { ok: true, config: out.config, restartRequired: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('connection:relaunch', () => {
+  app.relaunch();
+  app.exit(0);
+});
+
+// Polls a backend's /api/health until it responds, then calls the callback.
+//
+// Local mode retries forever (the backend is ours; it is coming up, and a
+// desktop app that gives up on its own backend is useless). Remote mode is
+// bounded: the server may simply be off, and the user needs to be told rather
+// than watch a spinner. `onFail` fires once when the bound is exhausted.
+function waitForBackend(callback, opts = {}) {
   const port = process.env.PORT || 3333;
-  const options = {
-    hostname: '127.0.0.1', // Use IP instead of localhost
-    port: parseInt(port),
-    path: '/api/health',
-    method: 'GET',
-    timeout: 30000, // 30s per request — backend may block the event loop during plugin/skill init
-  };
+  const target = opts.baseUrl ? new URL(opts.baseUrl) : null;
+  const isHttps = target?.protocol === 'https:';
+  const transport = isHttps ? https : http;
+  const options = target
+    ? {
+        hostname: target.hostname,
+        port: target.port ? parseInt(target.port) : isHttps ? 443 : 80,
+        path: '/api/health',
+        method: 'GET',
+        timeout: 15000,
+      }
+    : {
+        hostname: '127.0.0.1', // Use IP instead of localhost
+        port: parseInt(port),
+        path: '/api/health',
+        method: 'GET',
+        timeout: 30000, // 30s per request — backend may block the event loop during plugin/skill init
+      };
+  const maxAttempts = Number.isFinite(opts.maxAttempts) ? opts.maxAttempts : Infinity;
+  const onFail = typeof opts.onFail === 'function' ? opts.onFail : null;
+  let failed = false;
 
   let isBackendReady = false;
   let retryCount = 0;
+
+  const giveUp = (why) => {
+    if (failed || isBackendReady) return;
+    failed = true;
+    console.error(`Backend unreachable after ${retryCount} attempts (${why}).`);
+    if (onFail) onFail(why);
+  };
 
   // PRD-105 P2: flat fast polling. A refused localhost connection costs ~1ms,
   // so there is no resource to protect with backoff — exponential delays were
@@ -885,7 +1027,8 @@ function waitForBackend(callback) {
 
   const attempt = () => {
     console.log(`Attempting to connect to backend (attempt ${retryCount + 1})...`);
-    const req = http.request(options, (res) => {
+    if (retryCount >= maxAttempts) return giveUp('attempt limit reached');
+    const req = transport.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => {
         data += chunk;
@@ -1023,8 +1166,9 @@ app.on('ready', () => {
     }
   });
 
-  // Start the backend process from within Electron.
-  startBackend();
+  // GUARD 2: only fork a local backend when we are actually going to use one.
+  // In remote mode the backend already runs on another machine.
+  if (!isRemoteMode()) startBackend();
 
   // Instead of a fixed delay, poll until the backend is ready.
   waitForBackend(() => {
@@ -1053,7 +1197,7 @@ app.on('ready', () => {
     mainWindow.on('page-title-updated', (event) => {
       event.preventDefault();
     });
-  });
+  }, remoteWaitOptions());
 });
 
 app.on('window-all-closed', () => {

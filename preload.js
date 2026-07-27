@@ -27,6 +27,16 @@ contextBridge.exposeInMainWorld('electron', {
   // reporter must never itself throw inside an error handler.
   reportError: (payload) => ipcRenderer.send('diagnostics:client-error', payload),
 
+  // Connection (desktop only): choose between this machine's backend and a
+  // remote one. Renderer code MUST feature-detect `window.electron?.connection`
+  // — browser and Docker users have no Electron bridge and must not see the UI.
+  connection: {
+    get: () => ipcRenderer.invoke('connection:get'),
+    test: (url) => ipcRenderer.invoke('connection:test', url),
+    set: (next) => ipcRenderer.invoke('connection:set', next),
+    relaunch: () => ipcRenderer.invoke('connection:relaunch'),
+  },
+
   // Listen for update notifications from main process
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('update-available', (event, updateInfo) => callback(updateInfo));

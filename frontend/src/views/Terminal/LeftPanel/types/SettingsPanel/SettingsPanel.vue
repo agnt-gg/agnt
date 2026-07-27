@@ -47,11 +47,20 @@
         <div class="nav-items">
           <button
             class="nav-item"
+            :class="{ active: activeSection === 'connection' }"
+            @click="handleNavClick('connection')"
+            data-nav="connection"
+          >
+            <i class="fas fa-server"></i>
+            <span>Connection</span>
+          </button>
+          <button
+            class="nav-item"
             :class="{ active: activeSection === 'phone-access' }"
             @click="handleNavClick('phone-access')"
             data-nav="phone-access"
           >
-            <i class="fas fa-mobile-screen-button"></i>
+            <i class="fas fa-mobile-alt"></i>
             <span>Phone Access</span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'theme' }" @click="handleNavClick('theme')" data-nav="theme">
