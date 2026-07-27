@@ -22,6 +22,11 @@ import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const DEFAULT_MODEL = process.env.AGNT_CURSOR_DEFAULT_MODEL || 'cursor-grok-4.5-high';
 const DEFAULT_TIMEOUT_MS = Number(process.env.AGNT_CURSOR_TIMEOUT_MS || 300000); // 5 min
+// Above this size the prompt is piped via stdin instead of argv. Windows caps
+// the whole command line at 32,767 UTF-16 chars (spawn ENAMETOOLONG); POSIX
+// has ARG_MAX. `cursor-agent -p` reads the prompt from stdin when no
+// positional prompt is given — verified live with a 60KB prompt 2026-07-27.
+const PROMPT_ARGV_THRESHOLD = process.platform === 'win32' ? 28 * 1024 : 80 * 1024;
 // Grace period after we see the terminal result before force-killing the hung CLI.
 const POST_RESULT_KILL_MS = 500;
 
@@ -124,21 +129,32 @@ async function runExec({
   sessionId = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   extraArgs = [],
+  // Streaming handlers. Supplying either switches the CLI to stream-json and
+  // emits token deltas as they arrive instead of one blob at the end.
+  onDelta = null,
+  onReasoning = null,
 } = {}) {
   if (!prompt || !String(prompt).trim()) {
     throw new Error('cursor_exec: prompt is required');
   }
+  const streaming = typeof onDelta === 'function' || typeof onReasoning === 'function';
   const invocation = resolveCursorInvocation();
   const workdir = cwd ? expandUserPath(cwd) : getDefaultWorkdir();
   try { fs.mkdirSync(workdir, { recursive: true }); } catch { /* ignore */ }
 
-  const args = ['-p', '--output-format', 'json'];
+  // stream-json emits NDJSON with per-token deltas; plain json emits a single
+  // terminal object. Only opt into streaming when a handler wants the deltas,
+  // so the non-streaming path keeps its proven behaviour.
+  const args = ['-p', '--output-format', streaming ? 'stream-json' : 'json'];
+  if (streaming) args.push('--stream-partial-output');
   if (force) args.push('--force');
   if (model) args.push('--model', model);
   if (resume && sessionId) args.push('--resume', sessionId);
   else if (resume) args.push('--continue');
   if (Array.isArray(extraArgs) && extraArgs.length) args.push(...extraArgs);
-  args.push(String(prompt));
+  const promptText = String(prompt);
+  const promptViaStdin = promptText.length > PROMPT_ARGV_THRESHOLD;
+  if (!promptViaStdin) args.push(promptText);
 
   return new Promise((resolve, reject) => {
     let stdout = '';
@@ -149,8 +165,15 @@ async function runExec({
     const child = spawn(invocation.command, [...invocation.args, ...args], {
       cwd: workdir,
       env: { ...process.env, HOME: os.homedir(), PATH: pathEnv(invocation.command) },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [promptViaStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
+
+    if (promptViaStdin) {
+      // EPIPE here means the CLI died before reading — the close handler
+      // will surface that; don't let the write throw synchronously.
+      child.stdin.on('error', () => {});
+      child.stdin.end(promptText);
+    }
 
     const finish = (payload, isError = false) => {
       if (settled) return;
@@ -170,31 +193,73 @@ async function runExec({
       }
     }, timeoutMs);
 
-    const tryParseResult = () => {
-      // Cursor emits one JSON object per line (stream-json) OR a single json object.
-      const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-      for (const line of lines) {
+    // Incremental line parser. Each complete line is examined exactly once —
+    // the previous implementation re-scanned the entire stdout buffer on every
+    // chunk, which is quadratic in output size.
+    let lineBuffer = '';
+
+    const handleObject = (obj) => {
+      if (!obj || typeof obj !== 'object') return;
+      switch (obj.type) {
+        case 'assistant': {
+          // With --stream-partial-output the CLI emits BOTH incremental deltas
+          // (which carry timestamp_ms) and a final consolidated assistant
+          // message (which does not). Counting both doubles the text, so the
+          // presence of timestamp_ms is the delta discriminator.
+          if (!streaming || obj.timestamp_ms == null) return;
+          const parts = Array.isArray(obj.message?.content) ? obj.message.content : [];
+          const text = parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+          if (text && onDelta) onDelta(text);
+          return;
+        }
+        case 'thinking': {
+          if (!streaming || obj.subtype !== 'delta') return;
+          if (typeof obj.text === 'string' && obj.text && onReasoning) onReasoning(obj.text);
+          return;
+        }
+        case 'result': {
+          if (resultObj) return;
+          resultObj = obj;
+          // Got the terminal object — the CLI often hangs now. Kill shortly.
+          setTimeout(() => finish(buildResult(obj, stdout, model)), POST_RESULT_KILL_MS);
+          return;
+        }
+        default:
+      }
+    };
+
+    const consumeLines = (flush = false) => {
+      const lines = lineBuffer.split('\n');
+      // Keep the trailing partial line unless we are flushing at close.
+      lineBuffer = flush ? '' : lines.pop();
+      for (const raw of lines) {
+        const line = raw.trim();
         if (!line.startsWith('{')) continue;
         try {
-          const obj = JSON.parse(line);
-          if (obj && obj.type === 'result') {
-            resultObj = obj;
-            // Got the terminal object — the CLI often hangs now. Kill shortly.
-            setTimeout(() => finish(buildResult(obj, stdout, model)), POST_RESULT_KILL_MS);
-            return true;
-          }
-        } catch { /* partial line, keep buffering */ }
+          handleObject(JSON.parse(line));
+        } catch { /* partial or non-JSON line — ignore */ }
       }
-      return false;
     };
 
     child.stdout.on('data', (d) => {
-      stdout += d.toString();
-      if (!resultObj) tryParseResult();
+      const text = d.toString();
+      stdout += text;
+      lineBuffer += text;
+      consumeLines();
     });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
 
     child.on('close', (code) => {
+      if (settled) return;
+      // Flush any trailing line, then fall back to a whole-buffer scan in case
+      // the terminal object was pretty-printed across lines.
+      consumeLines(true);
+      if (!resultObj) {
+        try {
+          const match = stdout.match(/\{[\s\S]*"type"\s*:\s*"result"[\s\S]*\}/);
+          if (match) handleObject(JSON.parse(match[0]));
+        } catch { /* not recoverable — fall through to the error paths */ }
+      }
       if (settled) return;
       clearTimeout(hardTimer);
       if (resultObj) {

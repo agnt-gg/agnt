@@ -31,6 +31,33 @@ function rememberSession(key, sessionId) {
   }
 }
 
+/**
+ * The Cursor CLI reports usage in camelCase — { inputTokens, outputTokens,
+ * cacheReadTokens, cacheWriteTokens } (verified live 2026-07-27). Everything
+ * downstream (the orchestrator token accumulator, the workflow LLM node)
+ * reads the OpenAI/Anthropic snake_case contracts and would record 0 tokens.
+ * This client's surface IS the OpenAI contract, so translate at the boundary:
+ * prompt_tokens carries the full input (OpenAI semantics: cached is a subset,
+ * exposed under prompt_tokens_details.cached_tokens).
+ */
+function normalizeUsage(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  // Already snake_case? Pass through untouched.
+  if (usage.prompt_tokens != null || usage.input_tokens != null) return usage;
+  const input = Number(usage.inputTokens) || 0;
+  const output = Number(usage.outputTokens) || 0;
+  const cacheRead = Number(usage.cacheReadTokens) || 0;
+  const normalized = {
+    prompt_tokens: input,
+    completion_tokens: output,
+    total_tokens: input + output,
+  };
+  if (cacheRead > 0) {
+    normalized.prompt_tokens_details = { cached_tokens: cacheRead };
+  }
+  return normalized;
+}
+
 function normalizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
   return messages.filter((msg) => msg && typeof msg === 'object');
@@ -80,6 +107,72 @@ function limitMessagesForResume(messages, hasSession) {
   return messages.slice(messages.length - RESUME_MESSAGE_LIMIT);
 }
 
+/**
+ * Bridge CursorCliService's push-based delta callbacks to the pull-based
+ * async generator the OpenAI SDK surface expects.
+ *
+ * The CLI supports `--output-format stream-json --stream-partial-output`, so
+ * real token deltas are available; the previous implementation awaited the
+ * whole run and emitted a single chunk, which made Cursor the only provider
+ * whose replies materialised all at once. Reasoning deltas are forwarded as
+ * `reasoning_content`, which OpenAiLikeAdapter already streams to the UI.
+ */
+function createCursorStreamGenerator(runOptions, sessionKeyForStore) {
+  const queue = [];
+  let wake = null;
+  let finished = false;
+
+  const push = (item) => {
+    queue.push(item);
+    if (wake) { const w = wake; wake = null; w(); }
+  };
+  const finish = () => {
+    finished = true;
+    if (wake) { const w = wake; wake = null; w(); }
+  };
+
+  CursorCliService.runExec({
+    ...runOptions,
+    onDelta: (text) => push({ content: text }),
+    onReasoning: (text) => push({ reasoning: text }),
+  })
+    .then((result) => {
+      if (result?.sessionId) rememberSession(sessionKeyForStore, result.sessionId);
+      // Same split contract as the non-streaming path: a resolved
+      // { success: false } is an error, not an empty answer.
+      if (result && result.success === false) {
+        push({ __error: new Error(result.error || 'Cursor CLI returned no result') });
+      } else {
+        push({ __usage: normalizeUsage(result?.usage) });
+      }
+      finish();
+    })
+    .catch((err) => {
+      push({ __error: err });
+      finish();
+    });
+
+  return (async function* streamGenerator() {
+    for (;;) {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (item.__error) throw item.__error;
+        if (item.__usage) {
+          if (item.__usage) yield { choices: [{ delta: {} }], usage: item.__usage };
+          continue;
+        }
+        if (item.reasoning) {
+          yield { choices: [{ delta: { reasoning_content: item.reasoning } }] };
+          continue;
+        }
+        yield { choices: [{ delta: { content: item.content } }] };
+      }
+      if (finished) return;
+      await new Promise((resolve) => { wake = resolve; });
+    }
+  })();
+}
+
 export function createCursorCliClient({
   defaultModel = CursorCliService.getDefaultModel(),
   cwd = CursorCliService.getDefaultWorkdir(),
@@ -105,7 +198,7 @@ export function createCursorCliClient({
           const messagesForPrompt = limitMessagesForResume(messages, Boolean(existingSessionId));
           const prompt = messagesToCursorPrompt(messagesForPrompt);
 
-          const result = await CursorCliService.runExec({
+          const runOptions = {
             prompt,
             model,
             cwd,
@@ -113,7 +206,15 @@ export function createCursorCliClient({
             resume: Boolean(existingSessionId),
             sessionId: existingSessionId,
             timeoutMs,
-          });
+          };
+
+          // Streaming must return the generator BEFORE the run completes,
+          // otherwise the deltas are already history by the time anyone reads.
+          if (options.stream) {
+            return createCursorStreamGenerator(runOptions, resolvedSessionKey);
+          }
+
+          const result = await CursorCliService.runExec(runOptions);
 
           if (result?.sessionId) {
             rememberSession(resolvedSessionKey, result.sessionId);
@@ -130,15 +231,6 @@ export function createCursorCliClient({
 
           const content = result.text || '';
 
-          if (options.stream) {
-            // Emit the whole result as a single chunk (no native token streaming).
-            return (async function* streamGenerator() {
-              if (content) {
-                yield { choices: [{ delta: { content } }] };
-              }
-            })();
-          }
-
           return {
             id: `cursor-cli-${Date.now()}`,
             object: 'chat.completion',
@@ -151,7 +243,7 @@ export function createCursorCliClient({
                 finish_reason: 'stop',
               },
             ],
-            usage: result.usage || null,
+            usage: normalizeUsage(result.usage),
           };
         },
       },
