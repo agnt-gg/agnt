@@ -195,8 +195,13 @@ export function probeBackendHealth(backendUrl, timeoutMs = 8000) {
         path: target.pathname + target.search,
         method: 'GET',
         timeout: timeoutMs,
-        // Self-hosted LAN certs are common; health probe is not security-critical.
-        rejectUnauthorized: false,
+        // Verify TLS by default. LAN self-signed: AGNT_PROXY_INSECURE_TLS=1
+        rejectUnauthorized: !(
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ||
+          process.env.AGNT_PROXY_INSECURE_TLS === '1' ||
+          process.env.AGNT_PROXY_INSECURE_TLS === 'true' ||
+          process.env.AGNT_PROXY_INSECURE_TLS === 'yes'
+        ),
       },
       (res) => {
         res.resume();

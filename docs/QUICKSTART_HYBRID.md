@@ -79,7 +79,7 @@ http://your-domain.com:3333
 > Env wins for that process over the saved file (`desktop-connection.json` in app data).  
 > If the remote is unreachable at launch, the app opens a **connection setup** screen so you can fix the URL, switch back to local, or retry—without deleting config by hand.  
 >  
-> **UI vs API:** In external mode the desktop app serves **its own packaged frontend** on a fixed local origin (`http://127.0.0.1:19333`) and **reverse-proxies** `/api` + `/socket.io` to `BACKEND_URL`. That keeps Settings → Connection in *this* build, same-origin auth/localStorage, and works with older remotes (no CORS setup required).  
+> **UI vs API:** In external mode the desktop app serves **its own packaged frontend** on a fixed local origin (`http://127.0.0.1:19333`) and **reverse-proxies** `/api` + `/socket.io` to `BACKEND_URL`. That keeps Settings → Connection in *this* build, same-origin auth/localStorage, and works with older remotes (no CORS setup required). HTTPS remotes verify TLS by default; self-signed LAN certs need `AGNT_PROXY_INSECURE_TLS=1`.  
 >  
 > **Sign-in / empty agents:** `http://127.0.0.1:19333` is a **new browser origin**. A token saved for `http://SERVER:3333` in Safari/Chrome is **not** reused. Sign in once in the desktop app (banner explains this). Empty agents/chat until then does **not** mean the remote database was wiped. Use **Settings → Connection** from the banner if the remote URL is wrong.
 

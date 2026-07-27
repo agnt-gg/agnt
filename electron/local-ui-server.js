@@ -6,6 +6,9 @@
  *  - Proxy /api and /socket.io to the remote AGNT host so the page is
  *    same-origin: auth tokens in localStorage, no CORS headaches, Socket.IO works.
  *  - Fixed port (default 19333) so localStorage survives app restarts.
+ *
+ * TLS: certificates are verified by default. For LAN self-signed remotes set
+ * AGNT_PROXY_INSECURE_TLS=1 (or NODE_TLS_REJECT_UNAUTHORIZED=0).
  */
 import fs from 'fs';
 import path from 'path';
@@ -48,6 +51,29 @@ function shouldProxy(pathname) {
 }
 
 /**
+ * Whether outbound HTTPS to the remote should skip certificate verification.
+ * Default is verify (secure). Opt-out only for known self-signed LAN servers.
+ */
+export function shouldRejectUnauthorized() {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') return false;
+  const v = process.env.AGNT_PROXY_INSECURE_TLS;
+  if (v === '1' || v === 'true' || v === 'yes') return false;
+  return true;
+}
+
+function requestTlsOptions() {
+  return { rejectUnauthorized: shouldRejectUnauthorized() };
+}
+
+/**
+ * Strip leading slashes so path.join(distDir, relative) never treats the
+ * segment as an absolute path (path.join('/dist', '/app.js') === '/app.js').
+ */
+export function pathnameToRelative(pathname) {
+  return String(pathname || '').replace(/^\/+/, '') || 'index.html';
+}
+
+/**
  * Forward an HTTP request to the remote backend.
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
@@ -69,7 +95,7 @@ function proxyHttp(req, res, targetBase) {
       path: targetUrl.pathname + targetUrl.search,
       method: req.method,
       headers,
-      rejectUnauthorized: false,
+      ...requestTlsOptions(),
     },
     (proxyRes) => {
       res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
@@ -107,10 +133,25 @@ function proxyUpgrade(req, socket, head, targetBase) {
     path: targetUrl.pathname + targetUrl.search,
     method: 'GET',
     headers,
-    rejectUnauthorized: false,
+    ...requestTlsOptions(),
   });
 
+  let settled = false;
+  const failClient = (status, message) => {
+    if (settled || socket.destroyed) return;
+    settled = true;
+    try {
+      socket.write(
+        `HTTP/1.1 ${status} ${message}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(message)}\r\n\r\n${message}`
+      );
+    } catch {
+      /* ignore */
+    }
+    socket.destroy();
+  };
+
   proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+    settled = true;
     const statusLine = `HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage || 'Switching Protocols'}\r\n`;
     let responseHeaders = statusLine;
     for (const [key, value] of Object.entries(proxyRes.headers)) {
@@ -135,9 +176,18 @@ function proxyUpgrade(req, socket, head, targetBase) {
     socket.on('error', () => proxySocket.destroy());
   });
 
+  // Backend answered without upgrading (4xx/5xx/200) — must not leave client hanging.
+  proxyReq.on('response', (proxyRes) => {
+    console.warn(
+      `[local-ui] WS upgrade rejected by remote: HTTP ${proxyRes.statusCode} ${proxyRes.statusMessage || ''}`
+    );
+    proxyRes.resume();
+    failClient(502, 'WebSocket upgrade failed');
+  });
+
   proxyReq.on('error', (err) => {
     console.error('[local-ui] WS upgrade proxy error:', err.message);
-    socket.destroy();
+    failClient(502, err.message || 'WebSocket proxy error');
   });
 
   proxyReq.end();
@@ -147,11 +197,14 @@ function serveStatic(req, res, distDir, indexPath, distRoot) {
   try {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     let pathname = decodeURIComponent(url.pathname);
-    if (pathname === '/') pathname = '/index.html';
+    if (pathname === '/' || pathname === '') pathname = '/index.html';
 
-    const resolved = path.normalize(path.join(distDir, pathname));
+    // Relative path only — never pass a leading "/" into path.join (absolute segment).
+    const relative = pathnameToRelative(pathname);
+    const resolved = path.normalize(path.join(distDir, relative));
     const root = distRoot || (distDir.endsWith(path.sep) ? distDir : distDir + path.sep);
-    // Allow exact distDir match (index) or files under distRoot
+
+    // Allow exact distDir match or files under distRoot
     if (resolved !== distDir && !resolved.startsWith(root)) {
       res.writeHead(403);
       res.end('Forbidden');

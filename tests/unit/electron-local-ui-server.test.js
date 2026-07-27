@@ -22,6 +22,8 @@ import {
   startLocalUiServer,
   resolveFrontendDistPath,
   DEFAULT_LOCAL_UI_PORT,
+  pathnameToRelative,
+  shouldRejectUnauthorized,
 } from '../../electron/local-ui-server.js';
 
 function rmrf(dir) {
@@ -59,6 +61,39 @@ function fetchText(url, options = {}) {
 describe('DEFAULT_LOCAL_UI_PORT', () => {
   it('is the stable desktop UI port 19333', () => {
     expect(DEFAULT_LOCAL_UI_PORT).toBe(19333);
+  });
+});
+
+describe('pathnameToRelative', () => {
+  it('strips leading slashes so path.join keeps distDir', () => {
+    expect(pathnameToRelative('/app.js')).toBe('app.js');
+    expect(pathnameToRelative('///assets/x.css')).toBe('assets/x.css');
+    expect(pathnameToRelative('/')).toBe('index.html');
+    expect(pathnameToRelative('')).toBe('index.html');
+  });
+});
+
+describe('shouldRejectUnauthorized', () => {
+  const prevProxy = process.env.AGNT_PROXY_INSECURE_TLS;
+  const prevNode = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+
+  afterEach(() => {
+    if (prevProxy === undefined) delete process.env.AGNT_PROXY_INSECURE_TLS;
+    else process.env.AGNT_PROXY_INSECURE_TLS = prevProxy;
+    if (prevNode === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevNode;
+  });
+
+  it('verifies certificates by default', () => {
+    delete process.env.AGNT_PROXY_INSECURE_TLS;
+    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    expect(shouldRejectUnauthorized()).toBe(true);
+  });
+
+  it('allows opt-out for self-signed LAN via AGNT_PROXY_INSECURE_TLS', () => {
+    process.env.AGNT_PROXY_INSECURE_TLS = '1';
+    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    expect(shouldRejectUnauthorized()).toBe(false);
   });
 });
 
