@@ -482,6 +482,15 @@ export default {
       type: Boolean,
       default: false,
     },
+    // Tool-call expansion map from the parent: { [messageId]: number[] }.
+    // Passed separately so parents don't have to clone message objects per
+    // recompute (stable identity lets Vue skip re-rendering unchanged
+    // messages). Parents that still bake expandedToolCalls onto the message
+    // object (other chat containers) keep working via the fallback below.
+    expandedToolCalls: {
+      type: Object,
+      default: null,
+    },
   },
   emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message'],
   setup(props, { emit }) {
@@ -2347,7 +2356,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     const isExpanded = (index) => {
-      return props.message.expandedToolCalls?.includes(index) || false;
+      const list = props.expandedToolCalls ? props.expandedToolCalls[props.message.id] : props.message.expandedToolCalls;
+      return list?.includes(index) || false;
     };
 
     const isRunning = (toolCallId) => {

@@ -181,6 +181,8 @@ import QuickActions from './components/QuickActions.vue';
 import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
+import ContextManifest from './components/ContextManifest.vue';
+import { loadContextStatus, saveContextStatus } from '@/services/contextStatusCache.js';
 import ActivityFeed from './components/ActivityFeed.vue';
 import GoalProgressWidget from './components/GoalProgressWidget.vue';
 import { useTutorial } from './useTutorial.js';
@@ -262,6 +264,26 @@ export default {
         expandedToolCalls: expandedToolCalls.value[msg.id] || [],
       }));
     });
+
+    const hiddenMessageCount = computed(() => Math.max(0, displayMessages.value.length - visibleWindow.value));
+
+    const resetMessageWindow = () => {
+      visibleWindow.value = MESSAGE_WINDOW_INITIAL;
+    };
+
+    const showEarlierMessages = async () => {
+      const el = conversationSpace.value;
+      const prevHeight = el ? el.scrollHeight : 0;
+      const prevTop = el ? el.scrollTop : 0;
+      // Suppress the enter transition while prepending — 50 items animating
+      // in at the top reads as jank, not delight.
+      suppressMessageTransition.value = true;
+      visibleWindow.value += MESSAGE_WINDOW_STEP;
+      await nextTick();
+      // Keep the viewport anchored on the message the user was reading.
+      if (el) el.scrollTop = prevTop + (el.scrollHeight - prevHeight);
+      suppressMessageTransition.value = false;
+    };
 
     const isProcessing = ref(false);
     let localMessageIdCounter = 0;
@@ -442,6 +464,15 @@ export default {
       // when reopening a conversation.
       totalTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       totalCost: 0,
+      // What the same traffic would have cost with caching disabled. null
+      // until a priced turn arrives, so the savings row stays hidden instead
+      // of claiming $0.00 on providers that have no cache pricing.
+      totalUncachedCost: null,
+      lastCostBreakdown: null,
+      // Which models served this conversation, and what each cost. Keyed by
+      // model name; a conversation frequently spans several at different rates.
+      modelMix: {},
+      subscriptionBased: null,
       totalCacheMetrics: {
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
@@ -1617,22 +1648,17 @@ export default {
       // Check if this conversation already exists in memory (by savedOutputId).
       // If so, just switch to it — don't re-fetch from DB, which would overwrite
       // any in-flight or unsaved messages (e.g. an assistant response still streaming).
+      // Cached switch is O(1) in the store (syncMirror just reassigns refs);
+      // the only real cost is Vue re-rendering MessageItems for the new keys,
+      // which Vue's diff handles inline. Skip the spinner entirely — showing
+      // and hiding it around an instant swap adds latency, not clarity.
       const conversations = store.state.chat.conversations;
       for (const [convId, conv] of Object.entries(conversations)) {
         if (conv.savedOutputId === contentId) {
-          // Cached-switch path also gets the spinner so the user sees
-          // consistent feedback regardless of whether the conversation
-          // is already in memory.
-          bulkLoading.value = true;
-          await nextTick();
-          await waitForPaint();
+          resetMessageWindow();
           store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
           currentConversationId.value = convId;
           terminalLines.value.push(`Switched to conversation (${conv.messages.length} messages)`);
-          await nextTick();
-          await waitForPaint();
-          bulkLoading.value = false;
-          // Scroll the new conversation to top after it's painted.
           await nextTick();
           scrollToTop();
           return;
@@ -1640,6 +1666,12 @@ export default {
       }
 
       try {
+        // Uncached: the HTTP fetch is the actual wait, so show the spinner
+        // for the whole duration. No forced paint frames — the browser
+        // will paint in the natural gap between the click and the network
+        // reply, and Vue will render the messages when the commit lands.
+        bulkLoading.value = true;
+
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${contentId}`, {
           credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -1657,16 +1689,8 @@ export default {
           // Use the saved conversation's ID as the slot key
           const convId = conversationData.conversationId || `saved-${contentId}`;
 
-          // Show the spinner BEFORE committing — and force a real paint
-          // frame before the heavy SCOPED_SET_MESSAGES commit so the user
-          // sees feedback immediately. Without the rAF, Vue's microtask
-          // queue would run all renders (spinner-on, messages-mount,
-          // spinner-off) before the browser paints once.
-          bulkLoading.value = true;
-          await nextTick();
-          await waitForPaint();
-
           // Create or switch to the conversation slot
+          resetMessageWindow();
           store.commit('chat/ENSURE_CONVERSATION', convId);
           store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: convId, messages: conversationData.messages });
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: contentId });
@@ -1682,14 +1706,6 @@ export default {
           terminalLines.value.push(
             `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`,
           );
-
-          // Wait for Vue to render the messages, then for the browser to
-          // actually paint them, before removing the spinner. Without the
-          // second rAF the spinner disappears while the messages are still
-          // mid-paint and the user sees a flash of blank canvas.
-          await nextTick();
-          await waitForPaint();
-          bulkLoading.value = false;
         } else {
           // Legacy HTML format
           const output = data.output || data;
@@ -1706,13 +1722,6 @@ export default {
 
           terminalLines.value.push(`Loaded saved output from ${createdAt.toLocaleDateString()}`);
         }
-
-        // Scroll the NEW conversation to top once it has rendered. The
-        // pre-render scrollToTop that used to live here snapped the
-        // outgoing conversation, which the user saw as a "scroll on the
-        // current conversation, then load" sequence.
-        await nextTick();
-        scrollToTop();
       } catch (error) {
         console.error('Error loading saved output:', error);
         store.commit('chat/ADD_MESSAGE', {
@@ -1722,6 +1731,13 @@ export default {
           timestamp: Date.now(),
           metadata: ['Error'],
         });
+      } finally {
+        // Drop the spinner and scroll the new conversation to top once the
+        // messages have rendered. `finally` guarantees the flag clears even
+        // if the fetch or JSON parse threw.
+        bulkLoading.value = false;
+        await nextTick();
+        scrollToTop();
       }
     };
 
@@ -1929,6 +1945,7 @@ export default {
 
     const clearConversation = () => {
       // Clear local component state
+      resetMessageWindow();
       expandedToolCalls.value = {};
       runningToolCalls.value = {};
       messageStates.value = {};
@@ -2092,6 +2109,11 @@ export default {
             totalTokens: cum.totalTokens || 0,
           };
           ms.totalCost = Number(cum.estimatedCost) || 0;
+          ms.totalUncachedCost = cum.uncachedCost != null ? Number(cum.uncachedCost) : null;
+          if (Array.isArray(cum.models)) {
+            ms.modelMix = Object.fromEntries(cum.models.map((m) => [m.model, m]));
+          }
+          ms.subscriptionBased = cum.subscriptionBased ?? null;
           if (cum.cacheMetrics) {
             ms.totalCacheMetrics = {
               cacheReadTokens: cum.cacheMetrics.cacheReadTokens || 0,
@@ -2380,6 +2402,9 @@ export default {
       totalTokenUsage,
       totalCost,
       totalCacheMetrics,
+      lastManifest,
+      modelMix,
+      subscriptionBased,
       executionsCount,
       systemActivities,
       clearActivities,
@@ -2407,6 +2432,11 @@ export default {
       imageCache,
       dataCache,
       bulkLoading,
+      expandedToolCalls,
+      windowedMessages,
+      hiddenMessageCount,
+      showEarlierMessages,
+      suppressMessageTransition,
       // Skill/goal context (per-conversation)
       activeSkill,
       activeGoal,
@@ -2421,6 +2451,32 @@ export default {
 </script>
 
 <style scoped>
+.show-earlier-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 16px;
+}
+
+.show-earlier-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: var(--font-size-xs, 11px);
+  font-family: inherit;
+  color: var(--color-text-muted, #8a8a9e);
+  background: transparent;
+  border: 1px solid var(--border-subtle, #2a2a3e);
+  border-radius: var(--border-radius-full, 999px);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.show-earlier-btn:hover {
+  color: var(--color-text, #e0e0e0);
+  border-color: var(--color-text-muted, #8a8a9e);
+}
+
 .automation-interface {
   height: 100%;
   width: 100%;
