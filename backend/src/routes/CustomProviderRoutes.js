@@ -2,6 +2,7 @@ import express from 'express';
 import CustomOpenAIProviderService from '../services/ai/CustomOpenAIProviderService.js';
 import { getAllProviderTemplates } from '../services/ai/providerConfigs.js';
 import jwt from 'jsonwebtoken';
+import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ function getUserIdFromToken(req) {
  * GET /custom-providers
  * Get all custom providers for the authenticated user
  */
-router.get('/', async (req, res) => {
+router.get('/', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {
@@ -59,7 +60,7 @@ router.get('/', async (req, res) => {
  * POST /custom-providers
  * Create a new custom provider
  */
-router.post('/', async (req, res) => {
+router.post('/', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {
@@ -130,7 +131,7 @@ router.get('/templates', async (req, res) => {
  *
  * Must be defined BEFORE /:id for the same reason as /templates above.
  */
-router.post('/test', async (req, res) => {
+router.post('/test', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {
@@ -169,7 +170,7 @@ router.post('/test', async (req, res) => {
  * GET /custom-providers/:id
  * Get a specific custom provider
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {
@@ -207,7 +208,7 @@ router.get('/:id', async (req, res) => {
  * PUT /custom-providers/:id
  * Update a custom provider
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {
@@ -242,7 +243,7 @@ router.put('/:id', async (req, res) => {
  * DELETE /custom-providers/:id
  * Delete a custom provider
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {
@@ -274,7 +275,7 @@ router.delete('/:id', async (req, res) => {
  * GET /custom-providers/:id/models
  * Fetch available models from a custom provider
  */
-router.get('/:id/models', async (req, res) => {
+router.get('/:id/models', requireAuthHeader, async (req, res) => {
   try {
     const userId = getUserIdFromToken(req);
     if (!userId) {

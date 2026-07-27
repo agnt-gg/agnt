@@ -2,6 +2,7 @@ import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
 import LicenseValidator from '@/services/LicenseValidator.js';
 import { withFreshness } from '../_utils/withFreshness.js';
+import { setMediaCookie, clearMediaCookie } from '@/services/mediaAuth.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 
 // All fetch* actions in this module are wrapped with `withFreshness` so the
@@ -113,6 +114,12 @@ export default {
       state.token = token;
       localStorage.setItem('token', token);
 
+      // /api/local-file requires a credential, and browser-issued subresource
+      // requests (<img>, <video>, <iframe>, and relative URLs inside served
+      // HTML) cannot set an Authorization header. The cookie is the only
+      // carrier that reaches them. See services/mediaAuth.js.
+      setMediaCookie(token);
+
       // Sync with backend when token is set
       if (token) {
         syncTokenWithBackend(token);
@@ -121,6 +128,7 @@ export default {
     CLEAR_TOKEN(state) {
       state.token = null;
       localStorage.removeItem('token');
+      clearMediaCookie();
     },
     SET_USER(state, user) {
       state.user = user;

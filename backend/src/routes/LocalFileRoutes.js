@@ -1,6 +1,8 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { requireAuthMedia } from '../utils/authGuard.js';
+import { isSecretPath, assertWithinRoots, describeRoots } from '../utils/localFileScope.js';
 
 const LocalFileRoutes = express.Router();
 
@@ -76,6 +78,25 @@ const serveLocalFile = (req, res) => {
       return res.status(400).json({ error: 'Path must be absolute' });
     }
 
+    // Credential guard. Authentication is the real security boundary here, but
+    // an authenticated session should still never be able to stream a private
+    // key or a .env into a chat-rendered <img>. This closes the pivot where
+    // LLM- or plugin-authored HTML exfiltrates secrets through a subresource
+    // load that looks, to every other layer, like an ordinary image request.
+    if (isSecretPath(resolved)) {
+      console.warn('[local-file] refused credential-shaped path:', resolved);
+      return res.status(403).json({ error: 'Refused: path looks like a credential file' });
+    }
+
+    // Optional allow-list hardening (AGNT_LOCAL_FILE_ROOTS). Unset = no root
+    // restriction, which is the default because users legitimately render
+    // artifacts from anywhere on their own disk.
+    const scope = assertWithinRoots(resolved);
+    if (!scope.ok) {
+      console.warn('[local-file] refused out-of-scope path:', resolved, '| roots:', describeRoots());
+      return res.status(403).json({ error: 'Refused: path is outside the configured local-file roots' });
+    }
+
     let stat;
     try {
       stat = fs.statSync(resolved);
@@ -116,6 +137,13 @@ const serveLocalFile = (req, res) => {
     res.status(500).json({ error: 'Failed to serve file' });
   }
 };
+
+// AUTH: every local-file request must carry a valid token. Browser-issued
+// subresource requests (<img>, <video>, <iframe>, and relative URLs resolved
+// against an injected <base href>) cannot set an Authorization header, so
+// requireAuthMedia also accepts the agnt_media_token cookie — the only carrier
+// that survives relative-URL resolution inside served HTML.
+LocalFileRoutes.use(requireAuthMedia);
 
 // Legacy query-string form: /api/local-file?path=...
 LocalFileRoutes.get('/', serveLocalFile);

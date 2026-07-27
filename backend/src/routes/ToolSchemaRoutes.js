@@ -1,5 +1,6 @@
 import express from 'express';
 import ToolRegistry from '../tools/ToolRegistry.js';
+import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
 
@@ -88,7 +89,7 @@ router.get('/metadata/:toolType', async (req, res) => {
 });
 
 // Reload the registry (useful for development)
-router.post('/reload', async (req, res) => {
+router.post('/reload', requireAuthHeader, async (req, res) => {
   try {
     await toolRegistry.reload();
     const stats = toolRegistry.getStats();

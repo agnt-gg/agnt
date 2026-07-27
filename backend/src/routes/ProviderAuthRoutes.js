@@ -13,6 +13,7 @@ import { getAuthEntry, getCapabilities, isLocalProvider } from '../services/auth
 import CodexCliService from '../services/ai/CodexCliService.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { authenticateToken } from './Middleware.js';
+import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ router.param('providerId', (req, res, next, providerId) => {
 
 // ─────────────────────────── STATUS ───────────────────────────
 
-router.get('/:providerId/auth/status', async (req, res) => {
+router.get('/:providerId/auth/status', requireAuthHeader, async (req, res) => {
   const { providerEntry, providerId } = req;
 
   if (!providerEntry.local) {
@@ -62,7 +63,7 @@ router.get('/:providerId/auth/status', async (req, res) => {
 
 // ─────────────────────────── CAPABILITIES ───────────────────────────
 
-router.get('/:providerId/auth/capabilities', (req, res) => {
+router.get('/:providerId/auth/capabilities', requireAuthHeader, (req, res) => {
   const caps = getCapabilities(req.providerId);
   if (!caps) {
     return res.status(404).json({ success: false, error: 'Provider not found' });
@@ -164,7 +165,7 @@ router.post('/:providerId/auth/disconnect', authenticateToken, async (req, res) 
 
 // ─────────────────────────── REFRESH ───────────────────────────
 
-router.post('/:providerId/auth/refresh', async (req, res) => {
+router.post('/:providerId/auth/refresh', requireAuthHeader, async (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.local || !providerEntry.caps.includes('refresh')) {
@@ -192,7 +193,7 @@ router.post('/:providerId/auth/refresh', async (req, res) => {
 
 // ─────────────────────────── OAUTH START ───────────────────────────
 
-router.get('/:providerId/auth/oauth/start', async (req, res) => {
+router.get('/:providerId/auth/oauth/start', requireAuthHeader, async (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.local) {
@@ -210,7 +211,7 @@ router.get('/:providerId/auth/oauth/start', async (req, res) => {
 
 // ─────────────────────────── OAUTH EXCHANGE (claude-code PKCE) ───────────────────────────
 
-router.post('/:providerId/auth/oauth/exchange', async (req, res) => {
+router.post('/:providerId/auth/oauth/exchange', requireAuthHeader, async (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.caps.includes('oauth-pkce')) {
@@ -241,7 +242,7 @@ router.post('/:providerId/auth/oauth/exchange', async (req, res) => {
 
 // ─────────────────────────── OAUTH STATUS (gemini-cli loopback) ───────────────────────────
 
-router.get('/:providerId/auth/oauth/status', (req, res) => {
+router.get('/:providerId/auth/oauth/status', requireAuthHeader, (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.caps.includes('oauth-loopback')) {
@@ -262,7 +263,7 @@ router.get('/:providerId/auth/oauth/status', (req, res) => {
 
 // ─────────────────────────── DEVICE AUTH START ───────────────────────────
 
-router.post('/:providerId/auth/device/start', async (req, res) => {
+router.post('/:providerId/auth/device/start', requireAuthHeader, async (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.caps.includes('device-auth')) {
@@ -289,7 +290,7 @@ router.post('/:providerId/auth/device/start', async (req, res) => {
 
 // ─────────────────────────── DEVICE AUTH STATUS ───────────────────────────
 
-router.get('/:providerId/auth/device/status', async (req, res) => {
+router.get('/:providerId/auth/device/status', requireAuthHeader, async (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.caps.includes('device-auth')) {
@@ -311,7 +312,7 @@ router.get('/:providerId/auth/device/status', async (req, res) => {
 
 // ─────────────────────────── SET AUTH METHOD (gemini-cli) ───────────────────────────
 
-router.post('/:providerId/auth/set-auth-method', async (req, res) => {
+router.post('/:providerId/auth/set-auth-method', requireAuthHeader, async (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.caps.includes('set-auth-method')) {
@@ -355,7 +356,7 @@ router.post('/:providerId/auth/set-auth-method', async (req, res) => {
 
 // ─────────────────────────── GCP PROJECT (gemini-cli) ───────────────────────────
 
-router.post('/:providerId/auth/gcp-project', (req, res) => {
+router.post('/:providerId/auth/gcp-project', requireAuthHeader, (req, res) => {
   const { providerEntry } = req;
 
   if (!providerEntry.caps.includes('gcp-project')) {

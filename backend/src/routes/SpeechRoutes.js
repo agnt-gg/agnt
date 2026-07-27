@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { whisperService } from '../services/whisperService.js';
+import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ const upload = multer({
  * POST /api/speech/transcribe
  * Transcribe audio file to text using Whisper
  */
-router.post('/transcribe', upload.single('audio'), async (req, res) => {
+router.post('/transcribe', requireAuthHeader, upload.single('audio'), async (req, res) => {
   let audioFilePath = null;
 
   try {
@@ -109,7 +110,7 @@ router.get('/status', (req, res) => {
  * POST /api/speech/initialize
  * Initialize Whisper service (download model if needed)
  */
-router.post('/initialize', async (req, res) => {
+router.post('/initialize', requireAuthHeader, async (req, res) => {
   try {
     await whisperService.initialize();
     res.json({

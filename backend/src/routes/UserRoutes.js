@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken, sessionMiddleware, getUserTokenFromSession } from './Middleware.js';
 import UserService from '../services/UserService.js';
+import { requireAuth } from '../utils/authGuard.js';
 
 // Set up new route
 const UserRoutes = express.Router();
@@ -8,20 +9,14 @@ const UserRoutes = express.Router();
 // Set up middleware
 UserRoutes.use(sessionMiddleware);
 
-// Custom middleware for SSE token auth
-const authenticateSSEToken = async (req, res, next) => {
-  const token = req.query.token;
-
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-
-  // Manually set the authorization header for the authenticateToken middleware
-  req.headers.authorization = `Bearer ${token}`;
-
-  // Call the existing authenticateToken middleware
-  authenticateToken(req, res, next);
-};
+// SSE token auth. EventSource cannot set an Authorization header, so the
+// token rides in the query string.
+//
+// The previous hand-rolled version rejected a MISSING token but then handed an
+// INVALID one to authenticateToken, which decorates rather than guards — so any
+// garbage token authenticated as anonymous and the stream opened anyway.
+// requireAuth verifies the signature and 401s on anything that does not.
+const authenticateSSEToken = requireAuth({ allowQuery: true });
 
 // Define routes
 UserRoutes.get('/health', UserService.healthCheck);

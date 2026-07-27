@@ -8,11 +8,17 @@ import axios from 'axios';
 import store from '@/store/state';
 import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
 import { registerAllWidgets } from '@/canvas/widgets/index.js';
+import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 
 // Import test utilities in development mode
 if (process.env.NODE_ENV === 'development') {
   import('@/utils/testRateLimit');
 }
+
+// Before mount, not after: a restored conversation can render an <img
+// src="/api/local-file/..."> on the very first paint, and that request needs
+// the cookie already present or it 401s and stays broken for the session.
+syncMediaCookieFromStorage();
 
 const app = createApp(App);
 

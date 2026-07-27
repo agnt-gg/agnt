@@ -12,6 +12,7 @@ import { reloadPluginTools as reloadOrchestratorPluginTools } from '../services/
 import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
 import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
+import { requireAuthHeader } from '../utils/authGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -328,7 +329,7 @@ router.get('/marketplace', async (req, res) => {
  *
  * Body: { name: string, version?: string }
  */
-router.post('/install', async (req, res) => {
+router.post('/install', requireAuthHeader, async (req, res) => {
   try {
     const { name, version = 'latest' } = req.body;
 
@@ -372,7 +373,7 @@ router.post('/install', async (req, res) => {
  *
  * Body: { name: string, fileData: string (base64) }
  */
-router.post('/install-file', async (req, res) => {
+router.post('/install-file', requireAuthHeader, async (req, res) => {
   try {
     const { name, fileData, fileName } = req.body;
 
@@ -419,7 +420,7 @@ router.post('/install-file', async (req, res) => {
  *   - purge: delete all plugin-installed assets regardless of modification
  *   - detach: keep all assets, just unregister the plugin
  */
-router.delete('/:name', async (req, res) => {
+router.delete('/:name', requireAuthHeader, async (req, res) => {
   try {
     const { name } = req.params;
     const mode = (req.query.mode || 'clean').toString();
@@ -1064,7 +1065,7 @@ router.post('/install-file/check-auth', authenticateToken, async (req, res) => {
  * detected capabilities (with file:line evidence), declared permissions,
  * undeclared diff, and the trust tier the plugin would receive.
  */
-router.get('/inspect/:name', async (req, res) => {
+router.get('/inspect/:name', requireAuthHeader, async (req, res) => {
   try {
     const { name } = req.params;
     const report = await PluginInstaller.inspectMarketplacePlugin(name);
@@ -1085,7 +1086,7 @@ router.get('/inspect/:name', async (req, res) => {
  * permission-gated install path. Returns { requiresConfirmation } on a
  * moved repo and { requiresConsent } on permission escalation.
  */
-router.post('/install-github', async (req, res) => {
+router.post('/install-github', requireAuthHeader, async (req, res) => {
   try {
     const { name, repo, mode, asset, subdir, ref, confirmRedirect, acceptedPermissions } = req.body || {};
     if (!name || !repo) {
@@ -1109,7 +1110,7 @@ router.post('/install-github', async (req, res) => {
 // ============================================================================
 
 /** GET /api/plugins/update-settings */
-router.get('/update-settings', async (req, res) => {
+router.get('/update-settings', requireAuthHeader, async (req, res) => {
   try {
     if (!PluginInstaller.updateScheduler) {
       const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
@@ -1122,7 +1123,7 @@ router.get('/update-settings', async (req, res) => {
 });
 
 /** POST /api/plugins/update-settings  { autoCheck?, intervalHours? } */
-router.post('/update-settings', async (req, res) => {
+router.post('/update-settings', requireAuthHeader, async (req, res) => {
   try {
     if (!PluginInstaller.updateScheduler) {
       const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
@@ -1140,7 +1141,7 @@ router.post('/update-settings', async (req, res) => {
  * Per-plugin auto-update policy, stored on the registry entry (merge
  * semantics preserve it across installs/updates).
  */
-router.post('/update-policy/:name', async (req, res) => {
+router.post('/update-policy/:name', requireAuthHeader, async (req, res) => {
   try {
     const { name } = req.params;
     const { policy } = req.body || {};
@@ -1188,7 +1189,7 @@ router.get('/updates', async (req, res) => {
  *
  * Body: { acceptedPermissions?: boolean }
  */
-router.post('/update/:name', async (req, res) => {
+router.post('/update/:name', requireAuthHeader, async (req, res) => {
   try {
     const { name } = req.params;
     const { acceptedPermissions = false } = req.body || {};
@@ -1220,7 +1221,7 @@ router.post('/update/:name', async (req, res) => {
  * POST /api/plugins/reload
  * Reload all plugins (useful after manual changes)
  */
-router.post('/reload', async (req, res) => {
+router.post('/reload', requireAuthHeader, async (req, res) => {
   try {
     console.log('[PluginRoutes] Reloading plugins...');
 

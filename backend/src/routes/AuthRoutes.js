@@ -16,6 +16,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import AuthManager from '../services/auth/AuthManager.js';
 import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
+import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
 
@@ -67,7 +68,7 @@ router.get('/connected', async (req, res) => {
 // directly for provider CRUD, so the local backend never sees the write.
 // This endpoint lets the client tell the local backend "I just changed a
 // provider — fan it out" so every connected tab refreshes via Socket.IO.
-router.post('/providers/notify-changed', (req, res) => {
+router.post('/providers/notify-changed', requireAuthHeader, (req, res) => {
   const { event, providerId } = req.body || {};
   const realtimeEvent = PROVIDER_NOTIFY_EVENT[event];
   if (!realtimeEvent) {
