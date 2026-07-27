@@ -15,6 +15,12 @@ import { grokBinCandidates } from '../../utils/cliInvocation.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000;
 const DEVICE_SESSION_TTL_MS = 15 * 60 * 1000;
+// Refresh the OIDC token when it has less than this left, so a long turn
+// cannot expire mid-flight.
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+// Used only when `grok --version` cannot be read. The proxy's stated minimum
+// is 0.1.202; keep this at or above a known-good release.
+const GROK_CLI_VERSION_FALLBACK = '0.2.112';
 
 function expandUserPath(inputPath) {
   if (!inputPath) return inputPath;
@@ -376,6 +382,55 @@ class GrokBuildAuthManager {
       userCode: session.deviceCode,
       message: 'Waiting for Grok Build login to complete…',
     };
+  }
+
+  /**
+   * Version string for the `x-grok-client-version` header.
+   *
+   * cli-chat-proxy.grok.com gates on it: without the header the proxy replies
+   * 426 "Your Grok CLI version (none) is outdated". We report the version of
+   * the CLI actually installed on this machine rather than a spoofed constant
+   * — if the user's CLI is genuinely too old they get the same actionable
+   * error the CLI itself would give them, instead of a lie that works until
+   * xAI tightens the check.
+   *
+   * Cached for the process lifetime; `grok --version` is a ~200ms spawn.
+   */
+  async getCliVersion() {
+    if (this._cliVersion) return this._cliVersion;
+    try {
+      const probe = await this._runGrok(['--version'], { timeoutMs: 15000 });
+      const match = `${probe.stdout} ${probe.stderr}`.match(/(\d+\.\d+\.\d+)/);
+      if (match) {
+        this._cliVersion = match[1];
+        return this._cliVersion;
+      }
+    } catch {
+      // Fall through — a missing CLI is reported by checkApiUsable, not here.
+    }
+    // Last-known-good floor. The proxy's stated minimum is 0.1.202.
+    this._cliVersion = GROK_CLI_VERSION_FALLBACK;
+    return this._cliVersion;
+  }
+
+  /**
+   * Returns a token that is valid right now, refreshing first if it is
+   * expired or about to be.
+   *
+   * The CLI owns the refresh: `grok models` performs the OIDC refresh and
+   * rewrites ~/.grok/auth.json as a side effect, so re-reading the file after
+   * a successful probe yields the new token. Mirrors
+   * CodexAuthManager.ensureValidToken()'s contract so LlmService can treat
+   * both providers identically.
+   */
+  async ensureValidToken() {
+    const expiry = this.getTokenExpiry();
+    const needsRefresh = !expiry || expiry.expired || expiry.expiresInMs < TOKEN_REFRESH_MARGIN_MS;
+    if (needsRefresh) {
+      // Spawning `grok models` refreshes the OIDC token in auth.json.
+      await this.checkApiUsable({ forceRefresh: true });
+    }
+    return this.getAccessToken();
   }
 
   async refreshAccessToken() {

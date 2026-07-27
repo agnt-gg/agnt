@@ -475,7 +475,17 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
     });
   }
 
-  // Grok Build CLI — always spawn local `grok` binary (subscription OAuth)
+  // Grok Build — borrow the CLI's OAuth session, talk HTTP.
+  //
+  // The local `grok` CLI authenticates against cli-chat-proxy.grok.com, which
+  // is a real OpenAI-compatible endpoint: /chat/completions accepts `tools`
+  // and returns tool_calls, and it reports prompt_tokens_details.cached_tokens
+  // (verified live 2026-07-27). Spawning the CLI instead would flatten the
+  // conversation into one text prompt and drop every tool schema — the model
+  // would narrate tool calls it cannot make. So this mirrors the
+  // openai-codex / claude-code pattern: the CLI owns the credential, AGNT
+  // owns the request. The CLI is still spawned for the `grok_exec` tool,
+  // where an autonomous coding agent in a workdir is the point.
   if (lowerCaseProvider === 'grok-build') {
     const status = await GrokBuildAuthManager.checkApiUsable();
     if (!status.apiUsable) {
@@ -483,13 +493,35 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
         'Grok Build CLI is not authenticated. Run: grok login --oauth (or connect via Settings).'
       );
     }
-    return createGrokBuildCliClient({
-      defaultModel: process.env.AGNT_GROK_DEFAULT_MODEL || GrokBuildCliService.getDefaultModel(),
-      cwd: options.cwd || GrokBuildCliService.getDefaultWorkdir(),
-      userId: options.userId,
-      conversationId: options.conversationId,
-      authToken: options.authToken,
-      alwaysApprove: true,
+
+    // Escape hatch: force the subprocess transport (no tools) for debugging.
+    if (process.env.AGNT_GROK_FORCE_CLI === '1') {
+      return createGrokBuildCliClient({
+        defaultModel: process.env.AGNT_GROK_DEFAULT_MODEL || GrokBuildCliService.getDefaultModel(),
+        cwd: options.cwd || GrokBuildCliService.getDefaultWorkdir(),
+        userId: options.userId,
+        conversationId: options.conversationId,
+        authToken: options.authToken,
+        alwaysApprove: true,
+      });
+    }
+
+    const grokToken = await GrokBuildAuthManager.ensureValidToken();
+    if (!grokToken) {
+      throw new Error('Grok Build token unavailable after refresh. Run: grok login --oauth');
+    }
+    // The proxy rejects requests without a client version (426 Upgrade
+    // Required), so send the version of the CLI actually installed here.
+    const grokCliVersion = await GrokBuildAuthManager.getCliVersion();
+    const grokConfig = getProviderConfig('grok-build');
+    return new OpenAI({
+      apiKey: grokToken,
+      baseURL: grokConfig?.baseURL || 'https://cli-chat-proxy.grok.com/v1',
+      defaultHeaders: {
+        'x-grok-client-version': grokCliVersion,
+        'x-grok-client-identifier': 'xai-grok-cli',
+        'x-grok-client-surface': 'grok-build',
+      },
     });
   }
 

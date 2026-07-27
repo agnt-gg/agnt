@@ -439,17 +439,17 @@ const PROVIDER_CONFIGS = [
   {
     key: 'grok-build',
     name: 'Grok Build',
-    // Not used for HTTP — CLI owns the network path. Kept for registry completeness.
+    // LIVE endpoint. The local `grok` CLI authenticates against this proxy and
+    // AGNT reuses that session over HTTP (see LlmService) rather than spawning
+    // the CLI — same borrowed-OAuth pattern as openai-codex / claude-code.
     baseURL: 'https://cli-chat-proxy.grok.com/v1',
     sdkType: 'openai',
     authScheme: 'grok-build',
     capabilities: {
-      // supportsTools is FALSE because the transport cannot carry them: the
-      // local `grok` CLI is a one-shot print interface with no function-calling
-      // surface, and GrokBuildCliClient has no way to forward schemas. Shipping
-      // tools anyway makes the model narrate calls that never execute.
-      // The orchestrator reads this via providerSupportsTools() below.
-      text: { supportsStreaming: true, supportsTools: false },
+      // Verified live 2026-07-27 against the proxy: /chat/completions accepts
+      // `tools` and returns tool_calls with finish_reason 'tool_calls', and
+      // reports prompt_tokens_details.cached_tokens. Full AGNT tool registry.
+      text: { supportsStreaming: true, supportsTools: true },
     },
     recommendedModels: ['grok-4.5'],
     fallbackModels: ['grok-4.5'],
@@ -460,7 +460,7 @@ const PROVIDER_CONFIGS = [
         inputCostPer1M: 0,
         outputCostPer1M: 0,
         supportsVision: false,
-        supportsTools: false, // CLI transport — see capabilities.text above
+        supportsTools: true, // HTTP proxy transport — see capabilities.text above
         reasoning: true,
       },
     },
@@ -476,9 +476,12 @@ const PROVIDER_CONFIGS = [
     sdkType: 'openai',
     authScheme: 'cursor-cli',
     capabilities: {
-      // supportsTools FALSE for the same reason as grok-build: `cursor-agent -p`
-      // prints one result and exposes no function-calling interface, so
-      // CursorCliClient cannot forward schemas.
+      // supportsTools FALSE: `cursor-agent -p` is a subprocess that prints a
+      // result and exposes no function-calling interface, so CursorCliClient
+      // cannot forward schemas. Unlike grok-build there is no reachable HTTP
+      // endpoint to borrow — the auth manager can read no token from the
+      // session (apiStatus 401), so the subprocess is the only transport.
+      // The orchestrator reads this via providerSupportsTools() below.
       text: { supportsStreaming: true, supportsTools: false },
     },
     recommendedModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto'],
