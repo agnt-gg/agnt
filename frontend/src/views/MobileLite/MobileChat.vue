@@ -101,7 +101,6 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
-import { bounceToNativeShellForSetup } from '@/services/mobileLiteNative.js';
 import {
   listConversations,
   loadConversation,
@@ -337,8 +336,11 @@ function stop() {
 }
 
 function openServerSetup() {
-  // Capacitor on http://LAN cannot use the camera — bounce to local shell.
-  if (bounceToNativeShellForSetup()) return;
+  // Stay on this AGNT host's /m?setup=1 so saved servers (same-origin
+  // localStorage) and session stay available. Do NOT bounce to the Capacitor
+  // local shell here — agntchat:// from a remote WebView is unreliable and
+  // uses a different origin (empty server list). Camera scan can still bounce
+  // from the setup screen's Scan QR button when needed.
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   window.location.assign(`${origin}/m?setup=1`);
 }
