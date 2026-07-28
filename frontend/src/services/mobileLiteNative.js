@@ -85,8 +85,8 @@ export function nativeShellSetupUrl() {
  * Leave the current page for the local Capacitor shell so QR camera works.
  * Returns true when a navigation started.
  *
- * Used when getUserMedia cannot run (typical on http://LAN inside the app).
- * Does not require window.Capacitor — the custom URL scheme still opens the shell.
+ * Prefer in-page photo capture (MobileHome / QrScanner) instead — custom-scheme
+ * navigation from a remote http:// WebView is unreliable on iOS.
  */
 export function bounceToNativeShellForSetup() {
   if (canUseWebCamera()) return false;

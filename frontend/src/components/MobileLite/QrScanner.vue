@@ -6,26 +6,65 @@
         ×
       </button>
     </div>
-    <div class="qr-scan-stage">
+
+    <div v-if="mode === 'live'" class="qr-scan-stage">
       <video ref="videoEl" class="qr-scan-video" playsinline muted autoplay></video>
       <canvas ref="canvasEl" class="qr-scan-canvas" hidden></canvas>
       <div class="qr-scan-frame" aria-hidden="true"></div>
     </div>
-    <p v-if="status" class="qr-scan-status">{{ status }}</p>
+
+    <div v-else class="qr-scan-photo">
+      <p class="qr-scan-status">
+        Live camera is blocked on this page (http). Take a photo of the desktop QR instead —
+        that still works.
+      </p>
+      <button type="button" class="qr-scan-primary" :disabled="decoding" @click="triggerPhoto">
+        {{ decoding ? 'Reading…' : 'Take photo of QR' }}
+      </button>
+    </div>
+
+    <p v-if="status && mode === 'live'" class="qr-scan-status">{{ status }}</p>
     <p v-if="err" class="qr-scan-err">{{ err }}</p>
+
+    <button
+      v-if="mode === 'live'"
+      type="button"
+      class="qr-scan-cancel"
+      @click="usePhotoFallback"
+    >
+      Take photo instead
+    </button>
     <button type="button" class="qr-scan-cancel" @click="close">Cancel</button>
+
+    <input
+      ref="fileEl"
+      class="qr-scan-file"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      @change="onPhotoPicked"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { decodeQrFromImageFile } from '@/utils/qrDecodeFromImage.js';
+
+const props = defineProps({
+  /** Prefer photo capture immediately (http:// LAN — getUserMedia blocked). */
+  preferPhoto: { type: Boolean, default: false },
+});
 
 const emit = defineEmits(['result', 'close']);
 
 const videoEl = ref(null);
 const canvasEl = ref(null);
-const status = ref('Starting camera…');
+const fileEl = ref(null);
+const mode = ref(props.preferPhoto ? 'photo' : 'live');
+const status = ref(props.preferPhoto ? '' : 'Starting camera…');
 const err = ref('');
+const decoding = ref(false);
 
 let stream = null;
 let raf = 0;
@@ -55,8 +94,43 @@ function stop() {
     stream = null;
   }
   const v = videoEl.value;
-  if (v) {
-    v.srcObject = null;
+  if (v) v.srcObject = null;
+}
+
+function usePhotoFallback() {
+  stop();
+  mode.value = 'photo';
+  status.value = '';
+  err.value = '';
+}
+
+function triggerPhoto() {
+  err.value = '';
+  fileEl.value?.click();
+}
+
+async function onPhotoPicked(ev) {
+  const file = ev.target?.files?.[0];
+  if (ev.target) ev.target.value = '';
+  if (!file) return;
+  decoding.value = true;
+  err.value = '';
+  status.value = 'Reading QR…';
+  try {
+    const text = await decodeQrFromImageFile(file);
+    if (!text) {
+      err.value = 'No QR code found in that photo. Try again closer, or paste the pair link.';
+      status.value = '';
+      return;
+    }
+    status.value = 'Code found';
+    stop();
+    emit('result', text);
+  } catch (e) {
+    err.value = e?.message || 'Could not read that photo.';
+    status.value = '';
+  } finally {
+    decoding.value = false;
   }
 }
 
@@ -91,36 +165,47 @@ function tick() {
   raf = requestAnimationFrame(tick);
 }
 
+async function startLive() {
+  mode.value = 'live';
+  status.value = 'Starting camera…';
+  err.value = '';
+  stopped = false;
+  await loadJsQR();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    usePhotoFallback();
+    return;
+  }
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    },
+  });
+  const video = videoEl.value;
+  if (!video) {
+    usePhotoFallback();
+    return;
+  }
+  video.srcObject = stream;
+  await video.play();
+  status.value = 'Point at the QR on your desktop';
+  raf = requestAnimationFrame(tick);
+}
+
 onMounted(async () => {
+  if (props.preferPhoto) {
+    mode.value = 'photo';
+    return;
+  }
   try {
-    await loadJsQR();
-    if (!navigator.mediaDevices?.getUserMedia) {
-      err.value =
-        'Camera not available here (often blocked on http:// LAN pages). Use the AGNT Chat app setup screen, or paste the pair link.';
-      status.value = '';
-      return;
-    }
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
-    const video = videoEl.value;
-    video.srcObject = stream;
-    await video.play();
-    status.value = 'Point at the QR on your desktop';
-    raf = requestAnimationFrame(tick);
+    await startLive();
   } catch (e) {
-    status.value = '';
-    err.value =
-      e?.name === 'NotAllowedError'
-        ? 'Camera permission denied. Enable camera for AGNT Chat in Settings.'
-        : e?.name === 'NotSupportedError' || /secure|https/i.test(String(e?.message || ''))
-          ? 'Camera needs a secure page. In the AGNT Chat app, use Switch server / Add server to open the local setup screen, then Scan QR.'
-          : e?.message || 'Could not open camera.';
+    usePhotoFallback();
+    if (e?.name === 'NotAllowedError') {
+      err.value = 'Live camera permission denied — take a photo of the QR instead.';
+    }
   }
 });
 
@@ -178,11 +263,34 @@ onBeforeUnmount(stop);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
+.qr-scan-photo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+}
+.qr-scan-primary {
+  min-height: 52px;
+  border: none;
+  border-radius: 12px;
+  background: #19ef83;
+  color: #0b0b12;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.qr-scan-primary:disabled {
+  opacity: 0.55;
+}
 .qr-scan-status {
   margin: 12px 0 0;
   text-align: center;
   color: #8b93a7;
   font-size: 14px;
+  line-height: 1.4;
 }
 .qr-scan-err {
   margin: 12px 0 0;
@@ -201,5 +309,12 @@ onBeforeUnmount(stop);
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
+}
+.qr-scan-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

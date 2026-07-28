@@ -54,4 +54,20 @@ describe('userFromJwt', () => {
     const token = makeJwt({ role: 'none' });
     expect(userFromJwt(token)).toBeNull();
   });
+
+  it('decodes unpadded base64url payloads (Safari/iOS atob)', () => {
+    // base64url omits "="; Safari atob requires length % 4 === 0 (padded).
+    const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+    const body = Buffer.from(
+      JSON.stringify({ id: 'u', email: 'a@b.c', name: 'Ada!' }),
+    ).toString('base64url');
+    expect(body.includes('=')).toBe(false);
+    expect(body.length % 4).not.toBe(0);
+    expect(userFromJwt(`${header}.${body}.sig`)).toEqual({
+      id: 'u',
+      email: 'a@b.c',
+      name: 'Ada!',
+      authMethod: 'jwt',
+    });
+  });
 });

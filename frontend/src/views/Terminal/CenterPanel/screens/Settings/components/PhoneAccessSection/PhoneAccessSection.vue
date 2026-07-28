@@ -70,7 +70,7 @@
             <button
               type="button"
               class="pa-url"
-              title="Copy pair link (URL with code)"
+              v-tooltip="'Copy pair link (URL with code)'"
               @click="copy(copyLinkUrl)"
             >
               <code class="pa-url-text">{{ copyLinkUrl }}</code>

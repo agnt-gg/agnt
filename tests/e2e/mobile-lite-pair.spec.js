@@ -22,6 +22,11 @@ function fakeJwt(payload) {
   return jwt.sign(payload, SECRET, { expiresIn: '1h' });
 }
 
+function restoreEnv(key, previous) {
+  if (previous === undefined) delete process.env[key];
+  else process.env[key] = previous;
+}
+
 test.use({
   // Prefer system Chrome when Playwright's bundled headless shell is missing.
   channel: process.env.PW_CHANNEL || 'chrome',
@@ -32,14 +37,14 @@ test.describe('Mobile lite pairing smoke', () => {
   let server;
   let base;
   let prevSecret;
+  let prevPort;
 
   test.beforeAll(async () => {
     prevSecret = process.env.JWT_SECRET;
+    prevPort = process.env.PORT;
     process.env.JWT_SECRET = SECRET;
     _resetPairing();
     _resetRateLimits();
-    // Allow mint even when bind looks loopback-only
-    RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port: 3333 });
 
     const app = express();
     app.use(express.json());
@@ -83,11 +88,16 @@ test.describe('Mobile lite pairing smoke', () => {
     await new Promise((resolve) => {
       server = http.createServer(app).listen(0, '127.0.0.1', resolve);
     });
-    base = `http://127.0.0.1:${server.address().port}`;
+    const port = server.address().port;
+    // PairingRoutes builds liteUrl/simUrl from PORT + reachability bind.
+    process.env.PORT = String(port);
+    RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port });
+    base = `http://127.0.0.1:${port}`;
   });
 
   test.afterAll(async () => {
-    process.env.JWT_SECRET = prevSecret;
+    restoreEnv('JWT_SECRET', prevSecret);
+    restoreEnv('PORT', prevPort);
     if (server) await new Promise((r) => server.close(r));
   });
 
@@ -109,6 +119,8 @@ test.describe('Mobile lite pairing smoke', () => {
     expect(mint.status).toBe(200);
     const { code, liteUrl, simUrl } = await mint.json();
     expect(code).toMatch(/^[a-f0-9]{32}$/);
+    expect(liteUrl).toContain(`:${new URL(base).port}/m/pair?c=${code}`);
+    expect(simUrl).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${new URL(base).port}/m/pair\\?c=${code}$`));
 
     // Pair URL from API points at LAN host:port; rewrite to this test server.
     const pairPath = `/m/pair?c=${code}`;
@@ -129,8 +141,5 @@ test.describe('Mobile lite pairing smoke', () => {
     );
     expect(payload.id).toBe('u1');
     expect(payload.email).toBe('a@b.c');
-
-    // silence unused
-    expect(liteUrl || simUrl).toBeTruthy();
   });
 });

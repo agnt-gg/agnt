@@ -169,8 +169,18 @@
 
     <QrScanner
       v-if="showScanner"
+      :prefer-photo="!webCameraOk"
       @result="onScanResult"
       @close="showScanner = false"
+    />
+    <!-- Sync file pick stays in the Scan tap gesture (required on iOS). -->
+    <input
+      ref="photoInputEl"
+      class="ml-photo-input"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      @change="onPhotoPicked"
     />
   </div>
 </template>
@@ -193,10 +203,8 @@ import {
   listPairedServers,
   removePairedServer,
 } from '@/services/mobileLitePairing.js';
-import {
-  canUseWebCamera,
-  bounceToNativeShellForSetup,
-} from '@/services/mobileLiteNative.js';
+import { canUseWebCamera } from '@/services/mobileLiteNative.js';
+import { decodeQrFromImageFile } from '@/utils/qrDecodeFromImage.js';
 
 const store = useStore();
 const router = useRouter();
@@ -213,10 +221,12 @@ const serverError = ref('');
 const servers = ref(listPairedServers());
 const showScanner = ref(false);
 const showAddServer = ref(false);
+const photoInputEl = ref(null);
 const webCameraOk = ref(canUseWebCamera());
 const cameraHint = computed(() => {
   if (webCameraOk.value) return '';
-  return 'Scan opens the app’s local setup screen (camera is blocked on http:// server pages).';
+  // Live getUserMedia is blocked on http://LAN; photo capture still works in-app.
+  return 'Opens the camera to photograph the desktop QR (live preview needs https).';
 });
 
 function cancelAddServer() {
@@ -227,18 +237,39 @@ function cancelAddServer() {
 }
 
 function startAddServer() {
-  // Always show the form (paste + Scan). Scan itself bounces to the local
-  // shell when the camera cannot run on this http:// page.
   showAddServer.value = true;
 }
 
 function openScanner() {
-  if (bounceToNativeShellForSetup()) return;
-  if (!webCameraOk.value) {
-    error.value = 'Camera is not available here. Paste the pair link instead.';
+  // Do NOT bounce to agntchat:// — custom-scheme navigation from a remote
+  // http:// WebView is unreliable (same bug that broke Switch server).
+  error.value = '';
+  if (webCameraOk.value) {
+    showScanner.value = true;
     return;
   }
-  showScanner.value = true;
+  // Must stay synchronous with the tap so iOS allows the camera/photos sheet.
+  photoInputEl.value?.click();
+}
+
+async function onPhotoPicked(ev) {
+  const file = ev.target?.files?.[0];
+  if (ev.target) ev.target.value = '';
+  if (!file) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    const text = await decodeQrFromImageFile(file);
+    if (!text) {
+      error.value = 'No QR code found in that photo. Try again, or paste the pair link.';
+      return;
+    }
+    onScanResult(text);
+  } catch (e) {
+    error.value = e?.message || 'Could not read that photo.';
+  } finally {
+    busy.value = false;
+  }
 }
 
 function onScanResult(text) {
@@ -659,5 +690,12 @@ html.mobile-lite-shell #app {
   color: #8b93a7;
   font-size: 20px;
   cursor: pointer;
+}
+.ml-photo-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

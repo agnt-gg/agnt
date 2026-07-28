@@ -52,8 +52,14 @@ export function classifyAuthError(error) {
 export function userFromJwt(token) {
   if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
   try {
-    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const json = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('utf8');
+    // JWT segments are base64url and often unpadded; atob (Safari/iOS) is strict.
+    let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4;
+    if (pad) b64 += '='.repeat(4 - pad);
+    const json =
+      typeof atob === 'function'
+        ? new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))
+        : Buffer.from(b64, 'base64').toString('utf8');
     const payload = JSON.parse(json);
     const id = payload.id || payload.sub || payload.userId;
     const email = payload.email || null;
