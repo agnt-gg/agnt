@@ -217,6 +217,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "electron/**/*",
+      "!electron/**/*.test.js",
       "assets/**/*",
       "backend/**/*",
       "docs/_API-DOCUMENTATION.md",

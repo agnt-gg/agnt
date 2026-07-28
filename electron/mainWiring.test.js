@@ -117,3 +117,14 @@ describe('connection error page', () => {
     expect(html).toMatch(/relaunch/);
   });
 });
+
+describe('electron-builder packaging', () => {
+  // main.js imports ./electron/connectionConfig.js and loadFiles connection-error.html.
+  // electron-builder uses an explicit allowlist (build.files) — if electron/ is missing,
+  // the packaged app throws ERR_MODULE_NOT_FOUND at launch.
+  it('includes the electron/ directory in build.files', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const files = pkg.build?.files || [];
+    expect(files).toEqual(expect.arrayContaining(['electron/**/*']));
+  });
+});
