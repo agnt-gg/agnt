@@ -101,6 +101,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
+import { bounceToNativeShellForSetup } from '@/services/mobileLiteNative.js';
 import {
   listConversations,
   loadConversation,
@@ -336,6 +337,8 @@ function stop() {
 }
 
 function openServerSetup() {
+  // Capacitor on http://LAN cannot use the camera — bounce to local shell.
+  if (bounceToNativeShellForSetup()) return;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   window.location.assign(`${origin}/m?setup=1`);
 }

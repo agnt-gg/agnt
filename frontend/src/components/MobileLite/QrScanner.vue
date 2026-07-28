@@ -95,7 +95,8 @@ onMounted(async () => {
   try {
     await loadJsQR();
     if (!navigator.mediaDevices?.getUserMedia) {
-      err.value = 'Camera not available in this browser.';
+      err.value =
+        'Camera not available here (often blocked on http:// LAN pages). Use the AGNT Chat app setup screen, or paste the pair link.';
       status.value = '';
       return;
     }
@@ -117,7 +118,9 @@ onMounted(async () => {
     err.value =
       e?.name === 'NotAllowedError'
         ? 'Camera permission denied. Enable camera for AGNT Chat in Settings.'
-        : e?.message || 'Could not open camera.';
+        : e?.name === 'NotSupportedError' || /secure|https/i.test(String(e?.message || ''))
+          ? 'Camera needs a secure page. In the AGNT Chat app, use Switch server / Add server to open the local setup screen, then Scan QR.'
+          : e?.message || 'Could not open camera.';
   }
 });
 

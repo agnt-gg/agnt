@@ -45,7 +45,7 @@
           v-if="!showAddServer"
           type="button"
           class="ml-btn ml-btn-ghost"
-          @click="showAddServer = true"
+          @click="startAddServer"
         >
           Add new server
         </button>
@@ -67,14 +67,14 @@
             @keydown.ctrl.enter.prevent="continueFromPaste"
           />
           <button
-            v-if="cameraAvailable"
             type="button"
             class="ml-btn ml-btn-ghost"
             :disabled="busy"
-            @click="showScanner = true"
+            @click="openScanner"
           >
             Scan QR code
           </button>
+          <p v-if="cameraHint" class="ml-field-note">{{ cameraHint }}</p>
           <p v-if="parsedHint" class="ml-hint">{{ parsedHint }}</p>
           <button
             class="ml-btn ml-btn-primary"
@@ -140,14 +140,14 @@
           Same link as desktop Phone Access (or scan QR). Saved servers appear after you pair.
         </p>
         <button
-          v-if="cameraAvailable"
           type="button"
           class="ml-btn ml-btn-ghost"
           :disabled="busy"
-          @click="showScanner = true"
+          @click="openScanner"
         >
           Scan QR code
         </button>
+        <p v-if="cameraHint" class="ml-field-note">{{ cameraHint }}</p>
         <label class="ml-check">
           <input v-model="autoOpen" type="checkbox" @change="onAutoOpenChange" />
           Open last server automatically next launch
@@ -193,6 +193,10 @@ import {
   listPairedServers,
   removePairedServer,
 } from '@/services/mobileLitePairing.js';
+import {
+  canUseWebCamera,
+  bounceToNativeShellForSetup,
+} from '@/services/mobileLiteNative.js';
 
 const store = useStore();
 const router = useRouter();
@@ -209,15 +213,32 @@ const serverError = ref('');
 const servers = ref(listPairedServers());
 const showScanner = ref(false);
 const showAddServer = ref(false);
-const cameraAvailable = ref(
-  typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
-);
+const webCameraOk = ref(canUseWebCamera());
+const cameraHint = computed(() => {
+  if (webCameraOk.value) return '';
+  return 'Scan opens the app’s local setup screen (camera is blocked on http:// server pages).';
+});
 
 function cancelAddServer() {
   showAddServer.value = false;
   showScanner.value = false;
   pasteInput.value = '';
   error.value = '';
+}
+
+function startAddServer() {
+  // Always show the form (paste + Scan). Scan itself bounces to the local
+  // shell when the camera cannot run on this http:// page.
+  showAddServer.value = true;
+}
+
+function openScanner() {
+  if (bounceToNativeShellForSetup()) return;
+  if (!webCameraOk.value) {
+    error.value = 'Camera is not available here. Paste the pair link instead.';
+    return;
+  }
+  showScanner.value = true;
 }
 
 function onScanResult(text) {
