@@ -148,6 +148,28 @@ function sanitizeUnexpectedToolResults(msgs) {
 
       if (keptBlocks.length > 0) {
         out.push({ ...msg, content: keptBlocks });
+      } else {
+        // NEVER DELETE THE MESSAGE. Dropping it changes the SHAPE of the
+        // conversation, not just its content. When the casualty is the last
+        // message the history now ends on an assistant turn, and models
+        // without prefill support (claude-opus-5 and the Claude 5 family)
+        // reject that outright:
+        //   400 "This model does not support assistant message prefill.
+        //        The conversation must end with a user message."
+        // Mid-history it is no better: removing the only user turn between
+        // two assistant turns forces a same-role merge that silently
+        // rewrites what the model said.
+        //
+        // Substituting a text block preserves message count, role
+        // alternation and the terminal-role invariant, and tells the model
+        // the truth about what happened to its tool results.
+        out.push({
+          ...msg,
+          content: [{
+            type: 'text',
+            text: '[System: the results of the preceding tool call(s) could not be attached to this turn and were dropped.]',
+          }],
+        });
       }
       continue;
     }
