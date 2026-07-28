@@ -1260,12 +1260,28 @@ export default {
   overflow: hidden;
 }
 
-/* Gap for direct screen content (slot) - WidgetCanvas has its own GRID_GAP */
-.cv-dashboard > :not(.widget-canvas) {
+/* Outer gutter for dashboard content — screens AND both widget canvases.
+ *
+ * No background: 0. The canvas is the surface, so it runs edge to edge; any
+ * inset would just be dead app-coloured space.
+ *
+ * Custom background: 4px. The canvas becomes a WINDOW — .cv-dashboard goes
+ * transparent and the widget frames become the glass — so the wallpaper needs
+ * a margin to actually be visible. Without it the widgets tile flush to every
+ * edge and cover the image completely.
+ *
+ * This rule used to read `:not(.widget-canvas)`, exempting the canvas from
+ * the custom-bg gutter. That was correct while gridToPixel added an outer
+ * GRID_GAP inset — the canvas supplied its own. The uniform-4px pass removed
+ * that inset (see gridUtils.js: "the origin is the container edge") and the
+ * exemption outlived its reason. GRID_GAP is now strictly a gutter BETWEEN
+ * widgets; the outer one belongs here, where it can be conditional on the
+ * background mode. */
+.cv-dashboard > * {
   margin: 0px;
 }
 
-.custom-bg .cv-dashboard > :not(.widget-canvas) {
+.custom-bg .cv-dashboard > * {
   margin: 4px;
 }
 
@@ -1536,16 +1552,9 @@ body.custom-bg .cv-dashboard {
   background: transparent !important;
 }
 
-/* On the WORKSPACES page only, the slotted .ws-root sits flush against the
-   tab bar above it — no top margin, sides and bottom keep the custom-bg
-   4px gutter. Keyed by the page's own data-page identifier (set by
-   Workspace.vue, protected from embedded-screen stomps by BaseScreen's
-   isInsideWidgetCanvas guard), so no other slotted screen is affected.
-   Global block because body-scoped selectors can't live in scoped CSS;
-   (0,4,1) outranks the scoped 4px rule's (0,4,0). */
-body.custom-bg[data-page='terminal-workspace'] .cv-dashboard > :not(.widget-canvas) {
-  margin: 0 4px 4px;
-}
+/* (The workspace root used to take a page-keyed margin override here. Both
+   canvases now share the one gutter rule above — flush with no background,
+   4px over a custom one — so no page needs a special case.) */
 
 /* ═══════════════════ TOOLBAR PROVIDER SELECTOR ═══════════════════ */
 .cv-toolbar-selector .provider-dropdown {

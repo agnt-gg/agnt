@@ -843,10 +843,26 @@ export default {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  width: calc(100% - 8px);
+  /* No explicit width. .cv-dashboard is a column flex container, so the
+     default `align-items: stretch` sizes this to the host minus whatever
+     margin it has — self-correcting either way. The previous
+     `calc(100% - 8px)` hardcoded the custom-background gutter into the width,
+     so with no background (margin 0) the canvas fell 8px short of its host
+     and left dead space down the right edge. */
   overflow: hidden;
   background: var(--color-background);
   position: relative;
+}
+
+/* Over a custom background the canvas is a WINDOW, not a surface: the
+   wallpaper shows through and the widget frames become the glass (see
+   `body.custom-bg .widget-frame` in WidgetFrame.vue). The custom-page canvas
+   already behaves this way — .cv-dashboard is forced transparent — and an
+   opaque root here painted straight over it.
+   Scoped CSS appends the scope attribute to the LAST compound selector, so
+   this resolves to (0,3,1) and outranks the base rule's (0,2,0). */
+body.custom-bg .ws-root {
+  background: transparent;
 }
 
 /* ═══════════ tab bar ═══════════ */

@@ -1444,17 +1444,64 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(read('Workspace.vue')).toContain("provide('isInsideWidgetCanvas', true)");
   });
 
-  it('zeroes the ws-root top margin ONLY via the workspace page identifier', () => {
+  it('takes the dashboard gutter from ONE rule that is conditional on the background', () => {
+    // The gutter rule used to read `:not(.widget-canvas)`, exempting the
+    // canvas from the custom-background 4px margin. That was correct while
+    // gridToPixel added an outer GRID_GAP inset — the canvas supplied its
+    // own gutter. The uniform-4px pass removed that inset and the exemption
+    // outlived its reason, so widgets tiled flush to every edge and covered
+    // the wallpaper completely. One rule, every child, both modes:
+    //   no background -> 0   (the canvas IS the surface: edge to edge)
+    //   custom background -> 4px (the canvas is a WINDOW: the image shows)
     const fs2 = require('node:fs');
     const path2 = require('node:path');
-    const cs = fs2.readFileSync(path2.join(__dirname, '../../../../../canvas/CanvasScreen.vue'), 'utf8');
-    const rule = cs.match(/body\.custom-bg\[data-page='terminal-workspace'\] \.cv-dashboard > :not\(\.widget-canvas\) \{[^}]*\}/);
-    expect(rule, 'page-scoped margin override missing from CanvasScreen.vue').toBeTruthy();
-    expect(rule[0]).toContain('margin: 0 4px 4px;');
-    // The override must be keyed by the identifier — an unscoped variant
-    // would change every slotted screen.
-    const unscoped = cs.replace(/\/\*[\s\S]*?\*\//g, '').match(/\n\s*body\.custom-bg \.cv-dashboard > :not\(\.widget-canvas\) \{/);
-    expect(unscoped, 'the margin-top override must not exist unkeyed').toBeNull();
+    const canvasDir = path2.join(__dirname, '../../../../../canvas');
+    const cs = fs2.readFileSync(path2.join(canvasDir, 'CanvasScreen.vue'), 'utf8');
+    const wc = fs2.readFileSync(path2.join(canvasDir, 'WidgetCanvas.vue'), 'utf8');
+    const ws = read('Workspace.vue');
+
+    // Comments are stripped first so prose can never satisfy an assertion.
+    const body = cs.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(body).toMatch(/\.cv-dashboard > \*\s*\{\s*margin:\s*0px;/);
+    expect(body).toMatch(/\.custom-bg \.cv-dashboard > \*\s*\{\s*margin:\s*4px;/);
+
+    // No exception may survive in either direction: an exempted canvas loses
+    // the wallpaper gutter, and a page-keyed override re-introduces the
+    // one-off this rule replaced.
+    expect(body, 'the gutter rule must not exempt anything').not.toMatch(/\.cv-dashboard > :not\(/);
+    expect(body).not.toContain("[data-page='terminal-workspace'] .cv-dashboard");
+
+    // ...and neither canvas may re-opt-out by wearing an exemption class.
+    expect(wc, 'WidgetCanvas must not carry an exemption class').toContain('class="widget-canvas"');
+    expect(wc).not.toContain('cv-full-bleed');
+    expect(ws, 'the workspace root must not carry an exemption class').toContain('class="ws-root"');
+    expect(ws).not.toContain('cv-full-bleed');
+  });
+  it('never hardcodes its width, and lets the wallpaper through', () => {
+    const ws = read('Workspace.vue');
+    const styles = ws.slice(ws.indexOf('<style')).replace(/\/\*[\s\S]*?\*\//g, '');
+    const root = styles.slice(styles.indexOf('.ws-root {'));
+    const rootBody = root.slice(0, root.indexOf('}'));
+
+    // A fixed width silently re-breaks the moment the margin changes — which
+    // is exactly how calc(100% - 8px) came to exist. Flex stretch is
+    // self-correcting.
+    expect(rootBody, '.ws-root must not declare a width').not.toMatch(/\bwidth:/);
+
+    // Same rule for the other canvas: width/height:100% resolve against the
+    // host's full content box and ignore the outer margin, so over a custom
+    // background it overhung the right edge by exactly the gutter.
+    const fs2 = require('node:fs');
+    const path2 = require('node:path');
+    const wc = fs2.readFileSync(path2.join(__dirname, '../../../../../canvas/WidgetCanvas.vue'), 'utf8');
+    const wcStyles = wc.slice(wc.indexOf('<style')).replace(/\/\*[\s\S]*?\*\//g, '');
+    const wcRoot = wcStyles.slice(wcStyles.indexOf('.widget-canvas {'));
+    const wcBody = wcRoot.slice(0, wcRoot.indexOf('}'));
+    expect(wcBody, '.widget-canvas must not declare a width').not.toMatch(/\bwidth:/);
+    expect(wcBody, '.widget-canvas must not declare a height').not.toMatch(/\bheight:/);
+
+    // Over a custom background the canvas is a window, not a surface.
+    expect(styles).toMatch(/body\.custom-bg \.ws-root\s*\{\s*background:\s*transparent;/);
   });
 
   it('window-nav chevrons share WidgetFrame’s control metrics', () => {

@@ -246,8 +246,14 @@ export default {
 <style scoped>
 .widget-canvas {
   position: relative;
-  width: 100%;
-  height: 100%;
+  /* No explicit size. The only host is .cv-dashboard — a column flex
+     container — so `flex: 1` gives the height and the default
+     `align-items: stretch` gives the width, both measured AFTER the outer
+     margin. `width/height: 100%` resolved against the host's full content
+     box and ignored that margin, so over a custom background the canvas
+     overhung the right edge by exactly the gutter. Same failure mode as the
+     workspace root's old calc(100% - 8px): a hardcoded size cannot track a
+     margin that changes with the theme. */
   overflow: hidden;
   background: transparent;
 }
