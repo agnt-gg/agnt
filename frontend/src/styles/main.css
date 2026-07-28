@@ -12,6 +12,9 @@
 @import './components/_forms.css';
 @import './components/_layout-components.css';
 @import './components/_tables.css';
+/* Global because the v-tooltip directive renders on screens that never import
+   the Tooltip component. */
+@import './components/_tooltip.css';
 
 /* Theme styles */
 @import './themes/_core.css';

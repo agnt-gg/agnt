@@ -9,6 +9,7 @@ import store from '@/store/state';
 import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
 import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
+import { vTooltip } from '@/directives/tooltip.js';
 
 // Import test utilities in development mode
 if (process.env.NODE_ENV === 'development') {
@@ -24,6 +25,10 @@ const app = createApp(App);
 
 app.use(router);
 app.use(store);
+
+// The themed replacement for the native `title` attribute. Registered
+// globally so it works in every template without a per-file import.
+app.directive('tooltip', vTooltip);
 
 // Initialize the new unified theme system (synchronous, fast)
 store.dispatch('theme/initTheme');

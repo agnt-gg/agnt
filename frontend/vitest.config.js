@@ -10,6 +10,8 @@ export default defineConfig({
     environment: 'jsdom',
     reporters: ['verbose'],
     passWithNoTests: true,
+    // Mirrors the global registrations main.js makes on the real app.
+    setupFiles: ['./vitest.setup.js'],
   },
   resolve: {
     alias: {
