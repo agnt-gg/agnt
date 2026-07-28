@@ -12,6 +12,10 @@ name: Tests
 # So the point of this workflow is not that tests exist. It is that a red run
 # BLOCKS, and therefore can never become a baseline again. There is deliberately
 # no allowed-failure count and no continue-on-error on the gating jobs.
+#
+# Corollary: a job that is ALWAYS red is the same as no gate at all, because it
+# teaches everyone to ignore the ✗. Every job here must be green on a healthy
+# tree — see the node-test job for how a report-only suite stays green.
 
 on:
   push:
@@ -33,10 +37,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Native modules are not needed to run the suite, and building them is the
-      # slowest and flakiest part of a full install.
+
+      # Install scripts are skipped because the two heavyweight native deps —
+      # sharp (libvips) and ffmpeg-static (a ~70MB GitHub release download) —
+      # are declared in package.json but imported nowhere under backend/src, so
+      # building them only buys us network flake.
+      #
+      # sqlite3 is the exception and MUST be built: backend/src/models/database
+      # loads it at import time, so without the binding all 38 route modules
+      # fail to load. That surfaces as a cascade of *misleading* failures —
+      # "POST /install not found in PluginRoutes.js" reads like a security
+      # regression, not a missing .node file. The first version of this workflow
+      # skipped it and burned two red runs on exactly that confusion.
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
+      - name: Build the sqlite3 native binding
+        run: npm rebuild sqlite3
+      # A skipped install script fails SILENTLY — it exits 0 and leaves nothing
+      # behind. This line is what turns that into a loud, self-naming failure,
+      # and is the guard that would have caught the original mistake.
+      - name: Verify native bindings load
+        run: node -e "require('sqlite3'); console.log('sqlite3 binding OK')"
+
       - name: Run backend suite
         run: npm test
 
@@ -49,13 +71,13 @@ jobs:
         with:
           node-version: '20'
       - name: Install frontend dependencies
-        run: npm --prefix frontend install --ignore-scripts
+        run: npm --prefix frontend ci --ignore-scripts
       - name: Run frontend suite
         run: npm --prefix frontend test
       - name: Build frontend
         run: npm --prefix frontend run build
 
-  # NOT a gate yet — see the note below. This job reports; it does not block.
+  # NOT a gate yet — this job reports; it does not block.
   #
   # tests/unit/** uses the node:test runner rather than vitest, so it was never
   # picked up by any runner and has 13 accumulated failures. They are NOT test
@@ -64,19 +86,26 @@ jobs:
   # staticModels?). Guessing at them in a test-infrastructure change would be
   # inventing product decisions.
   #
-  # Flip continue-on-error to false the moment those 13 are resolved. Leaving a
-  # permanently-red required job is exactly the habit this workflow exists to
-  # break.
+  # continue-on-error sits on the STEP, not the job. At job level the job's
+  # conclusion is still reported as `failure` to the checks API, so every commit
+  # carried a permanent red ✗ — which is precisely the "ignore the red" habit
+  # this workflow exists to break. At step level the failure stays visible in
+  # the log while the job concludes green, so red always means something is
+  # genuinely broken.
+  #
+  # Delete the continue-on-error line the moment those 13 are resolved.
   node-test:
     name: node:test suite (report only — 13 known failures)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
+      - name: Build the sqlite3 native binding
+        run: npm rebuild sqlite3
       - name: Run node:test suite
+        continue-on-error: true
         run: npm run test:node
