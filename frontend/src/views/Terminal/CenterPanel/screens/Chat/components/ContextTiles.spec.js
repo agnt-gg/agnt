@@ -51,6 +51,7 @@ const contextStatus = {
     messagesTokens: 712_011,
     outputBufferTokens: 32_000,
     calibration: 1.61,
+    residualDrift: 1.31,
   },
 };
 
@@ -106,7 +107,7 @@ describe('ContextTiles — collapsed strip', () => {
   it('shows a drift pip only once the estimator is materially off', () => {
     expect(make().find('.strip-pip').exists()).toBe(true);
     const calm = make({
-      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, calibration: 1.02 } },
+      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1.02 } },
     });
     expect(calm.find('.strip-pip').exists()).toBe(false);
   });
@@ -165,7 +166,7 @@ describe('ContextTiles — tiles', () => {
     const w = make({
       totalCost: 0, totalUncachedCost: null, executionsCount: 0, rounds: [],
       manifest: { ...manifest, economics: null },
-      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, calibration: 1 } },
+      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1 } },
     });
     expect(tileKeys(w)).toEqual(['Request', 'Floor / turn', 'Spent', 'Saved']);
     expect(w.findAll('.tile.placeholder')).toHaveLength(3);
@@ -173,7 +174,7 @@ describe('ContextTiles — tiles', () => {
 
   it('drops the drift tile when the estimator is accurate', () => {
     const w = make({
-      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, calibration: 1 } },
+      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1 } },
     });
     expect(tileKeys(w)).not.toContain('Drift');
   });
@@ -266,11 +267,11 @@ describe('ContextTiles — drawer', () => {
     expect(text).toContain('$3.75');
   });
 
-  it('forecasts the wall from measured growth', async () => {
+  it('forecasts when compression will start, from measured growth', async () => {
     const w = make();
     await tileByLabel(w, 'Drift').trigger('click');
     // (1,000,000 - 781,090) / 73,000 = 2.99 -> 2 safe turns
-    expect(w.find('.tiles-drawer').text()).toContain('2 turns');
+    expect(w.find('.tiles-drawer').text()).toContain('~2 turns');
   });
 
   it('says "not growing" rather than inventing a forecast', async () => {
@@ -291,7 +292,7 @@ describe('ContextTiles — drawer', () => {
     await tileByLabel(w, 'Drift').trigger('click');
     expect(w.find('.tiles-drawer').exists()).toBe(true);
     await w.setProps({
-      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, calibration: 1 } },
+      contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1 } },
     });
     expect(w.find('.tiles-drawer').exists()).toBe(false);
   });
@@ -346,6 +347,76 @@ describe('ContextTiles — rounds', () => {
     await tileByLabel(w, 'This turn').trigger('click');
     await w.setProps({ rounds: [rounds[0]] });
     expect(w.findAll('.round')[0].classes()).toContain('selected');
+  });
+});
+
+describe('ContextTiles — drift reports leftover error, not the correction', () => {
+  const bd = (over) => ({
+    contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, ...over } },
+  });
+
+  it('REGRESSION: a large correction that is working shows no drift at all', () => {
+    // The shipped bug. calibration 1.61 is already applied to every number on
+    // screen; reporting it as drift told the user their figures were 61% wrong
+    // when they were correct. Only the residual is error.
+    const w = make(bd({ calibration: 1.61, residualDrift: 1.0 }));
+    expect(tileKeys(w)).not.toContain('Drift');
+    expect(w.find('.strip-pip').exists()).toBe(false);
+  });
+
+  it('ignores the correction factor entirely, however large', () => {
+    const w = make(bd({ calibration: 2.9, residualDrift: 1.03 }));
+    expect(tileKeys(w)).not.toContain('Drift');
+  });
+
+  it('flags genuine leftover error', () => {
+    const w = make(bd({ calibration: 1.61, residualDrift: 1.4 }));
+    const t = tileByLabel(w, 'Drift');
+    expect(t.find('.tile-value').text()).toBe('\u00d71.40');
+    expect(t.find('.tile-sub').text()).toBe('40% off after calibration');
+  });
+
+  it('treats over-estimating as drift too', () => {
+    // 0.75 means the provider counted a quarter LESS than we predicted. Being
+    // wrong in the cheap direction is still being wrong.
+    const w = make(bd({ calibration: 1.2, residualDrift: 0.75 }));
+    const t = tileByLabel(w, 'Drift');
+    expect(t).toBeTruthy();
+    expect(t.find('.tile-sub').text()).toBe('25% off after calibration');
+  });
+
+  it('makes no claim when the backend has not measured a residual yet', () => {
+    // Turn one, or an older backend. Silence beats a fabricated number.
+    const w = make(bd({ calibration: 1.61, residualDrift: null }));
+    expect(tileKeys(w)).not.toContain('Drift');
+  });
+
+  it('contrasts what the panel predicted against what the provider counted', async () => {
+    const w = make(bd({ calibration: 1.61, residualDrift: 1.4 }));
+    await tileByLabel(w, 'Drift').trigger('click');
+    const text = w.find('.tiles-drawer').text();
+    expect(text).toContain('already applies this correction');
+    expect(text).toContain('781.1k');   // predicted (already calibrated)
+    expect(text).toContain('1.1M');     // 781,090 x 1.4 = what the provider counted
+  });
+});
+
+describe('ContextTiles — running out of window means compression, not a wall', () => {
+  it('never calls the limit a wall', async () => {
+    const w = make();
+    await tileByLabel(w, 'Drift').trigger('click');
+    // AGNT compresses and the conversation continues; "wall" claims otherwise.
+    expect(w.find('.tiles-drawer').text().toLowerCase()).not.toContain('wall');
+    expect(tileByLabel(w, 'Drift').find('.tile-sub').text().toLowerCase()).not.toContain('wall');
+  });
+
+  it('says what actually happens when the window fills', async () => {
+    const w = make();
+    await tileByLabel(w, 'Drift').trigger('click');
+    const text = w.find('.tiles-drawer').text();
+    expect(text).toContain('Compression starts in');
+    expect(text).toContain('Nothing stops when the window fills');
+    expect(text).toMatch(/compresses the\s+oldest turns/);
   });
 });
 

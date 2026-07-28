@@ -977,6 +977,28 @@ function updateEstimateCalibration(prior, usage, estimatedTotal) {
   return prior * 0.5 + ratio * 0.5;
 }
 
+/**
+ * How far off the estimate STILL is once the correction has been applied.
+ *
+ * updateEstimateCalibration learns the SIZE of the correction (real / raw
+ * estimate). Reporting that number as "drift" told the user their figures
+ * were wrong by 30% when the displayed figures had already been corrected by
+ * exactly that amount — the panel was showing its own fix as if it were the
+ * defect.
+ *
+ * What actually matters is the leftover: real / (raw estimate x calibration
+ * we applied at request time). When calibration is working this sits at ~1.0,
+ * and any move away from 1.0 is genuine, actionable error.
+ *
+ * @returns {number|null} null when the round is too small to carry signal.
+ */
+function computeResidualDrift(prior, usage, estimatedTotal) {
+  const real = extractRealPromptTokens(usage);
+  if (!(real >= 5000) || !(estimatedTotal >= 5000)) return null;
+  const applied = Number.isFinite(prior) && prior > 0 ? prior : 1;
+  return Math.min(3, Math.max(0.33, real / (estimatedTotal * applied)));
+}
+
 export {
   estimateTokens,
   estimateToolTokens,
@@ -988,4 +1010,5 @@ export {
   manageToolOutput,
   extractRealPromptTokens,
   updateEstimateCalibration,
+  computeResidualDrift,
 };

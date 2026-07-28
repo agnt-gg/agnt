@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   inputTokenRate,
   cachedInputTokenRate,
-  forecastTurnsToWall,
+  forecastTurnsToCompression,
   buildEconomics,
   priceItems,
 } from './contextEconomics.js';
@@ -58,24 +58,24 @@ describe('cachedInputTokenRate', () => {
   });
 });
 
-describe('forecastTurnsToWall', () => {
+describe('forecastTurnsToCompression', () => {
   it('divides remaining headroom by growth', () => {
-    expect(forecastTurnsToWall({ currentTokens: 700_000, tokenLimit: 1_000_000, growthPerTurn: 100_000 })).toBe(3);
+    expect(forecastTurnsToCompression({ currentTokens: 700_000, tokenLimit: 1_000_000, growthPerTurn: 100_000 })).toBe(3);
   });
 
   it('floors rather than rounds — 2.9 turns of headroom is 2 safe turns', () => {
-    expect(forecastTurnsToWall({ currentTokens: 710_000, tokenLimit: 1_000_000, growthPerTurn: 100_000 })).toBe(2);
+    expect(forecastTurnsToCompression({ currentTokens: 710_000, tokenLimit: 1_000_000, growthPerTurn: 100_000 })).toBe(2);
   });
 
   it('returns 0 when already over the limit', () => {
-    expect(forecastTurnsToWall({ currentTokens: 1_100_000, tokenLimit: 1_000_000, growthPerTurn: 50_000 })).toBe(0);
+    expect(forecastTurnsToCompression({ currentTokens: 1_100_000, tokenLimit: 1_000_000, growthPerTurn: 50_000 })).toBe(0);
   });
 
   it('returns null when growth is unknown, zero or shrinking', () => {
-    expect(forecastTurnsToWall({ currentTokens: 10, tokenLimit: 100, growthPerTurn: 0 })).toBeNull();
-    expect(forecastTurnsToWall({ currentTokens: 10, tokenLimit: 100, growthPerTurn: -500 })).toBeNull();
-    expect(forecastTurnsToWall({ currentTokens: 10, tokenLimit: 0, growthPerTurn: 10 })).toBeNull();
-    expect(forecastTurnsToWall({})).toBeNull();
+    expect(forecastTurnsToCompression({ currentTokens: 10, tokenLimit: 100, growthPerTurn: 0 })).toBeNull();
+    expect(forecastTurnsToCompression({ currentTokens: 10, tokenLimit: 100, growthPerTurn: -500 })).toBeNull();
+    expect(forecastTurnsToCompression({ currentTokens: 10, tokenLimit: 0, growthPerTurn: 10 })).toBeNull();
+    expect(forecastTurnsToCompression({})).toBeNull();
   });
 });
 

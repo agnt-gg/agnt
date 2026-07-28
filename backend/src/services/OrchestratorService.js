@@ -7,7 +7,7 @@ import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
-import { updateEstimateCalibration } from '../utils/contextManager.js';
+import { updateEstimateCalibration, computeResidualDrift } from '../utils/contextManager.js';
 import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConfigs.js';
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
@@ -1123,6 +1123,9 @@ async function universalChatHandler(req, res, context = {}) {
     // Estimate->real token calibration learned from provider usage reports.
     // Persisted so the compression trigger stays honest from turn 1 of the
     // next turn instead of relearning the conversation's density each time.
+    if (typeof priorContext._residualDrift === 'number') {
+      conversationContext._residualDrift = priorContext._residualDrift;
+    }
     if (typeof priorContext._estimateCalibration === 'number') {
       conversationContext._estimateCalibration = priorContext._estimateCalibration;
     }
@@ -1607,6 +1610,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         outputBufferTokens: contextResult.outputBufferTokens,
         totalRequestTokens: scaleForDisplay(contextResult.totalRequestTokens),
         calibration: displayCalibration,
+        // Leftover error AFTER calibration. The numbers above are already
+        // corrected, so this is what the panel should call drift.
+        residualDrift: conversationContext._residualDrift ?? null,
       },
     });
 
@@ -1768,6 +1774,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
     accumulateUsage(initialUsage);
     // Fold this round's REAL prompt size (provider-reported) into the
     // estimate calibration used by every subsequent manageContext call.
+    // Leftover error after the correction we actually applied. Must be
+    // measured BEFORE the fold below, which overwrites that correction.
+    {
+      const residual = computeResidualDrift(
+        conversationContext._estimateCalibration, initialUsage, contextResult.totalRequestTokens);
+      if (residual != null) {
+        conversationContext._residualDrift =
+          conversationContext._residualDrift == null
+            ? residual
+            : conversationContext._residualDrift * 0.5 + residual * 0.5;
+      }
+    }
     conversationContext._estimateCalibration = updateEstimateCalibration(
       conversationContext._estimateCalibration,
       initialUsage,
@@ -2758,6 +2776,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           outputBufferTokens: loopContextResult.outputBufferTokens,
           totalRequestTokens: loopScale(loopContextResult.totalRequestTokens),
           calibration: loopDisplayCal,
+          residualDrift: conversationContext._residualDrift ?? null,
         },
       });
 
@@ -2797,6 +2816,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
       accumulateUsage(nextResponse.usage);
+      // Leftover error after the correction we actually applied. Must be
+      // measured BEFORE the fold below, which overwrites that correction.
+      {
+        const residual = computeResidualDrift(
+          conversationContext._estimateCalibration, nextResponse.usage, loopContextResult.totalRequestTokens);
+        if (residual != null) {
+          conversationContext._residualDrift =
+            conversationContext._residualDrift == null
+              ? residual
+              : conversationContext._residualDrift * 0.5 + residual * 0.5;
+        }
+      }
       conversationContext._estimateCalibration = updateEstimateCalibration(
         conversationContext._estimateCalibration,
         nextResponse.usage,
@@ -2912,6 +2943,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
         );
 
         accumulateUsage(followUpResponse.usage);
+        // Leftover error after the correction we actually applied. Must be
+        // measured BEFORE the fold below, which overwrites that correction.
+        {
+          const residual = computeResidualDrift(
+            conversationContext._estimateCalibration, followUpResponse.usage, followUpContext.totalRequestTokens);
+          if (residual != null) {
+            conversationContext._residualDrift =
+              conversationContext._residualDrift == null
+                ? residual
+                : conversationContext._residualDrift * 0.5 + residual * 0.5;
+          }
+        }
         conversationContext._estimateCalibration = updateEstimateCalibration(
           conversationContext._estimateCalibration,
           followUpResponse.usage,

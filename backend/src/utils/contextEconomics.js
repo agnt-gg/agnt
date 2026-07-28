@@ -61,18 +61,22 @@ export function cachedInputTokenRate(provider, model) {
 }
 
 /**
- * How many more turns until the context window is full, given how fast the
- * conversation is growing.
+ * How many more turns before context management has to start compressing.
  *
- * `growthPerTurn` is deliberately an input rather than something inferred from
- * a single sample: one round of a tool loop is not a turn, and guessing from
- * one data point would produce a confident wrong number.
+ * Deliberately NOT "turns until the conversation stops". AGNT compresses —
+ * older turns get summarised or offloaded and the conversation continues
+ * indefinitely. What changes at this point is fidelity and cost, not
+ * availability, and the copy on top of this number has to say so.
+ *
+ * `growthPerTurn` is an input rather than something inferred from a single
+ * sample: one round of a tool loop is not a turn, and guessing from one data
+ * point would produce a confident wrong number.
  *
  * @returns {number|null} null when growth is unknown or non-positive (the
  *          conversation is not heading for the wall, so there is nothing to
  *          forecast and a fabricated "999 turns" would be noise).
  */
-export function forecastTurnsToWall({ currentTokens, tokenLimit, growthPerTurn }) {
+export function forecastTurnsToCompression({ currentTokens, tokenLimit, growthPerTurn }) {
   const cur = Number(currentTokens) || 0;
   const limit = Number(tokenLimit) || 0;
   const growth = Number(growthPerTurn) || 0;

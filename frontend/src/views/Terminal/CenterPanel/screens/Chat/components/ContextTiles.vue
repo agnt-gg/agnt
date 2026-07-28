@@ -186,8 +186,10 @@
                 <div class="mt-drift" :style="{ width: 100 - 100 / driftFactor + '%' }"></div>
               </div>
               <span class="blk-note">
-                Estimator reads <b>{{ formatNumber(rawEstimate) }}</b>, the provider counted
-                <b class="warn">{{ formatNumber(currentTokens) }}</b>.
+                The panel already applies this correction, so every size it shows is
+                calibrated. It predicted <b>{{ formatNumber(currentTokens) }}</b>, the
+                provider counted <b class="warn">{{ formatNumber(providerCounted) }}</b> &mdash;
+                <b class="warn">{{ driftPct }}%</b> still unaccounted for.
               </span>
             </div>
           </div>
@@ -202,14 +204,15 @@
               <span class="row-value">{{ formatNumber(headroom) }}</span>
             </div>
             <div class="row">
-              <span class="row-label" :class="{ warn: turnsToWall != null && turnsToWall <= 3 }">Window fills in</span>
-              <span class="row-value" :class="{ warn: turnsToWall != null && turnsToWall <= 3 }">
-                {{ turnsToWall == null ? 'not growing' : `≈${turnsToWall} turn${turnsToWall === 1 ? '' : 's'}` }}
+              <span class="row-label" :class="{ warn: turnsToCompression != null && turnsToCompression <= 3 }">Compression starts in</span>
+              <span class="row-value" :class="{ warn: turnsToCompression != null && turnsToCompression <= 3 }">
+                {{ turnsToCompression == null ? 'not growing' : `~${turnsToCompression} turn${turnsToCompression === 1 ? '' : 's'}` }}
               </span>
             </div>
             <span class="blk-note">
-              Calibration is measured from real provider usage each round, so the panel shows
-              what the provider will count rather than a fixed chars-per-token guess.
+              Nothing stops when the window fills. Context management compresses the
+              oldest turns and the conversation carries on &mdash; what changes is fidelity
+              and the cost of rebuilding the prefix, not whether you can keep going.
             </span>
           </div>
         </template>
@@ -480,14 +483,24 @@ export default {
     });
 
     /* ── drift ── */
+    // Drift is the error LEFT OVER after calibration, not the size of the
+    // correction. currentTokens is already calibrated, so reporting the
+    // correction factor here told the user their numbers were 61% wrong when
+    // they were right. A backend that sends no residual gets 1.0 and the tile
+    // disappears, which is the correct "not measured yet" state.
     const driftFactor = computed(() => {
-      const c = Number(breakdown.value?.calibration) || 1;
-      return c > 1 ? c : 1;
+      const r = Number(breakdown.value?.residualDrift);
+      return Number.isFinite(r) && r > 0 ? r : 1;
     });
-    const driftWarning = computed(() => driftFactor.value >= 1.15);
-    const rawEstimate = computed(() => Math.round(currentTokens.value / driftFactor.value));
+    // Over- and under-counting are both drift.
+    const driftWarning = computed(() => Math.abs(driftFactor.value - 1) >= 0.15);
+    const driftPct = computed(() => Math.round(Math.abs(driftFactor.value - 1) * 100));
+    const providerCounted = computed(() => Math.round(currentTokens.value * driftFactor.value));
     const headroom = computed(() => Math.max(0, tokenLimit.value - currentTokens.value));
-    const turnsToWall = computed(() => {
+    // Turns until context management starts compressing. The conversation does
+    // NOT stop there — older turns get summarised and it continues — so no copy
+    // built on this number may call it a wall or a limit.
+    const turnsToCompression = computed(() => {
       const g = Number(props.growthPerTurn) || 0;
       if (!tokenLimit.value || g <= 0) return null;
       return Math.max(0, Math.floor(headroom.value / g));
@@ -594,9 +607,7 @@ export default {
           label: 'Drift',
           value: `×${driftFactor.value.toFixed(2)}`,
           cls: 'warn',
-          sub: turnsToWall.value == null
-            ? `est ${formatNumber(rawEstimate.value)} · real ${formatNumber(currentTokens.value)}`
-            : `wall in ≈${turnsToWall.value} turn${turnsToWall.value === 1 ? '' : 's'}`,
+          sub: `${driftPct.value}% off after calibration`,
         });
       }
 
@@ -631,7 +642,7 @@ export default {
       relPct, miniPct, compositionTitle, legendRows,
       economics, hasEconomics, floorSystemPct, recurringDrivers, topThreeSaving,
       totalSaved, savedPct, hasSavings, isInvestment,
-      driftFactor, driftWarning, rawEstimate, headroom, turnsToWall,
+      driftFactor, driftWarning, driftPct, providerCounted, headroom, turnsToCompression,
       cacheState, cacheLabel, cacheExpiresInMs, cacheAgeLabel, cacheTtl, fmtDuration,
       roundHeight, roundFlex, selectedRoundLabel, prefixBroke,
       stripStats, tiles,
