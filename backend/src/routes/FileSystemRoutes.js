@@ -4,6 +4,7 @@ import { open as fsOpen } from 'fs/promises';
 import path from 'path';
 import multer from 'multer';
 import { authenticateToken } from './Middleware.js';
+import { requireAuthMedia } from '../utils/authGuard.js';
 import PathManager from '../utils/PathManager.js';
 
 const router = express.Router();
@@ -423,7 +424,17 @@ router.post('/rename', authenticateToken, async (req, res) => {
 
 // GET /api/filesystem/raw?path=<relPath>
 // Serve a file with its native content-type (images, videos, etc.)
-router.get('/raw', authenticateToken, async (req, res) => {
+//
+// requireAuthMedia, NOT authenticateToken: this URL is consumed by <img>,
+// <video>, <audio> and <iframe> in the Artifacts preview, and a browser cannot
+// put an Authorization header on a subresource load. The header-only guard
+// made every one of those previews 401. See utils/mediaRoutes.js.
+//
+// Accepting the media cookie here is safe: validatePath below confines the
+// request to the workspace root and rejects traversal, so this route is
+// strictly narrower than /api/local-file, which already accepts that cookie
+// for any absolute path.
+router.get('/raw', requireAuthMedia, async (req, res) => {
   try {
     const root = await getWorkspaceRoot();
     const relPath = req.query.path;

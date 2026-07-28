@@ -7833,7 +7833,7 @@ Streams local files over HTTP with Range support. The chat renderer rewrites `fi
 
 **GET** `/?path=<path>` or **GET** `/<path>`
 
-- **Authentication**: None
+- **Authentication**: Required. `requireAuthMedia` accepts a bearer header, `?token=`, or the `agnt_media_token` cookie — the cookie is the only carrier that survives relative-URL resolution inside injected HTML, so `<img src="/api/local-file/...">` works from rendered content.
 - **Description**: Two equivalent forms — legacy query-string (`/api/local-file?path=...`) and path-based (`/api/local-file/<path>`). Supports HTTP Range requests (`206 Partial Content`) for media seeking.
 - **Response**: File bytes (`200` or `206`); `416` on an invalid range; `500` on failure
 

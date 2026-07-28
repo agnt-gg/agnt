@@ -13,14 +13,38 @@
  * them, which is why it exists.
  *
  * Scope is deliberately narrow:
- *   path=/api/local-file  — never sent to any other endpoint
- *   SameSite=Strict       — never sent on a cross-site navigation
- *   Secure when on https  — omitted on http://localhost, where Secure would
- *                           stop the cookie being set at all
+ *   path=<one media route>  — never sent to any other endpoint
+ *   SameSite=Strict         — never sent on a cross-site navigation
+ *   Secure when on https    — omitted on http://localhost, where Secure would
+ *                             stop the cookie being set at all
+ *
+ * WHY A LIST OF PATHS, NOT ONE `/api`
+ * ───────────────────────────────────
+ * Cookie paths are prefix-matched, so a single `path=/api` cookie would ride
+ * along on POST /api/filesystem/file and every other mutating endpoint — a
+ * CSRF carrier we have no reason to create. Instead one cookie is written per
+ * byte-streaming route (same name, distinct paths: the browser keys cookies on
+ * name+path, so these coexist and only the matching one is ever sent).
+ *
+ * The list must mirror backend/src/utils/mediaRoutes.js — a route missing here
+ * gets a 401 on every <img>/<video>/<iframe> load, which is exactly the outage
+ * that produced this comment. A cross-file test asserts the two agree.
  */
 
 export const MEDIA_COOKIE_NAME = 'agnt_media_token';
-export const MEDIA_COOKIE_PATH = '/api/local-file';
+
+/**
+ * Every route whose bytes are loaded by the browser itself.
+ * Mirrors MEDIA_ROUTE_PREFIXES in backend/src/utils/mediaRoutes.js.
+ */
+export const MEDIA_COOKIE_PATHS = Object.freeze([
+  '/api/local-file', // arbitrary absolute path, Range-enabled (chat, widgets, artifact HTML)
+  '/api/filesystem/raw', // workspace-relative bytes (Artifacts image/video/audio/PDF preview)
+  '/api/images', // generated images by id, once the in-memory base64 cache is gone
+]);
+
+/** @deprecated Kept for callers that predate multi-path scoping. */
+export const MEDIA_COOKIE_PATH = MEDIA_COOKIE_PATHS[0];
 
 const DEFAULT_MAX_AGE = 7 * 24 * 60 * 60; // 7 days
 
@@ -62,21 +86,29 @@ export function setMediaCookie(token) {
     return false;
   }
   const maxAge = ttl ?? DEFAULT_MAX_AGE;
-  const parts = [
-    `${MEDIA_COOKIE_NAME}=${encodeURIComponent(token)}`,
-    `path=${MEDIA_COOKIE_PATH}`,
-    `max-age=${maxAge}`,
-    'SameSite=Strict',
-  ];
-  if (isSecureContext()) parts.push('Secure');
-  document.cookie = parts.join('; ');
+  for (const cookiePath of MEDIA_COOKIE_PATHS) {
+    const parts = [
+      `${MEDIA_COOKIE_NAME}=${encodeURIComponent(token)}`,
+      `path=${cookiePath}`,
+      `max-age=${maxAge}`,
+      'SameSite=Strict',
+    ];
+    if (isSecureContext()) parts.push('Secure');
+    document.cookie = parts.join('; ');
+  }
   return true;
 }
 
-/** Remove the media cookie. Must mirror path exactly or the browser keeps it. */
+/**
+ * Remove the media cookie from every path it was written to.
+ * Each path must be mirrored EXACTLY — a clear with a mismatched path is a
+ * no-op and silently leaves a live credential behind on logout.
+ */
 export function clearMediaCookie() {
   if (typeof document === 'undefined') return;
-  document.cookie = `${MEDIA_COOKIE_NAME}=; path=${MEDIA_COOKIE_PATH}; max-age=0; SameSite=Strict`;
+  for (const cookiePath of MEDIA_COOKIE_PATHS) {
+    document.cookie = `${MEDIA_COOKIE_NAME}=; path=${cookiePath}; max-age=0; SameSite=Strict`;
+  }
 }
 
 /**
@@ -97,4 +129,11 @@ export function syncMediaCookieFromStorage() {
   }
 }
 
-export default { setMediaCookie, clearMediaCookie, syncMediaCookieFromStorage, MEDIA_COOKIE_NAME, MEDIA_COOKIE_PATH };
+export default {
+  setMediaCookie,
+  clearMediaCookie,
+  syncMediaCookieFromStorage,
+  MEDIA_COOKIE_NAME,
+  MEDIA_COOKIE_PATH,
+  MEDIA_COOKIE_PATHS,
+};
