@@ -208,12 +208,7 @@
 
     <!-- Tool Selector Dropdown -->
     <Teleport to="body">
-      <ChatToolSelector
-        v-if="isToolSelectorOpen"
-        :isOpen="isToolSelectorOpen"
-        :channel-key="channelKey"
-        @close="closeToolSelector"
-      />
+      <ChatToolSelector v-if="isToolSelectorOpen" :isOpen="isToolSelectorOpen" :channel-key="channelKey" @close="closeToolSelector" />
     </Teleport>
 
     <!-- Command Menu (@mentions, /commands, #references) -->
@@ -390,24 +385,36 @@ export default {
     const isFileDrag = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
     const onDragEnter = (e) => {
       if (!canAcceptFileDrop() || !isFileDrag(e)) return;
-      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      if (dragLeaveTimer) {
+        clearTimeout(dragLeaveTimer);
+        dragLeaveTimer = null;
+      }
       isDragOver.value = true;
     };
     const onDragOver = (e) => {
       if (!canAcceptFileDrop() || !isFileDrag(e)) return;
       e.dataTransfer.dropEffect = 'copy';
-      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      if (dragLeaveTimer) {
+        clearTimeout(dragLeaveTimer);
+        dragLeaveTimer = null;
+      }
       isDragOver.value = true;
     };
     const onDragLeave = () => {
       // dragleave fires on every child; debounce so we only clear when the
       // cursor actually leaves the container.
       if (dragLeaveTimer) clearTimeout(dragLeaveTimer);
-      dragLeaveTimer = setTimeout(() => { isDragOver.value = false; dragLeaveTimer = null; }, 50);
+      dragLeaveTimer = setTimeout(() => {
+        isDragOver.value = false;
+        dragLeaveTimer = null;
+      }, 50);
     };
     const onDrop = (e) => {
       if (!canAcceptFileDrop() || !isFileDrag(e)) return;
-      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      if (dragLeaveTimer) {
+        clearTimeout(dragLeaveTimer);
+        dragLeaveTimer = null;
+      }
       isDragOver.value = false;
       const files = Array.from(e.dataTransfer?.files || []);
       if (files.length > 0) selectedFiles.value = [...selectedFiles.value, ...files];
@@ -563,9 +570,7 @@ export default {
 
       // Use only the tracked agent selections (by ID) — never parse text
       // Orchestrator (id: 'orchestrator') becomes null so it routes to default chat
-      const agents = mentionedAgents.value.map(a =>
-        a.id === 'orchestrator' ? null : a
-      );
+      const agents = mentionedAgents.value.map((a) => (a.id === 'orchestrator' ? null : a));
 
       emit('submit-input', input, selectedFiles.value, agents.length > 0 ? agents : null);
 
@@ -673,7 +678,6 @@ export default {
       orchestratorAvatar: annieAvatar,
     });
 
-
     const commandMenuPosition = ref({ bottom: 0, left: 0, width: 400 });
 
     // Track all @ mentioned agents so we can pass them with submit
@@ -691,10 +695,7 @@ export default {
       for (const a of agents) {
         if (!a.name) continue;
         const escaped = a.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        text = text.replace(
-          new RegExp(`@${escaped}`, 'g'),
-          `<mark>@${a.name}</mark>`
-        );
+        text = text.replace(new RegExp(`@${escaped}`, 'g'), `<mark>@${a.name}</mark>`);
       }
       // Fix trailing newline (textarea vs div rendering difference)
       text = text.replace(/\n$/g, '\n\n');
@@ -723,7 +724,7 @@ export default {
       // Track all agent selections by ID, including orchestrator (id: 'orchestrator')
       // Orchestrator sends as null agentId (default chat), real agents send their UUID
       if (item && item.type === 'agent') {
-        if (!mentionedAgents.value.some(a => a.id === item.id)) {
+        if (!mentionedAgents.value.some((a) => a.id === item.id)) {
           mentionedAgents.value.push({ id: item.id, name: item.name });
         }
       }
@@ -767,8 +768,16 @@ export default {
     // even before the user opens the relevant tabs. Both stores have built-in
     // dedup + caching so re-firing here is safe.
     if (typeof store.dispatch === 'function') {
-      try { store.dispatch('skills/fetchSkills'); } catch (e) { /* skills module may load on demand */ }
-      try { store.dispatch('goals/fetchGoals'); } catch (e) { /* same */ }
+      try {
+        store.dispatch('skills/fetchSkills');
+      } catch (e) {
+        /* skills module may load on demand */
+      }
+      try {
+        store.dispatch('goals/fetchGoals');
+      } catch (e) {
+        /* same */
+      }
     }
 
     const handlePaste = async (event) => {
@@ -1506,7 +1515,10 @@ export default {
   font-size: 0.95em;
   pointer-events: none;
 }
-.main-panel > .drop-overlay i { font-size: 2.2em; opacity: 0.85; }
+.main-panel > .drop-overlay i {
+  font-size: 2.2em;
+  opacity: 0.85;
+}
 
 .custom-bg .terminal-content {
   width: calc(100% - 8px);
@@ -2312,10 +2324,13 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 }
 
 @keyframes steering-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
-
 
 .base-screen-lines-output {
   margin-bottom: 16px; /* Add some space between lines and slot content */
