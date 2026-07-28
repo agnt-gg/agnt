@@ -14,10 +14,10 @@
  * next(). So this suite walks the REAL express routers and classifies every
  * registered route:
  *
- *   GUARDED — carries requireAuth() from utils/authGuard.js. Actually 401s.
- *   SOFT    — carries authenticateToken only. Reachable unauthenticated
- *             unless the handler re-checks. Tolerated for the existing
- *             surface; must never be used for a new sensitive route.
+ *   GUARDED — carries requireAuth() or authenticateToken. Actually 401s.
+ *   SOFT    — carries authenticateTokenOptional: deliberately reachable
+ *             unauthenticated, so the handler MUST re-check. Every one must be
+ *             declared in ANONYMOUS_TOLERATED with a reason, or this fails.
  *   OPEN    — no auth middleware whatsoever. Must be in PUBLIC_ROUTES with a
  *             written justification, or this test fails.
  *
@@ -88,8 +88,25 @@ const ROUTE_FILES = fs
   .filter((f) => /Routes\.js$/.test(f))
   .sort();
 
-const GUARD_NAMES = new Set(['requireAuthMiddleware']);
-const SOFT_NAMES = new Set(['authenticateToken', 'bound authenticateToken']);
+// authenticateToken now returns 401 on a missing or invalid token, so it is a
+// real guard. It used to sit in SOFT_NAMES: it read like a guard, behaved like
+// a decorator, and 251 routes inherited that. See routes/Middleware.js.
+const GUARD_NAMES = new Set([
+  'requireAuthMiddleware',
+  'authenticateToken',
+  'bound authenticateToken',
+]);
+
+// The permissive behaviour still exists, but a route must now opt into it by
+// name instead of receiving it silently.
+const SOFT_NAMES = new Set(['authenticateTokenOptional', 'bound authenticateTokenOptional']);
+
+/**
+ * Routes deliberately served to anonymous callers via authenticateTokenOptional.
+ * Same contract as PUBLIC_ROUTES: every entry needs a written reason, and the
+ * handler must check req.user.isAuthenticated itself.
+ */
+const ANONYMOUS_TOLERATED = new Map([]);
 
 /**
  * Walk an express Router's layer stack and produce one record per route.
@@ -195,6 +212,34 @@ describe('route security manifest', () => {
     const match = ALL_ROUTES.find((r) => r.file === file && r.route === route);
     expect(match, `route ${route} not found in ${file}`).toBeDefined();
     expect(match.tier).toBe('GUARDED');
+  });
+
+  // ------------------------------------------------------------------
+  // THE SOFT TIER IS A GATE, NOT A STATISTIC.
+  // ------------------------------------------------------------------
+  // This suite used to COUNT soft routes and print the total in a test whose
+  // only assertion was that the route list was non-empty. It observed 251 of
+  // them and said nothing actionable — while an unauthenticated caller on the
+  // LAN could read, write and delete the entire workspace through exactly
+  // those routes. Measuring a hazard is not the same as failing on it.
+  // ------------------------------------------------------------------
+  it('has no route that tolerates anonymous callers outside the allow-list', () => {
+    const soft = ALL_ROUTES.filter((r) => r.tier === 'SOFT');
+    const undeclared = soft.filter((r) => !ANONYMOUS_TOLERATED.has(r.key));
+
+    expect(
+      undeclared.map((r) => r.key),
+      'These routes let unauthenticated callers reach the handler. If that is ' +
+        'deliberate, add them to ANONYMOUS_TOLERATED with a reason AND make the ' +
+        'handler check req.user.isAuthenticated. Otherwise use authenticateToken:\n' +
+        undeclared.map((r) => `  ${r.key}`).join('\n')
+    ).toEqual([]);
+  });
+
+  it('keeps the anonymous allow-list honest (no stale entries)', () => {
+    const softKeys = new Set(ALL_ROUTES.filter((r) => r.tier === 'SOFT').map((r) => r.key));
+    const stale = [...ANONYMOUS_TOLERATED.keys()].filter((k) => !softKeys.has(k));
+    expect(stale, `Stale ANONYMOUS_TOLERATED entries: ${stale.join(', ')}`).toEqual([]);
   });
 
   it('reports the surface (informational)', () => {

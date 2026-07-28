@@ -909,7 +909,7 @@ All provider authentication is handled through a single unified router. The `:pr
 
 **GET** `/:providerId/auth/status`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Check whether credentials exist for this provider and whether its API is usable. For local CLI providers, checks filesystem credentials. For remote providers, returns basic info (use the connection health endpoint for remote status).
 - **Response** (local provider):
 
@@ -940,7 +940,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **GET** `/:providerId/auth/capabilities`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Return the capabilities and metadata for a provider's auth scheme
 - **Response**:
 
@@ -959,7 +959,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/connect`
 
-- **Authentication**: None (local), Required (remote — proxied to agnt.gg)
+- **Authentication**: Required. (Historically unauthenticated for local providers; `authenticateToken` now rejects, so a token is needed for both local and remote.)
 - **Description**: Save credentials for a provider. Body and response vary by auth scheme.
 - **Body** (claude-code — token):
 
@@ -1013,7 +1013,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/disconnect`
 
-- **Authentication**: None (local), Required (remote)
+- **Authentication**: Required. (Historically unauthenticated for local providers; `authenticateToken` now rejects, so a token is needed for both local and remote.)
 - **Description**: Remove credentials for a provider. Local providers delete filesystem credentials; remote providers proxy to agnt.gg.
 - **Response**:
 
@@ -1027,7 +1027,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/refresh`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Refresh the access token using the stored refresh token. Only supported for local providers with the `refresh` capability (claude-code, gemini-cli).
 - **Response** (success):
 
@@ -1048,7 +1048,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **GET** `/:providerId/auth/oauth/start`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Initiate an OAuth flow. For `claude-code`, starts Anthropic PKCE OAuth. For `gemini-cli`, starts Google loopback OAuth. Only supported for local providers.
 - **Error** (400): `{ "error": "OAuth start not supported for remote providers" }` if provider is not local
 - **Response**:
@@ -1065,7 +1065,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/oauth/exchange`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Submit the code#state string copied from Anthropic's callback page. Only supported for providers with `oauth-pkce` capability.
 - **Body**:
 
@@ -1092,7 +1092,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **GET** `/:providerId/auth/oauth/status?sessionId=...`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Parameters**:
   - `sessionId` (query, required): The session ID from the OAuth start endpoint
 - **Description**: Poll the loopback OAuth session state. Only supported for providers with `oauth-loopback` capability.
@@ -1112,7 +1112,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/device/start`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Start device login flow. Returns a URL and code the user enters in a browser. Only supported for providers with `device-auth` capability.
 - **Response**:
 
@@ -1136,7 +1136,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **GET** `/:providerId/auth/device/status?sessionId=...`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Parameters**:
   - `sessionId` (query, required): The session ID from the device start endpoint
 - **Description**: Poll the device login session state. Only supported for providers with `device-auth` capability.
@@ -1156,7 +1156,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/set-auth-method`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Switch between API key and OAuth authentication methods. When switching to `api-key`, removes OAuth credentials from `~/.gemini/oauth_creds.json`. When switching to `oauth`, removes API key from `~/.gemini/.env`. Only supported for providers with `set-auth-method` capability.
 - **Body**:
 
@@ -1183,7 +1183,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 **POST** `/:providerId/auth/gcp-project`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Set the Google Cloud Project ID (required for workspace/organization accounts). Only supported for providers with `gcp-project` capability.
 - **Body**:
 
@@ -5062,7 +5062,7 @@ Base path: `/api/plugins`
 
 **POST** `/install`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Body**:
 
 ```json
@@ -5089,7 +5089,7 @@ Base path: `/api/plugins`
 
 **POST** `/install-file`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Body**:
 
 ```json
@@ -5117,7 +5117,7 @@ Base path: `/api/plugins`
 
 **DELETE** `/:name`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Parameters**:
   - `name` (path): Plugin name
 - **Description**: Uninstall a plugin
@@ -5253,7 +5253,7 @@ Base path: `/api/plugins`
 
 **POST** `/reload`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Reload all plugins (useful after manual changes)
 - **Response**:
 
@@ -5328,7 +5328,7 @@ Base path: `/api/plugins`
 
 **GET** `/inspect/:name`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: The disclosure report the install-consent modal renders: integrity state, detected capabilities (with file:line evidence), declared permissions, the undeclared diff, and the trust tier the plugin would receive
 - **Response**: Inspection report object
 
@@ -5336,14 +5336,14 @@ Base path: `/api/plugins`
 
 **POST** `/install-github`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Pulls a plugin directly from GitHub through the same staged/validated/permission-gated install path. Returns `{ requiresConfirmation: true }` on a moved repo and `{ requiresConsent: true }` on permission escalation.
 
 ### Get Update Settings
 
 **GET** `/update-settings`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Auto-update scheduler settings
 - **Response**: `{ "success": true, "settings": {...} }`
 
@@ -5351,7 +5351,7 @@ Base path: `/api/plugins`
 
 **POST** `/update-settings`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Body**:
 
 ```json
@@ -5367,7 +5367,7 @@ Base path: `/api/plugins`
 
 **POST** `/update-policy/:name`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Per-plugin auto-update policy, stored on the registry entry (merge semantics preserve it across installs/updates). `404` if the plugin isn't installed, `400` on an invalid policy.
 - **Body**:
 
@@ -5391,7 +5391,7 @@ Base path: `/api/plugins`
 
 **POST** `/update/:name`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Updates a single plugin via the staged-install path (stage → validate → permission-diff gate → atomic swap). An update requesting NEW permissions returns `{ requiresConsent: true, permissionDiff }` and changes nothing on disk until re-called with `acceptedPermissions: true`. On success all plugin processes are reloaded.
 - **Body**:
 
@@ -6072,7 +6072,7 @@ Base path: `/api/speech`
 
 **POST** `/transcribe`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Content-Type**: `multipart/form-data`
 - **Body**:
   - `audio` (file): Audio file to transcribe (max 10MB)
@@ -6107,7 +6107,7 @@ Base path: `/api/speech`
 
 **POST** `/initialize`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Initialize Whisper service (download model if needed)
 - **Response**:
 
@@ -6420,7 +6420,7 @@ Base path: `/api/tool-schemas`
 
 **POST** `/reload`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Reload the registry (useful for development)
 - **Response**:
 
@@ -6449,7 +6449,7 @@ Base path: `/api/tools`
 
 **GET** `/orchestrator-tools`
 
-- **Authentication**: None
+- **Authentication**: Required
 - **Description**: Get all orchestrator tools (native, registry, and plugin tools)
 - **Response**:
 

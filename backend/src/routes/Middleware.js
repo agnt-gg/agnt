@@ -99,9 +99,17 @@ class Middleware {
     const token = authHeader && authHeader.split(" ")[1];
 
     if (!token || token === 'null' || token === 'undefined') {
-      console.log('No token provided, continuing as unauthenticated');
       req.user = { isAuthenticated: false };
-      return next();
+      // A route that genuinely serves anonymous callers opts in explicitly with
+      // authenticateTokenOptional. Everything else gets a 401, because a
+      // handler that reads req.user.id will otherwise run with `undefined` and
+      // its safety becomes an accident of how its query happens to behave.
+      if (req.allowAnonymous) return next();
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        reason: 'missing',
+      });
     }
 
     // If TRUST_REMOTE_AUTH is enabled, decode token without verification
@@ -161,7 +169,6 @@ class Middleware {
 
       next();
     } catch (err) {
-      console.log('Token verification failed, continuing as unauthenticated');
       req.user = { isAuthenticated: false };
 
       // Clear session data if token is invalid
@@ -170,8 +177,31 @@ class Middleware {
         delete req.session.userData;
       }
 
-      next();
+      if (req.allowAnonymous) return next();
+      // A presented-but-invalid token is a stronger signal than no token at
+      // all: something is wrong (expired session, wrong secret, tampering).
+      // Distinguish it so the client can tell "log in" from "log in again".
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        reason: 'invalid',
+      });
     }
+  }
+
+  /**
+   * Opt-in permissive variant: run the same token parsing, but let the request
+   * through unauthenticated instead of rejecting. Handlers behind this MUST
+   * check req.user.isAuthenticated themselves.
+   *
+   * This is the behaviour authenticateToken used to have for every route. It is
+   * kept because serving anonymous callers is occasionally legitimate — but it
+   * now has to be chosen deliberately per route rather than being the silent
+   * default for all 252.
+   */
+  async authenticateTokenOptional(req, res, next) {
+    req.allowAnonymous = true;
+    return this.authenticateToken(req, res, next);
   }
   
   // Helper method to get stored user token from session
@@ -200,6 +230,7 @@ class Middleware {
 const middleware = new Middleware();
 const sessionMiddleware = middleware.getSessionMiddleware();
 const authenticateToken = middleware.authenticateToken.bind(middleware);
+const authenticateTokenOptional = middleware.authenticateTokenOptional.bind(middleware);
 const getUserTokenFromSession = middleware.getUserTokenFromSession.bind(middleware);
 
-export { sessionMiddleware, authenticateToken, getUserTokenFromSession };
+export { sessionMiddleware, authenticateToken, getUserTokenFromSession, authenticateTokenOptional };
