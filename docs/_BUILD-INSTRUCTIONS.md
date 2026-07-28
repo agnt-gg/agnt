@@ -117,11 +117,21 @@ Creates:
 **Note:** Building for macOS requires a Mac. For code signing, set these environment variables:
 
 ```bash
+# Signing — consumed directly by electron-builder
 export CSC_LINK=/path/to/certificate.p12
 export CSC_KEY_PASSWORD=your_certificate_password
+
+# Notarization — read by scripts/notarize.js
 export APPLE_ID=your@apple.id
-export APPLE_ID_PASSWORD=app-specific-password
+export APPLE_APP_SPECIFIC_PASSWORD=app-specific-password
+export APPLE_TEAM_ID=your_team_id          # optional, defaults to 56BD35UF2U
 ```
+
+Notarization only runs in CI (`CI` is set) or when you force it with
+`FORCE_NOTARIZE=1`. If `APPLE_ID` or `APPLE_APP_SPECIFIC_PASSWORD` is missing it
+**warns and continues**, producing an unsigned-for-Gatekeeper build that looks
+like a successful one — the failure only surfaces when a user's Mac refuses to
+open the app. Check the build log for `[Notarize]` if you are shipping.
 
 #### GNU/Linux
 

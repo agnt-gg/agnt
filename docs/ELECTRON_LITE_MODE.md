@@ -321,7 +321,7 @@ Browser packages are listed in `asarUnpack` in `package.json` so they're extract
 ## See Also
 
 - [Docker Lite Mode](LITE_MODE.md) - Lite mode for Docker deployments
-- [Build Instructions](/_BUILD-INSTRUCTIONS.md) - General build guide
+- [Build Instructions](_BUILD-INSTRUCTIONS.md) - General build guide
 - [Self-Hosting Guide](SELF_HOSTING.md) - Docker deployment options
 
 ---

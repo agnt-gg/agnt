@@ -197,7 +197,7 @@ netstat -tlnp | grep 3333
 
 ## Next Steps
 
-- [User Guide](USER_GUIDE.md) - Learn how to use AGNT
+- [README](../README.md) - Learn how to use AGNT
 - [Plugin Development](../backend/plugins/README.md) - Create custom plugins
 - [API Documentation](_API-DOCUMENTATION.md) - REST API reference
 - [Switch to Lite Mode](QUICKSTART_DOCKER_LITE.md) - Smaller image without browser

@@ -234,7 +234,7 @@ Your data is preserved - just change the Docker image!
 
 ## Next Steps
 
-- [User Guide](USER_GUIDE.md) - Learn how to use AGNT
+- [README](../README.md) - Learn how to use AGNT
 - [Plugin Development](../backend/plugins/README.md) - Create custom plugins
 - [API Documentation](_API-DOCUMENTATION.md) - REST API reference
 - [Upgrade to Full](QUICKSTART_DOCKER_FULL.md) - Get browser automation

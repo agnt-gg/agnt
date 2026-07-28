@@ -628,7 +628,7 @@ build:
 - [docker-compose.yml](../docker-compose.yml) - Full compose config
 - [docker-compose.lite.yml](../docker-compose.lite.yml) - Lite compose config
 - [Self-Hosting Guide](SELF_HOSTING.md) - Complete deployment guide
-- [DockerHub Setup](DOCKERHUB_SETUP.md) - CI/CD configuration
+- [CI/CD Guide](CI_CD.md) - Docker Hub credentials and release automation
 
 ## Support
 
