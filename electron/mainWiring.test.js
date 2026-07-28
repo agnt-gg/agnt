@@ -119,7 +119,7 @@ describe('connection error page', () => {
 });
 
 describe('electron-builder packaging', () => {
-  // main.js imports ./electron/connectionConfig.js and loadFiles connection-error.html.
+  // main.js imports ./electron/connectionConfig.js and loadFile() for connection-error.html.
   // electron-builder uses an explicit allowlist (build.files) — if electron/ is missing,
   // the packaged app throws ERR_MODULE_NOT_FOUND at launch.
   it('includes the electron/ directory in build.files', () => {
