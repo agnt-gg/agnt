@@ -64,43 +64,21 @@
             <template v-else>Expired</template>
           </div>
 
-          <!-- No camera / paste path: full links + raw code (kept for all clients). -->
-          <div v-if="code && secondsLeft > 0" class="pa-copy-block">
-            <div class="pa-urls-label">Can&rsquo;t scan? Copy link or code</div>
+          <!-- One copy target: the same network URL encoded in the QR (host + code). -->
+          <div v-if="code && secondsLeft > 0 && copyLinkUrl" class="pa-copy-block">
+            <div class="pa-urls-label">Can&rsquo;t scan? Copy link</div>
             <button
-              v-if="localPairUrl"
               type="button"
               class="pa-url"
-              title="Copy link for this Mac (localhost)"
-              @click="copy(localPairUrl)"
+              title="Copy pair link (URL with code)"
+              @click="copy(copyLinkUrl)"
             >
-              <code class="pa-url-text">{{ localPairUrl }}</code>
-              <span class="pa-url-badge">This Mac</span>
-              <i class="fas" :class="copied === localPairUrl ? 'fa-check' : 'fa-copy'"></i>
-            </button>
-            <button
-              v-if="pairQrUrl && pairQrUrl !== localPairUrl"
-              type="button"
-              class="pa-url"
-              title="Copy link for phone on Wi‑Fi / LAN"
-              @click="copy(pairQrUrl)"
-            >
-              <code class="pa-url-text">{{ pairQrUrl }}</code>
-              <span class="pa-url-badge">Network</span>
-              <i class="fas" :class="copied === pairQrUrl ? 'fa-check' : 'fa-copy'"></i>
-            </button>
-            <button
-              type="button"
-              class="pa-url pa-url-code"
-              title="Copy pairing code only (paste into AGNT Chat)"
-              @click="copy(code.code)"
-            >
-              <code class="pa-code-mono">{{ code.code }}</code>
-              <span class="pa-url-badge">Code</span>
-              <i class="fas" :class="copied === code.code ? 'fa-check' : 'fa-copy'"></i>
+              <code class="pa-url-text">{{ copyLinkUrl }}</code>
+              <span class="pa-url-badge">Link</span>
+              <i class="fas" :class="copied === copyLinkUrl ? 'fa-check' : 'fa-copy'"></i>
             </button>
             <p v-if="code.warning || code.loopbackOnly" class="pa-fineprint">
-              {{ code.warning || 'Localhost only — fine on this Mac; enable LAN for a phone on Wi‑Fi.' }}
+              {{ code.warning || 'Localhost only until Phone Access is on the network.' }}
             </p>
           </div>
 
@@ -164,11 +142,11 @@
 
           <div class="pa-step">
             <span class="pa-num">2</span>
-            <span>Scan the QR, or <strong>copy the link or code</strong> if you can&rsquo;t scan.</span>
+            <span>Scan the QR, or <strong>copy the link</strong> if you can&rsquo;t scan.</span>
           </div>
           <div class="pa-step">
             <span class="pa-num">3</span>
-            <span>Open the link on the other device, or paste the code in AGNT Chat. Signs in automatically.</span>
+            <span>Open the link on the phone (or paste it in AGNT Chat). Signs in automatically.</span>
           </div>
 
           <!-- More than one candidate means the server genuinely cannot tell
@@ -322,18 +300,21 @@ const pairQrUrl = computed(() => {
   return code.value.liteUrl || activeUrl.value || '';
 });
 
-// Same-machine link (localhost) — for paste on this computer or iOS Simulator.
-const localPairUrl = computed(() => {
+// Single copy target: network pair URL (same payload as the QR). Prefer LAN
+// liteUrl; only fall back to localhost when nothing else is available.
+const copyLinkUrl = computed(() => {
   if (!code.value || secondsLeft.value <= 0) return '';
-  if (code.value.simUrl) return code.value.simUrl;
+  if (pairQrUrl.value && !pairQrUrl.value.includes('127.0.0.1') && !pairQrUrl.value.includes('localhost')) {
+    return pairQrUrl.value;
+  }
+  // When LAN URL is the only one (or is loopback), still expose one link.
+  if (pairQrUrl.value) return pairQrUrl.value;
   const c = code.value.code;
   if (!c) return '';
   let port = '3333';
   try {
     if (typeof window !== 'undefined' && window.location?.port) {
       port = window.location.port;
-    } else if (code.value.url) {
-      port = new URL(code.value.url).port || '3333';
     }
   } catch {
     /* keep default */
@@ -342,9 +323,11 @@ const localPairUrl = computed(() => {
 });
 
 const qrSvg = computed(() => {
-  if (!code.value || secondsLeft.value <= 0 || !pairQrUrl.value) return '';
+  // QR encodes the same URL as the copy "Link" row.
+  const url = copyLinkUrl.value;
+  if (!code.value || secondsLeft.value <= 0 || !url) return '';
   try {
-    return toSvg(pairQrUrl.value, { moduleSize: 5, quietZone: 3, dark: '#000000', light: '#ffffff' });
+    return toSvg(url, { moduleSize: 5, quietZone: 3, dark: '#000000', light: '#ffffff' });
   } catch (e) {
     // Never render a corrupt code: an unscannable QR is worse than none.
     error.value = `Could not render QR: ${e.message}`;

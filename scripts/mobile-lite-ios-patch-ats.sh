@@ -23,4 +23,8 @@ set_bool NSAllowsArbitraryLoads
 set_bool NSAllowsLocalNetworking
 set_bool NSAllowsArbitraryLoadsInWebContent
 
-echo "Patched ATS on $PLIST (arbitrary loads + local networking + WebContent)"
+# Camera for Phone Access QR scan (getUserMedia in WKWebView).
+/usr/libexec/PlistBuddy -c 'Add :NSCameraUsageDescription string Scan the AGNT Phone Access QR code to pair this device.' "$PLIST" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c 'Set :NSCameraUsageDescription Scan the AGNT Phone Access QR code to pair this device.' "$PLIST"
+
+echo "Patched ATS + NSCameraUsageDescription on $PLIST"

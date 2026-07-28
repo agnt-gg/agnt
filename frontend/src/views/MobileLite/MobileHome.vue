@@ -16,74 +16,115 @@
       </template>
 
       <template v-else-if="authed">
-        <p class="ml-lead">You're signed in{{ userLabel }}.</p>
-        <p v-if="currentOrigin" class="ml-meta">This page: <code>{{ currentOrigin }}</code></p>
+        <!-- setup=1: chat, switch among saved servers, or add another -->
+        <p class="ml-lead">Signed in{{ userLabel }}.</p>
+        <p v-if="currentOrigin" class="ml-meta">This server: <code>{{ currentOrigin }}</code></p>
+        <button class="ml-btn ml-btn-primary" type="button" @click="goChat">Open Annie chat</button>
 
-        <label class="ml-label" for="ml-server-auth">Server URL</label>
-        <input
-          id="ml-server-auth"
-          v-model="serverInput"
-          class="ml-input"
-          type="url"
-          inputmode="url"
-          autocomplete="url"
-          placeholder="http://host:3333"
-        />
-        <p class="ml-field-note">Saved on this device. Change host (LAN / Tailscale) without rebuilding.</p>
-        <button class="ml-btn ml-btn-ghost" type="button" @click="saveServerOnly">Save server URL</button>
+        <template v-if="servers.length">
+          <p class="ml-label">Saved servers</p>
+          <ul class="ml-server-list">
+            <li v-for="s in servers" :key="s.origin">
+              <button type="button" class="ml-server-item" @click="openServer(s.origin)">
+                <span class="ml-server-host">{{ s.label || s.origin }}</span>
+                <span v-if="s.origin === currentOrigin" class="ml-server-badge">current</span>
+              </button>
+              <button
+                type="button"
+                class="ml-server-remove"
+                :aria-label="'Remove ' + (s.label || s.origin)"
+                @click="removeServer(s.origin)"
+              >
+                ×
+              </button>
+            </li>
+          </ul>
+        </template>
+
         <button
-          class="ml-btn ml-btn-ghost"
+          v-if="!showAddServer"
           type="button"
-          :disabled="!canSwitchServer"
-          @click="switchToSavedServer"
+          class="ml-btn ml-btn-ghost"
+          @click="showAddServer = true"
         >
-          Open saved server
+          Add new server
         </button>
-        <p v-if="serverMsg" class="ml-hint">{{ serverMsg }}</p>
-        <p v-if="serverError" class="ml-error">{{ serverError }}</p>
 
-        <button class="ml-btn ml-btn-primary" @click="goChat">Open Annie chat</button>
-        <button class="ml-btn ml-btn-ghost" @click="signOut">Sign out</button>
+        <template v-if="showAddServer">
+          <p class="ml-label">Add new server</p>
+          <p class="ml-field-note">
+            Paste a Phone Access pair link, or scan the QR on the desktop.
+          </p>
+          <textarea
+            id="ml-paste-auth"
+            v-model="pasteInput"
+            class="ml-input ml-textarea"
+            rows="3"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="http://192.168.x.x:3333/m/pair?c=…"
+            @keydown.meta.enter.prevent="continueFromPaste"
+            @keydown.ctrl.enter.prevent="continueFromPaste"
+          />
+          <button
+            v-if="cameraAvailable"
+            type="button"
+            class="ml-btn ml-btn-ghost"
+            :disabled="busy"
+            @click="showScanner = true"
+          >
+            Scan QR code
+          </button>
+          <p v-if="parsedHint" class="ml-hint">{{ parsedHint }}</p>
+          <button
+            class="ml-btn ml-btn-primary"
+            type="button"
+            :disabled="busy || !canSubmit"
+            @click="continueFromPaste"
+          >
+            {{ busy ? 'Working…' : 'Add & pair' }}
+          </button>
+          <button
+            type="button"
+            class="ml-btn ml-btn-ghost"
+            :disabled="busy"
+            @click="cancelAddServer"
+          >
+            Cancel
+          </button>
+          <p v-if="error" class="ml-error">{{ error }}</p>
+        </template>
+
+        <button class="ml-btn ml-btn-ghost" type="button" @click="signOut">Sign out</button>
+        <p v-if="serverError" class="ml-error">{{ serverError }}</p>
       </template>
 
       <template v-else>
         <p class="ml-lead">
-          Set the AGNT <strong>server URL</strong> (saved on this device), then pair with a code from
-          desktop <strong>Settings → Phone Access</strong>.
+          Scan the desktop QR, or paste the <strong>pair link</strong> (one URL with host + code), or
+          choose a saved server below.
         </p>
 
-        <label class="ml-label" for="ml-server">Server URL</label>
-        <input
-          id="ml-server"
-          v-model="serverInput"
-          class="ml-input"
-          type="url"
-          inputmode="url"
-          autocomplete="url"
-          placeholder="http://192.168.1.20:3333 or 100.x.x.x:3333"
-          @keydown.enter.prevent="saveAndOpenServer"
-        />
-        <p class="ml-field-note">Persists across launches. No Makefile / rebuild when it changes.</p>
-        <label class="ml-check">
-          <input v-model="autoOpen" type="checkbox" @change="onAutoOpenChange" />
-          Open this server automatically next launch
-        </label>
-        <button class="ml-btn ml-btn-primary" type="button" :disabled="busy" @click="saveAndOpenServer">
-          Save &amp; open /m
-        </button>
-        <button class="ml-btn ml-btn-ghost" type="button" :disabled="busy" @click="saveServerOnly">
-          Save server URL
-        </button>
-        <p v-if="serverMsg" class="ml-hint" role="status">{{ serverMsg }}</p>
-        <p v-if="serverError" class="ml-error" role="alert">{{ serverError }}</p>
-        <p class="ml-field-note">
-          With the Simulator pin you are often already on this server — the button saves the URL and
-          either opens chat (if signed in) or focuses pairing below.
-        </p>
+        <template v-if="servers.length">
+          <p class="ml-label">Saved servers</p>
+          <ul class="ml-server-list">
+            <li v-for="s in servers" :key="s.origin">
+              <button type="button" class="ml-server-item" @click="openServer(s.origin)">
+                <span class="ml-server-host">{{ s.label || s.origin }}</span>
+              </button>
+              <button
+                type="button"
+                class="ml-server-remove"
+                :aria-label="'Remove ' + (s.label || s.origin)"
+                @click="removeServer(s.origin)"
+              >
+                ×
+              </button>
+            </li>
+          </ul>
+        </template>
 
-        <hr class="ml-hr" />
-
-        <label class="ml-label" for="ml-paste">Pair link or code</label>
+        <label class="ml-label" for="ml-paste">Pair link (URL)</label>
         <textarea
           id="ml-paste"
           v-model="pasteInput"
@@ -91,23 +132,46 @@
           rows="3"
           autocomplete="off"
           spellcheck="false"
-          placeholder="Full pair link, or 32-char code (uses Server URL above)"
-          @keydown.meta.enter.prevent="submitPair"
-          @keydown.ctrl.enter.prevent="submitPair"
+          placeholder="http://192.168.x.x:3333/m/pair?c=…"
+          @keydown.meta.enter.prevent="continueFromPaste"
+          @keydown.ctrl.enter.prevent="continueFromPaste"
         />
+        <p class="ml-field-note">
+          Same link as desktop Phone Access (or scan QR). Saved servers appear after you pair.
+        </p>
+        <button
+          v-if="cameraAvailable"
+          type="button"
+          class="ml-btn ml-btn-ghost"
+          :disabled="busy"
+          @click="showScanner = true"
+        >
+          Scan QR code
+        </button>
+        <label class="ml-check">
+          <input v-model="autoOpen" type="checkbox" @change="onAutoOpenChange" />
+          Open last server automatically next launch
+        </label>
         <p v-if="parsedHint" class="ml-hint">{{ parsedHint }}</p>
-        <button class="ml-btn ml-btn-primary" :disabled="busy || !canSubmit" @click="submitPair">
-          {{ busy ? 'Pairing…' : 'Pair & continue' }}
+        <button
+          class="ml-btn ml-btn-primary"
+          type="button"
+          :disabled="busy || !canSubmit"
+          @click="continueFromPaste"
+        >
+          {{ busy ? 'Working…' : 'Continue' }}
         </button>
 
         <p v-if="error" class="ml-error">{{ error }}</p>
-        <p class="ml-fine">
-          Full AGNT web uses <code>/pair</code>. Lite uses <code>/m/pair</code> and
-          <code>/api/pairing/claim</code>. Server URL is independent of optional
-          <code>AGNT_SERVER_URL</code> make pin.
-        </p>
+        <p v-if="serverError" class="ml-error">{{ serverError }}</p>
       </template>
     </main>
+
+    <QrScanner
+      v-if="showScanner"
+      @result="onScanResult"
+      @close="showScanner = false"
+    />
   </div>
 </template>
 
@@ -116,16 +180,18 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useStore } from 'vuex';
 import { clearMediaCookie } from '@/services/mediaAuth.js';
+import QrScanner from '@/components/MobileLite/QrScanner.vue';
 import {
   parsePairingInput,
   claimPairingCodeAt,
   rememberServerOrigin,
   getRememberedServerOrigin,
-  clearRememberedServerOrigin,
   normalizeServerOrigin,
   setAutoOpenServer,
   getAutoOpenServer,
   applyPairingSession,
+  listPairedServers,
+  removePairedServer,
 } from '@/services/mobileLitePairing.js';
 
 const store = useStore();
@@ -139,8 +205,48 @@ const error = ref('');
 const pasteInput = ref('');
 const serverInput = ref(getRememberedServerOrigin() || '');
 const autoOpen = ref(getAutoOpenServer());
-const serverMsg = ref('');
 const serverError = ref('');
+const servers = ref(listPairedServers());
+const showScanner = ref(false);
+const showAddServer = ref(false);
+const cameraAvailable = ref(
+  typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
+);
+
+function cancelAddServer() {
+  showAddServer.value = false;
+  showScanner.value = false;
+  pasteInput.value = '';
+  error.value = '';
+}
+
+function onScanResult(text) {
+  showScanner.value = false;
+  pasteInput.value = String(text || '').trim();
+  // Full QR is a pair link — continue immediately.
+  continueFromPaste();
+}
+
+function refreshServerList() {
+  servers.value = listPairedServers();
+}
+
+function openServer(origin) {
+  const o = normalizeServerOrigin(origin) || origin;
+  if (!o) return;
+  rememberServerOrigin(o);
+  refreshServerList();
+  // Prefer chat; /m redirects to chat when a session exists on that host.
+  window.location.assign(`${o}/m/chat`);
+}
+
+function removeServer(origin) {
+  removePairedServer(origin);
+  refreshServerList();
+  if (serverInput.value === origin) {
+    serverInput.value = getRememberedServerOrigin() || '';
+  }
+}
 
 const currentOrigin = computed(() =>
   typeof window !== 'undefined' ? window.location.origin : ''
@@ -148,10 +254,12 @@ const currentOrigin = computed(() =>
 
 const parsed = computed(() => {
   const raw = pasteInput.value;
-  // Bare code: resolve against saved/typed server URL, not only current page origin.
   const codeOnly = /^[a-f0-9]{32}$/i.test(String(raw || '').trim());
   if (codeOnly) {
-    const origin = normalizeServerOrigin(serverInput.value) || currentOrigin.value;
+    const origin =
+      normalizeServerOrigin(serverInput.value) ||
+      getRememberedServerOrigin() ||
+      currentOrigin.value;
     if (!origin) return null;
     return parsePairingInput(raw, origin);
   }
@@ -168,12 +276,9 @@ const canSwitchServer = computed(() => {
 const parsedHint = computed(() => {
   const p = parsed.value;
   if (!p) return '';
-  if (p.kind === 'code') return `Will claim on ${p.origin}`;
-  if (p.kind === 'url' && p.navigateAway) {
-    return `Will open ${p.origin} and claim there`;
-  }
-  if (p.kind === 'url') return `Will claim on ${p.origin}`;
-  if (p.kind === 'origin') return `Will open lite home at ${p.origin}`;
+  if (p.kind === 'code') return `Will pair on ${p.origin}`;
+  if (p.kind === 'url') return `Will pair and open Annie on ${p.origin}`;
+  if (p.kind === 'origin') return `Will open AGNT Chat on ${p.origin}`;
   return '';
 });
 
@@ -187,98 +292,69 @@ function onAutoOpenChange() {
   setAutoOpenServer(autoOpen.value);
 }
 
-function saveServerOnly() {
-  serverError.value = '';
-  serverMsg.value = '';
-  const origin = normalizeServerOrigin(serverInput.value);
-  if (!origin) {
-    serverError.value = 'Enter a valid URL (e.g. http://192.168.1.20:3333).';
-    return;
-  }
-  rememberServerOrigin(origin);
-  setAutoOpenServer(autoOpen.value);
-  serverInput.value = origin;
-  serverMsg.value = `Saved ${origin}`;
-}
-
 /**
- * Always continue toward Annie chat after save.
- * Use full page navigation (not only router.push) so Capacitor/WKWebView and
- * same-route cases still move; auth guard will bounce to /m?returnTo= if needed.
+ * Single primary action for unauthenticated home:
+ * - full pair link (?c=…) → pair on that host
+ * - bare code → pair on remembered/current host
+ * - server URL only → open /m (or /m/chat if already signed in)
  */
-async function saveAndOpenServer() {
-  saveServerOnly();
-  const origin = normalizeServerOrigin(serverInput.value);
-  if (!origin) return;
-
+async function continueFromPaste() {
+  error.value = '';
   serverError.value = '';
-  serverMsg.value = 'Opening chat…';
-
-  // Re-probe session — authed may be stale after pairing in another tab/webview.
-  if (localStorage.getItem('token')) {
-    try {
-      await store.dispatch('userAuth/fetchUserData', { forceRefresh: true });
-      authed.value = Boolean(store.state.userAuth?.user);
-    } catch {
-      /* guard will re-try on /m/chat */
-    }
-  }
-
-  const chatUrl = `${origin}/m/chat`;
-
-  if (origin !== currentOrigin.value) {
-    window.location.assign(chatUrl);
+  const p = parsed.value;
+  if (!p) {
+    error.value =
+      'Paste a full pair link from Phone Access (includes host + code), a 32-char code, or a server URL.';
     return;
   }
 
-  // Same origin: hard navigate so we never "succeed" with a no-op push.
-  // Cache-bust path so WKWebView reloads even if already on /m/chat.
-  if (authed.value || localStorage.getItem('token')) {
-    window.location.assign(`${chatUrl}${chatUrl.includes('?') ? '&' : '?'}_ts=${Date.now()}`);
-    return;
-  }
-
-  // No token yet — still try /m/chat so returnTo is set after auth bounce, and
-  // show pairing UI clearly.
-  serverMsg.value = 'Not signed in yet — pair below, then chat opens.';
+  busy.value = true;
   try {
-    await router.push({ name: 'MobileChat' });
-  } catch {
-    /* ignore */
-  }
-  // If guard bounced us back, focus pair field.
-  requestAnimationFrame(() => {
-    const el = document.getElementById('ml-paste');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.focus();
-    }
-  });
-}
+    setAutoOpenServer(autoOpen.value);
 
-function switchToSavedServer() {
-  saveAndOpenServer();
+    if (p.kind === 'url' || p.kind === 'code') {
+      rememberServerOrigin(p.origin);
+      serverInput.value = p.origin;
+      if (p.navigateAway) {
+        // Other host: load /m/pair there so claim is same-origin.
+        window.location.assign(p.litePairUrl);
+        return;
+      }
+      await claimOnOrigin(p.code, p.origin);
+      return;
+    }
+
+    // kind === 'origin' — server URL only
+    rememberServerOrigin(p.origin);
+    serverInput.value = p.origin;
+    if (localStorage.getItem('token')) {
+      window.location.assign(`${p.origin}/m/chat?_ts=${Date.now()}`);
+    } else {
+      window.location.assign(p.liteHomeUrl || `${p.origin}/m`);
+    }
+  } catch (e) {
+    const status = e?.response?.status;
+    error.value =
+      status === 404
+        ? 'Code used or expired. Generate a new one on desktop.'
+        : status === 429
+          ? 'Too many attempts. Wait a minute.'
+          : e?.message || e?.response?.data?.error || 'Could not continue.';
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function refreshSession() {
   checking.value = true;
   try {
-    // Prefill server from storage or current host
+    refreshServerList();
     if (!serverInput.value) {
       serverInput.value = getRememberedServerOrigin() || currentOrigin.value || '';
     }
 
-    // Auto-open another saved host (browser /m or after leaving fixed pin)
-    if (
-      !route.query.nop &&
-      getAutoOpenServer() &&
-      getRememberedServerOrigin() &&
-      getRememberedServerOrigin() !== currentOrigin.value &&
-      !localStorage.getItem('token')
-    ) {
-      window.location.replace(`${getRememberedServerOrigin()}/m`);
-      return;
-    }
+    // setup=1 → always show chooser (multi-server / re-pair)
+    const forceSetup = route.query.setup === '1' || route.query.nop === '1';
 
     if (localStorage.getItem('token')) {
       await store.dispatch('userAuth/fetchUserData', { forceRefresh: true });
@@ -286,14 +362,17 @@ async function refreshSession() {
     authed.value = Boolean(store.state.userAuth?.user);
     if (authed.value) {
       rememberServerOrigin(currentOrigin.value);
+      setAutoOpenServer(true);
+      refreshServerList();
       serverInput.value = currentOrigin.value;
-    }
-    if (authed.value && route.query.returnTo) {
-      router.replace(String(route.query.returnTo));
-      return;
-    }
-    if (authed.value && route.query.auto === '1') {
-      router.replace({ name: 'MobileChat' });
+      if (route.query.returnTo) {
+        router.replace(String(route.query.returnTo));
+        return;
+      }
+      if (!forceSetup) {
+        window.location.replace(`${currentOrigin.value}/m/chat`);
+        return;
+      }
     }
   } finally {
     checking.value = false;
@@ -322,48 +401,6 @@ async function claimOnOrigin(code, origin) {
   authed.value = true;
   // Hard nav into chat (router-only is flaky inside Capacitor).
   window.location.assign(`${origin}/m/chat?_ts=${Date.now()}`);
-}
-
-async function submitPair() {
-  error.value = '';
-  const p = parsed.value;
-  if (!p) {
-    error.value =
-      'Paste a full pair link, or set Server URL and paste a 32-character code.';
-    return;
-  }
-
-  busy.value = true;
-  try {
-    if (p.kind === 'origin') {
-      rememberServerOrigin(p.origin);
-      serverInput.value = p.origin;
-      if (p.navigateAway) {
-        window.location.assign(p.liteHomeUrl);
-        return;
-      }
-      return;
-    }
-
-    if (p.navigateAway) {
-      rememberServerOrigin(p.origin);
-      serverInput.value = p.origin;
-      window.location.assign(p.litePairUrl);
-      return;
-    }
-
-    await claimOnOrigin(p.code, p.origin);
-  } catch (e) {
-    const status = e?.response?.status;
-    error.value =
-      status === 404
-        ? 'Code used or expired. Generate a new one on desktop.'
-        : status === 429
-          ? 'Too many attempts. Wait a minute.'
-          : e?.response?.data?.error || e?.message || 'Pairing failed.';
-  } finally {
-    busy.value = false;
-  }
 }
 
 onMounted(() => {
@@ -545,5 +582,58 @@ html.mobile-lite-shell #app {
 .ml-fine code {
   font-size: 11px;
   color: #8b93a7;
+}
+.ml-server-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ml-server-list li {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.ml-server-item {
+  flex: 1;
+  min-height: 48px;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid #2e3350;
+  background: #1b1b2b;
+  color: #e8e8f0;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ml-server-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.ml-server-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #19ef83;
+}
+.ml-server-remove {
+  width: 44px;
+  border-radius: 12px;
+  border: 1px solid #2e3350;
+  background: transparent;
+  color: #8b93a7;
+  font-size: 20px;
+  cursor: pointer;
 }
 </style>

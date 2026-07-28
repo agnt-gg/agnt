@@ -22,7 +22,11 @@ const {
   setAutoOpenServer,
   getAutoOpenServer,
   applyPairingSession,
+  listPairedServers,
+  removePairedServer,
+  hostLabel,
   SERVER_ORIGIN_KEY,
+  SERVER_LIST_KEY,
 } = await import('./mobileLitePairing.js');
 
 const HERE = 'http://192.168.1.10:3333';
@@ -112,6 +116,7 @@ describe('rememberServerOrigin', () => {
   beforeEach(() => {
     ensureLocalStorage();
     clearRememberedServerOrigin();
+    localStorage.removeItem(SERVER_LIST_KEY);
     setAutoOpenServer(false);
   });
 
@@ -127,6 +132,36 @@ describe('rememberServerOrigin', () => {
     expect(getAutoOpenServer()).toBe(true);
     setAutoOpenServer(false);
     expect(getAutoOpenServer()).toBe(false);
+  });
+});
+
+describe('listPairedServers', () => {
+  beforeEach(() => {
+    ensureLocalStorage();
+    localStorage.clear();
+  });
+
+  it('upserts origins and sorts by lastUsed', () => {
+    rememberServerOrigin('http://a.example:3333');
+    rememberServerOrigin('http://b.example:3333');
+    rememberServerOrigin('http://a.example:3333'); // bump a to top
+    const list = listPairedServers();
+    expect(list.map((s) => s.origin)).toEqual([
+      'http://a.example:3333',
+      'http://b.example:3333',
+    ]);
+    expect(list[0].label).toBe(hostLabel('http://a.example:3333'));
+  });
+
+  it('removePairedServer drops an entry and retargets last origin', () => {
+    rememberServerOrigin('http://a.example:3333');
+    rememberServerOrigin('http://b.example:3333');
+    removePairedServer('http://b.example:3333');
+    expect(listPairedServers().map((s) => s.origin)).toEqual(['http://a.example:3333']);
+    expect(getRememberedServerOrigin()).toBe('http://a.example:3333');
+    removePairedServer('http://a.example:3333');
+    expect(listPairedServers()).toEqual([]);
+    expect(getRememberedServerOrigin()).toBeNull();
   });
 });
 
@@ -150,5 +185,6 @@ describe('applyPairingSession', () => {
     });
     expect(commits.some((c) => c.type === 'userAuth/SET_TOKEN' && c.payload === 'tok')).toBe(true);
     expect(store.state.userAuth.user?.email).toBe('a@b.c');
+    expect(getAutoOpenServer()).toBe(true);
   });
 });

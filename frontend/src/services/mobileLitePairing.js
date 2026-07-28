@@ -12,10 +12,13 @@
  */
 
 export const SERVER_ORIGIN_KEY = 'agnt_lite_server_origin';
-/** When "1", native bootstrap / /m may auto-open the saved server on launch. */
+/** When "1", native bootstrap / /m may auto-open the last server on launch. */
 export const AUTO_OPEN_SERVER_KEY = 'agnt_lite_auto_open_server';
+/** JSON array of { origin, lastUsed, label? } — multi-server list. */
+export const SERVER_LIST_KEY = 'agnt_lite_servers';
 
 const CODE_RE = /^[a-f0-9]{32}$/i;
+const MAX_SERVERS = 12;
 
 /**
  * Normalize a user-entered server base to an origin (scheme + host + port).
@@ -129,19 +132,86 @@ export function parsePairingInput(text, currentOrigin) {
   };
 }
 
-export function rememberServerOrigin(origin) {
-  if (typeof localStorage === 'undefined' || !origin) return;
+/**
+ * @returns {Array<{ origin: string, lastUsed: number, label?: string }>}
+ */
+export function listPairedServers() {
+  if (typeof localStorage === 'undefined') return [];
   try {
-    localStorage.setItem(SERVER_ORIGIN_KEY, origin);
+    const raw = localStorage.getItem(SERVER_LIST_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((s) => s && typeof s.origin === 'string' && s.origin)
+      .sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+  } catch {
+    return [];
+  }
+}
+
+function writeServerList(list) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(SERVER_LIST_KEY, JSON.stringify(list.slice(0, MAX_SERVERS)));
   } catch {
     /* ignore quota */
+  }
+}
+
+/**
+ * Remember last-used origin and upsert into the multi-server list.
+ * @param {string} origin
+ * @param {{ label?: string }} [opts]
+ */
+export function rememberServerOrigin(origin, opts = {}) {
+  if (typeof localStorage === 'undefined' || !origin) return;
+  const normalized = normalizeServerOrigin(origin) || origin;
+  try {
+    localStorage.setItem(SERVER_ORIGIN_KEY, normalized);
+  } catch {
+    /* ignore */
+  }
+  const now = Date.now();
+  const list = listPairedServers().filter((s) => s.origin !== normalized);
+  list.unshift({
+    origin: normalized,
+    lastUsed: now,
+    label: opts.label || hostLabel(normalized),
+  });
+  writeServerList(list);
+}
+
+export function removePairedServer(origin) {
+  if (!origin) return;
+  const normalized = normalizeServerOrigin(origin) || origin;
+  writeServerList(listPairedServers().filter((s) => s.origin !== normalized));
+  if (getRememberedServerOrigin() === normalized) {
+    const next = listPairedServers()[0];
+    try {
+      if (next) localStorage.setItem(SERVER_ORIGIN_KEY, next.origin);
+      else localStorage.removeItem(SERVER_ORIGIN_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function hostLabel(origin) {
+  try {
+    const u = new URL(origin);
+    return u.host || origin;
+  } catch {
+    return origin;
   }
 }
 
 export function getRememberedServerOrigin() {
   if (typeof localStorage === 'undefined') return null;
   try {
-    return localStorage.getItem(SERVER_ORIGIN_KEY);
+    const last = localStorage.getItem(SERVER_ORIGIN_KEY);
+    if (last) return last;
+    const list = listPairedServers();
+    return list[0]?.origin || null;
   } catch {
     return null;
   }
@@ -242,6 +312,12 @@ export async function applyPairingSession(store, res) {
   if (!store.state.userAuth?.user) {
     store.commit('userAuth/SET_USER', fallbackUser);
   }
+
+  // Next cold start: skip setup UI and go straight to chat on this host.
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    rememberServerOrigin(window.location.origin);
+  }
+  setAutoOpenServer(true);
 
   return store.state.userAuth.user;
 }

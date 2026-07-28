@@ -24,6 +24,7 @@ ensureLocalStorage();
 
 const {
   resolveLiteProviderModel,
+  resolveLiteProviderModelAsync,
   listConversations,
   loadConversation,
   newConversationId,
@@ -120,5 +121,53 @@ describe('mobileLiteApi', () => {
 
   it('newConversationId returns a non-empty string', () => {
     expect(String(newConversationId()).length).toBeGreaterThan(8);
+  });
+
+  it('resolveLiteProviderModelAsync uses localStorage first', async () => {
+    localStorage.setItem('selectedProvider', 'openai');
+    localStorage.setItem('selectedModel', 'gpt-4o');
+    const r = await resolveLiteProviderModelAsync();
+    expect(r).toMatchObject({
+      provider: 'openai',
+      model: 'gpt-4o',
+      source: 'localStorage',
+    });
+  });
+
+  it('resolveLiteProviderModelAsync falls back to /users/settings', async () => {
+    const fetchMock = vi.fn(async (url) => {
+      expect(String(url)).toMatch(/users\/settings/);
+      return {
+        ok: true,
+        json: async () => ({
+          selectedProvider: 'Anthropic',
+          selectedModel: 'claude-3-5-sonnet-20240620',
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.setItem('token', 't');
+    const r = await resolveLiteProviderModelAsync();
+    expect(r).toMatchObject({
+      provider: 'Anthropic',
+      model: 'claude-3-5-sonnet-20240620',
+      source: 'users/settings',
+    });
+    expect(localStorage.getItem('selectedProvider')).toBe('Anthropic');
+    expect(localStorage.getItem('selectedModel')).toBe('claude-3-5-sonnet-20240620');
+  });
+
+  it('resolveLiteProviderModelAsync returns source none when empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({}),
+      })),
+    );
+    const r = await resolveLiteProviderModelAsync();
+    expect(r.source).toBe('none');
+    expect(r.provider).toBeNull();
+    expect(r.model).toBeNull();
   });
 });

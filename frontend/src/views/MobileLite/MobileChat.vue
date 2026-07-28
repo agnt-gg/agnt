@@ -19,6 +19,7 @@
         <button type="button" class="ml-icon-btn" @click="drawerOpen = false"><i class="fas fa-times"></i></button>
       </div>
       <button type="button" class="ml-drawer-new" :disabled="streaming" @click="startNew">+ New chat</button>
+      <button type="button" class="ml-drawer-setup" @click="openServerSetup">Switch server…</button>
       <ul class="ml-drawer-list">
         <li v-for="c in conversations" :key="c.id">
           <button
@@ -32,10 +33,6 @@
         </li>
         <li v-if="!conversations.length && !listLoading" class="ml-drawer-empty">No saved chats yet</li>
       </ul>
-      <div class="ml-drawer-foot">
-        <button type="button" class="ml-link" @click="goHome">Lite home</button>
-        <button type="button" class="ml-link" @click="openFull">Full AGNT</button>
-      </div>
     </aside>
     <div v-if="drawerOpen" class="ml-backdrop" @click="drawerOpen = false"></div>
 
@@ -103,7 +100,6 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { useRouter } from 'vue-router';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
 import {
   listConversations,
@@ -113,8 +109,6 @@ import {
   newMessageId,
   resolveLiteProviderModelAsync,
 } from '@/services/mobileLiteApi.js';
-
-const router = useRouter();
 
 const messages = ref([]);
 const draft = ref('');
@@ -341,12 +335,9 @@ function stop() {
   statusLine.value = 'Stopped';
 }
 
-function goHome() {
-  router.push({ name: 'MobileHome' });
-}
-
-function openFull() {
-  window.location.href = '/chat';
+function openServerSetup() {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  window.location.assign(`${origin}/m?setup=1`);
 }
 
 onMounted(() => {
@@ -580,6 +571,18 @@ onBeforeUnmount(() => {
   font-weight: 600;
   cursor: pointer;
 }
+.ml-drawer-setup {
+  margin: 0 12px 12px;
+  min-height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0 4px;
+}
 .ml-drawer-list {
   list-style: none;
   margin: 0;
@@ -609,19 +612,13 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: 13px;
 }
-.ml-drawer-foot {
-  padding: 12px 16px max(16px, env(safe-area-inset-bottom));
-  display: flex;
-  gap: 16px;
-  border-top: 1px solid var(--border);
-}
 .ml-link {
   background: none;
   border: none;
-  color: var(--muted);
+  color: var(--accent);
   font-size: 13px;
   cursor: pointer;
-  padding: 0;
+  padding: 8px 0;
 }
 </style>
 

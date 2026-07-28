@@ -604,8 +604,9 @@ mobile-lite-ios-init: mobile-lite-configure ## One-time: Capacitor deps + iOS pl
 		echo "$(YELLOW)ios/ already present — running sync only$(NC)"; \
 		cd $(MOBILE_LITE_DIR) && npx cap sync ios; \
 	fi
-	@chmod +x scripts/mobile-lite-ios-patch-ats.sh
+	@chmod +x scripts/mobile-lite-ios-patch-ats.sh scripts/mobile-lite-ios-icons.sh
 	@./scripts/mobile-lite-ios-patch-ats.sh
+	@./scripts/mobile-lite-ios-icons.sh
 	@echo "$(GREEN)✓ mobile lite iOS initialized$(NC)"
 	@echo "  Browser:  http://<host>:3333/m  (no native build)"
 	@echo "  Simulator: make mobile-lite-ios-sim  (defaults to http://127.0.0.1:3333)"
@@ -623,8 +624,9 @@ mobile-lite-ios-sync: mobile-lite-configure ## Sync Capacitor config into the iO
 		$(MAKE) mobile-lite-ios-init AGNT_SERVER_URL="$(AGNT_SERVER_URL)" AGNT_SERVER_MODE="$(AGNT_SERVER_MODE)"; \
 	else \
 		(cd $(MOBILE_LITE_DIR) && npx cap sync ios); \
-		chmod +x scripts/mobile-lite-ios-patch-ats.sh; \
+		chmod +x scripts/mobile-lite-ios-patch-ats.sh scripts/mobile-lite-ios-icons.sh; \
 		./scripts/mobile-lite-ios-patch-ats.sh; \
+		./scripts/mobile-lite-ios-icons.sh; \
 	fi
 	@if [ -n "$(AGNT_SERVER_URL)" ]; then \
 		echo "$(GREEN)✓ mobile lite iOS synced → $(AGNT_SERVER_URL)/m (fixed)$(NC)"; \

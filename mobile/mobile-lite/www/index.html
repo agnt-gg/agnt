@@ -15,7 +15,8 @@
       * {
         box-sizing: border-box;
       }
-      html, body {
+      html,
+      body {
         margin: 0;
         min-height: 100%;
         background: #12121c;
@@ -24,7 +25,6 @@
         min-height: 100vh;
         min-height: 100dvh;
         font-family: system-ui, -apple-system, sans-serif;
-        background: #12121c;
         color: #e8e8f0;
         padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
           max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
@@ -68,12 +68,10 @@
       .field-note {
         font-size: 0.72rem;
         color: #5c6478;
-        margin: -4px 0 10px;
+        margin: -4px 0 12px;
         line-height: 1.4;
       }
-      textarea,
-      input[type='text'],
-      input[type='url'] {
+      textarea {
         width: 100%;
         border-radius: 12px;
         border: 1px solid #2e3350;
@@ -82,18 +80,16 @@
         padding: 12px 14px;
         font-size: 16px;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        margin-bottom: 10px;
-      }
-      textarea {
-        min-height: 88px;
+        min-height: 100px;
         resize: vertical;
         line-height: 1.4;
+        margin-bottom: 10px;
       }
       .row-check {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 0 0 12px;
+        margin: 0 0 14px;
         font-size: 0.85rem;
         color: #8b93a7;
       }
@@ -103,11 +99,6 @@
         margin: 0;
         accent-color: #19ef83;
       }
-      .divider {
-        border: none;
-        border-top: 1px solid #2e3350;
-        margin: 18px 0;
-      }
       .hint {
         font-size: 0.75rem;
         color: #19ef83;
@@ -116,11 +107,6 @@
       }
       .err {
         color: #ff7b7b;
-        font-size: 0.85rem;
-        margin: 0 0 10px;
-      }
-      .ok {
-        color: #19ef83;
         font-size: 0.85rem;
         margin: 0 0 10px;
       }
@@ -142,12 +128,6 @@
       .primary:disabled {
         opacity: 0.45;
       }
-      .ghost {
-        background: transparent;
-        color: #8b93a7;
-        border: 1px solid #2e3350;
-        font-size: 14px;
-      }
       .fine {
         font-size: 0.75rem;
         color: #5c6478;
@@ -158,6 +138,40 @@
         color: #8b93a7;
         font-size: 0.7rem;
       }
+      .server-list {
+        list-style: none;
+        margin: 0 0 14px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .server-list li {
+        display: flex;
+        gap: 8px;
+      }
+      .server-list button.open {
+        flex: 1;
+        min-height: 48px;
+        text-align: left;
+        border-radius: 12px;
+        border: 1px solid #2e3350;
+        background: #1b1b2b;
+        color: #e8e8f0;
+        padding: 12px 14px;
+        font-size: 13px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        cursor: pointer;
+      }
+      .server-list button.rm {
+        width: 44px;
+        border-radius: 12px;
+        border: 1px solid #2e3350;
+        background: transparent;
+        color: #8b93a7;
+        font-size: 20px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -165,74 +179,136 @@
       <div class="mark">A</div>
       <h1>AGNT Chat</h1>
       <p class="sub">
-        Set your AGNT server once (LAN or Tailscale). It is saved on this device — no rebuild
-        when the host changes. Pair with a desktop code when needed.
+        Scan the QR on desktop <strong>Phone Access</strong>, or paste the same <strong>pair link</strong>
+        (one URL with host + code).
       </p>
 
-      <label for="server">Server URL</label>
-      <input
-        id="server"
-        type="url"
-        inputmode="url"
-        autocomplete="url"
-        placeholder="http://192.168.1.20:3333 or host:3333"
-      />
-      <p class="field-note">Saved in this app. Example: Tailscale <code>http://100.x.x.x:3333</code></p>
-      <label class="row-check">
-        <input type="checkbox" id="autoOpen" />
-        Open this server automatically next launch
-      </label>
-      <div class="err" id="serverErr"></div>
-      <div class="ok" id="serverOk"></div>
-      <button type="button" class="primary" id="saveOpen">Save &amp; open /m</button>
-      <button type="button" class="ghost" id="saveOnly">Save server URL</button>
+      <div id="serverListWrap" hidden>
+        <label>Saved servers</label>
+        <ul id="serverList" class="server-list"></ul>
+      </div>
 
-      <hr class="divider" />
-
-      <label for="paste">Pair link or code (optional)</label>
+      <label for="paste">Pair link (URL)</label>
       <textarea
         id="paste"
-        placeholder="http://host:3333/pair?c=…&#10;or full lite link /m/pair?c=…"
+        placeholder="http://192.168.x.x:3333/m/pair?c=…"
       ></textarea>
+      <p class="field-note">
+        Same link as the desktop QR. Saved servers appear after you pair.
+      </p>
+      <label class="row-check">
+        <input type="checkbox" id="autoOpen" />
+        Open last server automatically next launch
+      </label>
       <div class="hint" id="hint"></div>
       <div class="err" id="err"></div>
-      <button type="button" class="primary" id="goPair" disabled>Pair &amp; continue</button>
-
+      <button type="button" class="primary" id="go" disabled>Continue</button>
       <p class="fine">
-        Server URL is stored as <code>agnt_lite_server_origin</code> in local storage. Optional
-        Makefile pin <code>AGNT_SERVER_URL</code> only affects cold start of a <em>fixed</em> build —
-        this screen overrides the host for day-to-day use in local mode.
+        Desktop: Settings → Phone Access → copy link or code. Reopen this setup with
+        <code>?setup=1</code> to pick another saved server.
       </p>
     </div>
     <script>
       (function () {
         var ORIGIN_KEY = 'agnt_lite_server_origin';
         var AUTO_KEY = 'agnt_lite_auto_open_server';
+        var LIST_KEY = 'agnt_lite_servers';
 
-        var serverEl = document.getElementById('server');
-        var autoEl = document.getElementById('autoOpen');
-        var serverErr = document.getElementById('serverErr');
-        var serverOk = document.getElementById('serverOk');
-        var saveOpen = document.getElementById('saveOpen');
-        var saveOnly = document.getElementById('saveOnly');
         var paste = document.getElementById('paste');
+        var autoEl = document.getElementById('autoOpen');
         var hint = document.getElementById('hint');
         var err = document.getElementById('err');
-        var goPair = document.getElementById('goPair');
+        var go = document.getElementById('go');
+        var listWrap = document.getElementById('serverListWrap');
+        var listEl = document.getElementById('serverList');
         var lastParsed = null;
+
+        function listServers() {
+          try {
+            var raw = localStorage.getItem(LIST_KEY);
+            var list = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(list)) return [];
+            return list
+              .filter(function (s) {
+                return s && s.origin;
+              })
+              .sort(function (a, b) {
+                return (b.lastUsed || 0) - (a.lastUsed || 0);
+              });
+          } catch (e) {
+            return [];
+          }
+        }
 
         function remember(origin) {
           try {
             localStorage.setItem(ORIGIN_KEY, origin);
+            var list = listServers().filter(function (s) {
+              return s.origin !== origin;
+            });
+            var host = origin;
+            try {
+              host = new URL(origin).host;
+            } catch (e) {}
+            list.unshift({ origin: origin, lastUsed: Date.now(), label: host });
+            localStorage.setItem(LIST_KEY, JSON.stringify(list.slice(0, 12)));
           } catch (e) {}
         }
 
         function getLast() {
           try {
-            return localStorage.getItem(ORIGIN_KEY);
+            var last = localStorage.getItem(ORIGIN_KEY);
+            if (last) return last;
+            var list = listServers();
+            return list[0] ? list[0].origin : null;
           } catch (e) {
             return null;
           }
+        }
+
+        function removeServer(origin) {
+          try {
+            var list = listServers().filter(function (s) {
+              return s.origin !== origin;
+            });
+            localStorage.setItem(LIST_KEY, JSON.stringify(list));
+            if (getLast() === origin) {
+              if (list[0]) localStorage.setItem(ORIGIN_KEY, list[0].origin);
+              else localStorage.removeItem(ORIGIN_KEY);
+            }
+          } catch (e) {}
+          renderList();
+        }
+
+        function renderList() {
+          var list = listServers();
+          listEl.innerHTML = '';
+          if (!list.length) {
+            listWrap.hidden = true;
+            return;
+          }
+          listWrap.hidden = false;
+          list.forEach(function (s) {
+            var li = document.createElement('li');
+            var openBtn = document.createElement('button');
+            openBtn.type = 'button';
+            openBtn.className = 'open';
+            openBtn.textContent = s.label || s.origin;
+            openBtn.addEventListener('click', function () {
+              navigate(s.origin + '/m/chat', s.origin);
+            });
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'rm';
+            rm.setAttribute('aria-label', 'Remove');
+            rm.textContent = '×';
+            rm.addEventListener('click', function () {
+              removeServer(s.origin);
+            });
+            li.appendChild(openBtn);
+            li.appendChild(rm);
+            listEl.appendChild(li);
+          });
         }
 
         function getAuto() {
@@ -263,23 +339,29 @@
           }
         }
 
-        function parsePair(text) {
+        /** @returns {{ href: string, hint: string, origin: string } | { error: string } | null} */
+        function parseInput(text) {
           var raw = String(text || '').trim();
           if (!raw) return null;
           var codeRe = /^[a-f0-9]{32}$/i;
+
           if (codeRe.test(raw)) {
-            var base = normalizeOrigin(serverEl.value) || getLast();
+            var base = getLast() || normalizeOrigin(raw);
+            // bare code needs a remembered server
+            base = getLast();
             if (!base) {
               return {
-                error: 'Set Server URL above, then paste the 32-character code (or paste a full pair link).',
+                error:
+                  'Paste a full pair link (includes host + code), or open a server URL once first.',
               };
             }
             return {
               href: base + '/m/pair?c=' + raw.toLowerCase(),
-              hint: 'Claim on ' + base,
+              hint: 'Pair on ' + base,
               origin: base,
             };
           }
+
           var url;
           try {
             url = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL('http://' + raw);
@@ -292,143 +374,78 @@
           if (codeRe.test(code)) {
             return {
               href: origin + '/m/pair?c=' + code,
-              hint: 'Open ' + origin + ' and pair',
+              hint: 'Pair and open Annie on ' + origin,
               origin: origin,
             };
           }
           return {
             href: origin + '/m',
-            hint: 'Open lite home at ' + origin,
+            hint: 'Open AGNT Chat on ' + origin,
             origin: origin,
           };
         }
 
         function navigate(href, origin) {
           if (origin) remember(origin);
-          // Always assign — even same document URL — so Capacitor/WKWebView actually loads.
+          setAuto(autoEl.checked);
           window.location.assign(href);
         }
 
-        function saveServer(andOpen) {
-          serverErr.textContent = '';
-          serverOk.textContent = '';
-          var origin = normalizeOrigin(serverEl.value);
-          if (!origin) {
-            serverErr.textContent =
-              'Enter a valid server URL (e.g. http://192.168.1.20:3333 or 100.x.x.x:3333).';
-            return;
-          }
-          remember(origin);
-          setAuto(autoEl.checked);
-          serverEl.value = origin;
-          serverOk.textContent = 'Saved ' + origin;
-          if (!andOpen) return;
-          var target = origin + '/m';
-          serverOk.textContent = 'Opening ' + target + '…';
-          // Cache-bust so a second tap still reloads if already on that URL in WebView.
-          navigate(target + (target.indexOf('?') >= 0 ? '&' : '?') + '_ts=' + Date.now(), origin);
-        }
-
-        function refreshPair() {
+        function refresh() {
           err.textContent = '';
-          lastParsed = parsePair(paste.value);
+          lastParsed = parseInput(paste.value);
           if (!lastParsed) {
             hint.textContent = '';
-            goPair.disabled = true;
+            go.disabled = true;
             return;
           }
           if (lastParsed.error) {
             hint.textContent = '';
             err.textContent = lastParsed.error;
-            goPair.disabled = true;
+            go.disabled = true;
             return;
           }
           hint.textContent = lastParsed.hint;
-          goPair.disabled = false;
+          go.disabled = false;
         }
 
-        saveOpen.addEventListener('click', function () {
-          saveServer(true);
-        });
-        saveOnly.addEventListener('click', function () {
-          saveServer(false);
-        });
-        autoEl.addEventListener('change', function () {
-          setAuto(autoEl.checked);
-        });
-        goPair.addEventListener('click', function () {
+        go.addEventListener('click', function () {
           if (!lastParsed || !lastParsed.href) return;
           navigate(lastParsed.href, lastParsed.origin);
         });
-        paste.addEventListener('input', refreshPair);
-        serverEl.addEventListener('input', function () {
-          serverErr.textContent = '';
-          serverOk.textContent = '';
-          if (paste.value) refreshPair();
-        });
-        serverEl.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            saveServer(true);
-          }
+        paste.addEventListener('input', refresh);
+        autoEl.addEventListener('change', function () {
+          setAuto(autoEl.checked);
         });
 
-        // Prefill from storage, then optional make suggestedOrigin
-        var remembered = getLast();
-        if (remembered) {
-          serverEl.value = remembered;
-        } else {
-          // Sensible Sim default so the field is never empty
-          serverEl.value = 'http://localhost:3333';
-        }
         autoEl.checked = getAuto();
+        var remembered = getLast();
+        if (remembered && !paste.value) {
+          paste.placeholder = remembered + '/m/pair?c=…';
+        }
 
         fetch('boot-config.json')
           .then(function (r) {
             return r.ok ? r.json() : null;
           })
           .then(function (cfg) {
-            if (cfg && cfg.suggestedOrigin && (!remembered || serverEl.value === 'http://localhost:3333')) {
-              var o = cfg.suggestedOrigin;
-              try {
-                var u = new URL(o);
-                if (u.hostname === '127.0.0.1') {
-                  u.hostname = 'localhost';
-                  o = u.origin;
-                }
-              } catch (e) {}
-              serverEl.value = o;
+            if (cfg && cfg.suggestedOrigin && !paste.value && !remembered) {
+              paste.placeholder = cfg.suggestedOrigin + '/m/pair?c=…';
             }
           })
-          .catch(function () {})
-          .then(function () {
-            // Probe server so a dead backend is obvious (not a white screen)
-            var origin = normalizeOrigin(serverEl.value);
-            if (!origin) return;
-            return fetch(origin + '/api/health', { method: 'GET' })
-              .then(function (r) {
-                if (r.ok) {
-                  serverOk.textContent = 'Server reachable at ' + origin;
-                } else {
-                  serverErr.textContent =
-                    'Server at ' + origin + ' returned HTTP ' + r.status + '. Is AGNT running?';
-                }
-              })
-              .catch(function () {
-                serverErr.textContent =
-                  'Cannot reach ' + origin + '. Start AGNT on this Mac (port 3333), then Save & open.';
-              });
-          })
-          .then(function () {
-            // Auto-open saved server (skip if user is only pairing with ?nop=1)
-            var params = new URLSearchParams(window.location.search || '');
-            if (params.get('nop') === '1') return;
-            if (getAuto() && getLast()) {
-              navigate(getLast() + '/m', getLast());
-            }
-          });
+          .catch(function () {});
 
-        refreshPair();
+        // Already configured: skip setup and open last server's chat.
+        // ?setup=1 forces this chooser (multi-server list + paste).
+        var params = new URLSearchParams(window.location.search || '');
+        var forceSetup = params.get('setup') === '1' || params.get('nop') === '1';
+        if (!forceSetup && getLast() && (getAuto() || listServers().length === 1)) {
+          navigate(getLast() + '/m/chat', getLast());
+          return;
+        }
+
+        renderList();
+        refresh();
       })();
     </script>
   </body>

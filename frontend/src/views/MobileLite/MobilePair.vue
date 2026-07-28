@@ -61,6 +61,7 @@ onMounted(async () => {
     state.value = 'done';
     message.value = 'Signed in. Opening Annie…';
     // Hard navigation — router.replace alone is unreliable in Capacitor WKWebView.
+    // applyPairingSession already remembered origin + auto-open for next launch.
     setTimeout(() => {
       const o = typeof window !== 'undefined' ? window.location.origin : '';
       window.location.replace(`${o}/m/chat?_ts=${Date.now()}`);

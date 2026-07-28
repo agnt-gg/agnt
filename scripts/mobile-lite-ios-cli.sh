@@ -122,11 +122,15 @@ cmd_sim_run() {
   udid="$(pick_simulator_udid)"
   app="$(find_app iphonesimulator)"
   boot_simulator "$udid"
+  # Uninstall first so SpringBoard drops a cached Capacitor/default icon.
+  echo "Uninstalling previous $BUNDLE_ID (clears icon cache) …"
+  xcrun simctl uninstall "$udid" "$BUNDLE_ID" 2>/dev/null || true
   echo "Installing $BUNDLE_ID …"
   xcrun simctl install "$udid" "$app"
   echo "Launching …"
   xcrun simctl launch "$udid" "$BUNDLE_ID"
   echo "✓ Running on Simulator (no Xcode GUI)"
+  echo "  If the home-screen icon is still wrong: Device → Erase All Content and Settings (Sim), then reinstall."
 }
 
 cmd_device_build() {
@@ -352,6 +356,12 @@ cmd_device_run() {
   if ! profile_includes_device "$app" "$hw_udid"; then
     provisioning_fix_die "$team" "$hw_udid" "$app"
   fi
+
+  # Uninstall first so SpringBoard / app switcher drop a cached Capacitor icon.
+  echo "Uninstalling previous $BUNDLE_ID (clears icon cache) …"
+  xcrun devicectl device uninstall app --device "$core_id" "$BUNDLE_ID" 2>/dev/null \
+    || xcrun devicectl device uninstall app --device "$hw_udid" "$BUNDLE_ID" 2>/dev/null \
+    || true
 
   local install_err
   install_err="$(mktemp)"
