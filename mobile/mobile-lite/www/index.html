@@ -32,6 +32,10 @@
       .wrap {
         max-width: 400px;
         margin: 0 auto;
+        visibility: hidden;
+      }
+      body.boot-ready .wrap {
+        visibility: visible;
       }
       .mark {
         width: 44px;
@@ -262,6 +266,39 @@
         width: 100%;
       }
     </style>
+    <script>
+      // Synchronous early redirect: if a server is already saved, leave before
+      // the setup form paints (iOS Capacitor cold start).
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search || '');
+          if (params.get('setup') === '1' || params.get('nop') === '1') return;
+          var ORIGIN_KEY = 'agnt_lite_server_origin';
+          var AUTO_KEY = 'agnt_lite_auto_open_server';
+          var LIST_KEY = 'agnt_lite_servers';
+          var last = null;
+          try {
+            last = localStorage.getItem(ORIGIN_KEY);
+          } catch (e) {}
+          var list = [];
+          try {
+            list = JSON.parse(localStorage.getItem(LIST_KEY) || '[]');
+            if (!Array.isArray(list)) list = [];
+          } catch (e) {
+            list = [];
+          }
+          if (!last && list[0] && list[0].origin) last = list[0].origin;
+          var auto = false;
+          try {
+            auto = localStorage.getItem(AUTO_KEY) === '1';
+          } catch (e) {}
+          if (last && (auto || list.length === 1)) {
+            document.documentElement.classList.add('boot-redirecting');
+            window.location.replace(String(last).replace(/\/$/, '') + '/m/chat');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div class="wrap">
@@ -655,6 +692,7 @@
 
         // Already configured: skip setup and open last server's chat.
         // ?setup=1 forces this chooser (multi-server list + paste).
+        // (Early <head> script may already have redirected; this is the fallback.)
         var params = new URLSearchParams(window.location.search || '');
         var forceSetup = params.get('setup') === '1' || params.get('nop') === '1';
         if (!forceSetup && getLast() && (getAuto() || listServers().length === 1)) {
@@ -662,6 +700,7 @@
           return;
         }
 
+        document.body.classList.add('boot-ready');
         renderList();
         refresh();
       })();

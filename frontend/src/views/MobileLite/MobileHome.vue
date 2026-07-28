@@ -368,6 +368,7 @@ async function continueFromPaste() {
 
 async function refreshSession() {
   checking.value = true;
+  let redirecting = false;
   try {
     refreshServerList();
     if (!serverInput.value) {
@@ -391,12 +392,14 @@ async function refreshSession() {
         return;
       }
       if (!forceSetup) {
+        // Keep the "Checking session…" state — do not flash the setup UI.
+        redirecting = true;
         window.location.replace(`${currentOrigin.value}/m/chat`);
         return;
       }
     }
   } finally {
-    checking.value = false;
+    if (!redirecting) checking.value = false;
   }
 }
 
