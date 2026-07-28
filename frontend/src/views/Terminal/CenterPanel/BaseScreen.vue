@@ -1641,7 +1641,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   position: sticky;
   bottom: 0;
   background: transparent;
-  padding: 8px 16px 0 8px;
+  padding: 8px 0 8px;
   border-radius: 0 0 0 16px;
   border-top: 1px solid var(--terminal-border-color);
   margin-top: auto;
