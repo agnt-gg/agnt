@@ -931,15 +931,19 @@ export default {
           throw new Error('No authentication token found');
         }
 
-        const response = await fetch(`${API_CONFIG.REMOTE_URL}/marketplace/my-workflows`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        // /my-items returns EVERY asset type. /my-workflows does not — it
+        // filters to asset_type === 'workflow' server-side, so this action
+        // never actually saw a published plugin/agent/tool despite its name.
+        // The fallback keeps older servers working: desktop and api.agnt.gg
+        // ship on independent cadences.
+        const headers = { Authorization: `Bearer ${token}` };
+        let response = await fetch(`${API_CONFIG.REMOTE_URL}/marketplace/my-items`, { headers });
+        if (response.status === 404) {
+          response = await fetch(`${API_CONFIG.REMOTE_URL}/marketplace/my-workflows`, { headers });
+        }
 
         const data = await response.json();
-        // The endpoint returns 'workflows' but contains all asset types
-        commit('SET_MY_PUBLISHED_ITEMS', data.workflows || data.items || []);
+        commit('SET_MY_PUBLISHED_ITEMS', data.items || data.workflows || []);
         commit('SET_LAST_PUBLISHED_FETCHED', now);
       } catch (error) {
         console.error('Error fetching published items:', error);

@@ -311,7 +311,12 @@
               </div>
               <div class="plugin-select-info">
                 <span class="plugin-select-name">{{ getDisplayName(plugin) }}</span>
-                <span class="plugin-select-version">v{{ plugin.version }}</span>
+                <span class="plugin-select-version">
+                  v{{ plugin.version }}
+                  <span v-if="publishedListingFor(plugin)" class="published-chip">
+                    published v{{ publishedListingFor(plugin).current_version }}
+                  </span>
+                </span>
               </div>
               <i v-if="publishSelectedPlugin?.name === plugin.name" class="fas fa-check-circle selected-check"></i>
             </div>
@@ -327,8 +332,26 @@
         <div v-if="publishSelectedPlugin" class="publish-step">
           <div class="step-header">
             <span class="step-badge">2</span>
-            <h4>Plugin Details</h4>
+            <h4>{{ isUpdateMode ? 'Release Notes' : 'Plugin Details' }}</h4>
           </div>
+
+          <!-- Update mode: listing copy is edited from the marketplace panel;
+               here we only ship the new package + changelog. -->
+          <div v-if="isUpdateMode" class="publish-form">
+            <div class="version-summary" :class="{ blocked: !versionCanPublish }">
+              <i class="fas" :class="versionCanPublish ? 'fa-arrow-up' : 'fa-exclamation-triangle'"></i>
+              <span v-if="versionCanPublish">
+                Publishing <b>v{{ selectedPublishedListing.current_version }}</b> &rarr; <b>v{{ publishSelectedPlugin.version }}</b>
+              </span>
+              <span v-else>{{ versionBlockReason }}</span>
+            </div>
+            <div class="form-row">
+              <label>Changelog</label>
+              <textarea v-model="publishForm.changelog" placeholder="What changed in this version?" rows="3"></textarea>
+            </div>
+          </div>
+
+          <div v-else>
           <div class="publish-form">
             <div class="form-row">
               <label>Display Name</label>
@@ -386,22 +409,28 @@
               </button>
             </div>
           </div>
+          </div>
         </div>
 
         <!-- Publish Button -->
         <div v-if="publishSelectedPlugin" class="publish-step">
           <div class="step-header">
             <span class="step-badge">3</span>
-            <h4>Publish</h4>
+            <h4>{{ isUpdateMode ? 'Ship Update' : 'Publish' }}</h4>
           </div>
           <div class="publish-actions">
             <p class="publish-note">
               <i class="fas fa-info-circle"></i>
-              Your plugin will be reviewed before appearing in the marketplace.
+              <span v-if="isUpdateMode">
+                The new package is re-scanned on upload. Users on an older version see it via plugin updates.
+              </span>
+              <span v-else>Your plugin will be reviewed before appearing in the marketplace.</span>
             </p>
-            <BaseButton variant="primary" @click="publishPlugin" :disabled="isPublishing">
-              <i class="fas" :class="isPublishing ? 'fa-spinner fa-spin' : 'fa-cloud-upload-alt'"></i>
-              {{ isPublishing ? 'Publishing...' : 'Publish to Marketplace' }}
+            <BaseButton variant="primary" @click="publishPlugin" :disabled="isPublishing || (isUpdateMode && !versionCanPublish)">
+              <i class="fas" :class="isPublishing ? 'fa-spinner fa-spin' : isUpdateMode ? 'fa-arrow-up' : 'fa-cloud-upload-alt'"></i>
+              <template v-if="isPublishing">{{ isUpdateMode ? 'Publishing update...' : 'Publishing...' }}</template>
+              <template v-else-if="isUpdateMode">Publish v{{ publishSelectedPlugin.version }}</template>
+              <template v-else>Publish to Marketplace</template>
             </BaseButton>
           </div>
         </div>
@@ -425,6 +454,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import PluginBuilder from './PluginBuilder.vue';
 import PackStudio from './PackStudio.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { checkPluginVersionPublishable } from '@/utils/pluginVersion.js';
 import { useLicense } from '@/composables/useLicense';
 
 export default {
@@ -461,6 +491,45 @@ export default {
     // Publish tab state
     const publishSelectedPlugin = ref(null);
     const isPublishing = ref(false);
+    // Listings this user has already published, keyed by plugin asset_id.
+    // Drives update-vs-create: `POST /marketplace/publish` is create-only and
+    // 409s on a second call, so publishing an update needs the listing id.
+    const myPublishedPlugins = ref([]);
+    /** The user's own marketplace listing for an installed plugin, if any. */
+    function publishedListingFor(plugin) {
+      if (!plugin?.name) return null;
+      return myPublishedPlugins.value.find((item) => item.asset_id === plugin.name) || null;
+    }
+
+    const selectedPublishedListing = computed(() => publishedListingFor(publishSelectedPlugin.value));
+    const isUpdateMode = computed(() => Boolean(selectedPublishedListing.value));
+
+    const versionCheck = computed(() => {
+      const listing = selectedPublishedListing.value;
+      if (!listing) return { ok: true, reason: '' };
+      return checkPluginVersionPublishable(publishSelectedPlugin.value?.version, listing.current_version);
+    });
+
+    const versionCanPublish = computed(() => versionCheck.value.ok);
+    const versionBlockReason = computed(() => versionCheck.value.reason);
+
+    /**
+     * Single source of truth: the marketplace store owns fetching + caching +
+     * the older-server fallback. Duplicating the fetch here is how the two
+     * would drift.
+     */
+    async function fetchMyPublishedPlugins() {
+      try {
+        if (!localStorage.getItem('token')) return;
+        await store.dispatch('marketplace/fetchMyPublishedItems', { force: true });
+        const items = store.state.marketplace?.myPublishedItems || [];
+        myPublishedPlugins.value = items.filter((item) => item.asset_type === 'plugin');
+      } catch (error) {
+        // Non-fatal: without this the tab simply falls back to create-only.
+        console.warn('Could not load published plugin listings:', error.message);
+      }
+    }
+
     const publishForm = ref({
       displayName: '',
       description: '',
@@ -468,7 +537,23 @@ export default {
       tags: '',
       isFree: true,
       price: '',
+      changelog: '',
     });
+
+    /**
+     * Best-effort owner/repo from a plugin manifest. Stored as
+     * metadata.repository on first publish: the provenance endpoint matches a
+     * listing by that field, so a listing without it can never be upgraded to
+     * the verified tier no matter how the CI workflow is configured.
+     */
+    function extractRepository(plugin) {
+      const candidates = [plugin?.repository?.url, plugin?.repository, plugin?.homepage].filter((v) => typeof v === 'string');
+      for (const candidate of candidates) {
+        const match = /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?(?:[/#?]|$)/i.exec(candidate);
+        if (match) return match[1];
+      }
+      return undefined;
+    }
 
     // Shared state from store
     const activeTab = computed({
@@ -1205,6 +1290,15 @@ export default {
 
     // Publish functions
     function selectPluginToPublish(plugin) {
+      const listing = publishedListingFor(plugin);
+      if (listing) {
+        // Update mode: the listing already owns title/description/price. Editing
+        // those is `PUT /marketplace/items/:id` and belongs to the marketplace
+        // panel; this tab ships bytes.
+        publishSelectedPlugin.value = plugin;
+        publishForm.value.changelog = '';
+        return;
+      }
       playSound('typewriterKeyPress');
       publishSelectedPlugin.value = plugin;
       // Pre-fill form with plugin data
@@ -1214,6 +1308,7 @@ export default {
       publishForm.value.tags = '';
       publishForm.value.isFree = true;
       publishForm.value.price = '';
+      publishForm.value.changelog = '';
     }
 
     async function publishPlugin() {
@@ -1222,7 +1317,7 @@ export default {
         return;
       }
 
-      if (!publishForm.value.displayName || !publishForm.value.description) {
+      if (!isUpdateMode.value && (!publishForm.value.displayName || !publishForm.value.description)) {
         emit('show-alert', 'Error', 'Please fill in all required fields');
         return;
       }
@@ -1243,7 +1338,35 @@ export default {
           throw new Error(packageData.error || 'Failed to get plugin package');
         }
 
-        // Publish to marketplace API (using /publish endpoint like other assets)
+        // UPDATE: an existing listing takes new bytes through the version
+        // endpoint. /marketplace/publish is create-only and 409s here.
+        if (isUpdateMode.value) {
+          const listing = selectedPublishedListing.value;
+          const updateResponse = await fetch(`${API_CONFIG.REMOTE_URL}/marketplace/items/${listing.id}/version`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              packageData: packageData.data,
+              changelog: publishForm.value.changelog || `Version ${publishSelectedPlugin.value.version}`,
+            }),
+          });
+          const updateResult = await updateResponse.json();
+          if (!updateResponse.ok) throw new Error(updateResult.error || 'Failed to publish update');
+
+          triggerConfetti();
+          emit(
+            'show-alert',
+            'Update Published',
+            `${getDisplayName(publishSelectedPlugin.value)} is now at v${updateResult.version}. ` +
+              `Existing users will see it as an available update.`
+          );
+          await fetchMyPublishedPlugins();
+          publishSelectedPlugin.value = null;
+          publishForm.value.changelog = '';
+          return;
+        }
+
+        // CREATE: first publish of this plugin id.
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/marketplace/publish`, {
           method: 'POST',
           headers: {
@@ -1259,6 +1382,11 @@ export default {
               downloadUrl: null, // Will be set by server after storing the package
               packageData: packageData.data, // Base64 encoded .agnt file
               size: packageData.size,
+              // Recording the repo is the handshake that makes the GitHub
+              // Actions provenance publish path reachable for this listing.
+              // Without it the provenance endpoint can never match a listing.
+              repository: extractRepository(publishSelectedPlugin.value),
+              homepage: publishSelectedPlugin.value.homepage || undefined,
             },
             // Listing metadata
             title: publishForm.value.displayName,
@@ -1282,6 +1410,8 @@ export default {
 
         emit('show-alert', 'Success', `Plugin "${publishForm.value.displayName}" submitted for review!`);
 
+        await fetchMyPublishedPlugins();
+
         // Reset form
         publishSelectedPlugin.value = null;
         publishForm.value = {
@@ -1291,6 +1421,7 @@ export default {
           tags: '',
           isFree: true,
           price: '',
+          changelog: '',
         };
       } catch (error) {
         emit('show-alert', 'Error', `Failed to publish: ${error.message}`);
@@ -1370,6 +1501,8 @@ export default {
 
       if (isPro.value) {
         refreshPlugins();
+        // Needed before the Publish tab can tell create from update.
+        fetchMyPublishedPlugins();
       }
 
       // Listen for realtime plugin events
@@ -1403,6 +1536,11 @@ export default {
       publishSelectedPlugin,
       isPublishing,
       publishForm,
+      publishedListingFor,
+      selectedPublishedListing,
+      isUpdateMode,
+      versionCanPublish,
+      versionBlockReason,
       isPluginInstalled,
       getDisplayName,      trustTierLabel,
       trustTooltipText,
@@ -1966,6 +2104,46 @@ body.dark .manual-install-section {
 
 .manual-install-section .section-content p {
   margin: 0 0 16px 0;
+}
+
+/* Already-published marker in the plugin picker */
+.published-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  background: rgba(18, 224, 255, 0.12);
+  color: var(--color-blue, #12e0ff);
+  border: 1px solid rgba(18, 224, 255, 0.3);
+}
+
+/* Update-mode version banner */
+.version-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(25, 239, 131, 0.08);
+  border: 1px solid rgba(25, 239, 131, 0.28);
+  color: var(--color-text, #e0e0e0);
+}
+
+.version-summary.blocked {
+  background: rgba(255, 149, 0, 0.08);
+  border-color: rgba(255, 149, 0, 0.32);
+}
+
+.version-summary i {
+  color: var(--color-green, #19ef83);
+}
+
+.version-summary.blocked i {
+  color: #ff9500;
 }
 
 /* Publish Section Styles */
