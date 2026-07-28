@@ -12,6 +12,13 @@ import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConf
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest } from './orchestrator/contextManifest.js';
+import { buildEconomics } from '../utils/contextEconomics.js';
+import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
+import {
+  getCalibration,
+  recordCalibration,
+  loadCalibrations,
+} from './orchestrator/calibrationStore.js';
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
 import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
 import log from '../utils/logger.js';
@@ -1069,6 +1076,17 @@ async function universalChatHandler(req, res, context = {}) {
   // (and OpenAI/Gemini equivalents) miss on every request.
   // We persist: _frozenSkillsCatalog, _frozenMemorySection, _loadedToolGroups, activatedSkills.
   const priorContext = conversationManager.get(conversationId);
+  // A brand-new conversation used to start at calibration 1.0 and rediscover
+  // the provider's real overhead over its first few turns, under-reporting
+  // size and cost the whole time. The ratio is a property of the provider, so
+  // seed it from what has already been learned and let the per-conversation
+  // EMA refine from there. Null when nothing trustworthy is known yet, which
+  // reproduces exactly the old behaviour.
+  await loadCalibrations();
+  const seededCalibration = getCalibration(normalizedProvider, model);
+  if (seededCalibration != null) {
+    conversationContext._estimateCalibration = seededCalibration;
+  }
   if (priorContext) {
     if (priorContext._frozenSkillsCatalog !== undefined) {
       conversationContext._frozenSkillsCatalog = priorContext._frozenSkillsCatalog;
@@ -1569,7 +1587,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
       ? conversationContext._estimateCalibration
       : 1;
     const scaleForDisplay = (n) => Math.round((n || 0) * displayCalibration);
+    conversationContext._turnRound = 1;
     sendEvent('context_status', {
+      round: 1,
       currentTokens: scaleForDisplay(contextResult.totalRequestTokens),
       tokenLimit: contextResult.contextWindow,
       utilizationPercent: (scaleForDisplay(contextResult.totalRequestTokens) / contextResult.contextWindow) * 100,
@@ -1590,6 +1610,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // prompt prefix survived. All of it was already computed above.
     try {
       const { manifest, fingerprints } = buildContextManifest({
+        cacheTtlMs: promptCacheTtlMs(normalizedProvider),
+        economics: buildEconomics({
+          provider: normalizedProvider,
+          model,
+          systemTokens: scaleForDisplay(contextResult.systemTokens),
+          toolTokens: scaleForDisplay(contextResult.toolTokens),
+        }),
         systemPrompt,
         promptSections: conversationContext._promptSections || [],
         toolSchemas: finalToolSchemas,
@@ -1741,6 +1768,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
       initialUsage,
       contextResult.totalRequestTokens
     );
+    if (conversationContext._estimateCalibration > 0) {
+      recordCalibration(normalizedProvider, model, conversationContext._estimateCalibration);
+    }
 
     // Handle API errors that the adapter recovered from (401, 429, etc.)
     // Also catches the wasEmpty branch — adapters mark empty responses with
@@ -2708,7 +2738,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         ? conversationContext._estimateCalibration
         : 1;
       const loopScale = (n) => Math.round((n || 0) * loopDisplayCal);
+      conversationContext._turnRound = (conversationContext._turnRound || 1) + 1;
       sendEvent('context_status', {
+        round: conversationContext._turnRound,
         currentTokens: loopScale(loopContextResult.totalRequestTokens),
         tokenLimit: loopContextResult.contextWindow,
         utilizationPercent: (loopScale(loopContextResult.totalRequestTokens) / loopContextResult.contextWindow) * 100,
@@ -2765,6 +2797,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         nextResponse.usage,
         loopContextResult.totalRequestTokens
       );
+      if (conversationContext._estimateCalibration > 0) {
+        recordCalibration(normalizedProvider, model, conversationContext._estimateCalibration);
+      }
 
       // If the adapter recovered from an error (e.g. 429 rate limit), the error
       // message was returned as responseMessage.content but was never streamed
@@ -2877,6 +2912,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
           followUpResponse.usage,
           followUpContext.totalRequestTokens
         );
+      if (conversationContext._estimateCalibration > 0) {
+        recordCalibration(normalizedProvider, model, conversationContext._estimateCalibration);
+      }
         if (followUpResponse.responseMessage.content) {
           finalContentForLogging = scrubEmptyPlaceholder(
             extractDisplayText(followUpResponse.responseMessage.content)

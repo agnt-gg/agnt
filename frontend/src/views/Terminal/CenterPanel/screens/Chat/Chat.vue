@@ -15,20 +15,32 @@
   >
     <template #default>
       <div class="automation-interface" :class="{ 'mobile-view': isMobile }">
-        <!-- Automation Engine Status -->
-        <EngineHeader v-if="!isMobile" />
+
 
         <!-- Context Monitoring Panel -->
         <div v-if="!isMobile" class="monitoring-panel" :class="{ collapsed: isMonitoringCollapsed }">
-          <div class="monitoring-header" @click="toggleMonitoringPanel">
-            <span class="monitoring-title">Context &amp; Cost</span>
-            <span class="monitoring-toggle" :class="{ expanded: !isMonitoringCollapsed }">
-              {{ isMonitoringCollapsed ? '▶' : '▼' }}
-            </span>
-          </div>
-          <div class="monitoring-content" v-show="!isMonitoringCollapsed">
-            <!-- Column 1: cost -->
-            <div class="monitoring-column monitoring-column-cost">
+          <!-- Six summary tiles; each expands its own detail. The panel used to
+               render all three columns at once, which meant the answer to
+               "what is this costing me" was always somewhere on screen but
+               never at the top of it. -->
+          <ContextTiles
+            :collapsed="isMonitoringCollapsed"
+            :contextStatus="contextStatus"
+            :manifest="lastManifest"
+            :totalTokenUsage="totalTokenUsage"
+            :totalCost="totalCost"
+            :totalUncachedCost="totalUncachedCost"
+            :totalCacheMetrics="totalCacheMetrics"
+            :executionsCount="executionsCount"
+            :subscriptionBased="subscriptionBased"
+            :rounds="turnRounds"
+            :growthPerTurn="growthPerTurn"
+            :lastTurnCost="lastEstimatedCost"
+            :lastCacheActivityAt="lastCacheActivityAt"
+            :cacheTtlMs="cacheTtlMs"
+            @toggle="toggleMonitoringPanel"
+          >
+            <template #cost>
               <ContextMonitor
                 :contextStatus="contextStatus"
                 :lastManaged="lastContextManaged"
@@ -44,12 +56,13 @@
                 :totalCacheMetrics="totalCacheMetrics"
                 :executionsCount="executionsCount"
               />
-            </div>
+            </template>
 
-            <!-- Column 2: what is loaded, and whether the machinery around it
-                 is healthy — both answer "what is the system doing right now". -->
-            <div class="monitoring-column monitoring-column-inventory">
+            <template #inventory>
               <ContextManifest :manifest="lastManifest" />
+            </template>
+
+            <template #health>
               <SystemHealthPanel
                 :contextManaged="contextManaged"
                 :lastManaged="lastContextManaged"
@@ -58,13 +71,12 @@
                 :toolsLoadedCount="toolsLoadedCount"
                 :cacheMetrics="lastCacheMetrics"
               />
-            </div>
+            </template>
 
-            <!-- Column 3: system activity -->
-            <div class="monitoring-column monitoring-column-activity">
+            <template #activity>
               <ActivityFeed :activities="systemActivities" @clear="clearActivities" />
-            </div>
-          </div>
+            </template>
+          </ContextTiles>
         </div>
 
         <!-- Conversation Canvas -->
@@ -199,7 +211,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
   import { safeTruncate } from '@/utils/safeTruncate.js';
-import EngineHeader from './components/EngineHeader.vue';
 import MessageItem from './components/MessageItem.vue';
 import ProcessingState from './components/ProcessingState.vue';
 import QuickActions from './components/QuickActions.vue';
@@ -207,7 +218,9 @@ import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ContextManifest from './components/ContextManifest.vue';
+import ContextTiles from './components/ContextTiles.vue';
 import { loadContextStatus, saveContextStatus } from '@/services/contextStatusCache.js';
+import { applyContextStatusRound, markPrefixBreak } from '@/services/turnRounds.js';
 import ActivityFeed from './components/ActivityFeed.vue';
 import GoalProgressWidget from './components/GoalProgressWidget.vue';
 import { useTutorial } from './useTutorial.js';
@@ -222,13 +235,13 @@ export default {
   name: 'ChatScreen',
   components: {
     BaseScreen,
-    EngineHeader,
     MessageItem,
     ProcessingState,
     QuickActions,
     ChatActions,
     ContextMonitor,
     ContextManifest,
+    ContextTiles,
     SystemHealthPanel,
     ActivityFeed,
     GoalProgressWidget,
@@ -529,6 +542,22 @@ export default {
       // Itemized inventory of the last request (context_manifest event):
       // which prompt sections, which tools and why, what was hidden.
       lastManifest: null,
+      // When the prompt cache was last demonstrably alive. Anthropic's default
+      // TTL is 5 minutes, so a conversation resumed later pays full price to
+      // rewrite its entire prefix — worth knowing before sending, not after.
+      lastCacheActivityAt: null,
+      // The provider's prompt-cache window, supplied by the backend. Null means
+      // "no basis for a claim", and the panel stays quiet rather than guessing.
+      cacheTtlMs: null,
+      // Every request in the CURRENT turn. A turn with six tool rounds sends
+      // six requests, and the last one is usually the expensive one — the
+      // panel previously showed only an aggregate and hid where the money went.
+      turnRounds: [],
+      // Real growth between turns, measured from the round-1 size of this turn
+      // versus the previous one. Averaging total/turns would understate a
+      // conversation that only recently started growing fast.
+      prevTurnStartTokens: null,
+      growthPerTurn: 0,
       systemActivities: [],
     });
 
@@ -574,10 +603,14 @@ export default {
     const lastCostBreakdown = computed(() => activeMonitoring.value.lastCostBreakdown);
     const totalCacheMetrics = computed(() => activeMonitoring.value.totalCacheMetrics);
     const lastManifest = computed(() => activeMonitoring.value.lastManifest);
+    const lastCacheActivityAt = computed(() => activeMonitoring.value.lastCacheActivityAt);
+    const cacheTtlMs = computed(() => activeMonitoring.value.cacheTtlMs);
     const modelMix = computed(() => Object.values(activeMonitoring.value.modelMix || {}).sort((a, b) => b.cost - a.cost));
     const subscriptionBased = computed(() => activeMonitoring.value.subscriptionBased);
     const executionsCount = computed(() => activeMonitoring.value.executionsCount);
     const systemActivities = computed(() => activeMonitoring.value.systemActivities);
+    const turnRounds = computed(() => (activeMonitoring.value.turnRounds || []).filter(Boolean));
+    const growthPerTurn = computed(() => activeMonitoring.value.growthPerTurn || 0);
 
     // Known context windows for common models (static data, no API call needed)
     const MODEL_CONTEXT_WINDOWS = {
@@ -1283,6 +1316,9 @@ export default {
         }
         case 'context_status':
           if (ms) {
+            // A turn is not one request. Folded by a pure reducer so the
+            // per-round bookkeeping is verifiable outside this switch.
+            applyContextStatusRound(ms, data);
             ms.contextStatus = {
               currentTokens: data.currentTokens,
               tokenLimit: data.tokenLimit,
@@ -1346,7 +1382,11 @@ export default {
           if (isActiveView) isProcessing.value = false;
           break;
         case 'context_manifest':
-          if (ms) ms.lastManifest = data || null;
+          if (ms) {
+            ms.lastManifest = data || null;
+            if (data?.cacheTtlMs != null) ms.cacheTtlMs = data.cacheTtlMs;
+            markPrefixBreak(ms, data);
+          }
           break;
         case 'agent_execution_completed':
           if (ms) {
@@ -1387,6 +1427,10 @@ export default {
               ms.totalUncachedCost += Number(data.costBreakdown.uncached) || 0;
             }
             if (data.cacheMetrics) {
+              if ((data.cacheMetrics.cacheReadTokens || 0) > 0
+                || (data.cacheMetrics.cacheCreationTokens || 0) > 0) {
+                ms.lastCacheActivityAt = new Date().toISOString();
+              }
               ms.totalCacheMetrics.cacheReadTokens += data.cacheMetrics.cacheReadTokens || 0;
               ms.totalCacheMetrics.cacheCreationTokens += data.cacheMetrics.cacheCreationTokens || 0;
               ms.totalCacheMetrics.uncachedTokens += data.cacheMetrics.uncachedTokens || 0;
@@ -2200,6 +2244,12 @@ export default {
           }
         }
         ms.executionsCount = summary.executionsCount || 0;
+        if (summary.lastCacheActivityAt) {
+          ms.lastCacheActivityAt = summary.lastCacheActivityAt;
+        }
+        if (summary.cacheTtlMs != null) {
+          ms.cacheTtlMs = summary.cacheTtlMs;
+        }
       } catch (e) {
         // Reset the hydration flag so we can retry later if the user
         // stays on this conversation and the network recovers.
@@ -2489,10 +2539,14 @@ export default {
       totalUncachedCost,
       totalCacheMetrics,
       lastManifest,
+      lastCacheActivityAt,
+      cacheTtlMs,
       modelMix,
       subscriptionBased,
       executionsCount,
       systemActivities,
+      turnRounds,
+      growthPerTurn,
       clearActivities,
       handleUserInputSubmit,
       handleEditMessage,
@@ -2770,69 +2824,11 @@ export default {
   border-radius: 0 0 8px 8px;
 }
 
-.monitoring-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-radius: 0 0 8px 8px;
-}
+/* The header strip, the tiles and the drawer all live in ContextTiles.vue now,
+   which owns its own layout. */
 
-.monitoring-header:hover {
-  background: var(--color-darker-0);
-}
-
-.monitoring-title {
-  font-size: 0.75em;
-  font-weight: 600;
-  color: var(--color-med-navy);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.monitoring-toggle {
-  font-size: 0.8em;
-  color: var(--color-med-navy);
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.monitoring-toggle.expanded {
-  color: var(--color-blue);
-}
-
-.monitoring-content {
-  /* Three equal columns, stated rather than emerged. Flex-wrap made the third
-     column's position a function of available width, so Activity dropped to
-     its own row whenever the pane was under ~856px — which it usually is. */
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 0 16px 8px 16px;
-  /* Columns size to their own content rather than stretching to the tallest,
-     so Health and Activity don't grow blank space to match the cost column. */
-  align-items: start;
-  transition: all 0.3s ease;
-  border-radius: 0;
-}
-
-.monitoring-column {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  /* min-width:0 lets a track actually reach its 1fr share; without it a long
-     tool name or model id would blow the column out past its share. */
-  min-width: 0;
-}
-
-/* Genuinely too narrow for three — stack rather than shave each to ~180px. */
-@container (max-width: 560px) {
-  .monitoring-content {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
+/* The three-column grid was removed with the header above; ContextTiles lays
+   itself out with an auto-fit tile grid and a wrapping drawer instead. */
 
 .conversation-canvas-wrapper {
   position: relative;

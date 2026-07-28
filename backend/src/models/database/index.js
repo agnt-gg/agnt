@@ -590,6 +590,22 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_start ON agent_executions(user_id, start_time)`);
 
+      // How much larger a real request is than our estimate of it, per
+      // provider+model. Learned from provider-reported usage rather than
+      // configured: CLI-backed providers (Claude Code, Codex, Kimi) inject
+      // their own preamble and built-in tools into every request, and AGNT
+      // never receives those bytes, so the only way to know their cost is to
+      // measure the response. Keyed by provider+model because it is a property
+      // of the backend, not of any one conversation.
+      db.run(`CREATE TABLE IF NOT EXISTS estimate_calibration (
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        ratio REAL NOT NULL,
+        samples INTEGER NOT NULL DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (provider, model)
+      )`);
+
       db.run(`CREATE TABLE IF NOT EXISTS agent_tool_executions (
         id TEXT PRIMARY KEY,
         execution_id TEXT NOT NULL,

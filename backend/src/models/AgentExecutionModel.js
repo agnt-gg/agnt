@@ -1,6 +1,7 @@
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { uncachedCostForRow } from '../utils/cacheSavings.js';
+import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
 import { isSubscriptionProvider } from '../services/ai/providerConfigs.js';
 
 // Helper function to retry database operations on SQLITE_BUSY
@@ -511,6 +512,28 @@ class AgentExecutionModel {
       // reconstructed for conversations that predate cost tracking — provider,
       // model and the cache token columns were already being stored, so this
       // needs no migration and no new column.
+      // When the prompt cache was last demonstrably alive.
+      //
+      // COALESCE(end_time, start_time) rather than start_time: an agentic turn
+      // runs for tens of minutes making cached requests the whole way through,
+      // so its START is not when the cache was last touched. Using start_time
+      // reported a 31-minute turn's cache as 31 minutes staler than it was —
+      // and long tool-heavy turns are precisely the ones whose cache is most
+      // certainly still alive.
+      //
+      // Derived from columns that already exist, so no migration and it works
+      // retroactively.
+      const cacheQuery = new Promise((res, rej) => {
+        db.get(
+          `SELECT MAX(COALESCE(end_time, start_time)) AS last_cache_at
+           FROM agent_executions
+           WHERE conversation_id = ? AND user_id = ?
+             AND (cache_read_tokens > 0 OR cache_creation_tokens > 0)`,
+          [conversationId, userId],
+          (err, row) => err ? rej(err) : res(row?.last_cache_at || null)
+        );
+      });
+
       const rowsQuery = new Promise((res, rej) => {
         db.all(
           `SELECT provider, model, input_tokens, output_tokens,
@@ -522,8 +545,8 @@ class AgentExecutionModel {
         );
       });
 
-      Promise.all([aggQuery, latestQuery, rowsQuery])
-        .then(([agg, latest, rows]) => {
+      Promise.all([aggQuery, latestQuery, rowsQuery, cacheQuery])
+        .then(([agg, latest, rows, lastCacheAt]) => {
           if (!agg.executions_count) {
             resolve(null); // No executions for this conversation
             return;
@@ -607,6 +630,13 @@ class AgentExecutionModel {
           resolve({
             conversationId,
             executionsCount: agg.executions_count,
+            // Last moment the prompt cache was demonstrably alive. The panel
+            // turns this into "cache expires in Nm" / "expired — the next turn
+            // rewrites the whole prefix at full price", which is the single
+            // most expensive avoidable event in a long conversation.
+            lastCacheActivityAt: lastCacheAt,
+            // The provider's actual window, so the panel never has to guess.
+            cacheTtlMs: promptCacheTtlMs(latest?.provider),
             cumulative: {
               models,
               // true  = every turn ran on a subscription seat (cost is notional)

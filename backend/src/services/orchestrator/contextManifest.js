@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { estimateToolTokens } from '../../utils/contextManager.js';
+import { priceItems } from '../../utils/contextEconomics.js';
 
 /**
  * The itemized inventory behind the chat's System Monitoring panel.
@@ -36,6 +37,7 @@ export const TOOL_REASONS = {
  * @param {Array}    input.promptSections  [{ id, label, tokens, frozen }] dynamic sections
  * @param {Array}    input.toolSchemas     the schemas actually being sent
  * @param {object}   input.toolProvenance  { [toolName]: { reason, group? } }
+ * @param {object}   [input.economics]     from buildEconomics() — priced when present
  * @param {object}   input.toolSurfaceMeta { registryTotal, mode, deniedCount, groups }
  * @param {object}   input.contextResult   from manageContext (systemTokens, toolTokens, ...)
  * @param {object}   [input.capResult]     from capToolsToBudget when the surface was capped
@@ -51,7 +53,13 @@ export function buildContextManifest({
   contextResult = {},
   capResult = null,
   prior = null,
+  economics = null,
+  cacheTtlMs = null,
 } = {}) {
+  // A per-turn price on every line item. Sections and tool schemas are re-sent
+  // on every single request, so their token count is a recurring charge rather
+  // than a one-off — which is the whole reason to itemize them.
+  const rate = economics?.rate ?? null;
   // ---- System prompt: dynamic sections + whatever static text remains ----
   const dynamic = promptSections
     .filter((s) => (s.tokens || 0) > 0)
@@ -67,6 +75,7 @@ export function buildContextManifest({
     dynamic.push({ id: 'static', label: 'Core instructions', tokens: staticTokens, frozen: true });
   }
   dynamic.sort((a, b) => b.tokens - a.tokens);
+  const pricedSections = priceItems(dynamic, rate);
 
   // ---- Tools: itemized, in the exact order they are sent ----
   const tools = toolSchemas.map((schema) => {
@@ -87,9 +96,16 @@ export function buildContextManifest({
 
   const manifest = {
     mode: toolSurfaceMeta.mode || 'auto',
+    // null when the model has no pricing metadata. A fabricated $0.00 reads as
+    // "this is free", which is a worse answer than "unknown".
+    economics: economics || null,
+    // How long this provider keeps the prefix. Null when we have no basis for
+    // a claim, in which case the panel says nothing about cache freshness
+    // rather than inventing a deadline.
+    cacheTtlMs: cacheTtlMs ?? null,
     system: {
       total: systemTokens,
-      sections: dynamic,
+      sections: pricedSections,
     },
     tools: {
       total: contextResult.toolTokens || 0,
@@ -102,7 +118,7 @@ export function buildContextManifest({
       droppedCount,
       deniedCount: toolSurfaceMeta.deniedCount || 0,
       groups: toolSurfaceMeta.groups || [],
-      items: tools,
+      items: priceItems(tools, rate),
     },
     messages: {
       total: contextResult.messagesTokens || 0,

@@ -1572,7 +1572,10 @@ body[data-page='terminal-goals'] .main-panel {
 }
 
 body[data-page='terminal-chat'] .main-panel {
-  padding: 8px 0 16px;
+  /* Chat owns its own internal spacing end to end — the tile strip, the
+     message flow and the composer each carry theirs — so an outer pad only
+     stole width from the conversation. */
+  padding: 0;
 }
 
 body[data-page='terminal-runs'] .main-panel {
@@ -1626,7 +1629,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   position: sticky;
   bottom: 0;
   background: transparent;
-  padding: 16px 16px 0 16px;
+  padding: 8px 16px 0 8px;
   border-radius: 0 0 0 16px;
   border-top: 1px solid var(--terminal-border-color);
   margin-top: auto;
@@ -2033,7 +2036,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   }
 
   .input-container {
-    padding: 12px 12px 0 12px;
+    padding: 8px 12px 0 8px;
     width: calc(100% - 24px);
   }
 
