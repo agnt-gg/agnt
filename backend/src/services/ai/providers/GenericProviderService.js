@@ -328,7 +328,10 @@ class GenericProviderService extends EventEmitter {
    * Checks if cached models are still valid.
    */
   isCacheValid() {
-    return this.modelsCache && this.cacheTimestamp && Date.now() - this.cacheTimestamp < this.cacheTTL;
+    // Coerced: the && chain yields null/undefined when either field is unset,
+    // and a predicate named is* that answers `null` breaks any caller doing a
+    // strict comparison or serialising the result.
+    return Boolean(this.modelsCache && this.cacheTimestamp && Date.now() - this.cacheTimestamp < this.cacheTTL);
   }
 
   /**

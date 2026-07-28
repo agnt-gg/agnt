@@ -2,7 +2,6 @@ import { ref } from 'vue';
 
 // Singleton state - shared across all components
 const isElectron = ref(false);
-let initialized = false;
 
 /**
  * Composable for Electron environment detection and API access.
@@ -22,11 +21,12 @@ let initialized = false;
  * const version = await electron.getAppVersion();
  */
 export function useElectron() {
-  // Initialize on first call
-  if (!initialized) {
-    isElectron.value = typeof window !== 'undefined' && window.electron !== undefined;
-    initialized = true;
-  }
+  // Re-evaluated on every call rather than latched on the first one. The check
+  // is a single typeof, so caching bought nothing, while latching meant any
+  // component that called this before the preload script attached
+  // window.electron would report "not Electron" for the rest of the session
+  // (and made the flag impossible to reset between tests).
+  isElectron.value = typeof window !== 'undefined' && window.electron !== undefined;
 
   return {
     /**
