@@ -90,9 +90,12 @@ function handleAuthFailure(storeInstance, to, next) {
   // noise into messages a human reads. The ?returnTo below DOES use fullPath
   // so deep-link resume after sign-in preserves the original query.
   const detail = { from: to.path, ...failure };
-  console.warn(`[router] auth required for ${to.fullPath} → bouncing to /settings`, detail);
+  // Mobile lite has its own pairing home (/m); do not dump users into full
+  // Settings which is unusable on a phone-sized shell.
+  const bouncePath = to.meta?.lite || to.path.startsWith('/m') ? '/m' : '/settings';
+  console.warn(`[router] auth required for ${to.fullPath} → bouncing to ${bouncePath}`, detail);
   window.dispatchEvent(new CustomEvent('auth-redirect', { detail }));
-  next({ path: '/settings', query: { returnTo: to.fullPath } });
+  next({ path: bouncePath, query: { returnTo: to.fullPath } });
 }
 
 function clearStaleAuth(storeInstance) {

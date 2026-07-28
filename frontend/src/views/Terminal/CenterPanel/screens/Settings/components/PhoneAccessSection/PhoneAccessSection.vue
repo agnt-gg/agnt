@@ -36,13 +36,22 @@
       <button class="pa-btn pa-btn-primary" :disabled="busy" @click="onRestart">Restart now</button>
     </div>
 
-    <template v-if="lanEnabled && !restartRequired">
-      <div v-if="!urls.length" class="pa-note pa-note-warn">
+    <!-- Pairing works on loopback for iOS Simulator; LAN still required for a real phone. -->
+    <template v-if="!restartRequired">
+      <p v-if="!lanEnabled" class="pa-note">
+        <i class="fas fa-laptop"></i>
+        <span>
+          Localhost only — fine for <strong>iOS Simulator</strong> on this Mac. Enable the toggle
+          above (and restart) for a physical phone on Wi‑Fi.
+        </span>
+      </p>
+
+      <div v-if="lanEnabled && !urls.length" class="pa-note pa-note-warn">
         <i class="fas fa-exclamation-triangle"></i>
-        <span>No network address found. Connect to Wi-Fi or Ethernet.</span>
+        <span>No network address found. Connect to Wi-Fi or Ethernet (Simulator can still use 127.0.0.1).</span>
       </div>
 
-      <div v-else class="pa-body">
+      <div class="pa-body">
         <div class="pa-qr-col">
           <div v-if="qrSvg" class="pa-qr" v-html="qrSvg"></div>
           <div v-else class="pa-qr pa-qr-empty">
@@ -53,6 +62,46 @@
           <div v-if="code" class="pa-countdown" :class="{ expiring: secondsLeft <= 20 }">
             <template v-if="secondsLeft > 0">Expires in {{ secondsLeft }}s</template>
             <template v-else>Expired</template>
+          </div>
+
+          <!-- No camera / paste path: full links + raw code (kept for all clients). -->
+          <div v-if="code && secondsLeft > 0" class="pa-copy-block">
+            <div class="pa-urls-label">Can&rsquo;t scan? Copy link or code</div>
+            <button
+              v-if="localPairUrl"
+              type="button"
+              class="pa-url"
+              title="Copy link for this Mac (localhost)"
+              @click="copy(localPairUrl)"
+            >
+              <code class="pa-url-text">{{ localPairUrl }}</code>
+              <span class="pa-url-badge">This Mac</span>
+              <i class="fas" :class="copied === localPairUrl ? 'fa-check' : 'fa-copy'"></i>
+            </button>
+            <button
+              v-if="pairQrUrl && pairQrUrl !== localPairUrl"
+              type="button"
+              class="pa-url"
+              title="Copy link for phone on Wi‑Fi / LAN"
+              @click="copy(pairQrUrl)"
+            >
+              <code class="pa-url-text">{{ pairQrUrl }}</code>
+              <span class="pa-url-badge">Network</span>
+              <i class="fas" :class="copied === pairQrUrl ? 'fa-check' : 'fa-copy'"></i>
+            </button>
+            <button
+              type="button"
+              class="pa-url pa-url-code"
+              title="Copy pairing code only (paste into AGNT Chat)"
+              @click="copy(code.code)"
+            >
+              <code class="pa-code-mono">{{ code.code }}</code>
+              <span class="pa-url-badge">Code</span>
+              <i class="fas" :class="copied === code.code ? 'fa-check' : 'fa-copy'"></i>
+            </button>
+            <p v-if="code.warning || code.loopbackOnly" class="pa-fineprint">
+              {{ code.warning || 'Localhost only — fine on this Mac; enable LAN for a phone on Wi‑Fi.' }}
+            </p>
           </div>
 
           <!-- Did anything actually reach this machine? Without this the user
@@ -113,8 +162,14 @@
             </div>
           </div>
 
-          <div class="pa-step"><span class="pa-num">2</span><span>Scan the code with your camera.</span></div>
-          <div class="pa-step"><span class="pa-num">3</span><span>The link signs the phone in automatically.</span></div>
+          <div class="pa-step">
+            <span class="pa-num">2</span>
+            <span>Scan the QR, or <strong>copy the link or code</strong> if you can&rsquo;t scan.</span>
+          </div>
+          <div class="pa-step">
+            <span class="pa-num">3</span>
+            <span>Open the link on the other device, or paste the code in AGNT Chat. Signs in automatically.</span>
+          </div>
 
           <!-- More than one candidate means the server genuinely cannot tell
                which route the phone has (multi-homed box, split-horizon DNS,
@@ -145,8 +200,10 @@
           </div>
 
           <p class="pa-fineprint">
-            Codes are single-use and expire in two minutes. The QR contains only the code —
-            never your sign-in token.
+            Codes are single-use and expire in two minutes. The QR is a full URL
+            (<code>/m/pair?c=…</code>) so the phone learns the server address (LAN or
+            Tailscale) from the link — never your sign-in token. Full AGNT web still
+            accepts <code>/pair</code> with the same code.
           </p>
         </div>
       </div>
@@ -253,10 +310,41 @@ const phoneSeen = computed(() => {
 // that someone staring at a dead QR is not left guessing.
 const waitedLong = computed(() => codeShownAt.value > 0 && now.value - codeShownAt.value > 15000);
 
-const qrSvg = computed(() => {
-  if (!code.value || secondsLeft.value <= 0 || !activeUrl.value) return '';
+// Prefer /m/pair for the QR so a camera scan lands on Annie lite with the
+// selected server host embedded. Fall back to full-app /pair for older backends.
+const pairQrUrl = computed(() => {
+  if (!code.value) return '';
+  const match = (code.value.origins || []).find((o) => o.origin === selectedOrigin.value);
+  if (match?.liteUrl) return match.liteUrl;
+  if (selectedOrigin.value && code.value.code) {
+    return `${selectedOrigin.value}/m/pair?c=${code.value.code}`;
+  }
+  return code.value.liteUrl || activeUrl.value || '';
+});
+
+// Same-machine link (localhost) — for paste on this computer or iOS Simulator.
+const localPairUrl = computed(() => {
+  if (!code.value || secondsLeft.value <= 0) return '';
+  if (code.value.simUrl) return code.value.simUrl;
+  const c = code.value.code;
+  if (!c) return '';
+  let port = '3333';
   try {
-    return toSvg(activeUrl.value, { moduleSize: 5, quietZone: 3, dark: '#000000', light: '#ffffff' });
+    if (typeof window !== 'undefined' && window.location?.port) {
+      port = window.location.port;
+    } else if (code.value.url) {
+      port = new URL(code.value.url).port || '3333';
+    }
+  } catch {
+    /* keep default */
+  }
+  return `http://127.0.0.1:${port}/m/pair?c=${c}`;
+});
+
+const qrSvg = computed(() => {
+  if (!code.value || secondsLeft.value <= 0 || !pairQrUrl.value) return '';
+  try {
+    return toSvg(pairQrUrl.value, { moduleSize: 5, quietZone: 3, dark: '#000000', light: '#ffffff' });
   } catch (e) {
     // Never render a corrupt code: an unscannable QR is worse than none.
     error.value = `Could not render QR: ${e.message}`;
@@ -621,6 +709,8 @@ onBeforeUnmount(() => clearInterval(ticker));
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 .pa-url-label {
   font-size: 11px;
@@ -641,6 +731,47 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 .pa-copy:hover {
   color: var(--color-primary, #19ef83);
+}
+.pa-url-code .pa-code-mono {
+  flex: 1;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  white-space: normal;
+}
+.pa-url-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-primary, #19ef83);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #19ef83) 50%, transparent);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.pa-copy-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 280px;
+}
+.pa-copy-block .pa-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+.pa-copy-block .pa-url-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px !important;
+  display: block;
 }
 
 .pa-req {

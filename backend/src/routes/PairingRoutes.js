@@ -185,24 +185,13 @@ router.post(
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
-    // Refuse to mint a code no device could redeem — a valid code on a dead URL
-    // surfaces on the phone as a bare connection error with nothing on the
-    // desktop to explain it. Fail here, where we can say why.
-    //
-    // The test is "is there any address another device could use?", NOT "am I
-    // bound to a LAN interface?". The old bind-only check rejected every
-    // reverse-proxied deployment, where binding to loopback is correct.
+    // Prefer an externally reachable origin (LAN / reverse proxy / PUBLIC_ORIGIN).
+    // If nothing external exists, still mint for same-machine clients (iOS
+    // Simulator / local browser) and flag loopbackOnly — do not 409.
     const port = process.env.PORT || 3333;
     const reach = evaluateReachability(req, { port });
-    if (!reach.usable) {
-      const actualBind = RemoteAccessConfig.getActualBind();
-      return res.status(409).json({
-        success: false,
-        error: reach.reason,
-        restartRequired: RemoteAccessConfig.isRestartRequired(),
-        bindHost: actualBind ? actualBind.host : RemoteAccessConfig.resolveBindHost().host,
-      });
-    }
+    const loopbackOnly = !reach.usable;
+    const best = reach.best || `http://127.0.0.1:${port}`;
 
     const code = crypto.randomBytes(16).toString('hex'); // 128 bits
     const expiresAt = Date.now() + CODE_TTL_MS;
@@ -213,18 +202,39 @@ router.post(
     // the Pair view. The backend's SPA fallback serves index.html for this
     // path, so a cold hit from a phone works.
     const pairUrl = (origin) => `${origin}/pair?c=${code}`;
+    // Mobile lite: same code, /m/pair so the link carries the server origin.
+    const litePairUrl = (origin) => `${origin}/m/pair?c=${code}`;
     const usable = reach.origins.filter((o) => o.external);
+    const origins = usable.length
+      ? usable.map((o) => ({ ...o, url: pairUrl(o.origin), liteUrl: litePairUrl(o.origin) }))
+      : [
+          {
+            origin: best,
+            url: pairUrl(best),
+            liteUrl: litePairUrl(best),
+            label: 'This Mac (localhost)',
+            external: false,
+            source: 'loopback',
+          },
+        ];
 
     res.json({
       success: true,
       code,
       expiresAt,
       ttlMs: CODE_TTL_MS,
-      url: pairUrl(reach.best),
-      origin: reach.best,
+      url: pairUrl(best),
+      liteUrl: litePairUrl(best),
+      /** Prefer this when pasting into iOS Simulator on the same Mac. */
+      simUrl: `http://127.0.0.1:${port}/m/pair?c=${code}`,
+      loopbackOnly,
+      warning: loopbackOnly
+        ? 'Server is localhost-only. Fine for iOS Simulator on this Mac; enable Phone Access (LAN) for a physical phone.'
+        : undefined,
+      origin: best,
       // Every candidate, so a multi-homed or split-horizon setup can be
       // resolved by the one participant that actually knows: the human.
-      origins: usable.map((o) => ({ ...o, url: pairUrl(o.origin) })),
+      origins,
       addresses: RemoteAccessConfig.lanAddresses(),
     });
   }

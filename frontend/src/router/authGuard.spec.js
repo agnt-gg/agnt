@@ -26,7 +26,22 @@
  * forceRefresh and lets the gate ride the cache — these tests fail.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createAuthGuard } from './authGuard.js';
+
+// Node 22+ warning: localStorage may be undefined when modules that touch
+// user.config.js are pulled in via the auth store graph. Ensure a store exists
+// before dynamic imports resolve.
+if (typeof globalThis.localStorage?.getItem !== 'function') {
+  const map = new Map();
+  const store = {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(String(k), String(v)),
+    removeItem: (k) => map.delete(k),
+    clear: () => map.clear(),
+  };
+  Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true });
+}
+
+const { createAuthGuard } = await import('./authGuard.js');
 
 function makeStore({
   user = null,
@@ -163,6 +178,28 @@ describe('createAuthGuard', () => {
   });
 
   // --- definitive rejection paths (clear token) ---
+
+  it('lite /m/chat auth failure bounces to /m (not full Settings)', async () => {
+    const failure = { reason: 'no_token', timestamp: 1 };
+    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const guard = createAuthGuard(store);
+    const next = vi.fn();
+
+    await guard(
+      makeRoute({
+        path: '/m/chat',
+        fullPath: '/m/chat',
+        meta: { requiresAuth: true, lite: true },
+      }),
+      {},
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith({
+      path: '/m',
+      query: { returnTo: '/m/chat' },
+    });
+  });
 
   it('http_401 (token explicitly rejected): clears token + user, emits event with reason', async () => {
     const failure = { reason: 'http_401', status: 401, detail: 'token expired', timestamp: 12345 };

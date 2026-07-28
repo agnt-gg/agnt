@@ -8,6 +8,16 @@ IMAGE_NAME := agnt
 FULL_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 LITE_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 
+# Mobile lite (Capacitor shell + web /m — iOS and future Android).
+# Default: local www bootstrap — paste a pair *link* (host is in the URL: LAN/Tailscale).
+# Optional pin for simulator / fixed host:
+#   make mobile-lite-ios-sync AGNT_SERVER_URL=http://127.0.0.1:3333
+#   AGNT_SERVER_MODE=local|fixed  (fixed is implied when AGNT_SERVER_URL is set)
+AGNT_SERVER_URL ?=
+AGNT_SERVER_MODE ?=
+MOBILE_LITE_DIR := mobile/mobile-lite
+MOBILE_LITE_IOS_WORKSPACE := $(MOBILE_LITE_DIR)/ios/App/App.xcworkspace
+
 # Data directory - $(HOME) is inherited from shell environment
 AGNT_DATA_HOME := $(HOME)
 
@@ -37,6 +47,7 @@ help: ## Show this help message
 	@echo "  $(YELLOW)Docker Lite$(NC)    - Docker image without browser (~715MB) - Port 3333"
 	@echo "  $(YELLOW)Electron Full$(NC)  - Desktop installer with browser (~150-200MB)"
 	@echo "  $(YELLOW)Electron Lite$(NC)  - Desktop installer without browser (~80-120MB)"
+	@echo "  $(YELLOW)Mobile Lite$(NC)    - Annie chat shell (/m); browser or Capacitor (iOS today)"
 	@echo ""
 	@echo "$(GREEN)Quick Start:$(NC)"
 	@echo "  $(BLUE)Docker:$(NC)"
@@ -47,11 +58,17 @@ help: ## Show this help message
 	@echo "  $(BLUE)Electron:$(NC)"
 	@echo "    make electron-build-both         # Build both Electron variants"
 	@echo "    make electron-info               # Show Electron build info"
+	@echo "  $(BLUE)Mobile lite (Annie chat):$(NC)"
+	@echo "    Browser: open http://<host>:3333/m  (no make required)"
+	@echo "    make mobile-lite-ios-init        # One-time Capacitor + iOS platform"
+	@echo "    make mobile-lite-ios-sim         # Simulator → http://127.0.0.1:3333 by default"
+	@echo "    DEVELOPMENT_TEAM=XXX make mobile-lite-ios-iphone  # Device (CLI, no 127.0.0.1 default)"
 	@echo ""
 	@echo "$(GREEN)Configuration:$(NC)"
 	@echo "  GitHub Org: $(DOCKERHUB_USER)"
 	@echo "  Full Image:     $(FULL_TAG_LATEST)"
 	@echo "  Lite Image:     $(LITE_TAG_LATEST)"
+	@echo "  Mobile server:  $(if $(AGNT_SERVER_URL),$(AGNT_SERVER_URL),(none — pair link provides host))"
 
 # ============================================================================
 # BUILD TARGETS - Build images from scratch
@@ -548,6 +565,168 @@ electron-info: ## Show Electron build information
 	@echo "  make electron-build-mac-both      - Both for macOS"
 	@echo "  make electron-build-linux-both    - Both for Linux"
 	@echo "  make electron-build-all-both      - Both for all platforms"
+
+# ============================================================================
+# MOBILE LITE — Annie chat (/m) + optional Capacitor shell (iOS; Android later)
+# ============================================================================
+# Web UI is platform-agnostic (browser/PWA on iOS and Android). Capacitor wraps
+# the same /m surface. Pairing: /api/pairing/claim; chat: /orchestrator/chat.
+#
+# Docs: mobile/mobile-lite/README.md
+
+.PHONY: mobile-lite-configure
+mobile-lite-configure: ## Write Capacitor config (pair link supplies host; optional AGNT_SERVER_URL pin)
+	@echo "$(BLUE)Configuring mobile lite$(if $(AGNT_SERVER_URL), → $(AGNT_SERVER_URL), (local bootstrap; paste pair link))$(NC)"
+	@AGNT_SERVER_URL="$(AGNT_SERVER_URL)" AGNT_SERVER_MODE="$(AGNT_SERVER_MODE)" node scripts/mobile-lite-configure.mjs
+
+.PHONY: mobile-lite-ios-init
+mobile-lite-ios-init: mobile-lite-configure ## One-time: Capacitor deps + iOS platform (macOS/Xcode)
+	@echo "$(BLUE)Initializing mobile lite (iOS / Capacitor)...$(NC)"
+	@if [ "$$(uname -s)" != "Darwin" ]; then \
+		echo "$(RED)Native iOS platform requires macOS + Xcode (web /m works anywhere)$(NC)"; exit 1; \
+	fi
+	@command -v xcodebuild >/dev/null 2>&1 || { \
+		echo "$(RED)xcodebuild not found. Install Xcode from the App Store.$(NC)"; exit 1; \
+	}
+	@command -v pod >/dev/null 2>&1 || { \
+		echo "$(YELLOW)CocoaPods (pod) not found. Install with:$(NC)"; \
+		echo "  sudo gem install cocoapods"; \
+		echo "  or: brew install cocoapods"; \
+		exit 1; \
+	}
+	@cd $(MOBILE_LITE_DIR) && npm install
+	@if [ ! -d "$(MOBILE_LITE_DIR)/ios" ]; then \
+		echo "$(BLUE)Adding Capacitor iOS platform...$(NC)"; \
+		cd $(MOBILE_LITE_DIR) && npx cap add ios; \
+	else \
+		echo "$(YELLOW)ios/ already present — running sync only$(NC)"; \
+		cd $(MOBILE_LITE_DIR) && npx cap sync ios; \
+	fi
+	@chmod +x scripts/mobile-lite-ios-patch-ats.sh
+	@./scripts/mobile-lite-ios-patch-ats.sh
+	@echo "$(GREEN)✓ mobile lite iOS initialized$(NC)"
+	@echo "  Browser:  http://<host>:3333/m  (no native build)"
+	@echo "  Simulator: make mobile-lite-ios-sim  (defaults to http://127.0.0.1:3333)"
+	@echo "  iPhone:    DEVELOPMENT_TEAM=… make mobile-lite-ios-iphone"
+
+.PHONY: mobile-lite-ios-sync
+mobile-lite-ios-sync: mobile-lite-configure ## Sync Capacitor config into the iOS project
+	@echo "$(BLUE)Syncing mobile lite (iOS)...$(NC)"
+	@if [ ! -d "$(MOBILE_LITE_DIR)/node_modules" ]; then \
+		echo "$(YELLOW)node_modules missing — running mobile-lite-ios-init first$(NC)"; \
+		$(MAKE) mobile-lite-ios-init AGNT_SERVER_URL="$(AGNT_SERVER_URL)" AGNT_SERVER_MODE="$(AGNT_SERVER_MODE)"; \
+	fi
+	@if [ ! -d "$(MOBILE_LITE_DIR)/ios" ]; then \
+		echo "$(YELLOW)ios/ missing — running mobile-lite-ios-init first$(NC)"; \
+		$(MAKE) mobile-lite-ios-init AGNT_SERVER_URL="$(AGNT_SERVER_URL)" AGNT_SERVER_MODE="$(AGNT_SERVER_MODE)"; \
+	else \
+		(cd $(MOBILE_LITE_DIR) && npx cap sync ios); \
+		chmod +x scripts/mobile-lite-ios-patch-ats.sh; \
+		./scripts/mobile-lite-ios-patch-ats.sh; \
+	fi
+	@if [ -n "$(AGNT_SERVER_URL)" ]; then \
+		echo "$(GREEN)✓ mobile lite iOS synced → $(AGNT_SERVER_URL)/m (fixed)$(NC)"; \
+	else \
+		echo "$(GREEN)✓ mobile lite iOS synced (local bootstrap; paste pair link for host)$(NC)"; \
+	fi
+
+.PHONY: mobile-lite-ios-open
+mobile-lite-ios-open: ## Optional: open the project in Xcode GUI
+	@if [ ! -d "$(MOBILE_LITE_DIR)/ios" ]; then \
+		echo "$(RED)No ios/ project. Run: make mobile-lite-ios-init$(NC)"; exit 1; \
+	fi
+	@echo "$(BLUE)Opening Xcode...$(NC)"
+	@cd $(MOBILE_LITE_DIR) && npx cap open ios
+	@echo "$(GREEN)Prefer CLI: make mobile-lite-ios-sim  or  DEVELOPMENT_TEAM=… make mobile-lite-ios-iphone$(NC)"
+
+# Simulator: default to *local bootstrap* (bundled www) with suggested host
+# localhost:3333. Fixed remote server.url was painting a blank/white WKWebView
+# when the load failed or the invalid ios.scheme broke navigation.
+# Override fixed pin:  AGNT_SERVER_MODE=fixed AGNT_SERVER_URL=http://localhost:3333 make mobile-lite-ios-sim
+.PHONY: mobile-lite-ios-sim-build
+mobile-lite-ios-sim-build: ## Build for Simulator only (CLI, no install)
+	@url="$(AGNT_SERVER_URL)"; \
+	mode="$(AGNT_SERVER_MODE)"; \
+	if [ -z "$$url" ]; then url="http://localhost:3333"; fi; \
+	if [ -z "$$mode" ]; then mode="local"; fi; \
+	echo "$(BLUE)Simulator build → mode=$$mode url=$$url$(NC)"; \
+	$(MAKE) mobile-lite-ios-sync AGNT_SERVER_URL="$$url" AGNT_SERVER_MODE="$$mode"; \
+	chmod +x scripts/mobile-lite-ios-cli.sh; \
+	./scripts/mobile-lite-ios-cli.sh sim-build
+
+.PHONY: mobile-lite-ios-sim
+mobile-lite-ios-sim: ## Build + install + launch Simulator (local bootstrap; suggests localhost:3333)
+	@url="$(AGNT_SERVER_URL)"; \
+	mode="$(AGNT_SERVER_MODE)"; \
+	if [ -z "$$url" ]; then url="http://localhost:3333"; fi; \
+	if [ -z "$$mode" ]; then mode="local"; fi; \
+	echo "$(BLUE)Simulator run → mode=$$mode url=$$url$(NC)"; \
+	echo "$(YELLOW)Ensure AGNT is running: curl http://localhost:3333/api/health$(NC)"; \
+	$(MAKE) mobile-lite-ios-sync AGNT_SERVER_URL="$$url" AGNT_SERVER_MODE="$$mode"; \
+	chmod +x scripts/mobile-lite-ios-cli.sh; \
+	./scripts/mobile-lite-ios-cli.sh sim-run
+
+.PHONY: mobile-lite-ios-iphone
+mobile-lite-ios-iphone: mobile-lite-ios-sync ## Build + install + launch on connected iPhone (no Xcode GUI)
+	@echo "$(BLUE)iPhone run (xcodebuild + devicectl — no Xcode app required)$(NC)"
+	@if [ -z "$(DEVELOPMENT_TEAM)" ] && [ -z "$(IOS_DEVELOPMENT_TEAM)" ]; then \
+		echo "$(RED)Set DEVELOPMENT_TEAM to your Apple Team ID$(NC)"; \
+		echo "  DEVELOPMENT_TEAM=XXXXXXXXXX make mobile-lite-ios-iphone"; \
+		echo "  security find-identity -v -p codesigning"; \
+		exit 1; \
+	fi
+	@chmod +x scripts/mobile-lite-ios-cli.sh
+	@DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" IOS_DEVELOPMENT_TEAM="$(IOS_DEVELOPMENT_TEAM)" \
+		IOS_DEVICE_UDID="$(IOS_DEVICE_UDID)" \
+		./scripts/mobile-lite-ios-cli.sh device-run
+
+.PHONY: mobile-lite-ios-build
+mobile-lite-ios-build: ## Build iOS app (Simulator if no team; device when DEVELOPMENT_TEAM is set)
+	@chmod +x scripts/mobile-lite-ios-cli.sh
+	@url="$(AGNT_SERVER_URL)"; mode="$(AGNT_SERVER_MODE)"; \
+	if [ -z "$$url" ]; then url="http://localhost:3333"; fi; \
+	if [ -z "$$mode" ]; then mode="local"; fi; \
+	$(MAKE) mobile-lite-ios-sync AGNT_SERVER_URL="$$url" AGNT_SERVER_MODE="$$mode"; \
+	if [ -n "$(DEVELOPMENT_TEAM)$(IOS_DEVELOPMENT_TEAM)" ]; then \
+		echo "$(BLUE)Device build (team $(or $(DEVELOPMENT_TEAM),$(IOS_DEVELOPMENT_TEAM)))$(NC)"; \
+		DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" IOS_DEVELOPMENT_TEAM="$(IOS_DEVELOPMENT_TEAM)" \
+			./scripts/mobile-lite-ios-cli.sh device-build; \
+	else \
+		echo "$(YELLOW)No DEVELOPMENT_TEAM set — building for Simulator (no signing team needed)$(NC)"; \
+		echo "$(YELLOW)For a physical iPhone: DEVELOPMENT_TEAM=XXXXXXXXXX make mobile-lite-ios-build$(NC)"; \
+		./scripts/mobile-lite-ios-cli.sh sim-build; \
+	fi
+
+.PHONY: mobile-lite-info
+mobile-lite-info: ## Show mobile-lite paths and config
+	@echo "$(BLUE)AGNT Mobile Lite$(NC)"
+	@echo "$(YELLOW)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo "  Web UI:          /m  /m/pair  /m/chat  (any browser, iOS + Android)"
+	@echo "  Capacitor dir:   $(MOBILE_LITE_DIR)"
+	@echo "  AGNT_SERVER_URL: $(if $(AGNT_SERVER_URL),$(AGNT_SERVER_URL),(unset))"
+	@echo "  AGNT_SERVER_MODE: $(if $(AGNT_SERVER_MODE),$(AGNT_SERVER_MODE),(auto))"
+	@echo "  Pairing:         paste full pair link → host + code (LAN/Tailscale)"
+	@echo "  Claim API:       POST /api/pairing/claim"
+	@echo "  iOS workspace:   $(MOBILE_LITE_IOS_WORKSPACE)"
+	@echo "  ios/ present:    $$( [ -d $(MOBILE_LITE_DIR)/ios ] && echo yes || echo no — run make mobile-lite-ios-init )"
+	@if [ -f $(MOBILE_LITE_DIR)/capacitor.config.json ]; then \
+		echo "  Config URL:      $$(node -p "JSON.parse(require('fs').readFileSync('$(MOBILE_LITE_DIR)/capacitor.config.json','utf8')).server?.url || '(local www — pair link provides host)'")"; \
+	fi
+	@echo ""
+	@echo "$(GREEN)iOS native (CLI — no Xcode GUI):$(NC)"
+	@echo "  make mobile-lite-ios-init"
+	@echo "  make mobile-lite-ios-build                            # Build (Sim if no team; device if DEVELOPMENT_TEAM set)"
+	@echo "  make mobile-lite-ios-sim                              # Build + install + launch Simulator"
+	@echo "  DEVELOPMENT_TEAM=XXX make mobile-lite-ios-iphone      # Physical phone install/launch"
+	@echo "  make mobile-lite-ios-open                             # optional Xcode GUI"
+	@echo "  See mobile/mobile-lite/README.md"
+
+.PHONY: mobile-lite-clean
+mobile-lite-clean: ## Remove mobile-lite node_modules and generated native projects
+	@echo "$(BLUE)Cleaning mobile lite...$(NC)"
+	@rm -rf $(MOBILE_LITE_DIR)/node_modules $(MOBILE_LITE_DIR)/ios $(MOBILE_LITE_DIR)/android \
+		$(MOBILE_LITE_DIR)/capacitor.config.json $(MOBILE_LITE_DIR)/www/boot-config.json
+	@echo "$(GREEN)✓ Cleaned$(NC)"
 
 # Default target
 .DEFAULT_GOAL := help

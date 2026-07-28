@@ -43,6 +43,33 @@ export function classifyAuthError(error) {
 }
 
 /**
+ * Best-effort user from a JWT payload (no signature check — token already held
+ * locally after login/pairing). Used when remote /users/auth/status is unreachable
+ * or does not recognize the token (common for device-paired local sessions on /m).
+ * @param {string|null|undefined} token
+ * @returns {{ id: string, email: string|null, name: string, authMethod: string }|null}
+ */
+export function userFromJwt(token) {
+  if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('utf8');
+    const payload = JSON.parse(json);
+    const id = payload.id || payload.sub || payload.userId;
+    const email = payload.email || null;
+    if (!id && !email) return null;
+    return {
+      id: id || 'local',
+      email,
+      name: payload.name || (email ? String(email).split('@')[0] : 'User'),
+      authMethod: payload.authMethod || 'jwt',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reasons that mean the server has *definitively* rejected the local token,
  * so it is safe (and helpful) to clear it. Transient failures are excluded
  * so an outage or offline blip does not log the user out.
@@ -200,6 +227,17 @@ export default {
         return;
       }
 
+      const applyJwtFallback = (reason) => {
+        const localUser = userFromJwt(state.token);
+        if (localUser) {
+          commit('SET_USER', localUser);
+          commit('CLEAR_AUTH_FAILURE');
+          console.warn(`[userAuth] using JWT local user after ${reason}`);
+          return true;
+        }
+        return false;
+      };
+
       try {
         const response = await axios.get(`${API_CONFIG.REMOTE_URL}/users/auth/status`, {
           headers: { Authorization: `Bearer ${state.token}` },
@@ -215,23 +253,30 @@ export default {
             dispatch('fetchPseudonym');
           }
         } else {
-          // Server returned 200 but explicitly says "no authenticated user".
-          // Drop any stale local user so the guard's user-check stays in sync
-          // with what the server just told us. Symmetric with the happy path,
-          // which sets the user — this clears it.
-          commit('SET_USER', null);
-          commit('SET_AUTH_FAILURE', {
-            reason: 'unauthenticated_response',
-            status: response.status,
-            detail: response.data?.error || null,
-            timestamp: Date.now(),
-          });
-          console.error('Auth status returned but no user data:', response.data);
+          // Remote does not recognize the session (e.g. device-paired local JWT).
+          // Prefer a local JWT-derived user over wiping the session so /m/chat works.
+          if (!applyJwtFallback('unauthenticated_response')) {
+            commit('SET_USER', null);
+            commit('SET_AUTH_FAILURE', {
+              reason: 'unauthenticated_response',
+              status: response.status,
+              detail: response.data?.error || null,
+              timestamp: Date.now(),
+            });
+            console.error('Auth status returned but no user data:', response.data);
+          }
         }
       } catch (error) {
         const failure = classifyAuthError(error);
-        commit('SET_AUTH_FAILURE', failure);
-        console.error(`Error fetching user data (${failure.reason}):`, error);
+        // Network/timeout/5xx: keep or restore a local JWT user so pairing survives
+        // full page loads. Only definitive 401/403 clear via the guard.
+        if (failure.reason === 'http_401' || failure.reason === 'http_403') {
+          commit('SET_AUTH_FAILURE', failure);
+          console.error(`Error fetching user data (${failure.reason}):`, error);
+        } else if (!applyJwtFallback(failure.reason)) {
+          commit('SET_AUTH_FAILURE', failure);
+          console.error(`Error fetching user data (${failure.reason}):`, error);
+        }
       }
     }, { staleAfter: TTL.userAuthFetchUserData }),
     fetchPseudonym: withFreshness('userAuth.fetchPseudonym', async ({ commit, state }) => {

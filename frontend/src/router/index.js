@@ -5,6 +5,9 @@ import Terminal from '@/views/Terminal/Terminal.vue';
 const DocsView = () => import('@/views/Docs/Docs.vue');
 import OAuthCallback from '@/views/_components/utility/OAuthCallback.vue';
 const PairView = () => import('@/views/Pair/Pair.vue');
+const MobileHome = () => import('@/views/MobileLite/MobileHome.vue');
+const MobilePair = () => import('@/views/MobileLite/MobilePair.vue');
+const MobileChat = () => import('@/views/MobileLite/MobileChat.vue');
 import store from '@/store/state';
 import { createAuthGuard } from './authGuard.js';
 
@@ -183,6 +186,28 @@ const router = createRouter({
       path: '/pair',
       name: 'Pair',
       component: PairView,
+    },
+    // ------------------------------------------------------------------
+    // Mobile lite (path B) — chat-only Annie client.
+    // Pairing reuses POST /api/pairing/claim; web full app keeps /pair.
+    // ------------------------------------------------------------------
+    {
+      path: '/m',
+      name: 'MobileHome',
+      component: MobileHome,
+      meta: { lite: true },
+    },
+    {
+      path: '/m/pair',
+      name: 'MobilePair',
+      component: MobilePair,
+      meta: { lite: true },
+    },
+    {
+      path: '/m/chat',
+      name: 'MobileChat',
+      component: MobileChat,
+      meta: { requiresAuth: true, lite: true },
     },
     {
       path: '/oauth-callback',
