@@ -19,6 +19,24 @@ http://<host>:3333/m/pair?c=<code>
 
 Works on iPhone and Android. Pair via desktop **Settings → Phone Access**.
 
+## npm (public registry only)
+
+This package uses **registry.npmjs.org** only (see `.npmrc`). Do not point
+`mobile/mobile-lite` at Artifactory/JFrog. `make mobile-lite-ios-init` runs
+`scripts/mobile-lite-npm-install.sh`, which rewrites any accidental JFrog
+`resolved` URLs in `package-lock.json` and installs via the public registry.
+
+If install still hits a corporate mirror, clear the local npm cache for this
+folder and retry:
+
+```bash
+cd mobile/mobile-lite
+rm -rf node_modules
+npm cache clean --force   # optional
+cd ../..
+make mobile-lite-ios-init
+```
+
 ## Capacitor iOS (optional native shell)
 
 Requires macOS, **Xcode installed** (for `xcodebuild` / SDK), CocoaPods, Node 20+.

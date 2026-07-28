@@ -594,7 +594,8 @@ mobile-lite-ios-init: mobile-lite-configure ## One-time: Capacitor deps + iOS pl
 		echo "  or: brew install cocoapods"; \
 		exit 1; \
 	}
-	@cd $(MOBILE_LITE_DIR) && npm install
+	@chmod +x scripts/mobile-lite-npm-install.sh
+	@./scripts/mobile-lite-npm-install.sh
 	@if [ ! -d "$(MOBILE_LITE_DIR)/ios" ]; then \
 		echo "$(BLUE)Adding Capacitor iOS platform...$(NC)"; \
 		cd $(MOBILE_LITE_DIR) && npx cap add ios; \
