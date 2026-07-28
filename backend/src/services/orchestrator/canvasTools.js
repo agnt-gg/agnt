@@ -42,7 +42,7 @@ export function getCanvasToolSchemas() {
       function: {
         name: 'get_canvas_state',
         description:
-          'Snapshot of the One Canvas workspace page (/workspace): every workspace tab, and each open widget window with its instanceId, widget type, name, grid position/size, and any bound object (e.g. the workflow id a Workflow Forge window is editing). Call this FIRST whenever the user refers to their canvas or to things on it — "this workflow", "that traces window", "the widget on the right", "close that", "what am I looking at?". Cheap; answers from any open tab.',
+          'Snapshot of the Workspaces page (/workspace): every workspace tab, and each open widget window with its instanceId, widget type, name, grid position/size, and any bound object (e.g. the workflow id a Workflow Forge window is editing). Call this FIRST whenever the user refers to their workspace, their canvas, or to things on them — "this workflow", "that traces window", "the widget on the right", "close that", "what am I looking at?". Cheap; answers from any open tab.',
         parameters: { type: 'object', properties: {} },
       },
     },
@@ -69,7 +69,7 @@ export function getCanvasToolSchemas() {
       function: {
         name: 'open_canvas_widget',
         description:
-          'Open a widget window on the One Canvas workspace — deliberately place a workflow editor, traces list, goals board, or any registry/custom widget next to the conversation. Optionally give a grid position. Only works while the user has the canvas visible in a tab.',
+          'Open a widget window on the Workspaces page — deliberately place a workflow editor, traces list, goals board, or any registry/custom widget next to the conversation. Optionally give a grid position. Only works while the user has the workspace visible in a tab.',
         parameters: {
           type: 'object',
           properties: {
@@ -90,7 +90,7 @@ export function getCanvasToolSchemas() {
       function: {
         name: 'close_canvas_widget',
         description:
-          'Close one widget window on the One Canvas workspace by its instanceId (from get_canvas_state). Only works while the user has the canvas visible in a tab.',
+          'Close one widget window on the Workspaces page by its instanceId (from get_canvas_state). Only works while the user has the workspace visible in a tab.',
         parameters: {
           type: 'object',
           properties: {
@@ -105,7 +105,7 @@ export function getCanvasToolSchemas() {
       function: {
         name: 'move_canvas_widget',
         description:
-          'Move and/or resize one widget window on the One Canvas grid (12 columns × 8 rows). Provide the instanceId from get_canvas_state plus any of col/row/cols/rows. Only works while the user has the canvas visible in a tab.',
+          'Move and/or resize one widget window on the workspace grid (12 columns × 8 rows). Provide the instanceId from get_canvas_state plus any of col/row/cols/rows. Only works while the user has the workspace visible in a tab.',
         parameters: {
           type: 'object',
           properties: {
@@ -177,7 +177,7 @@ export async function executeCanvasTool(functionName, args, authToken, context) 
       success: false,
       error: readonly
         ? 'No browser tab answered — the AGNT app does not appear to be open. The canvas can only be read while the app is running.'
-        : 'No visible browser tab answered — canvas changes only apply while the user has the One Canvas page visible. Ask them to open /workspace.',
+        : 'No visible browser tab answered — workspace changes only apply while the user has the Workspaces page visible. Ask them to open /workspace.',
       detail: timeoutErr.message,
     };
   }

@@ -35,7 +35,7 @@ const router = createRouter({
       component: Terminal,
       meta: { requiresAuth: true, terminalScreen: 'ChatScreen' },
     },
-    // One-Canvas prototype (additive — nothing else routes here).
+    // Workspaces (additive — nothing else routes here).
     {
       path: '/workspace',
       name: 'TerminalWorkspace',

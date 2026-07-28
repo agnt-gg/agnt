@@ -14,7 +14,7 @@
  * element in the entire application disappeared, permanently, for the rest of
  * the session.
  *
- * It blanked the One Canvas pane headers — title, maximise, and close — and
+ * It blanked the Workspaces pane headers — title, maximise, and close — and
  * the symptom ("I don't see a close button") pointed nowhere near the cause.
  * That is the defining property of this bug class: the blast radius is the
  * whole app, and the evidence is in a file nobody would think to open.

@@ -9,7 +9,7 @@
       :show-avatar="true"
       message-item-mode="full"
       :on-frontend-event="onFrontendEvent"
-      welcome-message="One canvas. Ask for anything — the widgets you need will open around this conversation."
+      welcome-message="Your workspace. Ask for anything — the widgets you need will open around this conversation."
       empty-icon="fas fa-layer-group"
       placeholder="Ask, build, or steer…"
       :initial-suggestions="suggestions"

@@ -2884,7 +2884,7 @@ body.dark button#workflow-magic-button {
  * This was previously a bare `header { display: none !important }`. Being
  * unscoped AND !important, it hid EVERY <header> element in the entire
  * application from the moment this chunk loaded — not just on this page, and
- * not just in this component. It silently blanked the One Canvas pane headers
+ * not just in this component. It silently blanked the Workspaces pane headers
  * (title, maximise, close) the instant a workflow surface was opened, which is
  * exactly the kind of defect that is invisible in review and impossible to
  * attribute from the symptom.

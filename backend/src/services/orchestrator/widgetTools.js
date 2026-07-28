@@ -150,7 +150,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
           success: true,
           count: widgets.length,
           widgets,
-          hint: 'Use an id with load_widget for full detail, or with open_canvas_widget to place it on the One Canvas workspace.',
+          hint: 'Use an id with load_widget for full detail, or with open_canvas_widget to place it on the Workspaces page.',
         };
         break;
       }

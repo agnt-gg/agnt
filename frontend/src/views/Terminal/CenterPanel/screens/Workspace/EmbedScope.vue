@@ -1,4 +1,4 @@
-<!-- EmbedScope — gives one canvas window its own panel-geometry scope.
+<!-- EmbedScope — gives one workspace window its own panel-geometry scope.
 
      `provide` is per component instance, and the workspace renders every
      window from a single `v-for` in one setup(), so it cannot provide a

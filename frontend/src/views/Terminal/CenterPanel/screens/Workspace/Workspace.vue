@@ -1,4 +1,4 @@
-<!-- Workspace.vue — the One-Canvas page. v2.
+<!-- Workspace.vue — the Workspaces page. v2.
 
      ONE page. ONE chat input. The system arranges itself around the work.
 

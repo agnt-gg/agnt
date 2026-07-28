@@ -107,7 +107,7 @@ export function buildSelector(el) {
 export function scanInteractiveElements({ filter, root } = {}) {
   const filterLower = (filter || '').toLowerCase();
   // `root` scopes the scan to one subtree (e.g. a single widget frame on the
-  // One Canvas page). Selectors are still built against document — they must
+  // Workspaces page). Selectors are still built against document — they must
   // stay resolvable by document.querySelector for highlight/tour targets.
   const candidates = (root || document).querySelectorAll(INTERACTIVE_SELECTOR);
   const seen = new Set();

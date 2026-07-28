@@ -255,13 +255,13 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Each section has one sidebar icon and one or more sub-tabs in the toolbar.
 const MAIN_SECTIONS = [
   { id: 'chat', icon: 'fas fa-comments', label: 'Chat', screens: [{ screen: 'ChatScreen', label: 'CHAT' }] },
-  // One-Canvas prototype. Additive: lives beside the existing screens so it
+  // Workspaces. Additive: lives beside the existing screens so it
   // can be evaluated without replacing anything.
   {
     id: 'workspace',
     icon: 'fas fa-layer-group',
-    label: 'Canvas',
-    screens: [{ screen: 'WorkspaceScreen', label: 'ONE CANVAS' }],
+    label: 'Workspaces',
+    screens: [{ screen: 'WorkspaceScreen', label: 'WORKSPACES' }],
   },
   {
     id: 'dashboard',
@@ -1536,7 +1536,7 @@ body.custom-bg .cv-dashboard {
   background: transparent !important;
 }
 
-/* On the ONE CANVAS page only, the slotted .ws-root sits flush against the
+/* On the WORKSPACES page only, the slotted .ws-root sits flush against the
    tab bar above it — no top margin, sides and bottom keep the custom-bg
    4px gutter. Keyed by the page's own data-page identifier (set by
    Workspace.vue, protected from embedded-screen stomps by BaseScreen's

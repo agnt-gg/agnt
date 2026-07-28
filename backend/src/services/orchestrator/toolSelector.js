@@ -224,7 +224,7 @@ export const GROUP_DESCRIPTIONS = {
   email: 'Send emails via SMTP',
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
-  canvas: 'See and arrange the One Canvas workspace: read open widget windows, inspect their contents, open/close/move them',
+  canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
 };
 
 /**

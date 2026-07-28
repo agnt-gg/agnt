@@ -62,7 +62,7 @@ export function readCanvasState() {
     return {
       success: true,
       open: false,
-      summary: 'The One Canvas workspace page has never been used — no workspaces exist yet.',
+      summary: 'The Workspaces page has never been used — no workspaces exist yet.',
     };
   }
 

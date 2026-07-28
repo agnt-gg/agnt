@@ -1,5 +1,5 @@
 /**
- * Tests for the One-Canvas workspace page (v2 — real widget system).
+ * Tests for the Workspaces page (v2 — real widget system).
  *
  * v2's contract: the canvas area hosts WIDGET INSTANCES in the exact shape
  * the widget-canvas system uses, rendered by the REAL WidgetFrame. This spec

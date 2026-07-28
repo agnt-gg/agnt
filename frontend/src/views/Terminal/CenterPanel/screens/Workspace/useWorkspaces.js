@@ -1,5 +1,5 @@
 /**
- * useWorkspaces — workspace/tab state for the One-Canvas page. v2.
+ * useWorkspaces — workspace/tab state for the Workspaces page. v2.
  *
  * A workspace IS a conversation. It owns:
  *   - one Annie chat channel (`workspace:<id>`, chatType `orchestrator`)

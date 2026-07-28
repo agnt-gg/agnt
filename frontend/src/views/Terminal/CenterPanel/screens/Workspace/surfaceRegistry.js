@@ -1,9 +1,9 @@
 /**
- * Tool-call → widget mapping for the One-Canvas auto-open behaviour.
+ * Tool-call → widget mapping for the Workspaces auto-open behaviour.
  *
  * v2: this module no longer resolves components — the widget canvas system
  * (widgetRegistry + WidgetFrame + CustomWidgetRenderer) owns rendering. What
- * remains is the one genuinely One-Canvas idea: when Annie touches a domain,
+ * remains is the one genuinely load-bearing idea: when Annie touches a domain,
  * which WIDGET should appear on the canvas, and which object should it show?
  *
  *   update_workflow  → the 'workflow-forge' screen widget, pointed (via the
