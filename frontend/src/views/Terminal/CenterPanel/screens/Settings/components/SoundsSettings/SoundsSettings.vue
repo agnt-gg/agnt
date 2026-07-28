@@ -59,6 +59,60 @@
       </div>
     </div>
 
+    <!-- Individual event sounds. Rendered from the sound catalog, so exposing
+         another sound is a flag in soundPreferences.js, not a UI change. -->
+    <div class="sound-controls" v-if="configurableEvents.length">
+      <h4 class="section-title">Individual Sounds</h4>
+
+      <div v-for="event in configurableEvents" :key="event.id" class="control-row event-row" :class="{ disabled: !soundsEnabled }">
+        <div class="control-info">
+          <div class="control-label">
+            <i :class="event.icon || 'fas fa-music'"></i>
+            <span>{{ event.label }}</span>
+          </div>
+          <p class="control-description">{{ event.description }}</p>
+        </div>
+
+        <div class="event-controls">
+          <CustomSelect
+            class="sound-select"
+            :options="soundOptions"
+            v-model="prefs[event.id].src"
+            :disabled="!soundsEnabled || !prefs[event.id].enabled"
+            @update:model-value="handleSrcChange(event.id)"
+          />
+
+          <input
+            type="range"
+            min="0"
+            max="100"
+            class="volume-slider event-volume"
+            v-model.number="prefs[event.id].volumePercent"
+            :disabled="!soundsEnabled || !prefs[event.id].enabled"
+            :aria-label="event.label + ' volume'"
+            v-tooltip="prefs[event.id].volumePercent + '% of master'"
+            @input="handleEventVolumeChange(event.id)"
+          />
+          <span class="event-volume-readout">{{ prefs[event.id].volumePercent }}%</span>
+
+          <button
+            class="preview-button"
+            :disabled="!soundsEnabled || !prefs[event.id].enabled"
+            :aria-label="'Preview ' + event.label"
+            v-tooltip="'Preview'"
+            @click="previewEvent(event.id)"
+          >
+            <i class="fas fa-play"></i>
+          </button>
+
+          <label class="toggle-switch">
+            <input type="checkbox" v-model="prefs[event.id].enabled" :disabled="!soundsEnabled" @change="handleEventToggle(event.id)" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
     <div class="sound-info">
       <div class="info-card">
         <i class="fas fa-info-circle"></i>
@@ -75,57 +129,57 @@
 </template>
 
 <script>
-import { ref, computed, inject, onMounted } from 'vue';
+import { ref, computed, inject, reactive } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import {
+  SOUND_FILES,
+  getConfigurableSoundEvents,
+  getEventPreferences,
+  getMasterEnabled,
+  getMasterVolume,
+  setEventPreferences,
+  setMasterEnabled,
+  setMasterVolume,
+} from '@/services/soundPreferences';
 
 export default {
   name: 'SoundsSettings',
+  components: { CustomSelect },
   setup() {
     const playSound = inject('playSound', () => {});
-    const soundsEnabled = ref(true);
-    const volumePercent = ref(30); // Default 30%
+
+    const configurableEvents = getConfigurableSoundEvents();
+    const soundOptions = SOUND_FILES.map((file) => ({ label: file.label, value: file.src }));
+
+    // Read on setup rather than in onMounted: loading a frame later renders the
+    // defaults first, so a user with a customised sound watches it flip.
+    const soundsEnabled = ref(getMasterEnabled());
+    const volumePercent = ref(Math.round(getMasterVolume() * 100));
+
+    // Per-event UI state. Volume is held as a percentage of master so the
+    // slider reads the way it looks: 100% means "as loud as the master allows".
+    const prefs = reactive({});
+    configurableEvents.forEach((event) => {
+      const saved = getEventPreferences(event.id);
+      prefs[event.id] = {
+        enabled: saved.enabled,
+        volumePercent: Math.round(saved.volume * 100),
+        src: saved.src,
+      };
+    });
 
     // Computed volume (0-1 range)
     const volume = computed(() => volumePercent.value / 100);
 
-    // Load settings from localStorage on mount
-    onMounted(() => {
-      const savedEnabled = localStorage.getItem('soundsEnabled');
-      const savedVolume = localStorage.getItem('soundVolume');
-
-      if (savedEnabled !== null) {
-        soundsEnabled.value = savedEnabled === 'true';
-      }
-
-      if (savedVolume !== null) {
-        volumePercent.value = parseFloat(savedVolume) * 100;
-      }
-    });
-
     const handleToggleChange = () => {
-      localStorage.setItem('soundsEnabled', soundsEnabled.value.toString());
-
-      // Emit event to update TerminalLayout
-      window.dispatchEvent(
-        new CustomEvent('sounds-settings-changed', {
-          detail: { enabled: soundsEnabled.value, volume: volume.value },
-        })
-      );
-
-      // Play a sound when enabling
+      setMasterEnabled(soundsEnabled.value);
       if (soundsEnabled.value) {
         playSound('buttonClick', volume.value);
       }
     };
 
     const handleVolumeChange = () => {
-      localStorage.setItem('soundVolume', volume.value.toString());
-
-      // Emit event to update TerminalLayout
-      window.dispatchEvent(
-        new CustomEvent('sounds-settings-changed', {
-          detail: { enabled: soundsEnabled.value, volume: volume.value },
-        })
-      );
+      setMasterVolume(volume.value);
     };
 
     const playTestSound = () => {
@@ -134,13 +188,50 @@ export default {
       }
     };
 
+    const persistEvent = (eventId) => {
+      const local = prefs[eventId];
+      setEventPreferences(eventId, {
+        enabled: local.enabled,
+        volume: local.volumePercent / 100,
+        src: local.src,
+      });
+    };
+
+    // Every change is written before the preview plays, so what the user hears
+    // is what was just saved rather than a parallel preview path.
+    const previewEvent = (eventId) => {
+      if (!soundsEnabled.value || !prefs[eventId].enabled) return;
+      playSound(eventId);
+    };
+
+    const handleEventToggle = (eventId) => {
+      persistEvent(eventId);
+      if (prefs[eventId].enabled) previewEvent(eventId);
+    };
+
+    const handleEventVolumeChange = (eventId) => {
+      persistEvent(eventId);
+    };
+
+    const handleSrcChange = (eventId) => {
+      persistEvent(eventId);
+      previewEvent(eventId);
+    };
+
     return {
       soundsEnabled,
       volumePercent,
       volume,
+      configurableEvents,
+      soundOptions,
+      prefs,
       handleToggleChange,
       handleVolumeChange,
       playTestSound,
+      previewEvent,
+      handleEventToggle,
+      handleEventVolumeChange,
+      handleSrcChange,
     };
   },
 };
@@ -359,6 +450,91 @@ button.test-button {
 
 .test-button i {
   font-size: 0.85em;
+}
+
+/* Per-event rows */
+.section-title {
+  color: var(--color-text);
+  font-size: 0.95em;
+  font-weight: 600;
+  margin: 8px 0 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.event-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Layout only. CustomSelect owns the control's chrome. */
+.sound-select {
+  width: 150px;
+  height: 32px;
+  font-size: 0.85em;
+}
+
+.event-volume {
+  width: 130px;
+}
+
+/* A live value, not a caption: it reads at body contrast, and reserves the
+   width of its widest string so the controls beside it never shift. */
+.event-volume-readout {
+  color: var(--color-text);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  min-width: 4ch;
+  text-align: right;
+}
+
+button.preview-button {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary) !important;
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.preview-button:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: var(--color-white) !important;
+}
+
+.preview-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preview-button i {
+  font-size: 0.75em;
+}
+
+@media (max-width: 640px) {
+  .event-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .event-controls {
+    justify-content: space-between;
+  }
+
+  .sound-select {
+    max-width: none;
+    flex: 1;
+  }
 }
 
 /* Info Card */

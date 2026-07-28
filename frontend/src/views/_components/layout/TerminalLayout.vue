@@ -41,6 +41,7 @@ import { ref, computed, onMounted, watch, nextTick, onUnmounted, provide } from 
 import { useStore } from 'vuex';
 import SongPlayer from '@/views/Terminal/_components/SongPlayer.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import { getSoundEvent, resolveSound } from '@/services/soundPreferences';
 
 export default {
   name: 'TerminalLayout',
@@ -181,17 +182,9 @@ export default {
     provide('isMobile', isMobile);
 
     // --- Sound Effects ---
-    const sounds = {
-      buttonClick: '/sounds/mouse-click.mp3',
-      shutterClick: '/sounds/shutter-click.mp3',
-      typewriterKeyPress: '/sounds/typewriter-keypress.mp3',
-      chaChingMoney: '/sounds/cha-ching-money.mp3',
-      getOuttaHereNerd: '/sounds/go-on-nerd-go-outside.mp3',
-      chatUnread: '/sounds/success-chime.mp3',
-      // Add other sounds here like:
-      // keyPress: '/sounds/key-press.mp3',
-      // notification: '/sounds/notification.mp3',
-    };
+    // The catalog and every enable/volume decision live in
+    // `@/services/soundPreferences`, so Settings and playback can never
+    // disagree about which sounds exist or how loud they should be.
 
     const setInteracted = () => {
       if (!hasUserInteracted.value) {
@@ -201,27 +194,22 @@ export default {
     };
 
     const playSound = (soundName, volume = null) => {
-      // Check localStorage for sound settings
-      const savedEnabled = localStorage.getItem('soundsEnabled');
-      const soundsEnabled = savedEnabled === null ? true : savedEnabled === 'true';
+      if (!props.soundEnabled) return;
 
-      // console.log(`playSound: ${soundName}, volume: ${volume}, interacted: ${hasUserInteracted.value}, enabled: ${soundsEnabled}`);
-
-      if (!soundsEnabled || !props.soundEnabled) {
-        // console.log('Sound is disabled.');
+      if (!hasUserInteracted.value) {
+        // Suppress until the browser has an interaction to attach playback to.
         return;
       }
 
-      if (!hasUserInteracted.value) {
-        // console.warn(`Sound "${soundName}" suppressed: User interaction pending.`);
-        return; // Suppress sound if no interaction yet
-      }
-
-      const soundPath = sounds[soundName];
-      if (!soundPath) {
+      // An unregistered id is a caller bug, not a user preference — say so.
+      if (!getSoundEvent(soundName)) {
         console.warn(`Sound "${soundName}" not found.`);
         return;
       }
+
+      // null means "stay silent": master off, this event off, or level zero.
+      const resolved = resolveSound(soundName, volume);
+      if (!resolved) return;
 
       try {
         // Stop any currently playing sound
@@ -231,24 +219,8 @@ export default {
           currentAudio.value = null;
         }
 
-        const audio = new Audio(soundPath);
-
-        // Get saved volume or use provided/default
-        const savedVolume = localStorage.getItem('soundVolume');
-        let finalVolume;
-
-        if (volume !== null && typeof volume === 'number' && volume >= 0 && volume <= 1) {
-          // Use provided volume
-          finalVolume = volume;
-        } else if (savedVolume !== null) {
-          // Use saved volume
-          finalVolume = parseFloat(savedVolume);
-        } else {
-          // Use default
-          finalVolume = 0.3;
-        }
-
-        audio.volume = finalVolume;
+        const audio = new Audio(resolved.src);
+        audio.volume = resolved.volume;
 
         // Track this audio as the current one
         currentAudio.value = audio;
