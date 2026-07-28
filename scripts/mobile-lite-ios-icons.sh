@@ -83,7 +83,10 @@ fi
 # Bump build so SpringBoard sees a new version
 if [[ -f "$PBX" ]]; then
   VER="$(date +%s)"
-  sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${VER};/g" "$PBX"
+  # Portable in-place edit (avoid sed -i '' — empty backup arg is easy to drop)
+  tmp="$(mktemp)"
+  sed -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${VER};/g" "$PBX" >"$tmp"
+  mv -f "$tmp" "$PBX"
   echo "CURRENT_PROJECT_VERSION → ${VER}"
 fi
 
