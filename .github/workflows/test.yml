@@ -1,0 +1,82 @@
+name: Tests
+
+# WHY THIS EXISTS
+# ───────────────
+# Until 2026-07-28 nothing in CI ran the test suites — docker-build.yml and
+# electron-build.yml only build, and both trigger on tags. With no gate, the
+# frontend suite drifted to 128 failing tests across 9 files, every one of them
+# a spec frozen at the 2026-01-20 commit while its component kept changing for
+# six months. The failures were real and visible locally; they were simply
+# reclassified as "the known baseline" and stepped around.
+#
+# So the point of this workflow is not that tests exist. It is that a red run
+# BLOCKS, and therefore can never become a baseline again. There is deliberately
+# no allowed-failure count and no continue-on-error on the gating jobs.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run irrelevant.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Native modules are not needed to run the suite, and building them is the
+      # slowest and flakiest part of a full install.
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Run backend suite
+        run: npm test
+
+  frontend:
+    name: Frontend (vitest + jsdom)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend dependencies
+        run: npm --prefix frontend install --ignore-scripts
+      - name: Run frontend suite
+        run: npm --prefix frontend test
+      - name: Build frontend
+        run: npm --prefix frontend run build
+
+  # NOT a gate yet — see the note below. This job reports; it does not block.
+  #
+  # tests/unit/** uses the node:test runner rather than vitest, so it was never
+  # picked up by any runner and has 13 accumulated failures. They are NOT test
+  # rot: they are provider-config assertions that need product answers (is
+  # `antigravity` a valid authScheme? does ZAI still ship GLM-5? is MiniMax
+  # staticModels?). Guessing at them in a test-infrastructure change would be
+  # inventing product decisions.
+  #
+  # Flip continue-on-error to false the moment those 13 are resolved. Leaving a
+  # permanently-red required job is exactly the habit this workflow exists to
+  # break.
+  node-test:
+    name: node:test suite (report only — 13 known failures)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Run node:test suite
+        run: npm run test:node
