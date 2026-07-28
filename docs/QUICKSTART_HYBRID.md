@@ -75,10 +75,10 @@ http://your-domain.com:3333
 **Option A: Use Electron Full** (~348MB AppImage)
 1. Download from [agnt.gg/downloads](https://agnt.gg/downloads)
 2. Install on user's desktop
-3. Configure to use external backend:
+3. Point it at the shared backend, either in the UI (**Settings → Configuration
+   → Connection → Remote backend**) or with an environment variable:
    ```bash
-   USE_EXTERNAL_BACKEND=true
-   BACKEND_URL=http://SERVER_IP:3333
+   AGNT_REMOTE_URL=http://SERVER_IP:3333
    ```
 4. Launch AGNT
 
@@ -224,7 +224,8 @@ All users see changes instantly:
 
 **Native app users:**
 1. Send them Electron installer
-2. Configure `BACKEND_URL=http://SERVER_IP:3333`
+2. Settings → Configuration → Connection → Remote backend → `http://SERVER_IP:3333`
+   (or set `AGNT_REMOTE_URL` before launch)
 3. Launch app
 
 ### Update Backend
@@ -303,12 +304,18 @@ docker-compose restart
 
 ### Electron app won't connect
 
-**Check backend URL:**
+**Check the connection URL** (Settings → Configuration → Connection, or the
+`AGNT_REMOTE_URL` environment variable — the env var wins and is never persisted):
+
 ```bash
-# Should point to server, not localhost
-BACKEND_URL=http://SERVER_IP:3333  # Good
-BACKEND_URL=http://localhost:3333  # Bad (points to client)
+AGNT_REMOTE_URL=http://SERVER_IP:3333  # Good
+AGNT_REMOTE_URL=http://localhost:3333  # Bad (points back at this machine)
 ```
+
+In remote mode the desktop app starts **no** local backend, so it never silently
+falls back to an empty local instance — if the remote is unreachable it shows a
+connection-error page offering retry or a switch back to local. A second, empty
+AGNT presented as yours would be the worse failure.
 
 ### Different users see different data
 

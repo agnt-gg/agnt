@@ -259,7 +259,7 @@ docker-compose up -d
 
 ```bash
 # Set environment variable before starting
-USE_EXTERNAL_BACKEND=true npm start
+AGNT_REMOTE_URL=http://server-ip:3333 npm start
 ```
 
 **Step 3:** Done! Desktop app connects to Docker backend on port 3333.

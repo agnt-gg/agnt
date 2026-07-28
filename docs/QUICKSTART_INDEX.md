@@ -107,7 +107,9 @@ docker-compose -f docker-compose.lite.yml up -d
 2. Install other variant
 3. Import data
 
-See [Migration Guide](MIGRATION_GUIDE.md) for details.
+Data lives in the same place for every variant, so switching is install-and-go.
+For a shared backend instead of a migration, see
+[Hybrid Mode](QUICKSTART_HYBRID.md).
 
 ---
 
@@ -115,8 +117,9 @@ See [Migration Guide](MIGRATION_GUIDE.md) for details.
 
 After completing your quickstart:
 
-- **[User Guide](USER_GUIDE.md)** - How to use AGNT
+- **[README](../README.md)** - How to use AGNT
 - **[Self-Hosting Guide](SELF_HOSTING.md)** - Advanced configuration
+- **[Remote Access Topologies](REMOTE_ACCESS_TOPOLOGIES.md)** - Phone pairing + remote backend: LAN, Tailscale/VPN, cloud, reverse proxy
 - **[Plugin Development](../backend/plugins/README.md)** - Create plugins
 - **[API Documentation](_API-DOCUMENTATION.md)** - REST API reference
 - **[Lite Mode Guide](LITE_MODE.md)** - Understanding Lite mode

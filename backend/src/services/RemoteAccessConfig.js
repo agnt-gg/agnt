@@ -27,28 +27,47 @@ const CONFIG_PATH = path.join(process.cwd(), 'remote-access.json');
 export const LOOPBACK = '127.0.0.1';
 export const ALL_INTERFACES = '0.0.0.0';
 
-/** @returns {{ lanEnabled: boolean }} */
+/**
+ * `publicOrigin` is the address the outside world uses to reach this server
+ * when it differs from anything the machine can observe about itself — a
+ * tunnel, a CNAME, split-horizon DNS. Nothing can infer it, so it is the one
+ * value an operator must be able to state outright.
+ * @returns {{ lanEnabled: boolean, publicOrigin: string }}
+ */
 export function readConfig() {
   try {
     const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    return { lanEnabled: parsed?.lanEnabled === true };
+    return {
+      lanEnabled: parsed?.lanEnabled === true,
+      publicOrigin: typeof parsed?.publicOrigin === 'string' ? parsed.publicOrigin : '',
+    };
   } catch {
-    return { lanEnabled: false };
+    return { lanEnabled: false, publicOrigin: '' };
   }
 }
 
 /**
- * @param {{ lanEnabled: boolean }} next
- * @returns {{ lanEnabled: boolean }}
+ * @param {{ lanEnabled: boolean, publicOrigin?: string }} next
+ * @returns {{ lanEnabled: boolean, publicOrigin: string }}
  */
 export function writeConfig(next) {
-  const value = { lanEnabled: next?.lanEnabled === true, updatedAt: new Date().toISOString() };
+  // Preserve a field the caller did not mention. The LAN toggle and the public
+  // URL are set from different places, and a partial write that silently
+  // dropped the other one would look exactly like "my setting reverted".
+  const current = readConfig();
+  const publicOrigin =
+    next?.publicOrigin === undefined ? current.publicOrigin : String(next.publicOrigin || '').trim();
+  const value = {
+    lanEnabled: next?.lanEnabled === true,
+    publicOrigin,
+    updatedAt: new Date().toISOString(),
+  };
   // Atomic write: a torn config file would silently fall back to loopback on
   // next boot, which looks exactly like "the toggle didn't save".
   const tmp = CONFIG_PATH + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
   fs.renameSync(tmp, CONFIG_PATH);
-  return { lanEnabled: value.lanEnabled };
+  return { lanEnabled: value.lanEnabled, publicOrigin: value.publicOrigin };
 }
 
 /**

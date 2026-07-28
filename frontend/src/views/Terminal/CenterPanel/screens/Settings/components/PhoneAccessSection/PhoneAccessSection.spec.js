@@ -23,7 +23,12 @@ vi.mock('@/services/pairingService.js', () => ({
   },
 }));
 
-vi.mock('@/utils/qrcode.js', () => ({ toSvg: () => '<svg id="stub-qr"></svg>' }));
+// Captured so a test can assert WHICH url got encoded ?" the whole point of
+// offering a choice is that the QR follows it.
+const toSvg = vi.fn(() => '<svg id="stub-qr"></svg>');
+vi.mock('@/utils/qrcode.js', () => ({ toSvg: (...a) => toSvg(...a) }));
+
+const encodedUrl = () => toSvg.mock.calls.at(-1)?.[0];
 
 import PhoneAccessSection from './PhoneAccessSection.vue';
 
@@ -43,6 +48,7 @@ const baseStatus = (over = {}) => ({
 
 beforeEach(() => {
   vi.useRealTimers();
+  toSvg.mockClear();
   getStatus.mockReset();
   createCode.mockReset();
   getStatus.mockResolvedValue(baseStatus());
@@ -139,5 +145,98 @@ describe('the reachability witness', () => {
     expect(wit.classes()).toContain('warn');
     expect(wit.text()).toContain('Example Network 5G');
     expect(wit.text()).toMatch(/mobile data/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHICH ADDRESS GOES IN THE QR
+// ---------------------------------------------------------------------------
+// The server can enumerate candidate addresses but cannot always know which one
+// the phone has a route to (multi-homed host, VPN alongside Wi-Fi, split-horizon
+// DNS). The user can. So the panel must offer the choice AND honour it.
+// ---------------------------------------------------------------------------
+describe('choosing the pairing address', () => {
+  const CODE = 'b'.repeat(32);
+  const multiHomed = {
+    origins: [
+      { origin: 'http://100.64.1.5:3333', source: 'request', label: 'The address you are using', external: true },
+      { origin: 'http://192.168.40.208:3333', source: 'interface', label: 'This machine on Wi-Fi', external: true },
+    ],
+    urls: ['http://100.64.1.5:3333', 'http://192.168.40.208:3333'],
+  };
+
+  const mintFor = (origins) =>
+    createCode.mockResolvedValue({
+      code: CODE,
+      url: `${origins[0].origin}/pair?c=${CODE}`,
+      origin: origins[0].origin,
+      origins: origins.map((o) => ({ ...o, url: `${o.origin}/pair?c=${CODE}` })),
+      expiresAt: Date.now() + 120000,
+      ttlMs: 120000,
+    });
+
+  it('lists every candidate and preselects the best one', async () => {
+    const w = await mountPanel(multiHomed);
+    const rows = w.findAll('.pa-url');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].classes()).toContain('active');
+    expect(rows[0].text()).toContain('100.64.1.5');
+  });
+
+  it('encodes the address the user picked, not the server\'s first guess', async () => {
+    mintFor(multiHomed.origins);
+    const w = await mountPanel(multiHomed);
+    await w.vm.onGenerate();
+    await flushPromises();
+    expect(encodedUrl()).toBe(`http://100.64.1.5:3333/pair?c=${CODE}`);
+
+    await w.findAll('.pa-url')[1].trigger('click');
+    await flushPromises();
+    expect(encodedUrl()).toBe(`http://192.168.40.208:3333/pair?c=${CODE}`);
+  });
+
+  it('keeps the user\'s choice across a status poll', async () => {
+    // The panel polls every few seconds while a code is live. Resetting the
+    // selection each time would silently swap the QR under the user's phone.
+    const w = await mountPanel(multiHomed);
+    await w.findAll('.pa-url')[1].trigger('click');
+    await w.vm.refresh();
+    await flushPromises();
+    expect(w.findAll('.pa-url')[1].classes()).toContain('active');
+  });
+
+  it('still works against a backend that only sends flat urls', async () => {
+    // Older backend, newer frontend: treating a missing `origins` as "no
+    // candidates" would blank a panel that used to work.
+    const w = await mountPanel({ origins: undefined, urls: ['http://192.168.40.208:3333'] });
+    expect(w.findAll('.pa-url')).toHaveLength(1);
+    expect(w.find('.pa-url').text()).toContain('192.168.40.208');
+  });
+});
+
+describe('the prerequisite matches the chosen address', () => {
+  it('drops the same-Wi-Fi demand for an address that does not need it', async () => {
+    // Repeating "must be on the same Wi-Fi" for a public hostname sends the
+    // user off to fix a network that was never the problem.
+    const w = await mountPanel({
+      origins: [{ origin: 'https://agnt.example.com', source: 'forwarded', label: 'Via reverse proxy', external: true }],
+      urls: ['https://agnt.example.com'],
+    });
+    const req = w.find('.pa-req').text();
+    expect(req).not.toMatch(/same Wi-Fi/i);
+    expect(req).toContain('agnt.example.com');
+  });
+
+  it('tells a tailnet user the thing that actually matters', async () => {
+    const w = await mountPanel({
+      origins: [{ origin: 'http://100.64.1.5:3333', source: 'request', label: '', external: true }],
+      urls: ['http://100.64.1.5:3333'],
+    });
+    expect(w.find('.pa-req').text()).toMatch(/VPN or tailnet/i);
+  });
+
+  it('keeps the Wi-Fi wording for a genuine LAN address', async () => {
+    const w = await mountPanel();
+    expect(w.find('.pa-req').text()).toContain('Example Network 5G');
   });
 });

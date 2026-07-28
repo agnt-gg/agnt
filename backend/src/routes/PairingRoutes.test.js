@@ -225,3 +225,157 @@ describe('pairing — reachability vs intent (the QR that could not work)', () =
     expect(body.restartRequired).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// THE ORIGIN IN THE QR
+// ---------------------------------------------------------------------------
+// The address used to come from `lanAddresses()[0]` — the server reading its
+// own network cards. That is correct in exactly one topology: the server IS the
+// desktop the user is sitting at. The remote-backend feature exists to make
+// that false, and in every other topology the QR encoded an address the phone
+// had no route to — while reporting success.
+//
+// These go through the real route with a real socket, because the failure was
+// never in the arithmetic; it was in which input the route consulted.
+// ---------------------------------------------------------------------------
+describe('pairing — the origin in the QR', () => {
+  let prevBindHost;
+  let prevTrustProxy;
+  let prevPublicOrigin;
+
+  /**
+   * fetch() refuses to let a caller set Host, which is exactly the header under
+   * test — so drop to raw http and pretend to be a client that arrived from
+   * somewhere else.
+   */
+  const asClient = (host, headers = {}) =>
+    new Promise((resolve, reject) => {
+      const { port } = server.address();
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'POST',
+          path: '/api/pairing/code',
+          headers: { host, Authorization: `Bearer ${token()}`, 'Content-Length': 0, ...headers },
+        },
+        (res) => {
+          let raw = '';
+          res.on('data', (c) => (raw += c));
+          res.on('end', () => resolve({ status: res.statusCode, body: raw ? JSON.parse(raw) : null }));
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+  beforeEach(() => {
+    prevBindHost = process.env.BIND_HOST;
+    prevTrustProxy = process.env.TRUST_PROXY;
+    prevPublicOrigin = process.env.PUBLIC_ORIGIN;
+    delete process.env.TRUST_PROXY;
+    delete process.env.PUBLIC_ORIGIN;
+    process.env.BIND_HOST = '0.0.0.0';
+    RemoteAccessConfig.recordActualBind({ address: '0.0.0.0', port: 3333 });
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries({
+      BIND_HOST: prevBindHost,
+      TRUST_PROXY: prevTrustProxy,
+      PUBLIC_ORIGIN: prevPublicOrigin,
+    })) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    RemoteAccessConfig._resetActualBind();
+  });
+
+  it('tailnet: encodes the address the client actually reached, not the box\'s home LAN IP', async () => {
+    const { status, body } = await asClient('100.64.1.5:3333');
+    expect(status).toBe(200);
+    expect(body.origin).toBe('http://100.64.1.5:3333');
+    expect(body.url).toBe(`http://100.64.1.5:3333/pair?c=${body.code}`);
+  });
+
+  it('cloud: encodes the public hostname, not a datacenter-internal IP', async () => {
+    const { body } = await asClient('agnt.mysite.com:3333');
+    expect(body.origin).toBe('http://agnt.mysite.com:3333');
+  });
+
+  it('HTTPS proxy: keeps the scheme and drops the default port', async () => {
+    const { body } = await asClient('agnt.example.com', {
+      'x-forwarded-host': 'agnt.example.com',
+      'x-forwarded-proto': 'https',
+      'x-forwarded-port': '443',
+    });
+    expect(body.origin).toBe('https://agnt.example.com');
+    expect(body.url).toMatch(/^https:\/\/agnt\.example\.com\/pair\?c=[a-f0-9]{32}$/);
+  });
+
+  it('reverse proxy on a loopback-bound server is no longer a false 409', async () => {
+    // Binding to loopback is the CORRECT configuration behind nginx. The old
+    // bind-only check refused to pair in exactly the recommended deployment.
+    RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port: 3333 });
+    const { status, body } = await asClient('agnt.example.com', {
+      'x-forwarded-host': 'agnt.example.com',
+      'x-forwarded-proto': 'https',
+    });
+    expect(status).toBe(200);
+    expect(body.origin).toBe('https://agnt.example.com');
+  });
+
+  it('an operator-pinned public URL outranks every heuristic', async () => {
+    process.env.PUBLIC_ORIGIN = 'https://x.agnt.cloud';
+    const { body } = await asClient('100.64.1.5:3333');
+    expect(body.origin).toBe('https://x.agnt.cloud');
+  });
+
+  it('offers every usable candidate so the user can resolve an ambiguous network', async () => {
+    const { body } = await asClient('100.64.1.5:3333');
+    expect(Array.isArray(body.origins)).toBe(true);
+    expect(body.origins[0].origin).toBe('http://100.64.1.5:3333');
+    expect(body.origins[0].source).toBe('request');
+    // Every candidate carries a ready-made URL, and every one is externally
+    // usable — a localhost entry in this list is a QR that cannot work.
+    body.origins.forEach((o) => {
+      expect(o.url).toBe(`${o.origin}/pair?c=${body.code}`);
+      expect(o.external).toBe(true);
+    });
+  });
+
+  it('the same code is claimable no matter which candidate the phone used', async () => {
+    // The code lives in this process's memory, keyed only by itself. Nothing
+    // about it is bound to an origin — which is what makes offering a choice
+    // safe rather than a lie.
+    const { body } = await asClient('100.64.1.5:3333');
+    const res = await call('POST', '/api/pairing/claim', { body: { code: body.code } });
+    expect(res.status).toBe(200);
+  });
+
+  it('ignores a forged X-Forwarded-Host from an untrusted peer', async () => {
+    // Anyone who can reach the port can invent this header. Honouring it would
+    // let a pairing code be steered to a relay. Only a trusted peer may speak
+    // for the original client.
+    process.env.TRUST_PROXY = 'none';
+    const { body } = await asClient('100.64.1.5:3333', { 'x-forwarded-host': 'evil.example.com' });
+    expect(body.origin).toBe('http://100.64.1.5:3333');
+    expect(JSON.stringify(body)).not.toContain('evil.example.com');
+  });
+
+  it('never emits a URL containing a host that failed validation', async () => {
+    const { body } = await asClient('100.64.1.5:3333', { 'x-forwarded-host': 'evil.com/@real.com' });
+    expect(body.url).not.toContain('evil.com');
+    expect(body.url).toMatch(/^http:\/\/[^/]+\/pair\?c=[a-f0-9]{32}$/);
+  });
+
+  it('status reports the same candidates the QR would use', async () => {
+    const { port } = server.address();
+    const body = await (await call('GET', '/api/pairing/status', { auth: token() })).json();
+    // fetch() sends Host: 127.0.0.1:<port>, i.e. a loopback client — so this
+    // falls through to the NIC scan, the case the original code got right.
+    expect(Array.isArray(body.origins)).toBe(true);
+    expect(body.urls.every((u) => !u.includes('127.0.0.1') && !u.includes('localhost'))).toBe(true);
+    expect(String(port)).toBeTruthy();
+  });
+});

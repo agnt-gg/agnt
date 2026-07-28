@@ -247,20 +247,23 @@ Want a smaller install without browser automation?
 Want to use native app with shared Docker backend?
 
 1. Start Docker backend on server: [Docker Full Guide](QUICKSTART_DOCKER_FULL.md)
-2. Set environment variable:
+2. Point the desktop app at it, either in the UI (**Settings → Configuration →
+   Connection → Remote backend**) or with an environment variable:
    ```bash
-   USE_EXTERNAL_BACKEND=true
-   BACKEND_URL=http://server-ip:3333
+   AGNT_REMOTE_URL=http://server-ip:3333
    ```
+   In remote mode the app does not start a local backend at all — it loads the
+   UI from the remote server, so both come from the same origin and there is no
+   second login and no version skew.
 3. Launch AGNT
 
 See [Hybrid Mode Guide](QUICKSTART_HYBRID.md) for details.
 
 ## Next Steps
 
-- [User Guide](USER_GUIDE.md) - Learn how to use AGNT
+- [README](../README.md) - Learn how to use AGNT
 - [Plugin Development](../backend/plugins/README.md) - Create custom plugins
-- [Keyboard Shortcuts](KEYBOARD_SHORTCUTS.md) - Speed up your workflow
+- [Remote Access Topologies](REMOTE_ACCESS_TOPOLOGIES.md) - Reach AGNT from your phone or another machine
 - [Electron Lite](QUICKSTART_ELECTRON_LITE.md) - Smaller desktop install
 
 ## Support

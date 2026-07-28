@@ -14,6 +14,14 @@
  *   3. The phone opens that URL and POSTs /claim with the code. The code is
  *      consumed atomically and the token is returned exactly once.
  *
+ * WHICH ORIGIN GOES IN THE QR — see services/ReachableOrigin.js. It used to be
+ * `lanAddresses()[0]`, which is only correct when the server IS the desktop the
+ * user is sitting at. The remote-backend feature exists to make that false, so
+ * the origin is now derived from the request that asked for the code: the
+ * client demonstrably just reached us at that address. The code itself is
+ * origin-independent — it is held in this process's memory and claimable from
+ * any address that reaches us — so the UI is free to offer every candidate.
+ *
  * The phone receives the initiator's existing token rather than a freshly
  * signed one on purpose: under TRUST_REMOTE_AUTH the tokens that matter are
  * issued by the remote auth server, and a locally-signed substitute would pass
@@ -28,6 +36,7 @@ import { requireAuthHeader, extractToken, verifyAuthToken } from '../utils/authG
 import { rateLimit } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
 import NetworkIdentity from '../services/NetworkIdentity.js';
+import { candidateOrigins, evaluateReachability } from '../services/ReachableOrigin.js';
 
 const router = express.Router();
 
@@ -85,8 +94,14 @@ router.get('/status', requireAuthHeader, async (req, res) => {
   // comparing the config file against itself — always false. The panel then hid
   // the restart prompt and rendered a QR code for a LAN address nothing was
   // listening on: a valid code, a dead URL, and no way for the user to tell.
-  const reachable = actual ? actual.lanEnabled : desired.lanEnabled;
   const restartRequired = RemoteAccessConfig.isRestartRequired();
+
+  // Reachability is a property of the whole path, not of our socket. A server
+  // behind a reverse proxy is bound to loopback by design and is perfectly
+  // reachable; a server bound to 0.0.0.0 with no network is not. Ask the
+  // request, which arrived over the path we are being asked about.
+  const reach = evaluateReachability(req, { port });
+  const reachable = reach.usable || (actual ? actual.lanEnabled : desired.lanEnabled);
 
   res.json({
     success: true,
@@ -107,7 +122,11 @@ router.get('/status', requireAuthHeader, async (req, res) => {
     // got here" from "it got here and something later went wrong".
     lastExternalRequest: RemoteAccessConfig.getLastExternalRequest(),
     addresses,
-    urls: addresses.map((a) => `http://${a.address}:${port}`),
+    // Every address another device could use, best first, each labelled with
+    // where it came from so the UI can explain itself. `urls` stays a flat
+    // string[] for backwards compatibility with older frontends.
+    origins: reach.origins,
+    urls: reach.origins.filter((o) => o.external).map((o) => o.origin),
   });
 });
 
@@ -166,17 +185,22 @@ router.post(
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
-    // Refuse to mint a code the phone cannot possibly redeem. The QR encodes a
-    // LAN address, so if the socket is loopback-only the code is valid, the URL
-    // is dead, and the failure surfaces on the phone as a bare connection error
-    // with nothing on the desktop to explain it. Fail here, where we can say why.
-    const actualBind = RemoteAccessConfig.getActualBind();
-    if (actualBind && !actualBind.lanEnabled) {
+    // Refuse to mint a code no device could redeem — a valid code on a dead URL
+    // surfaces on the phone as a bare connection error with nothing on the
+    // desktop to explain it. Fail here, where we can say why.
+    //
+    // The test is "is there any address another device could use?", NOT "am I
+    // bound to a LAN interface?". The old bind-only check rejected every
+    // reverse-proxied deployment, where binding to loopback is correct.
+    const port = process.env.PORT || 3333;
+    const reach = evaluateReachability(req, { port });
+    if (!reach.usable) {
+      const actualBind = RemoteAccessConfig.getActualBind();
       return res.status(409).json({
         success: false,
-        error: 'This server is only listening on localhost, so a phone cannot reach it.',
+        error: reach.reason,
         restartRequired: RemoteAccessConfig.isRestartRequired(),
-        bindHost: actualBind.host,
+        bindHost: actualBind ? actualBind.host : RemoteAccessConfig.resolveBindHost().host,
       });
     }
 
@@ -184,23 +208,24 @@ router.post(
     const expiresAt = Date.now() + CODE_TTL_MS;
     pending.set(code, { token, userId: req.user.id, expiresAt });
 
-    const port = process.env.PORT || 3333;
-    const addresses = RemoteAccessConfig.lanAddresses();
-    const host = addresses[0]?.address || '127.0.0.1';
-    const origin = `http://${host}:${port}`;
+    // History-mode path, NOT `#/pair`: the frontend router uses
+    // createWebHistory, so a fragment would load `/` and silently never mount
+    // the Pair view. The backend's SPA fallback serves index.html for this
+    // path, so a cold hit from a phone works.
+    const pairUrl = (origin) => `${origin}/pair?c=${code}`;
+    const usable = reach.origins.filter((o) => o.external);
 
     res.json({
       success: true,
       code,
       expiresAt,
       ttlMs: CODE_TTL_MS,
-      // History-mode path, NOT `#/pair`: the frontend router uses
-      // createWebHistory, so a fragment would load `/` and silently never
-      // mount the Pair view. The backend's SPA fallback serves index.html for
-      // this path, so a cold hit from a phone works.
-      url: `${origin}/pair?c=${code}`,
-      origin,
-      addresses,
+      url: pairUrl(reach.best),
+      origin: reach.best,
+      // Every candidate, so a multi-homed or split-horizon setup can be
+      // resolved by the one participant that actually knows: the human.
+      origins: usable.map((o) => ({ ...o, url: pairUrl(o.origin) })),
+      addresses: RemoteAccessConfig.lanAddresses(),
     });
   }
 );

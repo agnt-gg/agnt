@@ -3,7 +3,7 @@
     <div class="pa-header">
       <div>
         <h3 class="pa-title"><i class="fas fa-mobile-alt"></i> Phone Access</h3>
-        <p class="pa-sub">Run this AGNT instance from your phone on the same network.</p>
+        <p class="pa-sub">Run this AGNT instance from your phone.</p>
       </div>
       <!-- Bound to the SAVED setting, not the live socket: after switching on,
            the socket has not moved until the backend restarts, and a toggle that
@@ -86,28 +86,62 @@
                else in this panel is irrelevant if it is not satisfied, and
                burying it in a list of equal-weight "steps" is what let a
                phone-on-cellular look like a broken server. -->
+          <!-- The prerequisite depends on WHICH address the QR encodes. A
+               private LAN address genuinely requires the same Wi-Fi; a tailnet,
+               public hostname or proxied URL does not, and repeating the Wi-Fi
+               line there would send the user to debug a network that is fine. -->
           <div class="pa-req">
-            <i class="fas fa-wifi"></i>
+            <i class="fas" :class="selectedIsLan ? 'fa-wifi' : 'fa-globe'"></i>
             <div class="pa-req-body">
-              <div class="pa-req-title">
-                <template v-if="networkName">
-                  Your phone must be on Wi-Fi <strong>{{ networkName }}</strong>
-                </template>
-                <template v-else>Your phone must be on the same Wi-Fi as this computer</template>
-              </div>
-              <div class="pa-req-sub">Mobile data and VPNs will not reach this address.</div>
+              <template v-if="selectedIsLan">
+                <div class="pa-req-title">
+                  <template v-if="networkName">
+                    Your phone must be on Wi-Fi <strong>{{ networkName }}</strong>
+                  </template>
+                  <template v-else>Your phone must be on the same Wi-Fi as this computer</template>
+                </div>
+                <div class="pa-req-sub">Mobile data and VPNs will not reach this address.</div>
+              </template>
+              <template v-else>
+                <div class="pa-req-title">
+                  Your phone must be able to reach <strong>{{ selectedOrigin }}</strong>
+                </div>
+                <div class="pa-req-sub">
+                  {{ selectedHint }}
+                </div>
+              </template>
             </div>
           </div>
 
           <div class="pa-step"><span class="pa-num">2</span><span>Scan the code with your camera.</span></div>
           <div class="pa-step"><span class="pa-num">3</span><span>The link signs the phone in automatically.</span></div>
 
+          <!-- More than one candidate means the server genuinely cannot tell
+               which route the phone has (multi-homed box, split-horizon DNS,
+               VPN alongside Wi-Fi). The user can. Let them choose, and put
+               their choice in the QR. -->
           <div class="pa-urls">
-            <div class="pa-urls-label">Reachable at</div>
-            <button v-for="u in urls" :key="u" class="pa-url" :title="'Copy ' + u" @click="copy(u)">
-              <code>{{ u }}</code>
-              <i class="fas" :class="copied === u ? 'fa-check' : 'fa-copy'"></i>
-            </button>
+            <div class="pa-urls-label">{{ origins.length > 1 ? 'Pair using' : 'Reachable at' }}</div>
+            <div
+              v-for="o in origins"
+              :key="o.origin"
+              class="pa-url"
+              :class="{ active: o.origin === selectedOrigin, choosable: origins.length > 1 }"
+              role="button"
+              tabindex="0"
+              v-tooltip="o.label || o.origin"
+              @click="selectedOrigin = o.origin"
+              @keydown.enter.prevent="selectedOrigin = o.origin"
+              @keydown.space.prevent="selectedOrigin = o.origin"
+            >
+              <span class="pa-url-text">
+                <code>{{ o.origin }}</code>
+                <span v-if="o.label" class="pa-url-label">{{ o.label }}</span>
+              </span>
+              <button class="pa-copy" v-tooltip="'Copy ' + o.origin" @click.stop="copy(o.origin)">
+                <i class="fas" :class="copied === o.origin ? 'fa-check' : 'fa-copy'"></i>
+              </button>
+            </div>
           </div>
 
           <p class="pa-fineprint">
@@ -137,7 +171,12 @@ const desiredLanEnabled = ref(false);
 const bindHost = ref('');
 const envPinned = ref(false);
 const restartRequired = ref(false);
-const urls = ref([]);
+// Candidate addresses another device could use, best first. The server derives
+// these from the request that asked for them (see services/ReachableOrigin.js)
+// rather than from its own network cards, which is only correct when the server
+// IS this desktop.
+const origins = ref([]);
+const selectedOrigin = ref('');
 const code = ref(null);
 const expiresAt = ref(0);
 const now = ref(Date.now());
@@ -154,6 +193,53 @@ let statusTicks = 0;
 
 const secondsLeft = computed(() => Math.max(0, Math.ceil((expiresAt.value - now.value) / 1000)));
 
+// `urls` is kept as a flat list because the empty-state check reads it and the
+// shape is part of this component's contract with older backends.
+const urls = computed(() => origins.value.map((o) => o.origin));
+
+/**
+ * Normalise both shapes into one. A backend that predates candidate origins
+ * sends only `urls: string[]`; treating that as an empty candidate list would
+ * blank a panel that used to work.
+ */
+function toOrigins(payload) {
+  if (Array.isArray(payload?.origins) && payload.origins.length) return payload.origins;
+  return (payload?.urls || []).map((origin) => ({ origin, source: 'interface', label: '', external: true }));
+}
+
+const hostOf = (origin) => {
+  try {
+    return new URL(origin).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return '';
+  }
+};
+
+// Only a private IPv4 carries the "same Wi-Fi" requirement. A tailnet address,
+// a public hostname or a proxied URL is reachable from anywhere with a route.
+const selectedIsLan = computed(() => {
+  const h = hostOf(selectedOrigin.value);
+  return /^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+});
+
+const selectedHint = computed(() => {
+  const h = hostOf(selectedOrigin.value);
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)) return 'Your phone needs to be on the same VPN or tailnet.';
+  if (selectedOrigin.value.startsWith('https://')) return 'Reachable from anywhere this address resolves.';
+  return 'Your phone needs a network route to this address.';
+});
+
+// The pairing code lives in the server's memory keyed only by itself, so it is
+// claimable from any address that reaches the server. That is what makes
+// offering a choice honest rather than decorative.
+const activeUrl = computed(() => {
+  if (!code.value) return '';
+  const match = (code.value.origins || []).find((o) => o.origin === selectedOrigin.value);
+  if (match?.url) return match.url;
+  if (selectedOrigin.value) return `${selectedOrigin.value}/pair?c=${code.value.code}`;
+  return code.value.url;
+});
+
 // Only count a hit that arrived AFTER this code was displayed. A stale hit
 // from an earlier session would report success for a phone that never
 // connected — a false green is worse than no signal at all.
@@ -168,9 +254,9 @@ const phoneSeen = computed(() => {
 const waitedLong = computed(() => codeShownAt.value > 0 && now.value - codeShownAt.value > 15000);
 
 const qrSvg = computed(() => {
-  if (!code.value || secondsLeft.value <= 0) return '';
+  if (!code.value || secondsLeft.value <= 0 || !activeUrl.value) return '';
   try {
-    return toSvg(code.value.url, { moduleSize: 5, quietZone: 3, dark: '#000000', light: '#ffffff' });
+    return toSvg(activeUrl.value, { moduleSize: 5, quietZone: 3, dark: '#000000', light: '#ffffff' });
   } catch (e) {
     // Never render a corrupt code: an unscannable QR is worse than none.
     error.value = `Could not render QR: ${e.message}`;
@@ -189,7 +275,11 @@ async function refresh() {
     networkName.value = s.networkName || '';
     lastExternalRequest.value = s.lastExternalRequest || null;
     restartRequired.value = s.restartRequired;
-    urls.value = s.urls || [];
+    origins.value = toOrigins(s);
+    // Keep the user's pick across polls; only fall back when it disappears.
+    if (!origins.value.some((o) => o.origin === selectedOrigin.value)) {
+      selectedOrigin.value = origins.value[0]?.origin || '';
+    }
     envPinned.value = s.bindSource === 'env';
   } catch (e) {
     error.value = friendly(e);
@@ -234,6 +324,13 @@ async function onGenerate() {
   try {
     const c = await pairingService.createCode();
     code.value = c;
+    // Minting re-derives candidates from this very request, so it is the
+    // freshest answer available — prefer it over the polled status.
+    const minted = toOrigins(c);
+    if (minted.length) {
+      origins.value = minted;
+      if (!minted.some((o) => o.origin === selectedOrigin.value)) selectedOrigin.value = minted[0].origin;
+    }
     expiresAt.value = c.expiresAt;
     now.value = Date.now();
     // Anchor for the witness: only connections after this instant count.
@@ -512,8 +609,38 @@ onBeforeUnmount(() => clearInterval(ticker));
 .pa-url:hover {
   border-color: var(--color-primary, #19ef83);
 }
+.pa-url.active {
+  border-color: var(--color-primary, #19ef83);
+  background: color-mix(in srgb, var(--color-primary, #19ef83) 12%, transparent);
+}
 .pa-url code {
   font-size: 13px;
+}
+.pa-url-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pa-url-label {
+  font-size: 11px;
+  color: var(--color-light-med-navy, #8b93a7);
+}
+.pa-copy {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-light-med-navy, #8b93a7);
+  cursor: pointer;
+}
+.pa-copy:hover {
+  color: var(--color-primary, #19ef83);
 }
 
 .pa-req {

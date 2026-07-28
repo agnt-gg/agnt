@@ -44,6 +44,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Widget Definition Routes](#widget-definition-routes)
 - [Workflow Routes](#workflow-routes)
 - [System Routes](#system-routes)
+- [Pairing Routes](#pairing-routes)
 - [Image Routes](#image-routes)
 - [Local File Routes](#local-file-routes)
 - [Conversation Settings Routes](#conversation-settings-routes)
@@ -7803,6 +7804,215 @@ System-level operations: status and restart.
   "message": "Restart initiated. Backend will be back in ~10-20 seconds.",
   "gracePeriodMs": 2000
 }
+```
+
+---
+
+## Pairing Routes
+
+Base path: `/api/pairing`
+
+Lets a phone join an authenticated session by scanning a QR code, so a JWT never
+has to be typed on a phone keyboard. Also owns the "Allow phone access" toggle
+(Settings -> Configuration -> Phone Access), which controls the interface the
+backend binds to.
+
+### Protocol
+
+1. An authenticated client `POST /code`. The server mints a 128-bit single-use
+   code with a 120 s TTL and stashes **the caller's own token** against it, in
+   memory only — never on disk, never in the database.
+2. The QR encodes only `<origin>/pair?c=<code>` — **never the token**. QR codes
+   get photographed, screen-shared and left on desks; a 2-minute single-use code
+   is a far smaller blast radius than a 7-day JWT.
+3. The phone opens that URL and `POST /claim` with the code. The code is
+   consumed atomically and the token is returned exactly once.
+
+The phone receives the initiator's existing token rather than a freshly signed
+one on purpose: under `TRUST_REMOTE_AUTH` the tokens that matter are issued by
+the remote auth server, and a locally-signed substitute would pass local
+verification while failing every upstream call. Handing over the real token
+gives the phone exactly the same capabilities as the desktop that authorised it,
+and nothing more.
+
+### Which origin goes in the QR
+
+The address is derived from **the request that asked for the code**, not from the
+server's own network interfaces. A client that just reached the server has
+demonstrated an address that works; a network-interface scan is only correct when
+the server happens to be the machine the user is sitting at.
+
+Resolution order (first hit wins), implemented in
+`backend/src/services/ReachableOrigin.js`:
+
+| # | Source | Where it comes from |
+|---|--------|---------------------|
+| 1 | `configured` | `PUBLIC_ORIGIN` env, or `publicOrigin` in `remote-access.json` |
+| 2 | `forwarded` | `X-Forwarded-Proto` / `-Host` / `-Port`, **only from a peer trusted under `TRUST_PROXY`** |
+| 3 | `request` | The `Host` header — the address this client actually used |
+| 4 | `interface` | Network-interface scan; withheld when the socket is loopback-only, since nothing is listening on those addresses |
+
+Sources 1-3 are evidence. Source 4 is inference, so it is suppressed when it
+cannot be true. All usable candidates are returned so an ambiguous topology
+(multi-homed host, VPN alongside Wi-Fi, split-horizon DNS) can be resolved by
+the one participant who knows the answer: the user.
+
+`X-Forwarded-*` is gated because it decides where a pairing code is sent — an
+unauthenticated header that anyone able to reach the port can invent. The trust
+decision reads the **socket peer**, never `req.ip` (which Express rewrites from
+`X-Forwarded-For` once `trust proxy` is enabled).
+
+| `TRUST_PROXY` | Peers whose forwarded headers are honoured |
+|---------------|--------------------------------------------|
+| unset / `loopback` (default) | `127.0.0.0/8`, `::1` — a reverse proxy on the same machine |
+| `private` | also RFC1918 peers — Docker/compose sibling containers |
+| `all` / `true` / `1` | any peer. Only on a network you fully control |
+| `none` / `false` / `0` | never |
+
+### Get Pairing Status
+
+**GET** `/status`
+
+- **Authentication**: Required
+- **Description**: Where this server is reachable, whether LAN access is on, and whether the running socket matches the saved setting. `lanEnabled` describes **reality** (the open socket or a live external request), while `desiredLanEnabled` reflects the saved toggle — they disagree while a restart is pending, and the UI needs both.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "lanEnabled": true,
+  "bindHost": "0.0.0.0",
+  "bindSource": "config",
+  "restartRequired": false,
+  "port": 3333,
+  "desiredLanEnabled": true,
+  "networkName": "Example Network 5G",
+  "lastExternalRequest": { "ip": "192.168.1.77", "at": "2026-07-28T10:14:02.001Z" },
+  "addresses": [{ "address": "192.168.1.50", "iface": "Wi-Fi" }],
+  "origins": [
+    { "origin": "http://192.168.1.50:3333", "source": "interface", "label": "This machine on Wi-Fi", "external": true }
+  ],
+  "urls": ["http://192.168.1.50:3333"]
+}
+```
+
+- `networkName` is best-effort and `null` on wired or unknown setups — it turns "connect your phone to the same Wi-Fi" into an instruction the user can check.
+- `lastExternalRequest` is `null` until something other than this machine reaches the server. It separates "the phone never got here" from "it got here and something later went wrong".
+- `urls` is the flat list of externally-usable origins, kept for older frontends. Prefer `origins`.
+
+### Set LAN Access
+
+**POST** `/lan-access`
+
+- **Authentication**: Required
+- **Description**: Persists the "Allow phone access" toggle to `remote-access.json`. The open socket does not move, so this almost always returns `restartRequired: true`. `BIND_HOST` in the environment outranks the toggle; when it does, `envPinned` is `true` and the message says so rather than letting the user flip a switch that silently does nothing.
+- **Body**:
+
+```json
+{ "enabled": true }
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "lanEnabled": false,
+  "desiredLanEnabled": true,
+  "envPinned": false,
+  "restartRequired": true,
+  "message": "Saved. Restart the backend to apply it."
+}
+```
+
+Apply it with **POST** `/api/system/restart`.
+
+### Create Pairing Code
+
+**POST** `/code`
+
+- **Authentication**: Required
+- **Rate limit**: 20 per minute; at most 20 codes outstanding (`429` beyond either)
+- **Description**: Mints a single-use code and returns a scannable URL per reachable origin. The response never contains a token.
+- **Response** (200):
+
+```json
+{
+  "success": true,
+  "code": "5f3c…32 hex chars",
+  "expiresAt": 1785312000000,
+  "ttlMs": 120000,
+  "url": "https://agnt.example.com/pair?c=5f3c…",
+  "origin": "https://agnt.example.com",
+  "origins": [
+    {
+      "origin": "https://agnt.example.com",
+      "source": "forwarded",
+      "label": "Via reverse proxy",
+      "external": true,
+      "url": "https://agnt.example.com/pair?c=5f3c…"
+    }
+  ],
+  "addresses": [{ "address": "192.168.1.50", "iface": "Wi-Fi" }]
+}
+```
+
+The code is held in server memory keyed only by itself, so it is claimable from
+**any** origin that reaches the server — which is what makes offering a choice of
+`origins` honest rather than decorative.
+
+- **Response** (409) — nothing could redeem it, so no code is minted:
+
+```json
+{
+  "success": false,
+  "error": "This server is only listening on localhost, and nothing else has reached it, so a phone cannot connect.",
+  "restartRequired": true,
+  "bindHost": "127.0.0.1"
+}
+```
+
+  A loopback-bound server behind a reverse proxy does **not** hit this — binding
+  to loopback is the correct configuration there, and a live proxied request is
+  proof that something external can reach us.
+
+- **Note**: the URL uses the history-mode path `/pair?c=`, not `#/pair`. The frontend router uses `createWebHistory`, so a fragment would load `/` and never mount the pairing view.
+
+### Claim Pairing Code
+
+**POST** `/claim`
+
+- **Authentication**: **None — by design.** The code *is* the credential. This is the one endpoint a not-yet-authenticated phone must be able to call.
+- **Rate limit**: 10 per minute. 128 bits is already unguessable; the limiter makes it not worth the packets.
+- **Body**:
+
+```json
+{ "code": "5f3c…32 hex chars" }
+```
+
+- **Response** (200):
+
+```json
+{
+  "success": true,
+  "token": "<the authorising client's JWT>",
+  "user": { "id": "u1", "email": "a@b.c" }
+}
+```
+
+- **Errors**: `400` malformed code (validated as `/^[a-f0-9]{32}$/` before any lookup); `404` invalid, already used, or expired; `401` the authorising session expired between mint and claim.
+- Lookup is time-equalised across hit and miss so it cannot be used as an oracle.
+
+### Revoke All Codes
+
+**POST** `/revoke`
+
+- **Authentication**: Required
+- **Description**: Drops every outstanding code. Already-claimed tokens are unaffected — this cancels pending pairings, it does not sign anyone out.
+- **Response**:
+
+```json
+{ "success": true, "revoked": 2 }
 ```
 
 ---

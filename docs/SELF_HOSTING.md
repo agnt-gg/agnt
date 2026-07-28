@@ -100,8 +100,10 @@ docker-compose up -d
 # Just open http://server-ip:3333 in browser
 
 # Step 2b: Access via Electron native app (optional)
-USE_EXTERNAL_BACKEND=true npm start
-# Configure to point to http://server-ip:3333
+# Point the desktop app at the shared backend, either by
+#   - Settings -> Configuration -> Connection -> "Remote backend", or
+#   - the AGNT_REMOTE_URL environment variable:
+AGNT_REMOTE_URL=http://server-ip:3333 npm start
 ```
 
 **When to use Hybrid Mode:**
@@ -513,6 +515,10 @@ Configure AGNT by setting these environment variables:
 | `AGNT_LITE_MODE` | Disable browser automation features (Lite version) | `false` |
 | `AGNT_HOME` | Override the data directory location (see Data Directory below) | unset |
 | `USER_DATA_PATH` | Used by `docker-compose.yml` to point at the in-container mount | `/app/data` |
+| `BIND_HOST` | Which interface the backend binds. `127.0.0.1` means loopback-only, so a fresh install is never exposed to whatever network the machine joins. Set `0.0.0.0` for LAN/container use. Outranks the in-app Phone Access toggle. | `127.0.0.1` |
+| `PUBLIC_ORIGIN` | The address the outside world uses to reach this server, when it is not something the machine can observe about itself (tunnel, CNAME, split-horizon DNS). Used to build pairing QR codes. Unnecessary for LAN and tailnet. | unset |
+| `TRUST_PROXY` | Whose `X-Forwarded-Proto`/`-Host` headers are believed: `loopback` (default), `private`, `all`, `none`. | `loopback` |
+| `AGNT_REMOTE_URL` | **Desktop app only.** Point the Electron client at a backend running elsewhere instead of forking its own. Same setting as Settings -> Configuration -> Connection; the env var wins and is never persisted. | unset |
 
 ### Data Directory
 
@@ -672,6 +678,28 @@ server {
     }
 }
 ```
+
+#### Phone pairing behind a proxy
+
+The Nginx example above already sets `X-Forwarded-Proto` and `Host`, which is
+everything pairing needs: QR codes are built from the address the client used to
+reach the server, so they will correctly encode `https://agnt.yourdomain.com`
+rather than the container's internal IP.
+
+Two cases need explicit configuration:
+
+- **The proxy is not on the same machine** (a sibling container in
+  `docker-compose`, say). Forwarded headers are only trusted from loopback by
+  default, so set `TRUST_PROXY=private`.
+- **The public address is not what the proxy forwards** — a tunnel, a CNAME, or
+  split-horizon DNS. Nothing can infer it; state it with
+  `PUBLIC_ORIGIN=https://agnt.yourdomain.com`.
+
+For the other deployments — LAN, Tailscale/VPN, remote backend, multi-homed hosts
+— see [Remote Access Topologies](REMOTE_ACCESS_TOPOLOGIES.md).
+
+Binding to loopback behind a proxy is correct and fully supported: pairing tests
+whether anything can reach the server, not which interface it bound.
 
 #### Traefik Example
 
@@ -1113,11 +1141,11 @@ Final DEB:                    ~253MB (Full) / ~251MB (Lite)
 
 ## Support
 
-- **Documentation**: [docs/](./docs/)
+- **Documentation**: [Documentation index](QUICKSTART_INDEX.md)
 - **Issues**: [GitHub Issues](https://github.com/agnt-gg/agnt/issues)
 - **Discord**: [Join our community](https://discord.gg/agnt)
 - **Website**: [https://agnt.gg](https://agnt.gg)
 
 ## License
 
-This project is licensed under a Custom License. See [LICENSE](./LICENSE) for details.
+This project is licensed under a Custom License. See [LICENSE](../LICENSE.md) for details.
