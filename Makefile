@@ -62,6 +62,7 @@ help: ## Show this help message
 	@echo "    Browser: open http://<host>:3333/m  (no make required)"
 	@echo "    make mobile-lite-ios-init        # One-time Capacitor + iOS platform"
 	@echo "    make mobile-lite-ios-sim         # Simulator → http://127.0.0.1:3333 by default"
+	@echo "    make mobile-lite-ios-devices     # List iPhone Core Device id + hardware UDID"
 	@echo "    DEVELOPMENT_TEAM=XXX make mobile-lite-ios-iphone  # Device (CLI, no 127.0.0.1 default)"
 	@echo ""
 	@echo "$(GREEN)Configuration:$(NC)"
@@ -674,12 +675,18 @@ mobile-lite-ios-iphone: mobile-lite-ios-sync ## Build + install + launch on conn
 		echo "$(RED)Set DEVELOPMENT_TEAM to your Apple Team ID$(NC)"; \
 		echo "  DEVELOPMENT_TEAM=XXXXXXXXXX make mobile-lite-ios-iphone"; \
 		echo "  security find-identity -v -p codesigning"; \
+		echo "  make mobile-lite-ios-devices   # list phone IDs for IOS_DEVICE_UDID"; \
 		exit 1; \
 	fi
 	@chmod +x scripts/mobile-lite-ios-cli.sh
 	@DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)" IOS_DEVELOPMENT_TEAM="$(IOS_DEVELOPMENT_TEAM)" \
 		IOS_DEVICE_UDID="$(IOS_DEVICE_UDID)" \
 		./scripts/mobile-lite-ios-cli.sh device-run
+
+.PHONY: mobile-lite-ios-devices
+mobile-lite-ios-devices: ## List connected iPhone/iPad Core Device id + hardware UDID
+	@chmod +x scripts/mobile-lite-ios-cli.sh
+	@./scripts/mobile-lite-ios-cli.sh list-devices
 
 .PHONY: mobile-lite-ios-build
 mobile-lite-ios-build: ## Build iOS app (Simulator if no team; device when DEVELOPMENT_TEAM is set)
@@ -718,7 +725,9 @@ mobile-lite-info: ## Show mobile-lite paths and config
 	@echo "  make mobile-lite-ios-init"
 	@echo "  make mobile-lite-ios-build                            # Build (Sim if no team; device if DEVELOPMENT_TEAM set)"
 	@echo "  make mobile-lite-ios-sim                              # Build + install + launch Simulator"
+	@echo "  make mobile-lite-ios-devices                          # List Core Device id + hardware UDID"
 	@echo "  DEVELOPMENT_TEAM=XXX make mobile-lite-ios-iphone      # Physical phone install/launch"
+	@echo "  DEVELOPMENT_TEAM=XXX IOS_DEVICE_UDID=… make mobile-lite-ios-iphone"
 	@echo "  make mobile-lite-ios-open                             # optional Xcode GUI"
 	@echo "  See mobile/mobile-lite/README.md"
 

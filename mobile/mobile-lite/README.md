@@ -58,18 +58,22 @@ In-app Server URL UI only: `AGNT_SERVER_MODE=local make mobile-lite-ios-sim`
 # Apple Team ID (10 chars) — once you know it:
 #   security find-identity -v -p codesigning
 make mobile-lite-ios-init    # once
+make mobile-lite-ios-devices # list Core Device id + hardware UDID
 DEVELOPMENT_TEAM=XXXXXXXXXX make mobile-lite-ios-iphone
+# or pin a phone:
+# DEVELOPMENT_TEAM=XXXXXXXXXX IOS_DEVICE_UDID=<Core-Device-id> make mobile-lite-ios-iphone
 ```
 
 In the app: set **Server URL** to your Mac’s LAN/Tailscale IP (not `127.0.0.1` on a real phone), pair, chat.
 
-Optional: `IOS_SIM_NAME="iPhone 16"`, `IOS_DEVICE_UDID=…`
+Optional: `IOS_SIM_NAME="iPhone 16"`, `IOS_DEVICE_UDID=…` (Core Device id or hardware UDID)
 
 | Target | Purpose |
 |--------|---------|
 | `mobile-lite-ios-init` | One-time Capacitor + iOS platform |
 | `mobile-lite-ios-sync` | Refresh config/www into iOS project |
 | `mobile-lite-ios-sim` | **Build + install + launch Simulator (no Xcode GUI)** |
+| `mobile-lite-ios-devices` | **List Core Device id + hardware UDID** |
 | `mobile-lite-ios-iphone` | **Build + install + launch device (no Xcode GUI)** |
 | `mobile-lite-ios-build` | Build only: **Simulator** if no `DEVELOPMENT_TEAM`; **device** if team is set |
 | `mobile-lite-ios-sim-build` | Simulator build only (never needs a team) |
