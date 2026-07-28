@@ -316,6 +316,28 @@ export function useWorkspaces() {
   const active = computed(() => workspaces.value.find((w) => w.id === activeId.value) || workspaces.value[0]);
   const activeWidgets = computed(() => active.value.widgets.filter((w) => w.visible !== false));
 
+  /**
+   * Which workspace does this mutation belong to?
+   *
+   * The UI always means "the one on screen", so omitting the id keeps every
+   * existing call site correct. Annie does NOT: a tool call is issued by a
+   * conversation that lives in a specific workspace, and it may execute
+   * seconds later — by which time the user may have switched tabs. Resolving
+   * against `active` at EXECUTION time is what let widgets asked for in one
+   * workspace land in another.
+   *
+   * An id that no longer exists returns null rather than silently falling
+   * back to the active workspace: writing to the wrong workspace is the bug,
+   * so the honest answer is to refuse and say so.
+   *
+   * @param {string} [workspaceId] omit for "the active one".
+   * @returns {object|null}
+   */
+  function resolveWorkspace(workspaceId) {
+    if (!workspaceId) return active.value;
+    return workspaces.value.find((w) => w.id === workspaceId) || null;
+  }
+
   // No mode distinction — the workspace is always a widget grid.
   // Chat is a regular widget ('workspace-chat'), not a special pane.
 
@@ -368,9 +390,10 @@ export function useWorkspaces() {
    * calls — auto-open firing twice must focus the existing window, not stack
    * a second copy of the same screen on top of it.
    */
-  function addWidget(widgetId, at = null) {
+  function addWidget(widgetId, at = null, { workspaceId } = {}) {
     if (!widgetId) return null;
-    const ws = active.value;
+    const ws = resolveWorkspace(workspaceId);
+    if (!ws) return null;
     // One instance per widgetId — EXCEPT chat. The dedupe exists so Annie's
     // auto-open firing twice focuses the existing window instead of stacking
     // a second copy; chat is opened by the USER, and a user adding a chat
@@ -382,7 +405,7 @@ export function useWorkspaces() {
         // Dragging an already-open widget onto the canvas MOVES it. The
         // instance is a singleton, so a drop can only mean "put it here".
         if (at) Object.assign(existing, clampInstance({ ...existing, col: at.col, row: at.row }));
-        bringToFront(existing.instanceId);
+        bringToFront(existing.instanceId, { workspaceId: ws.id });
         return existing.instanceId;
       }
     }
@@ -404,8 +427,9 @@ export function useWorkspaces() {
     return instanceId;
   }
 
-  function removeWidget(instanceId) {
-    const ws = active.value;
+  function removeWidget(instanceId, { workspaceId } = {}) {
+    const ws = resolveWorkspace(workspaceId);
+    if (!ws) return;
     const idx = ws.widgets.findIndex((w) => w.instanceId === instanceId);
     if (idx === -1) return;
     ws.widgets.splice(idx, 1);
@@ -465,8 +489,9 @@ export function useWorkspaces() {
    *
    * Mirrors the store's UPDATE_WIDGET mutation: assign only what changed.
    */
-  function updateWidgetGeometry(instanceId, updates) {
-    const w = active.value.widgets.find((x) => x.instanceId === instanceId);
+  function updateWidgetGeometry(instanceId, updates, { workspaceId } = {}) {
+    const ws = resolveWorkspace(workspaceId);
+    const w = ws?.widgets.find((x) => x.instanceId === instanceId);
     if (!w || !updates) return;
     // Clamp on write too: the emitted geometry is computed against the CURRENT
     // cell size, so a gesture during a rail resize (or on a stale cell width)
@@ -484,8 +509,9 @@ export function useWorkspaces() {
 
   const nextZ = (ws) => ws.widgets.reduce((m, w) => Math.max(m, w.zIndex || 1), 9) + 1;
 
-  function bringToFront(instanceId) {
-    const ws = active.value;
+  function bringToFront(instanceId, { workspaceId } = {}) {
+    const ws = resolveWorkspace(workspaceId);
+    if (!ws) return;
     const w = ws.widgets.find((x) => x.instanceId === instanceId);
     if (!w) return;
     w.zIndex = nextZ(ws);
@@ -544,6 +570,7 @@ export function useWorkspaces() {
     createWorkspace,
     closeWorkspace,
     renameWorkspace,
+    resolveWorkspace,
     addWidget,
     removeWidget,
     navigateWidget,

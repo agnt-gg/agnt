@@ -149,12 +149,23 @@ export async function executeCanvasTool(functionName, args, authToken, context) 
     return { success: false, error: 'Socket.IO not initialized — cannot reach the canvas.' };
   }
 
+  // WHICH WORKSPACE this conversation belongs to. It arrives in the chat’s
+  // own page state (workspaceState.id), captured by the browser when the turn
+  // was SENT — so it names the workspace the user was actually talking to,
+  // not whichever tab happens to be selected when this tool finally runs.
+  // Resolving that at execution time is what let widgets requested in one
+  // workspace appear in another.
+  //
+  // Read from context only, never from `args`: the workspace binding is an
+  // identity fact about the conversation, not something the model may choose.
+  const workspaceId = context?.workspaceState?.id || null;
+
   const requestId = `canvas-${randomUUID().slice(0, 8)}`;
   const pending = createPendingScan(requestId, TIMEOUT_MS);
 
   try {
-    global.io.to(`user:${userId}`).emit('canvas:request', { requestId, action, args: args || {} });
-    console.log(`[canvasTools] ${functionName} → ${requestId} for user ${userId}`);
+    global.io.to(`user:${userId}`).emit('canvas:request', { requestId, action, args: args || {}, workspaceId });
+    console.log(`[canvasTools] ${functionName} → ${requestId} for user ${userId} ws=${workspaceId || '(active)'}`);
   } catch (emitErr) {
     // cancelPendingScan REJECTS the pending promise; on this path nothing ever
     // awaits it, so without an attached catch that rejection surfaces as an

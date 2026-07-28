@@ -178,12 +178,17 @@ export function useRealtimeSync() {
     //   • WRITES — the bridge returns null in hidden tabs (localStorage is
     //     shared: N executing tabs would apply the write N times). If no
     //     visible tab exists, the server times out with an honest error.
-    socket.on('canvas:request', async ({ requestId, action, args } = {}) => {
-      console.log('[Realtime] canvas:request', requestId, action, 'visible=', document.visibilityState);
+    //   ? WHICH WORKSPACE ?" `workspaceId` identifies the workspace the asking
+    //     conversation lives in, captured when the turn was sent. Writes are
+    //     addressed to it rather than to whatever tab is selected now, because
+    //     a turn can run for tens of seconds and the user may switch tabs
+    //     meanwhile.
+    socket.on('canvas:request', async ({ requestId, action, args, workspaceId } = {}) => {
+      console.log('[Realtime] canvas:request', requestId, action, 'ws=', workspaceId || '(active)', 'visible=', document.visibilityState);
       try {
         const { handleCanvasRequest } = await import('@/views/Terminal/CenterPanel/screens/Workspace/canvasBridge.js');
         const respond = async () => {
-          const result = await handleCanvasRequest(action, args);
+          const result = await handleCanvasRequest(action, args, workspaceId || null);
           if (result === null) return; // this tab must stay silent
           socket.emit('canvas:response', { requestId, result });
           console.log('[Realtime] canvas:response sent', requestId, result?.success);

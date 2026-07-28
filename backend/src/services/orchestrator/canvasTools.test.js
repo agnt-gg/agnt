@@ -75,6 +75,42 @@ describe('executeCanvasTool transport', () => {
     expect(noIo.error).toMatch(/Socket\.IO/i);
   });
 
+  it('carries the asking conversation\u2019s workspace with every request', async () => {
+    // Without this the browser resolves the target at execution time — i.e.
+    // whichever workspace tab is selected when the tool finally runs, which
+    // is how widgets asked for in one workspace landed in another.
+    const call = executeCanvasTool(
+      'open_canvas_widget',
+      { widgetId: 'traces' },
+      null,
+      { userId: 'u42', workspaceState: { id: 'ws_b', name: 'Research' } },
+    );
+    expect(emitted[0].payload.workspaceId).toBe('ws_b');
+    resolvePendingScan(emitted[0].payload.requestId, { success: true });
+    await call;
+  });
+
+  it('sends a null workspace when the chat has none, rather than inventing one', async () => {
+    const call = executeCanvasTool('get_canvas_state', {}, null, { userId: 'u42' });
+    expect(emitted[0].payload.workspaceId).toBeNull();
+    resolvePendingScan(emitted[0].payload.requestId, { success: true });
+    await call;
+  });
+
+  it('takes the workspace from CONTEXT only — the model cannot redirect a write', async () => {
+    // The binding is an identity fact about the conversation. If args could
+    // override it, a hallucinated id would write into someone else’s canvas.
+    const call = executeCanvasTool(
+      'open_canvas_widget',
+      { widgetId: 'traces', workspaceId: 'ws_attacker' },
+      null,
+      { userId: 'u42', workspaceState: { id: 'ws_b' } },
+    );
+    expect(emitted[0].payload.workspaceId).toBe('ws_b');
+    resolvePendingScan(emitted[0].payload.requestId, { success: true });
+    await call;
+  });
+
   it('rejects unknown tool names without touching the socket', async () => {
     const res = await executeCanvasTool('nuke_canvas', {}, null, { userId: 'u1' });
     expect(res.success).toBe(false);

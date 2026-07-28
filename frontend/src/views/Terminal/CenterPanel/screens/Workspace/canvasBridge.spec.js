@@ -83,6 +83,37 @@ describe('readCanvasState', () => {
   });
 });
 
+describe('readCanvasState — workspace ownership', () => {
+  it('marks the asking conversation\u2019s workspace, distinctly from the active one', async () => {
+    const { readCanvasState } = await fresh();
+    localStorage.setItem('agnt:workspaces:v2', JSON.stringify({
+      workspaces: [
+        { id: 'ws_a', name: 'Games', createdAt: 1, widgets: [] },
+        { id: 'ws_b', name: 'Research', createdAt: 2, widgets: [] },
+      ],
+      activeId: 'ws_a',
+    }));
+
+    const res = readCanvasState('ws_b');
+    const a = res.workspaces.find((w) => w.id === 'ws_a');
+    const b = res.workspaces.find((w) => w.id === 'ws_b');
+
+    expect(a.active).toBe(true);
+    expect(a.thisConversation).toBeUndefined();
+    expect(b.active).toBe(false);
+    expect(b.thisConversation, 'the agent must be able to tell its own workspace apart').toBe(true);
+    expect(res.hint).toMatch(/thisConversation/);
+  });
+
+  it('says so when the caller has no workspace of its own', async () => {
+    const { readCanvasState } = await fresh();
+    localStorage.setItem('agnt:workspaces:v2', V2([CHAT]));
+    const res = readCanvasState();
+    expect(res.workspaces.every((w) => w.thisConversation === undefined)).toBe(true);
+    expect(res.hint).toMatch(/not inside a workspace/i);
+  });
+});
+
 describe('inspectCanvasWidget', () => {
   const mountFrame = (instanceId, { title = 'Traces', body = '' } = {}) => {
     const frame = document.createElement('div');
@@ -257,7 +288,95 @@ describe('executeCanvasCommand — writes ride the UI mutation path', () => {
     const res = await executeCanvasCommand('close', { instanceId: 'w_elsewhere' });
     expect(res.success).toBe(false);
     expect(res.error).toContain('Research');
-    expect(res.error).toMatch(/active/i);
+    // Names BOTH sides so the model can act on it, rather than dead-ending.
+    expect(res.error).toContain('Games');
+  });
+
+  /* ═══════════ workspace addressing ═══════════
+   * Reported: "I asked one chat to place some widgets and it placed them in
+   * another workspace." A turn runs for tens of seconds; the user is free to
+   * switch tabs while it does. Resolving the target at EXECUTION time means
+   * the write lands wherever they happen to be looking. */
+
+  /** Two workspaces, ws_a active — the conversation asking lives in ws_b. */
+  const twoWorkspaces = async () => {
+    await new Promise((r) => setTimeout(r, 300));
+    vi.resetModules();
+    localStorage.clear();
+    document.body.innerHTML = '';
+    localStorage.setItem('agnt:workspaces:v2', JSON.stringify({
+      workspaces: [
+        { id: 'ws_a', name: 'Games', createdAt: 1, widgets: [] },
+        { id: 'ws_b', name: 'Research', createdAt: 2, widgets: [] },
+      ],
+      activeId: 'ws_a',
+    }));
+    const reg = await import('@/canvas/widgetRegistry.js');
+    for (const [id, def] of TEST_WIDGETS) reg.registerWidget(id, def);
+    return import('./canvasBridge.js');
+  };
+
+  const stored = () => JSON.parse(localStorage.getItem('agnt:workspaces:v2'));
+  const byId = (id) => stored().workspaces.find((w) => w.id === id);
+
+  it('opens into the ASKING conversation\u2019s workspace, not the selected tab', async () => {
+    const { executeCanvasCommand } = await twoWorkspaces();
+
+    const res = await executeCanvasCommand('open', { widgetId: 'traces' }, 'ws_b');
+    expect(res.success).toBe(true);
+    expect(res.workspace).toEqual({ id: 'ws_b', name: 'Research' });
+
+    await new Promise((r) => setTimeout(r, 300)); // let the debounced save land
+    expect(byId('ws_b').widgets.map((w) => w.widgetId)).toEqual(['traces']);
+    expect(byId('ws_a').widgets, 'the visible workspace must be untouched').toEqual([]);
+  });
+
+  it('closes and moves in the asking workspace too', async () => {
+    const { executeCanvasCommand } = await twoWorkspaces();
+    const { instanceId } = await executeCanvasCommand('open', { widgetId: 'traces' }, 'ws_b');
+
+    const moved = await executeCanvasCommand('move', { instanceId, col: 2, row: 1 }, 'ws_b');
+    expect(moved.success).toBe(true);
+    expect(moved.geometry).toMatchObject({ col: 2, row: 1 });
+
+    const closed = await executeCanvasCommand('close', { instanceId }, 'ws_b');
+    expect(closed.success).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(byId('ws_b').widgets).toEqual([]);
+    expect(byId('ws_a').widgets).toEqual([]);
+  });
+
+  it('still targets the active workspace when no workspace is supplied', async () => {
+    // Requests from the main chat screen have no workspace of their own; the
+    // active one is the only sensible meaning there.
+    const { executeCanvasCommand } = await twoWorkspaces();
+    const res = await executeCanvasCommand('open', { widgetId: 'traces' });
+    expect(res.success).toBe(true);
+    expect(res.workspace.id).toBe('ws_a');
+  });
+
+  it('REFUSES rather than retargeting when the asking workspace is gone', async () => {
+    // Silently falling back to the active workspace would re-create the exact
+    // cross-workspace write this addressing exists to prevent.
+    const { executeCanvasCommand } = await twoWorkspaces();
+    const res = await executeCanvasCommand('open', { widgetId: 'traces' }, 'ws_deleted');
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/no longer exists/i);
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(byId('ws_a').widgets, 'must not have fallen back').toEqual([]);
+    expect(byId('ws_b').widgets).toEqual([]);
+  });
+
+  it('a window in another workspace is refused, naming both workspaces', async () => {
+    const { executeCanvasCommand } = await twoWorkspaces();
+    const { instanceId } = await executeCanvasCommand('open', { widgetId: 'traces' }, 'ws_a');
+
+    const res = await executeCanvasCommand('close', { instanceId }, 'ws_b');
+    expect(res.success).toBe(false);
+    expect(res.error).toContain('Games');
+    expect(res.error).toContain('Research');
   });
 
   it('move applies partial geometry and CLAMPS to the grid like a user drag', async () => {

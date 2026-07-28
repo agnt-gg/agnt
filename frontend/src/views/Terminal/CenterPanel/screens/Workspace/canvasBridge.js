@@ -20,6 +20,15 @@
  *              shrinking, chat dedupe exemption — applies identically to the
  *              agent. No parallel mutation path.
  *
+ * WHICH WORKSPACE: writes are addressed to `workspaceId`, captured from the
+ * asking conversation's own page state when the turn was SENT, not resolved
+ * against whatever workspace tab is selected when the tool finally executes.
+ * A turn can take tens of seconds, and the user is free to switch tabs while
+ * it runs — resolving at execution time is what made widgets requested in one
+ * workspace appear in another. Absent (a request from the main chat screen,
+ * which has no workspace) it still falls back to the active workspace, which
+ * is the only sensible meaning there.
+ *
  * WRITE SAFETY: useRealtimeSync only routes write actions to the VISIBLE tab.
  * Every tab shares localStorage, so if hidden tabs executed too, one
  * open_canvas_widget would add N widgets. Reads are idempotent; writes go
@@ -51,7 +60,7 @@ function boundObjectFor(widgetId, search) {
 }
 
 /** ── state ─────────────────────────────────────────────────────────── */
-export function readCanvasState() {
+export function readCanvasState(callerWorkspaceId = null) {
   let parsed;
   try {
     parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -73,6 +82,9 @@ export function readCanvasState() {
     id: ws.id,
     name: ws.name,
     active: ws.id === parsed.activeId,
+    // The workspace this conversation lives in — the only one it can write to.
+    // Distinct from `active`, which is merely what the user is looking at now.
+    ...(callerWorkspaceId && ws.id === callerWorkspaceId ? { thisConversation: true } : {}),
     widgets: (ws.widgets || []).map((w) => {
       const def = getWidget(w.widgetId);
       const entry = {
@@ -97,7 +109,11 @@ export function readCanvasState() {
     grid: { cols: 12, rows: 8 },
     activeWorkspaceId: parsed.activeId,
     workspaces,
-    hint: 'Widget windows marked chat:true are conversations (possibly this one). Use inspect_canvas_widget with an instanceId to read what a window shows; open/close/move_canvas_widget to arrange the canvas.',
+    hint:
+      'Widget windows marked chat:true are conversations (possibly this one). Use inspect_canvas_widget with an instanceId to read what a window shows; open/close/move_canvas_widget to arrange the canvas. '
+      + (callerWorkspaceId
+        ? 'Writes always apply to the workspace marked thisConversation:true — the one you live in — regardless of which tab the user is currently viewing.'
+        : 'This conversation is not inside a workspace, so writes apply to the active workspace.'),
   };
 }
 
@@ -165,12 +181,24 @@ export async function inspectCanvasWidget(instanceId) {
 }
 
 /** ── open / close / move ───────────────────────────────────────────── */
-export async function executeCanvasCommand(action, args = {}) {
+export async function executeCanvasCommand(action, args = {}, workspaceId = null) {
   // Lazy import: useWorkspaces is a module-level singleton, so this reaches
   // the SAME reactive state the rendered canvas uses — a mutation here
   // updates the visible page live.
   const { useWorkspaces } = await import('./useWorkspaces.js');
   const ws = useWorkspaces();
+
+  // The workspace this conversation belongs to. Refusing outright when it has
+  // been closed is deliberate: silently retargeting the active workspace is
+  // precisely the cross-workspace write this addressing exists to prevent.
+  const target = ws.resolveWorkspace(workspaceId);
+  if (!target) {
+    return {
+      success: false,
+      error: `The workspace this conversation belongs to (${workspaceId}) no longer exists — it was closed. Ask the user which workspace to use, or call get_canvas_state to see what is open.`,
+    };
+  }
+  const scope = { workspaceId: target.id };
 
   if (action === 'open') {
     const { widgetId, col, row } = args;
@@ -196,11 +224,12 @@ export async function executeCanvasCommand(action, args = {}) {
       }
     }
     const at = Number.isInteger(col) && Number.isInteger(row) ? { col, row } : null;
-    const instanceId = ws.addWidget(widgetId, at);
-    const placed = ws.active.value.widgets.find((w) => w.instanceId === instanceId);
+    const instanceId = ws.addWidget(widgetId, at, scope);
+    const placed = target.widgets.find((w) => w.instanceId === instanceId);
     return {
       success: true,
       instanceId,
+      workspace: { id: target.id, name: target.name },
       placed: placed ? { col: placed.col, row: placed.row, cols: placed.cols, rows: placed.rows } : null,
     };
   }
@@ -216,8 +245,8 @@ export async function executeCanvasCommand(action, args = {}) {
   };
   const missingError = (instanceId) => {
     const owner = locateInstance(instanceId);
-    if (owner && owner.id !== ws.active.value.id) {
-      return `Window "${instanceId}" is in workspace "${owner.name}", not the active one ("${ws.active.value.name}"). Only the active workspace can be modified — ask the user to switch tabs, or work with windows from get_canvas_state's active workspace.`;
+    if (owner && owner.id !== target.id) {
+      return `Window "${instanceId}" is in workspace "${owner.name}", but this conversation belongs to "${target.name}" and can only modify its own workspace. Use a window from this workspace, or ask the user to move it.`;
     }
     return `No window with instanceId "${instanceId}" in any workspace. Get a current id from get_canvas_state — ids change when windows are closed and reopened.`;
   };
@@ -225,17 +254,17 @@ export async function executeCanvasCommand(action, args = {}) {
   if (action === 'close') {
     const { instanceId } = args;
     if (!instanceId) return { success: false, error: 'instanceId is required.' };
-    const exists = ws.active.value.widgets.some((w) => w.instanceId === instanceId);
+    const exists = target.widgets.some((w) => w.instanceId === instanceId);
     if (!exists) return { success: false, error: missingError(instanceId) };
-    ws.removeWidget(instanceId);
-    return { success: true, closed: instanceId };
+    ws.removeWidget(instanceId, scope);
+    return { success: true, closed: instanceId, workspace: { id: target.id, name: target.name } };
   }
 
   if (action === 'move') {
     const { instanceId, col, row, cols, rows } = args;
     if (!instanceId) return { success: false, error: 'instanceId is required.' };
-    const target = ws.active.value.widgets.find((w) => w.instanceId === instanceId);
-    if (!target) return { success: false, error: missingError(instanceId) };
+    const win = target.widgets.find((w) => w.instanceId === instanceId);
+    if (!win) return { success: false, error: missingError(instanceId) };
 
     const updates = {};
     if (Number.isInteger(col)) updates.col = col;
@@ -246,9 +275,13 @@ export async function executeCanvasCommand(action, args = {}) {
       return { success: false, error: 'Provide at least one of col/row/cols/rows.' };
     }
     // updateWidgetGeometry clamps to the 12x8 grid, same as a user drag.
-    ws.updateWidgetGeometry(instanceId, updates);
-    const after = ws.active.value.widgets.find((w) => w.instanceId === instanceId);
-    return { success: true, geometry: { col: after.col, row: after.row, cols: after.cols, rows: after.rows } };
+    ws.updateWidgetGeometry(instanceId, updates, scope);
+    const after = target.widgets.find((w) => w.instanceId === instanceId);
+    return {
+      success: true,
+      workspace: { id: target.id, name: target.name },
+      geometry: { col: after.col, row: after.row, cols: after.cols, rows: after.rows },
+    };
   }
 
   return { success: false, error: `Unknown canvas command: ${action}` };
@@ -259,13 +292,13 @@ export async function executeCanvasCommand(action, args = {}) {
  * Returns null when THIS tab must stay silent (write request in a hidden tab)
  * so another tab — or the server timeout — answers instead.
  */
-export async function handleCanvasRequest(action, args) {
+export async function handleCanvasRequest(action, args, workspaceId = null) {
   try {
-    if (action === 'state') return readCanvasState();
+    if (action === 'state') return readCanvasState(workspaceId);
     if (action === 'inspect') return await inspectCanvasWidget(args?.instanceId);
     if (action === 'open' || action === 'close' || action === 'move') {
       if (document.visibilityState !== 'visible') return null; // writes: visible tab only
-      return await executeCanvasCommand(action, args);
+      return await executeCanvasCommand(action, args, workspaceId);
     }
     return { success: false, error: `Unknown canvas action: ${action}` };
   } catch (e) {

@@ -774,6 +774,10 @@ async function universalChatHandler(req, res, context = {}) {
     widgetId,
     widgetContext,
     widgetState,
+    // One Canvas chats send their own workspace identity in pageState. The
+    // canvas tools address their writes to it, so a widget asked for in one
+    // workspace cannot land in another when the user switches tabs mid-turn.
+    workspaceState,
     goalId,
     goalContext,
     codeId,
@@ -1036,6 +1040,7 @@ async function universalChatHandler(req, res, context = {}) {
     widgetId,
     widgetContext,
     widgetState,
+    workspaceState,
     goalId,
     goalContext,
     codeId,
