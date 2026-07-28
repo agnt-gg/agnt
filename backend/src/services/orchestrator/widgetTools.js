@@ -27,7 +27,12 @@ export function getWidgetToolSchemas() {
             },
             description: { type: 'string', description: 'Brief summary of what these edits accomplish' },
           },
-          required: ['edits', 'description'],
+          // `description` is deliberately NOT required — same rationale as
+          // edit_file: it is read only to label the success message, so the
+          // edit does not depend on it. Schema hygiene rather than a safety
+          // control; the pre-execution guard blocks only calls where EVERY
+          // required parameter is absent (see toolArgGuard.js).
+          required: ['edits'],
         },
       },
     },

@@ -37,11 +37,35 @@ async function getWorkspaceRoot() {
  * Uses path.relative for the containment check so prefix collisions
  * (`C:\foo` vs `C:\foobar`) and Windows case differences are handled correctly.
  */
-function validatePath(inputPath, workspaceRoot) {
+function validatePath(inputPath, workspaceRoot, { allowEmpty = false } = {}) {
   if (inputPath && path.isAbsolute(inputPath)) {
     return path.resolve(inputPath);
   }
-  const resolved = path.resolve(workspaceRoot, inputPath || '');
+  // `list_files` passes allowEmpty: a directory listing with no argument
+  // coherently means "the workspace root". Reading, writing or editing a file
+  // with no name does not — hence the distinction below rather than a blanket
+  // default. See codeTools.pathRequired.test.js.
+  if (allowEmpty && (inputPath === undefined || inputPath === null || inputPath === '')) {
+    return path.resolve(workspaceRoot);
+  }
+  // A missing or blank path is a CALLER ERROR, not a request for the workspace
+  // root. `path.resolve(root, '')` returns the root directory itself, so the
+  // old `inputPath || ''` silently turned "no path supplied" into "operate on
+  // the workspace directory" — and `fs.readFile` on a directory raises
+  // `EISDIR: illegal operation on a directory, read`. That error described the
+  // symptom (a directory was read) and hid the cause (no path was given),
+  // which sent debugging in entirely the wrong direction for months.
+  //
+  // This is the same sentinel-collision shape as treating 0 as "unset": the
+  // empty string is a valid input that happens to mean something catastrophic
+  // here, so it must be rejected explicitly rather than defaulted.
+  if (typeof inputPath !== 'string' || inputPath.trim() === '') {
+    throw new Error(
+      "Missing required parameter 'path'. Provide a file path relative to the " +
+      'workspace (e.g. "my-project/index.js") or an absolute path.',
+    );
+  }
+  const resolved = path.resolve(workspaceRoot, inputPath);
   const rel = path.relative(workspaceRoot, resolved);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('Path traversal not allowed');
@@ -118,10 +142,21 @@ export function getCodeToolSchemas() {
             },
             description: {
               type: 'string',
-              description: 'Brief summary of what these edits accomplish',
+              description: 'Brief summary of what these edits accomplish (optional, used only to label the result)',
             },
           },
-          required: ['path', 'edits', 'description'],
+          // `description` is deliberately NOT required: it is read only at the
+          // end of the case body to label the success message (`Applied N/M
+          // edits to <path>: <description>`). The edit itself succeeds
+          // identically without it, and 3 real production calls did exactly
+          // that. `required` should describe what execution depends on.
+          //
+          // This is schema hygiene, not a safety control — the pre-execution
+          // guard blocks only calls where EVERY required parameter is absent
+          // (see toolArgGuard.js), so an omitted description was never at risk
+          // of being blocked. Stating it accurately anyway keeps the array
+          // meaningful for the model and for any future consumer.
+          required: ['path', 'edits'],
         },
       },
     },
@@ -465,7 +500,7 @@ async function executeCodeFunctionUnlocked(name, args) {
 
     case 'list_files': {
       const relDir = args.path || '';
-      const absDir = validatePath(relDir, WORKSPACE_ROOT);
+      const absDir = validatePath(relDir, WORKSPACE_ROOT, { allowEmpty: true });
       try {
         const entries = await fs.readdir(absDir, { withFileTypes: true });
         const items = entries

@@ -13,6 +13,7 @@ import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } f
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest } from './orchestrator/contextManifest.js';
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
+import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
 import log from '../utils/logger.js';
 import OpenAI from 'openai';
 import AuthManager from './auth/AuthManager.js';
@@ -1997,6 +1998,78 @@ IMPORTANT: The image data is already available in the system context. You don't 
               recoverable: true,
               suggestion: `Please check the parameters for ${functionName} and try again.`,
             }),
+          };
+        }
+
+        // ---- Universal required-parameter gate --------------------------
+        //
+        // Every tool call from every provider converges here. This is the only
+        // place in the system where that is true, which makes it the only
+        // correct home for a guarantee that applies to all of them.
+        //
+        // The guarantee: a tool never executes when NONE of the parameters its
+        // schema requires arrived — i.e. the arguments were lost in transit.
+        //
+        // Schema validation previously lived inside OpenAiLikeAdapter alone.
+        // Anthropic, Gemini, OpenAI-Responses and Codex adapters never ran it
+        // and never returned `invalidToolCalls`, so three of five adapter
+        // families dispatched whatever they received. A truncated Anthropic
+        // tool call became `{}` and executed — `edit_file` with no `path`
+        // resolved to the workspace root and died on `EISDIR`, an error with
+        // no relationship to the actual fault.
+        //
+        // The predicate is "every required parameter is absent", NOT "a
+        // required parameter is absent". Replaying 87,843 production calls
+        // showed the stricter reading would block 248 calls that SUCCEEDED,
+        // because third-party plugin schemas over-declare `required`. See the
+        // module header in toolArgGuard.js for the full measurement — that
+        // narrowing is load-bearing, do not tighten it without re-running
+        // projects/edit-file-empty-args/probe-predicates.mjs.
+        //
+        // Fails OPEN on unknown schemas so tools discovered mid-turn, via MCP,
+        // or from plugins are never blocked by a stale snapshot.
+        const missingParams = findBlockingMissingParams(functionName, functionArgs, finalToolSchemas);
+        if (missingParams.length > 0) {
+          const guardError = formatMissingParamsError(functionName, missingParams, functionArgs);
+          console.error(
+            `[Tool Guard] BLOCKED ${functionName}: missing required parameter(s) ` +
+            `[${missingParams.join(', ')}]. Raw arguments: ${String(toolCall.function.arguments).slice(0, 300)}`,
+          );
+
+          // Record the block exactly like any other tool failure so it is
+          // measurable in agent_tool_executions rather than invisible.
+          if (agentExecutionId) {
+            try {
+              const guardExecId = await AgentExecutionModel.createToolExecution(
+                agentExecutionId,
+                functionName,
+                toolCall.id,
+                functionArgs,
+              );
+              toolExecutionIds.set(toolCall.id, guardExecId);
+              toolCallsCount++;
+              // Positional signature: (id, status, output, error, creditsUsed, tokenUsage)
+              await AgentExecutionModel.updateToolExecution(
+                guardExecId,
+                'failed',
+                guardError,
+                guardError.error,
+              );
+            } catch (guardLogError) {
+              console.error('[Tool Guard] Failed to record blocked tool execution:', guardLogError.message);
+            }
+          }
+
+          sendEvent('tool_end', {
+            assistantMessageId,
+            toolCall: { id: toolCall.id, name: functionName, error: guardError.error },
+          });
+
+          return {
+            tool_call_id: toolCall.id,
+            role: 'tool',
+            name: functionName,
+            content: JSON.stringify(guardError),
           };
         }
 

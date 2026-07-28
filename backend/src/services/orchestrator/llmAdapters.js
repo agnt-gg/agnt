@@ -331,6 +331,56 @@ class BaseAdapter {
   static TOOL_RESULT_BRIDGE_TEXT = '(Continuing.)';
 
   /**
+   * Structural invariant: a tool call the model cannot be SHOWN to have made
+   * must never be executed.
+   *
+   * An adapter returns two halves that describe the same event: the assistant
+   * message (what the model said) and the tool call list (what we will run).
+   * Any path that removes a tool_use block from the message without also
+   * removing its call desynchronises them - and the orchestrator believes the
+   * call list. It executes the tool and appends a tool_result whose tool_use
+   * is absent from the assistant message. The outbound sanitizer strips that
+   * orphan, the carrier user message empties out, and the request ends on an
+   * assistant turn:
+   *   400 "This model does not support assistant message prefill."
+   * on prefill-less models (claude-opus-5), and a SILENT loss of the tool
+   * result on every other one.
+   *
+   * Measured 2026-07-28, execution 3b4cb1d4: this is exactly how an
+   * argument-less `scan_page_elements` took down a workspace turn.
+   *
+   * Kept as a named helper rather than inlined because no *current* input can
+   * reach it - which means only a direct unit test can prove it still works.
+   *
+   * @param {Array<Object>} toolCalls  OpenAI-shaped calls the adapter would emit.
+   * @param {Array<Object>} contentBlocks  Blocks that survived into the message.
+   * @param {string} label  Provider label, diagnostics only.
+   * @returns {Array<Object>} Only the calls whose tool_use block survived.
+   */
+  static _reconcileToolCallsWithContent(toolCalls, contentBlocks, label = 'provider') {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) return toolCalls;
+
+    const shownIds = new Set(
+      (Array.isArray(contentBlocks) ? contentBlocks : [])
+        .filter((b) => b && b.type === 'tool_use' && b.id)
+        .map((b) => b.id),
+    );
+
+    const kept = toolCalls.filter((tc) => tc && shownIds.has(tc.id));
+    if (kept.length !== toolCalls.length) {
+      const dropped = toolCalls
+        .filter((tc) => !tc || !shownIds.has(tc.id))
+        .map((tc) => `${tc?.function?.name || 'unknown'}(${tc?.id || 'no-id'})`);
+      console.error(
+        `[Adapter Guard] ${label}: dropping ${dropped.length} tool call(s) whose tool_use ` +
+        `block did not survive into the assistant message: ${dropped.join(', ')}. ` +
+        `Executing them would orphan their tool_result on the next turn.`,
+      );
+    }
+    return kept;
+  }
+
+  /**
    * Split any user message shaped [tool_result..., <other blocks>] into two
    * turns separated by a minimal synthetic assistant turn.
    *
@@ -2142,6 +2192,10 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let accumulatedToolCalls = [];
       let accumulatedThinking = '';
       let contentBlocks = [];
+      // Tool calls whose argument JSON arrived incomplete (stream truncated
+      // mid-`input_json_delta`, typically `stop_reason: max_tokens`). These are
+      // NEVER emitted as tool calls — see the content_block_stop handler.
+      let truncatedToolCalls = [];
       let anthropicUsage = {
         input_tokens: 0,
         output_tokens: 0,
@@ -2539,16 +2593,74 @@ Please carefully check the tool schema and ensure all parameters match the expec
               const block = contentBlocks[index];
 
               if (block && block.type === 'tool_use') {
-                // FIXED: Parse the accumulated JSON string now that it's complete
-                if (block._inputJsonString) {
+                // Parse the accumulated JSON string now that the block is closed.
+                //
+                // A PARSE FAILURE HERE IS A TRUNCATED TOOL CALL, NOT AN EMPTY ONE.
+                // Anthropic streams tool arguments as `input_json_delta` fragments
+                // and closes the block even when generation stopped early — most
+                // often `stop_reason: max_tokens` partway through a large argument
+                // payload. The previous code caught the SyntaxError and substituted
+                // `block.input = {}`, then emitted the tool call anyway. Downstream
+                // that is indistinguishable from the model deliberately calling a
+                // tool with no arguments, so it executed.
+                //
+                // Measured impact before this fix: 73 of 3,519 production
+                // `edit_file` calls ran with `{}`, resolved their absent `path` to
+                // the workspace root directory, and failed with
+                // `EISDIR: illegal operation on a directory, read` — an error that
+                // pointed at the filesystem instead of at the truncation.
+                //
+                // A tool call whose arguments did not survive the wire is not a
+                // tool call. Record it, do not emit it, and let the retry /
+                // validation-feedback path upstream deal with it.
+                //
+                // AN ARGUMENT-LESS CALL STREAMS AS AN *EMPTY* FRAGMENT, NOT AS
+                // ZERO FRAGMENTS. Anthropic emits one `input_json_delta` whose
+                // `partial_json` is "" for a tool invoked with no arguments
+                // (scan_page_elements, list_tools, get_canvas_state, ...), so
+                // `_inputJsonString` becomes "" - present, but FALSY.
+                //
+                // The guard here used to be `if (block._inputJsonString)`, a
+                // truthiness test on a string. "" skipped the whole branch, so
+                // the accumulator was never deleted; the post-stream sweep then
+                // tested `!== undefined`, matched it, and filed a perfectly
+                // healthy call as an unclosed truncation. Measured consequence
+                // (execution 3b4cb1d4, claude-opus-5, 2026-07-28): 3 wasted
+                // requests, the tool_use block stripped from the assistant
+                // message while the tool call itself still executed, the
+                // resulting tool_result orphaned and sanitized away, and the
+                // next request sent ending on an assistant turn ->
+                //   400 "This model does not support assistant message prefill."
+                //
+                // Empty is not corrupt. Empty is {}. Same rule toolArgGuard
+                // applies to values: absent and empty are different things.
+                // Whether {} is *legal* for this tool is the required-param
+                // gate's decision, not the transport's.
+                let argumentsCorrupt = false;
+                if (block._inputJsonString !== undefined) {
                   try {
-                    block.input = JSON.parse(block._inputJsonString);
-                    console.log(`[Anthropic] Successfully parsed tool input for ${block.name}:`, block.input);
+                    block.input = block._inputJsonString.trim() === ''
+                      ? {}
+                      : JSON.parse(block._inputJsonString);
                   } catch (parseError) {
-                    console.error(`[Anthropic] Failed to parse tool input JSON for ${block.name}:`, parseError);
-                    console.error(`[Anthropic] Raw JSON string:`, block._inputJsonString);
-                    // Keep the empty object as fallback
-                    block.input = {};
+                    argumentsCorrupt = true;
+                    console.error(
+                      `[Anthropic] TRUNCATED tool call "${block.name}" — argument JSON is incomplete ` +
+                      `(${block._inputJsonString.length} chars, stop_reason=${anthropicStopReason || 'null'}): ${parseError.message}`,
+                    );
+                    console.error('[Anthropic] Raw (truncated) JSON:', block._inputJsonString.slice(0, 400));
+                    truncatedToolCalls.push({
+                      toolCall: {
+                        id: block.id,
+                        type: 'function',
+                        function: { name: block.name, arguments: block._inputJsonString },
+                      },
+                      issues: [
+                        `Argument JSON was truncated mid-stream (${block._inputJsonString.length} chars received, ` +
+                        `stop_reason=${anthropicStopReason || 'null'}) and could not be parsed: ${parseError.message}`,
+                      ],
+                      blockIndex: index,
+                    });
                   }
 
                   // CRITICAL: Delete the temporary field to prevent it from being sent back to Anthropic
@@ -2556,24 +2668,26 @@ Please carefully check the tool schema and ensure all parameters match the expec
                   delete block._inputJsonString;
                 }
 
-                // Finalize tool call with the parsed input
-                const toolCall = {
-                  id: block.id,
-                  type: 'function',
-                  function: {
-                    name: block.name,
-                    arguments: JSON.stringify(block.input),
-                  },
-                };
+                if (!argumentsCorrupt) {
+                  // Finalize tool call with the parsed input
+                  const toolCall = {
+                    id: block.id,
+                    type: 'function',
+                    function: {
+                      name: block.name,
+                      arguments: JSON.stringify(block.input),
+                    },
+                  };
 
-                accumulatedToolCalls.push(toolCall);
+                  accumulatedToolCalls.push(toolCall);
 
-                if (onChunk) {
-                  onChunk({
-                    type: 'tool_call_delta',
-                    index: accumulatedToolCalls.length - 1,
-                    toolCall: toolCall,
-                  });
+                  if (onChunk) {
+                    onChunk({
+                      type: 'tool_call_delta',
+                      index: accumulatedToolCalls.length - 1,
+                      toolCall: toolCall,
+                    });
+                  }
                 }
               }
             }
@@ -2674,6 +2788,59 @@ Please carefully check the tool schema and ensure all parameters match the expec
           break;
         } // end of pause_turn resume while loop
 
+        // ---- Truncated tool-call gate -----------------------------------
+        //
+        // Two ways a tool call can fail to survive the stream:
+        //
+        //   1. `content_block_stop` arrived but the accumulated argument JSON
+        //      was incomplete (recorded above in `truncatedToolCalls`).
+        //   2. `content_block_stop` never arrived at all — the block is still
+        //      holding `_inputJsonString`. Previously these vanished in
+        //      silence: the model believed it had called a tool, the
+        //      orchestrator saw zero tool calls, and the turn simply stopped.
+        //
+        // Both are transient generation failures, and both are retryable. The
+        // OpenAI-like adapter already retries its equivalent case; Anthropic
+        // did not. Retrying costs one request and usually succeeds — in
+        // production the model spontaneously reissued these calls ~20s later
+        // and they went through.
+        for (const block of contentBlocks) {
+          if (block && block.type === 'tool_use' && block._inputJsonString !== undefined) {
+            const raw = block._inputJsonString;
+            delete block._inputJsonString;
+            console.error(
+              `[Anthropic] UNCLOSED tool call "${block.name}" — stream ended without content_block_stop ` +
+              `(${raw.length} chars of arguments received, stop_reason=${anthropicStopReason || 'null'})`,
+            );
+            truncatedToolCalls.push({
+              toolCall: { id: block.id, type: 'function', function: { name: block.name, arguments: raw } },
+              issues: [
+                `Tool call was never closed by the provider (stop_reason=${anthropicStopReason || 'null'}); ` +
+                `${raw.length} chars of argument JSON received.`,
+              ],
+              unclosed: true,
+            });
+          }
+        }
+
+        if (truncatedToolCalls.length > 0 && attempt < this.maxRetries) {
+          console.warn(
+            `[Anthropic] ${truncatedToolCalls.length} truncated tool call(s) ` +
+            `(stop_reason=${anthropicStopReason || 'null'}) — retrying ` +
+            `(attempt ${attempt + 1}/${this.maxRetries + 1})`,
+          );
+          await this.sleep(this.calculateDelay(attempt));
+          continue streamingAttemptLoop;
+        }
+
+        if (truncatedToolCalls.length > 0) {
+          console.error(
+            `[Anthropic] ${truncatedToolCalls.length} tool call(s) still truncated after ` +
+            `${this.maxRetries + 1} attempts — surfacing to the orchestrator as invalid ` +
+            `rather than executing them with empty arguments`,
+          );
+        }
+
         // Log successful retry if this wasn't the first attempt
         if (attempt > 0) {
           console.log(`Anthropic streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
@@ -2681,7 +2848,16 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
         // CRITICAL: Final cleanup of _inputJsonString from all contentBlocks before returning
         // This ensures no _inputJsonString fields make it into the conversation history
-        const cleanedContentBlocks = contentBlocks.map((block) => {
+        // Drop tool_use blocks whose arguments were truncated. Leaving one in
+        // the assistant message would create an orphan: a `tool_use` with no
+        // matching `tool_result` on the next turn, which Anthropic rejects
+        // outright ("unexpected tool_use_id"). `.filter(Boolean)` also closes
+        // the sparse-array holes left by indexed block assignment, which would
+        // otherwise serialize as `null` content entries.
+        const truncatedToolUseIds = new Set(truncatedToolCalls.map((t) => t.toolCall.id));
+        const cleanedContentBlocks = contentBlocks
+          .filter((block) => Boolean(block) && !(block.type === 'tool_use' && truncatedToolUseIds.has(block.id)))
+          .map((block) => {
           // CRITICAL: Always create new block objects to prevent _inputJsonString from leaking
           if (block.type === 'tool_use') {
             // Remove _inputJsonString if it exists (it shouldn't at this point, but be defensive)
@@ -2693,6 +2869,28 @@ Please carefully check the tool schema and ensure all parameters match the expec
         });
 
         // Construct response message in Anthropic format
+        // CLASS INVARIANT: a tool call the model cannot be SHOWN to have
+        // made must never be executed.
+        //
+        // `cleanedContentBlocks` above removes the tool_use block of any
+        // call judged unusable. If the matching entry survived in
+        // `accumulatedToolCalls`, the two halves of this return value
+        // contradict each other - and the orchestrator believes the
+        // toolCalls half. It executes the tool and appends a tool_result
+        // whose tool_use is absent from the assistant message. The outbound
+        // sanitizer strips that orphan, the carrier user message empties
+        // out, and the request ends on an assistant turn: a hard 400 on
+        // prefill-less models (opus 5) and a SILENT loss of the tool result
+        // on every other one.
+        //
+        // Reconciling here makes that desync unrepresentable, whatever
+        // future path removes a block.
+        accumulatedToolCalls = BaseAdapter._reconcileToolCallsWithContent(
+          accumulatedToolCalls,
+          cleanedContentBlocks,
+          'anthropic',
+        );
+
         const responseMessage = {
           role: 'assistant',
           content: cleanedContentBlocks.length > 0 ? cleanedContentBlocks : [{ type: 'text', text: accumulatedContent }],
@@ -2864,6 +3062,11 @@ Please carefully check the tool schema and ensure all parameters match the expec
         return {
           responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
+          // Surfacing this field is what activates the orchestrator's existing
+          // validation-feedback recovery pipeline (OrchestratorService ~1786).
+          // That pipeline was written generically but only ever received data
+          // from OpenAiLikeAdapter, so for Anthropic it was dead code.
+          invalidToolCalls: truncatedToolCalls.length > 0 ? truncatedToolCalls : undefined,
           usage: anthropicUsage.input_tokens || anthropicUsage.output_tokens ? anthropicUsage : undefined,
           ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
