@@ -23,7 +23,7 @@
         <span v-if="liveIteration.score != null" class="iteration-score"> {{ Math.round(liveIteration.score) }}% </span>
       </div>
 
-      <div v-if="runningTaskTitle && goal.status === 'executing'" class="running-task" :title="runningTaskTitle">
+      <div v-if="runningTaskTitle && goal.status === 'executing'" class="running-task" v-tooltip="runningTaskTitle">
         <i class="fas fa-play-circle"></i>
         <span class="running-task-label">{{ runningTaskTitle }}</span>
         <span v-if="runningTaskCount > 1" class="running-task-more"> +{{ runningTaskCount - 1 }} </span>
@@ -45,7 +45,7 @@
           {{ displayCompleted }}/{{ displayTotal }}
           <span v-if="displayRunning > 0" class="task-running-pill"> <i class="fas fa-circle-notch fa-spin"></i>{{ displayRunning }} </span>
         </span>
-        <span v-if="showAge && goal.created_at" class="age-badge" :title="formatDate(goal.created_at)">
+        <span v-if="showAge && goal.created_at" class="age-badge" v-tooltip="formatDate(goal.created_at)">
           <i class="far fa-clock"></i>
           <span class="age-text">{{ timeAgo(goal.created_at) }}</span>
         </span>

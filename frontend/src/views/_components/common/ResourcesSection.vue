@@ -72,7 +72,7 @@
                       class="vote-btn"
                       :class="{ active: item.my_vote === 'up' }"
                       :disabled="votingId === item.id"
-                      title="Upvote"
+                      v-tooltip="'Upvote'"
                       @click.stop="castVote(item, 'up')"
                     >
                       <i class="fas fa-chevron-up"></i>
@@ -82,7 +82,7 @@
                       class="vote-btn"
                       :class="{ active: item.my_vote === 'down' }"
                       :disabled="votingId === item.id"
-                      title="Downvote"
+                      v-tooltip="'Downvote'"
                       @click.stop="castVote(item, 'down')"
                     >
                       <i class="fas fa-chevron-down"></i>
@@ -97,8 +97,8 @@
                     <div class="item-meta-row">
                       <span class="status-pill" :class="'status-' + item.status">{{ statusLabel(item.status) }}</span>
                       <span class="item-meta">{{ item.user_name || 'Anonymous' }} · {{ timeAgo(item.created_at) }}</span>
-                      <i v-if="item.has_screenshot" class="fas fa-image meta-icon" title="Has screenshot"></i>
-                      <i v-if="item.admin_response" class="fas fa-reply meta-icon" title="Has official response"></i>
+                      <i v-if="item.has_screenshot" class="fas fa-image meta-icon" v-tooltip="'Has screenshot'"></i>
+                      <i v-if="item.admin_response" class="fas fa-reply meta-icon" v-tooltip="'Has official response'"></i>
                     </div>
                   </div>
                 </div>
@@ -161,7 +161,7 @@
                 </label>
                 <div v-if="imagePreview" class="image-preview">
                   <img :src="imagePreview" alt="Screenshot preview" />
-                  <button class="remove-image-btn" @click="removeImage" title="Remove screenshot">
+                  <button class="remove-image-btn" @click="removeImage" v-tooltip="'Remove screenshot'">
                     <i class="fas fa-times"></i>
                   </button>
                 </div>

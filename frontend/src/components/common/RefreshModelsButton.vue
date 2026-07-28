@@ -4,7 +4,7 @@
     class="refresh-models-btn"
     :class="[`size-${size}`, { spinning: isRefreshing, success: justSucceeded, error: hasError }]"
     :disabled="disabled"
-    :title="buttonTitle"
+    v-tooltip="buttonTitle"
     @click.stop="handleClick"
   >
     <i :class="iconClass"></i>

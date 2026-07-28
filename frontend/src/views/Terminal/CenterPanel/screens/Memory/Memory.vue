@@ -60,7 +60,7 @@
             v-if="hasOrphaned"
             class="clear-orphaned-btn"
             @click="clearOrphaned"
-            title="Delete all memories from deleted agents"
+            v-tooltip="'Delete all memories from deleted agents'"
           >
             <i class="fas fa-broom"></i> Clear Deleted
           </button>
@@ -92,8 +92,8 @@
               </span>
               <span class="memory-meta">{{ formatDate(mem.updated_at || mem.created_at) }}</span>
               <div class="memory-actions" @click.stop>
-                <button class="mem-btn edit" @click="openEditModal(mem)" title="Edit"><i class="fas fa-pen"></i></button>
-                <button class="mem-btn delete" @click="confirmDelete(mem)" title="Delete"><i class="fas fa-trash"></i></button>
+                <button class="mem-btn edit" @click="openEditModal(mem)" v-tooltip="'Edit'"><i class="fas fa-pen"></i></button>
+                <button class="mem-btn delete" @click="confirmDelete(mem)" v-tooltip="'Delete'"><i class="fas fa-trash"></i></button>
               </div>
             </div>
           </div>
@@ -160,23 +160,32 @@
             <div class="modal-body">
               <div class="form-group">
                 <label>Agent</label>
-                <select v-model="memoryForm.agentId" class="form-input" :disabled="showEditModal">
-                  <option value="orchestrator">Global (Orchestrator)</option>
-                  <option v-for="agent in agents" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="memoryForm.agentId"
+                  :disabled="showEditModal"
+                  :options="[
+                    { label: 'Global (Orchestrator)', value: 'orchestrator' },
+                    ...agents.map((agent) => ({ label: agent.name, value: agent.id })),
+                  ]"
+                />
               </div>
               <div class="form-group">
                 <label>Type</label>
-                <select v-model="memoryForm.memoryType" class="form-input">
-                  <option value="fact">Fact</option>
-                  <option value="preference">Preference</option>
-                  <option value="correction">Correction</option>
-                  <option value="context">Context</option>
-                  <option value="pattern">Pattern</option>
-                  <option value="tool_insight">Tool Insight</option>
-                  <option value="workflow_insight">Workflow Insight</option>
-                  <option value="prompt_guidance">Prompt Guidance</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="memoryForm.memoryType"
+                  :options="[
+                    { label: 'Fact', value: 'fact' },
+                    { label: 'Preference', value: 'preference' },
+                    { label: 'Correction', value: 'correction' },
+                    { label: 'Context', value: 'context' },
+                    { label: 'Pattern', value: 'pattern' },
+                    { label: 'Tool Insight', value: 'tool_insight' },
+                    { label: 'Workflow Insight', value: 'workflow_insight' },
+                    { label: 'Prompt Guidance', value: 'prompt_guidance' },
+                  ]"
+                />
               </div>
               <div class="form-group">
                 <label>Content <span class="required">*</span></label>
@@ -209,6 +218,7 @@ import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 const store = useStore();
 const emit = defineEmits(['screen-change']);

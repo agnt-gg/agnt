@@ -19,15 +19,20 @@
         </Tooltip>
       </div>
       <div class="chart-controls">
-        <select v-model.number="activityDays" @change="onTimeRangeChange" class="time-range-select">
-          <option :value="7">Last 7 Days</option>
-          <option :value="14">Last 14 Days</option>
-          <option :value="30">Last 30 Days</option>
-          <option :value="60">Last 60 Days</option>
-          <option :value="90">Last 90 Days</option>
-          <option :value="180">Last 180 Days</option>
-          <option :value="365">Last 365 Days</option>
-        </select>
+        <CustomSelect
+          class="time-range-select"
+          v-model="activityDays"
+          :options="[
+            { label: 'Last 7 Days', value: 7 },
+            { label: 'Last 14 Days', value: 14 },
+            { label: 'Last 30 Days', value: 30 },
+            { label: 'Last 60 Days', value: 60 },
+            { label: 'Last 90 Days', value: 90 },
+            { label: 'Last 180 Days', value: 180 },
+            { label: 'Last 365 Days', value: 365 },
+          ]"
+          @update:model-value="onTimeRangeChange"
+        />
         <Tooltip :text="isCumulativeView ? 'Show Daily' : 'Show Cumulative'" width="auto" position="bottom">
           <button class="chart-type-toggle clickable" :class="{ active: isCumulativeView }" @click="toggleView">
             <i :class="isCumulativeView ? 'fas fa-chart-line' : 'fas fa-chart-bar'"></i>
@@ -46,6 +51,7 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { Chart, registerables } from 'chart.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
@@ -53,7 +59,7 @@ Chart.register(...registerables);
 
 export default {
   name: 'CumulativeCreditsChart',
-  components: { Tooltip },
+  components: { CustomSelect, Tooltip },
   setup() {
     const store = useStore();
     const chartCanvas = ref(null);

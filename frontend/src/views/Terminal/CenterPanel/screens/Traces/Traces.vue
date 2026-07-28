@@ -68,13 +68,18 @@
           <!-- Date Range & Sort Controls -->
           <div class="runs-controls">
             <div class="controls-left">
-              <select class="control-select" :value="dateRangePreset" @change="handleDatePresetChange($event.target.value)">
-                <option value="1d">Last 24 hours</option>
-                <option value="7d">Last 7 days</option>
-                <option value="30d">Last 30 days</option>
-                <option value="90d">Last 90 days</option>
-                <option value="custom">Custom range</option>
-              </select>
+              <CustomSelect
+                class="control-select"
+                :model-value="dateRangePreset"
+                :options="[
+                  { label: 'Last 24 hours', value: '1d' },
+                  { label: 'Last 7 days', value: '7d' },
+                  { label: 'Last 30 days', value: '30d' },
+                  { label: 'Last 90 days', value: '90d' },
+                  { label: 'Custom range', value: 'custom' },
+                ]"
+                @update:model-value="handleDatePresetChange($event)"
+              />
               <template v-if="dateRangePreset === 'custom'">
                 <input type="date" class="control-date" :value="customStartDate" @change="handleCustomDateChange('start', $event.target.value)" />
                 <span class="control-date-sep">to</span>
@@ -82,12 +87,17 @@
               </template>
             </div>
             <div class="controls-right">
-              <select class="control-select" :value="sortField" @change="handleSortChange($event.target.value)">
-                <option value="startTime">Sort by Date</option>
-                <option value="workflowName">Sort by Name</option>
-                <option value="status">Sort by Status</option>
-                <option value="duration">Sort by Duration</option>
-              </select>
+              <CustomSelect
+                class="control-select"
+                :model-value="sortField"
+                :options="[
+                  { label: 'Sort by Date', value: 'startTime' },
+                  { label: 'Sort by Name', value: 'workflowName' },
+                  { label: 'Sort by Status', value: 'status' },
+                  { label: 'Sort by Duration', value: 'duration' },
+                ]"
+                @update:model-value="handleSortChange($event)"
+              />
               <Tooltip :text="sortDirection === 'desc' ? 'Descending' : 'Ascending'" width="auto">
                 <button class="sort-dir-btn" @click="toggleSortDirection">
                   <i :class="sortDirection === 'desc' ? 'fas fa-sort-amount-down' : 'fas fa-sort-amount-up'"></i>
@@ -257,6 +267,7 @@
 <script>
 import { ref, onMounted, onUnmounted, computed, nextTick, inject, watch } from 'vue';
 import { useStore } from 'vuex';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
@@ -269,7 +280,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'TracesScreen',
-  components: { BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip },
+  components: { CustomSelect, BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change', 'panel-action'],
   setup(props, { emit }) {
     const store = useStore();

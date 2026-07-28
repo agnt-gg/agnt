@@ -35,12 +35,12 @@
           />
           <span v-else class="ws-tab-name">{{ ws.name }}</span>
           <span class="ws-count">{{ ws.widgets.length }}</span>
-          <button v-if="workspaces.length > 1" class="ws-tab-x" title="Close workspace" @click.stop="closeWorkspace(ws.id)">
+          <button v-if="workspaces.length > 1" class="ws-tab-x" v-tooltip="'Close workspace'" @click.stop="closeWorkspace(ws.id)">
             <i class="fas fa-times"></i>
           </button>
         </div>
 
-        <button class="ws-tab-add" title="New workspace" @click="createWorkspace()">
+        <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
           <i class="fas fa-plus"></i>
         </button>
       </div>
@@ -49,7 +49,7 @@
         <button
           class="ws-pill"
           :class="{ on: autoOpen }"
-          :title="
+          v-tooltip="
             autoOpen
               ? 'Annie places the matching widget when she touches a domain — click to disable'
               : 'Auto-open is off — widgets only appear when you add them'
@@ -60,7 +60,7 @@
           auto
         </button>
 
-        <button class="ws-pill ws-pill-primary" title="Add a widget to this workspace" @click="togglePalette">
+        <button class="ws-pill ws-pill-primary" v-tooltip="'Add a widget to this workspace'" @click="togglePalette">
           <i class="fas fa-plus"></i>
           widget
         </button>
@@ -113,7 +113,7 @@
               <button
                 class="ws-nav-btn"
                 :disabled="!canBack(instance)"
-                title="Back"
+                v-tooltip="'Back'"
                 @mousedown.stop
                 @click.stop="historyGo(instance.instanceId, -1)"
               >
@@ -122,7 +122,7 @@
               <button
                 class="ws-nav-btn"
                 :disabled="!canForward(instance)"
-                title="Forward"
+                v-tooltip="'Forward'"
                 @mousedown.stop
                 @click.stop="historyGo(instance.instanceId, 1)"
               >

@@ -10,10 +10,10 @@
            Falls back to a single-color fill when breakdown isn't available. -->
       <div class="usage-bar segmented">
         <template v-if="hasBreakdown">
-          <div class="seg seg-system" :style="{ width: systemPct + '%' }" :title="`System: ${formatNumber(breakdown.systemTokens)}`"></div>
-          <div class="seg seg-tools" :style="{ width: toolsPct + '%' }" :title="`Tools: ${formatNumber(breakdown.toolTokens)}`"></div>
-          <div class="seg seg-messages" :style="{ width: messagesPct + '%' }" :title="`Messages: ${formatNumber(breakdown.messagesTokens)}`"></div>
-          <div class="seg seg-output" :style="{ width: outputPct + '%' }" :title="`Output reserve: ${formatNumber(breakdown.outputBufferTokens)} (held for the reply, not part of the request total)`"></div>
+          <div class="seg seg-system" :style="{ width: systemPct + '%' }" v-tooltip="`System: ${formatNumber(breakdown.systemTokens)}`"></div>
+          <div class="seg seg-tools" :style="{ width: toolsPct + '%' }" v-tooltip="`Tools: ${formatNumber(breakdown.toolTokens)}`"></div>
+          <div class="seg seg-messages" :style="{ width: messagesPct + '%' }" v-tooltip="`Messages: ${formatNumber(breakdown.messagesTokens)}`"></div>
+          <div class="seg seg-output" :style="{ width: outputPct + '%' }" v-tooltip="`Output reserve: ${formatNumber(breakdown.outputBufferTokens)} (held for the reply, not part of the request total)`"></div>
         </template>
         <div v-else class="seg usage-fill" :class="getUsageClass()" :style="{ width: utilizationPercent + '%' }"></div>
       </div>

@@ -31,13 +31,13 @@
           </div>
         </div>
         <div class="row-actions">
-          <button class="icon-btn" title="Fire now" @click="fireNow(s.id)">
+          <button class="icon-btn" v-tooltip="'Fire now'" @click="fireNow(s.id)">
             <i class="fas fa-play"></i>
           </button>
-          <button class="icon-btn" :title="s.enabled ? 'Pause' : 'Enable'" @click="toggleEnabled(s)">
+          <button class="icon-btn" v-tooltip="s.enabled ? 'Pause' : 'Enable'" @click="toggleEnabled(s)">
             <i :class="s.enabled ? 'fas fa-pause' : 'fas fa-play-circle'"></i>
           </button>
-          <button class="icon-btn danger" title="Delete" @click="remove(s.id)">
+          <button class="icon-btn danger" v-tooltip="'Delete'" @click="remove(s.id)">
             <i class="fas fa-trash"></i>
           </button>
         </div>

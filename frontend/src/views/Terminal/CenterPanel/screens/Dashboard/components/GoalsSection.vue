@@ -170,13 +170,17 @@
               <div class="filter-group">
                 <label class="filter-label">Filter:</label>
                 <div class="select-wrapper">
-                  <select v-model="taskFilter" class="task-filter-select">
-                    <option value="all">All Tasks</option>
-                    <option value="pending">Pending</option>
-                    <option value="running">Running</option>
-                    <option value="completed">Completed</option>
-                    <option value="failed">Failed</option>
-                  </select>
+                  <CustomSelect
+                    class="task-filter-select"
+                    v-model="taskFilter"
+                    :options="[
+                      { label: 'All Tasks', value: 'all' },
+                      { label: 'Pending', value: 'pending' },
+                      { label: 'Running', value: 'running' },
+                      { label: 'Completed', value: 'completed' },
+                      { label: 'Failed', value: 'failed' },
+                    ]"
+                  />
                   <i class="fas fa-chevron-down select-arrow"></i>
                 </div>
               </div>
@@ -305,13 +309,14 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import GoalDetailView from './GoalDetailView.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 export default {
   name: 'GoalsSection',
-  components: { Tooltip, GoalDetailView, SimpleModal },
+  components: { CustomSelect, Tooltip, GoalDetailView, SimpleModal },
   emits: ['log-message'],
   setup(props, { emit }) {
     const store = useStore();

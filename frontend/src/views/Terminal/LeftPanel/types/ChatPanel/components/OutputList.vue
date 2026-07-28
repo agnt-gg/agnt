@@ -93,7 +93,7 @@
                     <div class="output-content" @click="handleOutputClick(output.id, $event)">
                       <div class="output-preview">
                         <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                        <span v-else-if="isOutputUnread(output.id)" class="unread-dot" title="Unread changes"></span>
+                        <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
                         {{ getPreviewText(output.content, output) }}
                       </div>
                       <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
@@ -138,7 +138,7 @@
                   <div class="output-content" @click="handleOutputClick(output.id, $event)">
                     <div class="output-preview">
                       <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                      <span v-else-if="isOutputUnread(output.id)" class="unread-dot" title="Unread changes"></span>
+                      <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
                       {{ getPreviewText(output.content, output) }}
                     </div>
                     <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
@@ -180,7 +180,7 @@
                 <div class="output-content" @click="handleOutputClick(output.id, $event)">
                   <div class="output-preview">
                     <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                    <span v-else-if="isOutputUnread(output.id)" class="unread-dot" title="Unread changes"></span>
+                    <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
                     {{ getPreviewText(output.content, output) }}
                   </div>
                   <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
@@ -234,7 +234,7 @@
                     <span class="group-color-dot"></span>
                     <span class="submenu-group-name">{{ node.name }}</span>
                     <i v-if="node.hasChildren" :class="moveMenuExpanded.has(node.id) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="submenu-chevron" @click.stop="toggleMoveMenuGroup(node.id)"></i>
-                    <i v-if="node.hasChildren" class="fas fa-arrow-right submenu-move-icon" @click.stop="moveOutputToGroup(activeMenu, node.id)" title="Move here"></i>
+                    <i v-if="node.hasChildren" class="fas fa-arrow-right submenu-move-icon" @click.stop="moveOutputToGroup(activeMenu, node.id)" v-tooltip="'Move here'"></i>
                   </button>
                 </template>
                 <button @click="moveOutputToGroup(activeMenu, null)" class="menu-item submenu-item" :class="{ active: !getOutputById(activeMenu)?.group_id }">

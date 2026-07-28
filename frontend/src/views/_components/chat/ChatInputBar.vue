@@ -5,14 +5,14 @@
       <div v-for="(file, index) in selectedFiles" :key="`f-${index}-${file.name}`" class="chat-chip">
         <span class="chat-chip-icon">📎</span>
         <span class="chat-chip-label">{{ file.name }}</span>
-        <button @click="$emit('remove-file', index)" class="chat-chip-remove" title="Remove file">
+        <button @click="$emit('remove-file', index)" class="chat-chip-remove" v-tooltip="'Remove file'">
           <i class="fas fa-times"></i>
         </button>
       </div>
       <div v-for="(agent, index) in mentionedAgents" :key="`m-${index}-${agent.id}`" class="chat-chip chat-chip-mention">
         <span class="chat-chip-icon">@</span>
         <span class="chat-chip-label">{{ agent.name }}</span>
-        <button @click="$emit('remove-mention', index)" class="chat-chip-remove" title="Remove mention">
+        <button @click="$emit('remove-mention', index)" class="chat-chip-remove" v-tooltip="'Remove mention'">
           <i class="fas fa-times"></i>
         </button>
       </div>

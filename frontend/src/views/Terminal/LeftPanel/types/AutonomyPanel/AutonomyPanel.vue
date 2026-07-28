@@ -3,11 +3,11 @@
     <div class="panel-header">
       <h2 class="title">/ Autonomy</h2>
       <div class="panel-stats">
-        <span v-if="escalatedCount > 0" class="stat-item warn" :title="escalatedCount + ' insights escalated to you'">
+        <span v-if="escalatedCount > 0" class="stat-item warn" v-tooltip="escalatedCount + ' insights escalated to you'">
           <i class="fas fa-exclamation-circle"></i>
           {{ escalatedCount }}
         </span>
-        <span v-if="scheduleCount > 0" class="stat-item" :title="scheduleCount + ' active schedules'">
+        <span v-if="scheduleCount > 0" class="stat-item" v-tooltip="scheduleCount + ' active schedules'">
           <i class="fas fa-clock"></i>
           {{ scheduleCount }}
         </span>

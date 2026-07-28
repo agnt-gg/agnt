@@ -116,7 +116,7 @@
                         v-if="!message.detached && currentActiveSkillId === message.skill?.id"
                         type="button"
                         class="pill-close"
-                        title="Detach skill"
+                        v-tooltip="'Detach skill'"
                         @click="handleCommandAction({ action: 'detach-skill' })"
                       >
                         <i class="fas fa-times"></i>
@@ -137,7 +137,7 @@
                         v-if="currentActiveGoalId === message.goalId"
                         type="button"
                         class="pill-close inline-goal-detach"
-                        title="Detach goal"
+                        v-tooltip="'Detach goal'"
                         @click="handleCommandAction({ action: 'detach-goal' })"
                       >
                         <i class="fas fa-times"></i> Detach

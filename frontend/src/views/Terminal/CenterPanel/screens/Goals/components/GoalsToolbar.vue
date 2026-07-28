@@ -27,27 +27,34 @@
         v-if="activeFilters.length > 0"
         class="filter-chip clear-chip"
         @click="clearFilters"
-        title="Clear filters"
+        v-tooltip="'Clear filters'"
       >
         <i class="fas fa-times"></i>
       </button>
     </div>
 
-    <select class="sort-select" :value="sortBy" @change="$emit('update:sortBy', $event.target.value)">
-      <option value="created_desc">Newest first</option>
-      <option value="created_asc">Oldest first</option>
-      <option value="progress_desc">Most progress</option>
-      <option value="progress_asc">Least progress</option>
-      <option value="priority">Priority</option>
-    </select>
+    <CustomSelect
+      class="sort-select"
+      :model-value="sortBy"
+      :options="[
+        { label: 'Newest first', value: 'created_desc' },
+        { label: 'Oldest first', value: 'created_asc' },
+        { label: 'Most progress', value: 'progress_desc' },
+        { label: 'Least progress', value: 'progress_asc' },
+        { label: 'Priority', value: 'priority' },
+      ]"
+      @update:model-value="$emit('update:sortBy', $event)"
+    />
   </div>
 </template>
 
 <script>
 import { ref, computed } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 export default {
   name: 'GoalsToolbar',
+  components: { CustomSelect },
   props: {
     searchQuery: { type: String, default: '' },
     activeFilters: { type: Array, default: () => [] },

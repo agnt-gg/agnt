@@ -21,7 +21,7 @@
 
         <template v-else>
           <!-- Edit button for user messages -->
-          <button v-if="message.role === 'user' && !status" class="message-edit-btn" @click="startEditing" title="Edit & resend">
+          <button v-if="message.role === 'user' && !status" class="message-edit-btn" @click="startEditing" v-tooltip="'Edit & resend'">
             <i class="fas fa-pen"></i>
           </button>
 

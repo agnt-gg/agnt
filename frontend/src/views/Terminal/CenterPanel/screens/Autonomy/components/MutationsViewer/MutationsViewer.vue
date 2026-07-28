@@ -60,10 +60,10 @@
           <div v-if="m.notes" class="row-notes">{{ m.notes }}</div>
         </div>
         <div class="row-actions">
-          <button class="icon-btn" v-if="m.status === 'applied' && m.fitness_before != null" title="Canary check" @click="canary(m.id)">
+          <button class="icon-btn" v-if="m.status === 'applied' && m.fitness_before != null" v-tooltip="'Canary check'" @click="canary(m.id)">
             <i class="fas fa-heartbeat"></i>
           </button>
-          <button class="icon-btn danger" v-if="m.status === 'applied'" title="Revert" @click="revert(m.id)">
+          <button class="icon-btn danger" v-if="m.status === 'applied'" v-tooltip="'Revert'" @click="revert(m.id)">
             <i class="fas fa-undo"></i>
           </button>
         </div>

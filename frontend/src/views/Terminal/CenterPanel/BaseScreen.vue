@@ -70,8 +70,8 @@
                Will fire as a fresh user turn the moment the stream ends. -->
           <div v-if="pendingSteer" class="steering-chip">
             <i class="fas fa-sync-alt"></i>
-            <span class="steering-chip-text" :title="pendingSteer">Steer pending: "{{ pendingSteer }}"</span>
-            <button type="button" class="steering-chip-cancel" @click="onCancelSteer" title="Cancel steer">
+            <span class="steering-chip-text" v-tooltip="pendingSteer">Steer pending: "{{ pendingSteer }}"</span>
+            <button type="button" class="steering-chip-cancel" @click="onCancelSteer" v-tooltip="'Cancel steer'">
               <i class="fas fa-times"></i>
             </button>
           </div>

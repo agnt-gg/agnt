@@ -32,7 +32,7 @@
             <span class="target-chip">{{ c.target_type }}{{ c.target_id ? ':' + c.target_id : '' }}</span>
             <span class="name">{{ c.name }}</span>
             <span v-if="c.status !== 'active'" class="off-chip">{{ c.status }}</span>
-            <span class="confidence" :title="'Confidence: ' + (c.confidence * 100).toFixed(0) + '%'">
+            <span class="confidence" v-tooltip="'Confidence: ' + (c.confidence * 100).toFixed(0) + '%'">
               {{ (c.confidence * 100).toFixed(0) }}%
             </span>
           </div>
@@ -49,10 +49,10 @@
           </div>
         </div>
         <div class="row-actions">
-          <button class="icon-btn" :title="c.status === 'active' ? 'Pause' : 'Activate'" @click="toggle(c)">
+          <button class="icon-btn" v-tooltip="c.status === 'active' ? 'Pause' : 'Activate'" @click="toggle(c)">
             <i :class="c.status === 'active' ? 'fas fa-pause' : 'fas fa-play'"></i>
           </button>
-          <button class="icon-btn danger" title="Delete" @click="remove(c.id)">
+          <button class="icon-btn danger" v-tooltip="'Delete'" @click="remove(c.id)">
             <i class="fas fa-trash"></i>
           </button>
         </div>

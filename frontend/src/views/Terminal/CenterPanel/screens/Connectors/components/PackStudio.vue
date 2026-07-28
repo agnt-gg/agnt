@@ -122,7 +122,7 @@
             :disabled="isInPack(entry.kind, entry.item.id)"
             @click="addToPack(entry.kind, entry.item.id)"
           >
-            <span class="ps-card-kind" :title="kindLabel(entry.kind)">
+            <span class="ps-card-kind" v-tooltip="kindLabel(entry.kind)">
               <i :class="kindIcon(entry.kind)"></i>
             </span>
             <span class="ps-card-body">
@@ -177,7 +177,7 @@
             :key="`${entry.kind}-${entry.item.id}`"
             class="ps-card ps-card-armed"
           >
-            <span class="ps-card-kind" :title="kindLabel(entry.kind)">
+            <span class="ps-card-kind" v-tooltip="kindLabel(entry.kind)">
               <i :class="kindIcon(entry.kind)"></i>
             </span>
             <span class="ps-card-body">
@@ -187,13 +187,13 @@
                   v-for="(ref, i) in entry.refs"
                   :key="i"
                   :class="['ps-ref', `ps-ref-${ref.status}`]"
-                  :title="`${ref.kind}: ${ref.name} — ${refLabel(ref.status)}`"
+                  v-tooltip="`${ref.kind}: ${ref.name} — ${refLabel(ref.status)}`"
                 >{{ ref.name }}</span>
               </span>
             </span>
             <button
               class="ps-card-action ps-card-remove"
-              :title="'Remove'"
+              v-tooltip="'Remove'"
               @click="removeFromPack(entry.kind, entry.item.id)"
             >
               <i class="fas fa-times"></i>
@@ -233,7 +233,7 @@
           class="ps-bundle"
           :class="{ ready: canBundle }"
           :disabled="!canBundle"
-          :title="bundleBlocker || 'Build the .agnt archive'"
+          v-tooltip="bundleBlocker || 'Build the .agnt archive'"
           @click="bundlePack"
         >
           <i class="fas fa-hammer"></i>

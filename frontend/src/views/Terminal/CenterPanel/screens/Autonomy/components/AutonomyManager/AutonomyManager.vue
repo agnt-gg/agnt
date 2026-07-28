@@ -87,13 +87,13 @@
           </div>
         </div>
         <div class="row-actions">
-          <button class="icon-btn" title="Apply manually" @click="apply(i.id)">
+          <button class="icon-btn" v-tooltip="'Apply manually'" @click="apply(i.id)">
             <i class="fas fa-check"></i>
           </button>
-          <button class="icon-btn" title="Re-route through router" @click="route(i.id)">
+          <button class="icon-btn" v-tooltip="'Re-route through router'" @click="route(i.id)">
             <i class="fas fa-route"></i>
           </button>
-          <button class="icon-btn danger" title="Reject" @click="reject(i.id)">
+          <button class="icon-btn danger" v-tooltip="'Reject'" @click="reject(i.id)">
             <i class="fas fa-times"></i>
           </button>
         </div>

@@ -255,7 +255,7 @@
             </div>
             <div class="plugin-status">
               <span v-if="u.updateAvailable" class="status-badge update">Update available</span>
-              <span v-else-if="u.status === 'unknown-version'" class="status-badge unknown" :title="u.reason">unknown version</span>
+              <span v-else-if="u.status === 'unknown-version'" class="status-badge unknown" v-tooltip="u.reason">unknown version</span>
               <span v-else class="status-badge installed"><i class="fas fa-check"></i> {{ u.status }}</span>
             </div>
           </div>

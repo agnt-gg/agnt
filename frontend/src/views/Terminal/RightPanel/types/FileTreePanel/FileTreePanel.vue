@@ -55,7 +55,7 @@
         @input="onSearchInput"
         @keyup.escape="clearSearch"
       />
-      <button v-if="searchQuery" class="search-clear-btn" @click="clearSearch" title="Clear search">
+      <button v-if="searchQuery" class="search-clear-btn" @click="clearSearch" v-tooltip="'Clear search'">
         <i class="fas fa-times"></i>
       </button>
     </div>

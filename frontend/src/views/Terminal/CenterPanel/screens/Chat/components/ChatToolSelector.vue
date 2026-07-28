@@ -4,8 +4,8 @@
       <div class="dropdown-header">
         <span class="dropdown-title">Tools</span>
         <div class="header-actions">
-          <button @click="enableAll" class="header-btn" title="Enable All"><i class="fas fa-check-double"></i></button>
-          <button @click="disableAllOptional" class="header-btn" title="Reset"><i class="fas fa-undo"></i></button>
+          <button @click="enableAll" class="header-btn" v-tooltip="'Enable All'"><i class="fas fa-check-double"></i></button>
+          <button @click="disableAllOptional" class="header-btn" v-tooltip="'Reset'"><i class="fas fa-undo"></i></button>
           <button @click="$emit('close')" class="close-btn"><i class="fas fa-times"></i></button>
         </div>
       </div>
@@ -40,7 +40,7 @@
                 <span class="toggle-switch"></span>
               </label>
               <span class="section-title">{{ cat.name }}</span>
-              <span v-if="cat.locked" class="section-lock" title="Always enabled for this chat">
+              <span v-if="cat.locked" class="section-lock" v-tooltip="'Always enabled for this chat'">
                 <i class="fas fa-lock"></i>
               </span>
               <span class="section-badge">{{ getCategoryEnabledCount(cat) }}/{{ getCategoryTotalCount(cat) }}</span>

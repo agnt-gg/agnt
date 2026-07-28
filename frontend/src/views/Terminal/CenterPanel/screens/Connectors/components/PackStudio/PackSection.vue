@@ -25,7 +25,7 @@
             <button
               class="armed-eject"
               type="button"
-              title="Remove from pack"
+              v-tooltip="'Remove from pack'"
               @click="$emit('remove', item.id)"
             >
               <i class="fas fa-times"></i>
@@ -40,7 +40,7 @@
               v-for="(ref, i) in resolveRefs(item)"
               :key="i"
               :class="['ref-gem', `is-${ref.status}`]"
-              :title="`${ref.kind}: ${ref.name} — ${labelFor(ref.status)}`"
+              v-tooltip="`${ref.kind}: ${ref.name} — ${labelFor(ref.status)}`"
             >
               <span class="gem-jewel"></span>
               <span class="gem-text">{{ ref.name }}</span>

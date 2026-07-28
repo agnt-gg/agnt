@@ -177,8 +177,8 @@
                   <td><span class="status-badge" :class="ins.status">{{ ins.status }}</span></td>
                   <td>{{ ins.occurrence_count }}x</td>
                   <td class="actions-cell" @click.stop>
-                    <button v-if="ins.status === 'pending'" class="row-btn apply" @click="applyInsight(ins)" title="Apply"><i class="fas fa-check"></i></button>
-                    <button v-if="ins.status === 'pending'" class="row-btn reject" @click="rejectInsight(ins)" title="Reject"><i class="fas fa-times"></i></button>
+                    <button v-if="ins.status === 'pending'" class="row-btn apply" @click="applyInsight(ins)" v-tooltip="'Apply'"><i class="fas fa-check"></i></button>
+                    <button v-if="ins.status === 'pending'" class="row-btn reject" @click="rejectInsight(ins)" v-tooltip="'Reject'"><i class="fas fa-times"></i></button>
                   </td>
                 </tr>
               </tbody>
@@ -335,34 +335,44 @@
               <div class="form-row">
                 <div class="form-group">
                   <label>Type</label>
-                  <select v-model="forgeForm.type" class="form-input">
-                    <option value="ab_test">A/B Test</option>
-                    <option value="iterative">Iterative</option>
-                    <option value="ablation">Ablation</option>
-                  </select>
+                  <CustomSelect
+                    class="form-input"
+                    v-model="forgeForm.type"
+                    :options="[
+                      { label: 'A/B Test', value: 'ab_test' },
+                      { label: 'Iterative', value: 'iterative' },
+                      { label: 'Ablation', value: 'ablation' },
+                    ]"
+                  />
                 </div>
                 <div class="form-group">
                   <label>Skill <span class="required">*</span></label>
-                  <select v-model="forgeForm.skillId" class="form-input">
-                    <option value="">Select a skill...</option>
-                    <option v-for="skill in availableSkills" :key="skill.id" :value="skill.id">{{ skill.name }}</option>
-                  </select>
+                  <CustomSelect
+                    class="form-input"
+                    v-model="forgeForm.skillId"
+                    placeholder="Select a skill..."
+                    :options="availableSkills.map((skill) => ({ label: skill.name, value: skill.id }))"
+                  />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
                   <label>Goal (optional)</label>
-                  <select v-model="forgeForm.goalId" class="form-input">
-                    <option value="">No goal linked</option>
-                    <option v-for="goal in availableGoals" :key="goal.id" :value="goal.id">{{ goal.title }}</option>
-                  </select>
+                  <CustomSelect
+                    class="form-input"
+                    v-model="forgeForm.goalId"
+                    placeholder="No goal linked"
+                    :options="availableGoals.map((goal) => ({ label: goal.title, value: goal.id }))"
+                  />
                 </div>
                 <div class="form-group">
                   <label>Dataset</label>
-                  <select v-model="forgeForm.datasetId" class="form-input">
-                    <option value="">Auto-generate</option>
-                    <option v-for="ds in datasets" :key="ds.id" :value="ds.id">{{ ds.name }} ({{ ds.items?.length || 0 }})</option>
-                  </select>
+                  <CustomSelect
+                    class="form-input"
+                    v-model="forgeForm.datasetId"
+                    placeholder="Auto-generate"
+                    :options="datasets.map((ds) => ({ label: `${ds.name} (${ds.items?.length || 0})`, value: ds.id }))"
+                  />
                 </div>
               </div>
               <div class="form-row-3">
@@ -402,18 +412,24 @@
             <div class="modal-body">
               <div class="form-group">
                 <label>Skill <span class="required">*</span></label>
-                <select v-model="generateForm.skillId" class="form-input">
-                  <option value="">Select a skill...</option>
-                  <option v-for="skill in availableSkills" :key="skill.id" :value="skill.id">{{ skill.name }}</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="generateForm.skillId"
+                  placeholder="Select a skill..."
+                  :options="availableSkills.map((skill) => ({ label: skill.name, value: skill.id }))"
+                />
               </div>
               <div class="form-group">
                 <label>Source</label>
-                <select v-model="generateForm.source" class="form-input">
-                  <option value="synthetic">Synthetic (LLM-generated)</option>
-                  <option value="historical">From History</option>
-                  <option value="golden">From Golden Standards</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="generateForm.source"
+                  :options="[
+                    { label: 'Synthetic (LLM-generated)', value: 'synthetic' },
+                    { label: 'From History', value: 'historical' },
+                    { label: 'From Golden Standards', value: 'golden' },
+                  ]"
+                />
               </div>
               <div class="form-group">
                 <label>Category (optional)</label>
@@ -532,6 +548,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
