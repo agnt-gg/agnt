@@ -105,6 +105,27 @@ export function largestFreeRect(existing) {
   return best;
 }
 
+/**
+ * How much of the empty-space prompt fits in a gap this size?
+ *
+ * Measured in PIXELS, deliberately. A gap's cell count says nothing about
+ * whether "Empty canvas" fits inside it — cellWidth is (containerWidth +
+ * GAP) / 12, so the same 3x2 gap is 90px wide in a narrow window and 400px
+ * wide on a monitor. Pixels are the thing the text actually has to fit into.
+ *
+ * Thresholds are the rendered sizes of the tiers themselves: the hint line is
+ * ~240px unwrapped, icon + label stack ~140px, and below ~64x52 an icon is
+ * just noise in a sliver.
+ *
+ * @returns {'full'|'compact'|'mark'|null} null = leave the gap alone.
+ */
+export function emptyTierFor(width, height) {
+  if (width >= 260 && height >= 148) return 'full';
+  if (width >= 148 && height >= 84) return 'compact';
+  if (width >= 64 && height >= 52) return 'mark';
+  return null;
+}
+
 /** Is a footprint entirely free at this origin? */
 export function fitsAt(existing, col, row, cols, rows) {
   if (col < 0 || row < 0 || col + cols > GRID_COLS || row + rows > GRID_ROWS) return false;

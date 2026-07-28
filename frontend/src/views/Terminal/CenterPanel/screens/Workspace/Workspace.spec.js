@@ -599,6 +599,54 @@ describe('useWorkspaces — window navigation history', () => {
   });
 });
 
+/* ════════════════════════════════════════════════════════════════
+   empty space — the prompt lives in the gap, not on the canvas
+   ══════════════════════════════════════════════════════════════════ */
+describe('emptyTierFor — how much prompt a gap can carry', () => {
+  it('degrades by PIXEL size, so a gap never carries text that cannot fit', async () => {
+    const { emptyTierFor } = await import('./useWorkspaces.js');
+    expect(emptyTierFor(600, 400)).toBe('full');
+    expect(emptyTierFor(300, 160)).toBe('full');
+    expect(emptyTierFor(200, 120)).toBe('compact');
+    expect(emptyTierFor(300, 100)).toBe('compact'); // wide but short
+    expect(emptyTierFor(80, 60)).toBe('mark');
+    expect(emptyTierFor(40, 300)).toBeNull(); // a sliver carries nothing
+    expect(emptyTierFor(0, 0)).toBeNull();
+  });
+
+  it('is monotonic — a bigger gap never carries less', async () => {
+    const { emptyTierFor } = await import('./useWorkspaces.js');
+    const rank = { null: 0, mark: 1, compact: 2, full: 3 };
+    let prev = 0;
+    for (let s = 0; s <= 700; s += 20) {
+      const r = rank[String(emptyTierFor(s, s))];
+      expect(r, `tier went backwards at ${s}px`).toBeGreaterThanOrEqual(prev);
+      prev = r;
+    }
+  });
+});
+
+describe('empty space agrees with widget placement', () => {
+  it('the prompt sits where largestFreeRect says — one definition, not two', async () => {
+    // If the prompt and the placer disagreed, "double-click here to fill it"
+    // would point at a gap the widget does not land in.
+    const { largestFreeRect } = await import('./useWorkspaces.js');
+    const fs2 = require('node:fs');
+    const path2 = require('node:path');
+    const src = fs2.readFileSync(path2.join(__dirname, 'Workspace.vue'), 'utf8');
+    expect(src).toContain('const free = largestFreeRect(activeWidgets.value)');
+
+    // A left-hand widget leaves the right-hand 8 columns free.
+    const free = largestFreeRect([{ col: 0, row: 0, cols: 4, rows: 8, visible: true }]);
+    expect(free).toMatchObject({ col: 4, row: 0, cols: 8, rows: 8 });
+  });
+
+  it('reports no region when every cell is occupied', async () => {
+    const { largestFreeRect } = await import('./useWorkspaces.js');
+    expect(largestFreeRect([{ col: 0, row: 0, cols: 12, rows: 8, visible: true }]).area).toBe(0);
+  });
+});
+
 describe('Workspace.vue', () => {
   let store;
   let spies;
@@ -1018,6 +1066,134 @@ describe('Workspace.vue', () => {
     await wrapper.vm.$nextTick();
 
     expect(ws.active.value.widgets.find((w) => w.instanceId === tracesId).widgetId).toBe('traces');
+  });
+
+  /* ═══════════ empty space + persistent grid ═══════════ */
+
+  // jsdom reports offsetWidth 0, so the mounted component derives ~0px cells.
+  // Drive the two refs it exposes to a realistic desktop canvas instead.
+  const withCanvasSize = async (wrapper, w = 1440, h = 800) => {
+    wrapper.vm.cellWidth = (w + 4) / 12;
+    wrapper.vm.cellHeight = (h + 4) / 8;
+    await wrapper.vm.$nextTick();
+  };
+
+  it('centres the prompt on the largest GAP, not on the whole canvas', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    const ws = useWorkspaces();
+    // Blank workspace ships one 4x8 chat on the left — 8 columns free.
+    ws.active.value.widgets = [{ instanceId: 'a', widgetId: 'traces', col: 0, row: 0, cols: 4, rows: 8, visible: true, zIndex: 1 }];
+    await withCanvasSize(wrapper);
+
+    const el = wrapper.find('.ws-empty');
+    expect(el.exists()).toBe(true);
+    // Left edge must be the gap's edge (col 4), never 0.
+    const left = parseFloat(el.attributes('style').match(/left:\s*([\d.]+)px/)[1]);
+    expect(left).toBeCloseTo(4 * ((1440 + 4) / 12), 1);
+    expect(el.text()).toContain('Empty space');
+    expect(el.text()).not.toContain('Empty canvas');
+  });
+
+  it('says “Empty canvas” only when the canvas really is empty', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    useWorkspaces().active.value.widgets = [];
+    await withCanvasSize(wrapper);
+
+    const el = wrapper.find('.ws-empty');
+    expect(el.exists()).toBe(true);
+    expect(el.text()).toContain('Empty canvas');
+    expect(el.classes()).toContain('is-full');
+  });
+
+  it('drops the hint, then the label, as the gap shrinks', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    const ws = useWorkspaces();
+    const at = async (cols) => {
+      ws.active.value.widgets = [
+        { instanceId: 'a', widgetId: 'traces', col: 0, row: 0, cols: 12 - cols, rows: 8, visible: true, zIndex: 1 },
+      ];
+      await withCanvasSize(wrapper, 1200, 700);
+      return wrapper.find('.ws-empty');
+    };
+
+    // 2 free columns on a 1200px canvas ≈ 197px wide — room for icon + label,
+    // not for the hint line.
+    let el = await at(2);
+    expect(el.classes()).toContain('is-compact');
+    expect(el.find('.ws-empty-text').exists()).toBe(true);
+    expect(el.find('.ws-empty-hint').exists()).toBe(false);
+
+    // 1 free column ≈ 96px — too narrow for the label, so just the mark.
+    el = await at(1);
+    expect(el.classes()).toContain('is-mark');
+    expect(el.find('.ws-empty-icon').exists()).toBe(true);
+    expect(el.find('.ws-empty-text').exists()).toBe(false);
+  });
+
+  it('shows nothing at all when the canvas is full', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    useWorkspaces().active.value.widgets = [
+      { instanceId: 'a', widgetId: 'traces', col: 0, row: 0, cols: 12, rows: 8, visible: true, zIndex: 1 },
+    ];
+    await withCanvasSize(wrapper);
+
+    expect(wrapper.find('.ws-empty').exists()).toBe(false);
+    expect(wrapper.find('.ws-grid-overlay').classes()).not.toContain('visible');
+  });
+
+  it('keeps the grid visible — faintly — while any space remains', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    useWorkspaces().active.value.widgets = [
+      { instanceId: 'a', widgetId: 'traces', col: 0, row: 0, cols: 6, rows: 8, visible: true, zIndex: 1 },
+    ];
+    await withCanvasSize(wrapper);
+
+    const grid = wrapper.find('.ws-grid-overlay');
+    expect(grid.classes()).toContain('visible');
+    expect(grid.classes(), 'idle grid must be the fainter variant').toContain('idle');
+  });
+
+  it('hides the prompt mid-gesture and brightens the grid', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    useWorkspaces().active.value.widgets = [];
+    await withCanvasSize(wrapper);
+    expect(wrapper.find('.ws-empty').exists()).toBe(true);
+
+    wrapper.vm.showGrid = true; // what a drag/resize sets
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('.ws-empty').exists()).toBe(false);
+    const grid = wrapper.find('.ws-grid-overlay');
+    expect(grid.classes()).toContain('visible');
+    expect(grid.classes()).not.toContain('idle');
+  });
+
+  it('double-clicking a gap makes the next pick land THERE', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    const ws = useWorkspaces();
+    ws.active.value.widgets = [{ instanceId: 'a', widgetId: 'traces', col: 0, row: 0, cols: 4, rows: 8, visible: true, zIndex: 1 }];
+    await withCanvasSize(wrapper);
+
+    const surfaces = wrapper.find('.ws-surfaces');
+    surfaces.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1440, height: 800 });
+    // Aim at column 6, row 0 — inside the free right-hand region.
+    await surfaces.trigger('dblclick', { clientX: 6 * ((1440 + 4) / 12) + 5, clientY: 5 });
+
+    const before = ws.active.value.widgets.length;
+    wrapper.vm.pick({ widgetId: 'goals', name: 'Goals' });
+    await wrapper.vm.$nextTick();
+
+    expect(ws.active.value.widgets.length).toBe(before + 1);
+    const added = ws.active.value.widgets[ws.active.value.widgets.length - 1];
+    expect(added.col, 'the widget must land in the gap that was double-clicked').toBe(6);
+    expect(added.row).toBe(0);
   });
 
   it('claims its own page identifier: body[data-page="terminal-workspace"]', async () => {

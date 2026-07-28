@@ -79,7 +79,12 @@
         @dragleave="onCanvasDragLeave"
         @drop="onCanvasDrop"
       >
-        <div class="ws-grid-overlay" :class="{ visible: showGrid || !!dropPreview }">
+        <!-- Grid guides. Shown while dragging/resizing AND, more faintly,
+             whenever the canvas still has room — so the grid persists until
+             every space is filled. It needs no clipping to the empty areas:
+             the overlay sits at z-index 0, behind every frame, so it can only
+             ever be seen THROUGH the gaps. -->
+        <div class="ws-grid-overlay" :class="{ visible: canvasBusy || !!emptyRegion, idle: !canvasBusy }">
           <div v-for="c in GRID_COLS - 1" :key="'c' + c" class="ws-grid-v" :style="{ left: c * cellWidth - GRID_GAP / 2 + 'px' }"></div>
           <div v-for="r in GRID_ROWS - 1" :key="'r' + r" class="ws-grid-h" :style="{ top: r * cellHeight - GRID_GAP / 2 + 'px' }"></div>
         </div>
@@ -157,11 +162,20 @@
           <span>{{ dropPreview.name }}</span>
         </div>
 
-        <!-- Empty canvas prompt -->
-        <div v-if="activeWidgets.length === 0" class="ws-empty">
+        <!-- Empty-space prompt — occupies the largest GAP, not the whole
+             canvas, so it stays centred in whatever room is actually left.
+             Hidden mid-gesture: the drop preview and the bright grid are the
+             feedback then, and the region under the dragged widget is stale
+             until the move commits. -->
+        <div v-if="emptyRegion && !canvasBusy" class="ws-empty" :class="'is-' + emptyRegion.tier" :style="emptyRegion.style">
           <div class="ws-empty-icon"><i class="fas fa-th-large"></i></div>
-          <div class="ws-empty-text">Empty canvas</div>
-          <div class="ws-empty-hint">Double-click or press the <strong>+ widget</strong> button to add widgets</div>
+          <div v-if="emptyRegion.tier !== 'mark'" class="ws-empty-text">
+            {{ emptyRegion.whole ? 'Empty canvas' : 'Empty space' }}
+          </div>
+          <div v-if="emptyRegion.tier === 'full'" class="ws-empty-hint">
+            <template v-if="emptyRegion.whole">Double-click or press the <strong>+ widget</strong> button to add widgets</template>
+            <template v-else>Double-click here to fill it</template>
+          </div>
         </div>
       </div>
     </div>
@@ -204,7 +218,7 @@ import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import EmbedScope from './EmbedScope.vue';
 import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
 import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } from '@/canvas/gridUtils.js';
-import { useWorkspaces, chatChannelFor, canGoBack, canGoForward } from './useWorkspaces.js';
+import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor } from './useWorkspaces.js';
 import { widgetForToolCall, SCREEN_WIDGET_MAP } from './surfaceRegistry.js';
 
 export default {
@@ -493,6 +507,32 @@ export default {
       return { left: `${p.x}px`, top: `${p.y}px`, width: `${p.width}px`, height: `${p.height}px` };
     });
 
+    /* ═══════════ empty space ═══════════ */
+
+    /** Any gesture that makes the canvas its own feedback surface. */
+    const canvasBusy = computed(() => showGrid.value || !!dropPreview.value);
+
+    /**
+     * The largest gap on the canvas, in pixels, plus how much prompt it can
+     * carry. Deliberately the SAME largestFreeRect that placement uses — one
+     * definition of "where is the empty space", so the prompt can never point
+     * at a gap a new widget wouldn't land in.
+     */
+    const emptyRegion = computed(() => {
+      const free = largestFreeRect(activeWidgets.value);
+      if (!free.area) return null;
+      const p = gridToPixel(free.col, free.row, free.cols, free.rows, cellWidth.value, cellHeight.value);
+      const tier = emptyTierFor(p.width, p.height);
+      if (!tier) return null;
+      return {
+        tier,
+        whole: activeWidgets.value.length === 0,
+        col: free.col,
+        row: free.row,
+        style: { left: `${p.x}px`, top: `${p.y}px`, width: `${p.width}px`, height: `${p.height}px` },
+      };
+    });
+
     const onPaletteDragStart = (item, e) => {
       dragItem.value = item;
       // Get the palette out of the way immediately — it overlays the canvas,
@@ -563,6 +603,14 @@ export default {
     };
 
     // ── canvas interactions ───────────────────────────────────────────
+    // Where a palette pick should land, when the palette was opened by
+    // double-clicking a specific spot. Without this the prompt sitting in a
+    // gap saying "double-click here to fill it" would be a lie — the widget
+    // would be packed wherever the placer preferred. placeInstance already
+    // falls through to normal packing if the footprint doesn't fit here, so a
+    // stale or awkward target degrades instead of failing.
+    const pendingAt = ref(null);
+
     const onCanvasDblClick = (e) => {
       // Open the palette when double-clicking the empty canvas area or grid
       if (
@@ -571,6 +619,7 @@ export default {
         e.target.classList.contains('ws-empty') ||
         e.target.closest('.ws-empty')
       ) {
+        pendingAt.value = cellUnderPointer(e, 1, 1);
         paletteOpen.value = true;
         paletteQuery.value = '';
         nextTick(() => paletteInput.value?.focus());
@@ -584,6 +633,8 @@ export default {
 
     const togglePalette = () => {
       paletteOpen.value = !paletteOpen.value;
+      // Opened from the toolbar, not from a spot on the canvas — no target.
+      pendingAt.value = null;
       if (!paletteOpen.value) return;
       paletteQuery.value = '';
       // Only fetch what we don't already have. Re-fetching the widget catalog
@@ -656,7 +707,13 @@ export default {
     });
 
     const pick = (item) => {
-      open(item.widgetId, { objectId: item.objectId || '', routeParam: item.routeParam || '', custom: !!item.custom });
+      open(item.widgetId, {
+        objectId: item.objectId || '',
+        routeParam: item.routeParam || '',
+        custom: !!item.custom,
+        at: pendingAt.value,
+      });
+      pendingAt.value = null;
       paletteOpen.value = false;
     };
 
@@ -748,6 +805,7 @@ export default {
       onFrameResizeEnd,
       // canvas
       onCanvasDblClick, onEmbedScreenChange, onCanvasPointerDownCapture,
+      emptyRegion, canvasBusy,
       // window navigation
       hasHistory, canBack, canForward, historyGo, panelScopeFor,
       // palette drag-and-drop
@@ -1043,19 +1101,28 @@ export default {
 }
 
 /* ═══════════ empty canvas prompt ═══════════ */
+/* Positioned over the largest gap (inline left/top/width/height), never
+   `inset: 0` — an inset-0 prompt is centred on the CANVAS, which puts it
+   behind the widgets as soon as there is more than empty space. */
 .ws-empty {
   position: absolute;
-  inset: 0;
+  z-index: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  padding: 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-align: center;
   pointer-events: none;
+  transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
 }
 
 .ws-empty-icon {
   font-size: 36px;
+  line-height: 1;
   color: var(--color-text-muted, #334);
   opacity: 0.3;
 }
@@ -1070,6 +1137,28 @@ export default {
 .ws-empty-hint {
   font-size: var(--font-size-xs, 11px);
   color: var(--color-text-muted, #334);
+}
+
+/* Smaller gaps carry less, and carry it smaller. A gap is an incidental
+   space, so its prompt should read as a hint, never as a second heading
+   competing with the widgets around it. */
+.ws-empty.is-compact {
+  gap: 6px;
+}
+.ws-empty.is-compact .ws-empty-icon {
+  font-size: 22px;
+}
+.ws-empty.is-compact .ws-empty-text {
+  font-size: var(--font-size-xs, 11px);
+  letter-spacing: 1.5px;
+}
+
+.ws-empty.is-mark {
+  gap: 0;
+}
+.ws-empty.is-mark .ws-empty-icon {
+  font-size: 16px;
+  opacity: 0.22;
 }
 
 /* ═══════════ widget canvas area ═══════════
@@ -1094,6 +1183,14 @@ export default {
 }
 .ws-grid-overlay.visible {
   opacity: 1;
+}
+
+/* Idle — "there is still room here" rather than "you are placing something".
+   The guides are already rgba(primary, 0.16); half of that is a whisper,
+   which is the point: present enough to read as an unfilled canvas, quiet
+   enough to never compete with widget content. */
+.ws-grid-overlay.visible.idle {
+  opacity: 0.5;
 }
 
 .ws-grid-v,
