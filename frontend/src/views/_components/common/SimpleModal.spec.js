@@ -24,6 +24,13 @@ describe('SimpleModal', () => {
   const createWrapper = () => {
     return mount(SimpleModal, {
       attachTo: document.body,
+      global: {
+        // SimpleModal renders inside <Teleport to="body">. Without stubbing the
+        // teleport the markup lands outside the wrapper's subtree and every
+        // wrapper.find() returns an empty DOMWrapper. Stubbing keeps the
+        // content in place so these assertions describe the real component.
+        stubs: { teleport: true },
+      },
     });
   };
 

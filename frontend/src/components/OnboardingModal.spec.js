@@ -14,6 +14,17 @@ vi.mock('@/views/_utils/encryption.js', () => ({
   encrypt: vi.fn((value) => `encrypted_${value}`),
 }));
 
+// The workspace step reads/writes the file-tree root through this service.
+vi.mock('@/services/fileSystemService.js', () => ({
+  getSettings: vi.fn(() =>
+    Promise.resolve({
+      defaultRoot: '/home/user/agnt-workspace',
+      workspaceRoot: '/home/user/agnt-workspace',
+    })
+  ),
+  updateSettings: vi.fn(() => Promise.resolve({ success: true })),
+}));
+
 // Mock fetch globally
 global.fetch = vi.fn();
 
@@ -59,6 +70,16 @@ describe('OnboardingModal', () => {
           actions: {
             fetchAllProviders: vi.fn(),
             fetchConnectedApps: vi.fn(),
+          },
+        },
+        theme: {
+          namespaced: true,
+          state: { currentTheme: overrides.currentTheme || 'dark' },
+          getters: {
+            currentTheme: (state) => state.currentTheme,
+          },
+          actions: {
+            setTheme: vi.fn(),
           },
         },
         aiProvider: {
@@ -156,7 +177,7 @@ describe('OnboardingModal', () => {
 
   describe('Step Navigation', () => {
     it('advances to next step when Continue is clicked', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
+      wrapper = createWrapper();
       expect(wrapper.find('.welcome-step').exists()).toBe(true);
 
       await wrapper.find('.btn-primary').trigger('click');
@@ -167,7 +188,7 @@ describe('OnboardingModal', () => {
     });
 
     it('goes back to previous step when Back is clicked', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
+      wrapper = createWrapper();
 
       // Go to step 2
       await wrapper.find('.btn-primary').trigger('click');
@@ -204,45 +225,77 @@ describe('OnboardingModal', () => {
     });
   });
 
-  describe('Profile Step', () => {
-    it('displays pseudonym input field', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      // Directly set currentStep to 2 (profile step)
+  // Flow (see totalSteps in OnboardingModal.vue):
+  //   1 Welcome | 2 Theme | 3 Profile | 4 Provider | 5 Workspace
+  //   6 Referral (only when referralBalance > 0) | finalStep = Ready
+  // finalStep is 6 without a referral bonus and 7 with one.
+  const CONNECTED = { connectedApps: ['openai'] };
+
+  describe('Theme Step', () => {
+    it('renders the theme picker on step 2', async () => {
+      wrapper = createWrapper();
       wrapper.vm.currentStep = 2;
       await wrapper.vm.$nextTick();
 
+      expect(wrapper.find('.theme-step').exists()).toBe(true);
+      expect(wrapper.findAll('.theme-tile').length).toBe(wrapper.vm.availableThemes.length);
+    });
+
+    it('marks the current theme as active', async () => {
+      wrapper = createWrapper({}, { currentTheme: 'nord' });
+      wrapper.vm.currentStep = 2;
+      await wrapper.vm.$nextTick();
+
+      const active = wrapper.findAll('.theme-tile').filter((t) => t.classes().includes('active'));
+      expect(active.length).toBe(1);
+      expect(active[0].text()).toContain('Nord');
+    });
+
+    it('dispatches theme/setTheme when a tile is clicked', async () => {
+      wrapper = createWrapper();
+      wrapper.vm.currentStep = 2;
+      await wrapper.vm.$nextTick();
+
+      await wrapper.findAll('.theme-tile')[1].trigger('click');
+
+      expect(store.dispatch).toHaveBeenCalledWith('theme/setTheme', wrapper.vm.availableThemes[1].id);
+    });
+  });
+
+  describe('Profile Step', () => {
+    const gotoProfile = async () => {
+      wrapper.vm.currentStep = 3;
+      await wrapper.vm.$nextTick();
+    };
+
+    it('displays pseudonym input field', async () => {
+      wrapper = createWrapper();
+      await gotoProfile();
       expect(wrapper.find('#pseudonym').exists()).toBe(true);
     });
 
     it('prepopulates pseudonym if user has one', async () => {
-      wrapper = createWrapper({}, { userPseudonym: 'ExistingName', currentProvider: 'Local' });
-      // Set the pseudonym value directly
+      wrapper = createWrapper({}, { userPseudonym: 'ExistingName' });
       wrapper.vm.pseudonym = 'ExistingName';
-      wrapper.vm.currentStep = 2;
-      await wrapper.vm.$nextTick();
+      await gotoProfile();
 
       expect(wrapper.find('#pseudonym').element.value).toBe('ExistingName');
     });
 
     it('shows current status for existing pseudonym', async () => {
-      wrapper = createWrapper({}, { userPseudonym: 'ExistingName', currentProvider: 'Local' });
+      wrapper = createWrapper({}, { userPseudonym: 'ExistingName' });
       wrapper.vm.pseudonym = 'ExistingName';
       wrapper.vm.pseudonymStatus = 'current';
-      wrapper.vm.currentStep = 2;
-      await wrapper.vm.$nextTick();
+      await gotoProfile();
 
       expect(wrapper.find('.status-indicator.current').exists()).toBe(true);
     });
 
     it('checks pseudonym availability on input', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 2;
-      await wrapper.vm.$nextTick();
+      wrapper = createWrapper();
+      await gotoProfile();
 
       await wrapper.find('#pseudonym').setValue('NewName');
-      await wrapper.vm.$nextTick();
-
-      // Fast-forward debounce
       vi.advanceTimersByTime(500);
       await flushPromises();
 
@@ -256,9 +309,8 @@ describe('OnboardingModal', () => {
         headers: { get: () => 'application/json' },
       });
 
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 2;
-      await wrapper.vm.$nextTick();
+      wrapper = createWrapper();
+      await gotoProfile();
 
       await wrapper.find('#pseudonym').setValue('AvailableName');
       vi.advanceTimersByTime(500);
@@ -274,9 +326,8 @@ describe('OnboardingModal', () => {
         headers: { get: () => 'application/json' },
       });
 
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 2;
-      await wrapper.vm.$nextTick();
+      wrapper = createWrapper();
+      await gotoProfile();
 
       await wrapper.find('#pseudonym').setValue('TakenName');
       vi.advanceTimersByTime(500);
@@ -287,189 +338,147 @@ describe('OnboardingModal', () => {
   });
 
   describe('Provider Step', () => {
-    it('shows provider step when no AI provider is connected', async () => {
-      wrapper = createWrapper({}, { connectedApps: [], currentProvider: null });
-      // When no provider is connected, step 3 shows the provider step
-      wrapper.vm.currentStep = 3;
+    const gotoProvider = async () => {
+      wrapper.vm.currentStep = 4;
       await wrapper.vm.$nextTick();
+    };
 
+    it('shows the provider step on step 4', async () => {
+      wrapper = createWrapper({}, { connectedApps: [] });
+      await gotoProvider();
       expect(wrapper.find('.provider-step').exists()).toBe(true);
     });
 
-    it('skips provider step when AI provider is already connected', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      // When provider is connected, step 3 shows features (provider step is skipped)
-      wrapper.vm.currentStep = 3;
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.provider-step').exists()).toBe(false);
-      expect(wrapper.find('.features-step').exists()).toBe(true);
-    });
-
     it('displays available AI providers', async () => {
-      wrapper = createWrapper({}, { connectedApps: [], currentProvider: null });
-      wrapper.vm.currentStep = 3;
-      await wrapper.vm.$nextTick();
-
-      const providerTiles = wrapper.findAll('.provider-tile');
-      expect(providerTiles.length).toBeGreaterThan(0);
+      wrapper = createWrapper({}, { connectedApps: [] });
+      await gotoProvider();
+      expect(wrapper.findAll('.provider-tile').length).toBeGreaterThan(0);
     });
 
-    it('handles local provider selection', async () => {
-      wrapper = createWrapper({}, { connectedApps: [], currentProvider: null });
-      wrapper.vm.currentStep = 3;
-      await wrapper.vm.$nextTick();
+    it('marks connected providers and reports hasAnyProviderConnected', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await gotoProvider();
 
-      // Find and click local provider
-      const localTile = wrapper.findAll('.provider-tile').find((tile) => tile.text().includes('Local'));
-      if (localTile) {
-        await localTile.trigger('click');
-        await wrapper.vm.$nextTick();
-
-        expect(store.dispatch).toHaveBeenCalledWith('aiProvider/setProvider', 'Local');
-      }
-    });
-  });
-
-  describe('Features Step', () => {
-    it('displays feature cards', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      // With provider connected, features step is at step 3
-      wrapper.vm.currentStep = 3;
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.features-step').exists()).toBe(true);
-      const featureCards = wrapper.findAll('.feature-card');
-      expect(featureCards.length).toBe(4);
+      expect(wrapper.vm.hasAnyProviderConnected).toBe(true);
+      expect(wrapper.vm.isProviderConnected('openai')).toBe(true);
+      expect(wrapper.findAll('.provider-tile.connected').length).toBe(1);
     });
 
-    it('displays AI Chat feature', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 3;
-      await wrapper.vm.$nextTick();
+    it('blocks Continue until a provider is connected', async () => {
+      wrapper = createWrapper({}, { connectedApps: [] });
+      await gotoProvider();
 
-      expect(wrapper.text()).toContain('AI Chat');
+      await wrapper.find('.btn-primary').trigger('click');
+      await flushPromises();
+
+      // An AI provider is required, so the step must not advance.
+      expect(wrapper.vm.currentStep).toBe(4);
     });
 
-    it('displays Workflows feature', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 3;
-      await wrapper.vm.$nextTick();
+    it('advances past the provider step once one is connected', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await gotoProvider();
 
-      expect(wrapper.text()).toContain('Workflows');
+      await wrapper.find('.btn-primary').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.vm.currentStep).toBe(5);
     });
   });
 
-  describe('Quick Start Step', () => {
-    it('displays quick start options', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      // With provider connected, quick start step is at step 4
-      wrapper.vm.currentStep = 4;
+  describe('Workspace Step', () => {
+    it('shows the workspace folder input on step 5', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      wrapper.vm.currentStep = 5;
       await wrapper.vm.$nextTick();
 
-      expect(wrapper.find('.quickstart-step').exists()).toBe(true);
-      const options = wrapper.findAll('.quickstart-option');
-      expect(options.length).toBe(4);
+      expect(wrapper.find('.workspace-step').exists()).toBe(true);
+      expect(wrapper.find('#workspaceRoot').exists()).toBe(true);
     });
 
-    it('allows selecting a quick start option', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 4;
+    it('loads the current workspace root as the default hint', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await flushPromises();
+      wrapper.vm.currentStep = 5;
       await wrapper.vm.$nextTick();
 
-      const options = wrapper.findAll('.quickstart-option');
-      await options[1].trigger('click');
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.vm.selectedStartScreen).toBe('WorkflowForgeScreen');
-    });
-
-    it('defaults to Chat screen selection', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      wrapper.vm.currentStep = 4;
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.vm.selectedStartScreen).toBe('ChatScreen');
+      expect(wrapper.vm.defaultWorkspaceRoot).toBe('/home/user/agnt-workspace');
     });
   });
 
   describe('Referral Bonus Step', () => {
-    it('shows referral step when user has referral bonus', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local', referralBalance: 100 });
-      // With provider connected and referral bonus, referral step is at step 5
-      wrapper.vm.currentStep = 5;
+    it('adds a referral step and shows it when the user has a bonus', async () => {
+      wrapper = createWrapper({}, { ...CONNECTED, referralBalance: 100 });
+      expect(wrapper.vm.totalSteps).toBe(7);
+
+      wrapper.vm.currentStep = 6;
       await wrapper.vm.$nextTick();
 
       expect(wrapper.find('.referral-step').exists()).toBe(true);
     });
 
     it('displays referral bonus amount', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local', referralBalance: 250 });
-      wrapper.vm.currentStep = 5;
+      wrapper = createWrapper({}, { ...CONNECTED, referralBalance: 250 });
+      wrapper.vm.currentStep = 6;
       await wrapper.vm.$nextTick();
 
       expect(wrapper.text()).toContain('+250 pts');
     });
 
-    it('skips referral step when no bonus', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local', referralBalance: 0 });
-      // With no referral bonus, step 5 is the ready step (final step)
-      wrapper.vm.currentStep = 5;
+    it('omits the referral step when there is no bonus', async () => {
+      wrapper = createWrapper({}, { ...CONNECTED, referralBalance: 0 });
+      expect(wrapper.vm.totalSteps).toBe(6);
+
+      wrapper.vm.currentStep = 6;
       await wrapper.vm.$nextTick();
 
-      // Should be on ready step, not referral
+      // Step 6 is the final (ready) step when no bonus step is inserted.
       expect(wrapper.find('.referral-step').exists()).toBe(false);
       expect(wrapper.find('.ready-step').exists()).toBe(true);
     });
   });
 
   describe('Ready Step', () => {
-    it('displays ready step at the end', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
+    const gotoFinal = async () => {
+      wrapper.vm.currentStep = wrapper.vm.finalStep;
+      await wrapper.vm.$nextTick();
+    };
 
-      // Navigate to final step
-      await wrapper.find('.btn-primary').trigger('click'); // Profile
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Features
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Quick Start
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Ready
-      await wrapper.vm.$nextTick();
-
+    it('displays the ready step at the end', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await gotoFinal();
       expect(wrapper.find('.ready-step').exists()).toBe(true);
     });
 
     it('shows Start Building button on final step', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-
-      // Navigate to final step
-      await wrapper.find('.btn-primary').trigger('click'); // Profile
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Features
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Quick Start
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Ready
-      await wrapper.vm.$nextTick();
-
+      wrapper = createWrapper({}, CONNECTED);
+      await gotoFinal();
       expect(wrapper.find('.btn-primary').text()).toBe('Start Building');
     });
 
-    it('displays summary with selected start screen', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
+    it('hides Skip Tour on the final step', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await gotoFinal();
+      expect(wrapper.find('.btn-text').exists()).toBe(false);
+    });
 
-      // Navigate to final step
-      await wrapper.find('.btn-primary').trigger('click'); // Profile
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Features
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Quick Start
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Ready
-      await wrapper.vm.$nextTick();
-
+    it('displays the summary', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await gotoFinal();
       expect(wrapper.find('.ready-summary').exists()).toBe(true);
+    });
+
+    it('is reachable by clicking Continue through every step', async () => {
+      wrapper = createWrapper({}, CONNECTED);
+      await flushPromises();
+
+      for (let i = 1; i < wrapper.vm.finalStep; i++) {
+        await wrapper.find('.btn-primary').trigger('click');
+        await flushPromises();
+      }
+
+      expect(wrapper.vm.currentStep).toBe(wrapper.vm.finalStep);
+      expect(wrapper.find('.ready-step').exists()).toBe(true);
     });
   });
 
@@ -509,52 +518,34 @@ describe('OnboardingModal', () => {
   });
 
   describe('Completion', () => {
-    it('emits complete event with selected screen on finish', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-
-      // Navigate to final step
-      await wrapper.find('.btn-primary').trigger('click'); // Profile
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Features
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Quick Start
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Ready
+    it('emits complete with ChatScreen when Start Building is clicked', async () => {
+      wrapper = createWrapper({}, { connectedApps: ['openai'] });
+      wrapper.vm.currentStep = wrapper.vm.finalStep;
       await wrapper.vm.$nextTick();
 
-      // Click Start Building
       await wrapper.find('.btn-primary').trigger('click');
-      await wrapper.vm.$nextTick();
+      await flushPromises();
 
       expect(wrapper.emitted('complete')).toBeTruthy();
       expect(wrapper.emitted('complete')[0]).toEqual(['ChatScreen']);
     });
 
-    it('emits complete with selected quick start option', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
+    it('persists a changed workspace root before completing', async () => {
+      const { updateSettings } = await import('@/services/fileSystemService.js');
+      updateSettings.mockClear();
 
-      // Navigate to quick start step
-      await wrapper.find('.btn-primary').trigger('click'); // Profile
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Features
-      await wrapper.vm.$nextTick();
-      await wrapper.find('.btn-primary').trigger('click'); // Quick Start
-      await wrapper.vm.$nextTick();
+      wrapper = createWrapper({}, { connectedApps: ['openai'] });
+      await flushPromises();
 
-      // Select Workflow option
-      const options = wrapper.findAll('.quickstart-option');
-      await options[1].trigger('click');
+      wrapper.vm.workspaceRoot = '/home/user/custom-root';
+      wrapper.vm.currentStep = wrapper.vm.finalStep;
       await wrapper.vm.$nextTick();
 
-      // Continue to final step
-      await wrapper.find('.btn-primary').trigger('click'); // Ready
-      await wrapper.vm.$nextTick();
-
-      // Complete
       await wrapper.find('.btn-primary').trigger('click');
-      await wrapper.vm.$nextTick();
+      await flushPromises();
 
-      expect(wrapper.emitted('complete')[0]).toEqual(['WorkflowForgeScreen']);
+      expect(updateSettings).toHaveBeenCalledWith('/home/user/custom-root');
+      expect(wrapper.emitted('complete')).toBeTruthy();
     });
   });
 
@@ -588,8 +579,8 @@ describe('OnboardingModal', () => {
     it('handles API errors gracefully for pseudonym check', async () => {
       global.fetch.mockRejectedValueOnce(new Error('Network error'));
 
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      await wrapper.find('.btn-primary').trigger('click');
+      wrapper = createWrapper();
+      wrapper.vm.currentStep = 3;
       await wrapper.vm.$nextTick();
 
       await wrapper.find('#pseudonym').setValue('TestName');
@@ -606,8 +597,8 @@ describe('OnboardingModal', () => {
         headers: { get: () => 'text/html' },
       });
 
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      await wrapper.find('.btn-primary').trigger('click');
+      wrapper = createWrapper();
+      wrapper.vm.currentStep = 3;
       await wrapper.vm.$nextTick();
 
       await wrapper.find('#pseudonym').setValue('TestName');
@@ -619,8 +610,8 @@ describe('OnboardingModal', () => {
     });
 
     it('clears pseudonym status when input is empty', async () => {
-      wrapper = createWrapper({}, { currentProvider: 'Local' });
-      await wrapper.find('.btn-primary').trigger('click');
+      wrapper = createWrapper();
+      wrapper.vm.currentStep = 3;
       await wrapper.vm.$nextTick();
 
       await wrapper.find('#pseudonym').setValue('Test');

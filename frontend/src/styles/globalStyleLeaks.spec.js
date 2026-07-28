@@ -32,14 +32,35 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// Negative-control fixtures are written OUTSIDE src/. Vitest runs spec files in
+// parallel workers, and other guards (uiContracts.spec.js) walk src/ from disk —
+// a fixture that exists at readdir() time and is gone by readFileSync() time
+// makes those guards fail with ENOENT at random. findLeaks() only needs a
+// readable path, so keeping fixtures out of the scanned tree removes the race
+// entirely rather than making every reader defend against it.
+const tmpFixture = (name, contents) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-style-leak-'));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, contents);
+  return { file, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+};
+
 function vueFiles(dir, out = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return out; // removed mid-walk
+    throw err;
+  }
+  for (const entry of entries) {
     if (entry.name === 'node_modules') continue;
     const p = path.join(dir, entry.name);
     if (entry.isDirectory()) vueFiles(p, out);
@@ -92,7 +113,14 @@ describe('global style leaks', () => {
   });
 
   it('has no unscoped rule that hides a bare element selector', () => {
-    const leaks = files.flatMap(findLeaks);
+    const leaks = files.flatMap((file) => {
+      try {
+        return findLeaks(file);
+      } catch (err) {
+        if (err.code === 'ENOENT') return []; // vanished between listing and read
+        throw err;
+      }
+    });
     const report = leaks
       .map((l) => `  ${l.file}\n    ${l.selector} { ${l.declarations} }`)
       .join('\n');
@@ -110,21 +138,22 @@ describe('global style leaks', () => {
   it('detects the exact pattern that caused the regression', () => {
     // Negative control: the detector must actually fire on the original bug,
     // otherwise the assertion above proves nothing.
-    const tmp = path.join(SRC, '__leak_probe__.vue');
-    fs.writeFileSync(tmp, '<template><div/></template>\n<style>\nheader { display: none !important; }\n</style>\n');
+    const { file: tmp, cleanup } = tmpFixture(
+      '__leak_probe__.vue',
+      '<template><div/></template>\n<style>\nheader { display: none !important; }\n</style>\n',
+    );
     try {
       const found = findLeaks(tmp);
       expect(found).toHaveLength(1);
       expect(found[0].selector).toBe('header');
     } finally {
-      fs.unlinkSync(tmp);
+      cleanup();
     }
   });
 
   it('does not flag correctly-qualified or scoped rules', () => {
-    const tmp = path.join(SRC, '__leak_probe_ok__.vue');
-    fs.writeFileSync(
-      tmp,
+    const { file: tmp, cleanup } = tmpFixture(
+      '__leak_probe_ok__.vue',
       '<template><div/></template>\n' +
         "<style>\nbody[data-page='terminal-workflow-forge'] header { display: none !important; }\n.thing img { display: none; }\n</style>\n" +
         '<style scoped>\nheader { display: none; }\n</style>\n',
@@ -132,7 +161,7 @@ describe('global style leaks', () => {
     try {
       expect(findLeaks(tmp)).toEqual([]);
     } finally {
-      fs.unlinkSync(tmp);
+      cleanup();
     }
   });
 });

@@ -49,6 +49,19 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
     expect(promptClaude.length).toBeLessThan(promptOther.length);
   });
 
+  // Page-context blocks are assembled under a single 'CURRENT PAGE CONTEXT'
+  // header (see buildPageContextSection). They previously carried '## <Name>
+  // Context' headings; these assertions still named those and so could never
+  // pass. Markers below are the first line each block actually emits.
+  const PAGE_CONTEXT_HEADER = 'CURRENT PAGE CONTEXT';
+  const BLOCK_MARKERS = {
+    workflow: 'You are Annie, a workflow assistant',
+    widget: 'You are Annie, a helpful AI assistant specialized in creating, editing, and configuring AGNT dashboard widgets',
+    agent: 'You are Annie, a helpful AI assistant specialized in creating and managing AI agents',
+    tool: 'You are Annie, a helpful AI assistant specialized in creating, modifying, and testing custom AGNT tools',
+    goal: 'You are Annie, an intelligent goal orchestration assistant',
+  };
+
   it('injects workflow context block only when workflowId is present', async () => {
     const ctxNoWorkflow = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };
     const ctxWithWorkflow = {
@@ -60,8 +73,12 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
     const promptNo = await buildUnifiedSystemPrompt(ctxNoWorkflow, baseFrozen);
     const promptYes = await buildUnifiedSystemPrompt(ctxWithWorkflow, baseFrozen);
 
-    expect(promptNo).not.toContain('## Workflow Context');
-    expect(promptYes).toContain('## Workflow Context');
+    expect(promptNo).not.toContain(PAGE_CONTEXT_HEADER);
+    expect(promptNo).not.toContain(BLOCK_MARKERS.workflow);
+
+    expect(promptYes).toContain(PAGE_CONTEXT_HEADER);
+    expect(promptYes).toContain(BLOCK_MARKERS.workflow);
+    expect(promptYes).toContain('WORKFLOW CONTEXT:');
     expect(promptYes).toContain('wf-123');
   });
 
@@ -74,12 +91,12 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
       widgetState: { id: 'wid-1', name: 'My Widget', source_code: '<html></html>' },
     };
     const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
-    expect(prompt).toContain('## Widget Context');
-    expect(prompt).not.toContain('## Workflow Context');
-    expect(prompt).not.toContain('## Agent Context');
-    expect(prompt).not.toContain('## Tool Forge Context');
-    expect(prompt).not.toContain('## Artifact Context');
-    expect(prompt).not.toContain('## Goal Context');
+
+    expect(prompt).toContain(PAGE_CONTEXT_HEADER);
+    expect(prompt).toContain(BLOCK_MARKERS.widget);
+    for (const key of ['workflow', 'agent', 'tool', 'goal']) {
+      expect(prompt, `${key} block leaked into a widget-only context`).not.toContain(BLOCK_MARKERS[key]);
+    }
   });
 
   it('uses agent override persona when agentOverride is provided', async () => {

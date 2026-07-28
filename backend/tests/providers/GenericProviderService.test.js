@@ -16,7 +16,19 @@ vi.mock('node-fetch', () => ({
   default: vi.fn(),
 }));
 
+// getFallbackModels() consults a REAL on-disk store of the last successful
+// fetch per provider, which outranks the configured fallbacks. Unmocked, these
+// tests read whatever the host machine (or an earlier test) left behind, so
+// they leak state into one another and depend on the developer's environment.
+// Mocked to "nothing persisted" by default; the persisted-wins path gets its
+// own explicit test below.
+vi.mock('../../src/services/ai/lastModelsCache.js', () => ({
+  persistLastModels: vi.fn(),
+  getLastSuccessfulModels: vi.fn(() => null),
+}));
+
 import fetch from 'node-fetch';
+import { getLastSuccessfulModels } from '../../src/services/ai/lastModelsCache.js';
 
 function createService(overrides = {}) {
   return new GenericProviderService({
@@ -39,6 +51,7 @@ function mockFetchResponse(data, ok = true, status = 200) {
 describe('GenericProviderService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getLastSuccessfulModels.mockReturnValue(null);
   });
 
   describe('fetchModels', () => {
@@ -229,7 +242,7 @@ describe('GenericProviderService', () => {
 
     test('applies custom filter', async () => {
       const service = createService({
-        modelFilter: (m) => m.active !== false,
+        filterModel: (m) => m.active !== false,
       });
       mockFetchResponse({
         data: [
@@ -321,6 +334,16 @@ describe('GenericProviderService', () => {
 
       const fallbacks = service.getFallbackModels();
       expect(fallbacks).toEqual(customFallbacks);
+    });
+
+    test('prefers persisted last-successful models over configured fallbacks', () => {
+      const persisted = [{ id: 'from-last-run', name: 'From Last Run' }];
+      getLastSuccessfulModels.mockReturnValue(persisted);
+
+      const service = createService({ fallbackModelObjects: [{ id: 'configured' }] });
+
+      expect(service.getFallbackModels()).toEqual(persisted);
+      expect(getLastSuccessfulModels).toHaveBeenCalledWith('testprovider');
     });
   });
 });

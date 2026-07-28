@@ -1,6 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { createStore } from 'vuex';
 import TerminalLayout from './TerminalLayout.vue';
+
+// TerminalLayout resolves its background layer from the theme module. Mounting
+// without a store leaves useStore() undefined and every render throws on
+// `store.getters`. This mirrors the real theme module's read surface.
+const createThemeStore = (theme = {}) =>
+  createStore({
+    modules: {
+      theme: {
+        namespaced: true,
+        state: {
+          defaultBackgroundImage: '/assets/default-bg.png',
+          useCustomBackground: false,
+          currentThemeBackgroundImage: null,
+          currentBackgroundType: 'image',
+          ...theme,
+        },
+        getters: {
+          useCustomBackground: (s) => s.useCustomBackground,
+          currentThemeBackgroundImage: (s) => s.currentThemeBackgroundImage,
+          currentBackgroundType: (s) => s.currentBackgroundType,
+        },
+      },
+    },
+  });
 
 describe('TerminalLayout', () => {
   let wrapper;
@@ -38,19 +63,21 @@ describe('TerminalLayout', () => {
     vi.restoreAllMocks();
   });
 
-  const createWrapper = (props = {}) => {
+  const createWrapper = (props = {}, themeState = {}, slotOverride = null) => {
     return mount(TerminalLayout, {
       props: {
         ...props,
       },
       global: {
+        plugins: [createThemeStore(themeState)],
         stubs: {
+          teleport: true,
           SongPlayer: {
             template: '<div class="song-player-stub"></div>',
           },
         },
       },
-      slots: {
+      slots: slotOverride || {
         default: '<div class="slot-content">Terminal Content</div>',
       },
       attachTo: document.body,
@@ -372,15 +399,8 @@ describe('TerminalLayout', () => {
 
   describe('Slot Content', () => {
     it('renders custom slot content', async () => {
-      wrapper = mount(TerminalLayout, {
-        global: {
-          stubs: {
-            SongPlayer: true,
-          },
-        },
-        slots: {
-          default: '<div class="custom-content">Custom Terminal Content</div>',
-        },
+      wrapper = createWrapper({}, {}, {
+        default: '<div class="custom-content">Custom Terminal Content</div>',
       });
 
       vi.advanceTimersByTime(50);
@@ -391,15 +411,8 @@ describe('TerminalLayout', () => {
     });
 
     it('renders multiple elements in slot', async () => {
-      wrapper = mount(TerminalLayout, {
-        global: {
-          stubs: {
-            SongPlayer: true,
-          },
-        },
-        slots: {
-          default: '<div class="item1">Item 1</div><div class="item2">Item 2</div>',
-        },
+      wrapper = createWrapper({}, {}, {
+        default: '<div class="item1">Item 1</div><div class="item2">Item 2</div>',
       });
 
       vi.advanceTimersByTime(50);

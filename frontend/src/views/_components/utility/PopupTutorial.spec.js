@@ -13,6 +13,13 @@ describe('PopupTutorial', () => {
   ];
 
   beforeEach(() => {
+    // PopupTutorial persists completed steps to localStorage under
+    // `tutorial_<tutorialId>`, and jsdom shares one localStorage across every
+    // test in this file. Without clearing it, a tutorial completed by an
+    // earlier test is replayed as already-done in the next one and the popup
+    // closes before the assertions run.
+    localStorage.clear();
+
     // Create a real DOM element for mocking
     const mockElement = document.createElement('div');
     mockElement.id = 'target-element';

@@ -72,16 +72,24 @@ describe('getTokenLimit — provider-agnostic resolution', () => {
   const REASONING_RESPONSE_BUFFER = 32_000;
   const CODEX_SAFETY_MARGIN = 0.93;
 
-  it('falls back to the family-prefix heuristic for Codex gpt-5.5 when no metadata is registered', () => {
-    // Pre-condition: no entry registered for openai-codex/gpt-5.5
-    const meta = getModelMetadata('openai-codex', 'gpt-5.5');
-    if (meta?.contextWindow) {
-      // If a previous test or seed populated this, skip — heuristic test
-      // is meaningless when an exact match exists.
-      expect.fail('precondition: openai-codex/gpt-5.5 has registered metadata; heuristic path not exercised');
-    }
-    // gpt-5* heuristic = 400k, Codex reasoning buffer = 32k, Codex margin = 0.93
-    expect(getTokenLimit('gpt-5.5', 'openai-codex')).toBe(
+  // Originally pinned 'gpt-5.5' and required that NO metadata resolve for it.
+  // Both halves of that premise are now false: gpt-5.5 is catalogued, and
+  // providerConfigs grew inferGenericGpt5Metadata, which synthesises 400k
+  // metadata for ANY uncatalogued gpt-5.x on openai/openai-codex (so vision and
+  // tool support are not silently reported as false). The window it yields is
+  // the same 400k the old family-prefix heuristic produced, so the number below
+  // is unchanged — only the path that supplies it is. The guard now asserts the
+  // resolution really is INFERRED, which keeps the test from passing vacuously
+  // against a hardcoded entry.
+  const UNCATALOGUED_GPT5 = 'gpt-5.99';
+
+  it('resolves an uncatalogued Codex gpt-5.x model to the generic 400k gpt-5 window', () => {
+    const meta = getModelMetadata('openai-codex', UNCATALOGUED_GPT5);
+    expect(meta?.inferred, `precondition: ${UNCATALOGUED_GPT5} must resolve by inference, not a catalogue entry`).toBe(true);
+    expect(meta.contextWindow).toBe(400_000);
+
+    // 400k window, Codex reasoning buffer = 32k, Codex margin = 0.93
+    expect(getTokenLimit(UNCATALOGUED_GPT5, 'openai-codex')).toBe(
       Math.floor((400_000 - REASONING_RESPONSE_BUFFER) * CODEX_SAFETY_MARGIN),
     );
   });

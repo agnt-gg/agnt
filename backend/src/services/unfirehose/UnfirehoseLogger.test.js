@@ -27,9 +27,17 @@ async function readSessionLines(session) {
 }
 
 // === UNIT TESTS ===
+// Contract (see isEnabled in UnfirehoseLogger.js): logging is ON by default and
+// '0' is the ONLY value that turns it off. These tests previously encoded the
+// original opt-IN contract and kept failing after the default was flipped.
 describe('Unit: isEnabled', () => {
-  it('returns false by default', () => {
+  it('returns true by default', () => {
     delete process.env.UNFIREHOSE_ENABLED;
+    expect(isEnabled()).toBe(true);
+  });
+
+  it('returns false only for the explicit opt-out UNFIREHOSE_ENABLED=0', () => {
+    process.env.UNFIREHOSE_ENABLED = '0';
     expect(isEnabled()).toBe(false);
   });
 
@@ -38,9 +46,9 @@ describe('Unit: isEnabled', () => {
     expect(isEnabled()).toBe(true);
   });
 
-  it('returns false for other UNFIREHOSE_ENABLED values', () => {
+  it('treats any other value as enabled', () => {
     process.env.UNFIREHOSE_ENABLED = 'true';
-    expect(isEnabled()).toBe(false);
+    expect(isEnabled()).toBe(true);
   });
 });
 

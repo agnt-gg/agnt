@@ -63,6 +63,10 @@ describe('ResourcesSection', () => {
     const wrapper = mount(ResourcesSection, {
       global: {
         stubs: {
+          // The feedback board renders inside <Teleport to="body">; without this
+          // stub its markup escapes the wrapper subtree and every find() below
+          // returns an empty DOMWrapper.
+          teleport: true,
           SimpleModal: {
             template: '<div class="simple-modal-stub"></div>',
             methods: {
@@ -323,11 +327,14 @@ describe('ResourcesSection', () => {
       wrapper = createWrapper();
       await openSubmitForm();
 
-      const submitBtn = wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit'));
-      expect(submitBtn.attributes('disabled')).toBeDefined();
+      const findSubmit = () => wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit'));
+      expect(findSubmit().attributes('disabled')).toBeDefined();
 
       await wrapper.find('.form-input').setValue('My idea');
-      expect(submitBtn.attributes('disabled')).toBeUndefined();
+      // Re-query rather than reusing the pre-render wrapper: the teleport stub
+      // rebuilds its slot subtree, so the earlier element is detached. (The real
+      // <Teleport> patches in place — verified — so this is a harness detail only.)
+      expect(findSubmit().attributes('disabled')).toBeUndefined();
     });
 
     it('submits the feedback item to the API', async () => {

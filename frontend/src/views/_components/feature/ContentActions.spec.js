@@ -116,33 +116,26 @@ describe('SharedContentActions', () => {
     expect(wrapper.find('.content-actions-wrapper').exists()).toBe(true);
   });
 
-  it('has a copy button', () => {
-    const copyButton = wrapper.find('button[title="Copy"]');
-    expect(copyButton.exists()).toBe(true);
-  });
+  // Action buttons are labelled by the shared <Tooltip> wrapper rather than a
+  // native title attribute, so look the button up through its tooltip text.
+  const actionButton = (label) => {
+    const tip = wrapper.findAllComponents({ name: 'Tooltip' }).find((t) => t.props('text') === label);
+    return tip ? tip.find('button') : null;
+  };
 
-  it('has a clear content button', () => {
-    const clearButton = wrapper.find('button[title="Clear Content"]');
-    expect(clearButton.exists()).toBe(true);
-  });
+  it.each([['Copy'], ['Clear Content'], ['Delete Content'], ['Save'], ['Import'], ['Share'], ['Download PDF']])(
+    'has a %s action button',
+    (label) => {
+      const button = actionButton(label);
+      expect(button, `no Tooltip labelled "${label}"`).not.toBeNull();
+      expect(button.exists()).toBe(true);
+    }
+  );
 
-  it('has a delete content button', () => {
-    const deleteButton = wrapper.find('button[title="Delete Content"]');
-    expect(deleteButton.exists()).toBe(true);
-  });
-
-  it('has a save button', () => {
-    const saveButton = wrapper.find('button[title="Save"]');
-    expect(saveButton.exists()).toBe(true);
-  });
-
-  it('has an import button', () => {
-    const importButton = wrapper.find('button[title="Import"]');
-    expect(importButton.exists()).toBe(true);
-  });
-
-  it('has a share button', () => {
-    const shareButton = wrapper.find('button[title="Share"]');
-    expect(shareButton.exists()).toBe(true);
+  it('exposes exactly the expected set of labelled actions', () => {
+    const labels = wrapper.findAllComponents({ name: 'Tooltip' }).map((t) => t.props('text'));
+    expect([...labels].sort()).toEqual(
+      ['Clear Content', 'Copy', 'Delete Content', 'Download PDF', 'Import', 'Save', 'Share'].sort()
+    );
   });
 });

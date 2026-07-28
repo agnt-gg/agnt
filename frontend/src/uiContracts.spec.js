@@ -40,8 +40,30 @@ const FA_CSS = path.resolve(SRC, '..', 'public', 'vendor', 'fontawesome', 'css',
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist']);
 
+/**
+ * Read a file, returning null if it disappeared between the directory listing
+ * and the read. A source tree is a live filesystem — editors, build tooling and
+ * parallel test workers all create and remove files under it — so a walker that
+ * assumes every entry it just listed still exists is a latent flake.
+ */
+function readIfPresent(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
 function walk(dir, test, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return out; // directory removed mid-walk
+    throw err;
+  }
+  for (const e of entries) {
     if (SKIP_DIRS.has(e.name)) continue;
     const fp = path.join(dir, e.name);
     if (e.isDirectory()) walk(fp, test, out);
@@ -80,7 +102,8 @@ describe('icon names resolve against the vendored Font Awesome', () => {
   it('every fa-* class used in source exists in the stylesheet', () => {
     const offenders = new Map();
     for (const file of walk(SRC, (n) => /\.(vue|js)$/.test(n) && !/\.(spec|test)\./.test(n))) {
-      const text = fs.readFileSync(file, 'utf8');
+      const text = readIfPresent(file);
+      if (text === null) continue;
       for (const m of text.matchAll(/\bfa-([a-z0-9-]+)/g)) {
         const name = m[1];
         if (FA_MODIFIERS.test(name) || defined.has(name) || ALLOWED_MISSING_ICONS.has(name)) continue;
@@ -102,7 +125,8 @@ describe('icon names resolve against the vendored Font Awesome', () => {
   it('keeps the allowlist honest (no stale entries)', () => {
     const used = new Set();
     for (const file of walk(SRC, (n) => /\.(vue|js)$/.test(n) && !/\.(spec|test)\./.test(n))) {
-      const text = fs.readFileSync(file, 'utf8');
+      const text = readIfPresent(file);
+      if (text === null) continue;
       for (const m of text.matchAll(/\bfa-([a-z0-9-]+)/g)) used.add(m[1]);
     }
     const stale = [...ALLOWED_MISSING_ICONS.keys()].filter((n) => !used.has(n));
@@ -128,7 +152,8 @@ describe('every imported component is registered', () => {
     const offenders = [];
 
     for (const file of walk(SRC, (n) => n.endsWith('.vue'))) {
-      const raw = fs.readFileSync(file, 'utf8');
+      const raw = readIfPresent(file);
+      if (raw === null) continue;
 
       // <script setup> auto-registers imports — this class of bug can't occur.
       if (/<script[^>]*\ssetup[\s>]/.test(raw)) continue;

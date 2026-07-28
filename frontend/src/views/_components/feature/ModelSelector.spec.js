@@ -34,6 +34,11 @@ const createMockStore = () => {
             anthropic: ['claude-3'],
           },
         },
+        getters: {
+          // ModelSelector reads its provider list from this getter; without it
+          // `providers.value` is undefined and providerOptions throws on .map().
+          filteredProviders: (state) => state.providers,
+        },
         actions: {
           fetchProviderModels: vi.fn(() => Promise.resolve()),
         },

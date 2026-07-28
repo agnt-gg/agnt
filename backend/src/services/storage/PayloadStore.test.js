@@ -300,12 +300,42 @@ describe('PayloadStore — failure modes', () => {
 });
 
 describe('PayloadStore — concurrency', () => {
+  // Asserts the guaranteed contract, not envelope-string identity. pack() is
+  // explicitly allowed to fall back to an inline write when the blob store
+  // errors ("the blob store is an optimization, never a correctness
+  // dependency") — under full-suite I/O contention on Windows one of 40
+  // concurrent packs can legitimately take that path, which made the old
+  // `new Set(results).size === 1` assertion fail intermittently. What must
+  // ALWAYS hold: every result round-trips, and everything that did externalize
+  // shares one hash backed by exactly one blob on disk (the dedup win).
   it('handles many concurrent writes of identical content', async () => {
     const v = { shared: bigText(150_000, 'concurrent') };
     const results = await Promise.all(Array.from({ length: 40 }, () => PayloadStore.pack(v)));
-    expect(new Set(results).size).toBe(1);
+
+    // 1. Correctness is unconditional.
     const back = await Promise.all(results.map((r) => PayloadStore.unpack(r)));
     for (const b of back) expect(b).toEqual(v);
+
+    // 2. Dedup: every externalized result points at the same content hash.
+    const hashes = new Set(
+      results
+        .map((r) => { try { return JSON.parse(r); } catch { return null; } })
+        .filter((e) => e && e.h)
+        .map((e) => e.h),
+    );
+    expect(hashes.size, 'identical content must resolve to a single content hash').toBe(1);
+
+    // 3. ...backed by exactly one file, with no temp files stranded by the
+    //    39 writers that lost the race. Scoped to this hash: the ab/cd/ fanout
+    //    directory is shared, so other payloads may legitimately live here.
+    const [hash] = [...hashes];
+    const blobPath = blobPathFor(hash);
+    expect(fs.existsSync(blobPath)).toBe(true);
+
+    const leafDir = path.dirname(blobPath);
+    const entries = await fsp.readdir(leafDir);
+    expect(entries.filter((n) => n === hash)).toEqual([hash]);
+    expect(entries.filter((n) => n.startsWith(hash) && n.endsWith('.tmp'))).toEqual([]);
   });
 
   it('handles concurrent writes of distinct content', async () => {
