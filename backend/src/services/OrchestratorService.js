@@ -1672,10 +1672,22 @@ IMPORTANT: The image data is already available in the system context. You don't 
       const output = usage.completion_tokens || usage.output_tokens || 0;
       tokenAccumulator.outputTokens += output;
 
+      // Cache tokens observed in THIS round. Turn end is far too late to be the
+      // only cache signal: an agentic turn runs for tens of minutes making
+      // cached requests the whole way through, so a panel fed only by
+      // `agent_execution_completed` reported a provably-warm cache as "gone
+      // cold" for the entire duration of the very turn that was hitting it.
+      // Every round that comes back with cache tokens is a CONFIRMED
+      // observation that the prefix was alive at that instant -- report it then.
+      let roundCacheRead = 0;
+      let roundCacheWrite = 0;
+
       const cacheRead = usage.cache_read_input_tokens || 0;
       const cacheWrite = usage.cache_creation_input_tokens || 0;
 
       if (cacheRead > 0 || cacheWrite > 0) {
+        roundCacheRead = cacheRead;
+        roundCacheWrite = cacheWrite;
         // Anthropic: input_tokens is ONLY the uncached portion
         // Total input = uncached + cache_read + cache_creation
         const uncached = usage.input_tokens || 0;
@@ -1715,10 +1727,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
           ?? 0;
         if (cachedReadTokens > 0) {
           tokenAccumulator.cacheReadTokens += cachedReadTokens;
+          roundCacheRead = cachedReadTokens;
         }
       }
 
       tokenAccumulator.totalTokens = tokenAccumulator.inputTokens + tokenAccumulator.outputTokens;
+
+      if (roundCacheRead > 0 || roundCacheWrite > 0) {
+        sendEvent('cache_activity', {
+          at: new Date().toISOString(),
+          round: conversationContext._turnRound || 1,
+          cacheReadTokens: roundCacheRead,
+          cacheCreationTokens: roundCacheWrite,
+        });
+      }
     }
 
     // Send initial assistant message

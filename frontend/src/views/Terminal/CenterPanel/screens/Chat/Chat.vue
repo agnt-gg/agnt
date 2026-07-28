@@ -1381,6 +1381,13 @@ export default {
           }
           if (isActiveView) isProcessing.value = false;
           break;
+        case 'cache_activity':
+          // A round just reported cache read/write tokens, so the prefix was
+          // provably alive at that moment. Without this the freshness clock
+          // only ever advanced at turn end, and a 40-minute agentic turn read
+          // as "cache likely cold" the whole time it was hitting the cache.
+          if (ms) ms.lastCacheActivityAt = data?.at || new Date().toISOString();
+          break;
         case 'context_manifest':
           if (ms) {
             ms.lastManifest = data || null;

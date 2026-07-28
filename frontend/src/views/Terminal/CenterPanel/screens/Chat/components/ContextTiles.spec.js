@@ -458,6 +458,19 @@ describe('ContextTiles — prompt cache freshness', () => {
     expect(tileByLabel(w, 'Saved').find('.tile-sub').text()).toContain('cache warm');
   });
 
+  it('REGRESSION: a fresh signal mid-turn flips a cold reading back to warm', async () => {
+    // The clock used to advance only at turn end, so a long agentic turn read
+    // as cold for its whole duration while it was hitting the cache every
+    // round. The backend now reports per round; the panel must react to it.
+    const w = make(anthropic(6.5 * HOUR));
+    expect(tileByLabel(w, 'Saved').find('.tile-sub').text()).toContain('cache likely cold');
+
+    await w.setProps({ lastCacheActivityAt: at(30_000) });
+    const sub = tileByLabel(w, 'Saved').find('.tile-sub');
+    expect(sub.text()).toContain('cache warm');
+    expect(sub.classes()).not.toContain('warn');
+  });
+
   it('reports remaining life in hours and minutes while warm', () => {
     const w = make(anthropic(5 * 60_000));
     expect(tileByLabel(w, 'Saved').find('.tile-sub').text()).toMatch(/~55m left/);
