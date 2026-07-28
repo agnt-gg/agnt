@@ -854,6 +854,25 @@ export default {
   position: relative;
 }
 
+/* Flush against the toolbar above, in BOTH background modes.
+ *
+ * The tab bar is drawn to hang off the top edge — `border-top: none` and a
+ * `0 0 16px 16px` radius — so any top gutter visibly detaches it. The
+ * dashboard's gutter rule is about the canvas's OUTER FRAME; this one edge
+ * belongs to the child, so the child declares it. That keeps the parent rule a
+ * contract instead of re-growing the page-keyed special case it replaced, and
+ * "only the workspace page" is structural — `.ws-root` exists nowhere else.
+ *
+ * Both selectors are needed to outrank the gutter deterministically without
+ * !important: scoped, `.cv-dashboard > *` resolves to (0,2,0) and its
+ * `.custom-bg` variant to (0,3,0), so `body .ws-root` (0,2,1) wins the first
+ * and `body.custom-bg .ws-root` (0,3,1) wins the second. A bare `.ws-root`
+ * (0,2,0) would only TIE the base rule and lose the custom-background one. */
+body .ws-root,
+body.custom-bg .ws-root {
+  margin-top: 0;
+}
+
 /* Over a custom background the canvas is a WINDOW, not a surface: the
    wallpaper shows through and the widget frames become the glass (see
    `body.custom-bg .widget-frame` in WidgetFrame.vue). The custom-page canvas

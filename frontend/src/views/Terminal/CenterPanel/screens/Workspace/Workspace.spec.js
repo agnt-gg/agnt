@@ -1444,6 +1444,32 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(read('Workspace.vue')).toContain("provide('isInsideWidgetCanvas', true)");
   });
 
+  it('sits FLUSH against the toolbar above it in both background modes', () => {
+    // The tab bar is drawn to hang off the top edge (border-top: none, radius
+    // 0 0 16px 16px), so any top gutter visibly detaches it. The child owns
+    // that one edge; the parent rule stays a contract.
+    const body = read('Workspace.vue').replace(/\/\*[\s\S]*?\*\//g, '');
+
+    const rule = body.match(/body \.ws-root,\s*body\.custom-bg \.ws-root\s*\{([^}]*)\}/);
+    expect(rule, 'the flush-top rule must name BOTH selectors — a bare .ws-root only ties the base gutter (0,2,0) and loses the custom-background one (0,3,0)').not.toBeNull();
+    expect(rule[1]).toMatch(/margin-top:\s*0\s*;/);
+    expect(rule[1], 'specificity is sufficient, so no !important').not.toContain('!important');
+
+    // It must NOT come back as a page-keyed override on the parent — that is
+    // the exception-list shape the gutter contract replaced.
+    expect(body).not.toContain("[data-page='terminal-workspace']");
+
+    // ...and above all it must not be bought by zeroing the top gutter for
+    // EVERY child: that would flush the custom-page canvas too, and there the
+    // wallpaper is supposed to show on all four sides.
+    const fs2 = require('node:fs');
+    const path2 = require('node:path');
+    const cs = fs2.readFileSync(path2.join(__dirname, '../../../../../canvas/CanvasScreen.vue'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const gutter = cs.match(/\.custom-bg \.cv-dashboard > \*\s*\{([^}]*)\}/);
+    expect(gutter).not.toBeNull();
+    expect(gutter[1], 'the shared gutter stays 4px on ALL FOUR sides').toMatch(/margin:\s*4px\s*;/);
+  });
   it('takes the dashboard gutter from ONE rule that is conditional on the background', () => {
     // The gutter rule used to read `:not(.widget-canvas)`, exempting the
     // canvas from the custom-background 4px margin. That was correct while
