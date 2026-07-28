@@ -81,7 +81,7 @@
          nothing for them. The image has to be shown in-page. -->
     <div v-if="lightboxImage" class="image-lightbox" @click="closeImageModal">
       <img :src="lightboxImage" alt="Review image" class="lightbox-img" @click.stop />
-      <button type="button" class="lightbox-close" title="Close" @click.stop="closeImageModal">
+      <button type="button" class="lightbox-close" v-tooltip="'Close'" @click.stop="closeImageModal">
         <i class="fas fa-times"></i>
       </button>
     </div>

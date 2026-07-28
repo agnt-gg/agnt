@@ -54,18 +54,24 @@
             <div class="modal-body">
               <div class="form-group">
                 <label>Skill <span class="required">*</span></label>
-                <select v-model="generateForm.skillId" class="form-input">
-                  <option value="">Select a skill...</option>
-                  <option v-for="skill in availableSkills" :key="skill.id" :value="skill.id">{{ skill.name }}</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="generateForm.skillId"
+                  placeholder="Select a skill..."
+                  :options="availableSkills.map((skill) => ({ label: skill.name, value: skill.id }))"
+                />
               </div>
               <div class="form-group">
                 <label>Source</label>
-                <select v-model="generateForm.source" class="form-input">
-                  <option value="synthetic">Synthetic (LLM-generated)</option>
-                  <option value="historical">From History / Golden Standards</option>
-                  <option value="golden">From Golden Standards (by category)</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="generateForm.source"
+                  :options="[
+                    { label: 'Synthetic (LLM-generated)', value: 'synthetic' },
+                    { label: 'From History / Golden Standards', value: 'historical' },
+                    { label: 'From Golden Standards (by category)', value: 'golden' },
+                  ]"
+                />
               </div>
               <div class="form-group">
                 <label>Category (optional)</label>
@@ -90,6 +96,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';

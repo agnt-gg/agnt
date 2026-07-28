@@ -4,10 +4,12 @@
     <CustomSelect
       ref="customSelect"
       :options="formattedOptions"
+      :model-value="modelValue"
+      :disabled="disabled"
       :placeholder="placeholder || 'Select an option'"
       :maxHeight="maxHeight"
       :zIndex="zIndex"
-      @option-selected="handleOptionSelected"
+      @update:model-value="$emit('update:modelValue', $event)"
       :class="['base-select-wrapper', selectClass]"
     />
   </div>
@@ -53,30 +55,8 @@ export default {
       }));
     },
   },
-  methods: {
-    handleOptionSelected(option) {
-      this.$emit('update:modelValue', option.value);
-    },
-  },
-  mounted() {
-    // Set initial selected option if modelValue is provided
-    this.$nextTick(() => {
-      if (this.modelValue) {
-        const selectedOption = this.formattedOptions.find((opt) => opt.value === this.modelValue);
-        if (selectedOption && this.$refs.customSelect) {
-          this.$refs.customSelect.setSelectedOption(selectedOption);
-        }
-      }
-    });
-  },
-  watch: {
-    modelValue(newValue) {
-      // Update selected option when modelValue changes externally
-      const selectedOption = this.formattedOptions.find((opt) => opt.value === newValue);
-      if (selectedOption && this.$refs.customSelect) {
-        this.$refs.customSelect.setSelectedOption(selectedOption);
-      }
-    },
-  },
+  // No mounted/watch sync: CustomSelect derives its display from modelValue, so
+  // the mirror this component used to maintain can only ever be a source of
+  // drift and a one-frame placeholder flash.
 };
 </script>

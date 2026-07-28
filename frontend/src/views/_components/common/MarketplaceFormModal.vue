@@ -42,10 +42,11 @@
           <!-- Category -->
           <div class="form-group">
             <label>Category <span class="required">*</span></label>
-            <select v-model="formData.category" required>
-              <option value="">Select a category</option>
-              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-            </select>
+            <CustomSelect
+              v-model="formData.category"
+              placeholder="Select a category"
+              :options="categories.map((cat) => ({ label: cat, value: cat }))"
+            />
           </div>
 
           <!-- Tags -->
@@ -151,6 +152,7 @@
 
 <script>
 import { ref, computed, watch } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ImageUpload from '@/views/_components/common/ImageUpload.vue';
@@ -158,6 +160,7 @@ import ImageUpload from '@/views/_components/common/ImageUpload.vue';
 export default {
   name: 'MarketplaceFormModal',
   components: {
+    CustomSelect,
     SimpleModal,
     ImageUpload,
   },

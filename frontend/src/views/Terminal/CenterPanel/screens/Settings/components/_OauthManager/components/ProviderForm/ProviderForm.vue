@@ -27,10 +27,13 @@
       </div>
       <div class="form-group">
         <label for="connectionType">Connection Type:</label>
-        <select id="connectionType" v-model="form.connectionType" required>
-          <option value="oauth">OAuth</option>
-          <option value="apikey">API Key</option>
-        </select>
+        <CustomSelect
+          v-model="form.connectionType"
+          :options="[
+            { label: 'OAuth', value: 'oauth' },
+            { label: 'API Key', value: 'apikey' },
+          ]"
+        />
       </div>
       <div class="form-group">
         <label for="instructions">Instructions:</label>
@@ -55,6 +58,7 @@ import { ref, computed, watch } from "vue";
 import { useStore } from "vuex";
 import { API_CONFIG } from "@/tt.config.js";
 import SimpleModal from "@/views/_components/common/SimpleModal.vue";
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 const store = useStore();
 

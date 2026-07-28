@@ -37,17 +37,21 @@
               </div>
               <div class="form-group">
                 <label>Skill to Test <span class="required">*</span></label>
-                <select v-model="form.skillId" class="form-input">
-                  <option value="">Select a skill...</option>
-                  <option v-for="skill in availableSkills" :key="skill.id" :value="skill.id">{{ skill.name }}</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="form.skillId"
+                  placeholder="Select a skill..."
+                  :options="availableSkills.map((skill) => ({ label: skill.name, value: skill.id }))"
+                />
               </div>
               <div class="form-group">
                 <label>Source Goal (optional)</label>
-                <select v-model="form.goalId" class="form-input">
-                  <option value="">No goal linked</option>
-                  <option v-for="goal in availableGoals" :key="goal.id" :value="goal.id">{{ goal.title }}</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="form.goalId"
+                  placeholder="No goal linked"
+                  :options="availableGoals.map((goal) => ({ label: goal.title, value: goal.id }))"
+                />
               </div>
             </section>
 
@@ -77,10 +81,12 @@
               </div>
               <div v-if="form.datasetStrategy === 'existing'" class="form-group">
                 <label>Select Dataset</label>
-                <select v-model="form.datasetId" class="form-input">
-                  <option value="">Select a dataset...</option>
-                  <option v-for="ds in availableDatasets" :key="ds.id" :value="ds.id">{{ ds.name }} ({{ ds.items?.length || 0 }} items)</option>
-                </select>
+                <CustomSelect
+                  class="form-input"
+                  v-model="form.datasetId"
+                  placeholder="Select a dataset..."
+                  :options="availableDatasets.map((ds) => ({ label: `${ds.name} (${ds.items?.length || 0} items)`, value: ds.id }))"
+                />
               </div>
             </section>
 
@@ -136,6 +142,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';

@@ -113,7 +113,7 @@
             <button
               v-if="selectedWorkflow.publisher_id"
               class="publisher-link"
-              :title="`View ${selectedWorkflow.publisher_pseudonym || 'publisher'}'s profile`"
+              v-tooltip="`View ${selectedWorkflow.publisher_pseudonym || 'publisher'}'s profile`"
               @click="viewPublisher"
             >
               {{ selectedWorkflow.publisher_pseudonym || 'Anonymous Publisher' }}

@@ -4,11 +4,7 @@
     <!-- Search Bar -->
     <div v-if="showSearch" class="search-bar">
       <input type="text" :value="searchValue" :placeholder="searchPlaceholder" class="search-input" @input="handleSearch" />
-      <select v-if="showSortDropdown" v-model="sortOrder" class="sort-select">
-        <option v-for="option in sortOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
+      <CustomSelect v-if="showSortDropdown" class="sort-select" v-model="sortOrder" :options="sortOptions" />
     </div>
 
     <!-- Table -->
@@ -61,9 +57,11 @@
 <script>
 import { ref, computed, watch, inject, onMounted, onUnmounted, nextTick } from 'vue';
 import { useCleanup } from '@/composables/useCleanup';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 export default {
   name: 'BaseTable',
+  components: { CustomSelect },
   props: {
     items: {
       type: Array,

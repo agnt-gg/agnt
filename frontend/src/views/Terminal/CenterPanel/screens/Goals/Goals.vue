@@ -259,17 +259,13 @@
                 </div>
 
                 <template v-if="scheduleType === 'interval'">
-                  <select v-model="intervalSchedule" class="interval-select">
-                    <option v-for="opt in intervalOptions" :key="opt" :value="opt">{{ opt }}</option>
-                  </select>
+                  <CustomSelect class="interval-select" v-model="intervalSchedule" :options="intervalOptions.map((opt) => ({ label: opt, value: opt }))" />
                 </template>
 
                 <template v-if="scheduleType === 'specific'">
                   <div class="cron-row">
                     <input v-model="specificTime" type="time" class="time-input" />
-                    <select v-model="timezone" class="tz-select">
-                      <option v-for="tz in commonTimezones" :key="tz" :value="tz">{{ tz }}</option>
-                    </select>
+                    <CustomSelect class="tz-select" v-model="timezone" :options="commonTimezones.map((tz) => ({ label: tz, value: tz }))" />
                   </div>
                   <div class="days-picker">
                     <button
@@ -341,6 +337,7 @@
 <script>
 import { ref, computed, inject, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import GoalCard from './components/GoalCard.vue';
 import GoalsToolbar from './components/GoalsToolbar.vue';
@@ -398,6 +395,7 @@ const COMMON_TZ = [
 export default {
   name: 'GoalsScreen',
   components: {
+    CustomSelect,
     BaseScreen,
     GoalCard,
     GoalsToolbar,

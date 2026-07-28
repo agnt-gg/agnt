@@ -68,7 +68,7 @@
           <div v-if="images.length" class="image-thumbs">
             <div v-for="(image, index) in images" :key="index" class="image-thumb">
               <img :src="image" :alt="`Review image ${index + 1}`" />
-              <button type="button" class="thumb-remove" title="Remove image" @click="removeImage(index)">
+              <button type="button" class="thumb-remove" v-tooltip="'Remove image'" @click="removeImage(index)">
                 <i class="fas fa-times"></i>
               </button>
             </div>

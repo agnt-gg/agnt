@@ -328,7 +328,7 @@
                         <button
                           v-if="item.publisher_id"
                           class="mk-hero-author"
-                          :title="`View ${item.publisher_pseudonym || 'publisher'}'s profile`"
+                          v-tooltip="`View ${item.publisher_pseudonym || 'publisher'}'s profile`"
                           @click.stop="openProfile(item)"
                         >
                           {{ item.publisher_pseudonym || 'Anonymous' }}
@@ -408,9 +408,7 @@
                       {{ opt.label }}
                     </button>
                   </div>
-                  <select class="mk-sort" :value="filters.sortBy || 'popular'" @change="setSortBy($event.target.value)">
-                    <option v-for="o in sortOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-                  </select>
+                  <CustomSelect class="mk-sort" :model-value="filters.sortBy || 'popular'" :options="sortOptions" @update:model-value="setSortBy($event)" />
                 </div>
                 <div class="mk-tb-row mk-tb-filters">
                   <span class="mk-tb-label">Filter</span>
@@ -430,7 +428,7 @@
                       </button>
                     </div>
                   </div>
-                  <button class="mk-rail-next" :class="{ hide: !railHasMore }" title="More categories" @click="scrollRail">
+                  <button class="mk-rail-next" :class="{ hide: !railHasMore }" v-tooltip="'More categories'" @click="scrollRail">
                     <i class="fas fa-chevron-right"></i>
                   </button>
                 </div>
@@ -504,7 +502,7 @@
                       <button
                         v-if="!profileUserId && item.publisher_id"
                         class="mk-card-author is-link"
-                        :title="`View ${item.publisher_pseudonym || 'publisher'}'s profile`"
+                        v-tooltip="`View ${item.publisher_pseudonym || 'publisher'}'s profile`"
                         @click.stop="openProfile(item)"
                       >
                         {{ item.publisher_pseudonym || 'Anonymous' }}
@@ -549,7 +547,7 @@
                     >
                       <i :class="installIcon(item)"></i>
                       <span class="mk-lbl">{{ installLabel(item) }}</span>
-                    </button>                    <button class="mk-ghost" title="Quick look" @click.stop="handleWorkflowClick(item)">
+                    </button>                    <button class="mk-ghost" v-tooltip="'Quick look'" @click.stop="handleWorkflowClick(item)">
                       <i class="fas fa-eye"></i><span class="mk-glabel">Quick look</span>
                     </button>
                   </div>
@@ -569,6 +567,7 @@
 <script>
 import { ref, computed, nextTick, inject, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTabControls from '../../../_components/BaseTabControls.vue';
 import BaseTable from '../../../_components/BaseTable.vue';import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -579,7 +578,7 @@ import { useMarketplaceTutorial } from './useMarketplaceTutorial.js';
 
 export default {
   name: 'MarketplaceScreen',
-  components: { BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial, Tooltip },
+  components: { CustomSelect, BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
     // Initialize tutorial

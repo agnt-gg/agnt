@@ -1,18 +1,33 @@
 <template>
-  <div class="custom-select" tabindex="0" ref="selectContainer">
-    <div class="selected" :class="{ open: isOpen }" @click="toggleDropdown(!isOpen)">{{ displayValue }}</div>
+  <div
+    class="custom-select"
+    :class="{ 'is-disabled': disabled }"
+    :tabindex="disabled ? -1 : 0"
+    ref="selectContainer"
+    role="combobox"
+    :aria-expanded="isOpen"
+    :aria-disabled="disabled"
+  >
+    <div class="selected" :class="{ open: isOpen, placeholder: !currentOption }" @click="toggleDropdown(!isOpen)" v-tooltip="displayValue">
+      <!-- The label needs its own box: text-overflow does not apply to a flex
+           container, so truncation has to happen on a flex CHILD or a long
+           option just runs through the border. -->
+      <span class="selected-label">{{ displayValue }}</span>
+    </div>
     <Teleport to="body">
       <div v-if="isOpen" class="options-container" :style="dropdownStyle" ref="optionsContainer" @click.stop>
         <div
           v-for="(option, index) in options"
           :key="index"
           class="option"
-          :class="[{ highlighted: index === selectedIndex }, { disabled: option.disabled }, option.class]"
+          :class="[{ highlighted: index === selectedIndex }, { selected: isCurrent(option) }, { disabled: option.disabled }, option.class]"
           tabindex="0"
+          role="option"
+          :aria-selected="isCurrent(option)"
           @click="selectOption(option)"
           @keydown.enter="selectOption(option)"
         >
-          <div class="option-inner">
+          <div class="option-inner" v-tooltip="option.label">
             {{ option.label }}
             <span v-if="option.disabled" class="not-connected"></span>
           </div>
@@ -23,6 +38,9 @@
 </template>
 
 <script>
+/** Breathing room kept between the open menu and the viewport edge. */
+const VIEWPORT_MARGIN_PX = 8;
+
 // Global event bus for coordinating dropdown state across all CustomSelect instances
 const dropdownEventBus = {
   listeners: new Set(),
@@ -43,6 +61,21 @@ export default {
     options: {
       type: Array,
       required: true,
+    },
+    /**
+     * v-model. When bound, the displayed option is DERIVED from this value on
+     * every render rather than copied into internal state, so the trigger can
+     * never disagree with the source of truth and there is no post-mount frame
+     * showing the placeholder. Leave it unbound to keep the legacy
+     * `ref.setSelectedOption()` behaviour.
+     */
+    modelValue: {
+      type: [String, Number, Boolean, Object, Array],
+      default: undefined,
+    },
+    disabled: {
+      type: Boolean,
+      default: false,
     },
     placeholder: {
       type: String,
@@ -75,12 +108,25 @@ export default {
     };
   },
   computed: {
+    // Unbound modelValue means the parent drives selection through the ref.
+    isControlled() {
+      return this.modelValue !== undefined;
+    },
+    currentOption() {
+      if (this.isControlled) {
+        return this.options.find((option) => option.value === this.modelValue) ?? null;
+      }
+      return this.selectedOption;
+    },
     displayValue() {
-      return this.selectedOption ? this.selectedOption.label : this.placeholder;
+      return this.currentOption ? this.currentOption.label : this.placeholder;
     },
   },
-  emits: ['option-selected'],
+  emits: ['option-selected', 'update:modelValue'],
   methods: {
+    isCurrent(option) {
+      return !!this.currentOption && this.currentOption.value === option.value;
+    },
     initDropdown() {
       const customSelect = this.$refs.selectContainer;
       customSelect.addEventListener('keydown', this.handleKeydown);
@@ -159,17 +205,42 @@ export default {
     updatePosition() {
       if (!this.isOpen || !this.$refs.selectContainer) return;
 
-      const rect = this.$refs.selectContainer.getBoundingClientRect();
+      const trigger = this.$refs.selectContainer;
+      const rect = trigger.getBoundingClientRect();
+
+      // The menu is teleported to <body>, so it inherits nothing from the
+      // consumer. Carry the trigger's own type scale across or the menu renders
+      // at a different size than the control it belongs to.
+      const { fontSize, fontFamily } = window.getComputedStyle(trigger);
+
+      // The menu floats free, so it does not have to inherit the trigger's
+      // width. Locking it there means a long option is unreadable ANYWHERE in
+      // the UI — truncating in an 80px toolbar control is defensible, but the
+      // menu is the one place the full label can always be shown. It grows to
+      // content, never shrinks below the trigger, and is clamped so it cannot
+      // run off the right edge of the viewport.
+      const room = window.innerWidth - rect.left - VIEWPORT_MARGIN_PX;
+      const maxWidth = Math.max(rect.width, room);
+
       this.dropdownStyle = {
         position: 'fixed',
         top: `${rect.bottom}px`,
         left: `${rect.left}px`,
-        width: `${rect.width}px`,
+        width: 'max-content',
+        minWidth: `${rect.width}px`,
+        maxWidth: `${maxWidth}px`,
         zIndex: this.zIndex,
         maxHeight: this.maxHeight,
+        fontSize,
+        fontFamily,
       };
     },
     toggleDropdown(show) {
+      if (this.disabled) {
+        this.isOpen = false;
+        return;
+      }
+
       if (show === undefined) {
         this.isOpen = !this.isOpen;
       } else {
@@ -177,6 +248,9 @@ export default {
       }
 
       if (this.isOpen) {
+        // Open on the current choice so keyboard navigation starts where the
+        // user actually is, not at the top of the list.
+        this.selectedIndex = this.options.findIndex((option) => this.isCurrent(option));
         // Notify other dropdowns to close when this one opens
         dropdownEventBus.emit(this.instanceId);
         this.$nextTick(() => {
@@ -191,6 +265,7 @@ export default {
       }
     },
     handleKeydown(event) {
+      if (this.disabled) return;
       if (!this.isOpen && event.key !== 'Enter' && event.key !== ' ') return;
 
       const options = this.options; // Use props directly as we don't query DOM for options anymore
@@ -239,9 +314,11 @@ export default {
       }
     },
     selectOption(option) {
-      if (option.disabled) return;
+      if (option.disabled || this.disabled) return;
 
+      // Kept for uncontrolled consumers; ignored when v-model is bound.
       this.selectedOption = option;
+      this.$emit('update:modelValue', option.value);
       this.$emit('option-selected', option);
 
       // Add a small delay before closing the dropdown
@@ -287,12 +364,20 @@ export default {
 <style scoped>
 /* CUSTOM SELECT STYLES - MOVED FROM GLOBAL CSS FILES */
 
+/*
+ * The default width has to LOSE to any call-site width, so it is declared at
+ * zero specificity. `.custom-select` and a caller's `.sort-select` are both a
+ * single class, so a normal rule here would tie and be settled by bundle order
+ * — which is how an 80px toolbar control silently became full-width.
+ */
+:where(.custom-select) {
+  width: calc(100% - 2px);
+}
+
 /* Base Custom Select Styles */
 .custom-select {
   position: relative;
   display: flex;
-  width: calc(100% - 2px);
-  height: 30px;
   flex-direction: row;
   font-weight: 400;
   flex-wrap: nowrap;
@@ -300,9 +385,34 @@ export default {
   align-items: center;
   justify-content: flex-start;
   user-select: none;
+}
+
+/*
+ * Chrome, doubled on purpose.
+ *
+ * Call sites carry classes that were written for a native <select> and mix
+ * layout (width/margin/height) with chrome (border/background/padding). Layout
+ * must survive the swap; chrome must not, or the control renders a border
+ * inside a border. A single-class consumer rule and a single-class rule here
+ * have identical specificity, so source order would decide it — repeating the
+ * class makes this deterministically win without reaching for !important.
+ * Height and width are deliberately absent: those belong to the caller.
+ */
+.custom-select.custom-select {
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 0;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
+}
+
+.custom-select.is-disabled {
+  opacity: 0.5;
+}
+
+.custom-select.is-disabled .selected {
+  cursor: not-allowed;
 }
 
 select.custom-select {
@@ -322,21 +432,38 @@ select.custom-select {
   padding: 0 8px;
   cursor: pointer;
   color: var(--color-text);
-  height: 32px;
-  transform: translateY(2px);
+  height: 100%;
+  min-height: 30px;
+  padding-right: 24px;
+  box-sizing: border-box;
   flex-direction: row;
   align-content: center;
   align-items: center;
   justify-content: flex-start;
   text-wrap: nowrap;
   overflow-x: hidden;
-  margin-top: -2px;
+  text-overflow: ellipsis;
+}
+
+.custom-select .selected-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-select .selected.placeholder {
+  color: var(--color-text-muted);
 }
 
 .option {
   position: relative;
   display: flex;
-  width: auto;
+  /* The menu now sizes to its widest option, so a narrower row must still
+     stretch or its hover and selection fills come out ragged. */
+  width: 100%;
+  box-sizing: border-box;
   padding: 0 8px;
   border-top: 1px solid var(--terminal-border-color);
   color: var(--color-text);
@@ -354,18 +481,30 @@ select.custom-select {
   content: '';
   position: absolute;
   right: 8px;
-  top: 38%;
+  top: 50%;
+  transform: translateY(-25%);
   margin: 0 !important;
   border: 5px solid transparent;
-  border-top-color: var(--terminal-border-color);
+  /* Was --terminal-border-color: #1f1f2f on a #10101f surface is about 1.3:1,
+     i.e. an affordance nobody can see. The muted text token is the app's
+     standard secondary chrome and clears 4.5:1 here. */
+  border-top-color: var(--color-text-muted);
 }
 
-.custom-select .selected.open {
-  opacity: 0.5;
-}
+/* The open state is already signalled by the flipped caret and the menu
+   itself. Dimming the whole trigger made a real selected value look disabled,
+   and recolouring it made the trigger read as another list item — so the value
+   simply keeps its normal treatment. */
 
 .custom-select .selected.open::after {
-  transform: translateY(-60%) rotate(180deg);
+  transform: translateY(-75%) rotate(180deg);
+}
+
+/* Two cues, not one: colour alone is a poor signal and a colour-blind user
+   would have nothing else to go on. */
+.option.selected {
+  color: var(--color-primary);
+  background-color: rgba(var(--primary-rgb), 0.08);
 }
 
 .options-container {
@@ -410,10 +549,22 @@ select.custom-select {
 
 .option-inner {
   height: fit-content;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.option.highlight {
-  color: var(--color-primary);
+/*
+ * The template applies `highlighted`; this rule used to say `highlight`, so
+ * keyboard navigation moved an invisible cursor — no error, nothing on screen.
+ */
+/* A tint of the accent rather than another dark layer: on a dark panel a
+   darker row recedes, so the keyboard cursor read as a hole in the list.
+   Tinting works on both the light and dark themes; a white overlay would not. */
+.option.highlighted {
+  background-color: rgba(var(--primary-rgb), 0.14);
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 
 .option.disabled:hover {

@@ -43,9 +43,7 @@
         <div class="cron-row">
           <label class="cron-label">Cron expression</label>
           <input v-model="cron" type="text" placeholder="*/15 * * * *" class="cron-input" />
-          <select v-model="timezone" class="tz-input">
-            <option v-for="tz in commonTimezones" :key="tz" :value="tz">{{ tz }}</option>
-          </select>
+          <CustomSelect class="tz-input" v-model="timezone" :options="commonTimezones.map((tz) => ({ label: tz, value: tz }))" />
         </div>
 
         <!-- Preview -->
@@ -77,6 +75,7 @@
 
 <script>
 import { computed, onMounted, ref, watch } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
@@ -98,7 +97,7 @@ export default {
     goal: { type: Object, required: true },
   },
   emits: ['close', 'created'],
-  components: { SimpleModal },
+  components: { CustomSelect, SimpleModal },
   setup(props, { emit }) {
     const store = useStore();
     const simpleModalRef = ref(null);

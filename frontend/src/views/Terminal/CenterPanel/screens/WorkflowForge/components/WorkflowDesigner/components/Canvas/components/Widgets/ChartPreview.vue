@@ -24,13 +24,18 @@
 
     <!-- Chart type selector -->
     <div v-if="hasChartData" class="chart-controls">
-      <select v-model="selectedChartType" @change="updateChart" class="chart-type-select">
-        <option value="bar">Bar Chart</option>
-        <option value="line">Line Chart</option>
-        <option value="pie">Pie Chart</option>
-        <option value="doughnut">Doughnut Chart</option>
-        <option value="radar">Radar Chart</option>
-      </select>
+      <CustomSelect
+        class="chart-type-select"
+        v-model="selectedChartType"
+        :options="[
+          { label: 'Bar Chart', value: 'bar' },
+          { label: 'Line Chart', value: 'line' },
+          { label: 'Pie Chart', value: 'pie' },
+          { label: 'Doughnut Chart', value: 'doughnut' },
+          { label: 'Radar Chart', value: 'radar' },
+        ]"
+        @update:model-value="updateChart"
+      />
     </div>
 
     <!-- Drag overlay -->
@@ -53,9 +58,11 @@
 
 <script>
 import WidgetBase from './WidgetBase.js';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 export default {
   name: 'ChartPreview',
+  components: { CustomSelect },
   mixins: [WidgetBase],
   props: {
     chartData: {

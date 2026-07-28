@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import MarketplaceFormModal from './MarketplaceFormModal.vue';
+import CustomSelect from './CustomSelect.vue';
+
+// The category picker is the shared CustomSelect, so it is driven through
+// its own contract instead of a native <select>'s DOM.
+const categoryPicker = (wrapper) => wrapper.findComponent(CustomSelect);
+const chooseCategory = async (wrapper, value) => {
+  categoryPicker(wrapper).vm.$emit('update:modelValue', value);
+  await wrapper.vm.$nextTick();
+};
 
 describe('MarketplaceFormModal', () => {
   let wrapper;
@@ -111,13 +120,16 @@ describe('MarketplaceFormModal', () => {
       wrapper = createWrapper();
       expect(wrapper.find('input[type="text"]').exists()).toBe(true);
       expect(wrapper.find('textarea').exists()).toBe(true);
-      expect(wrapper.find('select').exists()).toBe(true);
+      expect(categoryPicker(wrapper).exists()).toBe(true);
     });
 
     it('renders category options', () => {
       wrapper = createWrapper();
-      const options = wrapper.findAll('select option');
-      expect(options.length).toBe(defaultCategories.length + 1); // +1 for placeholder
+      const options = categoryPicker(wrapper).props('options');
+      // The placeholder is a prop now, not a sixth selectable option, so every
+      // entry in the list is a category a user can actually pick.
+      expect(options.map((o) => o.value)).toEqual(defaultCategories);
+      expect(categoryPicker(wrapper).props('placeholder')).toBe('Select a category');
     });
 
     it('renders close button', () => {
@@ -138,7 +150,7 @@ describe('MarketplaceFormModal', () => {
 
       expect(wrapper.find('input[type="text"]').element.value).toBe('Test Item');
       expect(wrapper.find('textarea').element.value).toBe('Test description');
-      expect(wrapper.find('select').element.value).toBe('Automation');
+      expect(categoryPicker(wrapper).props('modelValue')).toBe('Automation');
     });
 
     it('pre-fills tags from item', () => {
@@ -168,7 +180,7 @@ describe('MarketplaceFormModal', () => {
 
       await wrapper.find('input[type="text"]').setValue('Test Title');
       await wrapper.find('textarea').setValue('Test Description');
-      await wrapper.find('select').setValue('Automation');
+      await chooseCategory(wrapper, 'Automation');
 
       expect(wrapper.find('.publish-btn').attributes('disabled')).toBeUndefined();
     });
@@ -178,7 +190,7 @@ describe('MarketplaceFormModal', () => {
 
       await wrapper.find('input[type="text"]').setValue('Test Title');
       await wrapper.find('textarea').setValue('Test Description');
-      await wrapper.find('select').setValue('Automation');
+      await chooseCategory(wrapper, 'Automation');
       await wrapper.find('input[type="number"]').setValue(10);
       await wrapper.vm.$nextTick();
 
@@ -190,7 +202,7 @@ describe('MarketplaceFormModal', () => {
 
       await wrapper.find('input[type="text"]').setValue('Test Title');
       await wrapper.find('textarea').setValue('Test Description');
-      await wrapper.find('select').setValue('Automation');
+      await chooseCategory(wrapper, 'Automation');
       await wrapper.find('input[type="number"]').setValue(10);
 
       expect(wrapper.find('.publish-btn').attributes('disabled')).toBeUndefined();
@@ -342,7 +354,7 @@ describe('MarketplaceFormModal', () => {
 
       await wrapper.find('input[type="text"]').setValue('Updated Title');
       await wrapper.find('textarea').setValue('Updated Description');
-      await wrapper.find('select').setValue('Automation');
+      await chooseCategory(wrapper, 'Automation');
 
       await wrapper.find('form').trigger('submit');
 
@@ -359,7 +371,7 @@ describe('MarketplaceFormModal', () => {
 
       await wrapper.find('input[type="text"]').setValue('Test');
       await wrapper.find('textarea').setValue('Test');
-      await wrapper.find('select').setValue('Automation');
+      await chooseCategory(wrapper, 'Automation');
 
       await wrapper.find('form').trigger('submit');
 
@@ -375,7 +387,7 @@ describe('MarketplaceFormModal', () => {
 
       await wrapper.find('input[type="text"]').setValue('Test');
       await wrapper.find('textarea').setValue('Test');
-      await wrapper.find('select').setValue('Automation');
+      await chooseCategory(wrapper, 'Automation');
 
       await wrapper.find('form').trigger('submit');
 

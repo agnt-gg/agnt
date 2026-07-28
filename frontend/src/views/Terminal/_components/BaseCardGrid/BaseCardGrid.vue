@@ -4,11 +4,7 @@
     <!-- Search Bar -->
     <div v-if="showSearch" class="search-bar">
       <input type="text" v-model="searchQuery" :placeholder="searchPlaceholder" class="search-input" @input="handleSearch" />
-      <select v-model="sortOrder" class="sort-select">
-        <option v-for="option in sortOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
+      <CustomSelect class="sort-select" v-model="sortOrder" :options="sortOptions" />
     </div>
 
     <!-- Cards Grid -->
@@ -46,6 +42,7 @@
 
 <script>
 import { ref, computed, watch, inject } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import Card from './components/Card.vue';
 
 export default {
@@ -90,7 +87,7 @@ export default {
     },
   },
   emits: ['row-click', 'search'],
-  components: { Card },
+  components: { CustomSelect, Card },
   setup(props, { emit }) {
     const searchQuery = ref('');
     const playSound = inject('playSound', () => {});

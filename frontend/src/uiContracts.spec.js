@@ -1,9 +1,10 @@
 /**
- * UI CONTRACTS — two guards against SILENT rendering failures.
+ * UI CONTRACTS — four guards against defects the build cannot see.
  *
- * Both of these bit this codebase, and both are invisible: no console error, no
- * build warning, no failing test. You only find out because a human looks at
- * the screen and says "there's nothing there."
+ * The first two are invisible: no console error, no build warning, no failing
+ * test. You only find out because a human looks at the screen and says
+ * "there's nothing there." The third is visible but only to someone who knows
+ * what the control is supposed to look like.
  *
  * ---------------------------------------------------------------------------
  * GUARD 1 — icon names must exist in the VENDORED stylesheet
@@ -28,6 +29,32 @@
  * This is exactly how the Phone Access panel shipped blank: the import was
  * added, the registration was not, and the surrounding header markup made it
  * look like a styling bug rather than a missing component.
+ *
+ * ---------------------------------------------------------------------------
+ * GUARD 3 — dropdowns must use the shared CustomSelect
+ * ---------------------------------------------------------------------------
+ * A native <select> renders the operating system's dropdown: OS chrome, OS
+ * fonts, OS colours, ignoring the app theme entirely. It looks fine to whoever
+ * wrote it and wrong to everyone looking at the product.
+ *
+ * 37 of them had accumulated across 21 files by the time this guard was added,
+ * because nothing stopped the next one. `<select>` is what muscle memory and
+ * autocomplete produce, so without a check this regrows indefinitely.
+ *
+ * ---------------------------------------------------------------------------
+ * GUARD 4 — tooltips must use the app's tooltip, not the browser's
+ * ---------------------------------------------------------------------------
+ * A native `title` renders the OS tooltip: unstyled, ~1s delay, uncontrollable
+ * position, invisible on touch. 79 had accumulated across 32 files.
+ *
+ * They persisted even though a Tooltip component existed because that component
+ * is a WRAPPER, and a wrapper cannot go everywhere an attribute can — it breaks
+ * `.parent > el`, `el + el`, `:first-child`, percentage widths and flex/grid
+ * child sizing. `v-tooltip` is the attribute form and has no such limit.
+ *
+ * This guard also pins the directive's global registration, because an
+ * unregistered directive is inert: the attribute simply does not render, with
+ * no error in a production build.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -189,7 +216,7 @@ describe('every imported component is registered', () => {
     ).toBe(0);
   });
 
-  it('detects the failure it is meant to catch (self-test)', () => {
+  it('detects the missing registration it is meant to catch (self-test)', () => {
     // A miniature of the exact Phone Access bug, so this guard can never
     // silently degrade into a test that passes because it matches nothing.
     const broken = `
@@ -207,5 +234,165 @@ export default { components: { SomethingElse } };
     expect(imported).toContain('PhoneAccessSection');
     expect(registered.has('PhoneAccessSection')).toBe(false);
     expect(new RegExp(`<PhoneAccessSection[\\s/>]`).test(template)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════ GUARD 3
+
+/**
+ * Native <select> elements that are deliberately kept. Every entry needs a
+ * reason. "It was already there" is not a reason — that is the condition this
+ * guard exists to prevent.
+ */
+const ALLOWED_NATIVE_SELECTS = new Map();
+
+const findNativeSelects = (raw) => {
+  const template = /<template>([\s\S]*)<\/template>/.exec(stripNoise(raw))?.[1] ?? '';
+  return (template.match(/<select[\s>]/g) || []).length;
+};
+
+describe('dropdowns use the shared select component', () => {
+  it('no template renders a native <select>', () => {
+    const offenders = [];
+
+    for (const file of walk(SRC, (n) => n.endsWith('.vue'))) {
+      const raw = readIfPresent(file);
+      if (raw === null) continue;
+
+      const count = findNativeSelects(raw);
+      if (!count) continue;
+      if (ALLOWED_NATIVE_SELECTS.has(rel(file))) continue;
+
+      offenders.push(`${rel(file)} (${count})`);
+    }
+
+    const report = offenders.map((o) => `  ${o}`).join('\n');
+    expect(
+      offenders.length,
+      `\n${offenders.length} file(s) render a native <select>.\n` +
+        `These paint the OS dropdown instead of the app theme.\n` +
+        `Use <CustomSelect :options="[{ label, value }]" v-model="x" /> from\n` +
+        `@/views/_components/common/CustomSelect.vue instead.\n${report}\n`
+    ).toBe(0);
+  });
+
+  it('keeps the allowlist honest (no stale entries)', () => {
+    const stale = [...ALLOWED_NATIVE_SELECTS.keys()].filter((entry) => {
+      const raw = readIfPresent(path.join(SRC, entry));
+      return raw === null || findNativeSelects(raw) === 0;
+    });
+    expect(stale, `Stale allowlist entries (no native <select> there any more): ${stale.join(', ')}`).toEqual([]);
+  });
+
+  it('detects a native select it is meant to catch (self-test)', () => {
+    // Without this the guard could pass simply because the matcher is broken.
+    const broken = `<template><div><select v-model="x"><option value="a">A</option></select></div></template>`;
+    expect(findNativeSelects(broken)).toBe(1);
+
+    // ...and must not fire on the replacement, on a comment, or on CSS.
+    const fixed =
+      `<template><div><CustomSelect v-model="x" :options="opts" /></div></template>` +
+      `<!-- was a <select> before -->` +
+      `<style>select.custom-select { color: red; }</style>`;
+    expect(findNativeSelects(fixed)).toBe(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════ GUARD 4
+
+/**
+ * Native `title` attributes that are deliberately kept. Every entry needs a
+ * reason.
+ */
+const ALLOWED_NATIVE_TITLES = new Map([
+  [
+    'views/Terminal/CenterPanel/screens/__old-screens/_Goals/_Goals.vue',
+    'Dead code: nothing imports __old-screens. Editing it is risk with no user-visible benefit.',
+  ],
+]);
+
+/**
+ * Count native `title` attributes in a template.
+ *
+ * Three things that look identical to a naive grep and are NOT tooltips:
+ *   <Tooltip title="...">      a component prop
+ *   <template #title="...">    a slot name
+ *   <title> inside an <svg>    an accessibility label
+ */
+const findNativeTitles = (raw) => {
+  const template = /<template>([\s\S]*)<\/template>/.exec(stripNoise(raw))?.[1] ?? '';
+  let count = 0;
+
+  for (const m of template.matchAll(/(:|v-bind:)?\btitle\s*=/g)) {
+    const before = template.slice(Math.max(0, m.index - 10), m.index);
+    if (/#$/.test(before) || /v-slot:?$/.test(before)) continue; // slot name
+
+    const open = template.lastIndexOf('<', m.index);
+    const tag = /^<\/?([A-Za-z][\w.-]*)/.exec(template.slice(open))?.[1];
+    if (!tag) continue;
+    if (tag === 'template' || tag === 'title') continue;
+    if (/^[A-Z]/.test(tag) || tag.includes('-')) continue; // component prop
+
+    count += 1;
+  }
+  return count;
+};
+
+describe('tooltips use the app tooltip, not the browser one', () => {
+  it('no template uses a native title attribute', () => {
+    const offenders = [];
+
+    for (const file of walk(SRC, (n) => n.endsWith('.vue'))) {
+      const raw = readIfPresent(file);
+      if (raw === null) continue;
+
+      const count = findNativeTitles(raw);
+      if (!count) continue;
+      if (ALLOWED_NATIVE_TITLES.has(rel(file))) continue;
+
+      offenders.push(`${rel(file)} (${count})`);
+    }
+
+    const report = offenders.map((o) => `  ${o}`).join('\n');
+    expect(
+      offenders.length,
+      `\n${offenders.length} file(s) use a native title attribute.\n` +
+        `That renders the OS tooltip: unstyled, slow, and invisible on touch.\n` +
+        `Use v-tooltip="'text'" (attribute, safe anywhere) or wrap in <Tooltip text="...">.\n${report}\n`
+    ).toBe(0);
+  });
+
+  it('keeps the allowlist honest (no stale entries)', () => {
+    const stale = [...ALLOWED_NATIVE_TITLES.keys()].filter((entry) => {
+      const raw = readIfPresent(path.join(SRC, entry));
+      return raw === null || findNativeTitles(raw) === 0;
+    });
+    expect(stale, `Stale allowlist entries: ${stale.join(', ')}`).toEqual([]);
+  });
+
+  it('registers v-tooltip globally, since an unregistered directive is inert', () => {
+    // Vue warns in dev and does nothing at all in a production build, so every
+    // v-tooltip in the app would silently stop existing.
+    const main = readIfPresent(path.join(SRC, 'main.js')) ?? '';
+    expect(main).toMatch(/app\.directive\(\s*['"]tooltip['"]\s*,\s*vTooltip\s*\)/);
+    expect(main).toMatch(/import\s*\{\s*vTooltip\s*\}\s*from\s*['"]@\/directives\/tooltip\.js['"]/);
+  });
+
+  it('detects a native title it is meant to catch (self-test)', () => {
+    expect(findNativeTitles(`<template><button title="Delete">x</button></template>`)).toBe(1);
+    expect(findNativeTitles(`<template><span :title="reason">x</span></template>`)).toBe(1);
+
+    // ...and must not fire on the replacement, a component prop, a slot name,
+    // a comment or CSS.
+    const fine =
+      `<template>` +
+      `<button v-tooltip="'Delete'">x</button>` +
+      `<Tooltip text="a" title="b"><i/></Tooltip>` +
+      `<ScreenToolbar title="Traces" />` +
+      `<BaseCardGrid><template #title="p">{{ p.x }}</template></BaseCardGrid>` +
+      `<!-- <button title="old">x</button> -->` +
+      `</template>` +
+      `<style>[title] { color: red; }</style>`;
+    expect(findNativeTitles(fine)).toBe(0);
   });
 });

@@ -27,17 +27,18 @@
           <i class="fas fa-sync"></i>
           Refresh Tasks
         </button>
-        <select
-          :value="taskFilter"
-          @change="$emit('update:taskFilter', $event.target.value)"
+        <CustomSelect
           class="task-filter-select"
-        >
-          <option value="all">All Tasks</option>
-          <option value="pending">Pending</option>
-          <option value="running">Running</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-        </select>
+          :model-value="taskFilter"
+          :options="[
+            { label: 'All Tasks', value: 'all' },
+            { label: 'Pending', value: 'pending' },
+            { label: 'Running', value: 'running' },
+            { label: 'Completed', value: 'completed' },
+            { label: 'Failed', value: 'failed' },
+          ]"
+          @update:model-value="$emit('update:taskFilter', $event)"
+        />
       </div>
 
       <!-- Tasks List -->
@@ -148,6 +149,8 @@
 </template>
 
 <script setup>
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+
 defineProps({
   goalsWithTasks: {
     type: Array,

@@ -90,12 +90,12 @@
                 </template>
                 <!-- IF CUSTOM FIELD IS PROVIDER OR MODEL -->
                 <template v-else-if="isCustomTool && (key === 'provider' || key === 'model')">
-                  <select :value="getCustomParameterValue(key)" @input="updateCustomParameter(key, $event.target.value)">
-                    <option value="">Select {{ key }}</option>
-                    <option v-for="option in getOptionsForParameter(key)" :key="option" :value="option">
-                      {{ option }}
-                    </option>
-                  </select>
+                  <CustomSelect
+                    :model-value="getCustomParameterValue(key)"
+                    :placeholder="`Select ${key}`"
+                    :options="getOptionsForParameter(key).map((option) => ({ label: option, value: option }))"
+                    @update:model-value="updateCustomParameter(key, $event)"
+                  />
                 </template>
                 <!-- IF CUSTOM FIELD IS INPUT -->
                 <template v-else-if="isCustomTool && param && param.type === 'text'">
@@ -118,11 +118,11 @@
                 </template>
                 <!-- IF CUSTOM FIELD IS SELECT -->
                 <template v-else-if="isCustomTool && param && param.type === 'select'">
-                  <select :value="getCustomParameterValue(key)" @input="updateCustomParameter(key, $event.target.value)">
-                    <option v-for="option in param.options" :key="option" :value="option">
-                      {{ option }}
-                    </option>
-                  </select>
+                  <CustomSelect
+                    :model-value="getCustomParameterValue(key)"
+                    :options="param.options.map((option) => ({ label: option, value: option }))"
+                    @update:model-value="updateCustomParameter(key, $event)"
+                  />
                 </template>
                 <!-- IF CUSTOM FIELD IS A FILE -->
                 <template v-else-if="isCustomTool && param && (param.inputType || param.fieldType || param.type) === 'file'">
@@ -196,28 +196,21 @@
                 </template>
                 <!-- IF FIELD IS AGENT SELECT -->
                 <template v-else-if="param.inputType === 'agent-select'">
-                  <select :value="getParameterValue(key)" @input="updateParameter(key, $event.target.value)">
-                    <option value="">Select Agent</option>
-                    <option v-for="agent in availableAgents" :key="agent.id" :value="agent.id">
-                      {{ agent.name }}
-                    </option>
-                  </select>
+                  <CustomSelect
+                    :model-value="getParameterValue(key)"
+                    placeholder="Select Agent"
+                    :options="availableAgents.map((agent) => ({ label: agent.name, value: agent.id }))"
+                    @update:model-value="updateParameter(key, $event)"
+                  />
                 </template>
                 <!-- IF FIELD IS SELECT -->
                 <template v-else-if="param.inputType === 'select'">
-                  <select :value="getParameterValue(key)" @input="updateParameter(key, $event.target.value)">
-                    <option value="">Select {{ formatParameterLabel(key) }}</option>
-                    <template v-if="isAIProviderOrModelField(key)">
-                      <option v-for="option in getOptionsForParameter(key)" :key="option" :value="option">
-                        {{ option }}
-                      </option>
-                    </template>
-                    <template v-else>
-                      <option v-for="option in param.options" :key="option" :value="option">
-                        {{ option }}
-                      </option>
-                    </template>
-                  </select>
+                  <CustomSelect
+                    :model-value="getParameterValue(key)"
+                    :placeholder="`Select ${formatParameterLabel(key)}`"
+                    :options="(isAIProviderOrModelField(key) ? getOptionsForParameter(key) : param.options).map((option) => ({ label: option, value: option }))"
+                    @update:model-value="updateParameter(key, $event)"
+                  />
                 </template>
                 <!-- IF FIELD IS TEXTAREA -->
                 <template v-else-if="(param.inputType || param.fieldType) === 'textarea'">
@@ -308,10 +301,15 @@
           <div v-for="(cond, index) in localEdgeContent.conditions" :key="index" class="condition-row">
             <!-- Logic toggle (AND/OR) for 2nd+ conditions -->
             <div v-if="index > 0" class="logic-toggle-row">
-              <select :value="cond.logic" @change="updateConditionField(index, 'logic', $event.target.value)" class="logic-select">
-                <option value="and">AND</option>
-                <option value="or">OR</option>
-              </select>
+              <CustomSelect
+                class="logic-select"
+                :model-value="cond.logic"
+                :options="[
+                  { label: 'AND', value: 'and' },
+                  { label: 'OR', value: 'or' },
+                ]"
+                @update:model-value="updateConditionField(index, 'logic', $event)"
+              />
               <div class="logic-line"></div>
             </div>
             <div class="condition-fields">
@@ -333,20 +331,24 @@
               </div>
               <div class="form-group">
                 <label>Condition:</label>
-                <select :value="cond.condition" @change="updateConditionField(index, 'condition', $event.target.value)">
-                  <option value="true">True</option>
-                  <option value="false">False</option>
-                  <option value="contains">Contains</option>
-                  <option value="not_contains">Does Not Contain</option>
-                  <option value="equals">Equals</option>
-                  <option value="not_equals">Not Equals</option>
-                  <option value="greater_than">Greater Than</option>
-                  <option value="less_than">Less Than</option>
-                  <option value="greater_than_or_equal">Greater Than or Equal</option>
-                  <option value="less_than_or_equal">Less Than or Equal</option>
-                  <option value="is_empty">Is Empty</option>
-                  <option value="is_not_empty">Is Not Empty</option>
-                </select>
+                <CustomSelect
+                  :model-value="cond.condition"
+                  :options="[
+                    { label: 'True', value: 'true' },
+                    { label: 'False', value: 'false' },
+                    { label: 'Contains', value: 'contains' },
+                    { label: 'Does Not Contain', value: 'not_contains' },
+                    { label: 'Equals', value: 'equals' },
+                    { label: 'Not Equals', value: 'not_equals' },
+                    { label: 'Greater Than', value: 'greater_than' },
+                    { label: 'Less Than', value: 'less_than' },
+                    { label: 'Greater Than or Equal', value: 'greater_than_or_equal' },
+                    { label: 'Less Than or Equal', value: 'less_than_or_equal' },
+                    { label: 'Is Empty', value: 'is_empty' },
+                    { label: 'Is Not Empty', value: 'is_not_empty' },
+                  ]"
+                  @update:model-value="updateConditionField(index, 'condition', $event)"
+                />
               </div>
               <div v-if="conditionNeedsValue(cond.condition)" class="form-group">
                 <label>Value:</label>
@@ -420,6 +422,7 @@
 <script>
 import { ref, onMounted, computed, defineAsyncComponent, shallowRef } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { API_CONFIG, AI_PROVIDERS_CONFIG, IMAP_EMAIL_DOMAIN } from '@/tt.config';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -448,6 +451,7 @@ let _showdown = null;
 export default {
   name: 'PanelTab',
   components: {
+    CustomSelect,
     SvgIcon,
     Codemirror,
     SimpleModal,

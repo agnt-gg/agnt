@@ -130,16 +130,13 @@
                   v-model="field.value"
                   @input="updateCustomField(key, $event.target.value)"
                 ></textarea>
-                <select
+                <CustomSelect
                   v-else-if="field.type === 'select'"
-                  :id="key"
-                  :name="key"
                   v-model="field.value"
-                  @change="updateCustomField(key, $event.target.value)"
-                >
-                  <option value="" disabled>Select an option</option>
-                  <option v-for="(option, index) in field.options" :key="index" :value="option">{{ option }}</option>
-                </select>
+                  placeholder="Select an option"
+                  :options="(field.options || []).map((option) => ({ label: option, value: option }))"
+                  @update:model-value="updateCustomField(key, $event)"
+                />
                 <input v-else-if="field.type === 'file'" type="file" :id="key" :name="key" @change="updateCustomField(key, $event.target.files[0])" />
                 <input v-else type="text" :id="key" :name="key" v-model="field.value" @input="updateCustomField(key, $event.target.value)" />
               </div>
@@ -165,6 +162,7 @@
 
 <script>
 import { toRefs, onMounted, onUnmounted } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import IconSelector from './components/IconSelector/IconSelector.vue';
 import ModelSelector from './components/ModelSelector/ModelSelector.vue';
 import AddField from './components/CustomFields/AddField.vue';
@@ -177,6 +175,7 @@ import { useFieldsArea } from './useFieldsArea';
 export default {
   name: 'FieldsArea',
   components: {
+    CustomSelect,
     ModelSelector,
     IconSelector,
     AddField,

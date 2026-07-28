@@ -13,16 +13,14 @@
           <!-- Template Picker (only for new providers) -->
           <div v-if="!isEditing" class="form-group">
             <label for="template-select">Start from template</label>
-            <select
-              id="template-select"
-              v-model="selectedTemplate"
-              @change="applyTemplate"
-              :disabled="isTesting || isSaving"
+            <CustomSelect
               class="template-select"
-            >
-              <option value="">Custom (blank)</option>
-              <option v-for="t in templates" :key="t.key" :value="t.key">{{ t.name }}</option>
-            </select>
+              v-model="selectedTemplate"
+              :disabled="isTesting || isSaving"
+              placeholder="Custom (blank)"
+              :options="templates.map((t) => ({ label: t.name, value: t.key }))"
+              @update:model-value="applyTemplate"
+            />
             <span v-if="selectedTemplateDesc" class="help-text">{{ selectedTemplateDesc }}</span>
           </div>
 
@@ -105,9 +103,11 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 export default {
   name: 'CustomProviderDialog',
+  components: { CustomSelect },
   props: {
     isOpen: {
       type: Boolean,
