@@ -342,7 +342,11 @@ router.post('/install', requireAuthHeader, async (req, res) => {
 
     console.log(`[PluginRoutes] Installing plugin: ${name}@${version}`);
 
-    const result = await PluginInstaller.installFromMarketplace(name, version);
+    // The token reaches the marketplace only if a paid package refuses the
+    // download; free packages never trigger a capability request.
+    const result = await PluginInstaller.installFromMarketplace(name, version, {
+      authToken: req.headers.authorization || null,
+    });
 
     if (result.success) {
       // Reload all plugin processes and wait for completion
@@ -1068,7 +1072,9 @@ router.post('/install-file/check-auth', authenticateToken, async (req, res) => {
 router.get('/inspect/:name', requireAuthHeader, async (req, res) => {
   try {
     const { name } = req.params;
-    const report = await PluginInstaller.inspectMarketplacePlugin(name);
+    const report = await PluginInstaller.inspectMarketplacePlugin(name, {
+      authToken: req.headers.authorization || null,
+    });
     res.json(report);
   } catch (error) {
     console.error('[PluginRoutes] Error inspecting plugin:', error);
@@ -1195,7 +1201,10 @@ router.post('/update/:name', requireAuthHeader, async (req, res) => {
     const { acceptedPermissions = false } = req.body || {};
 
     console.log(`[PluginRoutes] Updating plugin: ${name}`);
-    const result = await PluginInstaller.updatePlugin(name, { acceptedPermissions });
+    const result = await PluginInstaller.updatePlugin(name, {
+      acceptedPermissions,
+      authToken: req.headers.authorization || null,
+    });
 
     if (result.success) {
       // Reload all plugin processes and wait for completion

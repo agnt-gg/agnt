@@ -626,10 +626,67 @@ class PluginInstaller {
   }
 
   /**
+   * Ask the marketplace for a download URL this user is entitled to.
+   *
+   * Returns null when no capability can be obtained, so the caller can report
+   * the original 403 rather than a confusing secondary failure.
+   *
+   * @param {object} pluginInfo marketplace record (its `name` is the plugin id)
+   * @param {string} authToken the caller's agnt.gg token
+   * @param {string} baseUrl the unsigned URL, used to derive the API origin so
+   *   a self-hosted marketplace keeps working
+   */
+  async requestDownloadCapability(pluginInfo, authToken, baseUrl) {
+    let origin;
+    try {
+      origin = new URL(baseUrl).origin;
+    } catch {
+      origin = 'https://api.agnt.gg';
+    }
+
+    const endpoint = `${origin}/marketplace/plugins/${encodeURIComponent(pluginInfo.name)}/download-url`;
+    const bearer = /^Bearer\s/i.test(authToken) ? authToken : `Bearer ${authToken}`;
+
+    const response = await fetch(endpoint, { method: 'POST', headers: { Authorization: bearer } });
+
+    if (response.status === 402) {
+      throw new Error(
+        `'${pluginInfo.name}' is a paid plugin and this account has not purchased it. ` +
+          `Buy it in the marketplace, then install again.`
+      );
+    }
+    if (response.status === 401) {
+      throw new Error(
+        `Your AGNT session has expired, so '${pluginInfo.name}' cannot be downloaded. Sign in again and retry.`
+      );
+    }
+    if (!response.ok) return null;
+
+    const data = await response.json().catch(() => ({}));
+    return data.downloadUrl || null;
+  }
+
+  /**
    * Download (or locally copy) a marketplace plugin archive to a temp file.
    * Extracted from installFromMarketplace so updatePlugin shares it.
+   *
+   * CAPABILITY HANDLING
+   * -------------------
+   * `pluginInfo` comes from the PUBLIC marketplace catalog, whose downloadUrl
+   * is unsigned by design — a catalog served to everyone cannot carry a
+   * per-user capability, and baking a shared signature into it would be a gate
+   * that gates nothing. Paid packages therefore answer 403 here.
+   *
+   * That catalog also carries no price field, so the client cannot know in
+   * advance whether a package needs a capability. Rather than guess, this asks
+   * for one only when the server actually refuses: free packages download in a
+   * single request exactly as before, and paid ones cost one extra round trip.
+   *
+   * @param {{authToken?: string|null}} [options] the caller's agnt.gg token when
+   *   the operation was user-initiated. Absent for background work (the update
+   *   scheduler), which is why the no-token branch explains itself.
    */
-  async fetchMarketplaceArchive(pluginInfo, tempFile) {
+  async fetchMarketplaceArchive(pluginInfo, tempFile, { authToken = null } = {}) {
     const downloadUrl = pluginInfo.downloadUrl;
     if (!downloadUrl) {
       throw new Error(`No downloadUrl in marketplace record for '${pluginInfo.name}'`);
@@ -639,15 +696,38 @@ class PluginInstaller {
       const localPath = path.join(__dirname, '../../plugins', downloadUrl.replace('file://', ''));
       console.log(`[PluginInstaller] Installing from local file: ${localPath}`);
       await fs.copyFile(localPath, tempFile);
-    } else {
-      console.log(`[PluginInstaller] Downloading from: ${downloadUrl}`);
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
-      }
-      const fileStream = createWriteStream(tempFile);
-      await pipeline(response.body, fileStream);
+      return;
     }
+
+    console.log(`[PluginInstaller] Downloading from: ${downloadUrl}`);
+    let response = await fetch(downloadUrl);
+
+    if (response.status === 403) {
+      if (!authToken) {
+        throw new Error(
+          `Download of '${pluginInfo.name}' was refused (403). This is a paid package, and paid downloads ` +
+            `require a signed link issued to your account. Install or update it from the marketplace UI ` +
+            `while signed in — background updates cannot authenticate on your behalf.`
+        );
+      }
+
+      console.log(`[PluginInstaller] ${pluginInfo.name} requires a capability — requesting a signed link`);
+      const signedUrl = await this.requestDownloadCapability(pluginInfo, authToken, downloadUrl);
+      if (!signedUrl) {
+        throw new Error(`Download failed: 403 Forbidden, and no download link could be issued for '${pluginInfo.name}'`);
+      }
+
+      // Exactly one retry. A second 403 means the capability itself was
+      // rejected, and retrying again would only obscure that.
+      response = await fetch(signedUrl);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+    }
+
+    const fileStream = createWriteStream(tempFile);
+    await pipeline(response.body, fileStream);
   }
 
   /**
@@ -659,7 +739,7 @@ class PluginInstaller {
    *
    * This is what the install-consent UI renders BEFORE the user commits.
    */
-  async inspectMarketplacePlugin(pluginName) {
+  async inspectMarketplacePlugin(pluginName, { authToken = null } = {}) {
     const tempFile = path.join(this.tempDir, `${pluginName}-inspect.tar.gz`);
     const inspectDir = path.join(this.tempDir, `inspect-${pluginName}-${Date.now()}`);
 
@@ -670,7 +750,7 @@ class PluginInstaller {
         throw new Error(`Plugin '${pluginName}' not found in marketplace registry`);
       }
 
-      await this.fetchMarketplaceArchive(pluginInfo, tempFile);
+      await this.fetchMarketplaceArchive(pluginInfo, tempFile, { authToken });
 
       const actualIntegrity = await computeIntegrity(tempFile);
       let integrityState = 'tofu';
@@ -1072,7 +1152,7 @@ class PluginInstaller {
    *
    * @returns {Promise<{success: boolean, requiresConsent?: boolean, permissionDiff?: object, ...}>}
    */
-  async updatePlugin(pluginName, { acceptedPermissions = false } = {}) {
+  async updatePlugin(pluginName, { acceptedPermissions = false, authToken = null } = {}) {
     console.log(`[PluginInstaller] Updating ${pluginName}...`);
     const tempFile = path.join(this.tempDir, `${pluginName}-update.tar.gz`);
     let gateDiff = null;
@@ -1105,7 +1185,7 @@ class PluginInstaller {
         };
       }
 
-      await this.fetchMarketplaceArchive(pluginInfo, tempFile);
+      await this.fetchMarketplaceArchive(pluginInfo, tempFile, { authToken });
 
       // Layer 2: integrity — a PRESENT hash that mismatches hard-aborts
       // before anything destructive; an absent hash proceeds as TOFU.
@@ -1344,7 +1424,7 @@ class PluginInstaller {
    * Install a plugin from the marketplace
    * Downloads pre-built package with node_modules included
    */
-  async installFromMarketplace(pluginName, version = 'latest') {
+  async installFromMarketplace(pluginName, version = 'latest', { authToken = null } = {}) {
     console.log(`[PluginInstaller] Installing ${pluginName}@${version} from marketplace...`);
 
     const tempFile = path.join(this.tempDir, `${pluginName}.tar.gz`);
@@ -1358,7 +1438,7 @@ class PluginInstaller {
         throw new Error(`Plugin '${pluginName}' not found in marketplace registry`);
       }
 
-      await this.fetchMarketplaceArchive(pluginInfo, tempFile);
+      await this.fetchMarketplaceArchive(pluginInfo, tempFile, { authToken });
 
       console.log(`[PluginInstaller] Plugin package ready at: ${tempFile}`);
 
