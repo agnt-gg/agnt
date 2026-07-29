@@ -91,11 +91,31 @@ function handleAuthFailure(storeInstance, to, next) {
   // so deep-link resume after sign-in preserves the original query.
   const detail = { from: to.path, ...failure };
   // Mobile lite has its own pairing home (/m); do not dump users into full
-  // Settings which is unusable on a phone-sized shell.
-  const bouncePath = to.meta?.lite || to.path.startsWith('/m') ? '/m' : '/settings';
+  // Settings, which is unusable on a phone-sized shell.
+  //
+  // Match on the /m SEGMENT, not the /m PREFIX. startsWith('/m') is true for
+  // every route whose name merely begins with the letter m -- /marketplace and
+  // /memory both matched, so a desktop session that lapsed on either page
+  // landed on the phone pairing screen. A prefix test is not a segment test.
+  const bouncePath = isLiteRoute(to) ? '/m' : '/settings';
   console.warn(`[router] auth required for ${to.fullPath} → bouncing to ${bouncePath}`, detail);
   window.dispatchEvent(new CustomEvent('auth-redirect', { detail }));
   next({ path: bouncePath, query: { returnTo: to.fullPath } });
+}
+
+/**
+ * Does this route belong to the mobile lite shell?
+ *
+ * Exported so the route-table guard can assert the classification against every
+ * declared path rather than re-deriving the rule and drifting from it.
+ *
+ * @param {{ path?: string, meta?: { lite?: boolean } }} to
+ * @returns {boolean}
+ */
+export function isLiteRoute(to) {
+  if (to?.meta?.lite) return true;
+  const path = to?.path || '';
+  return path === '/m' || path.startsWith('/m/');
 }
 
 function clearStaleAuth(storeInstance) {
