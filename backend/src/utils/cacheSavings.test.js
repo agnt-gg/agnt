@@ -51,7 +51,12 @@ describe('computeCacheSavings', () => {
     const r = computeCacheSavings('groq', 'llama-3.3-70b-versatile', 100_000, 1_000, {
       cacheReadTokens: 90_000,
     });
-    if (r) expect(r.savedCost).toBeCloseTo(0, 12);
+    // Was `if (r) expect(...)`. groq is priced, so the guard was always true and
+    // bought nothing — but the shape is a hazard: had the model become
+    // unpriceable, the test would have passed having asserted nothing at all.
+    // Assert the precondition instead of guarding on it.
+    expect(r).not.toBeNull();
+    expect(r.savedCost).toBeCloseTo(0, 12);
   });
 
   it('returns null for an unknown model rather than inventing a number', () => {
@@ -89,6 +94,17 @@ describe('uncachedCostForRow (retroactive, no migration)', () => {
   it('rows with no cache activity contribute zero saving', () => {
     const r = row({ cache_read_tokens: 0, cache_creation_tokens: 0 });
     expect(uncachedCostForRow(r)).toBe(r.estimated_cost);
+  });
+
+  it('still prices a cached row that produced no output tokens', () => {
+    // Guards the `&&` in `if (inputTokens <= 0 && outputTokens <= 0) return recorded`.
+    // Mutating it to `||` survived the whole suite: every zero-output row would
+    // silently fall back to its recorded cost, under-reporting the uncached
+    // baseline here by 4.4x. Zero-output rows are common — tool-only turns and
+    // interrupted runs both produce them.
+    const r = row({ output_tokens: 0 });
+    expect(uncachedCostForRow(r)).toBeCloseTo(0.5, 6);
+    expect(uncachedCostForRow(r)).toBeGreaterThan(r.estimated_cost);
   });
 
   it('handles empty / malformed rows without throwing', () => {
