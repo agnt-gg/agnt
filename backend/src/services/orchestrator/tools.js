@@ -1343,6 +1343,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           if (parsed.matches) {
             const overhead = JSON.stringify({ ...parsed, matches: [] }).length + 100;
             const budget = MAX_RESULT_CHARS - overhead;
+            const originalCount = parsed.matches.length;
             const trimmedMatches = [];
             let used = 0;
             for (const match of parsed.matches) {
@@ -1351,9 +1352,21 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               trimmedMatches.push(match);
               used += matchStr.length;
             }
+            // NEVER convert found matches into a false negative. If even the first
+            // match is too large to fit, force-include it with its text hard-truncated.
+            // (This exact failure — matchCount silently rewritten to 0 on a giant
+            // single-line JSON blob — sent the model on a filesystem-wide goose chase.)
+            if (trimmedMatches.length === 0 && originalCount > 0) {
+              const shrunk = JSON.parse(JSON.stringify(parsed.matches[0], (k, v) =>
+                typeof v === 'string' && v.length > 1500 ? v.slice(0, 1500) + '…[truncated]' : v
+              ));
+              trimmedMatches.push(shrunk);
+            }
             parsed.matches = trimmedMatches;
-            parsed.matchCount = trimmedMatches.length;
-            parsed._truncatedMatches = true;
+            // matchCount always reports the TRUE count; returnedMatches says how many are shown.
+            parsed.matchCount = originalCount;
+            parsed.returnedMatches = trimmedMatches.length;
+            parsed._truncatedMatches = trimmedMatches.length < originalCount;
           }
           return JSON.stringify(parsed);
         } catch {
@@ -1438,6 +1451,42 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           return JSON.stringify({ success: false, error: `Invalid regex: ${e.message}` });
         }
 
+        // Lines longer than this never go into results verbatim — they get
+        // windowed excerpts around each occurrence instead.
+        const MAX_LINE_FOR_CONTEXT = 500;
+        const EXCERPT_WINDOW = 400;
+
+        function excerptAround(line, idx, len) {
+          if (line.length <= EXCERPT_WINDOW) return line;
+          const half = Math.max(0, Math.floor((EXCERPT_WINDOW - len) / 2));
+          const start = Math.max(0, idx - half);
+          const end = Math.min(line.length, idx + len + half);
+          return (start > 0 ? '…' : '') + line.slice(start, end) + (end < line.length ? '…' : '');
+        }
+
+        // Find occurrence positions of the needle (RegExp or string) within a line.
+        function findOccurrences(line, needle, cap) {
+          const out = [];
+          const budget = Math.max(1, cap);
+          if (needle instanceof RegExp) {
+            const re = new RegExp(needle.source, needle.flags.includes('g') ? needle.flags : needle.flags + 'g');
+            let m;
+            while (out.length < budget && (m = re.exec(line)) !== null) {
+              out.push({ index: m.index, length: m[0].length || 1 });
+              if (m[0].length === 0) re.lastIndex++;
+            }
+          } else {
+            const lower = line.toLowerCase();
+            const lowerNeedle = String(needle).toLowerCase();
+            let idx = lower.indexOf(lowerNeedle);
+            while (idx !== -1 && out.length < budget) {
+              out.push({ index: idx, length: lowerNeedle.length });
+              idx = lower.indexOf(lowerNeedle, idx + Math.max(1, lowerNeedle.length));
+            }
+          }
+          return out;
+        }
+
         // For non-regex multi-word queries, split into individual terms (AND match)
         const searchTerms = (!regex && query.includes(' '))
           ? query.toLowerCase().split(/\s+/).filter(t => t.length > 0)
@@ -1458,13 +1507,30 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
 
           if (isMatch) {
-            const ctxStart = Math.max(0, i - contextLines);
-            const ctxEnd = Math.min(lines.length - 1, i + contextLines);
-            const contextBlock = [];
-            for (let j = ctxStart; j <= ctxEnd; j++) {
-              contextBlock.push({ line: j + 1, text: sanitizeText(lines[j]), match: j === i });
+            if (line.length > MAX_LINE_FOR_CONTEXT) {
+              // Giant line (minified JSON, single-line blobs): returning the whole
+              // line would blow the output cap and get the match silently dropped.
+              // Instead return a windowed excerpt around each occurrence.
+              const needle = pattern || (searchTerms ? searchTerms[0] : query);
+              for (const occ of findOccurrences(line, needle, maxResults - matches.length)) {
+                matches.push({
+                  lineNumber: i + 1,
+                  col: occ.index + 1,
+                  excerpt: sanitizeText(excerptAround(line, occ.index, occ.length)),
+                });
+                if (matches.length >= maxResults) break;
+              }
+            } else {
+              const ctxStart = Math.max(0, i - contextLines);
+              const ctxEnd = Math.min(lines.length - 1, i + contextLines);
+              const contextBlock = [];
+              for (let j = ctxStart; j <= ctxEnd; j++) {
+                const raw = lines[j];
+                const text = raw.length > MAX_LINE_FOR_CONTEXT ? raw.slice(0, MAX_LINE_FOR_CONTEXT) + '…' : raw;
+                contextBlock.push({ line: j + 1, text: sanitizeText(text), match: j === i });
+              }
+              matches.push({ lineNumber: i + 1, context: contextBlock });
             }
-            matches.push({ lineNumber: i + 1, context: contextBlock });
           }
         }
 

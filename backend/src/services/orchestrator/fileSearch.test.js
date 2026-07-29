@@ -197,3 +197,49 @@ describe('globFiles', () => {
     expect(r.truncated).toBe(false);
   });
 });
+
+describe('globFiles matches directories (production regression 2026-07-29)', () => {
+  // A model hunting for the "for-nates-eyes-only" DIRECTORY globbed "**/*nate*"
+  // and was told "No files matched" — directories were never candidates, so a
+  // folder could not be found by name at all.
+  let dirAbs;
+
+  beforeAll(async () => {
+    dirAbs = path.join(ROOT, 'for-nates-eyes-only');
+    await fs.mkdir(dirAbs, { recursive: true });
+    await fs.writeFile(path.join(dirAbs, 'pic-001.png'), 'not-really-a-png\n');
+  });
+
+  afterAll(async () => {
+    await fs.rm(dirAbs, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('finds a directory by name with a ** pattern', async () => {
+    const r = await globFiles(ROOT, { pattern: '**/*nate*' });
+    const dir = r.files.find((f) => f.path === 'for-nates-eyes-only');
+    expect(dir).toBeTruthy();
+    expect(dir.type).toBe('directory');
+  });
+
+  it('a slash-less pattern matches a directory basename at any depth', async () => {
+    const r = await globFiles(ROOT, { pattern: 'deep' });
+    const dir = r.files.find((f) => f.path === 'src/deep');
+    expect(dir).toBeTruthy();
+    expect(dir.type).toBe('directory');
+  });
+
+  it('file entries are tagged type "file"', async () => {
+    const r = await globFiles(ROOT, { pattern: 'alpha.js' });
+    expect(r.files[0].type).toBe('file');
+  });
+
+  it('never reports ignored directories like node_modules', async () => {
+    const r = await globFiles(ROOT, { pattern: 'node_modules' });
+    expect(r.files).toEqual([]);
+  });
+
+  it('directory matches count toward the result limit', async () => {
+    const r = await globFiles(ROOT, { pattern: '**/*nate*', maxResults: 1 });
+    expect(r.files).toHaveLength(1);
+  });
+});

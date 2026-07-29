@@ -95,7 +95,7 @@ export function looksBinary(buffer) {
  * Depth-first walk yielding files, honouring every bound.
  * `onFile` returns false to stop early.
  */
-async function walkFiles(root, onFile, limits) {
+async function walkFiles(root, onFile, limits, onDir = null) {
   const deadline = Date.now() + limits.timeBudgetMs;
   const state = { files: 0, bytes: 0, stopped: null };
 
@@ -110,6 +110,18 @@ async function walkFiles(root, onFile, limits) {
       if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? 1 : -1;
       return a.name.localeCompare(b.name);
     });
+
+    // Directory-name matching happens at DISCOVERY time — before descending into
+    // any child — so a matching directory at this level is reported even when the
+    // file budget is later exhausted deep inside an earlier sibling's subtree.
+    if (onDir) {
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith('.') || SEARCH_IGNORE_DIRS.has(entry.name)) continue;
+        const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+        const keepGoing = await onDir(path.join(absDir, entry.name), rel);
+        if (keepGoing === false) { state.stopped = 'result limit reached'; return; }
+      }
+    }
 
     for (const entry of entries) {
       if (state.stopped) return;
@@ -220,9 +232,17 @@ export async function globFiles(rootAbs, { pattern, maxResults = DEFAULTS.maxGlo
     if (!matchesGlob(rel, regex, hasSlash)) return true;
     let st = null;
     try { st = await fs.stat(abs); } catch { /* raced away between readdir and stat */ }
-    files.push({ path: rel, size: st ? st.size : null, mtimeMs: st ? Math.round(st.mtimeMs) : null });
+    files.push({ path: rel, type: 'file', size: st ? st.size : null, mtimeMs: st ? Math.round(st.mtimeMs) : null });
     return files.length < limit;
-  }, DEFAULTS);
+  }, DEFAULTS, async (abs, rel) => {
+    // A glob like "**/*report*" should find a DIRECTORY named "reports" too —
+    // callers hunting for a folder by name were previously told "no match".
+    if (!matchesGlob(rel, regex, hasSlash)) return true;
+    let st = null;
+    try { st = await fs.stat(abs); } catch { /* raced away */ }
+    files.push({ path: rel, type: 'directory', size: null, mtimeMs: st ? Math.round(st.mtimeMs) : null });
+    return files.length < limit;
+  });
 
   // Most-recently-modified first: when a caller globs for a file they are
   // almost always after the one they touched last.

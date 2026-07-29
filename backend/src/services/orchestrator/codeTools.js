@@ -873,7 +873,9 @@ async function executeCodeFunctionUnlocked(name, args) {
         });
         result = { success: true, root: args.path || '/', pattern: args.pattern, ...found };
         if (found.matches.length === 0) {
-          result.message = `No matches for /${args.pattern}/ in ${found.filesScanned} file(s).`;
+          result.message = found.truncated
+            ? `No matches found before the scan stopped early (${found.stoppedBecause}) after ${found.filesScanned} file(s). This tree exceeds the scan budget — the result is INCOMPLETE and absence is NOT proven. Re-run from a more specific subdirectory.`
+            : `No matches for /${args.pattern}/ in ${found.filesScanned} file(s).`;
         }
       } catch (err) {
         if (err.code === 'ENOENT') {
@@ -900,7 +902,9 @@ async function executeCodeFunctionUnlocked(name, args) {
         });
         result = { success: true, root: args.path || '/', pattern: args.pattern, count: found.files.length, ...found };
         if (found.files.length === 0) {
-          result.message = `No files matched "${args.pattern}". Patterns containing "/" match the full relative path; patterns without one match the file name at any depth.`;
+          result.message = found.truncated
+            ? `No matches found before the scan stopped early (${found.stoppedBecause}). This tree exceeds the scan budget — the result is INCOMPLETE and absence is NOT proven. Re-run from a more specific subdirectory.`
+            : `No files matched "${args.pattern}". Patterns containing "/" match the full relative path; patterns without one match the file name at any depth. Directories are matched too.`;
         }
       } catch (err) {
         if (err.code === 'ENOENT') {
