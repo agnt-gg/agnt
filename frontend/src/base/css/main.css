@@ -804,12 +804,19 @@ pre {
   white-space: pre-wrap;
 }
 
+/* Math is prose, not a code block: no chrome, no inset.
+   No author margin either: MathJax injects its own
+   `mjx-container[display="true"] { margin: 1em 0 }` at runtime, and an author
+   rule at equal specificity loses on source order (its <style> is appended to
+   <head> after the bundle). Measured: 15.4px top/bottom on a 14px prose base.
+   The old bare `mjx-container { margin: 8px 0 16px }` therefore never applied
+   to display math at all - it only leaked vertical margin onto INLINE math,
+   shoving the line box around mid-sentence. */
 mjx-container {
-  width: 100%;
   width: fit-content;
-  border-radius: 16px;
-  margin: 8px 0 16px;
-  padding: 16px;
+  padding: 0;
+  background: none;
+  border: none;
   white-space: pre-wrap;
 }
 
@@ -836,8 +843,7 @@ code.math.language-math {
   color: var(--color-text);
 }
 
-.hljs,
-mjx-container {
+.hljs {
   font-size: var(--base-font-size);
   border-radius: 16px;
   text-align: left !important;
@@ -849,7 +855,9 @@ mjx-container.MathJax.CtxtMenu_Attached_0 {
 
 mjx-container[jax='CHTML'] {
   text-align: left !important;
-  font-size: var(--font-size-md) !important;
+  /* Relative on purpose: math tracks the prose it sits in. 110% because math
+     glyphs read optically smaller than text set at the same size. */
+  font-size: 110% !important;
 }
 
 mjx-math.MJX-TEX {

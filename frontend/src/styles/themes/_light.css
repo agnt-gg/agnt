@@ -416,8 +416,7 @@ body:not(.dark) .node-delete-button {
 /* ═══════════════════ CODE HIGHLIGHTING ═══════════════════ */
 /* Uses !important to override legacy base/css/main.css which loads later */
 
-body:not(.dark) pre,
-body:not(.dark) mjx-container {
+body:not(.dark) pre {
   background: #f0f0f8 !important;
   color: var(--color-text) !important;
   border: 1px solid var(--terminal-border-color);

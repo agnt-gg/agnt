@@ -530,13 +530,11 @@ body.dark input[type='file'] {
   background-color: transparent;
 }
 
-body.dark pre,
-mjx-container {
+body.dark pre {
   border: 1px solid var(--color-dull-navy);
 }
 
 body.dark pre,
-body.dark mjx-container,
 body.dark .hljs {
   background: rgba(0, 0, 0, 0.3);
   color: var(--color-dull-white);
