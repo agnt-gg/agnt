@@ -14,6 +14,11 @@
     <!-- ══ workspace tabs ══ -->
     <div class="ws-tabbar">
       <div ref="tabStripRef" class="ws-tabs" :class="{ 'more-left': tabsMoreLeft, 'more-right': tabsMoreRight }" @scroll="updateTabOverflow">
+        <!-- First IN the row, not beside it: the button creates a tab, so it
+             reads as the strip's start rather than as a separate control. -->
+        <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
+          <i class="fas fa-plus"></i>
+        </button>
         <div
           v-for="ws in workspaces"
           :ref="(el) => setTabRef(ws.id, el)"
@@ -41,13 +46,6 @@
           </button>
         </div>
       </div>
-
-      <!-- Outside .ws-tabs on purpose: this is an action, not a tab. Inside the
-           scroller it slid off the end once enough workspaces existed, so
-           "New workspace" became unreachable exactly when it was most useful. -->
-      <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
-        <i class="fas fa-plus"></i>
-      </button>
 
       <div class="ws-tabbar-right">
         <button
@@ -1072,13 +1070,6 @@ body.custom-bg .ws-root {
 
 .ws-tab-add {
   flex: 0 0 auto;
-  /* Now that it lives outside the scroller it sits next to the toolbar
-   * actions; without a separator the three controls read as one cluster and
-   * "new workspace" looks like part of the toolbar rather than the tab row. */
-  margin-left: 2px;
-  padding-right: 8px;
-  border-right: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.09));
-  box-sizing: content-box;
   width: 24px;
   height: 24px;
   display: grid;

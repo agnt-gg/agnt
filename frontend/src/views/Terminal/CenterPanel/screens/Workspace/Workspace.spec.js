@@ -1211,8 +1211,9 @@ describe('Workspace.vue', () => {
    * default: measured at 1664px the strip wanted 2377px for 1361px of room,
    * putting FIVE workspaces past the right edge. They were never lost — the
    * strip has always scrolled — but with scrollbar-width:none there was no
-   * indication of that, and the "+" button lived INSIDE the scroller, so it
-   * slid away exactly when the user had the most workspaces.
+   * indication of that, and the "+" button sat at the END of the scroller, so
+   * it slid away exactly when the user had the most workspaces. It now leads
+   * the strip on the left, so it is always first in view.
    *
    * jsdom reports every rect as 0, so geometry is stubbed and the real numbers
    * come from tabbar-probe.mjs against a browser. What is pinned here is the
@@ -1226,14 +1227,15 @@ describe('Workspace.vue', () => {
     return el;
   };
 
-  it('keeps "New workspace" reachable — it is not inside the scroller', async () => {
+  it('leads the tab row — "New workspace" is first, before any tab', async () => {
     const wrapper = await mountPage();
-    const add = wrapper.find('.ws-tab-add');
+    const add = wrapper.find('.ws-tabs .ws-tab-add');
     expect(add.exists()).toBe(true);
-    // The button must be a SIBLING of the scrolling strip, not a child of it:
-    // inside, it scrolls off the end with the tabs.
-    expect(wrapper.find('.ws-tabs .ws-tab-add').exists()).toBe(false);
-    expect(add.element.parentElement.classList.contains('ws-tabbar')).toBe(true);
+    // Creating a workspace is the strip's start, so the button is the first
+    // element in the row, not a control beside it. The right edge is where
+    // tabs overflow to; the left is always in view, so the button can never
+    // be scrolled away again.
+    expect(add.element.previousElementSibling).toBeNull();
   });
 
   it('signals overflow on the side that actually has more tabs', async () => {
