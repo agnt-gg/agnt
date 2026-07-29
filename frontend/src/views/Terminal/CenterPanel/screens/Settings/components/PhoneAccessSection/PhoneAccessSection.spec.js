@@ -247,3 +247,105 @@ describe('the prerequisite matches the chosen address', () => {
     expect(w.find('.pa-req').text()).toContain('Example Network 5G');
   });
 });
+
+describe('which client the QR pairs', () => {
+  // /pairing/code returns a full-app `url` and a lite `liteUrl` for every
+  // origin. Encoding only one of them left no path to the other anywhere in the
+  // UI: the API still returned it, nothing rendered it, and an existing user
+  // scanning the same QR silently landed in a different client.
+  const codeWithBoth = () => ({
+    code: 'a'.repeat(32),
+    url: 'http://192.168.40.208:3333/pair?c=' + 'a'.repeat(32),
+    liteUrl: 'http://192.168.40.208:3333/m/pair?c=' + 'a'.repeat(32),
+    expiresAt: Date.now() + 120000,
+    ttlMs: 120000,
+    origins: [
+      {
+        origin: 'http://192.168.40.208:3333',
+        source: 'request',
+        label: '',
+        external: true,
+        url: 'http://192.168.40.208:3333/pair?c=' + 'a'.repeat(32),
+        liteUrl: 'http://192.168.40.208:3333/m/pair?c=' + 'a'.repeat(32),
+      },
+    ],
+  });
+
+  async function withCode() {
+    createCode.mockResolvedValue(codeWithBoth());
+    const w = await mountPanel();
+    await w.find('.pa-btn').trigger('click');
+    await flushPromises();
+    return w;
+  }
+
+  it('offers both targets', async () => {
+    const w = await withCode();
+    const labels = w.findAll('.pa-target-btn').map((b) => b.text());
+    expect(labels).toEqual(['Phone chat', 'Full app']);
+  });
+
+  it('encodes the lite link by default', async () => {
+    const w = await withCode();
+    expect(encodedUrl()).toBe('http://192.168.40.208:3333/m/pair?c=' + 'a'.repeat(32));
+  });
+
+  it('encodes the FULL-APP link once that target is chosen', async () => {
+    const w = await withCode();
+    await w.findAll('.pa-target-btn')[1].trigger('click');
+    await flushPromises();
+    const url = encodedUrl();
+    expect(url).toBe('http://192.168.40.208:3333/pair?c=' + 'a'.repeat(32));
+    expect(url).not.toContain('/m/pair');
+  });
+
+  it('switches back to lite', async () => {
+    const w = await withCode();
+    await w.findAll('.pa-target-btn')[1].trigger('click');
+    await flushPromises();
+    await w.findAll('.pa-target-btn')[0].trigger('click');
+    await flushPromises();
+    expect(encodedUrl()).toContain('/m/pair');
+  });
+
+  it('keeps the SAME code across both targets -- only the path differs', async () => {
+    // One mint, two entry points. Re-minting per target would invalidate the
+    // code the user is already looking at.
+    const w = await withCode();
+    const lite = encodedUrl();
+    await w.findAll('.pa-target-btn')[1].trigger('click');
+    await flushPromises();
+    const full = encodedUrl();
+    expect(createCode).toHaveBeenCalledTimes(1);
+    expect(lite).toContain('a'.repeat(32));
+    expect(full).toContain('a'.repeat(32));
+  });
+
+  it('the copy link follows the chosen target', async () => {
+    const w = await withCode();
+    await w.findAll('.pa-target-btn')[1].trigger('click');
+    await flushPromises();
+    // The copy row and the QR must never disagree; a user who cannot scan
+    // reads the link instead and would otherwise get a different client.
+    expect(w.find('.pa-copy-block code').text()).toBe(encodedUrl());
+  });
+
+  it('falls back to a constructed path when the backend omits the link', async () => {
+    // Older backend: no url/liteUrl on the origin entry.
+    createCode.mockResolvedValue({
+      code: 'b'.repeat(32),
+      expiresAt: Date.now() + 120000,
+      ttlMs: 120000,
+      origins: [
+        { origin: 'http://192.168.40.208:3333', source: 'request', label: '', external: true },
+      ],
+    });
+    const w = await mountPanel();
+    await w.find('.pa-btn').trigger('click');
+    await flushPromises();
+    expect(encodedUrl()).toBe('http://192.168.40.208:3333/m/pair?c=' + 'b'.repeat(32));
+    await w.findAll('.pa-target-btn')[1].trigger('click');
+    await flushPromises();
+    expect(encodedUrl()).toBe('http://192.168.40.208:3333/pair?c=' + 'b'.repeat(32));
+  });
+});
