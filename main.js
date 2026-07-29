@@ -202,67 +202,6 @@ function notifyRenderer(channel, payload = {}) {
 }
 
 /**
- * Respawn the local backend after an exit (sanctioned or unexpected).
- * Shared by exit-code 42 restarts and recovery when the shell is still open
- * but the API process died (clean exit, SIGTERM, crash).
- */
-function scheduleBackendRespawn(reason, { dumpCrash = false, lastStderr = '', lastStdout = '', code = null, signal = null } = {}) {
-  if (isRemoteMode()) {
-    console.log('Remote backend mode — nothing to respawn.');
-    return;
-  }
-
-  const now = Date.now();
-  supervisor.restartTimestamps = supervisor.restartTimestamps.filter(
-    (t) => now - t < supervisor.FLAP_WINDOW_MS
-  );
-  if (supervisor.restartTimestamps.length >= supervisor.FLAP_MAX) {
-    console.error(
-      `Backend restart flapping (${supervisor.FLAP_MAX}+ in ${supervisor.FLAP_WINDOW_MS / 1000}s). ` +
-        `Last reason: ${reason}. Refusing to respawn. Quitting in 5 seconds...`
-    );
-    if (dumpCrash) {
-      recorder.dumpCrash('backend-exit-flapping', new Error(`backend flapping: ${reason}`), {
-        code,
-        signal,
-        supervisorState: supervisor.state,
-        stderrTail: (lastStderr || '').slice(-4000),
-        stdoutTail: (lastStdout || '').slice(-2000),
-      });
-    }
-    setTimeout(() => app.quit(), 5000);
-    return;
-  }
-
-  supervisor.restartTimestamps.push(now);
-  supervisor.state = 'restarting';
-  notifyRenderer('backend:restarting');
-  console.log(`Backend respawn (${reason})...`);
-
-  // Brief pause for OS-level socket/handle cleanup, then respawn with a
-  // FRESH env snapshot (startBackend rebuilds .env layering from disk).
-  setTimeout(() => {
-    if (supervisor.state === 'quitting') return;
-    startBackend();
-    waitForBackend(() => {
-      supervisor.state = 'running';
-      console.log('Backend respawned and healthy.');
-      notifyRenderer('backend:restarted');
-      // Reload the renderer so the UI reconnects to the fresh backend
-      // instead of sitting on dead sockets/requests looking frozen.
-      try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          console.log('Reloading renderer against fresh backend...');
-          mainWindow.webContents.reload();
-        }
-      } catch (err) {
-        console.warn('Renderer reload after restart failed:', err.message);
-      }
-    });
-  }, 500);
-}
-
-/**
  * Single exit handler for BOTH spawn paths (dev fork + packaged
  * utilityProcess). Replaces the two previous inline 'exit' listeners.
  */
@@ -276,54 +215,78 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
     return;
   }
 
-  // Sanctioned self-restart (RestartManager uses exit 42).
   if (code === RESTART_EXIT_CODE) {
-    scheduleBackendRespawn('sanctioned-exit-42', { lastStderr, lastStdout, code, signal });
+    // Sanctioned restart. Flap guard first.
+    const now = Date.now();
+    supervisor.restartTimestamps = supervisor.restartTimestamps.filter(
+      (t) => now - t < supervisor.FLAP_WINDOW_MS
+    );
+    if (supervisor.restartTimestamps.length >= supervisor.FLAP_MAX) {
+      console.error(
+        `Backend restart flapping (${supervisor.FLAP_MAX}+ in ${supervisor.FLAP_WINDOW_MS / 1000}s). ` +
+          'Refusing to respawn. Quitting in 5 seconds...'
+      );
+      setTimeout(() => app.quit(), 5000);
+      return;
+    }
+    supervisor.restartTimestamps.push(now);
+    supervisor.state = 'restarting';
+    notifyRenderer('backend:restarting');
+    console.log('Sanctioned backend restart - respawning...');
+
+    // Brief pause for OS-level socket/handle cleanup, then respawn with a
+    // FRESH env snapshot (startBackend rebuilds .env layering from disk, so
+    // "restart yourself" doubles as credential hot-reload).
+    setTimeout(() => {
+      // GUARD 1: in remote mode there is no local backend to respawn. This
+      // branch is only reachable via handleBackendExit, which itself can only
+      // fire for a process we forked — but the guard is kept explicit so the
+      // invariant survives future edits to the supervisor.
+      if (isRemoteMode()) {
+        console.log('Remote backend mode — nothing to respawn.');
+        return;
+      }
+      startBackend();
+      waitForBackend(() => {
+        supervisor.state = 'running';
+        console.log('Backend respawned and healthy.');
+        notifyRenderer('backend:restarted');
+        // Reload the renderer so the UI reconnects to the fresh backend
+        // instead of sitting on dead sockets/requests looking frozen.
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            console.log('Reloading renderer against fresh backend...');
+            mainWindow.webContents.reload();
+          }
+        } catch (err) {
+          console.warn('Renderer reload after restart failed:', err.message);
+        }
+      });
+    }, 500);
     return;
   }
 
-  // Unexpected exit while the shell is still open.
-  // Historical bug: clean exit (code 0) or external SIGTERM was ignored → UI
-  // stayed open with nothing on :3333. Nonzero crashes used to quit the whole
-  // app after 5s. Prefer respawn so the window stays usable; flap guard still
-  // quits if the backend cannot stay up.
-  const unexpected =
-    code === 0 ||
-    code === null ||
-    (typeof code === 'number' && code !== 0) ||
-    Boolean(signal);
-
-  if (unexpected) {
-    const isCrash = code !== 0 && code !== null && !signal;
-    if (isCrash || signal) {
-      recorder.dumpCrash(
-        'backend-exit',
-        new Error(`backend exited code=${code} signal=${signal ?? 'n/a'}`),
-        {
-          code,
-          signal,
-          supervisorState: supervisor.state,
-          stderrTail: (lastStderr || '').slice(-4000),
-          stdoutTail: (lastStdout || '').slice(-2000),
-        }
-      );
-      console.error('Backend process exited unexpectedly — will respawn.');
-      console.error('Exit code:', code);
-      if (signal) console.error('Signal:', signal);
-      console.error('Last stderr output:', (lastStderr || '').slice(-500));
-      console.error('Last stdout output:', (lastStdout || '').slice(-500));
-    } else {
-      console.warn(
-        'Backend exited cleanly (code 0) while app still running — respawning so the UI is not left without an API.'
-      );
-    }
-    scheduleBackendRespawn(`unexpected code=${code} signal=${signal ?? 'n/a'}`, {
-      dumpCrash: false,
-      lastStderr,
-      lastStdout,
+  // Unsanctioned nonzero exit: pre-existing crash behavior, unchanged.
+  if (code !== 0 && code !== null) {
+    // Persist the dying backend's output. Without this the only artifact is
+    // whatever happens to be in a developer's terminal scrollback — and in a
+    // packaged build there is no terminal at all.
+    recorder.dumpCrash('backend-exit', new Error(`backend exited with code ${code}`), {
       code,
       signal,
+      supervisorState: supervisor.state,
+      stderrTail: (lastStderr || '').slice(-4000),
+      stdoutTail: (lastStdout || '').slice(-2000),
     });
+    console.error('Backend process crashed!');
+    console.error('Exit code:', code);
+    if (signal) console.error('Signal:', signal);
+    console.error('Last stderr output:', (lastStderr || '').slice(-500));
+    console.error('Last stdout output:', (lastStdout || '').slice(-500));
+    console.error('App will quit in 5 seconds...');
+    setTimeout(() => {
+      app.quit();
+    }, 5000);
   }
 }
 
