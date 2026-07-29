@@ -9,6 +9,7 @@ import { getModelMetadata, getProviderConfig, getReasoningControl, supportsZaiRe
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../ai/reasoningModels.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from './messageSanitizers.js';
+import { openAIPromptCachePolicy } from '../../utils/promptCacheTtl.js';
 
 /**
  * Return the upstream provider error verbatim.
@@ -4695,6 +4696,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
   constructor(client, model, options = {}) {
     super(client, model);
     this.reasoningValue = options.reasoningValue || 'default';
+    this.promptCachePolicy = openAIPromptCachePolicy(model);
     this.maxRetries = 3;
     this.baseDelay = 1000;
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
@@ -4706,6 +4708,14 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     // not cleared to receive reasoning summaries; if the API rejects the field
     // we flip this and retry without it rather than failing the turn.
     this._reasoningSummaryDisabled = false;
+  }
+
+  /**
+   * GPT-5.x defaults to concise final answers. Keep this model-gated so older
+   * Responses models do not receive a field they may not support.
+   */
+  _defaultTextConfig() {
+    return /^gpt-5(?:$|[.-])/i.test(this.model) ? { verbosity: 'low' } : null;
   }
 
   /**
@@ -5222,6 +5232,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           model: this.model,
           input: input,
           store: false, // Don't store responses by default
+          ...(this.promptCachePolicy || {}),
         };
 
         if (this.supportsReasoning()) {
@@ -5243,6 +5254,9 @@ class OpenAIResponsesAdapter extends BaseAdapter {
             buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' },
           );
         }
+
+        const textConfig = this._defaultTextConfig();
+        if (textConfig) requestParams.text = textConfig;
 
         console.log(`[OpenAI Responses] Calling model '${this.model}' with Responses API`);
         console.log(`[OpenAI Responses] Input items: ${input.length}, Tools: ${responsesTools?.length || 0}`);
@@ -5364,6 +5378,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           input: input,
           stream: true,
           store: false,
+          ...(this.promptCachePolicy || {}),
         };
 
         if (this.supportsReasoning()) {
@@ -5383,6 +5398,9 @@ class OpenAIResponsesAdapter extends BaseAdapter {
             buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' },
           );
         }
+
+        const textConfig = this._defaultTextConfig();
+        if (textConfig) requestParams.text = textConfig;
 
         console.log(`[OpenAI Responses] Streaming call to model '${this.model}'`);
 
@@ -5578,6 +5596,10 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   constructor(client, model, options = {}) {
     super(client, model, options);
+    // The ChatGPT Codex backend rejects api.openai.com's public retention
+    // controls with HTTP 400. Keep its cache policy implicit; only the public
+    // OpenAI Responses adapter may send prompt_cache_options/retention.
+    this.promptCachePolicy = null;
     // Codex reasoning models — match by prefix so new models work automatically
     this.reasoningModels = new Set();
     // The ChatGPT backend hiccups (transient 5xx with the generic
@@ -5914,10 +5936,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       params.reasoning = this._withReasoningSummary(reasoningConfig);
     }
 
-    // Add text verbosity control
-    params.text = {
-      verbosity: 'medium',
-    };
+    // GPT-5.x Codex models default to concise final answers.
+    const textConfig = this._defaultTextConfig();
+    if (textConfig) params.text = textConfig;
 
     // Add tools if present
     if (responsesTools && responsesTools.length > 0) {

@@ -163,6 +163,7 @@ describe('reasoning summary streaming (Codex)', () => {
 
     expect(client.calls[0].reasoning).toMatchObject({ summary: 'auto' });
     expect(client.calls[0].reasoning.effort).toBeTruthy();
+    expect(client.calls[0].text).toEqual({ verbosity: 'low' });
   });
 
   it('accumulates summaries safely on the non-streaming path (no onChunk)', async () => {
@@ -198,8 +199,19 @@ describe('reasoning summary streaming (OpenAI Responses)', () => {
     const result = await adapter.callStream([{ role: 'user', content: 'hi' }], [], onChunk);
 
     expect(client.calls[0].reasoning).toMatchObject({ summary: 'auto' });
+    expect(client.calls[0].text).toEqual({ verbosity: 'low' });
     expect(chunks.map((c) => c.delta)).toEqual(['Planning the fix.']);
     expect(result.responseMessage.content).toBe('Here it is.');
+  });
+});
+
+describe('GPT-5 text verbosity defaults', () => {
+  it('does not send text.verbosity to non-GPT-5 Responses models', async () => {
+    const client = recordingClient(() => streamFrom([completed()]));
+    const adapter = await createLlmAdapter('openai', client, 'o3');
+    await adapter.callStream([{ role: 'user', content: 'hi' }], [], () => {});
+
+    expect(client.calls[0]).not.toHaveProperty('text');
   });
 });
 

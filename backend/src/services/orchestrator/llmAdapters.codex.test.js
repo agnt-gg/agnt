@@ -12,6 +12,14 @@ function streamFrom(events) {
 }
 
 describe('CodexResponsesAdapter', () => {
+  it('never sends public OpenAI retention controls to the ChatGPT backend', async () => {
+    const adapter = await createLlmAdapter('openai-codex', {}, 'gpt-5.6-sol');
+    const params = adapter._buildCodexParams([{ role: 'user', content: 'hi' }], []);
+
+    expect(params).not.toHaveProperty('prompt_cache_options');
+    expect(params).not.toHaveProperty('prompt_cache_retention');
+  });
+
   it('replays encrypted reasoning output before tool results in stateless Responses requests', async () => {
     const responseOutput = [
       {
@@ -242,6 +250,29 @@ describe('CodexResponsesAdapter', () => {
 });
 
 describe('OpenAIResponsesAdapter', () => {
+  it('sends the longest model-supported cache retention policy', async () => {
+    const captured = [];
+    const client = {
+      responses: {
+        create: async (params) => {
+          captured.push(params);
+          return streamFrom([{ type: 'response.completed', response: { output: [], usage: {} } }]);
+        },
+      },
+    };
+
+    const gpt56 = await createLlmAdapter('openai', client, 'gpt-5.6-sol');
+    await gpt56.callStream([{ role: 'user', content: 'hi' }], [], () => {});
+
+    const gpt55 = await createLlmAdapter('openai', client, 'gpt-5.5');
+    await gpt55.callStream([{ role: 'user', content: 'hi' }], [], () => {});
+
+    expect(captured[0]).toMatchObject({ prompt_cache_options: { ttl: '30m' } });
+    expect(captured[0]).not.toHaveProperty('prompt_cache_retention');
+    expect(captured[1]).toMatchObject({ prompt_cache_retention: '24h' });
+    expect(captured[1]).not.toHaveProperty('prompt_cache_options');
+  });
+
   it('requests and replays encrypted reasoning output for streamed stateless tool loops', async () => {
     let capturedParams;
     const responseOutput = [

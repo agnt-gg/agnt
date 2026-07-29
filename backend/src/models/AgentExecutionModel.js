@@ -636,7 +636,7 @@ class AgentExecutionModel {
             // most expensive avoidable event in a long conversation.
             lastCacheActivityAt: lastCacheAt,
             // The provider's actual window, so the panel never has to guess.
-            cacheTtlMs: promptCacheTtlMs(latest?.provider),
+            cacheTtlMs: promptCacheTtlMs(latest?.provider, latest?.model),
             cumulative: {
               models,
               // true  = every turn ran on a subscription seat (cost is notional)

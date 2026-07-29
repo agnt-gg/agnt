@@ -1665,7 +1665,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // prompt prefix survived. All of it was already computed above.
     try {
       const { manifest, fingerprints } = buildContextManifest({
-        cacheTtlMs: promptCacheTtlMs(normalizedProvider),
+        cacheTtlMs: promptCacheTtlMs(normalizedProvider, model),
         economics: buildEconomics({
           provider: normalizedProvider,
           model,

@@ -1,43 +1,76 @@
 /**
  * How long a provider keeps a prompt prefix cached.
  *
- * This is NOT a universal constant, and treating it as one is how the panel
- * came to tell users their cache had expired when it demonstrably had not.
- * Anthropic's *default* ephemeral TTL is 5 minutes, but AGNT does not use the
- * default: llmAdapters.js explicitly requests `{ type: 'ephemeral', ttl: '1h' }`
- * on every cache_control breakpoint. Hardcoding the documented default instead
- * of reading what we actually ask for was wrong by a factor of twelve.
+ * This is deliberately model-aware. OpenAI's older models support explicit
+ * 24-hour retention, while GPT-5.6 introduced a different cache contract whose
+ * only supported explicit TTL is currently 30 minutes. Codex uses the ChatGPT
+ * backend, which accepts `prompt_cache_key` but rejects both public retention
+ * controls; its lifetime must therefore come from measured backend behaviour,
+ * not from api.openai.com documentation.
  *
- * The rule here: a number is only listed when it can be traced to something
- * concrete — a parameter we send, or vendor documentation. Everything else is
- * null, because "we don't know" is a better answer than a confident guess about
- * someone's money.
+ * A number is listed only when it can be traced to a parameter AGNT sends,
+ * current vendor documentation, or a reproducible live measurement. Everything
+ * else is null: silence is safer than a confident false claim about money.
  */
 
-// Anthropic-family. We REQUEST this explicitly; it is not the vendor default.
-// Kept in lockstep with llmAdapters.js by promptCacheTtl.test.js, which reads
-// the adapter source and fails if the two ever disagree.
+// Anthropic-family. AGNT explicitly requests this on every cache breakpoint.
 export const ANTHROPIC_REQUESTED_CACHE_TTL_MS = 60 * 60 * 1000;
 
-// OpenAI caches automatically with no TTL parameter to send. The documented
-// behaviour is eviction after "5-10 minutes of inactivity", extending to an
-// hour off-peak. We take the floor of that range: being early makes us
-// understate savings, which is the safe direction to be wrong about cost.
+// Current OpenAI in-memory behaviour when no supported retention control is
+// available. This is a conservative lower bound, not the provider maximum.
 export const OPENAI_IDLE_EVICTION_MS = 5 * 60 * 1000;
 
-const TTL_BY_PROVIDER = {
-  anthropic: ANTHROPIC_REQUESTED_CACHE_TTL_MS,
-  'claude-code': ANTHROPIC_REQUESTED_CACHE_TTL_MS,
-  openai: OPENAI_IDLE_EVICTION_MS,
-  'openai-codex': OPENAI_IDLE_EVICTION_MS,
-};
+// GPT-5.6+ uses prompt_cache_options.ttl. OpenAI currently supports 30m only.
+export const OPENAI_GPT56_CACHE_TTL_MS = 30 * 60 * 1000;
+
+// Older supported OpenAI models accept prompt_cache_retention: '24h'.
+export const OPENAI_EXTENDED_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// The ChatGPT Codex backend rejects prompt_cache_options and
+// prompt_cache_retention, so AGNT cannot force a duration. We measured cache
+// hits after 23m and 38m of inactivity in the live execution ledger. One hour
+// is therefore the useful UI window without importing the unrelated 5m floor
+// from api.openai.com. This is intentionally separate from OpenAI API policy.
+export const CODEX_MEASURED_CACHE_TTL_MS = 60 * 60 * 1000;
+
+const OPENAI_EXTENDED_CACHE_MODELS = /^(?:gpt-5\.5(?:-pro)?|gpt-5\.4|gpt-5\.2|gpt-5\.1(?:-codex(?:-max|-mini)?|-chat-latest)?|gpt-5(?:-codex)?|gpt-4\.1)$/i;
+const OPENAI_GPT56_OR_LATER = /^gpt-(?:[6-9](?:\.|-|$)|5\.(?:[6-9]|\d{2,})(?:\.|-|$))/i;
+
+/**
+ * Return request-level cache controls for public OpenAI API requests.
+ * Codex is intentionally excluded: its ChatGPT backend rejects these fields.
+ */
+export function openAIPromptCachePolicy(model) {
+  if (typeof model !== 'string' || !model) return null;
+  if (OPENAI_GPT56_OR_LATER.test(model)) {
+    return { prompt_cache_options: { ttl: '30m' } };
+  }
+  if (OPENAI_EXTENDED_CACHE_MODELS.test(model)) {
+    return { prompt_cache_retention: '24h' };
+  }
+  return null;
+}
 
 /**
  * @param {string} provider
- * @returns {number|null} TTL in ms, or null when the provider's caching
- *          behaviour is not known well enough to make a claim about it.
+ * @param {string} [model]
+ * @returns {number|null} Cache lifetime in milliseconds.
  */
-export function promptCacheTtlMs(provider) {
+export function promptCacheTtlMs(provider, model = null) {
   if (typeof provider !== 'string' || !provider) return null;
-  return TTL_BY_PROVIDER[provider.toLowerCase()] ?? null;
+
+  switch (provider.toLowerCase()) {
+    case 'anthropic':
+    case 'claude-code':
+      return ANTHROPIC_REQUESTED_CACHE_TTL_MS;
+    case 'openai-codex':
+      return CODEX_MEASURED_CACHE_TTL_MS;
+    case 'openai':
+      if (typeof model !== 'string' || !model) return OPENAI_IDLE_EVICTION_MS;
+      if (OPENAI_GPT56_OR_LATER.test(model)) return OPENAI_GPT56_CACHE_TTL_MS;
+      if (OPENAI_EXTENDED_CACHE_MODELS.test(model)) return OPENAI_EXTENDED_CACHE_TTL_MS;
+      return OPENAI_IDLE_EVICTION_MS;
+    default:
+      return null;
+  }
 }

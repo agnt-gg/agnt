@@ -554,7 +554,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         stream: true,
         include: ['reasoning.encrypted_content'],
         reasoning: { effort: 'medium', summary: 'auto' },
-        text: { verbosity: 'medium' },
+        text: { verbosity: 'low' },
       });
 
       this.streamMap.set(streamId, stream);
@@ -1003,7 +1003,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       stream: true,
       include: ['reasoning.encrypted_content'],
       reasoning: { effort: 'medium', summary: 'auto' },
-      text: { verbosity: 'medium' },
+      text: { verbosity: 'low' },
     });
 
     let content = '';

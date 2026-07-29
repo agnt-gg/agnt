@@ -4,8 +4,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   promptCacheTtlMs,
+  openAIPromptCachePolicy,
   ANTHROPIC_REQUESTED_CACHE_TTL_MS,
   OPENAI_IDLE_EVICTION_MS,
+  OPENAI_GPT56_CACHE_TTL_MS,
+  OPENAI_EXTENDED_CACHE_TTL_MS,
+  CODEX_MEASURED_CACHE_TTL_MS,
 } from './promptCacheTtl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,11 +22,17 @@ describe('promptCacheTtlMs', () => {
 
   it('is case-insensitive, matching how providers are named across the codebase', () => {
     expect(promptCacheTtlMs('Claude-Code')).toBe(3_600_000);
-    expect(promptCacheTtlMs('OpenAI-Codex')).toBe(OPENAI_IDLE_EVICTION_MS);
+    expect(promptCacheTtlMs('OpenAI-Codex', 'gpt-5.6-sol')).toBe(CODEX_MEASURED_CACHE_TTL_MS);
   });
 
-  it('uses the documented idle-eviction floor for OpenAI', () => {
-    expect(promptCacheTtlMs('openai')).toBe(300_000);
+  it('does not apply api.openai.com’s five-minute floor to the ChatGPT Codex backend', () => {
+    expect(promptCacheTtlMs('openai-codex', 'gpt-5.6-sol')).toBe(3_600_000);
+  });
+
+  it('reports the explicit policy selected for public OpenAI models', () => {
+    expect(promptCacheTtlMs('openai', 'gpt-5.6-sol')).toBe(OPENAI_GPT56_CACHE_TTL_MS);
+    expect(promptCacheTtlMs('openai', 'gpt-5.5')).toBe(OPENAI_EXTENDED_CACHE_TTL_MS);
+    expect(promptCacheTtlMs('openai', 'gpt-4o')).toBe(OPENAI_IDLE_EVICTION_MS);
   });
 
   it('returns null rather than guessing for providers we have no basis for', () => {
@@ -34,6 +44,25 @@ describe('promptCacheTtlMs', () => {
     expect(promptCacheTtlMs('')).toBeNull();
     expect(promptCacheTtlMs(undefined)).toBeNull();
     expect(promptCacheTtlMs(null)).toBeNull();
+  });
+});
+
+describe('openAIPromptCachePolicy', () => {
+  it('uses GPT-5.6’s only supported explicit TTL', () => {
+    expect(openAIPromptCachePolicy('gpt-5.6-sol')).toEqual({
+      prompt_cache_options: { ttl: '30m' },
+    });
+  });
+
+  it('uses 24-hour retention on older models that support it', () => {
+    expect(openAIPromptCachePolicy('gpt-5.5')).toEqual({ prompt_cache_retention: '24h' });
+    expect(openAIPromptCachePolicy('gpt-5.2-codex')).toBeNull();
+    expect(openAIPromptCachePolicy('gpt-4.1')).toEqual({ prompt_cache_retention: '24h' });
+  });
+
+  it('does not guess for models without a documented explicit policy', () => {
+    expect(openAIPromptCachePolicy('gpt-4o')).toBeNull();
+    expect(openAIPromptCachePolicy('')).toBeNull();
   });
 });
 
