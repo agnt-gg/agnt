@@ -6,27 +6,31 @@
  * every security-related touch goes through this module so the posture
  * (block set, thresholds, exemptions) lives in exactly one place.
  *
- * PHASE 1 POSTURE — BLOCK-CRITICAL + AUDIT-THE-REST:
- *   - CRITICAL-severity violations are BLOCKED from day 1. rm -rf, disk
- *     format/dd, DROP TABLE/TRUNCATE/DELETE-without-WHERE, shutdown,
- *     kill-all, firewall flush, curl|bash, reverse shells, secret-file
- *     exfil, cloud-metadata SSRF, host-root docker mounts DO NOT EXECUTE.
- *   - A small, explicit AUDIT_ONLY_RULES exemption list keeps critical rules
- *     that false-positive on AGNT's own documented patterns in audit mode
- *     (verified 2026-07-14: cred-env-file-send fires on the fetchJSON /
- *     AGNT_AUTH_TOKEN pattern every code tool uses; RFC1918 SSRF rules fire
- *     on legitimate home-lab / LAN automations).
- *   - Everything below critical (high/medium/low) is AUDIT ONLY in Phase 1:
- *     recorded + broadcast, never blocked. The soak window tunes these
- *     before Phase 2 tightens the threshold.
+ * POSTURE IS POLICY-DRIVEN, NOT HARDCODED:
+ *   - The decision for each violation is resolved per-account by
+ *     SecurityPolicyService against the presets in securityPolicy.js:
+ *       off      critical/high/medium/low -> allow
+ *       observe  all -> audit          (detects and records, blocks NOTHING)
+ *       balanced critical -> block, the rest -> audit   [DEFAULT]
+ *       strict   critical + high -> block, the rest -> audit
+ *   - BALANCED_RULE_OVERRIDES demotes five critical rules to audit because
+ *     they false-positive on AGNT's own documented patterns (verified
+ *     2026-07-14: cred-env-file-send fires on the fetchJSON / AGNT_AUTH_TOKEN
+ *     pattern every code tool uses; the RFC1918 SSRF rules fire on legitimate
+ *     home-lab / LAN automations).
+ *   - An account set to `observe` therefore executes actions that a critical
+ *     rule matched. That is the configured behaviour, not a gate failure —
+ *     every audit log line carries the `policy` object that produced it, so
+ *     "why did this run?" is answerable from the log alone.
  *   - scanOutput() NEVER mutates tool results (sanitizeMode 'report').
  *   - The gate FAILS OPEN on internal errors only (a bug in the gate itself
  *     must not take down every tool call). A detected threat is never an
  *     "internal error" — detection either blocks or audits per the rules.
  *
  * Telemetry is durable: NOPE's report() is in-memory only, so every event is
- * also appended to %APPDATA%/AGNT/security-audit.jsonl — the soak survives
- * app restarts and the Phase 2 threshold decision reads from this file.
+ * also appended to %APPDATA%/AGNT/security-audit.jsonl — it survives app
+ * restarts, and it is the evidence base for tuning a policy (which rules
+ * actually fire, on what, and under which mode).
  */
 import fs from 'fs';
 import path from 'path';

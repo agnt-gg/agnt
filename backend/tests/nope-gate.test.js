@@ -23,10 +23,12 @@ let checkAction;
 let scanOutput;
 let stripSensitiveParams;
 let selectWorkflowSecurityArgs;
+let sanitizeArguments;
 let AUDIT_LOG_PATH;
 
 beforeAll(async () => {
-  ({ checkAction, scanOutput, stripSensitiveParams, selectWorkflowSecurityArgs, AUDIT_LOG_PATH } =
+  ({ checkAction, scanOutput, stripSensitiveParams, selectWorkflowSecurityArgs, sanitizeArguments,
+     AUDIT_LOG_PATH } =
     await import('../src/services/security/nopeService.js'));
 });
 
@@ -309,6 +311,56 @@ describe('PRD-051 — sink-aware workflow security arguments', () => {
       { url: 'https://example.invalid/api', method: 'POST', body: 'large user-authored prose' }
     );
     expect(selected).toEqual({ url: 'https://example.invalid/api', method: 'POST' });
+  });
+});
+
+describe('PRD-051 — sanitizeArguments preserves credential channels', () => {
+  // sanitizeArguments was reachable but had ZERO tests — it was not even in the
+  // import above. Mutation testing showed the guard
+  //   `if (key === '__auth' || SENSITIVE_KEY.test(key)) return value;`
+  // could be deleted with the whole suite staying green. Deleting it redacts
+  // the credentials every authenticated API and plugin call carries, so each
+  // one breaks — loudly, in production, with no failing test beforehand.
+  //
+  // Latent rather than live today: the function returns early unless
+  // outputScanning === 'enforce', which is not the default posture. Pinned now
+  // so tightening the posture later cannot silently break every tool call.
+  const FAKE_KEY = (n) => 'sk-ant-api03-' + 'A'.repeat(n);
+
+  it('keeps __auth and credential-named fields intact while redacting content fields', () => {
+    // `__auth` is injected as { token, provider } by PluginManager, NodeExecutor
+    // and tools.js. NOTE: a payload of only { token } cannot test the
+    // `key === '__auth'` clause at all — SENSITIVE_KEY already matches the CHILD
+    // key `token`, so the value survives either way. A negative control caught
+    // that: deleting the clause left this test green.
+    //
+    // `raw` below is deliberately NOT a credential-shaped name. It pins the real
+    // contract — the __auth channel is preserved WHOLE, whatever its inner keys
+    // are called — so the clause stays load-bearing if the shape ever changes.
+    const args = {
+      __auth: { token: FAKE_KEY(52), provider: 'discord', raw: FAKE_KEY(44) },
+      apiKey: FAKE_KEY(44),
+      message: 'my key is ' + FAKE_KEY(44),
+    };
+    const out = sanitizeArguments(args, 'discord_api', 'enforce', 'audit');
+
+    // dies if the `key === '__auth'` clause is removed
+    expect(out.__auth.raw).toBe(args.__auth.raw);
+    expect(out.__auth.token).toBe(args.__auth.token);
+    expect(out.__auth.provider).toBe('discord');
+    // dies if the SENSITIVE_KEY clause is removed
+    expect(out.apiKey).toBe(args.apiKey);
+    // anti-vacuity: proves the sanitizer actually ran. Without this, disabling
+    // sanitization entirely would satisfy every assertion above.
+    expect(out.message).not.toBe(args.message);
+    expect(out.message).toContain('[REDACTED');
+  });
+
+  it('is a no-op unless output scanning is enforcing', () => {
+    // signature: (args, toolName, outputScanning, credentialDecision)
+    const args = { message: 'my key is ' + FAKE_KEY(44) };
+    expect(sanitizeArguments(args, 'discord_api', 'report', 'audit')).toBe(args);
+    expect(sanitizeArguments(args, 'discord_api', 'enforce', 'allow')).toBe(args);
   });
 });
 
