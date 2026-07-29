@@ -91,6 +91,23 @@ function isPrivateIpv4(ip) {
 }
 
 /**
+ * Did this request originate on the machine running the server?
+ *
+ * The distinction matters for pairing: a loopback-only server genuinely cannot
+ * serve a phone, but it CAN serve an iOS Simulator or a browser on the same
+ * box. Minting for the first case hands out a code nobody can redeem; refusing
+ * the second breaks a legitimate workflow. The peer address separates them.
+ *
+ * @param {object} req Express request
+ * @returns {boolean}
+ */
+export function isSameMachineRequest(req) {
+  const peer = req?.socket?.remoteAddress || req?.connection?.remoteAddress || req?.ip || '';
+  // Express/Node render IPv4 peers over an IPv6 socket as ::ffff:127.0.0.1.
+  return isLoopbackHostname(String(peer).replace(/^::ffff:/i, ''));
+}
+
+/**
  * Split a Host / X-Forwarded-Host value into hostname + port.
  * Returns null for anything that fails validation, so callers can simply skip
  * the candidate rather than reason about partially-trusted input.

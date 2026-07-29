@@ -53,6 +53,33 @@
 
       <div class="pa-body">
         <div class="pa-qr-col">
+          <!-- Both targets share one code; this only chooses which path the QR
+               and the copy link point at. -->
+          <div class="pa-target" role="radiogroup" aria-label="Pair with">
+            <button
+              type="button"
+              class="pa-target-btn"
+              :class="{ active: pairTarget === 'lite' }"
+              role="radio"
+              :aria-checked="pairTarget === 'lite'"
+              v-tooltip="'Phone-sized chat client (/m)'"
+              @click="pairTarget = 'lite'"
+            >
+              Phone chat
+            </button>
+            <button
+              type="button"
+              class="pa-target-btn"
+              :class="{ active: pairTarget === 'full' }"
+              role="radio"
+              :aria-checked="pairTarget === 'full'"
+              v-tooltip="'The complete AGNT interface (/pair)'"
+              @click="pairTarget = 'full'"
+            >
+              Full app
+            </button>
+          </div>
+
           <div v-if="qrSvg" class="pa-qr" v-html="qrSvg"></div>
           <div v-else class="pa-qr pa-qr-empty">
             <i class="fas fa-qrcode"></i>
@@ -288,16 +315,26 @@ const phoneSeen = computed(() => {
 // that someone staring at a dead QR is not left guessing.
 const waitedLong = computed(() => codeShownAt.value > 0 && now.value - codeShownAt.value > 15000);
 
-// Prefer /m/pair for the QR so a camera scan lands on Annie lite with the
-// selected server host embedded. Fall back to full-app /pair for older backends.
+// Which client the QR opens.
+//
+// /pairing/code returns BOTH a full-app `url` and a lite `liteUrl` for every
+// origin. The QR was switched to encode liteUrl only, which left no path to the
+// full app anywhere in the UI -- the API still returned it, nothing rendered
+// it, so an existing user scanning the same QR silently landed somewhere new.
+// The code itself is client-agnostic; only the path differs.
+const pairTarget = ref('lite'); // 'lite' | 'full'
+
 const pairQrUrl = computed(() => {
   if (!code.value) return '';
+  const lite = pairTarget.value === 'lite';
   const match = (code.value.origins || []).find((o) => o.origin === selectedOrigin.value);
-  if (match?.liteUrl) return match.liteUrl;
+  const fromOrigin = lite ? match?.liteUrl : match?.url;
+  if (fromOrigin) return fromOrigin;
+  // Older backend, or an origin the response did not enumerate: build it.
   if (selectedOrigin.value && code.value.code) {
-    return `${selectedOrigin.value}/m/pair?c=${code.value.code}`;
+    return `${selectedOrigin.value}${lite ? '/m/pair' : '/pair'}?c=${code.value.code}`;
   }
-  return code.value.liteUrl || activeUrl.value || '';
+  return (lite ? code.value.liteUrl : code.value.url) || activeUrl.value || '';
 });
 
 // Single copy target: network pair URL (same payload as the QR). Prefer LAN
@@ -584,6 +621,37 @@ onBeforeUnmount(() => clearInterval(ticker));
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+/* Which client the QR opens. Segmented, because the two are alternatives
+   rather than independent options. */
+.pa-target {
+  display: flex;
+  width: 208px;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 8px;
+  background: var(--color-darker-1, #1b1b2b);
+  border: 1px solid var(--color-dull-navy, #2e3350);
+  box-sizing: border-box;
+}
+.pa-target-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-light-med-navy, #8b93a7);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pa-target-btn:hover {
+  color: var(--color-lightest-navy, #e0e0e0);
+}
+.pa-target-btn.active {
+  background: var(--color-dull-navy, #2e3350);
+  color: var(--color-lightest-navy, #e0e0e0);
 }
 .pa-qr {
   width: 208px;

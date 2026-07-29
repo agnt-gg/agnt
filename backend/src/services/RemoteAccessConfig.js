@@ -193,13 +193,26 @@ export function lanAddresses() {
   }
   // Prefer real LAN ranges over virtual adapters (WSL/Docker/Hyper-V sit on
   // 172.16-31.x and are almost never the address a phone can reach).
-  const score = (ip) => {
+  //
+  // The IP range alone is not enough. VirtualBox host-only adapters default to
+  // 192.168.56.x and VMware to 192.168.x, both of which score BEST on range
+  // while being reachable from exactly one machine -- so a box with VirtualBox
+  // installed would offer its virtual adapter ahead of real Wi-Fi. Judge the
+  // interface name too, and let that dominate: a NIC named vEthernet or
+  // VirtualBox is virtual regardless of the range it happens to sit on.
+  const VIRTUAL_IFACE =
+    /^(vEthernet|VirtualBox|VMware|vmnet|Hyper-V|docker|br-|veth|utun|tap|tun|ZeroTier|Npcap|Loopback)/i;
+  const rangeScore = (ip) => {
     if (/^192\.168\./.test(ip)) return 0;
     if (/^10\./.test(ip)) return 1;
     if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return 3;
     return 2;
   };
-  return out.sort((a, b) => score(a.address) - score(b.address));
+  // +10 keeps every virtual adapter below every physical one without collapsing
+  // the ordering within each group.
+  const score = (entry) =>
+    rangeScore(entry.address) + (VIRTUAL_IFACE.test(entry.iface) ? 10 : 0);
+  return out.sort((a, b) => score(a) - score(b));
 }
 
 export default {

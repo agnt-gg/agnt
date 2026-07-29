@@ -36,7 +36,11 @@ import { requireAuthHeader, extractToken, verifyAuthToken } from '../utils/authG
 import { rateLimit } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
 import NetworkIdentity from '../services/NetworkIdentity.js';
-import { candidateOrigins, evaluateReachability } from '../services/ReachableOrigin.js';
+import {
+  candidateOrigins,
+  evaluateReachability,
+  isSameMachineRequest,
+} from '../services/ReachableOrigin.js';
 
 const router = express.Router();
 
@@ -186,11 +190,33 @@ router.post(
     }
 
     // Prefer an externally reachable origin (LAN / reverse proxy / PUBLIC_ORIGIN).
-    // If nothing external exists, still mint for same-machine clients (iOS
-    // Simulator / local browser) and flag loopbackOnly — do not 409.
+    //
+    // When nothing external exists the answer depends on WHO is asking, which
+    // is the distinction the original all-or-nothing refusal missed:
+    //
+    //   same machine  -> mint. An iOS Simulator or a local browser can redeem
+    //                    a 127.0.0.1 code perfectly well; refusing broke a
+    //                    legitimate workflow.
+    //   anything else -> refuse. The code would be valid and the URL dead, and
+    //                    that surfaces on the phone as a bare connection error
+    //                    with nothing on the desktop to explain it. Fail here,
+    //                    where we can say why.
+    //
+    // The test is "is there any address another device could use?", NOT "am I
+    // bound to a LAN interface?" — a reverse-proxied deployment binds loopback
+    // on purpose and is perfectly reachable.
     const port = process.env.PORT || 3333;
     const reach = evaluateReachability(req, { port });
     const loopbackOnly = !reach.usable;
+    if (loopbackOnly && !isSameMachineRequest(req)) {
+      const actualBind = RemoteAccessConfig.getActualBind();
+      return res.status(409).json({
+        success: false,
+        error: reach.reason,
+        restartRequired: RemoteAccessConfig.isRestartRequired(),
+        bindHost: actualBind ? actualBind.host : RemoteAccessConfig.resolveBindHost().host,
+      });
+    }
     const best = reach.best || `http://127.0.0.1:${port}`;
 
     const code = crypto.randomBytes(16).toString('hex'); // 128 bits
