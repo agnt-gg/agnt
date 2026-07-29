@@ -433,6 +433,33 @@ export function diffCapabilities(declaredPermissions, detectedCapabilities) {
   return { undeclared, declaredUnused };
 }
 
+/**
+ * The permission set a plugin is actually held to.
+ *
+ * DECLARING IS OPTIONAL, AND OMITTING IT BUYS NO EXEMPTION. The scan is
+ * authoritative for what the code demonstrably does; the declaration adds what
+ * the scan cannot see. Neither alone is sufficient, so the effective set is
+ * their union:
+ *
+ *   scan-only    misses capabilities reached through a bundled dependency —
+ *                node_modules is in SCAN_SKIP_DIRS — and cannot express
+ *                intent-only entries such as domain:api.example.com.
+ *   declare-only was the status quo, and it made the update consent gate
+ *                inert for any author who simply left the block out. Measured
+ *                2026-07-29: 17 of 18 published plugins declared nothing while
+ *                the scanner detected spawn-process, network, filesystem and
+ *                env-access across 13 of them. Omitting the declaration was a
+ *                permanent exemption from re-consent.
+ *
+ * Under the union, an undeclared capability is granted, disclosed and gated
+ * exactly like a declared one, so there is nothing left to gain by omitting it.
+ */
+export function effectivePermissions(declaredPermissions, detectedCapabilities) {
+  const effective = new Set(normalizePermissions(declaredPermissions));
+  for (const capability of Object.keys(detectedCapabilities || {})) effective.add(capability);
+  return [...effective].sort();
+}
+
 // ---------------------------------------------------------------------------
 // Trust tier (Layer 6, 0.6.0 display-only ladder — trust system)
 //   community  (🔵) integrity recorded + permissions declared + nothing undeclared
@@ -545,6 +572,7 @@ export default {
   scanCapabilities,
   normalizePermissions,
   diffCapabilities,
+  effectivePermissions,
   computeTrustTier,
   parseSemver,
   compareVersions,

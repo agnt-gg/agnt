@@ -31,9 +31,11 @@ import {
   scanCapabilities,
   normalizePermissions,
   diffCapabilities,
+  effectivePermissions,
   computeTrustTier,
   compareVersions,
 } from '../../plugins/lib/validate-core.js';
+import { grantedPermissionsForEntry, newlyRequestedPermissions } from './pluginPermissions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -523,8 +525,10 @@ class PluginInstaller {
    * @param {'verified'|'tofu'|'none'} [opts.integrityState]
    * @param {string|null} [opts.integrity] - SRI hash of the archive
    * @param {function|null} [opts.beforeSwap] - async hook({stagingPath, manifest,
-   *   declaredPermissions}); throw to abort with live untouched (used by the
-   *   permission-diff gate).
+   *   declaredPermissions, effectivePermissions, undeclared}); throw to abort
+   *   with live untouched (used by the permission-diff gate). Gates must read
+   *   `effectivePermissions` — `declaredPermissions` is the author's raw block
+   *   and is empty for most packages, which is what made the gate inert.
    */
   async stagedInstall(archivePath, pluginName, { integrityState = 'none', integrity = null, beforeSwap = null, tierOverride = null } = {}) {
     const livePath = path.join(this.pluginsDir, pluginName);
@@ -578,16 +582,24 @@ class PluginInstaller {
       const scan = await scanCapabilities(stagingPath);
       const manifest = report.manifest || {};
       const declared = normalizePermissions(manifest.permissions);
+      // The set this install is actually held to. Declaring is optional; the
+      // scan supplies whatever the author left out, so omitting the block no
+      // longer buys an exemption from consent or from the update gate.
+      const effective = effectivePermissions(manifest.permissions, scan.capabilities);
       const diff = diffCapabilities(manifest.permissions, scan.capabilities);
       if (diff.undeclared.length > 0) {
         console.warn(
-          `[PluginInstaller] ${pluginName}: undeclared capabilities detected (warn-only): ${diff.undeclared.join(', ')}`
+          `[PluginInstaller] ${pluginName}: ${diff.undeclared.join(', ')} not declared by the author — derived from the capability scan and granted explicitly`
         );
       }
       let trustTier = computeTrustTier({
         integrityState,
-        permissionsDeclared: declared.length > 0,
-        undeclaredCount: diff.undeclared.length,
+        permissionsDeclared: effective.length > 0,
+        // Zero by construction: `effective` contains every detected capability,
+        // so nothing is left unaccounted for. A missing permissions block is a
+        // documentation gap, not a hole in what we grant, disclose and gate —
+        // penalising it here only taught authors that the badge was noise.
+        undeclaredCount: 0,
         scanFailed: scan.scanFailed,
       });
       // Tier override: AGNT first-party records are 'official' (set by the
@@ -600,7 +612,13 @@ class PluginInstaller {
 
 
       if (beforeSwap) {
-        await beforeSwap({ stagingPath, manifest, declaredPermissions: declared });
+        await beforeSwap({
+          stagingPath,
+          manifest,
+          declaredPermissions: declared,
+          effectivePermissions: effective,
+          undeclared: diff.undeclared,
+        });
       }
 
       const swap = await this.atomicSwap(stagingPath, livePath, pluginName);
@@ -614,7 +632,7 @@ class PluginInstaller {
           integrity,
           integrityState,
           trustTier,
-          grantedPermissions: declared,
+          grantedPermissions: effective,
           detectedCapabilities: Object.keys(scan.capabilities),
         },
       };
@@ -880,14 +898,18 @@ class PluginInstaller {
 
           entry.integrity = entry.integrity || `dir:${dirHash}`;
           entry.integrityState = entry.integrityState || 'tofu';
+          const effective = effectivePermissions(manifest.permissions, scan.capabilities);
           const computedTier = computeTrustTier({
             integrityState: 'tofu',
-            permissionsDeclared: declared.length > 0,
-            undeclaredCount: diff.undeclared.length,
+            permissionsDeclared: effective.length > 0,
+            undeclaredCount: 0, // see stagedInstall: `effective` accounts for everything detected
             scanFailed: scan.scanFailed,
           });
           entry.trustTier = officialNames.has(entry.name) && !scan.scanFailed ? 'official' : computedTier;
-          entry.grantedPermissions = entry.grantedPermissions || declared;
+          // Union rather than `||`: a pre-derivation entry holds the author's
+          // (usually empty) declaration, and `[]` is truthy-empty here, so `||`
+          // would leave it stuck at the old value forever.
+          entry.grantedPermissions = [...new Set([...(entry.grantedPermissions || []), ...effective])].sort();
           entry.detectedCapabilities = Object.keys(scan.capabilities);
           changed++;
         } catch (err) {
@@ -1036,7 +1058,7 @@ class PluginInstaller {
       let granted = [];
       try {
         const registry = JSON.parse(await fs.readFile(this.registryPath, 'utf-8'));
-        granted = (registry.plugins || []).find((p) => p.name === pluginName)?.grantedPermissions || [];
+        granted = grantedPermissionsForEntry((registry.plugins || []).find((p) => p.name === pluginName));
       } catch {}
 
       // The gate fires on any UPDATE (prior entry exists) that adds
@@ -1053,10 +1075,10 @@ class PluginInstaller {
       const staged = await this.stagedInstall(tempFile, pluginName, {
         integrityState: 'tofu',
         integrity,
-        beforeSwap: async ({ declaredPermissions }) => {
-          const added = declaredPermissions.filter((p) => !granted.includes(p));
+        beforeSwap: async ({ effectivePermissions: requested }) => {
+          const added = newlyRequestedPermissions(requested, granted);
           if (added.length > 0 && !acceptedPermissions && isUpdate) {
-            gateDiff = { added, previouslyGranted: granted, requested: declaredPermissions };
+            gateDiff = { added, previouslyGranted: granted, requested };
             const err = new Error(`GitHub version requests new permissions: ${added.join(', ')}. Re-consent required.`);
             err.code = 'PERMISSION_CONSENT_REQUIRED';
             throw err;
@@ -1203,15 +1225,15 @@ class PluginInstaller {
       // trust system W2: verify publisher signature when the record carries one.
       const sig = await this.verifyRecordSignature(pluginInfo, tempFile);
 
-      const granted = Array.isArray(currentEntry.grantedPermissions) ? currentEntry.grantedPermissions : [];
+      const granted = grantedPermissionsForEntry(currentEntry);
       const staged = await this.stagedInstall(tempFile, pluginName, {
         integrityState,
         integrity: actualIntegrity,
         tierOverride: pluginInfo.trustTier === 'official' ? 'official' : null,
-        beforeSwap: async ({ declaredPermissions }) => {
-          const added = declaredPermissions.filter((p) => !granted.includes(p));
+        beforeSwap: async ({ effectivePermissions: requested }) => {
+          const added = newlyRequestedPermissions(requested, granted);
           if (added.length > 0 && !acceptedPermissions) {
-            gateDiff = { added, previouslyGranted: granted, requested: declaredPermissions };
+            gateDiff = { added, previouslyGranted: granted, requested };
             const err = new Error(
               `Update requests new permissions: ${added.join(', ')}. Re-consent required.`
             );
