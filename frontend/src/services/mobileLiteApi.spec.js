@@ -27,8 +27,54 @@ const {
   resolveLiteProviderModelAsync,
   listConversations,
   loadConversation,
+  saveConversation,
   newConversationId,
 } = await import('./mobileLiteApi.js');
+
+describe('saveConversation persistence shape', () => {
+  beforeEach(() => {
+    ensureLocalStorage();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('persists contentParts and reasoning, not just flat content', async () => {
+    // Without contentParts a reloaded chat renders every tool card after all the
+    // prose, in an order the model never produced.
+    let body = null;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, opts) => {
+      body = JSON.parse(JSON.parse(opts.body).content);
+      return { ok: true, json: async () => ({ id: 'out-1' }) };
+    });
+
+    await saveConversation({
+      outputId: null,
+      conversationId: 'c1',
+      title: 'T',
+      messages: [
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: 'hi',
+          timestamp: 1,
+          reasoning: 'thought',
+          toolCalls: [{ id: 't1', name: 'web_search' }],
+          contentParts: [
+            { type: 'text', text: 'hi' },
+            { type: 'tool_call', toolCallId: 't1' },
+          ],
+        },
+      ],
+    });
+
+    expect(body.messages[0].contentParts).toEqual([
+      { type: 'text', text: 'hi' },
+      { type: 'tool_call', toolCallId: 't1' },
+    ]);
+    expect(body.messages[0].reasoning).toBe('thought');
+    expect(body.messages[0].toolCalls).toHaveLength(1);
+  });
+});
 
 describe('mobileLiteApi', () => {
   beforeEach(() => {

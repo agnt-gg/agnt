@@ -175,6 +175,11 @@ export async function saveConversation({
         timestamp: msg.timestamp,
         metadata: msg.metadata || [],
         toolCalls: msg.toolCalls || [],
+        // contentParts carries the text/tool ORDER. Dropping it on save meant a
+        // reloaded chat re-rendered every tool card after all the prose, so a
+        // multi-tool answer read in an order the model never produced.
+        contentParts: msg.contentParts || [],
+        reasoning: msg.reasoning || '',
       })),
       createdAt: messages[0]?.timestamp || Date.now(),
       updatedAt: Date.now(),

@@ -4568,6 +4568,28 @@ span.nodeLabel p {
   opacity: 1;
 }
 
+/* A pointer that cannot hover can never reveal a hover-gated control, so on
+   touch these buttons were unreachable — not subtle, simply absent. That is
+   true of the phone client, a tablet, and a touchscreen desktop alike, so the
+   fix belongs here rather than in any one surface's stylesheet. */
+@media (hover: none) {
+  .message-text :deep(.viz-action-buttons) {
+    opacity: 1;
+  }
+
+  /* On hover the overlay is transient, so covering the top-right of the diagram
+     costs nothing. Permanently visible, it hides real content — measured on a
+     phone, Copy sat on top of the Chart.js legend swatch. Reserve a band rather
+     than overlay: these containers size their canvas/SVG from the content box,
+     so the diagram simply starts below the buttons. */
+  .message-text :deep(.chartjs-container),
+  .message-text :deep(.d3-container),
+  .message-text :deep(.threejs-container),
+  .message-text :deep(.mermaid-container) {
+    padding-top: 48px;
+  }
+}
+
 /* ── Compact mode (forge panels) ── */
 .message-wrapper.compact .message-card {
   padding: 12px 16px;
@@ -4605,6 +4627,12 @@ span.nodeLabel p {
 
 .message-wrapper:hover .message-edit-btn {
   opacity: 0.6;
+}
+
+@media (hover: none) {
+  .message-edit-btn {
+    opacity: 0.6;
+  }
 }
 
 .message-edit-btn:hover {

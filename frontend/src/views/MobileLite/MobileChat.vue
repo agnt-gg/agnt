@@ -55,17 +55,24 @@
         </button>
       </div>
 
-      <div v-for="m in messages" :key="m.id" class="ml-bubble" :class="m.role">
-        <div class="ml-role">{{ m.role === 'user' ? 'You' : 'Annie' }}</div>
-        <div class="ml-body">{{ m.content }}</div>
-        <div v-if="m.role === 'assistant' && m.tools?.length" class="ml-tools">
-          <div v-for="(t, i) in m.tools" :key="i" class="ml-tool">
-            <i class="fas fa-wrench"></i> {{ t }}
-          </div>
-        </div>
-      </div>
-
-      <div v-if="statusLine" class="ml-status">{{ statusLine }}</div>
+      <!--
+        Rendered by the SAME component the desktop chat uses. Markdown, fenced
+        code + highlighting, images, {{IMAGE_REF}} resolution, tables, MathJax,
+        Chart.js / D3 / Mermaid / Three.js, HTML previews and expandable tool
+        cards are all inherited rather than reimplemented — so this surface
+        cannot drift from main chat again. See mobileChatRender.spec.js.
+      -->
+      <MessageItem
+        v-for="m in messages"
+        :key="m.id"
+        :message="m"
+        :status="statusFor(m)"
+        :imageCache="imageCache"
+        :dataCache="dataCache"
+        :expandedToolCalls="expandedToolCalls"
+        :showAvatar="m.role === 'assistant'"
+        @toggle-tool="toggleToolCallExpansion"
+      />
     </main>
 
     <footer class="ml-composer">
@@ -101,6 +108,8 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
+import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
+import { createAssistantMessage, applyStreamEvent, hydrateMessage } from '@/services/chatStreamReducer.js';
 import {
   listConversations,
   loadConversation,
@@ -125,6 +134,14 @@ const listEl = ref(null);
 const inputEl = ref(null);
 const providerLoading = ref(true);
 
+// MessageItem's caches. Generated images resolve to /api/images/:id (served with
+// the media cookie set at pairing), exactly as they do on desktop after a
+// reload — so an empty map here is the same code path, not a degraded one.
+const imageCache = ref(new Map());
+const dataCache = ref(new Map());
+const expandedToolCalls = ref({});
+const streamingMessageId = ref(null);
+
 const providerRef = ref(null);
 const modelRef = ref(null);
 
@@ -139,6 +156,21 @@ const canSend = computed(
     providerRef.value &&
     modelRef.value
 );
+
+/** Only the in-flight assistant bubble carries a status; everything else is settled. */
+function statusFor(m) {
+  if (!streaming.value || m.id !== streamingMessageId.value) return null;
+  return { type: 'thinking', text: statusLine.value || 'Thinking…' };
+}
+
+function toggleToolCallExpansion(messageId, toolCallIndex) {
+  const open = expandedToolCalls.value[messageId] || [];
+  const at = open.indexOf(toolCallIndex);
+  expandedToolCalls.value = {
+    ...expandedToolCalls.value,
+    [messageId]: at > -1 ? open.filter((i) => i !== toolCallIndex) : [...open, toolCallIndex],
+  };
+}
 
 async function refreshProviderModel() {
   providerLoading.value = true;
@@ -157,10 +189,15 @@ async function refreshProviderModel() {
   }
 }
 
-function scrollBottom() {
+// Only auto-scroll when the user is already at the bottom. Yanking the viewport
+// down while they are reading an earlier answer is the single most annoying
+// thing a phone chat can do.
+function scrollBottom(force = false) {
+  const el = listEl.value;
+  const wasAtBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   nextTick(() => {
-    const el = listEl.value;
-    if (el) el.scrollTop = el.scrollHeight;
+    const target = listEl.value;
+    if (target && (force || wasAtBottom)) target.scrollTop = target.scrollHeight;
   });
 }
 
@@ -185,6 +222,7 @@ function startNew() {
   statusLine.value = '';
   drawerOpen.value = false;
   draft.value = '';
+  expandedToolCalls.value = {};
   nextTick(() => inputEl.value?.focus());
 }
 
@@ -197,14 +235,11 @@ async function openConversation(id) {
     outputId.value = data.outputId;
     conversationId.value = data.conversationId || newConversationId();
     title.value = data.title || '';
-    messages.value = (data.messages || []).map((m) => ({
-      id: m.id || newMessageId(),
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
-      timestamp: m.timestamp || Date.now(),
-      tools: [],
-    }));
-    scrollBottom();
+    expandedToolCalls.value = {};
+    // hydrateMessage rebuilds contentParts for conversations saved before the
+    // interleaved model existed, so old chats render instead of showing blanks.
+    messages.value = (data.messages || []).map(hydrateMessage);
+    scrollBottom(true);
   } catch (e) {
     error.value = e.message || 'Could not load conversation';
   }
@@ -252,23 +287,18 @@ async function send() {
   error.value = '';
   draft.value = '';
 
-  const userMsg = {
+  const userMsg = hydrateMessage({
     id: newMessageId(),
     role: 'user',
     content: text,
     timestamp: Date.now(),
-  };
+  });
   messages.value.push(userMsg);
 
-  const assistantMsg = {
-    id: newMessageId(),
-    role: 'assistant',
-    content: '',
-    timestamp: Date.now(),
-    tools: [],
-  };
+  const assistantMsg = createAssistantMessage({ id: newMessageId() });
   messages.value.push(assistantMsg);
-  scrollBottom();
+  streamingMessageId.value = assistantMsg.id;
+  scrollBottom(true);
 
   // History: prior turns + this user message; never the empty assistant stub
   const history = toChatHistory(
@@ -288,27 +318,13 @@ async function send() {
       conversationId: conversationId.value,
       signal: abortController.signal,
       onEvent: (eventName, data) => {
-        if (eventName === 'content_delta' && data?.delta != null) {
-          assistantMsg.content += data.delta;
-          statusLine.value = '';
+        // One shared reducer owns the wire protocol for every surface.
+        const r = applyStreamEvent(assistantMsg, eventName, data);
+        if (r.error) error.value = r.error;
+        if (r.status !== null) statusLine.value = r.status;
+        if (r.changed) {
           touchMessages();
           scrollBottom();
-        } else if (eventName === 'reasoning_delta') {
-          statusLine.value = 'Reasoning…';
-        } else if (eventName === 'tool_pending' || eventName === 'tool_start') {
-          const name = data?.name || data?.toolName || data?.function?.name || 'tool';
-          if (!assistantMsg.tools.includes(name)) assistantMsg.tools.push(name);
-          statusLine.value = `Using ${name}…`;
-          touchMessages();
-        } else if (eventName === 'tool_end') {
-          statusLine.value = 'Working…';
-        } else if (eventName === 'final_content' && data?.content != null && !assistantMsg.content) {
-          assistantMsg.content = data.content;
-          touchMessages();
-        } else if (eventName === 'error') {
-          error.value = data?.error || data?.message || 'Stream error';
-        } else if (eventName === 'done') {
-          statusLine.value = '';
         }
       },
     });
@@ -320,8 +336,9 @@ async function send() {
   } finally {
     streaming.value = false;
     statusLine.value = '';
+    streamingMessageId.value = null;
     abortController = null;
-    if (!assistantMsg.content) assistantMsg.content = '…';
+    if (!assistantMsg.content && !assistantMsg.toolCalls.length) assistantMsg.content = '…';
     touchMessages();
     scheduleSave();
     scrollBottom();
@@ -332,6 +349,7 @@ function stop() {
   abortController?.abort();
   abortController = null;
   streaming.value = false;
+  streamingMessageId.value = null;
   statusLine.value = 'Stopped';
 }
 
@@ -419,10 +437,15 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 16px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  /* Chat content is authored against the app theme tokens. The mobile shell
+     paints its own dark background, so pin the tokens the shared renderer
+     needs in case a theme stylesheet has not applied to this route yet. */
+  --color-darker-1: #181826;
+  --terminal-border-color: #2e3350;
 }
 .ml-empty {
   margin: auto;
@@ -439,47 +462,6 @@ onBeforeUnmount(() => {
 .ml-meta {
   font-size: 12px;
   opacity: 0.8;
-}
-.ml-bubble {
-  max-width: 92%;
-  padding: 10px 14px;
-  border-radius: 14px;
-  font-size: 15px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.ml-bubble.user {
-  align-self: flex-end;
-  background: #243048;
-  border-bottom-right-radius: 4px;
-}
-.ml-bubble.assistant {
-  align-self: flex-start;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-}
-.ml-role {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.ml-tools {
-  margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.ml-tool {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
 }
 .ml-status {
   font-size: 13px;
@@ -624,6 +606,73 @@ onBeforeUnmount(() => {
   font-size: 13px;
   cursor: pointer;
   padding: 8px 0;
+}
+
+/* ------------------------------------------------------------------
+   Phone fit for the shared message renderer.
+   These only change SIZE and SPACING — never which elements exist or
+   how content is parsed — so parity with main chat is preserved.
+   ------------------------------------------------------------------ */
+.ml-messages :deep(.message-wrapper) {
+  gap: 8px;
+  animation: none; /* per-bubble spring animation is jarring on a small viewport */
+}
+.ml-messages :deep(.message-avatar) {
+  width: 26px;
+  height: 26px;
+  border-width: 2px;
+  padding: 1px;
+}
+.ml-messages :deep(.message-card) {
+  padding: 12px 14px;
+  gap: 12px;
+  width: 100%;
+  border-radius: 12px;
+}
+.ml-messages :deep(.message-text) {
+  font-size: 15px;
+  line-height: 1.45;
+}
+/* Desktop reserves 34px of gutter (`width: calc(100% - 34px)`) which a phone
+   cannot spare. `width: auto` rather than `100%`: <pre> here is content-box, so
+   100% + 12px padding + 1px border overflowed the card by 26px and ran the code
+   block to within 1px of the screen edge. Measured: right edge 389px of a 390px
+   viewport, vs 363px for every sibling block. */
+.ml-messages :deep(.message-text pre) {
+  width: auto;
+  padding: 12px;
+  font-size: 12.5px;
+}
+.ml-messages :deep(.message-text .table-wrapper) {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* The 320px floor exists so Chart.js cannot init a collapsed canvas (see the
+   rule in MessageItem). At phone width the canvas is aspect-bound to ~131px, so
+   that floor left ~95px of dead card under every chart. 200px still clears the
+   ~150px collapse the guard is written against, with the waste cut to ~37px. */
+.ml-messages :deep(.message-text .chartjs-container) {
+  min-height: 200px;
+}
+.ml-messages :deep(.message-text .html-inline-iframe-scroller),
+.ml-messages :deep(.message-text .chartjs-container),
+.ml-messages :deep(.message-text .d3-container),
+.ml-messages :deep(.message-text .threejs-container),
+.ml-messages :deep(.message-text .mermaid-container) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.ml-messages :deep(.message-text .threejs-canvas),
+.ml-messages :deep(.message-text .d3-container svg) {
+  max-width: 100%;
+  height: auto;
+}
+.ml-messages :deep(.tool-call-content) {
+  font-size: 12px;
+}
+.ml-messages :deep(.message-time) {
+  padding: 0;
 }
 </style>
 
