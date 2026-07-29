@@ -61,6 +61,12 @@ export function userFromJwt(token) {
         ? new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))
         : Buffer.from(b64, 'base64').toString('utf8');
     const payload = JSON.parse(json);
+    // A token past its own expiry is not a session. AGNT session tokens are
+    // minted by the remote auth server and carry `exp` (payload shape:
+    // id, userId, email, auth_type, iat, exp — 30-day lifetime), and an
+    // expired one outlives its usefulness in localStorage, so without this
+    // check a month-old token would still synthesize a logged-in user.
+    if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now()) return null;
     const id = payload.id || payload.sub || payload.userId;
     const email = payload.email || null;
     if (!id && !email) return null;
@@ -233,15 +239,22 @@ export default {
         return;
       }
 
+      // TRANSIENT failures only. The remote auth server being unreachable is
+      // not evidence that the token is bad, so a locally-decoded user keeps a
+      // paired phone working through an outage or an offline page load.
+      //
+      // The failure record is deliberately NOT cleared. It is the only
+      // diagnostic that explains a degraded session, the router guard reads it,
+      // and erasing it turns "server rejected you" into a UI that looks signed
+      // in while every API call 401s -- silent wrongness instead of a clean
+      // bounce. Keeping it costs nothing: the guard only redirects when there
+      // is no user at all, so a transient failure still lets the user through.
       const applyJwtFallback = (reason) => {
         const localUser = userFromJwt(state.token);
-        if (localUser) {
-          commit('SET_USER', localUser);
-          commit('CLEAR_AUTH_FAILURE');
-          console.warn(`[userAuth] using JWT local user after ${reason}`);
-          return true;
-        }
-        return false;
+        if (!localUser) return false;
+        commit('SET_USER', localUser);
+        console.warn(`[userAuth] using JWT local user after ${reason}`);
+        return true;
       };
 
       try {
@@ -259,28 +272,35 @@ export default {
             dispatch('fetchPseudonym');
           }
         } else {
-          // Remote does not recognize the session (e.g. device-paired local JWT).
-          // Prefer a local JWT-derived user over wiping the session so /m/chat works.
-          if (!applyJwtFallback('unauthenticated_response')) {
-            commit('SET_USER', null);
-            commit('SET_AUTH_FAILURE', {
-              reason: 'unauthenticated_response',
-              status: response.status,
-              detail: response.data?.error || null,
-              timestamp: Date.now(),
-            });
-            console.error('Auth status returned but no user data:', response.data);
-          }
+          // The server answered, and the answer was "no". That is a definitive
+          // rejection -- 'unauthenticated_response' is in
+          // DEFINITIVE_AUTH_REJECTIONS -- not an outage, so there is nothing
+          // here to ride out with a local token.
+          //
+          // Pairing does not create a session the remote cannot see: /claim
+          // hands the phone the initiator's OWN remote-issued token precisely
+          // so it has the same capabilities as the desktop (see
+          // PairingRoutes.js). If the remote rejects that token it is dead for
+          // the desktop too, and the honest response is a clean bounce.
+          commit('SET_USER', null);
+          commit('SET_AUTH_FAILURE', {
+            reason: 'unauthenticated_response',
+            status: response.status,
+            detail: response.data?.error || null,
+            timestamp: Date.now(),
+          });
+          console.error('Auth status returned but no user data:', response.data);
         }
       } catch (error) {
         const failure = classifyAuthError(error);
-        // Network/timeout/5xx: keep or restore a local JWT user so pairing survives
-        // full page loads. Only definitive 401/403 clear via the guard.
-        if (failure.reason === 'http_401' || failure.reason === 'http_403') {
-          commit('SET_AUTH_FAILURE', failure);
-          console.error(`Error fetching user data (${failure.reason}):`, error);
-        } else if (!applyJwtFallback(failure.reason)) {
-          commit('SET_AUTH_FAILURE', failure);
+        // Always record why. Whether the session survives is a separate
+        // question from whether we can explain it, and conflating the two is
+        // what made a revoked session look like a working one.
+        commit('SET_AUTH_FAILURE', failure);
+        // Network/timeout/5xx: restore a local JWT user so a paired phone
+        // survives full page loads. Definitive 401/403 get no fallback.
+        const definitive = failure.reason === 'http_401' || failure.reason === 'http_403';
+        if (definitive || !applyJwtFallback(failure.reason)) {
           console.error(`Error fetching user data (${failure.reason}):`, error);
         }
       }
