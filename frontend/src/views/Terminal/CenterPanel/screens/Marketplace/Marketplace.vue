@@ -1927,6 +1927,13 @@ export default {
 }
 
 .marketplace-panel {
+  /* isolation: isolate confines every z-index in this screen to a private
+     stacking context. Without it the screen's local layering values compete
+     directly against the app chrome — .mk-toolbar's z-index of 5 outranked the
+     side panels' z-index of 3, so the toolbar painted over panel-hosted UI.
+     Screen-internal layering is a screen-internal concern; it must not be
+     expressible against elements outside the screen. */
+  isolation: isolate;
   position: relative;
   top: 0;
   display: flex;
@@ -2746,7 +2753,12 @@ body.dark .view-btn:not(:last-child) {
 
 /* ─────────────────────── toolbar ─────────────────────── */
 /* Lives INSIDE the scroll container, so its gutters can never drift from
-   the grid's the way a separately-positioned bar would. */
+   the grid's the way a separately-positioned bar would.
+
+   Its z-index is deliberately > the card internals (.mk-art-* use 2 and 3) so
+   cards scroll *under* the pinned bar. Those values are only safe because
+   .marketplace-panel isolates — without that, this 5 outranks the side panels
+   (z-index: 3) and paints over anything they render. */
 .mk-toolbar {
   position: sticky;
   top: 0;

@@ -79,12 +79,17 @@
     <!-- Lightbox. Review images are stored as inline data URIs, and Chrome blocks
          top-level navigation to a data: URL — so window.open() silently does
          nothing for them. The image has to be shown in-page. -->
-    <div v-if="lightboxImage" class="image-lightbox" @click="closeImageModal">
-      <img :src="lightboxImage" alt="Review image" class="lightbox-img" @click.stop />
-      <button type="button" class="lightbox-close" v-tooltip="'Close'" @click.stop="closeImageModal">
-        <i class="fas fa-times"></i>
-      </button>
-    </div>
+    <!-- Teleported to <body>: rendered in place it lives inside .controls-panel
+         (position: relative; z-index: 3), which caps this overlay's z-index of
+         1000 at 3 and lets center-column content paint over it. -->
+    <Teleport to="body">
+      <div v-if="lightboxImage" class="image-lightbox" @click="closeImageModal">
+        <img :src="lightboxImage" alt="Review image" class="lightbox-img" @click.stop />
+        <button type="button" class="lightbox-close" v-tooltip="'Close'" @click.stop="closeImageModal">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 

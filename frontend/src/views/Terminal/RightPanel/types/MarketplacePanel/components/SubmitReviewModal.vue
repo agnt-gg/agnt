@@ -1,5 +1,9 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="$emit('close')">
+  <!-- Teleported to <body>: rendered in place it lives inside .controls-panel
+       (position: relative; z-index: 3), which caps this overlay's z-index of
+       1000 at 3 and lets center-column content paint over it. -->
+  <Teleport to="body">
+    <div v-if="isOpen" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-content">
       <div class="modal-header">
         <h2>{{ isEditing ? 'Edit Review' : 'Write a Review' }}</h2>
@@ -128,7 +132,8 @@
         </button>
       </div>
     </div>
-  </div>
+    </div>
+  </Teleport>
 </template>
 
 <script>

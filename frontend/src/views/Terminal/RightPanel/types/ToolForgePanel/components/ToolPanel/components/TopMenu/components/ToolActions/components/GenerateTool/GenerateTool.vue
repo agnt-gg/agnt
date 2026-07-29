@@ -24,15 +24,22 @@
       </button>
     </Tooltip>
     <SimpleModal ref="modal" />
-    <div
-      id="generating-tool-modal"
-      class="modal"
-      style="display: none; user-select: none"
-    >
-      <div class="modal-content">
-        <p>Generating Tool, Please Wait...</p>
+    <!-- Teleported to <body>: rendered in place it lives inside .controls-panel
+         (position: relative; z-index: 3), which caps this overlay's z-index of
+         10000 at 3 and lets center-column content paint over it. The element is
+         toggled via document.getElementById, which is document-wide and so is
+         unaffected by the change of parent. -->
+    <Teleport to="body">
+      <div
+        id="generating-tool-modal"
+        class="modal"
+        style="display: none; user-select: none"
+      >
+        <div class="modal-content">
+          <p>Generating Tool, Please Wait...</p>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 

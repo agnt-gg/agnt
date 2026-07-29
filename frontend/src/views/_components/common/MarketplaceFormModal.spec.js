@@ -69,6 +69,11 @@ describe('MarketplaceFormModal', () => {
       global: {
         plugins: [store],
         stubs: {
+          // The overlay is wrapped in <Teleport to="body"> so a side panel's
+          // stacking context cannot cap it. wrapper.find() cannot traverse
+          // teleported content, so stub the teleport to keep the markup in
+          // place for these assertions.
+          teleport: true,
           SimpleModal: {
             template: '<div class="simple-modal-stub"></div>',
             methods: {
@@ -471,6 +476,43 @@ describe('MarketplaceFormModal', () => {
 
     it('registers ImageUpload component', () => {
       expect(MarketplaceFormModal.components.ImageUpload).toBeDefined();
+    });
+  });
+
+  describe('Stacking', () => {
+    // Every other test in this file stubs the teleport so wrapper.find() can
+    // reach the markup — which means none of them can observe where the
+    // overlay actually lands. This one mounts for real.
+    it('renders the overlay as a child of <body>, not inside the panel subtree', async () => {
+      const host = document.createElement('div');
+      host.className = 'controls-panel';
+      document.body.appendChild(host);
+      try {
+        const real = mount(MarketplaceFormModal, {
+          props: { isOpen: true, mode: 'publish', itemType: 'workflow', categories: defaultCategories },
+          global: {
+            plugins: [store],
+            stubs: {
+              SimpleModal: { template: '<div class="simple-modal-stub"></div>' },
+              ImageUpload: { template: '<div class="image-upload-stub"></div>' },
+            },
+          },
+          attachTo: host,
+        });
+
+        const overlay = document.querySelector('.modal-overlay');
+        expect(overlay, 'overlay did not render').toBeTruthy();
+        // A side panel is position: relative; z-index: 3, so it establishes a
+        // stacking context. An overlay left inside it is capped at 3 and can be
+        // painted over by centre-column content with a higher z-index, no
+        // matter how large the overlay's own z-index is.
+        expect(host.contains(overlay)).toBe(false);
+        expect(overlay.parentElement).toBe(document.body);
+
+        real.unmount();
+      } finally {
+        host.remove();
+      }
     });
   });
 });

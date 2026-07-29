@@ -1,5 +1,12 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="close">
+  <!-- Teleported to <body>: this is a viewport-covering overlay, but the
+       component is mounted inside a side panel (.left-panel / .controls-panel),
+       which is `position: relative; z-index: 3` and therefore establishes its
+       own stacking context. Rendered in place, this overlay's z-index of 1000
+       is capped at the panel's 3, so any center-column element with a higher
+       z-index (e.g. Marketplace's sticky .mk-toolbar at 5) paints over it. -->
+  <Teleport to="body">
+    <div v-if="isOpen" class="modal-overlay" @click.self="close">
     <div class="modal-content">
       <div class="modal-header">
         <h2>{{ modalTitle }}</h2>
@@ -146,8 +153,9 @@
       </div>
     </div>
 
-    <SimpleModal ref="simpleModal" />
-  </div>
+      <SimpleModal ref="simpleModal" />
+    </div>
+  </Teleport>
 </template>
 
 <script>
