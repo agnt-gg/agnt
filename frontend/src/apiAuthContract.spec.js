@@ -124,6 +124,23 @@ function walk(dir, out = []) {
 /** Helpers that attach the token by construction, wherever they are imported. */
 const AUTH_HELPERS = new Set(['authHeaders', 'jsonAuthHeaders', 'apiFetch']);
 
+/**
+ * Source of the object literal starting at `openIdx`, brace-matched.
+ * Returns '' when that position is not an object literal.
+ */
+function objectLiteralAt(text, openIdx) {
+  if (text[openIdx] !== '{') return '';
+  let depth = 0;
+  for (let i = openIdx; i < text.length; i++) {
+    if (text[i] === '{') depth += 1;
+    else if (text[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(openIdx, i + 1);
+    }
+  }
+  return text.slice(openIdx); // unbalanced (window truncation) -- take the rest
+}
+
 /** Resolve whether a symbol in this file produces an Authorization header. */
 function symbolProvidesAuth(source, name) {
   const bare = name.replace(/\(\)$/, '').trim();
@@ -160,21 +177,45 @@ export function findApiCalls(source, label = '<inline>') {
     let hasAuth = usesApiFetch; // apiFetch attaches the token by construction.
     if (!hasAuth) {
       const header = /headers:\s*([^,\n]+)/.exec(window);
-      let identifier = null;
+      const identifiers = [];
       if (header) {
         // Take the leading identifier. Trailing call/close punctuation varies
         // (`getHeaders() });` on a single line), and a suffix-strip regex got
         // this wrong: it left `getHeaders(` and reported seven authenticated
         // filesystem calls as violations.
-        identifier = /^([A-Za-z_$][\w$]*)/.exec(header[1].trim())?.[1] || null;
-        const scope = window.slice(window.indexOf(header[0]), window.indexOf(header[0]) + 400);
+        //
+        // Strip an opening brace and spread first. `headers: { ...authHeaders() }`
+        // is a common shape, and without this the leading character is `{`, no
+        // identifier is extracted, symbolProvidesAuth never runs, and a call
+        // that DOES carry a token reads as unauthenticated. Harmless while the
+        // route is unguarded -- it becomes a false violation the day it is
+        // hardened, which is exactly when a guard must not cry wolf.
+        const at = window.indexOf(header[0]);
+        const valueStart = at + header[0].indexOf(header[1]);
+        // Bound the search to the headers value itself. A fixed-width slice
+        // bleeds into the NEXT call site in the same window, which would report
+        // an unauthenticated call as authenticated because a later one nearby
+        // happens to carry a token -- a false NEGATIVE, the only direction that
+        // actually matters for a security guard.
+        const scope =
+          window[valueStart] === '{'
+            ? objectLiteralAt(window, valueStart)
+            : window.slice(at, at + 400);
         if (/Authorization/i.test(scope)) hasAuth = true;
+        // `headers: getHeaders()` -- the value is a single expression.
+        const headerExpr = header[1].trim().replace(/^\{\s*(?:\.\.\.)?/, '');
+        const lead = /^([A-Za-z_$][\w$]*)/.exec(headerExpr)?.[1];
+        if (lead) identifiers.push(lead);
+        // `headers: { 'Content-Type': ..., ...authHeaders() }`, which commonly
+        // spans several lines. The `[^,\n]+` capture above sees only `{`, so
+        // every spread inside the literal is collected as a candidate.
+        for (const m of scope.matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)) identifiers.push(m[1]);
       } else if (/^\s*headers,?\s*$/m.test(window)) {
         // ES shorthand: `{ method, headers, body }`. Widespread in the chat
         // containers, and invisible to a `headers:` regex.
-        identifier = 'headers';
+        identifiers.push('headers');
       }
-      if (!hasAuth && identifier) hasAuth = symbolProvidesAuth(source, identifier);
+      if (!hasAuth) hasAuth = identifiers.some((id) => symbolProvidesAuth(source, id));
     }
 
     calls.push({ file: label, line: i + 1, method, url, hasAuth });
@@ -253,6 +294,70 @@ describe('frontend → backend auth contract', () => {
       const [call] = findApiCalls(bug);
       expect(call.hasAuth).toBe(false);
       expect(matchRoute(call.method, call.url)?.guard).toBeTruthy();
+    });
+
+    it('sees auth through a single-line spread: headers: { ...authHeaders() }', () => {
+      // The identifier extraction takes the LEADING identifier of the header
+      // expression, and a spread starts with `{` -- so no identifier was found,
+      // symbolProvidesAuth never ran, and an authenticated call read as
+      // unauthenticated. Silent while the route is unguarded; a false violation
+      // the day it is hardened, which is when a guard must not cry wolf.
+      const src = [
+        "const authHeaders = () => ({ Authorization: `Bearer ${t}` });",
+        'const res = await fetch(`${API_CONFIG.BASE_URL}/content-outputs`, {',
+        '  headers: { ...authHeaders() },',
+        '});',
+      ].join('\n');
+      expect(findApiCalls(src)[0].hasAuth).toBe(true);
+    });
+
+    it('sees auth through a MULTI-LINE header object', () => {
+      // `headers:` captures to end of line, so a multi-line literal yields only
+      // `{`. The whole brace-matched literal has to be searched.
+      const src = [
+        "const authHeaders = () => ({ Authorization: `Bearer ${t}` });",
+        'const res = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/save`, {',
+        "  method: 'POST',",
+        '  headers: {',
+        "    'Content-Type': 'application/json',",
+        '    ...authHeaders(),',
+        '  },',
+        '  body: JSON.stringify(body),',
+        '});',
+      ].join('\n');
+      const [call] = findApiCalls(src);
+      expect(call.method).toBe('POST');
+      expect(call.hasAuth).toBe(true);
+    });
+
+    it('does NOT credit a call with a token that belongs to a later call', () => {
+      // The scan used to take a fixed 400-character slice, which runs past the
+      // end of one call and into the next. Crediting call A with call B's token
+      // is a false negative -- the direction that actually lets a bug through.
+      const src = [
+        "const authHeaders = () => ({ Authorization: `Bearer ${t}` });",
+        'const a = await fetch(`${API_CONFIG.BASE_URL}/plugins/install`, {',
+        "  method: 'POST',",
+        "  headers: { 'Content-Type': 'application/json' },",
+        '});',
+        'const b = await fetch(`${API_CONFIG.BASE_URL}/plugins/list`, {',
+        '  headers: { ...authHeaders() },',
+        '});',
+      ].join('\n');
+      const calls = findApiCalls(src);
+      expect(calls).toHaveLength(2);
+      expect(calls[0].hasAuth).toBe(false); // must NOT borrow from calls[1]
+      expect(calls[1].hasAuth).toBe(true);
+    });
+
+    it('still flags a spread of something that provides no auth', () => {
+      const src = [
+        "const baseHeaders = () => ({ 'X-Trace': '1' });",
+        'const res = await fetch(`${API_CONFIG.BASE_URL}/content-outputs`, {',
+        '  headers: { ...baseHeaders() },',
+        '});',
+      ].join('\n');
+      expect(findApiCalls(src)[0].hasAuth).toBe(false);
     });
 
     it('accepts the apiFetch fix', () => {
