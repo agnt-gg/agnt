@@ -366,6 +366,8 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
+import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
+import { vizErrorHtml } from '@/utils/vizError';
 
 // Lazy-loaded heavy library caches
 let _Chart = null;
@@ -1744,15 +1746,21 @@ export default {
         const chartId = container.getAttribute('data-chart-id');
         if (!chartId || renderedChartIds.has(chartId)) return;
         renderedChartIds.add(chartId);
+        // Hoisted so the catch below can still show the source it failed on.
+        let rawConfig = '';
         try {
           const configEl = container.querySelector('.chartjs-config');
           if (!configEl) return;
-          const textarea = document.createElement('textarea');
-          textarea.innerHTML = configEl.textContent || '';
-          const rawConfig = textarea.value;
+          // textContent is already HTML-decoded by the parser; decoding again
+          // would corrupt any label holding a literal entity.
+          rawConfig = configEl.textContent || '';
           configEl.remove();
 
-          const config = JSON.parse(rawConfig);
+          // Tolerant parse — see utils/chartConfig.js.
+          const { config, repairs } = parseChartConfig(rawConfig);
+          if (repairs.length) {
+            console.debug('Chart.js config repaired:', repairs.join(', '));
+          }
           config.options = config.options || {};
           config.options.responsive = true;
           config.options.maintainAspectRatio = true;
@@ -1795,7 +1803,7 @@ export default {
           chartInstances.value.push(instance);
         } catch (err) {
           console.warn('Chart.js rendering error:', err.message);
-          container.innerHTML = `<div style="padding:16px;background:rgba(255,77,77,0.08);border:1px solid rgba(255,77,77,0.3);border-radius:8px;color:var(--color-red,#ff4d4d);font-size:13px;"><strong>Chart Render Failed</strong><br><span style="opacity:0.8">${err.message}</span></div>`;
+          container.innerHTML = chartErrorHtml(err.message, rawConfig);
         }
       });
     };
@@ -1832,7 +1840,7 @@ export default {
             await fn(d3, containerSelection);
           } catch (err) {
             console.warn('D3 rendering error:', err.message);
-            container.innerHTML = `<div style="padding:16px;background:rgba(255,77,77,0.08);border:1px solid rgba(255,77,77,0.3);border-radius:8px;color:var(--color-red,#ff4d4d);font-size:13px;"><strong>D3 Render Failed</strong><br><span style="opacity:0.8">${err.message}</span></div>`;
+            container.innerHTML = vizErrorHtml('D3 Render Failed', err.message);
           }
         })();
       });
@@ -1938,7 +1946,7 @@ export default {
             threeInstances.value.push({ renderer, animationId, controls });
           } catch (err) {
             console.warn('Three.js rendering error:', err.message);
-            container.innerHTML = `<div style="padding:16px;background:rgba(255,77,77,0.08);border:1px solid rgba(255,77,77,0.3);border-radius:8px;color:var(--color-red,#ff4d4d);font-size:13px;"><strong>3D Render Failed</strong><br><span style="opacity:0.8">${err.message}</span></div>`;
+            container.innerHTML = vizErrorHtml('3D Render Failed', err.message);
           }
         })();
       });

@@ -322,6 +322,8 @@ import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
 import { vMorphHtml } from '@/utils/morphHtmlDirective';
+import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
+import { vizErrorHtml } from '@/utils/vizError';
 import { API_CONFIG } from '@/../user.config.js';
 import {
   buildLocalFileUrl as sharedBuildLocalFileUrl,
@@ -1724,17 +1726,26 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           const canvas = container.querySelector('canvas');
           if (!canvas) return;
 
+          // Hoisted so the catch below can still show the source it failed on.
+          let rawConfig = '';
           try {
-            const textarea = document.createElement('textarea');
-            textarea.innerHTML = configEl.textContent || '';
-            const rawConfig = textarea.value;
+            // textContent is already HTML-decoded by the parser. Decoding a
+            // second time would corrupt any label holding a literal entity
+            // ("A &amp; B" would silently become "A & B").
+            rawConfig = configEl.textContent || '';
             configEl.remove();
 
             // Store source code for copy/fullscreen buttons
             container.setAttribute('data-source-code', rawConfig);
 
-            // Parse JSON config
-            const config = JSON.parse(rawConfig);
+            // Tolerant parse: recovers the mechanical defects an LLM leaves in
+            // otherwise-valid JSON (dropped brace, surplus brace, trailing
+            // comma, typographic minus) rather than discarding a whole chart
+            // whose data is intact. See utils/chartConfig.js.
+            const { config, repairs } = parseChartConfig(rawConfig);
+            if (repairs.length) {
+              console.debug('Chart.js config repaired:', repairs.join(', '));
+            }
 
             // Resolve theme colors from CSS variables
             const styles = getComputedStyle(document.body);
@@ -1787,9 +1798,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             chartInstances.value.push(instance);
           } catch (err) {
             console.warn('Chart.js rendering error:', err.message);
-            container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
-              <strong>Chart Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
-            </div>`;
+            container.innerHTML = chartErrorHtml(err.message, rawConfig);
           }
         });
       });
@@ -1834,9 +1843,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               await fn(d3, containerSelection);
             } catch (err) {
               console.warn('D3 rendering error:', err.message);
-              container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
-                <strong>D3 Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
-              </div>`;
+              container.innerHTML = vizErrorHtml('D3 Render Failed', err.message);
             }
           })();
         });
@@ -1888,9 +1895,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               // mermaid.render leaves an orphaned error element in <body> on failure
               document.getElementById(id)?.remove();
               console.warn('Mermaid rendering error:', err.message);
-              container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
-                <strong>Mermaid Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
-              </div>`;
+              container.innerHTML = vizErrorHtml('Mermaid Render Failed', err.message);
             }
           })();
         });
@@ -2021,9 +2026,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               threeInstances.value.push({ renderer, animationId, controls });
             } catch (err) {
               console.warn('Three.js rendering error:', err.message);
-              container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
-                <strong>3D Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
-              </div>`;
+              container.innerHTML = vizErrorHtml('3D Render Failed', err.message);
             }
           })();
         });
