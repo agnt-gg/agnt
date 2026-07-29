@@ -103,17 +103,19 @@ ${fileSection}
 ${consoleSection}
 
 AVAILABLE TOOLS:
-1. **read_file** — Read a file's contents from the workspace
+1. **read_file** — Read a file's contents from the workspace. Large files are paged: pass offset/limit to walk through one.
 2. **write_file** — Create or overwrite a file (use for NEW files or complete rewrites only)
 3. **edit_file** — Apply surgical search/replace edits to an existing file (preferred for modifications)
-4. **list_files** — List files and directories in the workspace
-5. **query_data** — Inspect large content that was offloaded to keep the context window clean
+4. **list_files** — List files and directories in one directory
+5. **grep_files** — Search file CONTENTS by regex, recursively. Use this rather than shelling out to grep/findstr/rg.
+6. **glob_files** — Find files by path pattern ("**/*.js", "*.test.js"), newest first
+7. **query_data** — Inspect large content that was offloaded to keep the context window clean
 
 USING edit_file (PREFERRED for modifying existing files):
 - Each edit is a { search, replace } pair applied sequentially to the file
-- The "search" field must match EXACT strings from the file content (whitespace is fuzzy-matched)
-- Keep search strings unique enough to match exactly one location
-- If a search string isn't found, that edit is skipped and reported as failed — you can retry with corrected strings
+- The "search" field must match text that is ACTUALLY in the file (matching is exact, then line-ending tolerant, then whitespace tolerant)
+- Search strings must match exactly ONE location. A search matching several is refused, not applied to the first hit — add surrounding context, or set "replace_all": true if you really mean all of them.
+- Edits are ALL-OR-NOTHING. If any search misses, nothing is written and the file is left exactly as it was — so a failed call never leaves a half-edited file behind.
 - Use this instead of write_file whenever you're making targeted changes to an existing file
 - If the currently open file content is shown above, you can reference it directly for search strings
 
@@ -121,7 +123,7 @@ EDITING THE CURRENTLY OPEN FILE:
 - The preview shown above is a fixed-size head slice (~16k chars). If the file is longer, the rest exists on disk — you cannot see it in the prompt, but edit_file CAN.
 - edit_file resolves your { search, replace } pairs against the canonical full file on disk, NOT against the preview. You can target any string you know to exist in the file (a unique CSS class, function name, marker comment, specific JSON key, etc.) — visible in the preview or not.
 - DO NOT call read_file or query_data on the currently open file just to "see more of it" or to "verify" it before editing. That wastes a turn and burns tokens — edit_file will tell you immediately if a search string did not match, and you can refine and retry.
-- If an edit_file call reports a search string was not found, retry with a more specific search string (more surrounding context, or a uniquely-named identifier) — do NOT fall back to read_file just because one search missed.
+- If an edit_file call reports a search string was not found, the response carries a "didYouMean" array containing the nearest REAL text in the file with its line numbers. Copy from that verbatim and resend — it is the file's own content, so it is authoritative. Do NOT re-read the whole file just because one search missed, and do NOT guess a second time: measured across production history, 47% of failed searches were near-misses on the right block, and blind retries burned 355 extra calls.
 - read_file and query_data are for OTHER files in the workspace, not the one you are currently editing. Use them when the user asks about a different file or when you legitimately need to inspect something you have no other way to see.
 
 PREVIEW CAPABILITIES:

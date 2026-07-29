@@ -241,9 +241,20 @@ describe('edit_file — fuzzy fallback', () => {
     expect(await read(p)).toContain('const alpha = 1;');
   });
 
-  it('flags an ambiguous search rather than silently editing the first hit', async () => {
+  // CONTRACT CHANGE, 2026-07-28. This test used to assert that an ambiguous
+  // search SUCCEEDED, editing the first of N hits and attaching a note. That is
+  // the single way this tool can silently modify the wrong call site, and a
+  // note in a success payload is not a control — nothing reads it. Probe T7
+  // reproduced it: 3 occurrences, first one edited, `success: true`.
+  //
+  // Every comparable tool refuses instead (Anthropic's str_replace errors on 0
+  // or >1 matches; Aider and Codex both fail the hunk), and the cost of being
+  // wrong is asymmetric — a refusal costs one round trip, a wrong-site edit
+  // costs a corrupted file nobody is looking for.
+  it('refuses an ambiguous search instead of editing the first hit', async () => {
     const p = path.join(TMP, 'dupe.js');
-    await fs.writeFile(p, ['a();', 'dup();', 'b();', 'dup();', ''].join('\r\n'), 'utf8');
+    const original = ['a();', 'dup();', 'b();', 'dup();', ''].join('\r\n');
+    await fs.writeFile(p, original, 'utf8');
 
     const res = await call({
       path: p,
@@ -251,9 +262,31 @@ describe('edit_file — fuzzy fallback', () => {
       edits: [{ search: 'dup();', replace: 'replaced();' }],
     });
 
+    expect(res.success).toBe(false);
+    expect(res.failed[0].occurrences).toBe(2);
+    expect(res.failed[0].lines).toEqual([2, 4]);
+    expect(res.failed[0].hint).toMatch(/replace_all/);
+    // Refusing is only worth anything if the file is genuinely untouched.
+    expect(await read(p)).toBe(original);
+  });
+
+  it('replace_all is the escape hatch, and reports how many it changed', async () => {
+    const p = path.join(TMP, 'dupe-all.js');
+    await fs.writeFile(p, ['a();', 'dup();', 'b();', 'dup();', ''].join('\r\n'), 'utf8');
+
+    const res = await call({
+      path: p,
+      description: 'deliberately all of them',
+      edits: [{ search: 'dup();', replace: 'replaced();', replace_all: true }],
+    });
+
     expect(res.success).toBe(true);
-    expect(res.applied[0].occurrences).toBe(2);
-    expect(res.applied[0].note).toMatch(/first occurrence/i);
+    expect(res.applied[0].replacements).toBe(2);
+    const out = await read(p);
+    expect(out).not.toContain('dup();');
+    expect(out.match(/replaced\(\);/g)).toHaveLength(2);
+    // Right-to-left splicing must not disturb the line structure.
+    expect(out.split('\r\n')).toHaveLength(5);
   });
 });
 
@@ -286,8 +319,20 @@ describe('edit_file — multiple edits in one call', () => {
     expect(lines.find((l) => l.includes('const alpha = 11;')).trim()).toBe('const alpha = 11;');
   });
 
-  it('applies the good edits and reports the bad one', async () => {
+  // CONTRACT CHANGE, 2026-07-28. This used to apply the good edits, report the
+  // bad one, and return `success: true`. Measured across production history, 82
+  // calls (2.2% of all edit_file traffic) landed in exactly that state: a file
+  // half-edited, reported as a success.
+  //
+  // A half-edited file is the worst of the three possible outcomes. The caller's
+  // model of the file and the bytes on disk have silently diverged, so the NEXT
+  // edit is computed against neither — and 91% of measured edit failures are
+  // already grounding failures, which this actively worsens. Writing nothing
+  // leaves the file exactly as the caller last understood it, and the response
+  // carries didYouMean so the corrected batch can be resent immediately.
+  it('applies NOTHING when one edit in the batch misses', async () => {
     const p = await fixture('partial.js', '\r\n');
+    const before = await read(p);
 
     const res = await call({
       path: p,
@@ -298,10 +343,16 @@ describe('edit_file — multiple edits in one call', () => {
       ],
     });
 
-    expect(res.success).toBe(true);
-    expect(res.applied).toHaveLength(1);
+    expect(res.success).toBe(false);
     expect(res.failed).toHaveLength(1);
-    expect(await read(p)).toContain('const alpha = 7;');
+    expect(res.failed[0].index).toBe(1);
+    // The edit that WOULD have landed is still reported, so the caller can see
+    // that only one search needs fixing.
+    expect(res.wouldHaveApplied).toHaveLength(1);
+    expect(res.message).toMatch(/all-or-nothing/i);
+
+    expect(await read(p)).toBe(before);
+    expect(await read(p)).not.toContain('const alpha = 7;');
   });
 });
 

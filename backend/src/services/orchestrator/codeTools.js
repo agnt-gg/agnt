@@ -1,9 +1,38 @@
 import fs from 'fs/promises';
 import path from 'path';
 import PathManager from '../../utils/PathManager.js';
+import {
+  findMatches,
+  describeMiss,
+  describeAmbiguity,
+  shiftRecords,
+  renderDiff,
+  lineAt,
+  lineStartAt,
+  lineEndAt,
+  MATCH_TIERS,
+} from './fileEditMatcher.js';
+import { observe, checkStale, getObservation, hashContent } from './fileObservations.js';
+import { grepFiles, globFiles, looksBinary, DEFAULTS as SEARCH_DEFAULTS } from './fileSearch.js';
 
 const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
 const SETTINGS_FILE = PathManager.getPath('code-settings.json');
+
+/**
+ * Hard ceiling on the text a single read returns.
+ *
+ * This cap already existed — it was just invisible and unnavigable. The
+ * orchestrator truncates every tool result at `toolOutputCap` (default 100,000
+ * chars, OrchestratorService.js), so an 822,617-char read — the largest in
+ * production history — was being silently chopped with no marker and no way to
+ * ask for the rest. Making the cap explicit, slightly below the envelope so the
+ * JSON wrapper fits, and pairing it with `offset`/`limit` turns a silent
+ * truncation into a paginated read.
+ */
+export const MAX_READ_CHARS = 80_000;
+
+/** Snippets echoed back in a diff hunk are clipped to keep failures cheap. */
+const MAX_DIFF_BLOCK_CHARS = 600;
 
 /**
  * Get the current workspace root path (exported for system prompt)
@@ -73,6 +102,10 @@ function validatePath(inputPath, workspaceRoot, { allowEmpty = false } = {}) {
   return resolved;
 }
 
+const PATH_PARAM_DESC =
+  'Path to the file. Relative paths resolve against the workspace (e.g. "my-project/index.js"). ' +
+  'Absolute paths are also accepted and may point anywhere on disk (e.g. "C:\\\\path\\\\to\\\\file.js" or "/path/to/file.js").';
+
 /**
  * Get tool schemas for code chat context
  */
@@ -82,13 +115,21 @@ export function getCodeToolSchemas() {
       type: 'function',
       function: {
         name: 'read_file',
-        description: 'Read the contents of a file from the workspace',
+        description:
+          'Read a file from the workspace. Returns the exact text plus size, line count and a content hash. ' +
+          `Reads are capped at ${MAX_READ_CHARS.toLocaleString('en-US')} characters — use offset/limit to page through anything larger. ` +
+          'Text returned here is byte-exact and safe to copy verbatim into an edit_file search string.',
         parameters: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the file. Relative paths resolve against the workspace (e.g. "my-project/index.js"). Absolute paths are also accepted and may point anywhere on disk (e.g. "C:\\\\path\\\\to\\\\file.js" or "/path/to/file.js").',
+            path: { type: 'string', description: PATH_PARAM_DESC },
+            offset: {
+              type: 'integer',
+              description: 'Optional 1-based line number to start reading from. Use with limit to page through a large file.',
+            },
+            limit: {
+              type: 'integer',
+              description: 'Optional number of lines to return, starting at offset.',
             },
           },
           required: ['path'],
@@ -99,7 +140,10 @@ export function getCodeToolSchemas() {
       type: 'function',
       function: {
         name: 'write_file',
-        description: 'Write content to a file in the workspace. Creates the file and any parent directories if they do not exist. Use this only for creating NEW files or complete rewrites.',
+        description:
+          'Write content to a file in the workspace. Creates the file and any parent directories if they do not exist. ' +
+          'Use this only for creating NEW files or complete rewrites — it replaces the entire file. ' +
+          'For targeted changes use edit_file, which cannot destroy content it was not shown.',
         parameters: {
           type: 'object',
           properties: {
@@ -120,14 +164,15 @@ export function getCodeToolSchemas() {
       type: 'function',
       function: {
         name: 'edit_file',
-        description: 'Apply surgical search/replace edits to an existing file. Use this for bug fixes, style tweaks, adding features, or any targeted modification instead of rewriting the entire file. Each edit is a { search, replace } pair applied sequentially.',
+        description:
+          'Apply surgical search/replace edits to an existing file. Each edit is a { search, replace } pair. ' +
+          'Search strings must match text that is actually in the file right now — read it first if you are not certain. ' +
+          'Edits are ALL-OR-NOTHING: if any search misses, nothing is written and the response tells you what the file actually says. ' +
+          'A search that matches more than once is refused rather than applied to the first hit; add surrounding context or set replace_all.',
         parameters: {
           type: 'object',
           properties: {
-            path: {
-              type: 'string',
-              description: 'Path to the file. Relative paths resolve against the workspace (e.g. "my-project/index.js"). Absolute paths are also accepted and may point anywhere on disk (e.g. "C:\\\\path\\\\to\\\\file.js" or "/path/to/file.js").',
-            },
+            path: { type: 'string', description: PATH_PARAM_DESC },
             edits: {
               type: 'array',
               items: {
@@ -135,6 +180,10 @@ export function getCodeToolSchemas() {
                 properties: {
                   search: { type: 'string', description: 'Exact string to find in the current file content' },
                   replace: { type: 'string', description: 'Replacement string' },
+                  replace_all: {
+                    type: 'boolean',
+                    description: 'Replace every occurrence instead of failing when the search string is not unique. Default false.',
+                  },
                 },
                 required: ['search', 'replace'],
               },
@@ -164,7 +213,7 @@ export function getCodeToolSchemas() {
       type: 'function',
       function: {
         name: 'list_files',
-        description: 'List files and directories in the workspace at the given path',
+        description: 'List files and directories in the workspace at the given path (one level). Use glob_files to search recursively.',
         parameters: {
           type: 'object',
           properties: {
@@ -173,6 +222,46 @@ export function getCodeToolSchemas() {
               description: 'Directory path. Relative paths resolve against the workspace (e.g. "my-project/src"). Absolute paths are also accepted and may point anywhere on disk. Defaults to workspace root.',
             },
           },
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'grep_files',
+        description:
+          'Search file CONTENTS for a regular expression, recursively. Returns matching lines with their file path and line number. ' +
+          'Use this instead of shelling out to grep/findstr/rg — it is platform independent, skips node_modules/dist/.git and binaries, and returns structured results.',
+        parameters: {
+          type: 'object',
+          properties: {
+            pattern: { type: 'string', description: 'JavaScript regular expression to search for (or a literal string when literal=true).' },
+            path: { type: 'string', description: 'File or directory to search. Defaults to the workspace root.' },
+            glob: { type: 'string', description: 'Only search files whose path matches this glob, e.g. "**/*.js" or "*.test.js".' },
+            literal: { type: 'boolean', description: 'Treat pattern as a literal string rather than a regex. Default false.' },
+            ignore_case: { type: 'boolean', description: 'Case-insensitive search. Default false.' },
+            context: { type: 'integer', description: 'Lines of surrounding context to include with each match (0-3). Default 0.' },
+            max_results: { type: 'integer', description: `Maximum matching lines to return. Default ${SEARCH_DEFAULTS.maxResults}, cap ${SEARCH_DEFAULTS.maxResultsCap}.` },
+          },
+          required: ['pattern'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'glob_files',
+        description:
+          'Find files by PATH pattern, recursively, sorted most-recently-modified first. Supports **, *, ? and {a,b}. ' +
+          'A pattern with no "/" matches the file name at any depth, so "*.test.js" finds every test file.',
+        parameters: {
+          type: 'object',
+          properties: {
+            pattern: { type: 'string', description: 'Glob pattern, e.g. "**/*.vue", "src/**/index.js" or "*.test.js".' },
+            path: { type: 'string', description: 'Directory to search under. Defaults to the workspace root.' },
+            max_results: { type: 'integer', description: `Maximum files to return. Default ${SEARCH_DEFAULTS.maxGlobResults}, cap ${SEARCH_DEFAULTS.maxGlobResultsCap}.` },
+          },
+          required: ['pattern'],
         },
       },
     },
@@ -291,6 +380,113 @@ export async function executeCodeFunction(name, args) {
   return withPathLock(key, () => executeCodeFunctionUnlocked(name, args));
 }
 
+// ------------------------------------------------------------ atomic write ---
+
+/**
+ * Write via a sibling temp file and rename.
+ *
+ * `fs.writeFile` truncates the destination and then streams into it, so a crash,
+ * a full disk or a killed process mid-write leaves a TRUNCATED real file. rename
+ * is atomic within a filesystem, so the destination is only ever the old
+ * complete file or the new complete file.
+ *
+ * The temp file is a sibling deliberately — a cross-device rename fails with
+ * EXDEV, and os.tmpdir() is very often on a different volume.
+ *
+ * Windows makes rename fail transiently when an indexer or antivirus holds a
+ * handle open, hence the short retry. If it still will not rename, fall back to
+ * a direct write rather than failing the caller: a rare torn-write risk is a
+ * better trade than an operation that refuses to work at all on some machines.
+ */
+async function writeFileAtomic(absPath, content) {
+  const dir = path.dirname(absPath);
+  const tmp = path.join(dir, `.${path.basename(absPath)}.${process.pid}.${Date.now().toString(36)}.tmp`);
+
+  await fs.writeFile(tmp, content, 'utf-8');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await fs.rename(tmp, absPath);
+      return { atomic: true };
+    } catch (err) {
+      const transient = err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'EBUSY';
+      if (!transient || attempt === 2) {
+        await fs.rm(tmp, { force: true }).catch(() => {});
+        if (!transient) throw err;
+        await fs.writeFile(absPath, content, 'utf-8');
+        return { atomic: false };
+      }
+      await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+    }
+  }
+  return { atomic: false };
+}
+
+/**
+ * Read a file as text, refusing binaries.
+ *
+ * A binary read used to succeed: the bytes came back decoded as UTF-8, full of
+ * U+FFFD replacement characters, with `success: true`. Anything downstream then
+ * reasoned about corrupted text — and an edit against it would have written the
+ * corruption back to disk, destroying the file.
+ */
+async function readTextFile(absPath, relPathForMessage) {
+  const buf = await fs.readFile(absPath);
+  if (looksBinary(buf)) {
+    return {
+      binary: true,
+      error:
+        `Binary file (${buf.length.toLocaleString('en-US')} bytes): ${relPathForMessage}. ` +
+        'These tools return and edit UTF-8 text; decoding this would produce replacement ' +
+        'characters, and writing it back would corrupt the file.',
+    };
+  }
+  return { binary: false, content: buf.toString('utf8'), bytes: buf.length };
+}
+
+/** Split preserving exact bytes: '\r' stays on the line, join('\n') restores it. */
+function splitLines(content) {
+  return content.split('\n');
+}
+
+function countLines(content) {
+  if (content === '') return 0;
+  const n = splitLines(content).length;
+  return content.endsWith('\n') ? n - 1 : n;
+}
+
+/** Normalize a possibly-stringified array argument. Returns { edits } or { error }. */
+function coerceEdits(raw) {
+  let edits = raw;
+  if (typeof edits === 'string') {
+    try {
+      edits = JSON.parse(edits);
+    } catch {
+      return { error: "Parameter 'edits' must be an array of { search, replace } objects, but a non-JSON string was supplied." };
+    }
+  }
+  if (!Array.isArray(edits)) {
+    return { error: `Parameter 'edits' must be an array of { search, replace } objects (received ${edits === null ? 'null' : typeof edits}).` };
+  }
+  if (edits.length === 0) {
+    return { error: "Parameter 'edits' is empty — supply at least one { search, replace } pair." };
+  }
+  for (let i = 0; i < edits.length; i++) {
+    const e = edits[i];
+    if (!e || typeof e !== 'object' || Array.isArray(e)) {
+      return { error: `edits[${i}] must be an object with "search" and "replace" string properties.` };
+    }
+    if (typeof e.search !== 'string' || e.search === '') {
+      return { error: `edits[${i}].search must be a non-empty string. An empty search matches nothing and would be applied at an arbitrary position.` };
+    }
+    if (e.replace !== undefined && typeof e.replace !== 'string') {
+      return { error: `edits[${i}].replace must be a string (use "" to delete).` };
+    }
+  }
+  return { edits };
+}
+
+const clipBlock = (s) => (s.length <= MAX_DIFF_BLOCK_CHARS ? s : `${s.slice(0, MAX_DIFF_BLOCK_CHARS)}…`);
+
 async function executeCodeFunctionUnlocked(name, args) {
   // Ensure workspace exists
   const WORKSPACE_ROOT = await getWorkspaceRoot();
@@ -302,8 +498,65 @@ async function executeCodeFunctionUnlocked(name, args) {
     case 'read_file': {
       const absPath = validatePath(args.path, WORKSPACE_ROOT);
       try {
-        const content = await fs.readFile(absPath, 'utf-8');
-        result = { success: true, content, path: args.path, absolutePath: absPath };
+        const read = await readTextFile(absPath, args.path);
+        if (read.binary) {
+          result = { success: false, error: read.error, path: args.path, absolutePath: absPath };
+          break;
+        }
+
+        const full = read.content;
+        // Observe the WHOLE file even on a paged read: the hash identifies the
+        // file, and a page is still a genuine sighting of that identity.
+        observe(pathLockKey(absPath), full, { path: absPath });
+
+        const totalLines = countLines(full);
+        const hasWindow = Number.isInteger(args.offset) || Number.isInteger(args.limit);
+
+        let content = full;
+        let startLine = 1;
+        let endLine = totalLines;
+        let truncated = false;
+        const notes = [];
+
+        if (hasWindow) {
+          const lines = splitLines(full);
+          const from = Math.max(1, Number.isInteger(args.offset) ? args.offset : 1);
+          const count = Number.isInteger(args.limit) && args.limit > 0 ? args.limit : lines.length;
+          const sliceEnd = Math.min(lines.length, from - 1 + count);
+          content = lines.slice(from - 1, sliceEnd).join('\n');
+          startLine = from;
+          endLine = Math.min(totalLines, from - 1 + count);
+          if (sliceEnd < lines.length) truncated = true;
+        }
+
+        if (content.length > MAX_READ_CHARS) {
+          const kept = content.slice(0, MAX_READ_CHARS);
+          // Prefer a line boundary so the returned text is always whole lines
+          // and therefore always safe to copy into an edit search string.
+          const lastNl = kept.lastIndexOf('\n');
+          content = lastNl > MAX_READ_CHARS / 2 ? kept.slice(0, lastNl) : kept;
+          endLine = startLine - 1 + countLines(content.endsWith('\n') ? content : `${content}\n`);
+          truncated = true;
+          notes.push(`Output capped at ${MAX_READ_CHARS.toLocaleString('en-US')} characters.`);
+        }
+
+        if (truncated) {
+          notes.push(`Showing lines ${startLine}-${endLine} of ${totalLines}. Continue with offset: ${endLine + 1}.`);
+        }
+
+        result = {
+          success: true,
+          content,
+          path: args.path,
+          absolutePath: absPath,
+          bytes: read.bytes,
+          totalLines,
+          startLine,
+          endLine,
+          truncated,
+          hash: hashContent(full),
+        };
+        if (notes.length) result.note = notes.join(' ');
       } catch (err) {
         if (err.code === 'ENOENT') {
           result = { success: false, error: `File not found: ${args.path}` };
@@ -316,21 +569,59 @@ async function executeCodeFunctionUnlocked(name, args) {
 
     case 'write_file': {
       const absPath = validatePath(args.path, WORKSPACE_ROOT);
+      const content = args.content || '';
+
+      // Report an overwrite rather than performing it silently. write_file
+      // replacing a file the caller had never looked at is a real way to lose
+      // work, and the only cheap defence is making it visible in the result.
+      let previous = null;
+      try {
+        const stat = await fs.stat(absPath);
+        if (stat.isFile()) previous = { bytes: stat.size };
+      } catch { /* new file */ }
+
       await fs.mkdir(path.dirname(absPath), { recursive: true });
-      await fs.writeFile(absPath, args.content || '', 'utf-8');
+      await writeFileAtomic(absPath, content);
+      observe(pathLockKey(absPath), content, { path: absPath });
+
       result = {
         success: true,
         path: args.path,
-        frontendEvents: [{ type: 'file_written', data: { path: args.path, content: args.content } }],
+        absolutePath: absPath,
+        bytes: content.length,
+        created: previous === null,
+        frontendEvents: [{ type: 'file_written', data: { path: args.path, content } }],
       };
+      if (previous) {
+        result.overwrote = true;
+        result.previousBytes = previous.bytes;
+        result.note =
+          `Replaced an existing ${previous.bytes.toLocaleString('en-US')}-byte file with ` +
+          `${content.length.toLocaleString('en-US')} bytes. Use edit_file for targeted changes.`;
+      }
       break;
     }
 
     case 'edit_file': {
       const absPath = validatePath(args.path, WORKSPACE_ROOT);
+
+      const coerced = coerceEdits(args.edits);
+      if (coerced.error) {
+        result = { success: false, error: coerced.error };
+        break;
+      }
+      const edits = coerced.edits;
+
       let currentContent;
+      let originalBytes;
       try {
-        currentContent = await fs.readFile(absPath, 'utf-8');
+        const read = await readTextFile(absPath, args.path);
+        if (read.binary) {
+          result = { success: false, error: read.error };
+          break;
+        }
+        currentContent = read.content;
+        originalBytes = read.bytes;
       } catch (err) {
         if (err.code === 'ENOENT') {
           result = { success: false, error: `File not found: ${args.path}. Use write_file to create new files.` };
@@ -339,160 +630,181 @@ async function executeCodeFunctionUnlocked(name, args) {
         throw err;
       }
 
-      let updatedContent = currentContent;
-      const applied = [];
-      const failed = [];
+      // ---- Staleness ------------------------------------------------------
+      // The path lock serializes AGNT's own tool calls. It cannot serialize the
+      // user's editor, a shell command or a patch script, so an edit can still
+      // be computed against content that no longer exists on disk. Refusing is
+      // the only safe answer: applying it would delete the other writer's work
+      // and report success.
+      const lockKey = pathLockKey(absPath);
+      // Captured BEFORE this call observes anything, so it answers "had anyone
+      // looked at this file before now?" rather than "did we just look at it?".
+      const priorObservation = getObservation(lockKey);
+      const stale = checkStale(lockKey, currentContent);
+      if (stale) {
+        result = {
+          success: false,
+          error: `File changed on disk since it was last read: ${args.path}`,
+          stale: {
+            observedHash: stale.priorHash,
+            currentHash: stale.currentHash,
+            observedBytes: stale.priorSize,
+            currentBytes: stale.currentSize,
+            observedAt: new Date(stale.observedAt).toISOString(),
+          },
+          message:
+            'Something else modified this file after it was last read — most likely an ' +
+            'editor, a shell command or another agent. Editing against the version you ' +
+            'have would silently discard those changes, so nothing was written. Call ' +
+            'read_file on this path and rebuild the edit from what is actually there.',
+        };
+        break;
+      }
 
-      // ---- Line-ending & whitespace tolerant matching --------------------
+      // ---- Matching -------------------------------------------------------
       //
-      // Two bugs lived here, and together they silently corrupted files while
-      // the tool reported success.
+      // Layered: exact, then line-ending normalized, then whitespace
+      // insensitive. Every layer counts ALL occurrences, so ambiguity is a
+      // refusal rather than a silent edit of whichever hit came first.
       //
-      // 1. CRLF FILES ALWAYS FELL THROUGH TO FUZZY MATCHING.
-      //    Callers write search strings with "\n". On a CRLF file
-      //    source.indexOf(search) can never match, so EVERY multi-line edit
-      //    took the fuzzy path — which was never meant to be the common case.
-      //
-      // 2. THE FUZZY MATCHER SWALLOWED THE PRECEDING NEWLINE.
-      //    normalizeWS() trims, so a window starting on whitespace normalizes
-      //    identically to one starting at the next non-whitespace character.
-      //    The scan slid forward from offset 0, so the FIRST position that
-      //    matched was the one sitting on the whitespace run BEFORE the target
-      //    — including the "\r\n" that ended the previous line. Splicing at
-      //    that offset deleted the line break and welded the replacement onto
-      //    the previous line. In practice that meant welding a statement onto
-      //    the end of a comment: still-valid JS, invisible in review, and it
-      //    only surfaced later as a ReferenceError or a SyntaxError.
-      //
-      // Reproduced 2026-07-25 with a 2x2 fixture matrix: CRLF + multi-line
-      // search corrupted 100% of the time; LF, or CRLF with a CRLF search
-      // string, or a single-line search, were all clean. Multi-byte UTF-8
-      // upstream of the edit point was ruled out as a factor.
-
-      const normalizeWS = (s) => s.replace(/\s+/g, ' ').trim();
-
-      // The file's dominant line ending. Replacement text is coerced to it so
-      // an edit never injects "\n" into a CRLF file — which is what produced
-      // mixed-ending files and spurious whole-file diffs.
+      // The line-ending layer is load-bearing, not a nicety. Callers write
+      // search strings with "\n"; on a CRLF file `indexOf` can never match, so
+      // before it existed EVERY multi-line edit fell through to the fuzzy
+      // matcher — which was never designed to be the common path and welded
+      // replacement text onto the end of the preceding line.
       const crlfCount = (currentContent.match(/\r\n/g) || []).length;
       const lfCount = (currentContent.match(/(?<!\r)\n/g) || []).length;
       const dominantEol = crlfCount > lfCount ? '\r\n' : '\n';
       const coerceEol = (s) =>
         typeof s === 'string' ? s.replace(/\r\n/g, '\n').replace(/\n/g, dominantEol) : s;
 
-      function countOccurrences(source, needle) {
-        if (!needle) return 0;
-        let n = 0;
-        for (let k = source.indexOf(needle); k !== -1; k = source.indexOf(needle, k + needle.length)) n++;
-        return n;
-      }
+      let updatedContent = currentContent;
+      const applied = [];
+      const failed = [];
+      const records = [];
 
-      function fuzzyFind(source, search) {
-        // Exact match, attempted against BOTH line-ending conventions. This is
-        // the path that should serve essentially every real edit; getting CRLF
-        // right here is what stops the fuzzy fallback from ever running.
-        const asLf = search.replace(/\r\n/g, '\n');
-        const asCrlf = asLf.replace(/\n/g, '\r\n');
-        const variants = [search];
-        if (asLf !== search) variants.push(asLf);
-        if (asCrlf !== search && asCrlf !== asLf) variants.push(asCrlf);
+      for (let i = 0; i < edits.length; i++) {
+        const edit = edits[i];
+        const found = findMatches(updatedContent, edit.search);
 
-        for (const v of variants) {
-          const idx = source.indexOf(v);
-          if (idx !== -1) {
-            return { start: idx, end: idx + v.length, fuzzy: false, occurrences: countOccurrences(source, v) };
-          }
+        if (!found) {
+          failed.push({ index: i, ...describeMiss(updatedContent, edit.search) });
+          continue;
         }
 
-        // Fuzzy fallback — only for genuine indentation / whitespace drift.
-        const normSearch = normalizeWS(search);
-        if (!normSearch) return null;
-        const searchIndented = /^[ \t]/.test(search);
-        const srcLen = source.length;
-
-        for (let srcPos = 0; srcPos < srcLen; srcPos++) {
-          // NEVER begin a window on whitespace. Because normalizeWS() trims,
-          // such a window matches exactly the same text as one beginning at the
-          // next non-whitespace character — but it reports a start offset that
-          // sits before the preceding newline, and splicing there deletes it.
-          // This one guard is the line-merge fix.
-          if (/\s/.test(source[srcPos])) continue;
-
-          let normWindow = '';
-          let windowEnd = srcPos;
-
-          while (windowEnd < srcLen) {
-            const ch = source[windowEnd];
-            if (/\s/.test(ch)) {
-              if (normWindow.length > 0 && !normWindow.endsWith(' ')) {
-                normWindow += ' ';
-              }
-              windowEnd++;
-            } else {
-              normWindow += ch;
-              windowEnd++;
-            }
-
-            const trimmedWindow = normWindow.trim();
-            if (trimmedWindow === normSearch) {
-              let start = srcPos;
-              // If the search string carried its own indentation, absorb the
-              // file's indentation as well so the replacement lands flush
-              // rather than double-indented. Horizontal whitespace ONLY —
-              // crossing a newline here is precisely the bug described above.
-              if (searchIndented) {
-                while (start > 0 && (source[start - 1] === ' ' || source[start - 1] === '\t')) start--;
-              }
-              return { start, end: windowEnd, fuzzy: true, occurrences: 1 };
-            }
-            if (trimmedWindow.length > normSearch.length + 10) break;
-          }
+        const replaceAll = edit.replace_all === true || edit.replaceAll === true;
+        if (found.matches.length > 1 && !replaceAll) {
+          failed.push({ index: i, ...describeAmbiguity(updatedContent, edit.search, found.matches, found.tier) });
+          continue;
         }
-        return null;
+
+        const replacement = coerceEol(edit.replace ?? '');
+        const targets = replaceAll ? found.matches : [found.matches[0]];
+        const firstLine = lineAt(updatedContent, targets[0].start);
+
+        // Splice right-to-left so earlier offsets stay valid within this edit.
+        for (let t = targets.length - 1; t >= 0; t--) {
+          const { start, end } = targets[t];
+          const ls = lineStartAt(updatedContent, start);
+          const le = lineEndAt(updatedContent, end);
+          const prefix = updatedContent.slice(ls, start);
+          const suffix = updatedContent.slice(end, le);
+          const removed = updatedContent.slice(start, end);
+
+          shiftRecords(records, start, end, replacement.length);
+          records.push({
+            finalStart: start,
+            oldBlock: clipBlock(prefix + removed + suffix),
+            newBlock: clipBlock(prefix + replacement + suffix),
+          });
+
+          updatedContent = updatedContent.slice(0, start) + replacement + updatedContent.slice(end);
+        }
+
+        const entry = {
+          index: i,
+          search: edit.search.substring(0, 80),
+          line: firstLine,
+          tier: found.tier,
+          replacements: targets.length,
+        };
+        // Preserved for callers that key on it: a whitespace-tier hit matched
+        // approximately and is worth eyeballing.
+        if (found.tier === MATCH_TIERS.WHITESPACE) entry.fuzzy = true;
+        if (targets.length > 1) entry.occurrences = found.matches.length;
+        applied.push(entry);
       }
 
-      for (let i = 0; i < args.edits.length; i++) {
-        const edit = args.edits[i];
-        const match = fuzzyFind(updatedContent, edit.search);
-        if (match) {
-          const replacement = coerceEol(edit.replace ?? '');
-          updatedContent =
-            updatedContent.substring(0, match.start) + replacement + updatedContent.substring(match.end);
-          const entry = { index: i, search: edit.search.substring(0, 80) };
-          // Surface a fuzzy hit so the caller knows the match was approximate
-          // and is worth eyeballing.
-          if (match.fuzzy) entry.fuzzy = true;
-          // Surface ambiguity rather than silently editing the first hit.
-          if (match.occurrences > 1) {
-            entry.occurrences = match.occurrences;
-            entry.note = 'search string is not unique — edited the FIRST occurrence';
-          }
-          applied.push(entry);
-        } else {
-          failed.push({ index: i, search: edit.search.substring(0, 80), reason: 'Search string not found' });
-        }
-      }
-
-      if (applied.length === 0) {
+      // ---- All-or-nothing -------------------------------------------------
+      //
+      // Partial application used to return `success: true` with a `failed[]`
+      // array alongside it, and 82 production calls left a file half-edited
+      // while reporting success. A half-edited file is the worst possible
+      // state: the model's mental model and the bytes on disk have diverged,
+      // and the next edit is computed against neither. Writing nothing keeps
+      // the file exactly as the caller last understood it.
+      if (failed.length > 0) {
+        // The remedy sentence must not point at a field that is absent.
+        // `didYouMean` is omitted when nothing in the file resembles the search
+        // — deliberately, since an unrelated suggestion invites a second wrong
+        // guess — and in that case the correct instruction is the opposite one:
+        // re-read, or check the path. Sending the reader to a section that is
+        // not there costs exactly the round trip this diagnostic exists to save.
+        const haveCandidates = failed.some((f) => f.didYouMean);
+        const state = applied.length === 0
+          ? 'No edits were applied and the file is unchanged.'
+          : 'Edits are all-or-nothing, so the file is unchanged.';
+        const remedy = haveCandidates
+          ? 'Use the "didYouMean" text below — it is copied verbatim from the file — and resend the whole set.'
+          : 'Nothing in this file resembles the failed search string, so there is nothing to suggest. Re-read the file, or check that this is the right path, before resending.';
         result = {
           success: false,
-          error: 'None of the search strings were found in the file.',
+          error:
+            applied.length === 0
+              ? 'None of the search strings were found in the file.'
+              : `${failed.length} of ${edits.length} edits could not be applied — nothing was written.`,
           failed,
-          message: 'No edits could be applied. Check that your search strings match the current file content.',
+          wouldHaveApplied: applied,
+          path: args.path,
+          totalLines: countLines(currentContent),
+          message: `${state} ${remedy}`,
         };
+        // A failure on a file nobody has read is a DIFFERENT diagnosis from a
+        // failure on one that is already in context, and it deserves to say so.
+        // Measured over production history: edits against a file the execution
+        // had never read failed at 7.4%, versus 4.9% when it had — 1.51x.
+        //
+        // This is a hint, not a gate. Forcing a read before every edit caps out
+        // at 17% of failures (the other 50% happen on files that WERE read) and
+        // costs ~40 extra reads per failure prevented, so the interlock is a bad
+        // trade. Naming the condition on the failure path is free.
+        //
+        // "Not read" means not seen since the server started, by any
+        // conversation — the ledger is process-global. That errs toward staying
+        // quiet, which is the right direction: a false nag is worse than a
+        // missed one.
+        if (!priorObservation) {
+          result.grounding = 'This file has not been read in this session.';
+          result.message +=
+            ' Note: this file has not been read in this session, so the search ' +
+            'strings were written from memory rather than from its actual ' +
+            'contents. Call read_file on it before retrying.';
+        }
         break;
       }
 
-      // Write the updated content back
-      await fs.writeFile(absPath, updatedContent, 'utf-8');
+      await writeFileAtomic(absPath, updatedContent);
+      observe(lockKey, updatedContent, { path: absPath });
 
       result = {
         success: true,
         applied,
-        failed: failed.length > 0 ? failed : undefined,
         description: args.description,
         path: args.path,
-        message: `Applied ${applied.length}/${args.edits.length} edits to ${args.path}: ${args.description}`,
+        bytesBefore: originalBytes,
+        bytesAfter: Buffer.byteLength(updatedContent, 'utf8'),
+        diff: renderDiff(updatedContent, records),
+        message: `Applied ${applied.length}/${edits.length} edits to ${args.path}${args.description ? `: ${args.description}` : ''}`,
         frontendEvents: [{ type: 'file_written', data: { path: args.path, content: updatedContent } }],
       };
       break;
@@ -518,6 +830,62 @@ async function executeCodeFunctionUnlocked(name, args) {
       } catch (err) {
         if (err.code === 'ENOENT') {
           result = { success: false, error: `Directory not found: ${relDir}` };
+        } else {
+          throw err;
+        }
+      }
+      break;
+    }
+
+    case 'grep_files': {
+      if (typeof args.pattern !== 'string' || args.pattern === '') {
+        result = { success: false, error: "Missing required parameter 'pattern'." };
+        break;
+      }
+      const absRoot = validatePath(args.path, WORKSPACE_ROOT, { allowEmpty: true });
+      try {
+        const found = await grepFiles(absRoot, {
+          pattern: args.pattern,
+          glob: typeof args.glob === 'string' && args.glob ? args.glob : null,
+          literal: args.literal === true,
+          ignoreCase: args.ignore_case === true || args.ignoreCase === true,
+          maxResults: Number.isInteger(args.max_results) ? args.max_results : SEARCH_DEFAULTS.maxResults,
+          contextLines: Number.isInteger(args.context) ? args.context : 0,
+        });
+        result = { success: true, root: args.path || '/', pattern: args.pattern, ...found };
+        if (found.matches.length === 0) {
+          result.message = `No matches for /${args.pattern}/ in ${found.filesScanned} file(s).`;
+        }
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          result = { success: false, error: `Path not found: ${args.path}` };
+        } else if (err instanceof SyntaxError) {
+          result = { success: false, error: `Invalid regular expression: ${err.message}. Set literal: true to search for it as plain text.` };
+        } else {
+          throw err;
+        }
+      }
+      break;
+    }
+
+    case 'glob_files': {
+      if (typeof args.pattern !== 'string' || args.pattern === '') {
+        result = { success: false, error: "Missing required parameter 'pattern'." };
+        break;
+      }
+      const absRoot = validatePath(args.path, WORKSPACE_ROOT, { allowEmpty: true });
+      try {
+        const found = await globFiles(absRoot, {
+          pattern: args.pattern,
+          maxResults: Number.isInteger(args.max_results) ? args.max_results : SEARCH_DEFAULTS.maxGlobResults,
+        });
+        result = { success: true, root: args.path || '/', pattern: args.pattern, count: found.files.length, ...found };
+        if (found.files.length === 0) {
+          result.message = `No files matched "${args.pattern}". Patterns containing "/" match the full relative path; patterns without one match the file name at any depth.`;
+        }
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          result = { success: false, error: `Path not found: ${args.path}` };
         } else {
           throw err;
         }
