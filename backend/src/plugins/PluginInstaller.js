@@ -1224,14 +1224,19 @@ class PluginInstaller {
       await fs.unlink(tempFile).catch(() => {});
 
       // Defensive check: the marketplace listing claims one version but the
-      // downloaded artifact's manifest.json says another. This means the
-      // author bumped their marketplace metadata without rebuilding and
-      // re-uploading the actual .agnt file (same author-error class as the
-      // sukuna break). We ABORT the update rather than trap the user in an
-      // infinite update loop where checkForUpdates keeps offering the update
-      // because the registry gets stamped with the old manifest version.
-      // (Server-side publish gate now rejects this at upload; this handles
-      // artifacts uploaded before that gate was in place.)
+      // downloaded artifact's manifest.json says another.
+      //
+      // This is almost never the author's doing. The marketplace's generic
+      // publish path stamped every plugin listing with a hardcoded 1.0.0 until
+      // 2026-07-28, so 23 listings advertised a version their own uploaded
+      // artifact contradicted. The author's package was correct all along.
+      // The server now derives the listing version from the artifact and the
+      // weekly catalog sweep reconciles any that already drifted, so this is a
+      // last-resort guard rather than the common path.
+      //
+      // We still ABORT: stamping the registry with a version the bytes do not
+      // support is what creates the unclosable update loop, where
+      // checkForUpdates offers the same update forever and it fails every time.
       if (staged.version && pluginInfo.version && staged.version !== pluginInfo.version) {
         console.warn(
           `[PluginInstaller] ${pluginName}: version mismatch — marketplace lists v${pluginInfo.version} but downloaded artifact manifest says v${staged.version}. Aborting update; previous version remains installed.`
@@ -1246,17 +1251,25 @@ class PluginInstaller {
         // Better fix: reject at server-publish gate (already done for future).
         return {
           success: false,
-          error: `Author error: marketplace lists v${pluginInfo.version} but the uploaded package manifest says v${staged.version}. This plugin's author needs to rebuild and re-upload the package. No changes made.`,
+          error:
+            `Catalog mismatch for '${pluginName}': the marketplace lists v${pluginInfo.version} but the package it serves ` +
+            `contains v${staged.version}. Nothing was changed and your installed copy is untouched. The marketplace ` +
+            `reconciles this automatically — retry after its next catalog sweep.`,
+          catalogMismatch: true,
+          // Retained: existing callers branch on this field.
           authorError: true,
           marketplaceVersion: pluginInfo.version,
           artifactVersion: staged.version,
         };
       }
 
-      // Use marketplace version if manifest version is missing; prefer
-      // marketplace version generally since that's what the user was told
-      // they were getting.
-      const installedVersion = pluginInfo.version || staged.version;
+      // The registry records what is ON DISK, so the artifact's own manifest
+      // wins and the catalog is only a fallback for a version-less manifest.
+      // The mismatch check above means the two agree whenever both are
+      // present, so this changes no successful update — it removes a latent
+      // lie: preferring the catalog would let a wrong listing decide what we
+      // claim is installed, which is how the update loop became unclosable.
+      const installedVersion = staged.version || pluginInfo.version;
       await this.updateRegistry(pluginName, installedVersion, 'installed', {
         ...staged.registryFields,
         ...(sig ? { signedBy: sig.signedBy } : {}),
