@@ -229,6 +229,23 @@ describe('PayloadStore — base64 data-URIs (the 170x dedup case)', () => {
 });
 
 describe('PayloadStore — backward compatibility (zero-migration contract)', () => {
+  // ENVELOPE_KEY is a PERSISTED format constant, not an implementation detail:
+  // it is written into agent_executions/node_executions rows and matched as a
+  // raw SQL LIKE prefix in PayloadBackfill and RetentionService. Renaming it
+  // orphans every row ever stored.
+  //
+  // Mutation testing found this undefended — renaming the constant left all 26
+  // tests in this file green, because they only ever round-trip through the same
+  // module. A test that packs and unpacks with the same key cannot notice that
+  // the key changed. This one asserts the literal bytes on disk instead.
+  it('pins the on-disk envelope key — renaming it orphans every stored row', async () => {
+    expect(PayloadStore.ENVELOPE_KEY).toBe('__agnt_ref');
+
+    const packed = await PayloadStore.pack({ data: bigText(120_000) });
+    expect(PayloadStore.isExternalized(packed)).toBe(true);
+    expect(packed.startsWith('{"__agnt_ref"')).toBe(true);
+  });
+
   it('unpacks legacy plain-JSON rows written before this feature existed', async () => {
     const legacyRows = [
       JSON.stringify({ success: true, data: [1, 2, 3] }),

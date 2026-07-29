@@ -107,7 +107,7 @@ const PayloadBackfill = {
     const lenExpr = parts.map((c) => `length(COALESCE("${c}",''))`).join(' + ');
     const bigCond = parts
       .map((c) => `(length(COALESCE("${c}",'')) > ${PayloadStore.INLINE_THRESHOLD}
-                    AND "${c}" NOT LIKE '{"__agnt_ref"%')`)
+                    AND "${c}" NOT LIKE '{"${PayloadStore.ENVELOPE_KEY}"%')`)
       .join(' OR ');
 
     const row = await dbGet(
@@ -173,7 +173,7 @@ const PayloadBackfill = {
 
     const bigCond = columns
       .map((c) => `(length(COALESCE("${c}",'')) > ${PayloadStore.INLINE_THRESHOLD}
-                    AND "${c}" NOT LIKE '{"__agnt_ref"%')`)
+                    AND "${c}" NOT LIKE '{"${PayloadStore.ENVELOPE_KEY}"%')`)
       .join(' OR ');
     const selectCols = columns.map((c) => `"${c}"`).join(', ');
 

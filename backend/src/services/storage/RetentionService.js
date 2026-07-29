@@ -75,7 +75,7 @@ export const DEFAULTS = Object.freeze({
  * JS predicates (PayloadStore.isExternalized) can't be pushed down.
  */
 const CANDIDATE_SQL = `(
-     input  LIKE '{"__agnt_ref"%' OR output LIKE '{"__agnt_ref"%'
+     input  LIKE '{"${PayloadStore.ENVELOPE_KEY}"%' OR output LIKE '{"${PayloadStore.ENVELOPE_KEY}"%'
   OR input  LIKE '%agnt-blob:v1:%' OR output LIKE '%agnt-blob:v1:%'
   OR (length(COALESCE(input,'')) + length(COALESCE(output,''))) >= ?
 )`;
