@@ -14,11 +14,6 @@
     <!-- ══ workspace tabs ══ -->
     <div class="ws-tabbar">
       <div ref="tabStripRef" class="ws-tabs" :class="{ 'more-left': tabsMoreLeft, 'more-right': tabsMoreRight }" @scroll="updateTabOverflow">
-        <!-- First IN the row, not beside it: the button creates a tab, so it
-             reads as the strip's start rather than as a separate control. -->
-        <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
-          <i class="fas fa-plus"></i>
-        </button>
         <div
           v-for="ws in workspaces"
           :ref="(el) => setTabRef(ws.id, el)"
@@ -45,6 +40,12 @@
             <i class="fas fa-times"></i>
           </button>
         </div>
+
+        <!-- Trailing the row, inside the strip: the button creates the NEXT
+             tab, so it belongs where the next tab would appear. -->
+        <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
+          <i class="fas fa-plus"></i>
+        </button>
       </div>
 
       <div class="ws-tabbar-right">
