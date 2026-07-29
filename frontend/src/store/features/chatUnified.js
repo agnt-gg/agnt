@@ -41,19 +41,118 @@ const loadPersisted = () => {
   }
 };
 
+// A full localStorage quota used to be a SILENT failure: setItem threw,
+// persistNow swallowed it, and every chat surface stopped saving with nothing
+// on screen to say so. Storage filling up is a normal end state for a
+// long-lived install (this store is one key holding every channel), so the
+// correct behaviour is to make room and keep the live conversation durable —
+// and to fail LOUDLY only when even the newest channels cannot fit.
+const isQuotaError = (e) =>
+  !!e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014);
+
+// The one channel eviction may never touch. The conversation the user is in
+// always carries the newest lastUpdate, so protecting the newest entry is
+// exactly the invariant "never delete the thread we are trying to save".
+// A larger fixed reserve would be arbitrary AND self-defeating: with fewer
+// channels than the reserve, nothing is evictable and the save fails outright.
+const PROTECTED_RECENT_CHANNELS = 1;
+
 const persistNow = (conversations) => {
-  try {
-    const filtered = {};
-    for (const [key, conv] of Object.entries(conversations)) {
-      if (!conv) continue;
-      if ((conv.messages && conv.messages.length > 0) || conv.conversationId) {
-        filtered[key] = conv;
-      }
+  const filtered = {};
+  for (const [key, conv] of Object.entries(conversations)) {
+    if (!conv) continue;
+    if ((conv.messages && conv.messages.length > 0) || conv.conversationId) {
+      filtered[key] = conv;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-  } catch (e) {
-    console.error('[chatUnified] Failed to persist conversations:', e);
   }
+
+  // Eviction order: least-recently-updated first, minus the protected tail.
+  const evictable = Object.keys(filtered)
+    .sort((a, b) => (filtered[a].lastUpdate || 0) - (filtered[b].lastUpdate || 0))
+    .slice(0, Math.max(0, Object.keys(filtered).length - PROTECTED_RECENT_CHANNELS));
+
+  const evicted = [];
+  for (;;) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      if (evicted.length) {
+        console.warn(`[chatUnified] storage quota reached — evicted ${evicted.length} least-recent channel(s) to keep saving:`, evicted);
+      }
+      return true;
+    } catch (e) {
+      if (!isQuotaError(e)) {
+        console.error('[chatUnified] Failed to persist conversations:', e);
+        return false;
+      }
+      const victim = evictable.shift();
+      if (!victim) {
+        console.error('[chatUnified] storage quota reached and the most recent conversations alone exceed it — NOT saving. Clear space to avoid losing this thread.');
+        return false;
+      }
+      delete filtered[victim];
+      evicted.push(victim);
+    }
+  }
+};
+
+/* ═══════════ one-shot reclaim of the abandoned split-key scheme ═══════════
+ *
+ * An earlier experiment persisted each channel under its own
+ * `conv:unified:<channelKey>` key (plus a `…:index`). That code exists in no
+ * source file, no shipped bundle and no commit, so nothing reads those keys —
+ * but they still occupy the origin's quota, which is what pushes this store
+ * into the silent-failure path above.
+ *
+ * They are FOLDED IN before removal rather than simply deleted: a stale split
+ * key may hold a longer transcript than the live map (that is exactly what
+ * happens when the split scheme was the writer). Adopt the longer one, then
+ * free the space. Guarded by a flag so it costs one scan, once.
+ */
+const SPLIT_PREFIX = 'conv:unified:';
+const SPLIT_INDEX_KEY = `${STORAGE_KEY}:index`;
+const RECLAIM_FLAG = `${STORAGE_KEY}:reclaimed:v1`;
+
+export const reclaimSplitKeys = (conversations) => {
+  try {
+    if (typeof localStorage === 'undefined' || localStorage.getItem(RECLAIM_FLAG)) return conversations;
+
+    // Collect first: removing while iterating by index skips entries.
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(SPLIT_PREFIX)) keys.push(k);
+    }
+
+    let adopted = 0;
+    for (const k of keys) {
+      const channelKey = k.slice(SPLIT_PREFIX.length);
+      try {
+        const conv = JSON.parse(localStorage.getItem(k) || 'null');
+        const incoming = Array.isArray(conv?.messages) ? conv.messages.length : 0;
+        const current = Array.isArray(conversations[channelKey]?.messages) ? conversations[channelKey].messages.length : 0;
+        if (conv && incoming > current) {
+          conversations[channelKey] = {
+            messages: conv.messages || [],
+            conversationId: conv.conversationId || null,
+            lastUpdate: conv.lastUpdate || Date.now(),
+            suggestions: conv.suggestions || [],
+          };
+          adopted++;
+        }
+      } catch { /* unreadable key — dropping it is the point */ }
+      localStorage.removeItem(k);
+    }
+    localStorage.removeItem(SPLIT_INDEX_KEY);
+    localStorage.setItem(RECLAIM_FLAG, String(Date.now()));
+
+    if (keys.length) {
+      console.info(`[chatUnified] reclaimed ${keys.length} orphaned split-storage key(s); adopted ${adopted} longer transcript(s)`);
+      persistNow(conversations);
+    }
+  } catch (e) {
+    console.warn('[chatUnified] split-key reclaim failed (non-fatal):', e);
+  }
+  return conversations;
 };
 
 // PRD-058: debounced persistence.
@@ -174,7 +273,7 @@ const generateMessageId = (() => {
 export default {
   namespaced: true,
   state: {
-    conversations: loadPersisted(),
+    conversations: reclaimSplitKeys(loadPersisted()),
     streamingChannels: {},          // channelKey → boolean
     loadingSuggestionsChannels: {}, // channelKey → boolean
     expandedToolCalls: {},          // channelKey → { messageId: number[] }

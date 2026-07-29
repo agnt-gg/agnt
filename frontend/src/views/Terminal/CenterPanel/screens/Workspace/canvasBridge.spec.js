@@ -55,6 +55,26 @@ describe('readCanvasState', () => {
     expect(res.summary).toMatch(/never been used/i);
   });
 
+  it('creates NOTHING — a read must never fabricate the state it reports', async () => {
+    // useWorkspaces mints a workspace and persists it on import (that is what
+    // makes a workspace conversation durable). This module is loaded on demand
+    // to answer get_canvas_state, so importing it for a constant would have a
+    // pure READ create the very workspace it was asked about — and report a
+    // canvas to Annie that the user never opened. Hence workspaceStorage.js.
+    const { readCanvasState } = await fresh();
+    readCanvasState();
+    expect(localStorage.getItem('agnt:workspaces:v2')).toBeNull();
+  });
+
+  it('takes the storage key from the side-effect-free module (source guard)', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const src = fs.readFileSync(path.join(__dirname, 'canvasBridge.js'), 'utf8');
+    const statements = src.match(/^import\s+\{[^}]*STORAGE_KEY[^}]*\}\s+from\s+'([^']+)';/m);
+    expect(statements).not.toBeNull();
+    expect(statements[1]).toBe('./workspaceStorage.js');
+  });
+
   it('returns workspaces enriched with registry names, chat and custom markers', async () => {
     const { readCanvasState } = await fresh();
     localStorage.setItem('agnt:workspaces:v2', V2([
@@ -267,9 +287,9 @@ describe('executeCanvasCommand — writes ride the UI mutation path', () => {
     // say WHERE the window actually is.
     //
     // ORDER MATTERS: useWorkspaces is a module singleton that reads
-    // localStorage exactly once at load, and canvasBridge imports it at module
-    // top (for STORAGE_KEY). Seeding after fresh() would initialize the
-    // singleton from EMPTY storage — the seed must land first.
+    // localStorage exactly once at load, and the write path below lazy-imports
+    // it. Seeding after fresh() would initialize the singleton from EMPTY
+    // storage — the seed must land first.
     await new Promise((r) => setTimeout(r, 300));
     vi.resetModules();
     localStorage.clear();

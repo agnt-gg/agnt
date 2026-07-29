@@ -35,7 +35,10 @@
  * through exactly one executor.
  */
 
-import { STORAGE_KEY } from './useWorkspaces.js';
+// Deliberately NOT './useWorkspaces.js': that module mints and persists a
+// workspace on import, so pulling a constant from it would let a pure read
+// (get_canvas_state) create the workspace it was asked to report on.
+import { STORAGE_KEY } from './workspaceStorage.js';
 import { getWidget } from '@/canvas/widgetRegistry.js';
 
 const MAX_TEXT_CHARS = 4000;

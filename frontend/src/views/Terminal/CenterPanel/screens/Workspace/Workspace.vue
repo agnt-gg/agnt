@@ -13,9 +13,10 @@
   <div class="ws-root">
     <!-- ══ workspace tabs ══ -->
     <div class="ws-tabbar">
-      <div class="ws-tabs">
+      <div ref="tabStripRef" class="ws-tabs" :class="{ 'more-left': tabsMoreLeft, 'more-right': tabsMoreRight }" @scroll="updateTabOverflow">
         <div
           v-for="ws in workspaces"
+          :ref="(el) => setTabRef(ws.id, el)"
           :key="ws.id"
           class="ws-tab"
           :class="{ on: ws.id === activeId }"
@@ -39,11 +40,14 @@
             <i class="fas fa-times"></i>
           </button>
         </div>
-
-        <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
-          <i class="fas fa-plus"></i>
-        </button>
       </div>
+
+      <!-- Outside .ws-tabs on purpose: this is an action, not a tab. Inside the
+           scroller it slid off the end once enough workspaces existed, so
+           "New workspace" became unreachable exactly when it was most useful. -->
+      <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
+        <i class="fas fa-plus"></i>
+      </button>
 
       <div class="ws-tabbar-right">
         <button
@@ -470,6 +474,43 @@ export default {
     }));
 
     // ── tab rename ───────────────────────────────────────────────────
+    /* ── tab strip overflow ──
+     * The strip has always scrolled, but with scrollbar-width:none there was
+     * nothing to say so: past ~7 workspaces the rest were present, reachable
+     * by wheel, and completely invisible. Measured at 1664px: scrollWidth 2377
+     * vs clientWidth 1361, five tabs past the right edge. Edge fades make the
+     * overflow legible; following the active tab means selecting a workspace
+     * (or restoring one) never leaves you staring at a strip that does not
+     * contain it.
+     */
+    const tabStripRef = ref(null);
+    const tabEls = new Map();
+    const tabsMoreLeft = ref(false);
+    const tabsMoreRight = ref(false);
+    let tabObserver = null;
+
+    const setTabRef = (id, el) => {
+      if (el) tabEls.set(id, el);
+      else tabEls.delete(id);
+    };
+
+    const updateTabOverflow = () => {
+      const el = tabStripRef.value;
+      if (!el) return;
+      tabsMoreLeft.value = el.scrollLeft > 1;
+      tabsMoreRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    };
+
+    const scrollActiveTabIntoView = () => {
+      const el = tabEls.get(activeId.value);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+      updateTabOverflow();
+    };
+
+    watch(activeId, () => nextTick(scrollActiveTabIntoView));
+
     const renamingId = ref('');
     const renameDraft = ref('');
     const renameInput = ref(null);
@@ -761,7 +802,12 @@ export default {
       if (typeof ResizeObserver !== 'undefined') {
         gridObserver = new ResizeObserver(updateCellDimensions);
         if (gridRef.value) gridObserver.observe(gridRef.value);
+        // Overflow depends on the strip's width as much as its content, so a
+        // window/panel resize has to re-evaluate it too.
+        tabObserver = new ResizeObserver(updateTabOverflow);
+        if (tabStripRef.value) tabObserver.observe(tabStripRef.value);
       }
+      nextTick(scrollActiveTabIntoView);
     });
 
     // The grid element only exists in split mode — re-observe when it appears.
@@ -777,6 +823,7 @@ export default {
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onKeydown);
       if (gridObserver) gridObserver.disconnect();
+      if (tabObserver) tabObserver.disconnect();
     });
 
     return {
@@ -789,6 +836,12 @@ export default {
       setActive,
       createWorkspace,
       closeWorkspace,
+      // tab strip overflow
+      tabStripRef,
+      setTabRef,
+      tabsMoreLeft,
+      tabsMoreRight,
+      updateTabOverflow,
       removeWidget,
       toggleCollapse,
       bringToFront,
@@ -905,10 +958,29 @@ body.custom-bg .ws-root {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+  scroll-behavior: smooth;
   scrollbar-width: none;
 }
 .ws-tabs::-webkit-scrollbar {
   display: none;
+}
+
+/* The scrollbar is hidden by design, so overflow needs its own signal: a tab
+ * that is simply absent from view is indistinguishable from one that does not
+ * exist. The mask fades whichever edge has more tabs behind it.
+ *
+ * 56px, not a hairline: the fade has to swallow the PARTIAL tab sitting on the
+ * boundary. A short fade leaves a hard-cut sliver — a stray status dot with no
+ * label — which reads as a rendering artifact rather than as "there is more
+ * this way". Roughly a third of the narrowest tab (measured 133px). */
+.ws-tabs.more-right {
+  mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent 100%);
+}
+.ws-tabs.more-left {
+  mask-image: linear-gradient(to left, #000 calc(100% - 56px), transparent 100%);
+}
+.ws-tabs.more-left.more-right {
+  mask-image: linear-gradient(to right, transparent 0, #000 56px, #000 calc(100% - 56px), transparent 100%);
 }
 
 .ws-tab {
@@ -924,6 +996,8 @@ body.custom-bg .ws-root {
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s ease;
+  /* Never shrink a tab into an unreadable sliver — the strip scrolls instead. */
+  flex: 0 0 auto;
 }
 
 .ws-tab:hover {
@@ -998,6 +1072,13 @@ body.custom-bg .ws-root {
 
 .ws-tab-add {
   flex: 0 0 auto;
+  /* Now that it lives outside the scroller it sits next to the toolbar
+   * actions; without a separator the three controls read as one cluster and
+   * "new workspace" looks like part of the toolbar rather than the tab row. */
+  margin-left: 2px;
+  padding-right: 8px;
+  border-right: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.09));
+  box-sizing: content-box;
   width: 24px;
   height: 24px;
   display: grid;

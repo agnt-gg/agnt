@@ -1205,6 +1205,102 @@ describe('Workspace.vue', () => {
     expect(document.body.getAttribute('data-page')).toBe('terminal-workspace');
   });
 
+  /* ── tab strip overflow ──
+   *
+   * Restoring 12 orphaned conversations turned an untested edge case into the
+   * default: measured at 1664px the strip wanted 2377px for 1361px of room,
+   * putting FIVE workspaces past the right edge. They were never lost — the
+   * strip has always scrolled — but with scrollbar-width:none there was no
+   * indication of that, and the "+" button lived INSIDE the scroller, so it
+   * slid away exactly when the user had the most workspaces.
+   *
+   * jsdom reports every rect as 0, so geometry is stubbed and the real numbers
+   * come from tabbar-probe.mjs against a browser. What is pinned here is the
+   * logic and the structure, which is what regresses.
+   */
+  const stubStrip = (wrapper, { scrollWidth, clientWidth, scrollLeft }) => {
+    const el = wrapper.find('.ws-tabs').element;
+    Object.defineProperty(el, 'scrollWidth', { value: scrollWidth, configurable: true });
+    Object.defineProperty(el, 'clientWidth', { value: clientWidth, configurable: true });
+    Object.defineProperty(el, 'scrollLeft', { value: scrollLeft, writable: true, configurable: true });
+    return el;
+  };
+
+  it('keeps "New workspace" reachable — it is not inside the scroller', async () => {
+    const wrapper = await mountPage();
+    const add = wrapper.find('.ws-tab-add');
+    expect(add.exists()).toBe(true);
+    // The button must be a SIBLING of the scrolling strip, not a child of it:
+    // inside, it scrolls off the end with the tabs.
+    expect(wrapper.find('.ws-tabs .ws-tab-add').exists()).toBe(false);
+    expect(add.element.parentElement.classList.contains('ws-tabbar')).toBe(true);
+  });
+
+  it('signals overflow on the side that actually has more tabs', async () => {
+    const wrapper = await mountPage();
+
+    stubStrip(wrapper, { scrollWidth: 2377, clientWidth: 1361, scrollLeft: 0 });
+    wrapper.vm.updateTabOverflow();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.ws-tabs').classes()).toContain('more-right');
+    expect(wrapper.find('.ws-tabs').classes()).not.toContain('more-left');
+
+    stubStrip(wrapper, { scrollWidth: 2377, clientWidth: 1361, scrollLeft: 500 });
+    wrapper.vm.updateTabOverflow();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.ws-tabs').classes()).toEqual(expect.arrayContaining(['more-left', 'more-right']));
+
+    stubStrip(wrapper, { scrollWidth: 2377, clientWidth: 1361, scrollLeft: 1016 });
+    wrapper.vm.updateTabOverflow();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.ws-tabs').classes()).toContain('more-left');
+    expect(wrapper.find('.ws-tabs').classes()).not.toContain('more-right');
+  });
+
+  it('claims no overflow when everything fits', async () => {
+    const wrapper = await mountPage();
+    stubStrip(wrapper, { scrollWidth: 400, clientWidth: 1361, scrollLeft: 0 });
+    wrapper.vm.updateTabOverflow();
+    await wrapper.vm.$nextTick();
+    const cls = wrapper.find('.ws-tabs').classes();
+    expect(cls).not.toContain('more-left');
+    expect(cls).not.toContain('more-right');
+  });
+
+  it('scrolls the selected workspace into view', async () => {
+    // Selecting a tab you cannot see (or restoring one) must move the strip to
+    // it — otherwise the click appears to do nothing.
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    const ws = useWorkspaces();
+    const created = ws.createWorkspace('Far right');
+    await wrapper.vm.$nextTick();
+
+    const tab = wrapper.findAll('.ws-tab').at(-1).element;
+    const spy = vi.fn();
+    tab.scrollIntoView = spy;
+
+    ws.setActive(created);
+    await wrapper.vm.$nextTick();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('never shrinks a tab into an unreadable sliver (CSS source guard)', async () => {
+    const fs2 = await import('node:fs');
+    const path2 = await import('node:path');
+    const src = fs2.readFileSync(path2.join(__dirname, 'Workspace.vue'), 'utf8');
+    const rule = src.slice(src.indexOf('\n.ws-tab {'));
+    const body = rule.slice(0, rule.indexOf('}'));
+    // flex-shrink defaults to 1: with 12 tabs the browser squeezed them rather
+    // than scrolling, which is how labels became indistinguishable prefixes.
+    expect(body).toMatch(/flex:\s*0\s+0\s+auto/);
+    // And the fade must exist for both edges.
+    expect(src).toMatch(/\.ws-tabs\.more-right\s*\{[^}]*mask-image/);
+    expect(src).toMatch(/\.ws-tabs\.more-left\s*\{[^}]*mask-image/);
+  });
+
   it('gives each window an isolated panel scope backed by its own instance', async () => {
     const wrapper = await mountPage();
     const { useWorkspaces } = await import('./useWorkspaces.js');

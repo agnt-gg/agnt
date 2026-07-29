@@ -22,8 +22,11 @@ import { ref, computed } from 'vue';
 import { getWidget } from '@/canvas/widgetRegistry.js';
 import { findEmptySlot, clampInstance, GRID_COLS, GRID_ROWS } from '@/canvas/gridUtils.js';
 
-export const STORAGE_KEY = 'agnt:workspaces:v2';
-const LEGACY_KEY = 'agnt:workspaces:v1';
+import { STORAGE_KEY, LEGACY_KEY, CHAT_STORAGE_KEY, RECOVERY_FLAG } from './workspaceStorage.js';
+
+// Re-exported for existing importers; new callers that want a key WITHOUT
+// booting this singleton should import from './workspaceStorage.js' directly.
+export { STORAGE_KEY };
 
 /** v1 surface types → registry widget ids (used only for one-shot migration). */
 const LEGACY_SURFACE_WIDGET = {
@@ -282,6 +285,117 @@ export function canGoForward(instance) {
   return !!instance && Array.isArray(instance.history) && historyIndexOf(instance) < instance.history.length - 1;
 }
 
+/* ═══════════ recovering conversations orphaned by id churn ═══════════
+ *
+ * A workspace's id IS its conversation address (`workspace:<id>`). Until this
+ * module persisted at creation, a workspace minted at load and never mutated
+ * was never written down — so the next load minted a DIFFERENT id and the
+ * previous thread became unaddressable while still occupying storage. Every
+ * such thread is still on disk; it just has no workspace pointing at it.
+ *
+ * This pass re-attaches them: an orphaned conversation IS a lost workspace, so
+ * recovering one means re-creating the workspace with its original id. It runs
+ * ONCE (flag-guarded) — after that, closing a workspace is a deliberate act and
+ * must stay closed rather than resurrecting itself on the next reload.
+ */
+export const MAX_RECOVERED_WORKSPACES = 12;
+
+/** Welcome banners are injected per mount and are not user content. */
+const isWelcomeMessage = (m) => typeof m?.id === 'string' && m.id.includes('-welcome-');
+
+/**
+ * Every persisted chat channel, from the live store AND from the abandoned
+ * per-channel split keys. Reading both removes any dependency on which module
+ * initialised first — chatUnified folds the split keys back in at boot, but
+ * this must be correct even if it hasn't yet.
+ */
+export function readChatChannels() {
+  const out = {};
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (raw) Object.assign(out, JSON.parse(raw) || {});
+  } catch { /* unreadable store — recovery is best-effort by design */ }
+  try {
+    const prefix = 'conv:unified:workspace:';
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(prefix)) continue;
+      const channel = k.slice('conv:unified:'.length);
+      if (out[channel]) continue;
+      const conv = JSON.parse(localStorage.getItem(k) || 'null');
+      if (conv) out[channel] = conv;
+    }
+  } catch { /* ditto */ }
+  return out;
+}
+
+/**
+ * Group orphaned `workspace:*` channels into recoverable workspaces.
+ *
+ * Channel shape is `workspace:<wsId>` (primary) or `workspace:<wsId>:<chatKey>`
+ * (a chat added later). Ids never contain ':', so the first separator splits
+ * them unambiguously. Only groups carrying real user messages are offered —
+ * a workspace that only ever showed a welcome banner is not a lost thread.
+ *
+ * @param {object} channels channelKey → conversation
+ * @param {Set<string>} knownIds workspace ids already present
+ */
+export function findRecoverableWorkspaces(channels, knownIds) {
+  const groups = new Map();
+  for (const [channel, conv] of Object.entries(channels || {})) {
+    if (!channel.startsWith('workspace:')) continue;
+    const rest = channel.slice('workspace:'.length);
+    const sep = rest.indexOf(':');
+    const wsId = sep === -1 ? rest : rest.slice(0, sep);
+    const chatKey = sep === -1 ? '' : rest.slice(sep + 1);
+    if (!wsId || knownIds.has(wsId)) continue;
+
+    const real = (Array.isArray(conv?.messages) ? conv.messages : []).filter((m) => !isWelcomeMessage(m));
+    if (!real.length) continue;
+
+    let group = groups.get(wsId);
+    if (!group) {
+      group = { id: wsId, chatKeys: [], messageCount: 0, lastUpdate: 0, title: '' };
+      groups.set(wsId, group);
+    }
+    group.chatKeys.push(chatKey);
+    group.messageCount += real.length;
+    group.lastUpdate = Math.max(group.lastUpdate, Number(conv?.lastUpdate) || 0);
+    if (!group.title) {
+      const firstUser = real.find((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim());
+      if (firstUser) group.title = firstUser.content.trim().replace(/\s+/g, ' ').slice(0, 40).trim();
+    }
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => b.lastUpdate - a.lastUpdate)
+    .slice(0, MAX_RECOVERED_WORKSPACES);
+}
+
+/** Rebuild a workspace around the chats that actually hold content. */
+function workspaceFromRecovered(group) {
+  // Primary chat first so the tab opens on the workspace's own conversation.
+  const chatKeys = [...new Set(group.chatKeys)].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
+  const widgets = [];
+  for (const chatKey of chatKeys) {
+    const geom = placeInstance(widgets, 'workspace-chat');
+    widgets.push(clampInstance({
+      instanceId: chatKey || newId('w'),
+      widgetId: 'workspace-chat',
+      chatKey,
+      col: geom.col, row: geom.row, cols: geom.cols, rows: geom.rows,
+      collapsed: false, visible: true, zIndex: widgets.length + 1,
+    }));
+  }
+  return {
+    id: group.id,
+    name: group.title || `Recovered ${group.id.slice(-4)}`,
+    widgets,
+    createdAt: group.lastUpdate || Date.now(),
+    recovered: true,
+  };
+}
+
 /** instanceId → memoised panel-geometry scope (see panelScopeFor). */
 const panelScopes = new Map();
 
@@ -296,21 +410,71 @@ const activeId = ref(
 const autoOpen = ref(persisted?.autoOpen !== false);
 
 let saveTimer = null;
+
+function saveNow() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      workspaces: workspaces.value,
+      activeId: activeId.value,
+      autoOpen: autoOpen.value,
+    }));
+    return true;
+  } catch (e) {
+    console.warn('[useWorkspaces] failed to persist:', e);
+    return false;
+  }
+}
+
 function save() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        workspaces: workspaces.value,
-        activeId: activeId.value,
-        autoOpen: autoOpen.value,
-      }));
-    } catch (e) {
-      console.warn('[useWorkspaces] failed to persist:', e);
-    }
+    saveNow();
   }, 250);
 }
+
+if (typeof window !== 'undefined') {
+  // A debounced write is lost if the window closes inside the window. pagehide
+  // is the reliable unload signal (tab close, navigation, Electron window
+  // close); beforeunload is the belt-and-braces fallback. Mirrors chatUnified.
+  window.addEventListener('pagehide', saveNow);
+  window.addEventListener('beforeunload', saveNow);
+}
+
+/**
+ * Make workspace identity durable, and repair the historical churn once.
+ *
+ * A workspace's id is minted at construction and is the address of its
+ * conversation, so it must be written down THEN — not on the first widget
+ * mutation. Chatting is not a mutation, which is precisely why conversations
+ * were being orphaned: the most common session (open the page, talk, reload)
+ * never triggered a save.
+ */
+(function bootstrapPersistence() {
+  if (typeof localStorage === 'undefined') return;
+  let dirty = !persisted;
+
+  try {
+    if (!localStorage.getItem(RECOVERY_FLAG)) {
+      const known = new Set(workspaces.value.map((w) => w.id));
+      const found = findRecoverableWorkspaces(readChatChannels(), known);
+      for (const group of found) workspaces.value.push(workspaceFromRecovered(group));
+      localStorage.setItem(RECOVERY_FLAG, String(Date.now()));
+      if (found.length) {
+        dirty = true;
+        console.info(`[useWorkspaces] recovered ${found.length} orphaned workspace conversation(s)`);
+      }
+    }
+  } catch (e) {
+    console.warn('[useWorkspaces] conversation recovery failed (non-fatal):', e);
+  }
+
+  if (dirty) saveNow();
+})();
 
 export function useWorkspaces() {
   const active = computed(() => workspaces.value.find((w) => w.id === activeId.value) || workspaces.value[0]);
@@ -581,5 +745,6 @@ export function useWorkspaces() {
     bringToFront,
     setAutoOpen,
     save,
+    saveNow,
   };
 }
