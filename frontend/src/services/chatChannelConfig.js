@@ -30,9 +30,19 @@ export const AUTO_ENABLED_TOOLS = 'auto';
 // Sidebar chats start with ONLY their specialty set enabled; the user can
 // additionally enable System Tools or Plugins per chat from the selector.
 //
-// These mirror the backend's TOOL_GROUPS in toolSelector.js; if the canonical
-// list there changes, mirror the change here so the frontend default matches
-// what the backend actually exposes.
+// These mirror the backend's TOOL_GROUPS in toolSelector.js. That mirror is
+// LOAD-BEARING, not documentation: the backend applies this list as a strict
+// whitelist (a 6-name list covers ~2% of the registry, far below the 0.95
+// auto-mode threshold in chatConfigs.js), so a tool present in the backend
+// group but absent here EXISTS, IS DISPATCHABLE, AND CAN NEVER BE CALLED on
+// that surface. It fails silently — the tool simply is not offered.
+//
+// It rotted twice before it was enforced: `list_widgets` was added to the
+// backend widget group and never reached Widget Forge, and `grep_files` /
+// `glob_files` were added to the backend artifact group and never reached the
+// Artifacts chat they were built for. A comment asking the next person to
+// remember is not a mechanism. chatChannelConfig.mirror.spec.js now parses the
+// backend file and fails the build on drift.
 // mcp_client is included in every sidebar default — MCP awareness is a
 // universal capability. v0.5.7 added strict whitelist enforcement; without
 // adding mcp_client here it would be hidden from every sidebar chat.
@@ -87,6 +97,7 @@ const SIDEBAR_DEFAULTS = {
     'update_widget_config',
     'save_widget',
     'load_widget',
+    'list_widgets',
     'get_agnt_api',
     'mcp_client',
   ],
@@ -95,6 +106,8 @@ const SIDEBAR_DEFAULTS = {
     'write_file',
     'edit_file',
     'list_files',
+    'grep_files',
+    'glob_files',
     'get_agnt_api',
     'mcp_client',
   ],
