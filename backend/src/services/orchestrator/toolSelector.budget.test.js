@@ -313,6 +313,16 @@ describe('capToolsToBudget — zero budget means no room, not no limit', () => {
     expect(r.schemas.length).toBeLessThanOrEqual(5);
     expect(r.schemas.map((s) => s.function.name)).toContain('discover_tools');
   });
+
+  it('keeps discover_tools when there is room for exactly ONE tool', () => {
+    // The recovery hatch is the single unrecoverable omission: every other
+    // tool is merely deferred behind it. At maxToolCount 5 this could pass by
+    // luck of DEFAULT_TOOLS ordering (it regressed exactly that way when five
+    // read-only primitives were prepended to the set); at 1 it cannot.
+    const tools = makeTools(300);
+    const r = capToolsToBudget(tools, { budgetTokens: 0, maxToolCount: 1 });
+    expect(r.schemas.map((s) => s.function.name)).toEqual(['discover_tools']);
+  });
 });
 
 describe('computeToolBudget — tiny windows', () => {

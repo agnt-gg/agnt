@@ -1,5 +1,5 @@
 import { getAvailableToolSchemas } from './tools.js';
-import { selectTools, getToolsForCategories, DEFAULT_TOOLS } from './toolSelector.js';
+import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES } from './toolSelector.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
 import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { estimateTokens } from '../../utils/contextManager.js';
@@ -347,6 +347,19 @@ function isUniversalToolName(name) {
   return false;
 }
 
+// Always-on = universal system primitives + the read-only CORE_PRIMITIVES.
+// Both ride along regardless of what a channel has saved, because a saved
+// `enabledTools` list is a frozen snapshot of the registry at save time and
+// can never grow to include a later built-in on its own.
+//
+// Deliberately NOT applied to restricted saved agents: there `assignedTools`
+// is a user-declared ceiling, and silently widening it would break that
+// contract. Restricted agents keep UNIVERSAL_TOOLS only, as before.
+function isAlwaysOnToolName(name) {
+  if (!name) return false;
+  return isUniversalToolName(name) || CORE_PRIMITIVES.has(name);
+}
+
 // "All tools" is a MODE, not a list. The frontend historically enumerated
 // every tool as the orchestrator default, so a whitelist covering (nearly)
 // the entire registry doesn't mean the user narrowed anything — it means "no
@@ -576,22 +589,22 @@ async function getUnifiedToolSchemas(context) {
       denyNames = new Set();
       for (const s of namedSchemas) {
         const name = s.function.name;
-        if (!context.enabledTools.has(name) && !isUniversalToolName(name)) denyNames.add(name);
+        if (!context.enabledTools.has(name) && !isAlwaysOnToolName(name)) denyNames.add(name);
       }
       console.log(
         `[UnifiedChat] enabledTools covers ${(coverage * 100).toFixed(1)}% of ${namedSchemas.length} tools -> auto (discovery) mode${denyNames.size ? ` with ${denyNames.size} opt-outs` : ''}`
       );
     } else {
-      const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
+      const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS, ...CORE_PRIMITIVES]);
       const filteredSchemas = allSchemas.filter((s) => {
         const name = s.function?.name;
         return name && allowed.has(name);
       });
-      console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + ${UNIVERSAL_TOOLS.size} universal) -> ${filteredSchemas.length} tools`);
+      console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + ${UNIVERSAL_TOOLS.size} universal + ${CORE_PRIMITIVES.size} core) -> ${filteredSchemas.length} tools`);
       const prov = {};
       for (const s of filteredSchemas) {
         const n = s.function?.name;
-        if (n) prov[n] = { reason: isUniversalToolName(n) && !context.enabledTools.has(n) ? 'universal' : 'selected' };
+        if (n) prov[n] = { reason: isAlwaysOnToolName(n) && !context.enabledTools.has(n) ? 'universal' : 'selected' };
       }
       return recordToolManifest(context, {
         schemas: filteredSchemas, registryTotal: namedSchemas.length, mode: 'whitelist', provenance: prov,
@@ -606,7 +619,8 @@ async function getUnifiedToolSchemas(context) {
   // (including every mcp__* entry) always ride along.
   const specialty = detectSidebarSpecialty(context);
   if (specialty) {
-    const allowed = new Set([...specialty, ...UNIVERSAL_TOOLS]);
+    const specialtySet = new Set(specialty);
+    const allowed = new Set([...specialtySet, ...UNIVERSAL_TOOLS, ...CORE_PRIMITIVES]);
     const filteredSchemas = allSchemas.filter((s) => {
       const name = s.function?.name;
       return name && (allowed.has(name) || isUniversalToolName(name));
@@ -615,7 +629,9 @@ async function getUnifiedToolSchemas(context) {
     const prov = {};
     for (const s of filteredSchemas) {
       const n = s.function?.name;
-      if (n) prov[n] = { reason: specialty.has ? (specialty.has(n) ? 'specialty' : 'universal') : 'specialty' };
+      // `specialty` is an array; the old `specialty.has ? ...` guard was always
+      // falsy, so every tool was credited as 'specialty' including universals.
+      if (n) prov[n] = { reason: specialtySet.has(n) ? 'specialty' : 'universal' };
     }
     return recordToolManifest(context, {
       schemas: filteredSchemas, registryTotal: allSchemas.length, mode: 'specialty', provenance: prov,

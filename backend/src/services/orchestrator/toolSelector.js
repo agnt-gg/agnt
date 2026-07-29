@@ -10,12 +10,51 @@ import { estimateToolTokens } from '../../utils/contextManager.js';
  */
 
 /**
+ * Read-only inspection primitives.
+ *
+ * Unlike DEFAULT_TOOLS — which only applies to the keyword-discovery path —
+ * these ride along on EVERY tool-surface path, including a user's curated
+ * per-channel whitelist.
+ *
+ * WHY THEY ARE EXEMPT FROM USER CURATION: a saved `enabledTools` list is an
+ * enumerated snapshot of the registry taken at save time. Any built-in
+ * shipped afterwards is absent from that snapshot and therefore invisible on
+ * that channel forever — there is no healing path. `grep_files`/`glob_files`
+ * shipped after most saved selections and were consequently unreachable on
+ * the main chat despite being registered and dispatchable.
+ *
+ * MEMBERSHIP BAR: read-only. No mutation, no execution, no network egress.
+ * Forcing an inspection tool on cannot damage anything or defeat a
+ * meaningful safety opt-out, so "the assistant can always look at things" is
+ * safe to guarantee unconditionally. Mutating/executing tools (write_file,
+ * edit_file, execute_shell_command, ...) deliberately stay under user
+ * control and are NOT eligible for this set.
+ *
+ * `query_data` qualifies for a second, independent reason: offloaded-data
+ * placeholders appear in tool RESULTS, never in the user's message, so
+ * keyword gating can never load it at the moment it becomes necessary.
+ */
+export const CORE_PRIMITIVES = new Set([
+  'read_file',
+  'list_files',
+  'grep_files',
+  'glob_files',
+  'query_data',
+]);
+
+/**
  * Tools always available without keyword matching or discovery.
  * Any tool not listed here AND not in a matched TOOL_GROUP is hidden
  * until the LLM explicitly loads it via discover_tools.
  */
 export const DEFAULT_TOOLS = new Set([
+  // discover_tools MUST stay first: capToolsToBudget prioritises by this set's
+  // iteration order, and discover_tools is the recovery hatch that makes every
+  // hidden tool reachable. Anything ahead of it can strand the model at a hard
+  // count ceiling. (Belt-and-braces: the budget capper also forces it to the
+  // head of its own priority list.)
   'discover_tools',
+  ...CORE_PRIMITIVES,
   'custom_api',
   'mcp_client',
   'agnt_agents',
@@ -608,6 +647,10 @@ export function capToolsToBudget(schemas, { budgetTokens, pinnedNames = null, lo
   // always-on defaults (discover_tools among them) and everything the model has
   // explicitly loaded this conversation. Deduplicated — a name can be in both.
   const priorityNames = new Set([
+    // Explicitly first, independent of DEFAULT_TOOLS ordering: losing the
+    // recovery hatch is the one unrecoverable outcome here. Every other
+    // omission is deferred, not lost.
+    'discover_tools',
     ...DEFAULT_TOOLS,
     ...(loadedToolNames || []),
   ].filter((n) => byName.has(n)));
