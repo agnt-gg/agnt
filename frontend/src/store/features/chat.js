@@ -3,6 +3,32 @@ import { API_CONFIG } from '@/tt.config.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
+import { reattachRun, cancelRun } from '@/services/chatService.js';
+import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+
+/**
+ * Throttle for mid-stream autosaves, keyed by conversation id.
+ *
+ * The main chat keeps messages in memory only — its durability is the debounced
+ * server autosave. That autosave is a pure debounce with no maximum latency, so
+ * during continuous streaming the timer was reset on every event and the newest
+ * copy on disk stayed frozen at ~3s after the turn STARTED. A refresh mid-answer
+ * therefore restored a snapshot that predated the answer entirely.
+ *
+ * A throttle (fire at most once per interval, but definitely fire) is the right
+ * shape here where a debounce is the wrong one.
+ */
+const STREAM_AUTOSAVE_INTERVAL_MS = 5000;
+const lastStreamAutosaveAt = new Map();
+
+function throttledStreamAutosave(dispatch, conversationId) {
+  if (!dispatch || !conversationId) return;
+  const now = Date.now();
+  const last = lastStreamAutosaveAt.get(conversationId) || 0;
+  if (now - last < STREAM_AUTOSAVE_INTERVAL_MS) return;
+  lastStreamAutosaveAt.set(conversationId, now);
+  dispatch('autosaveConversation', { debounce: false, conversationId });
+}
 
 // The orchestrator chat surface owns this channelKey; every send from chat.js
 // resolves provider/model from Vuex (already kept in sync by the popover) and
@@ -797,6 +823,20 @@ export default {
       // Mirror is by reference, so no extra sync needed for messages array
     },
 
+    /**
+     * Drop everything from the first locally-held message that the server is
+     * about to replay on reattach. Everything after that point belongs to the
+     * same turn, so the replay rebuilds it exactly rather than duplicating it.
+     */
+    SCOPED_TRUNCATE_FROM_REPLAYED_IDS(state, { conversationId, ids }) {
+      const conv = state.conversations[conversationId];
+      if (!conv || !Array.isArray(ids) || ids.length === 0) return;
+      const replayed = new Set(ids);
+      const firstIdx = conv.messages.findIndex((m) => replayed.has(m.id));
+      if (firstIdx === -1) return;
+      conv.messages.splice(firstIdx, conv.messages.length - firstIdx);
+    },
+
     SCOPED_SET_MESSAGES(state, { conversationId, messages }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
@@ -1467,6 +1507,9 @@ export default {
                         // Use the current conversation ID (already migrated by first stream)
                         activeConvId = state.activeConversationId || activeConvId;
                       }
+                      // Note the in-flight turn under its SERVER id (the temp id
+                      // is unknown to the backend and cannot be reattached to).
+                      markRunStarted(data.conversationId, { chatType: 'orchestrator', channelKey: null });
                     }
 
                     // Emit event to all registered callbacks.
@@ -1537,6 +1580,61 @@ export default {
     },
 
     /**
+     * Rejoin a turn that was still generating when this tab last went away.
+     *
+     * The server replays the turn from `conversation_started` and then continues
+     * live, so these events land in the same handler a fresh stream uses and
+     * converge on the same state — no separate catch-up path to keep in sync.
+     *
+     * @returns {Promise<boolean>} true when a live run was found and consumed.
+     */
+    async reattachConversation({ commit, state, dispatch }, conversationId) {
+      if (!conversationId || String(conversationId).startsWith('temp-')) return false;
+
+      const existing = state.conversations[conversationId];
+      if (existing && existing.isStreaming) return false;
+
+      commit('ENSURE_CONVERSATION', conversationId);
+
+      const abortController = new AbortController();
+      commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId, controller: abortController });
+
+      // Only raise the streaming indicator once the server has actually sent
+      // something — otherwise every page load would flash a spinner.
+      let live = false;
+
+      try {
+        return await reattachRun({
+          conversationId,
+          signal: abortController.signal,
+          onEvent: (eventName, data) => {
+            if (!live) {
+              live = true;
+              commit('SCOPED_SET_STREAMING', { conversationId, value: true });
+            }
+            state.streamEventCallbacks.forEach((callback) => {
+              try {
+                callback(eventName, data, conversationId);
+              } catch (callbackError) {
+                console.error('Error in stream event callback:', callbackError);
+              }
+            });
+            handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, conversationId);
+          },
+        });
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          console.warn('[Chat] reattachConversation failed:', error?.message || error);
+        }
+        return false;
+      } finally {
+        if (live) commit('SCOPED_SET_STREAMING', { conversationId, value: false });
+        commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId, controller: null });
+        markRunEnded(conversationId);
+      }
+    },
+
+    /**
      * Stop a streaming conversation AND all its active async tools.
      * Accepts optional conversationId; defaults to the active conversation.
      */
@@ -1548,6 +1646,16 @@ export default {
       const abortController = (conv && conv.streamAbortController) || state.streamAbortController;
       const streamReader = (conv && conv.streamReader) || state.streamReader;
       const asyncTools = (conv && conv.activeAsyncTools) || state.activeAsyncTools;
+
+      // Stop the SERVER, not just this tab's reader. Closing the socket no
+      // longer cancels generation (runs deliberately outlive their transport),
+      // so without this explicit request Stop would only hide the output while
+      // the model kept running and billing.
+      const serverConvId = (conv && conv.conversationId) || convId;
+      if (serverConvId && !String(serverConvId).startsWith('temp-')) {
+        cancelRun(serverConvId).catch(() => {});
+        markRunEnded(serverConvId);
+      }
 
       if (abortController) {
         abortController.abort();
@@ -2807,6 +2915,9 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         messageId: data.assistantMessageId,
         delta: data.delta,
       });
+      // Push the growing answer to the server periodically so a refresh that
+      // lands after the run has already finished still restores real text.
+      throttledStreamAutosave(dispatch, conversationId);
       break;
     case 'reasoning_delta':
       commit('SCOPED_APPEND_MESSAGE_REASONING', {
@@ -2888,8 +2999,53 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       break;
     case 'done':
       commit('SCOPED_SET_STREAMING', { conversationId, value: false });
+      lastStreamAutosaveAt.delete(conversationId);
+      markRunEnded(conversationId);
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: true, conversationId });
+      }
+      break;
+
+    // Head frame of a reattach — the restored snapshot may predate the user turn
+    // that started this run, so put the question back before replaying the answer.
+    case 'run_resumed': {
+      // Clear this turn's partial output first so the replay rebuilds rather
+      // than duplicates it.
+      commit('SCOPED_TRUNCATE_FROM_REPLAYED_IDS', {
+        conversationId,
+        ids: data?.replayedMessageIds,
+      });
+      if (!data?.userMessage) break;
+      const conv = state?.conversations?.[conversationId];
+      const messages = conv?.messages || [];
+      let alreadyPresent = false;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          alreadyPresent = messages[i].content === data.userMessage;
+          break;
+        }
+      }
+      if (!alreadyPresent) {
+        commit('SCOPED_ADD_MESSAGE', {
+          conversationId,
+          message: {
+            id: `msg-${data.startedAt || Date.now()}-resumed-user`,
+            role: 'user',
+            content: data.userMessage,
+            timestamp: data.startedAt || Date.now(),
+          },
+        });
+      }
+      break;
+    }
+
+    // Terminator for a reattached stream that ended without a normal 'done'.
+    case 'run_ended':
+      commit('SCOPED_SET_STREAMING', { conversationId, value: false });
+      lastStreamAutosaveAt.delete(conversationId);
+      markRunEnded(conversationId);
+      if (dispatch) {
+        dispatch('autosaveConversation', { debounce: false, conversationId });
       }
       break;
   }

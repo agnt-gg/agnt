@@ -3,7 +3,8 @@
 // 'tool:<id>', 'widget:<id>'). The orchestrator's rich Chat.vue continues to use
 // the legacy `chat` module; this module powers all five per-page panels.
 
-import { streamChat, toChatHistory } from '@/services/chatService.js';
+import { streamChat, toChatHistory, reattachRun, cancelRun } from '@/services/chatService.js';
+import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 
@@ -229,6 +230,50 @@ export default {
       } else {
         message.contentParts.push({ type: 'text', text: delta });
       }
+      // This was the ONLY mutation that changed a message without marking the
+      // store dirty — and it is the one that carries the assistant's actual
+      // words. Streamed text therefore never reached localStorage until the
+      // turn's final event, so a refresh mid-answer persisted an empty string.
+      // persistConversations is debounced (600ms, 5s hard cap), so appending
+      // here costs one timer reset per token, not one serialize per token.
+      persistConversations(state.conversations);
+    },
+    /**
+     * Drop everything from the first locally-held message that the server is
+     * about to replay. Everything after that point belongs to the same turn
+     * (assistant output, and any steer bubbles interleaved with it), so the
+     * replay rebuilds it exactly.
+     *
+     * No match means this tab holds nothing from the turn — nothing to drop.
+     */
+    TRUNCATE_FROM_REPLAYED_IDS(state, { channelKey, ids }) {
+      const conv = state.conversations[channelKey];
+      if (!conv || !Array.isArray(ids) || ids.length === 0) return;
+      const replayed = new Set(ids);
+      const firstIdx = conv.messages.findIndex((m) => replayed.has(m.id));
+      if (firstIdx === -1) return;
+      conv.messages = conv.messages.slice(0, firstIdx);
+      conv.lastUpdate = Date.now();
+      persistConversations(state.conversations);
+    },
+    /**
+     * Append a user message only if it isn't already the latest one. Used when
+     * reattaching to a turn whose user bubble may or may not exist locally,
+     * depending on how much of the snapshot survived.
+     */
+    ENSURE_USER_MESSAGE(state, { channelKey, content, message }) {
+      if (!content) return;
+      ensureChannel(state, channelKey);
+      const messages = state.conversations[channelKey].messages;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          if (messages[i].content === content) return;
+          break;
+        }
+      }
+      messages.push(message);
+      state.conversations[channelKey].lastUpdate = Date.now();
+      persistConversations(state.conversations);
     },
     ADD_TOOL_CALL(state, { channelKey, messageId, toolCall }) {
       const conv = state.conversations[channelKey];
@@ -535,7 +580,14 @@ export default {
           reasoningEnabled: resolvedReasoningEnabled,
           files,
           signal: controller.signal,
-          onEvent: (eventName, data) => handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent }),
+          onEvent: (eventName, data) => {
+            // Record the run the instant the server names it. This marker is
+            // what a future page load reads to know a turn was left mid-flight.
+            if (eventName === 'conversation_started' && data?.conversationId) {
+              markRunStarted(data.conversationId, { chatType, channelKey });
+            }
+            handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent });
+          },
         });
       } catch (error) {
         if (error?.name === 'AbortError') {
@@ -558,6 +610,9 @@ export default {
       } finally {
         commit('SET_STREAMING', { channelKey, isStreaming: false });
         commit('CLEAR_ABORT_CONTROLLER', { channelKey });
+        // The turn is over for this tab. Note that an AbortError lands here too:
+        // the local reader stopped, so this tab has nothing left to resume.
+        markRunEnded(state.conversations[channelKey]?.conversationId);
 
         // If a mid-turn steer never drained (turn ended on a final response
         // with no more tool rounds, so the between-rounds seam never fired),
@@ -649,6 +704,17 @@ export default {
     },
 
     stopStream({ commit, state }, { channelKey }) {
+      const conversationId = state.conversations[channelKey]?.conversationId || null;
+
+      // Tell the SERVER to stop. Aborting the fetch below only closes this tab's
+      // socket, and a closed socket no longer cancels generation — that is the
+      // whole point of making runs survive a refresh. Without this call, Stop
+      // would hide the answer while the model kept billing.
+      if (conversationId) {
+        cancelRun(conversationId).catch(() => {});
+        markRunEnded(conversationId);
+      }
+
       const ctrl = state.abortControllers[channelKey];
       if (ctrl) {
         try { ctrl.abort(); } catch (e) { /* ignore */ }
@@ -659,6 +725,57 @@ export default {
       // abort, so the "Annie is thinking…" indicator and any tool spinners
       // would stay lit forever. Clear them client-side as part of the stop.
       commit('CLEAR_CHANNEL_TRANSIENT_STATE', { channelKey });
+    },
+
+    /**
+     * Rejoin a turn that was still generating when this tab last went away.
+     *
+     * The server replays the whole turn from `conversation_started` and then
+     * continues live, so the events arrive in exactly the order a fresh turn
+     * would produce. That means this needs no reconciliation logic of its own —
+     * it feeds the same handler and converges on the same state.
+     */
+    async reattachChannel({ commit, state }, { channelKey, conversationId, onFrontendEvent }) {
+      if (!channelKey || !conversationId) return false;
+      if (state.streamingChannels[channelKey]) return false;
+
+      commit('INITIALIZE_CHANNEL', { channelKey });
+      commit('SET_CONVERSATION_ID', { channelKey, conversationId });
+
+      const controller = new AbortController();
+      commit('REGISTER_ABORT_CONTROLLER', { channelKey, controller });
+
+      // Streaming state is raised on the FIRST replayed event, not before it.
+      // Flipping it on optimistically would flash a spinner on every page load
+      // where nothing turned out to be running.
+      let live = false;
+      const raiseStreaming = () => {
+        if (live) return;
+        live = true;
+        commit('SET_STREAMING', { channelKey, isStreaming: true });
+      };
+
+      try {
+        const attached = await reattachRun({
+          conversationId,
+          signal: controller.signal,
+          onEvent: (eventName, data) => {
+            raiseStreaming();
+            handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent });
+          },
+        });
+        return attached;
+      } catch (error) {
+        if (error?.name !== 'AbortError') {
+          console.warn('[chatUnified] reattachChannel failed:', error?.message || error);
+        }
+        return false;
+      } finally {
+        if (live) commit('SET_STREAMING', { channelKey, isStreaming: false });
+        commit('CLEAR_ABORT_CONTROLLER', { channelKey });
+        commit('CLEAR_CHANNEL_TRANSIENT_STATE', { channelKey });
+        markRunEnded(conversationId);
+      }
     },
 
     /**
@@ -716,6 +833,35 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
   switch (eventName) {
     case 'conversation_started':
       commit('SET_CONVERSATION_ID', { channelKey, conversationId: data.conversationId });
+      break;
+
+    // Head frame of a reattach. The local transcript may predate the user turn
+    // that started this run (the snapshot on disk can be older than the send),
+    // so restore the bubble if it's missing rather than replaying an answer to
+    // a question that isn't visible.
+    case 'run_resumed':
+      // Order matters: clear this turn's partial output first, then make sure
+      // the question is present, then let the replay rebuild the answer.
+      commit('TRUNCATE_FROM_REPLAYED_IDS', { channelKey, ids: data?.replayedMessageIds });
+      if (data?.userMessage) {
+        commit('ENSURE_USER_MESSAGE', {
+          channelKey,
+          content: data.userMessage,
+          message: {
+            id: generateMessageId(channelKey),
+            role: 'user',
+            content: data.userMessage,
+            timestamp: data.startedAt || Date.now(),
+          },
+        });
+      }
+      break;
+
+    // Terminator for a reattached stream that ended without a normal 'done'
+    // (cancelled, superseded, or the server finished while we were replaying).
+    case 'run_ended':
+      commit('CLEAR_CHANNEL_TRANSIENT_STATE', { channelKey });
+      commit('PERSIST_CONVERSATIONS');
       break;
 
     case 'steering_applied':

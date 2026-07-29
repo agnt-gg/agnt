@@ -115,9 +115,29 @@ export async function streamChat({
     throw new Error('chatService.streamChat: no response body');
   }
 
+  await consumeSse(response, onEvent, 'streamChat');
+}
+
+/**
+ * Drain an SSE response body, dispatching each parsed block to `onEvent`.
+ *
+ * Shared by streamChat (a new turn) and reattachRun (rejoining a turn already in
+ * progress). Both consume an identical event shape, so they must share one
+ * parser — a second copy would be a place for the two paths to silently diverge.
+ */
+async function consumeSse(response, onEvent, label) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+
+  const dispatch = (parsed, where) => {
+    if (!parsed) return;
+    try {
+      onEvent(parsed.eventName, parsed.data);
+    } catch (e) {
+      console.error(`chatService.${label}: onEvent threw for ${where}"${parsed.eventName}":`, e);
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -129,26 +149,87 @@ export async function streamChat({
     while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
       const block = buffer.slice(0, separatorIndex);
       buffer = buffer.slice(separatorIndex + 2);
-      const parsed = parseSseBlock(block);
-      if (parsed) {
-        try {
-          onEvent(parsed.eventName, parsed.data);
-        } catch (e) {
-          console.error(`chatService.streamChat: onEvent threw for "${parsed.eventName}":`, e);
-        }
-      }
+      dispatch(parseSseBlock(block), '');
     }
   }
 
   if (buffer.trim()) {
-    const parsed = parseSseBlock(buffer);
-    if (parsed) {
-      try {
-        onEvent(parsed.eventName, parsed.data);
-      } catch (e) {
-        console.error(`chatService.streamChat: onEvent threw for trailing "${parsed.eventName}":`, e);
-      }
-    }
+    dispatch(parseSseBlock(buffer), 'trailing ');
+  }
+}
+
+function authHeaders() {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Rejoin a turn that is still generating on the server.
+ *
+ * The server replays everything already emitted for this conversation and then
+ * continues streaming live, so the caller can feed the events straight into the
+ * same handler it uses for a fresh turn and end up in the correct state — no
+ * separate "catch-up" code path, no partial-state reconciliation.
+ *
+ * @returns {Promise<boolean>} true if a run was found and consumed to its end,
+ *                             false if nothing was in flight (HTTP 204).
+ */
+export async function reattachRun({ conversationId, signal, onEvent }) {
+  if (!conversationId) return false;
+  if (typeof onEvent !== 'function') {
+    throw new Error('chatService.reattachRun: onEvent callback is required');
+  }
+
+  const response = await fetch(
+    `${API_CONFIG.BASE_URL}/orchestrator/runs/${encodeURIComponent(conversationId)}/stream`,
+    { method: 'GET', headers: authHeaders(), signal },
+  );
+
+  if (response.status === 204) return false;
+  if (!response.ok || !response.body) return false;
+
+  await consumeSse(response, onEvent, 'reattachRun');
+  return true;
+}
+
+/**
+ * Ask the server to stop generating.
+ *
+ * Aborting the local fetch only hangs up the phone; it no longer stops the work
+ * (that is the point of the reattach design). Stopping is now an explicit
+ * request, so a deliberate Stop and an accidental refresh can mean different
+ * things.
+ */
+export async function cancelRun(conversationId) {
+  if (!conversationId) return false;
+  try {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}/orchestrator/runs/${encodeURIComponent(conversationId)}/cancel`,
+      { method: 'POST', headers: authHeaders() },
+    );
+    if (!response.ok) return false;
+    const json = await response.json().catch(() => null);
+    return !!json?.success;
+  } catch (e) {
+    // Best-effort: the local stream is torn down regardless, so a failure here
+    // must never block the user's Stop click.
+    console.warn('chatService.cancelRun: failed to reach server:', e?.message || e);
+    return false;
+  }
+}
+
+/** Cheap probe: is a turn still generating for this conversation? */
+export async function fetchRunStatus(conversationId) {
+  if (!conversationId) return { active: false, known: false };
+  try {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}/orchestrator/runs/${encodeURIComponent(conversationId)}`,
+      { headers: authHeaders() },
+    );
+    if (!response.ok) return { active: false, known: false };
+    return await response.json();
+  } catch {
+    return { active: false, known: false };
   }
 }
 

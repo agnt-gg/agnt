@@ -28,6 +28,7 @@ import StreamEngine from '../stream/StreamEngine.js';
 import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
@@ -890,9 +891,22 @@ async function universalChatHandler(req, res, context = {}) {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  // Abort controller for cancelling LLM streams when client disconnects
+  // Abort controller for cancelling LLM generation.
+  //
+  // IMPORTANT: this is aborted ONLY on an explicit client cancel (the Stop
+  // button, routed through activeRuns.cancelRun). It is deliberately NOT
+  // aborted when the SSE socket closes — a refresh must not destroy work the
+  // user asked for. See activeRuns.js for the full rationale.
   const streamAbortController = new AbortController();
-  let isClientDisconnected = false;
+
+  // Is THIS response still writable? Distinct from "is the run still alive".
+  // Conflating the two is the bug: the transport can die many times over while
+  // a single run completes.
+  let sseOpen = true;
+
+  // Set once the conversation id is known; every event is mirrored into it so a
+  // reattaching client can replay the turn from the beginning.
+  let activeRun = null;
 
   // SSE keepalive: Docker bridge NAT, reverse proxies (nginx/traefik), and corporate
   // middleboxes silently drop idle TCP connections after 30–120s. During long tool
@@ -901,40 +915,50 @@ async function universalChatHandler(req, res, context = {}) {
   // by the EventSource spec but keeps the underlying socket warm.
   const HEARTBEAT_INTERVAL_MS = 15000;
   const heartbeatInterval = setInterval(() => {
-    if (isClientDisconnected || res.writableFinished) {
+    if (!sseOpen || res.writableFinished) {
       clearInterval(heartbeatInterval);
       return;
     }
     try {
       res.write(': keepalive\n\n');
     } catch (e) {
-      console.warn('[Stream Heartbeat] Write failed, marking client disconnected:', e.message);
-      isClientDisconnected = true;
-      streamAbortController.abort();
+      console.warn('[Stream Heartbeat] Write failed, closing SSE transport:', e.message);
+      sseOpen = false;
       clearInterval(heartbeatInterval);
     }
   }, HEARTBEAT_INTERVAL_MS);
 
   // Use res.on('close') — fires when the *response* connection is closed by the client.
   // req.on('close') can fire prematurely once the request body is consumed.
+  //
+  // A closed socket means "this browser tab stopped listening", which is exactly
+  // what a refresh looks like. It does NOT mean "the user changed their mind".
+  // The run continues; the client can reattach via GET /orchestrator/runs/:id/stream.
   res.on('close', () => {
     clearInterval(heartbeatInterval);
     if (!res.writableFinished) {
-      isClientDisconnected = true;
-      streamAbortController.abort();
-      console.log(`[Stream Abort] Client disconnected during ${chatType} chat, aborting LLM stream`);
+      sseOpen = false;
+      console.log(
+        `[Stream] SSE transport closed for ${chatType} chat (conversation ${activeRun?.conversationId || 'pending'}) — run continues, reattachable`,
+      );
     }
   });
 
   const rawSendEvent = (eventName, data) => {
-    if (isClientDisconnected) return;
-    try {
-      // Send via SSE (Server-Sent Events) to current client
-      res.write(`event: ${eventName}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch (e) {
-      console.error('Error writing to stream, client likely disconnected', e);
+    // 1. The socket that started this turn — may already be gone.
+    if (sseOpen) {
+      try {
+        res.write(`event: ${eventName}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (e) {
+        console.warn('[Stream] SSE write failed, transport closed:', e.message);
+        sseOpen = false;
+      }
     }
+
+    // 2. Replay log + any reattached clients. This is what survives a refresh,
+    //    so it must run whether or not the original socket is still alive.
+    if (activeRun) publishToRun(activeRun, eventName, data);
 
     // Broadcast via Socket.IO to all user's connected clients (real-time sync across tabs)
     if (userId) {
@@ -963,6 +987,26 @@ async function universalChatHandler(req, res, context = {}) {
   // Generate conversation ID
   const isNewConversation = !inputConversationId;
   const conversationId = inputConversationId || randomUUID();
+
+  // Register the run BEFORE the first event is emitted, so the replay log is
+  // complete from `conversation_started` onward. A client that reattaches at any
+  // later point sees the identical event sequence the original socket saw.
+  activeRun = startRun({
+    conversationId,
+    userId,
+    chatType,
+    abortController: streamAbortController,
+    userMessage: (() => {
+      if (typeof message === 'string' && message) return message;
+      if (Array.isArray(originalMessages)) {
+        for (let i = originalMessages.length - 1; i >= 0; i--) {
+          const m = originalMessages[i];
+          if (m?.role === 'user' && typeof m.content === 'string') return m.content;
+        }
+      }
+      return null;
+    })(),
+  });
 
   // --- unfirehose/1.0 integration ---
   let sendEvent = rawSendEvent;
@@ -1997,7 +2041,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
     let currentRound = 0;
     const toolExecutionDetails = [];
 
-    while (toolCalls && toolCalls.length > 0 && currentRound < config.maxToolRounds && !isClientDisconnected) {
+    // Gate on an EXPLICIT cancel, not on transport health. A closed socket used
+    // to stop the tool loop here, which is why refreshing mid-run killed the
+    // work outright instead of merely hiding it.
+    while (toolCalls && toolCalls.length > 0 && currentRound < config.maxToolRounds && !streamAbortController.signal.aborted) {
       currentRound++;
       console.log(`[Tool Loop] Round ${currentRound}: Executing ${toolCalls.length} tool(s)`);
 
@@ -3226,7 +3273,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     clearInterval(heartbeatInterval);
     sendEvent('done', { message: 'Stream ended' });
-    res.end();
+
+    // Release the run AFTER 'done' is emitted, so reattached clients receive the
+    // terminator before their socket is closed.
+    endRun(conversationId, streamAbortController.signal.aborted ? 'cancelled' : 'completed');
+
+    if (sseOpen) {
+      try {
+        res.end();
+      } catch (e) {
+        console.warn('[Stream] res.end() failed — transport already gone:', e.message);
+      }
+    }
   }
 }
 

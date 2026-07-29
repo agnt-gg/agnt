@@ -9,6 +9,7 @@ import store from '@/store/state';
 import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
 import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
+import { resumeInflightRuns } from '@/services/runResume.js';
 import { vTooltip } from '@/directives/tooltip.js';
 
 // Import test utilities in development mode
@@ -204,6 +205,13 @@ const initializeApp = async () => {
 
       // Start periodic license refresh
       startLicenseRefresh();
+
+      // Rejoin any chat turn that was still generating when this tab last went
+      // away. Deliberately not awaited: each reattach holds an SSE connection
+      // open until its run finishes, which can be minutes.
+      resumeInflightRuns(store).catch((err) => {
+        console.warn('[runResume] Reattach sweep failed:', err?.message || err);
+      });
     }, { timeout: 2000 });
   } catch (error) {
     console.error('Failed to initialize app:', error);

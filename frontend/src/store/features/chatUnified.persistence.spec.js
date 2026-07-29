@@ -9,7 +9,15 @@
 //   3. a continuous mutation stream cannot postpone durability past the
 //      max-latency cap,
 //   4. the explicit PERSIST_CONVERSATIONS mutation writes through,
-//   5. what lands in localStorage is the filtered, up-to-date state.
+//   5. what lands in localStorage is the filtered, up-to-date state,
+//   6. streamed text is durable — bounded writes, but never ZERO.
+//
+// (6) replaced an earlier assertion that the streaming hot path "never schedules
+// a write". That property was measurably the cause of a data-loss bug: deltas
+// are the only mutation carrying the assistant's words, so a refresh mid-answer
+// persisted an empty message and the answer was gone for good. The cost PRD-058
+// actually set out to eliminate is per-TOKEN serialization, and the debounce
+// below is what eliminates it — zero writes was never the requirement.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/services/chatService.js', () => ({ streamChat: vi.fn(), toChatHistory: vi.fn() }));
@@ -117,7 +125,7 @@ describe('chatUnified debounced persistence (PRD-058)', () => {
     expect(parsed['agent:empty']).toBeUndefined(); // empty channels filtered out
   });
 
-  it('streaming APPEND_MESSAGE_CONTENT hot path never schedules a write', () => {
+  it('coalesces a burst of streaming deltas into a SINGLE write (no per-token serialization)', () => {
     addMessage(1);
     vi.advanceTimersByTime(600);
     setItemSpy.mockClear();
@@ -129,7 +137,66 @@ describe('chatUnified debounced persistence (PRD-058)', () => {
         delta: 'x',
       });
     }
-    vi.advanceTimersByTime(5000);
-    expect(setItemSpy).not.toHaveBeenCalled();
+
+    // Nothing yet — 50 tokens must not mean 50 serializations of the whole store.
+    expect(setItemSpy.mock.calls.filter(([k]) => k === STORAGE_KEY)).toHaveLength(0);
+
+    vi.advanceTimersByTime(600);
+    expect(setItemSpy.mock.calls.filter(([k]) => k === STORAGE_KEY)).toHaveLength(1);
+  });
+
+  it('REGRESSION: streamed text survives a refresh mid-answer', () => {
+    // The exact shape of the bug: an assistant bubble is created empty and then
+    // filled purely by deltas. Before deltas marked the store dirty, the copy on
+    // disk stayed at '' no matter how much text had streamed, and a reload
+    // showed a blank message that could never be recovered.
+    chatUnified.mutations.ADD_MESSAGE(state, {
+      channelKey: 'agent:test',
+      message: { id: 'a1', role: 'assistant', content: '' },
+    });
+    vi.advanceTimersByTime(600);
+    setItemSpy.mockClear();
+
+    for (const token of ['Here ', 'is ', 'the ', 'answer']) {
+      chatUnified.mutations.APPEND_MESSAGE_CONTENT(state, {
+        channelKey: 'agent:test',
+        messageId: 'a1',
+        delta: token,
+      });
+    }
+
+    // A refresh lands here — the unload flush is the last chance to be durable.
+    window.dispatchEvent(new Event('pagehide'));
+
+    const writes = setItemSpy.mock.calls.filter(([k]) => k === STORAGE_KEY);
+    expect(writes.length).toBeGreaterThanOrEqual(1);
+    const persisted = JSON.parse(writes.at(-1)[1]);
+    expect(persisted['agent:test'].messages.find((m) => m.id === 'a1').content)
+      .toBe('Here is the answer');
+  });
+
+  it('caps latency during an unbroken delta stream so durability is never postponed forever', () => {
+    chatUnified.mutations.ADD_MESSAGE(state, {
+      channelKey: 'agent:test',
+      message: { id: 'a1', role: 'assistant', content: '' },
+    });
+    vi.advanceTimersByTime(600);
+    setItemSpy.mockClear();
+
+    // A slow generator: one token every 100ms for 6s. Every token resets the
+    // trailing debounce, so only the max-latency cap can force a write.
+    for (let i = 0; i < 60; i++) {
+      chatUnified.mutations.APPEND_MESSAGE_CONTENT(state, {
+        channelKey: 'agent:test',
+        messageId: 'a1',
+        delta: 'x',
+      });
+      vi.advanceTimersByTime(100);
+    }
+
+    const writes = setItemSpy.mock.calls.filter(([k]) => k === STORAGE_KEY);
+    expect(writes.length).toBeGreaterThanOrEqual(1);
+    // Bounded: a 6s stream must not produce anything like one write per token.
+    expect(writes.length).toBeLessThan(10);
   });
 });
