@@ -1212,8 +1212,10 @@ describe('Workspace.vue', () => {
    * putting FIVE workspaces past the right edge. They were never lost — the
    * strip has always scrolled — but with scrollbar-width:none there was no
    * indication of that, and the "+" button sat at the END of the scroller, so
-   * it slid away exactly when the user had the most workspaces. It now
-   * trails the strip on the right, after the last tab.
+   * it slid away exactly when the user had the most workspaces — i.e. exactly
+   * when creating another one is most likely. It now sits immediately after
+   * the strip but OUTSIDE it, so it reads as the end of the tab row and is
+   * always reachable.
    *
    * jsdom reports every rect as 0, so geometry is stubbed and the real numbers
    * come from tabbar-probe.mjs against a browser. What is pinned here is the
@@ -1227,13 +1229,28 @@ describe('Workspace.vue', () => {
     return el;
   };
 
-  it('trails the tab row — "New workspace" is last, after the final tab', async () => {
+  it('follows the tabs but can never scroll out of reach', async () => {
     const wrapper = await mountPage();
-    const add = wrapper.find('.ws-tabs .ws-tab-add');
+    const add = wrapper.find('.ws-tab-add');
     expect(add.exists()).toBe(true);
-    // Creating a workspace appends a tab, so the button sits where the next
-    // tab would appear: at the end of the row, inside the strip.
-    expect(add.element.nextElementSibling).toBeNull();
+    // Directly after the strip, so it reads as the end of the tab row — but
+    // NOT a child of it, because the strip scrolls and the button must not.
+    expect(wrapper.find('.ws-tabs .ws-tab-add').exists()).toBe(false);
+    expect(add.element.previousElementSibling).toBe(wrapper.find('.ws-tabs').element);
+  });
+
+  it('sizes the strip to its tabs so the + stays welded to them (CSS guard)', async () => {
+    const fs2 = await import('node:fs');
+    const path2 = await import('node:path');
+    const src = fs2.readFileSync(path2.join(__dirname, 'Workspace.vue'), 'utf8');
+    const rule = src.slice(src.indexOf('\n.ws-tabs {'));
+    const body = rule.slice(0, rule.indexOf('}'));
+    // `flex: 1` would stretch the strip across the bar and fling the button
+    // against the toolbar; it must shrink-to-fit and only ever shrink.
+    expect(body).toMatch(/flex:\s*0\s+1\s+auto/);
+    // With the strip no longer growing, the toolbar needs the slack itself.
+    const right = src.slice(src.indexOf('\n.ws-tabbar-right {'));
+    expect(right.slice(0, right.indexOf('}'))).toMatch(/margin-left:\s*auto/);
   });
 
   it('signals overflow on the side that actually has more tabs', async () => {

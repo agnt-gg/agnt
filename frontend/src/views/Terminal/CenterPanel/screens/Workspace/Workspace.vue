@@ -40,13 +40,15 @@
             <i class="fas fa-times"></i>
           </button>
         </div>
-
-        <!-- Trailing the row, inside the strip: the button creates the NEXT
-             tab, so it belongs where the next tab would appear. -->
-        <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
-          <i class="fas fa-plus"></i>
-        </button>
       </div>
+
+      <!-- Immediately after the tabs, but OUTSIDE the scroller: it reads as the
+           end of the tab row, yet cannot be scrolled out of reach. Inside the
+           strip it slid past the right edge exactly when the user had the most
+           workspaces — i.e. when creating another is most likely. -->
+      <button class="ws-tab-add" v-tooltip="'New workspace'" @click="createWorkspace()">
+        <i class="fas fa-plus"></i>
+      </button>
 
       <div class="ws-tabbar-right">
         <button
@@ -954,7 +956,10 @@ body.custom-bg .ws-root {
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 1;
+  /* Take only the width the tabs need, and shrink (never grow) when they
+   * exceed it — so the "+" that follows stays welded to the last tab instead
+   * of being flung against the toolbar by a stretched strip. */
+  flex: 0 1 auto;
   min-width: 0;
   overflow-x: auto;
   scroll-behavior: smooth;
@@ -1089,6 +1094,9 @@ body.custom-bg .ws-root {
 
 .ws-tabbar-right {
   flex: 0 0 auto;
+  /* The tab strip no longer grows, so the toolbar claims the slack itself
+   * and stays anchored to the right edge. */
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
