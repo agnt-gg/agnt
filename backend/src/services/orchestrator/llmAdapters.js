@@ -1404,6 +1404,7 @@ class AnthropicAdapter extends BaseAdapter {
     this.maxContextShrinkRetries = 4;
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
+    this.lastRetryAfterMs = null;
 
     // Model-specific max output token limits (synchronous Messages API).
     // Source: https://platform.claude.com/docs/en/docs/about-claude/models/overview
@@ -1521,18 +1522,26 @@ class AnthropicAdapter extends BaseAdapter {
   }
 
   /**
-   * Calculate delay with exponential backoff and jitter
+   * Calculate delay with exponential backoff and jitter. Anthropic's explicit
+   * Retry-After floor wins when present, capped with the existing 30s ceiling.
    */
   calculateDelay(attempt) {
     const exponentialDelay = this.baseDelay * Math.pow(2, attempt);
     const jitter = Math.random() * 0.1 * exponentialDelay; // 10% jitter
-    return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
+    return Math.min(Math.max(exponentialDelay + jitter, this.lastRetryAfterMs || 0), 30000);
+  }
+
+  _captureRetryAfter(error) {
+    const raw = error?.headers?.get?.('retry-after') ?? error?.headers?.['retry-after'];
+    const seconds = Number(raw);
+    this.lastRetryAfterMs = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
   }
 
   /**
    * Check if an error is retryable
    */
   isRetryableError(error) {
+    this._captureRetryAfter(error);
     if (error.status && this.retryableStatusCodes.has(error.status)) {
       return true;
     }    // Transient network / SDK-wrapped connection errors (e.g. the Anthropic

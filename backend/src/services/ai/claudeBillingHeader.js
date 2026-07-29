@@ -107,10 +107,125 @@ export async function replaceCchPlaceholder(serializedBody) {
   return serializedBody.replace('cch=00000', `cch=${cch}`);
 }
 
+const SSE_ERROR_STATUS = Object.freeze({
+  overloaded_error: 529,
+  rate_limit_error: 429,
+});
+
+/**
+ * Error emitted when Anthropic reports a failure inside an HTTP-200 SSE stream.
+ * SDK 0.16.1 passes those payloads to APIError.generate without a status, which
+ * destroys the upstream type and request ID as a generic "Connection error".
+ */
+export class AnthropicSseError extends Error {
+  constructor(payload, headers) {
+    const upstream = payload?.error || {};
+    const type = upstream.type || 'stream_error';
+    const requestId = payload?.request_id || headers?.get?.('request-id') || null;
+    const status = SSE_ERROR_STATUS[type];
+    const message = upstream.message || 'Anthropic streaming request failed';
+    super(`${status ? `${status} ` : ''}${type}: ${message}${requestId ? ` (request_id: ${requestId})` : ''}`);
+    this.name = 'AnthropicSseError';
+    this.status = status;
+    this.type = type;
+    this.requestId = requestId;
+    this.error = upstream;
+    this.headers = headers;
+  }
+}
+
+function parseSseErrorFrame(frame) {
+  let event = '';
+  const data = [];
+  for (const line of frame.split(/\r?\n/)) {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+  }
+  if (event !== 'error' || data.length === 0) return null;
+  try {
+    return JSON.parse(data.join('\n'));
+  } catch {
+    return { error: { type: 'stream_error', message: data.join('\n') } };
+  }
+}
+
+/**
+ * Preserve HTTP-200 SSE errors before the old Anthropic SDK flattens them.
+ * Frames are buffered only until their terminating blank line, then forwarded
+ * byte-for-byte (after UTF-8 decode/encode) unless the frame is an error.
+ */
+function preserveAnthropicSseErrors(response) {
+  const contentType = response?.headers?.get?.('content-type') || '';
+  if (!response?.body || !contentType.includes('text/event-stream')) return response;
+
+  const source = response.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let pending = '';
+
+  let pumping = false;
+  const stream = new ReadableStream({
+    async pull(controller) {
+      if (pumping) return;
+      pumping = true;
+      try {
+        while (true) {
+          const separator = pending.match(/\r?\n\r?\n/);
+          if (separator) {
+            const end = separator.index + separator[0].length;
+            const frame = pending.slice(0, separator.index);
+            const encodedFrame = pending.slice(0, end);
+            pending = pending.slice(end);
+            const payload = parseSseErrorFrame(frame);
+            if (payload) {
+              await source.cancel().catch(() => {});
+              controller.error(new AnthropicSseError(payload, response.headers));
+              return;
+            }
+            controller.enqueue(encoder.encode(encodedFrame));
+            return;
+          }
+
+          const { value, done } = await source.read();
+          if (!done) {
+            pending += decoder.decode(value, { stream: true });
+            continue;
+          }
+
+          pending += decoder.decode();
+          if (pending) {
+            const payload = parseSseErrorFrame(pending);
+            if (payload) {
+              controller.error(new AnthropicSseError(payload, response.headers));
+              return;
+            }
+            controller.enqueue(encoder.encode(pending));
+            pending = '';
+            return;
+          }
+          controller.close();
+          return;
+        }
+      } finally {
+        pumping = false;
+      }
+    },
+    cancel(reason) {
+      return source.cancel(reason);
+    },
+  });
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 /**
  * Create a custom fetch wrapper that intercepts Anthropic API requests,
- * computes the cch hash on the serialized body, and replaces the placeholder
- * before the request is actually sent.
+ * computes the cch hash on the serialized body, replaces the placeholder,
+ * and preserves structured errors embedded in HTTP-200 SSE streams.
  *
  * Pass this as the `fetch` option to the Anthropic SDK constructor.
  *
@@ -131,7 +246,8 @@ export function createCchFetch(baseFetch) {
       }
     }
 
-    return _fetch(url, init);
+    const response = await _fetch(url, init);
+    return preserveAnthropicSseErrors(response);
   };
 }
 
