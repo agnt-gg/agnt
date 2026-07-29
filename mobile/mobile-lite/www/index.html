@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>AGNT Chat</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #12121c;
+      }
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #e8e8f0;
+        padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+          max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+      }
+      .wrap {
+        max-width: 400px;
+        margin: 0 auto;
+        visibility: hidden;
+      }
+      body.boot-ready .wrap {
+        visibility: visible;
+      }
+      .mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: #19ef83;
+        color: #04120a;
+        font-weight: 800;
+        font-size: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.35rem;
+      }
+      .sub {
+        color: #8b93a7;
+        font-size: 0.9rem;
+        margin: 0 0 1.25rem;
+        line-height: 1.45;
+      }
+      label {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #8b93a7;
+        margin-bottom: 6px;
+      }
+      .field-note {
+        font-size: 0.72rem;
+        color: #5c6478;
+        margin: -4px 0 12px;
+        line-height: 1.4;
+      }
+      textarea {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid #2e3350;
+        background: #1b1b2b;
+        color: #e8e8f0;
+        padding: 12px 14px;
+        font-size: 16px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        min-height: 100px;
+        resize: vertical;
+        line-height: 1.4;
+        margin-bottom: 10px;
+      }
+      .row-check {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 14px;
+        font-size: 0.85rem;
+        color: #8b93a7;
+      }
+      .row-check input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: #19ef83;
+      }
+      .hint {
+        font-size: 0.75rem;
+        color: #19ef83;
+        min-height: 1.2em;
+        margin: -4px 0 10px;
+      }
+      .err {
+        color: #ff7b7b;
+        font-size: 0.85rem;
+        margin: 0 0 10px;
+      }
+      button {
+        width: 100%;
+        min-height: 48px;
+        border: none;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        margin-bottom: 8px;
+      }
+      .primary {
+        background: #19ef83;
+        color: #04120a;
+      }
+      .primary:disabled {
+        opacity: 0.45;
+      }
+      .fine {
+        font-size: 0.75rem;
+        color: #5c6478;
+        line-height: 1.5;
+        margin-top: 12px;
+      }
+      code {
+        color: #8b93a7;
+        font-size: 0.7rem;
+      }
+      .server-list {
+        list-style: none;
+        margin: 0 0 14px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .server-list li {
+        display: flex;
+        gap: 8px;
+      }
+      .server-list button.open {
+        flex: 1;
+        min-height: 48px;
+        text-align: left;
+        border-radius: 12px;
+        border: 1px solid #2e3350;
+        background: #1b1b2b;
+        color: #e8e8f0;
+        padding: 12px 14px;
+        font-size: 13px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        cursor: pointer;
+      }
+      .server-list button.rm {
+        width: 44px;
+        border-radius: 12px;
+        border: 1px solid #2e3350;
+        background: transparent;
+        color: #8b93a7;
+        font-size: 20px;
+        cursor: pointer;
+      }
+      .ghost {
+        background: transparent;
+        color: #e8e8f0;
+        border: 1px solid #2e3350;
+      }
+      .ghost:disabled {
+        opacity: 0.45;
+      }
+      .qr-scan {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: #000;
+        flex-direction: column;
+        color: #e8e8f0;
+        padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+      }
+      .qr-scan.open {
+        display: flex;
+      }
+      .qr-scan-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        margin-bottom: 12px;
+      }
+      .qr-scan-close {
+        width: 44px;
+        height: 44px;
+        border: none;
+        border-radius: 12px;
+        background: #1b1b2b;
+        color: #e8e8f0;
+        font-size: 28px;
+        line-height: 1;
+        cursor: pointer;
+        margin: 0;
+        min-height: 44px;
+      }
+      .qr-scan-stage {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #111;
+      }
+      .qr-scan-video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .qr-scan-frame {
+        position: absolute;
+        inset: 18% 12%;
+        border: 2px solid #19ef83;
+        border-radius: 16px;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+        pointer-events: none;
+      }
+      .qr-scan-status {
+        margin: 12px 0 0;
+        text-align: center;
+        color: #8b93a7;
+        font-size: 14px;
+        min-height: 1.2em;
+      }
+      .qr-scan-err {
+        margin: 8px 0 0;
+        text-align: center;
+        color: #ff7b7b;
+        font-size: 14px;
+      }
+      .qr-scan-cancel {
+        margin-top: 12px;
+        min-height: 48px;
+        border: 1px solid #2e3350;
+        border-radius: 12px;
+        background: transparent;
+        color: #e8e8f0;
+        font-size: 16px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        width: 100%;
+      }
+    </style>
+    <script>
+      // Synchronous early redirect: if a server is already saved, leave before
+      // the setup form paints (iOS Capacitor cold start).
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search || '');
+          if (params.get('setup') === '1' || params.get('nop') === '1') return;
+          var ORIGIN_KEY = 'agnt_lite_server_origin';
+          var AUTO_KEY = 'agnt_lite_auto_open_server';
+          var LIST_KEY = 'agnt_lite_servers';
+          var last = null;
+          try {
+            last = localStorage.getItem(ORIGIN_KEY);
+          } catch (e) {}
+          var list = [];
+          try {
+            list = JSON.parse(localStorage.getItem(LIST_KEY) || '[]');
+            if (!Array.isArray(list)) list = [];
+          } catch (e) {
+            list = [];
+          }
+          if (!last && list[0] && list[0].origin) last = list[0].origin;
+          var auto = false;
+          try {
+            auto = localStorage.getItem(AUTO_KEY) === '1';
+          } catch (e) {}
+          if (last && (auto || list.length === 1)) {
+            document.documentElement.classList.add('boot-redirecting');
+            window.location.replace(String(last).replace(/\/$/, '') + '/m/chat');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mark">A</div>
+      <h1>AGNT Chat</h1>
+      <p class="sub">
+        Scan the QR on desktop <strong>Phone Access</strong>, or paste the same <strong>pair link</strong>
+        (one URL with host + code).
+      </p>
+
+      <div id="serverListWrap" hidden>
+        <label>Saved servers</label>
+        <ul id="serverList" class="server-list"></ul>
+      </div>
+
+      <label for="paste">Pair link (URL)</label>
+      <textarea
+        id="paste"
+        placeholder="http://192.168.x.x:3333/m/pair?c=…"
+      ></textarea>
+      <p class="field-note">
+        Same link as the desktop QR. Saved servers appear after you pair.
+      </p>
+      <button type="button" class="ghost" id="scanBtn" hidden>Scan QR code</button>
+      <label class="row-check">
+        <input type="checkbox" id="autoOpen" />
+        Open last server automatically next launch
+      </label>
+      <div class="hint" id="hint"></div>
+      <div class="err" id="err"></div>
+      <button type="button" class="primary" id="go" disabled>Continue</button>
+      <p class="fine">
+        Desktop: Settings → Phone Access → copy link or show QR. Reopen this setup with
+        <code>?setup=1</code> to pick another saved server.
+      </p>
+    </div>
+
+    <div id="qrScan" class="qr-scan" role="dialog" aria-modal="true" aria-label="Scan pairing QR code">
+      <div class="qr-scan-bar">
+        <span>Scan Phone Access QR</span>
+        <button type="button" class="qr-scan-close" id="scanClose" aria-label="Close scanner">×</button>
+      </div>
+      <div class="qr-scan-stage">
+        <video id="scanVideo" class="qr-scan-video" playsinline muted autoplay></video>
+        <canvas id="scanCanvas" hidden></canvas>
+        <div class="qr-scan-frame" aria-hidden="true"></div>
+      </div>
+      <p class="qr-scan-status" id="scanStatus"></p>
+      <p class="qr-scan-err" id="scanErr"></p>
+      <button type="button" class="qr-scan-cancel" id="scanCancel">Cancel</button>
+    </div>
+
+    <script src="vendor/jsQR.js"></script>
+    <script>
+      (function () {
+        var ORIGIN_KEY = 'agnt_lite_server_origin';
+        var AUTO_KEY = 'agnt_lite_auto_open_server';
+        var LIST_KEY = 'agnt_lite_servers';
+
+        var paste = document.getElementById('paste');
+        var autoEl = document.getElementById('autoOpen');
+        var hint = document.getElementById('hint');
+        var err = document.getElementById('err');
+        var go = document.getElementById('go');
+        var listWrap = document.getElementById('serverListWrap');
+        var listEl = document.getElementById('serverList');
+        var scanBtn = document.getElementById('scanBtn');
+        var qrScan = document.getElementById('qrScan');
+        var scanVideo = document.getElementById('scanVideo');
+        var scanCanvas = document.getElementById('scanCanvas');
+        var scanStatus = document.getElementById('scanStatus');
+        var scanErr = document.getElementById('scanErr');
+        var lastParsed = null;
+        var scanStream = null;
+        var scanRaf = 0;
+        var scanStopped = true;
+
+        function listServers() {
+          try {
+            var raw = localStorage.getItem(LIST_KEY);
+            var list = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(list)) return [];
+            return list
+              .filter(function (s) {
+                return s && s.origin;
+              })
+              .sort(function (a, b) {
+                return (b.lastUsed || 0) - (a.lastUsed || 0);
+              });
+          } catch (e) {
+            return [];
+          }
+        }
+
+        function remember(origin) {
+          try {
+            localStorage.setItem(ORIGIN_KEY, origin);
+            var list = listServers().filter(function (s) {
+              return s.origin !== origin;
+            });
+            var host = origin;
+            try {
+              host = new URL(origin).host;
+            } catch (e) {}
+            list.unshift({ origin: origin, lastUsed: Date.now(), label: host });
+            localStorage.setItem(LIST_KEY, JSON.stringify(list.slice(0, 12)));
+          } catch (e) {}
+        }
+
+        function getLast() {
+          try {
+            var last = localStorage.getItem(ORIGIN_KEY);
+            if (last) return last;
+            var list = listServers();
+            return list[0] ? list[0].origin : null;
+          } catch (e) {
+            return null;
+          }
+        }
+
+        function removeServer(origin) {
+          try {
+            var list = listServers().filter(function (s) {
+              return s.origin !== origin;
+            });
+            localStorage.setItem(LIST_KEY, JSON.stringify(list));
+            if (getLast() === origin) {
+              if (list[0]) localStorage.setItem(ORIGIN_KEY, list[0].origin);
+              else localStorage.removeItem(ORIGIN_KEY);
+            }
+          } catch (e) {}
+          renderList();
+        }
+
+        function renderList() {
+          var list = listServers();
+          listEl.innerHTML = '';
+          if (!list.length) {
+            listWrap.hidden = true;
+            return;
+          }
+          listWrap.hidden = false;
+          list.forEach(function (s) {
+            var li = document.createElement('li');
+            var openBtn = document.createElement('button');
+            openBtn.type = 'button';
+            openBtn.className = 'open';
+            openBtn.textContent = s.label || s.origin;
+            openBtn.addEventListener('click', function () {
+              navigate(s.origin + '/m/chat', s.origin);
+            });
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'rm';
+            rm.setAttribute('aria-label', 'Remove');
+            rm.textContent = '×';
+            rm.addEventListener('click', function () {
+              removeServer(s.origin);
+            });
+            li.appendChild(openBtn);
+            li.appendChild(rm);
+            listEl.appendChild(li);
+          });
+        }
+
+        function getAuto() {
+          try {
+            return localStorage.getItem(AUTO_KEY) === '1';
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function setAuto(on) {
+          try {
+            if (on) localStorage.setItem(AUTO_KEY, '1');
+            else localStorage.removeItem(AUTO_KEY);
+          } catch (e) {}
+        }
+
+        function normalizeOrigin(text) {
+          var raw = String(text || '').trim();
+          if (!raw) return null;
+          if (!/^https?:\/\//i.test(raw) && !/[.:/]/.test(raw)) return null;
+          try {
+            var url = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL('http://' + raw);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+            return url.origin;
+          } catch (e) {
+            return null;
+          }
+        }
+
+        /** @returns {{ href: string, hint: string, origin: string } | { error: string } | null} */
+        function parseInput(text) {
+          var raw = String(text || '').trim();
+          if (!raw) return null;
+          var codeRe = /^[a-f0-9]{32}$/i;
+
+          if (codeRe.test(raw)) {
+            var base = getLast();
+            if (!base) {
+              return {
+                error:
+                  'Paste a full pair link (includes host + code), or open a server URL once first.',
+              };
+            }
+            return {
+              href: base + '/m/pair?c=' + raw.toLowerCase(),
+              hint: 'Pair on ' + base,
+              origin: base,
+            };
+          }
+
+          var url;
+          try {
+            url = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL('http://' + raw);
+          } catch (e) {
+            return null;
+          }
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+          var origin = url.origin;
+          var code = (url.searchParams.get('c') || '').trim().toLowerCase();
+          if (codeRe.test(code)) {
+            return {
+              href: origin + '/m/pair?c=' + code,
+              hint: 'Pair and open Annie on ' + origin,
+              origin: origin,
+            };
+          }
+          return {
+            href: origin + '/m',
+            hint: 'Open AGNT Chat on ' + origin,
+            origin: origin,
+          };
+        }
+
+        function navigate(href, origin) {
+          if (origin) remember(origin);
+          setAuto(autoEl.checked);
+          window.location.assign(href);
+        }
+
+        function refresh() {
+          err.textContent = '';
+          lastParsed = parseInput(paste.value);
+          if (!lastParsed) {
+            hint.textContent = '';
+            go.disabled = true;
+            return;
+          }
+          if (lastParsed.error) {
+            hint.textContent = '';
+            err.textContent = lastParsed.error;
+            go.disabled = true;
+            return;
+          }
+          hint.textContent = lastParsed.hint;
+          go.disabled = false;
+        }
+
+        function stopScanner() {
+          scanStopped = true;
+          if (scanRaf) {
+            cancelAnimationFrame(scanRaf);
+            scanRaf = 0;
+          }
+          if (scanStream) {
+            scanStream.getTracks().forEach(function (t) {
+              t.stop();
+            });
+            scanStream = null;
+          }
+          if (scanVideo) scanVideo.srcObject = null;
+          qrScan.classList.remove('open');
+        }
+
+        function scanTick() {
+          if (scanStopped) return;
+          if (!window.jsQR || !scanVideo || scanVideo.readyState < 2) {
+            scanRaf = requestAnimationFrame(scanTick);
+            return;
+          }
+          var w = scanVideo.videoWidth;
+          var h = scanVideo.videoHeight;
+          if (!w || !h) {
+            scanRaf = requestAnimationFrame(scanTick);
+            return;
+          }
+          scanCanvas.width = w;
+          scanCanvas.height = h;
+          var ctx = scanCanvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(scanVideo, 0, 0, w, h);
+          var imageData = ctx.getImageData(0, 0, w, h);
+          var code = window.jsQR(imageData.data, w, h, { inversionAttempts: 'dontInvert' });
+          if (code && code.data) {
+            scanStatus.textContent = 'Code found';
+            stopScanner();
+            paste.value = String(code.data).trim();
+            refresh();
+            if (lastParsed && lastParsed.href && !lastParsed.error) {
+              navigate(lastParsed.href, lastParsed.origin);
+            }
+            return;
+          }
+          scanRaf = requestAnimationFrame(scanTick);
+        }
+
+        function startScanner() {
+          err.textContent = '';
+          scanErr.textContent = '';
+          scanStatus.textContent = 'Starting camera…';
+          qrScan.classList.add('open');
+          scanStopped = false;
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            scanStatus.textContent = '';
+            scanErr.textContent = 'Camera not available on this device.';
+            return;
+          }
+          if (!window.jsQR) {
+            scanStatus.textContent = '';
+            scanErr.textContent = 'QR library failed to load.';
+            return;
+          }
+          navigator.mediaDevices
+            .getUserMedia({
+              audio: false,
+              video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+            })
+            .then(function (stream) {
+              if (scanStopped) {
+                stream.getTracks().forEach(function (t) {
+                  t.stop();
+                });
+                return;
+              }
+              scanStream = stream;
+              scanVideo.srcObject = stream;
+              return scanVideo.play();
+            })
+            .then(function () {
+              if (scanStopped) return;
+              scanStatus.textContent = 'Point at the QR on your desktop';
+              scanRaf = requestAnimationFrame(scanTick);
+            })
+            .catch(function (e) {
+              scanStatus.textContent = '';
+              scanErr.textContent =
+                e && e.name === 'NotAllowedError'
+                  ? 'Camera permission denied. Enable camera for AGNT Chat in Settings.'
+                  : (e && e.message) || 'Could not open camera.';
+            });
+        }
+
+        go.addEventListener('click', function () {
+          if (!lastParsed || !lastParsed.href) return;
+          navigate(lastParsed.href, lastParsed.origin);
+        });
+        paste.addEventListener('input', refresh);
+        autoEl.addEventListener('change', function () {
+          setAuto(autoEl.checked);
+        });
+        scanBtn.addEventListener('click', startScanner);
+        document.getElementById('scanClose').addEventListener('click', stopScanner);
+        document.getElementById('scanCancel').addEventListener('click', stopScanner);
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.jsQR) {
+          scanBtn.hidden = false;
+        }
+
+        autoEl.checked = getAuto();
+        var remembered = getLast();
+        if (remembered && !paste.value) {
+          paste.placeholder = remembered + '/m/pair?c=…';
+        }
+
+        fetch('boot-config.json')
+          .then(function (r) {
+            return r.ok ? r.json() : null;
+          })
+          .then(function (cfg) {
+            if (cfg && cfg.suggestedOrigin && !paste.value && !remembered) {
+              paste.placeholder = cfg.suggestedOrigin + '/m/pair?c=…';
+            }
+          })
+          .catch(function () {});
+
+        // Already configured: skip setup and open last server's chat.
+        // ?setup=1 forces this chooser (multi-server list + paste).
+        // (Early <head> script may already have redirected; this is the fallback.)
+        var params = new URLSearchParams(window.location.search || '');
+        var forceSetup = params.get('setup') === '1' || params.get('nop') === '1';
+        if (!forceSetup && getLast() && (getAuto() || listServers().length === 1)) {
+          navigate(getLast() + '/m/chat', getLast());
+          return;
+        }
+
+        document.body.classList.add('boot-ready');
+        renderList();
+        refresh();
+      })();
+    </script>
+  </body>
+</html>

@@ -169,8 +169,13 @@ describe('choosing the pairing address', () => {
     createCode.mockResolvedValue({
       code: CODE,
       url: `${origins[0].origin}/pair?c=${CODE}`,
+      liteUrl: `${origins[0].origin}/m/pair?c=${CODE}`,
       origin: origins[0].origin,
-      origins: origins.map((o) => ({ ...o, url: `${o.origin}/pair?c=${CODE}` })),
+      origins: origins.map((o) => ({
+        ...o,
+        url: `${o.origin}/pair?c=${CODE}`,
+        liteUrl: `${o.origin}/m/pair?c=${CODE}`,
+      })),
       expiresAt: Date.now() + 120000,
       ttlMs: 120000,
     });
@@ -188,21 +193,23 @@ describe('choosing the pairing address', () => {
     const w = await mountPanel(multiHomed);
     await w.vm.onGenerate();
     await flushPromises();
-    expect(encodedUrl()).toBe(`http://100.64.1.5:3333/pair?c=${CODE}`);
+    // QR encodes the mobile-lite pair link (/m/pair), same as the copy Link row.
+    expect(encodedUrl()).toBe(`http://100.64.1.5:3333/m/pair?c=${CODE}`);
 
-    await w.findAll('.pa-url')[1].trigger('click');
+    // Address chooser lives under .pa-urls; the copy-link row also uses .pa-url.
+    await w.findAll('.pa-urls .pa-url')[1].trigger('click');
     await flushPromises();
-    expect(encodedUrl()).toBe(`http://192.168.40.208:3333/pair?c=${CODE}`);
+    expect(encodedUrl()).toBe(`http://192.168.40.208:3333/m/pair?c=${CODE}`);
   });
 
   it('keeps the user\'s choice across a status poll', async () => {
     // The panel polls every few seconds while a code is live. Resetting the
     // selection each time would silently swap the QR under the user's phone.
     const w = await mountPanel(multiHomed);
-    await w.findAll('.pa-url')[1].trigger('click');
+    await w.findAll('.pa-urls .pa-url')[1].trigger('click');
     await w.vm.refresh();
     await flushPromises();
-    expect(w.findAll('.pa-url')[1].classes()).toContain('active');
+    expect(w.findAll('.pa-urls .pa-url')[1].classes()).toContain('active');
   });
 
   it('still works against a backend that only sends flat urls', async () => {

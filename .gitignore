@@ -102,6 +102,14 @@ data/
 *.provisionprofile
 *.mobileprovision
 
+# Capacitor mobile-lite shell (generated native projects + deps)
+mobile/mobile-lite/node_modules/
+mobile/mobile-lite/ios/
+mobile/mobile-lite/android/
+mobile/mobile-lite/build/
+mobile/mobile-lite/capacitor.config.json
+mobile/mobile-lite/www/boot-config.json
+
 # Puppeteer/Playwright Cache
 .chrome/
 build/chromium/

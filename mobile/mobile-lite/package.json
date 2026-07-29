@@ -1,0 +1,20 @@
+{
+  "name": "agnt-mobile-lite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capacitor shell for AGNT mobile lite Annie chat (/m) — iOS today, Android-ready",
+  "scripts": {
+    "cap": "cap",
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "add:ios": "cap add ios",
+    "add:android": "cap add android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.2",
+    "@capacitor/ios": "^7.4.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.2"
+  }
+}

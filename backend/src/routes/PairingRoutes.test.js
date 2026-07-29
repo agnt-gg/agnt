@@ -75,6 +75,11 @@ describe('pairing — code lifecycle', () => {
     expect(body.url).toContain(body.code);
     expect(body.url).not.toContain('#');
 
+    // Mobile lite pair link embeds the same host + code on /m/pair.
+    expect(body.liteUrl).toMatch(/^http:[/][/][^/]+[/]m[/]pair[?]c=[a-f0-9]{32}$/);
+    expect(body.liteUrl).toContain(body.code);
+    expect(body.liteUrl).not.toContain(t);
+
     // The whole point of a code: the QR must never carry the credential.
     expect(body.url).not.toContain(t);
     expect(JSON.stringify(body)).not.toContain(t);
@@ -195,17 +200,18 @@ describe('pairing — reachability vs intent (the QR that could not work)', () =
     expect(body.lanEnabled).toBe(true);
   });
 
-  it('REFUSES to mint a pairing code while the socket is loopback-only', async () => {
+  it('still mints on loopback for Simulator, with simUrl on 127.0.0.1', async () => {
     process.env.BIND_HOST = '0.0.0.0';
     RemoteAccessConfig.recordActualBind({ address: '127.0.0.1', port: 3333 });
 
     const res = await call('POST', '/api/pairing/code', { auth: token() });
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.success).toBe(false);
-    expect(body.restartRequired).toBe(true);
-    // No code is handed out at all — a QR nobody can redeem is worse than none.
-    expect(body.code).toBeUndefined();
+    expect(body.code).toMatch(/^[a-f0-9]{32}$/);
+    expect(body.loopbackOnly).toBe(true);
+    expect(body.simUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/m\/pair\?c=[a-f0-9]{32}$/);
+    expect(body.simUrl).toContain(body.code);
+    expect(body.warning).toMatch(/Simulator/i);
   });
 
   it('mints normally once the socket is actually reachable', async () => {
