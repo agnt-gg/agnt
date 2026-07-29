@@ -735,25 +735,31 @@ function createWindow() {
     app.dock.setIcon(iconPath);
   }
 
-  // Handle media permissions for microphone access (required for speech recognition)
+  // This allowlist gates EVERY privileged capability Chromium asks about, not
+  // just the microphone it was originally written for. A permission that is
+  // absent is denied SILENTLY: requestFullscreen() never settles, no
+  // 'fullscreenerror' fires, and document.fullscreenEnabled stays true, so the
+  // browser still paints a fullscreen button that does nothing. Anything added
+  // here must be a deliberate, named decision — hence the grouped sets.
+  const MEDIA_PERMISSIONS = ['media', 'microphone', 'audioCapture'];
+  const CLIPBOARD_PERMISSIONS = ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'];
+  // 'fullscreen' backs element.requestFullscreen(): every <video> control bar
+  // in chat, artifact previews, chart/3D popouts and embedded widgets.
+  // pointerLock/keyboardLock are the same class (renderer-driven display
+  // control behind a user gesture) and are what interactive canvases need.
+  const DISPLAY_PERMISSIONS = ['fullscreen', 'pointerLock', 'keyboardLock'];
+  const ALLOWED_PERMISSIONS = [...MEDIA_PERMISSIONS, ...CLIPBOARD_PERMISSIONS, ...DISPLAY_PERMISSIONS];
+
+  // Both handlers read ONE list. They were duplicated literals, which is
+  // exactly how a grant drifts out of one of them unnoticed.
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'];
-    if (allowedPermissions.includes(permission)) {
-      console.log(`Granting permission: ${permission}`);
-      callback(true);
-    } else {
-      console.log(`Denying permission: ${permission}`);
-      callback(false);
-    }
+    const granted = ALLOWED_PERMISSIONS.includes(permission);
+    if (!granted) console.warn(`[permissions] denied: ${permission}`);
+    callback(granted);
   });
 
-  // Handle permission checks
   mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    const allowedPermissions = ['media', 'microphone', 'audioCapture', 'clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'];
-    if (allowedPermissions.includes(permission)) {
-      return true;
-    }
-    return false;
+    return ALLOWED_PERMISSIONS.includes(permission);
   });
 
   // Open DevTools for debugging.
@@ -1176,8 +1182,25 @@ app.on('ready', () => {
     console.log('Backend is ready. Creating main window...');
     createWindow();
 
+    // HTML5 element fullscreen (a <video> control bar, a chart popout) ALSO
+    // puts the window in fullscreen, so isFullScreen() alone cannot tell "the
+    // user pressed F11" from "Chromium is showing a fullscreen video". Driving
+    // setFullScreen() in that state yanks the window out from under Chromium
+    // and leaves document.fullscreenElement pointing at an element that is no
+    // longer fullscreen — after which the next fullscreen click does nothing
+    // until reload. While the renderer owns fullscreen, keep hands off and let
+    // Chromium handle Escape/F11 itself.
+    let rendererOwnsFullScreen = false;
+    mainWindow.on('enter-html-full-screen', () => {
+      rendererOwnsFullScreen = true;
+    });
+    mainWindow.on('leave-html-full-screen', () => {
+      rendererOwnsFullScreen = false;
+    });
+
     // Register local shortcuts after the window is created.
     mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (rendererOwnsFullScreen) return;
       if (input.key === 'F11' && !input.alt && !input.control && !input.meta && !input.shift) {
         const isFullScreen = mainWindow.isFullScreen();
         mainWindow.setFullScreen(!isFullScreen);

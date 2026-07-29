@@ -104,6 +104,95 @@ describe('IPC surface', () => {
   });
 });
 
+describe('main.js — renderer permissions', () => {
+  // MEASURED: Chromium asks the session permission handler for 'fullscreen'
+  // when a renderer calls element.requestFullscreen(). A denial does NOT
+  // reject the promise and does NOT fire 'fullscreenerror' — the promise never
+  // settles — while document.fullscreenEnabled stays true, so the browser
+  // still paints a fullscreen button that silently does nothing. That is not
+  // a failure mode anyone will diagnose from the symptom, so it is pinned here.
+
+  /** The permission sets as main.js actually ships them. */
+  function permissionSets() {
+    const out = {};
+    for (const name of ['MEDIA_PERMISSIONS', 'CLIPBOARD_PERMISSIONS', 'DISPLAY_PERMISSIONS']) {
+      const m = new RegExp(`const ${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(code);
+      out[name] = m
+        ? m[1]
+            .split(',')
+            .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean)
+        : null;
+    }
+    return out;
+  }
+
+  it('grants fullscreen, or every <video>, chart popout and artifact preview is dead', () => {
+    const sets = permissionSets();
+    expect(sets.DISPLAY_PERMISSIONS, 'DISPLAY_PERMISSIONS not found in main.js').not.toBeNull();
+    expect(sets.DISPLAY_PERMISSIONS).toContain('fullscreen');
+  });
+
+  it('still grants the media + clipboard permissions it always did', () => {
+    // The other half of the contract: "grant everything" would satisfy the
+    // test above while breaking nothing here, so both directions are pinned.
+    const sets = permissionSets();
+    expect(sets.MEDIA_PERMISSIONS).toEqual(expect.arrayContaining(['media', 'microphone', 'audioCapture']));
+    expect(sets.CLIPBOARD_PERMISSIONS).toEqual(
+      expect.arrayContaining(['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'])
+    );
+  });
+
+  it('feeds BOTH handlers from one list, so a grant cannot drift out of one', () => {
+    // They were duplicated literals. Duplication is how the request handler and
+    // the check handler end up disagreeing about the same capability.
+    expect(code).toMatch(/setPermissionRequestHandler\([\s\S]{0,400}?ALLOWED_PERMISSIONS\.includes\(permission\)/);
+    expect(code).toMatch(/setPermissionCheckHandler\([\s\S]{0,400}?ALLOWED_PERMISSIONS\.includes\(permission\)/);
+    expect(code, 'a hardcoded allowlist literal is back').not.toMatch(/const allowedPermissions\s*=\s*\[/);
+  });
+
+  it('says so out loud when it denies something', () => {
+    // The whole reason this bug survived: the denial was invisible.
+    expect(code).toMatch(/if \(!granted\)[\s\S]{0,120}?permissions[\s\S]{0,40}?denied/);
+  });
+});
+
+describe('main.js — window fullscreen vs renderer fullscreen', () => {
+  // MEASURED: HTML5 element fullscreen also puts the WINDOW in fullscreen, so
+  // isFullScreen() cannot distinguish "user pressed F11" from "Chromium is
+  // showing a fullscreen video". Driving setFullScreen() in that state (and
+  // preventDefault()-ing the Escape that would have unwound it) leaves
+  // document.fullscreenElement set with no fullscreen window — after which the
+  // next fullscreen click does nothing until reload.
+
+  it('tracks whether the renderer owns fullscreen', () => {
+    expect(code).toMatch(/mainWindow\.on\('enter-html-full-screen'[\s\S]{0,120}?rendererOwnsFullScreen = true/);
+    expect(code).toMatch(/mainWindow\.on\('leave-html-full-screen'[\s\S]{0,120}?rendererOwnsFullScreen = false/);
+  });
+
+  it('the F11/Escape handler bails out while the renderer owns fullscreen', () => {
+    const handler = /before-input-event', \(event, input\) => \{([\s\S]*?)\n    \}\);/.exec(code);
+    expect(handler, 'before-input-event handler not found').not.toBeNull();
+    // The guard must be the FIRST thing in the handler and must return, not
+    // merely be mentioned — a later `if` would still let F11 fire first.
+    expect(handler[1].trimStart()).toMatch(/^if \(rendererOwnsFullScreen\) return;/);
+  });
+
+  it('still handles F11/Escape normally when the renderer does not', () => {
+    const handler = /before-input-event', \(event, input\) => \{([\s\S]*?)\n    \}\);/.exec(code);
+    expect(handler[1]).toMatch(/input\.key === 'F11'[\s\S]{0,200}?setFullScreen\(!isFullScreen\)/);
+    expect(handler[1]).toMatch(/input\.key === 'Escape'[\s\S]{0,120}?setFullScreen\(false\)/);
+
+    // REACHABILITY, not just presence. A negative control that inserted a bare
+    // `return;` after the guard left F11/Escape permanently dead while every
+    // assertion above still passed — the source text was there, just
+    // unreachable. The guarded return is a single-line `if (...) return;`, so
+    // any `return;` alone on a line is by construction unconditional.
+    const unconditionalReturns = handler[1].match(/^\s*return;\s*$/gm) || [];
+    expect(unconditionalReturns, 'an unconditional early return makes F11/Escape unreachable').toEqual([]);
+  });
+});
+
 describe('connection error page', () => {
   const html = fs.readFileSync(path.join(ROOT, 'electron', 'connection-error.html'), 'utf8');
 
