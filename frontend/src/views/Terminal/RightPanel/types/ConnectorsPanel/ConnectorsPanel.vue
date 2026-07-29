@@ -70,6 +70,7 @@ import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { apiFetch } from '@/utils/apiFetch.js';
 
 export default {
   name: 'ConnectorsPanel',
@@ -171,9 +172,8 @@ export default {
         }
 
         // If free or already purchased, proceed with installation
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/install`, {
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/install`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: plugin.name, version: plugin.version || 'latest' }),
         });
         const data = await response.json();
@@ -254,7 +254,7 @@ export default {
 
       isUninstalling.value = true;
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/${selectedPlugin.value.name}`, {
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/${selectedPlugin.value.name}`, {
           method: 'DELETE',
         });
         const data = await response.json();

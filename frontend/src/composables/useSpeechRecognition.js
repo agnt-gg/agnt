@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue';
 import { API_CONFIG } from '../../user.config.js';
+import { authHeaders } from '@/utils/apiFetch.js';
 
 // PRD-063: recordings shorter than this are discarded client-side. A click-then-
 // immediate-click on the mic button produces ~200ms of audio that Whisper tiny.en
@@ -64,6 +65,10 @@ export function useSpeechRecognition() {
 
           const response = await fetch(`${API_CONFIG.BASE_URL}/speech/transcribe`, {
             method: 'POST',
+            // authHeaders, not jsonAuthHeaders: setting Content-Type on a
+            // FormData body suppresses the browser-generated multipart
+            // boundary and the upload arrives unparseable.
+            headers: authHeaders(),
             body: formData,
           });
 

@@ -455,6 +455,7 @@ import PluginBuilder from './PluginBuilder.vue';
 import PackStudio from './PackStudio.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { checkPluginVersionPublishable } from '@/utils/pluginVersion.js';
+import { apiFetch } from '@/utils/apiFetch.js';
 import { useLicense } from '@/composables/useLicense';
 
 export default {
@@ -652,8 +653,8 @@ export default {
       checkingUpdates.value = true;
       try {
         const [uResp, sResp] = await Promise.all([
-          fetch(`${API_CONFIG.BASE_URL}/plugins/updates`),
-          fetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`),
+          apiFetch(`${API_CONFIG.BASE_URL}/plugins/updates`),
+          apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`),
         ]);
         const uData = await uResp.json();
         if (uData.success) updatesList.value = uData.updates || [];
@@ -668,9 +669,8 @@ export default {
 
     async function toggleAutoCheck(enabled) {
       try {
-        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`, {
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ autoCheck: enabled }),
         });
         const data = await resp.json();
@@ -682,9 +682,8 @@ export default {
 
     async function setPolicy(name, policy) {
       try {
-        await fetch(`${API_CONFIG.BASE_URL}/plugins/update-policy/${encodeURIComponent(name)}`, {
+        await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-policy/${encodeURIComponent(name)}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ policy }),
         });
         await fetchInstalledPlugins();
@@ -696,9 +695,8 @@ export default {
     async function updateOne(u, acceptedPermissions = false) {
       updatingName.value = u.name;
       try {
-        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/update/${encodeURIComponent(u.name)}`, {
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update/${encodeURIComponent(u.name)}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ acceptedPermissions }),
         });
         const data = await resp.json();
@@ -945,7 +943,7 @@ export default {
      */
     async function showInstallDisclosure(plugin) {
       try {
-        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/inspect/${encodeURIComponent(plugin.name)}`);
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/inspect/${encodeURIComponent(plugin.name)}`);
         const report = await resp.json();
         if (!report.success) throw new Error(report.error || 'inspection failed');
 
@@ -1075,9 +1073,8 @@ export default {
           return;
         }
 
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/install`, {
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/install`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: plugin.name, version: plugin.version || 'latest' }),
         });
         const data = await response.json();
@@ -1135,7 +1132,7 @@ export default {
 
       uninstallingPlugin.value = plugin.name;
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/${plugin.name}`, {
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/${plugin.name}`, {
           method: 'DELETE',
         });
         const data = await response.json();
@@ -1200,9 +1197,8 @@ export default {
 
         const pluginName = file.name.replace(/\.(agnt|tar\.gz|tgz)$/, '');
 
-        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/install-file`, {
+        const response = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/install-file`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: pluginName,
             fileData: fileData,
