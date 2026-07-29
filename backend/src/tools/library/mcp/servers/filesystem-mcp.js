@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { prepareWrite } from '../../../../utils/lineEndings.js';
 import { createInterface } from 'readline';
 
 /**
@@ -149,11 +150,13 @@ class FileSystemMCPServer {
           content: [{ type: 'text', text: content }],
         };
 
-      case 'write_file':
-        await fs.writeFile(args.path, args.content, 'utf-8');
+      case 'write_file': {
+        const prepared = await prepareWrite(args.path, args.content);
+        await fs.writeFile(args.path, prepared.content, 'utf-8');
         return {
           content: [{ type: 'text', text: `File written: ${args.path}` }],
         };
+      }
 
       case 'delete_file':
         const stats = await fs.stat(args.path);

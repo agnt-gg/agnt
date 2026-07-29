@@ -33,6 +33,7 @@ import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { augmentEnvPath } from '../../utils/envPath.js';
 import { coerceArgumentTypes } from '../../utils/argumentCoercion.js';
+import { prepareWrite } from '../../utils/lineEndings.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1827,8 +1828,17 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               const fileDir = path.dirname(filePath);
               await fs.mkdir(fileDir, { recursive: true });
 
-              await fs.writeFile(filePath, content, encoding);
-              result = { operation, path: filePath, bytesWritten: Buffer.from(content, encoding).length };
+              // Only TEXT encodings get line-ending reconciliation. Under
+              // base64 (or hex) `content` is an encoded blob whose decoded
+              // bytes are arbitrary, and rewriting \n inside it would corrupt
+              // the file it decodes to.
+              const isTextEncoding = /^(utf-?8|ascii|latin1|binary|utf-?16le|ucs-?2)$/i.test(encoding || 'utf8');
+              const toWrite = isTextEncoding
+                ? (await prepareWrite(filePath, content)).content
+                : content;
+
+              await fs.writeFile(filePath, toWrite, encoding);
+              result = { operation, path: filePath, bytesWritten: Buffer.from(toWrite, encoding).length };
               break;
             case 'list':
               const items = await fs.readdir(filePath, { withFileTypes: true });

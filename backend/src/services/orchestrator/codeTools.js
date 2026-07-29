@@ -14,6 +14,7 @@ import {
 } from './fileEditMatcher.js';
 import { observe, checkStale, getObservation, hashContent } from './fileObservations.js';
 import { grepFiles, globFiles, looksBinary, DEFAULTS as SEARCH_DEFAULTS } from './fileSearch.js';
+import { prepareWrite, dominantEol } from '../../utils/lineEndings.js';
 
 const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
 const SETTINGS_FILE = PathManager.getPath('code-settings.json');
@@ -580,18 +581,30 @@ async function executeCodeFunctionUnlocked(name, args) {
         if (stat.isFile()) previous = { bytes: stat.size };
       } catch { /* new file */ }
 
+      // Line endings are the file's property, not the caller's. Before this,
+      // write_file emitted the model's bytes verbatim, so a one-line change to
+      // a CRLF file rewrote every line in it. `observe` MUST record the bytes
+      // that actually land, or the next edit reports a phantom external change.
+      const prepared = await prepareWrite(absPath, content);
+      const finalContent = prepared.content;
+
       await fs.mkdir(path.dirname(absPath), { recursive: true });
-      await writeFileAtomic(absPath, content);
-      observe(pathLockKey(absPath), content, { path: absPath });
+      await writeFileAtomic(absPath, finalContent);
+      observe(pathLockKey(absPath), finalContent, { path: absPath });
 
       result = {
         success: true,
         path: args.path,
         absolutePath: absPath,
-        bytes: content.length,
+        bytes: finalContent.length,
         created: previous === null,
-        frontendEvents: [{ type: 'file_written', data: { path: args.path, content } }],
+        frontendEvents: [{ type: 'file_written', data: { path: args.path, content: finalContent } }],
       };
+      if (prepared.healed) {
+        result.lineEndings = 'healed';
+        result.note = (result.note ? result.note + ' ' : '') +
+          'This file had mixed line endings; the whole file was normalized to its dominant ending.';
+      }
       if (previous) {
         result.overwrote = true;
         result.previousBytes = previous.bytes;
@@ -672,11 +685,11 @@ async function executeCodeFunctionUnlocked(name, args) {
       // before it existed EVERY multi-line edit fell through to the fuzzy
       // matcher — which was never designed to be the common path and welded
       // replacement text onto the end of the preceding line.
-      const crlfCount = (currentContent.match(/\r\n/g) || []).length;
-      const lfCount = (currentContent.match(/(?<!\r)\n/g) || []).length;
-      const dominantEol = crlfCount > lfCount ? '\r\n' : '\n';
+      // Shared with every other write path so there is exactly one definition
+      // of "this file's ending" in the codebase (backend/src/utils/lineEndings.js).
+      const fileEol = dominantEol(currentContent) || '\n';
       const coerceEol = (s) =>
-        typeof s === 'string' ? s.replace(/\r\n/g, '\n').replace(/\n/g, dominantEol) : s;
+        typeof s === 'string' ? s.replace(/\r\n/g, '\n').replace(/\n/g, fileEol) : s;
 
       let updatedContent = currentContent;
       const applied = [];
@@ -792,6 +805,12 @@ async function executeCodeFunctionUnlocked(name, args) {
         }
         break;
       }
+
+      // Splicing preserved the file's dominant ending, but a file that arrived
+      // ALREADY mixed stays mixed unless something repairs it — and a mixed file
+      // is what breaks anchored multi-line patching. Heal on write.
+      const prepared = await prepareWrite(absPath, updatedContent, { existing: currentContent });
+      updatedContent = prepared.content;
 
       await writeFileAtomic(absPath, updatedContent);
       observe(lockKey, updatedContent, { path: absPath });

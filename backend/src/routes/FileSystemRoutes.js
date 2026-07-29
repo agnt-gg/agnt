@@ -6,6 +6,7 @@ import multer from 'multer';
 import { authenticateToken } from './Middleware.js';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import PathManager from '../utils/PathManager.js';
+import { prepareWrite } from '../utils/lineEndings.js';
 
 const router = express.Router();
 
@@ -317,9 +318,14 @@ router.post('/file', authenticateToken, async (req, res) => {
 
     // Ensure parent directory exists
     await fs.mkdir(path.dirname(absPath), { recursive: true });
-    await fs.writeFile(absPath, content || '', 'utf-8');
 
-    res.json({ success: true, path: relPath });
+    // The file explorer round-trips content through a browser textarea, which
+    // normalizes to LF on the way in. Writing that back verbatim silently
+    // restyled every line of a CRLF file on save.
+    const prepared = await prepareWrite(absPath, content || '');
+    await fs.writeFile(absPath, prepared.content, 'utf-8');
+
+    res.json({ success: true, path: relPath, lineEndings: prepared.action });
   } catch (error) {
     console.error('FileSystem write error:', error);
     res.status(error.message === 'Path traversal not allowed' ? 403 : 500).json({ error: error.message });

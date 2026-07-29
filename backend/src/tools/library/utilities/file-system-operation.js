@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { prepareWrite } from '../../../utils/lineEndings.js';
 
 const execPromise = promisify(exec);
 
@@ -181,20 +182,27 @@ class FileSystemOperation extends BaseAction {
             throw new Error(`File does not exist: ${fullPath}`);
           }
           break;
-        case 'writeFile':
+        case 'writeFile': {
           console.log(`Attempting to write file: ${fullPath}`);
           await this.ensureDirectoryExists(path.dirname(fullPath));
-          await fs.writeFile(fullPath, content, 'utf8');
+          const written = await prepareWrite(fullPath, content);
+          await fs.writeFile(fullPath, written.content, 'utf8');
           result = 'File written successfully';
-          console.log(`File written successfully: ${fullPath}`);
+          console.log(`File written successfully: ${fullPath} (${written.action})`);
           break;
-        case 'appendFile':
+        }
+        case 'appendFile': {
           console.log(`Attempting to append to file: ${fullPath}`);
           await this.ensureDirectoryExists(path.dirname(fullPath));
-          await fs.appendFile(fullPath, content, 'utf8');
+          // Append is the worst offender: a chunk of LF text welded onto a CRLF
+          // file leaves it permanently mixed, and every later anchored patch
+          // against it silently half-matches.
+          const appended = await prepareWrite(fullPath, content, { mode: 'append' });
+          await fs.appendFile(fullPath, appended.content, 'utf8');
           result = 'Content appended to file successfully';
-          console.log(`Content appended successfully to: ${fullPath}`);
+          console.log(`Content appended successfully to: ${fullPath} (${appended.action})`);
           break;
+        }
         case 'listFiles':
           console.log(`Attempting to list files in directory: ${fullPath}`);
           result = await fs.readdir(fullPath);
