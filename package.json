@@ -16,6 +16,8 @@
     "test:frontend": "npm --prefix frontend test",
     "test:node": "node --test \"tests/unit/**/*.test.js\"",
     "test:all": "npm test && npm run test:frontend",
+    "eol": "node scripts/normalize-eol.mjs",
+    "eol:check": "node scripts/normalize-eol.mjs --check",
     "test:e2e": "playwright test",
     "dev": "node backend/server.js",
     "logs": "node backend/scripts/logs.js",

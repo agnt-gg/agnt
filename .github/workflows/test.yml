@@ -62,6 +62,30 @@ jobs:
       - name: Run backend suite
         run: npm test
 
+  # The ratchet for line endings.
+  #
+  # `.gitattributes` was added on 2026-07-26 and the repository has been clean
+  # ever since — but the WORKING TREES were not, because git never rewrites a
+  # file it is not otherwise touching. On 2026-07-29, at the same commit, a
+  # fresh clone had 0 CRLF files on disk and the development tree had 1329,
+  # with `git status` reporting clean in both. Twenty files had drifted to
+  # internally MIXED endings, which is what silently breaks anchored multi-line
+  # patching.
+  #
+  # `--check` is non-destructive: it rewrites nothing and fails if any tracked
+  # file's endings disagree with what .gitattributes declares. That is cheap
+  # enough to run on every push and is the only thing that stops this returning.
+  line-endings:
+    name: Line endings match .gitattributes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check working tree line endings
+        run: node scripts/normalize-eol.mjs --check
+
   frontend:
     name: Frontend (vitest + jsdom)
     runs-on: ubuntu-latest
