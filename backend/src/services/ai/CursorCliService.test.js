@@ -14,9 +14,15 @@ import CursorCliService from './CursorCliService.js';
 
 describe('CursorCliService', () => {
   it('exposes the expected public API', () => {
-    for (const fn of ['getDefaultModel', 'getDefaultWorkdir', 'resolveCursorBin', 'checkAuth', 'runExec']) {
+    for (const fn of ['getDefaultModel', 'getDefaultWorkdir', 'getDefaultTimeoutMs', 'resolveCursorBin', 'checkAuth', 'runExec']) {
       expect(typeof CursorCliService[fn]).toBe('function');
     }
+  });
+
+  it('getDefaultTimeoutMs returns a finite positive number (never NaN)', () => {
+    const t = CursorCliService.getDefaultTimeoutMs();
+    expect(Number.isFinite(t)).toBe(true);
+    expect(t).toBeGreaterThan(0);
   });
 
   it('runExec rejects an empty/blank/missing prompt before spawning anything', async () => {

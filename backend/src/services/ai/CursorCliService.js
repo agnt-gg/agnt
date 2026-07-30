@@ -21,7 +21,18 @@ import { spawn } from 'child_process';
 import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const DEFAULT_MODEL = process.env.AGNT_CURSOR_DEFAULT_MODEL || 'cursor-grok-4.5-high';
-const DEFAULT_TIMEOUT_MS = Number(process.env.AGNT_CURSOR_TIMEOUT_MS || 300000); // 5 min
+const FALLBACK_TIMEOUT_MS = 300000; // 5 min
+// Parse the env override defensively: Number('garbage') is NaN and
+// setTimeout(fn, NaN) fires immediately (treated as 0), which would make every
+// Cursor call insta-timeout on a typo'd AGNT_CURSOR_TIMEOUT_MS. Only accept a
+// finite, positive value; otherwise fall back to the safe default.
+function resolveDefaultTimeoutMs() {
+  const raw = process.env.AGNT_CURSOR_TIMEOUT_MS;
+  if (raw == null || raw === '') return FALLBACK_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : FALLBACK_TIMEOUT_MS;
+}
+const DEFAULT_TIMEOUT_MS = resolveDefaultTimeoutMs();
 // Above this size the prompt is piped via stdin instead of argv. Windows caps
 // the whole command line at 32,767 UTF-16 chars (spawn ENAMETOOLONG); POSIX
 // has ARG_MAX. `cursor-agent -p` reads the prompt from stdin when no
@@ -45,7 +56,7 @@ function isTimeoutError(e) {
 function cleanStderr(s) {
   return String(s || '')
     .split('\n')
-    .filter((l) => !/^cursor-retrieval: tracing to /.test(l))
+    .filter((l) => !/^\s*cursor-retrieval: tracing to /.test(l))
     .join('\n');
 }
 
@@ -58,7 +69,13 @@ async function runExecResilient(opts = {}) {
   try {
     return await runExec(opts);
   } catch (err) {
-    if (!RETRY_ON_TIMEOUT || !isTimeoutError(err)) throw err;
+    // Never retry a STREAMING call: if the first attempt already emitted any
+    // onDelta/onReasoning output before stalling, a retry would push a second,
+    // duplicated token stream into the same consumer. A streamed timeout is
+    // rare and is better surfaced as an error than re-streamed.
+    const isStreaming =
+      typeof opts.onDelta === 'function' || typeof opts.onReasoning === 'function';
+    if (!RETRY_ON_TIMEOUT || isStreaming || !isTimeoutError(err)) throw err;
     console.warn('[CursorCliService] stall detected, retrying once with a fresh session');
     return runExec({ ...opts, resume: false, sessionId: null });
   }
