@@ -1,10 +1,9 @@
 <template>
   <div class="fallback-providers">
-    <!-- Header: title + toggle on one flex row (title flexes, toggle fixed),
-         subtitle on its own full-width line below. -->
+    <!-- Header: toggle on its own row (right), title + subtitle full-width below -->
     <div class="fb-header">
       <div class="fb-header-toprow">
-        <label class="fb-toggle" :title="enabled ? 'Failover enabled' : 'Failover disabled'">
+        <label class="fb-toggle" v-tooltip="enabled ? 'Failover enabled' : 'Failover disabled'">
           <input type="checkbox" v-model="enabled" @change="markDirty" />
           <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
           <span class="fb-toggle-label">{{ enabled ? 'Enabled' : 'Disabled' }}</span>
@@ -27,37 +26,23 @@
         <span class="fb-tier">{{ idx + 1 }}</span>
 
         <div class="fb-selects">
-          <select
+          <CustomSelect
             class="fb-select"
-            :value="row.provider"
-            @change="onProviderChange(idx, $event.target.value)"
-          >
-            <option value="" disabled>Select provider…</option>
-            <option
-              v-for="p in availableForRow(idx)"
-              :key="p.key"
-              :value="p.key"
-            >{{ p.label }}</option>
-          </select>
-
-          <select
+            :options="providerOptionsFor(idx)"
+            :model-value="row.provider"
+            placeholder="Select provider…"
+            @option-selected="(opt) => onProviderChange(idx, opt.value)"
+          />
+          <CustomSelect
             class="fb-select"
-            :value="row.model"
-            :disabled="!row.provider || modelsFor(row.provider).length === 0"
-            @change="onModelChange(idx, $event.target.value)"
-          >
-            <option value="" :disabled="modelsFor(row.provider).length > 0">
-              {{ modelsFor(row.provider).length ? 'Select model…' : (row.provider ? 'Provider default' : '—') }}
-            </option>
-            <option
-              v-for="m in modelsFor(row.provider)"
-              :key="m"
-              :value="m"
-            >{{ m }}</option>
-          </select>
+            :options="modelOptionsFor(row.provider)"
+            :model-value="row.model"
+            :placeholder="modelsFor(row.provider).length ? 'Select model…' : (row.provider ? 'Provider default' : '—')"
+            @option-selected="(opt) => onModelChange(idx, opt.value)"
+          />
         </div>
 
-        <button class="fb-remove" title="Remove" @click="removeRow(idx)">
+        <button class="fb-remove" v-tooltip="'Remove'" @click="removeRow(idx)">
           <i class="fas fa-trash"></i>
         </button>
       </div>
@@ -67,7 +52,7 @@
           v-if="rows.length < MAX"
           class="fb-add"
           :disabled="!hasCandidates"
-          :title="hasCandidates ? 'Add a fallback provider' : 'No other connected providers available'"
+          v-tooltip="hasCandidates ? 'Add a fallback provider' : 'No other connected providers available'"
           @click="addRow"
         >
           <i class="fas fa-plus"></i> Add fallback
@@ -102,6 +87,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import {
   AI_PROVIDERS_WITH_API,
   PROVIDER_DISPLAY_NAMES,
@@ -113,7 +99,7 @@ const MAX = 3;
 
 export default {
   name: 'FallbackProviders',
-  components: { BaseButton },
+  components: { BaseButton, CustomSelect },
   setup() {
     const store = useStore();
 
@@ -124,20 +110,14 @@ export default {
     const statusMsg = ref('');
     const statusOk = ref(true);
 
-    // ── Data sources (mirrors ProviderSelector.vue) ───────────────────────
-    // filteredProviders → array of provider DISPLAY-NAME strings (e.g. 'GrokAI')
     const providerNames = computed(() => store.getters['aiProvider/filteredProviders'] || []);
-    // connectedApps → array of lowercase provider KEYS that are actually connected
     const connectedLower = computed(() =>
       (store.state.appAuth?.connectedApps || []).map((p) => String(p).toLowerCase())
     );
-    // The current default provider (display name) — excluded from fallbacks.
     const defaultProviderLower = computed(() =>
       String(store.state.aiProvider?.selectedProvider || '').toLowerCase()
     );
 
-    // A provider is offerable as a fallback when it needs an API key, is
-    // connected, and isn't the current default.
     const connectableProviders = computed(() => {
       return providerNames.value
         .filter((name) => {
@@ -145,10 +125,7 @@ export default {
           const lower = String(name).toLowerCase();
           if (lower === defaultProviderLower.value) return false;
           if (key === 'local') return false;
-          return (
-            AI_PROVIDERS_WITH_API.includes(key) &&
-            connectedLower.value.includes(key)
-          );
+          return AI_PROVIDERS_WITH_API.includes(key) && connectedLower.value.includes(key);
         })
         .map((name) => ({ key: name, label: PROVIDER_DISPLAY_NAMES[name] || name }));
     });
@@ -158,7 +135,6 @@ export default {
       return store.state.aiProvider?.allModels?.[providerName] || [];
     }
 
-    // Fetch a provider's model list on demand (so the model dropdown fills).
     async function ensureModels(providerName) {
       if (!providerName) return;
       if (modelsFor(providerName).length > 0) return;
@@ -167,15 +143,17 @@ export default {
       try { await store.dispatch(action); } catch (e) { /* non-fatal */ }
     }
 
-    // Providers available for a given row: connectable, minus those chosen in
-    // OTHER rows (dedupe across tiers), plus this row's own current choice.
-    function availableForRow(idx) {
+    // CustomSelect option lists ({ label, value }).
+    function providerOptionsFor(idx) {
       const chosenElsewhere = new Set(
         rows.value.filter((_, i) => i !== idx).map((r) => r.provider).filter(Boolean)
       );
-      return connectableProviders.value.filter(
-        (p) => !chosenElsewhere.has(p.key) || p.key === rows.value[idx]?.provider
-      );
+      return connectableProviders.value
+        .filter((p) => !chosenElsewhere.has(p.key) || p.key === rows.value[idx]?.provider)
+        .map((p) => ({ label: p.label, value: p.key }));
+    }
+    function modelOptionsFor(providerName) {
+      return modelsFor(providerName).map((m) => ({ label: m, value: m }));
     }
 
     const hasCandidates = computed(() => {
@@ -197,13 +175,11 @@ export default {
       rows.value[idx].model = '';
       markDirty();
       await ensureModels(val);
-      // Default to first model once loaded, if none chosen.
       const models = modelsFor(val);
       if (models.length && !rows.value[idx].model) rows.value[idx].model = models[0];
     }
     function onModelChange(idx, val) { rows.value[idx].model = val; markDirty(); }
 
-    // ── Load / Save via /api/users/settings ───────────────────────────────
     function authToken() {
       return localStorage.getItem('token') || localStorage.getItem('authToken') || '';
     }
@@ -220,7 +196,6 @@ export default {
           provider: e.provider || '',
           model: e.model || '',
         }));
-        // Warm the model lists for any saved providers so their dropdowns fill.
         for (const r of rows.value) ensureModels(r.provider);
         dirty.value = false;
       } catch (e) {
@@ -261,7 +236,6 @@ export default {
     }
 
     onMounted(async () => {
-      // Make sure the connected-apps + provider lists are populated.
       try { await store.dispatch('appAuth/fetchConnectedApps'); } catch (e) { /* ignore */ }
       await load();
     });
@@ -269,7 +243,7 @@ export default {
     return {
       MAX,
       enabled, rows, dirty, saving, statusMsg, statusOk,
-      connectableProviders, modelsFor, availableForRow, hasCandidates,
+      connectableProviders, modelsFor, providerOptionsFor, modelOptionsFor, hasCandidates,
       markDirty, addRow, removeRow, onProviderChange, onModelChange, save,
     };
   },
@@ -286,8 +260,6 @@ export default {
   box-sizing: border-box;
 }
 
-/* ── Header ── title + toggle share a flex row; subtitle full-width below.
-   Title uses flex:1 + min-width:0 so it fills the row and never collapses. */
 .fb-header { margin-bottom: 16px; }
 .fb-header-toprow {
   display: flex;
@@ -312,7 +284,6 @@ export default {
 }
 
 .fb-toggle {
-  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -366,19 +337,7 @@ export default {
   flex: 1 1 auto;
   min-width: 0;
 }
-.fb-select {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  background: var(--color-popup);
-  color: var(--color-text);
-  font-family: inherit; font-size: 0.9rem;
-  transition: border-color 0.2s ease;
-}
-.fb-select:focus { outline: none; border-color: var(--color-green); }
-.fb-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.fb-select { flex: 1 1 0; min-width: 0; }
 
 .fb-remove {
   background: transparent; border: none;
