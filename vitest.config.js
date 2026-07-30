@@ -1,4 +1,5 @@
 import { defineConfig, configDefaults } from 'vitest/config';
+import { onUnhandledError } from './tests/setup/unhandledErrorFilter.mjs';
 
 /**
  * Root vitest config — owns the BACKEND suite.
@@ -63,6 +64,16 @@ export default defineConfig({
      * this config is meant to prevent.
      */
     maxWorkers: 4,
+
+    /**
+     * onUnhandledError
+     * ────────────────
+     * Drops exactly one vitest-infrastructure flake: the worker-teardown
+     * "Closing rpc while onUserConsoleLog was pending" race, which failed CI
+     * with all tests green (runs 30491707902, 30554297330). Everything else
+     * stays fatal. See tests/setup/unhandledErrorFilter.mjs.
+     */
+    onUnhandledError,
     exclude: [
       ...configDefaults.exclude,
       'frontend/**',
