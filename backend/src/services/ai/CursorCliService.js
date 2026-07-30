@@ -30,6 +30,42 @@ const PROMPT_ARGV_THRESHOLD = process.platform === 'win32' ? 28 * 1024 : 80 * 10
 // Grace period after we see the terminal result before force-killing the hung CLI.
 const POST_RESULT_KILL_MS = 500;
 
+// --- resilience helpers (AGNT local patch) ---------------------------------
+// Healthy cursor-agent calls return in ~6s; the 300s default only ever fires on
+// a genuine stall. Retry ONCE with a FRESH session — a stalled session never
+// recovers, so resuming it would simply re-hang.
+const RETRY_ON_TIMEOUT = process.env.AGNT_CURSOR_RETRY !== '0';
+
+function isTimeoutError(e) {
+  return /timed out after \d+ms/.test(e?.message || '');
+}
+
+// The CLI prints "cursor-retrieval: tracing to '<logfile>'" on every run.
+// Strip it so it never leaks into an agent-visible error string.
+function cleanStderr(s) {
+  return String(s || '')
+    .split('\n')
+    .filter((l) => !/^cursor-retrieval: tracing to /.test(l))
+    .join('\n');
+}
+
+export function getDefaultTimeoutMs() {
+  return DEFAULT_TIMEOUT_MS;
+}
+
+/** runExec + one retry on a stall. Preferred entry point for all callers. */
+async function runExecResilient(opts = {}) {
+  try {
+    return await runExec(opts);
+  } catch (err) {
+    if (!RETRY_ON_TIMEOUT || !isTimeoutError(err)) throw err;
+    console.warn('[CursorCliService] stall detected, retrying once with a fresh session');
+    return runExec({ ...opts, resume: false, sessionId: null });
+  }
+}
+// --- end resilience helpers ------------------------------------------------
+
+
 function expandUserPath(p) {
   if (!p) return p;
   if (p === '~') return os.homedir();
@@ -189,7 +225,7 @@ async function runExec({
       if (resultObj) {
         finish(buildResult(resultObj, stdout, model));
       } else {
-        finish(new Error(`cursor_exec: timed out after ${timeoutMs}ms. stderr: ${stderr.slice(0, 400)}`), true);
+        finish(new Error(`cursor_exec: timed out after ${timeoutMs}ms. stderr: ${cleanStderr(stderr).slice(0, 400)}`), true);
       }
     }, timeoutMs);
 
@@ -313,5 +349,7 @@ export default {
   getDefaultWorkdir,
   resolveCursorBin,
   checkAuth,
-  runExec,
+  runExec: runExecResilient,
+  runExecRaw: runExec,
+  getDefaultTimeoutMs,
 };

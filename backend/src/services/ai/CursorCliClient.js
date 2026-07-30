@@ -180,7 +180,7 @@ export function createCursorCliClient({
   userId = null,
   conversationId = null,
   provider = 'cursor-cli',
-  timeoutMs = 300000,
+  timeoutMs = CursorCliService.getDefaultTimeoutMs(),
 } = {}) {
   const resolvedSessionKey =
     sessionKey || `cursor-cli::${userId || 'anon'}::${conversationId || 'default'}`;
