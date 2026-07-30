@@ -135,7 +135,9 @@ function createTables() {
         custom_instructions TEXT,
         async_tools_enabled INTEGER DEFAULT 0,
         tool_output_cap INTEGER DEFAULT 100000,
-        max_tool_rounds INTEGER DEFAULT 100
+        max_tool_rounds INTEGER DEFAULT 100,
+        fallback_providers TEXT,
+        fallback_enabled INTEGER DEFAULT 0
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -162,6 +164,8 @@ function createTables() {
         created_by TEXT NOT NULL,
         last_active DATETIME,
         success_rate REAL,
+        fallback_providers TEXT,
+        fallback_enabled INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (created_by) REFERENCES users(id)
@@ -1223,6 +1227,26 @@ function runMigrations() {
         }
       });
 
+      // Migration: Per-agent provider-failover chain (2026-07-30, Phase 4).
+      // fallback_providers = JSON array of up to 3 { provider, model } tiers;
+      // fallback_enabled gates it (0 = off → agent inherits no chain, identical
+      // to pre-Phase-4 behavior). Mirrors the users-table columns.
+      db.run(`ALTER TABLE agents ADD COLUMN fallback_providers TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding fallback_providers column to agents:', err);
+        } else if (!err) {
+          console.log('✓ Added fallback_providers column to agents table');
+        }
+      });
+
+      db.run(`ALTER TABLE agents ADD COLUMN fallback_enabled INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding fallback_enabled column to agents:', err);
+        } else if (!err) {
+          console.log('✓ Added fallback_enabled column to agents table');
+        }
+      });
+
       // Migration: Add AGI loop columns to goals table (2026-03-04)
       const agiLoopColumns = [
         { name: 'world_state', type: "JSON DEFAULT '{}'" },
@@ -1247,6 +1271,26 @@ function runMigrations() {
           console.error('Error adding deleted_at column to goals:', err);
         } else if (!err) {
           console.log('✓ Added deleted_at column to goals table');
+        }
+      });
+
+      // Migration: Add fallback provider columns to users for automatic
+      // cross-provider failover (2026-07-30). fallback_providers holds a JSON
+      // array of up to 3 { provider, model } tiers; fallback_enabled gates the
+      // whole feature (0 = off, so existing rows behave exactly as before).
+      db.run(`ALTER TABLE users ADD COLUMN fallback_providers TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding fallback_providers column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added fallback_providers column to users table');
+        }
+      });
+
+      db.run(`ALTER TABLE users ADD COLUMN fallback_enabled INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding fallback_enabled column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added fallback_enabled column to users table');
         }
       });
 

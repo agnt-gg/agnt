@@ -94,7 +94,7 @@ class UserService {
 
   async updateUserSettings(req, res) {
     try {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds } = req.body;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled } = req.body;
 
       if (
         selectedProvider === undefined &&
@@ -102,9 +102,11 @@ class UserService {
         customInstructions === undefined &&
         asyncToolsEnabled === undefined &&
         toolOutputCap === undefined &&
-        maxToolRounds === undefined
+        maxToolRounds === undefined &&
+        fallbackProviders === undefined &&
+        fallbackEnabled === undefined
       ) {
-        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, or maxToolRounds) is required' });
+        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, or fallbackEnabled) is required' });
       }
 
       if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 10000) {
@@ -127,6 +129,30 @@ class UserService {
         }
       }
 
+      // Automatic provider-failover chain. An array of up to 3
+      // { provider, model } tiers (model optional). The model layer further
+      // sanitizes (trims, drops provider-less entries, caps at 3).
+      if (fallbackProviders !== undefined) {
+        if (!Array.isArray(fallbackProviders)) {
+          return res.status(400).json({ error: 'fallbackProviders must be an array of { provider, model } objects' });
+        }
+        if (fallbackProviders.length > 3) {
+          return res.status(400).json({ error: 'fallbackProviders may contain at most 3 entries' });
+        }
+        for (const entry of fallbackProviders) {
+          if (!entry || typeof entry !== 'object' || typeof entry.provider !== 'string' || !entry.provider.trim()) {
+            return res.status(400).json({ error: 'Each fallbackProviders entry must have a non-empty string "provider"' });
+          }
+          if (entry.model !== undefined && entry.model !== null && typeof entry.model !== 'string') {
+            return res.status(400).json({ error: 'fallbackProviders entry "model" must be a string or null' });
+          }
+        }
+      }
+
+      if (fallbackEnabled !== undefined && typeof fallbackEnabled !== 'boolean') {
+        return res.status(400).json({ error: 'fallbackEnabled must be a boolean' });
+      }
+
       const result = await UserModel.updateUserSettings(req.user.id, {
         selectedProvider,
         selectedModel,
@@ -134,6 +160,8 @@ class UserService {
         asyncToolsEnabled,
         toolOutputCap,
         maxToolRounds,
+        fallbackProviders,
+        fallbackEnabled,
       });
 
       res.json({
@@ -146,6 +174,8 @@ class UserService {
           asyncToolsEnabled,
           toolOutputCap,
           maxToolRounds,
+          fallbackProviders,
+          fallbackEnabled,
         },
       });
     } catch (error) {

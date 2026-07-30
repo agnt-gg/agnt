@@ -1,5 +1,6 @@
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
+import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
 
 class AgentModel {
   static createOrUpdate(id, agent, userId) {
@@ -21,7 +22,11 @@ class AgentModel {
         systemPrompt = '',
         assignedSkills = [],
         toolAccessMode,
+        fallbackProviders,
+        fallbackEnabled,
       } = agent;
+      const fallbackProvidersJson = serializeFallbackChain(fallbackProviders);
+      const fallbackEnabledInt = fallbackEnabled ? 1 : 0;
       const toolsJson = JSON.stringify(assignedTools);
       const workflowsJson = JSON.stringify(assignedWorkflows);
       const skillsJson = JSON.stringify(assignedSkills);
@@ -29,9 +34,9 @@ class AgentModel {
       // the safe default so a malformed payload can't widen tool access.
       const accessMode = toolAccessMode === 'open' ? 'open' : 'restricted';
       db.run(
-        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, tool_access_mode, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate, systemPrompt, skillsJson, accessMode],
+        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, tool_access_mode, fallback_providers, fallback_enabled, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate, systemPrompt, skillsJson, accessMode, fallbackProvidersJson, fallbackEnabledInt],
         function (err) {
           if (err) {
             reject(err);
@@ -69,6 +74,9 @@ class AgentModel {
             agent.systemPrompt = agent.system_prompt || '';
             agent.assignedSkills = agent.skills ? JSON.parse(agent.skills) : [];
             agent.toolAccessMode = agent.tool_access_mode === 'open' ? 'open' : 'restricted';
+            agent.fallbackProviders = parseFallbackChain(agent.fallback_providers);
+            agent.fallbackEnabled = agent.fallback_enabled === null || agent.fallback_enabled === undefined
+              ? false : Boolean(agent.fallback_enabled);
             resolve(agent);
           } else resolve(null);
         }
@@ -96,6 +104,9 @@ class AgentModel {
               agent.systemPrompt = agent.system_prompt || '';
               agent.assignedSkills = agent.skills ? JSON.parse(agent.skills) : [];
               agent.toolAccessMode = agent.tool_access_mode === 'open' ? 'open' : 'restricted';
+              agent.fallbackProviders = parseFallbackChain(agent.fallback_providers);
+              agent.fallbackEnabled = agent.fallback_enabled === null || agent.fallback_enabled === undefined
+                ? false : Boolean(agent.fallback_enabled);
             });
             resolve(agents);
           }

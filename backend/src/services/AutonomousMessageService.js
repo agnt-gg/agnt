@@ -8,6 +8,9 @@ import { randomUUID } from 'crypto';
 import conversationManager from './ConversationManager.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
+import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
+import AgentModel from '../models/AgentModel.js';
+import UserModel from '../models/UserModel.js';
 import { executeTool } from './orchestrator/tools.js';
 import { inspectAsyncResult } from './asyncResultInspector.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
@@ -219,12 +222,47 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
 
       log(`[AutonomousMessage] Generating autonomous response for conversation ${conversationId}`);
 
-      // Create LLM client and adapter
-      const client = await createLlmClient(context.normalizedProvider, context.userId, {
+      // Create LLM client and adapter. LET so failover can rebuild them on a
+      // fallback tier (Phase 4: autonomous loop now gets provider failover too).
+      let client = await createLlmClient(context.normalizedProvider, context.userId, {
         conversationId,
         authToken: context.authToken,
       });
-      const adapter = await createLlmAdapter(context.normalizedProvider, client, context.model);
+      let adapter = await createLlmAdapter(context.normalizedProvider, client, context.model);
+
+      // Build the failover chain for THIS autonomous turn. Prefer the active
+      // agent's own chain (fallbackEnabled); else the user's global chain; else
+      // a single-tier chain = today's behavior. Dormant by default.
+      let autoProviderChain = [{ provider: context.normalizedProvider, model: context.model, tier: 0, primary: true }];
+      try {
+        let agChain = null;
+        if (context.agentId && context.agentId !== 'agent-chat' && context.agentId !== 'orchestrator') {
+          const agFb = await AgentModel.findOne(context.agentId);
+          if (agFb && agFb.fallbackEnabled) {
+            agChain = buildProviderChain({
+              provider: context.normalizedProvider,
+              model: context.model,
+              fallbackEnabled: true,
+              fallbackProviders: agFb.fallbackProviders,
+            });
+          }
+        }
+        if (agChain && agChain.length > 1) {
+          autoProviderChain = agChain;
+        } else {
+          const uFb = await UserModel.getUserSettings(context.userId);
+          if (uFb && uFb.fallbackEnabled) {
+            autoProviderChain = buildProviderChain({
+              provider: context.normalizedProvider,
+              model: context.model,
+              fallbackEnabled: uFb.fallbackEnabled,
+              fallbackProviders: uFb.fallbackProviders,
+            });
+          }
+        }
+      } catch (fbErr) {
+        log(`[AutonomousMessage] Could not build failover chain (primary only): ${fbErr.message}`);
+      }
 
       const contentDeltaCb = (chunk) => {
         if (chunk.type === 'content') {
@@ -251,12 +289,34 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         loopMessages = sanitizeUnexpectedToolResults(loopMessages);
         loopMessages = sanitizeEmptyAssistantMessages(loopMessages);
 
-        const { responseMessage: roundResponse, toolCalls: rawToolCalls } = await adapter.callStream(
-          loopMessages,
-          tools,
-          contentDeltaCb,
-          context
-        );
+        let roundResponse, rawToolCalls;
+        if (round === 0 && autoProviderChain.length > 1) {
+          // Round-0 failover: if the primary tier exhausts retries, roll over to
+          // the next tier and adopt its adapter for all subsequent rounds.
+          const { result: r0 } = await runWithFallback({
+            chain: autoProviderChain,
+            onFallback: ({ from, to, reason }) => {
+              log(`[AutonomousMessage] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+            },
+            runOne: async (tier) => {
+              if (!tier.primary) {
+                const np = String(tier.provider).toLowerCase();
+                client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
+                adapter = await createLlmAdapter(np, client, tier.model || context.model);
+              }
+              return adapter.callStream(loopMessages, tools, contentDeltaCb, context);
+            },
+          });
+          roundResponse = r0.responseMessage;
+          rawToolCalls = r0.toolCalls;
+        } else {
+          ({ responseMessage: roundResponse, toolCalls: rawToolCalls } = await adapter.callStream(
+            loopMessages,
+            tools,
+            contentDeltaCb,
+            context
+          ));
+        }
 
         responseMessage = roundResponse;
         newMessages.push(responseMessage);

@@ -49,10 +49,40 @@ class UserModel {
     });
   }
 
+  // Parse the raw fallback_providers TEXT column (a JSON array of
+  // { provider, model }) into a clean array. Tolerates NULL, empty, and
+  // malformed JSON — all collapse to []. Non-array JSON → [].
+  static _parseFallbackProviders(raw) {
+    if (raw === null || raw === undefined || raw === '') return [];
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try { parsed = JSON.parse(raw); } catch { return []; }
+    }
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((e) => e && typeof e === 'object' && typeof e.provider === 'string' && e.provider.trim())
+      .map((e) => ({
+        provider: e.provider.trim(),
+        model: typeof e.model === 'string' && e.model.trim() ? e.model.trim() : null,
+      }))
+      .slice(0, 3);
+  }
+
+  // Serialize a fallback list for storage. Accepts an array or a pre-stringified
+  // JSON string; anything invalid becomes '[]'.
+  static _serializeFallbackProviders(value) {
+    if (typeof value === 'string') {
+      // Validate it round-trips as an array; otherwise store '[]'.
+      try { return JSON.stringify(UserModel._parseFallbackProviders(value)); }
+      catch { return '[]'; }
+    }
+    return JSON.stringify(UserModel._parseFallbackProviders(value));
+  }
+
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -75,6 +105,14 @@ class UserModel {
               toolOutputCap: Number.isFinite(row.toolOutputCap) ? row.toolOutputCap : 100000,
               // Legacy rows return null — fall back to the documented default (100).
               maxToolRounds: Number.isFinite(row.maxToolRounds) ? row.maxToolRounds : 100,
+              // Cross-provider failover chain. Stored as a JSON array of
+              // { provider, model } tiers (TEXT). Legacy/NULL rows → [].
+              // Malformed JSON is tolerated and treated as no fallbacks.
+              fallbackProviders: UserModel._parseFallbackProviders(row.fallbackProviders),
+              // Stored as INTEGER (0/1). NULL (legacy) → false (feature off).
+              fallbackEnabled: row.fallbackEnabled === null || row.fallbackEnabled === undefined
+                ? false
+                : Boolean(row.fallbackEnabled),
             });
           } else {
             // User not found, return defaults
@@ -85,6 +123,8 @@ class UserModel {
               asyncToolsEnabled: false,
               toolOutputCap: 100000,
               maxToolRounds: 100,
+              fallbackProviders: [],
+              fallbackEnabled: false,
             });
           }
         }
@@ -94,7 +134,7 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds } = settings;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled } = settings;
 
       const fields = [];
       const params = [];
@@ -129,6 +169,18 @@ class UserModel {
       if (maxToolRounds !== undefined) {
         fields.push('max_tool_rounds = ?');
         params.push(maxToolRounds);
+      }
+
+      if (fallbackProviders !== undefined) {
+        // Persist as a JSON string; accept either an array or a pre-stringified
+        // value. Invalid input collapses to an empty array so we never write junk.
+        fields.push('fallback_providers = ?');
+        params.push(UserModel._serializeFallbackProviders(fallbackProviders));
+      }
+
+      if (fallbackEnabled !== undefined) {
+        fields.push('fallback_enabled = ?');
+        params.push(fallbackEnabled ? 1 : 0);
       }
 
       if (fields.length === 0) {

@@ -6,6 +6,7 @@ import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
+import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { updateEstimateCalibration, computeResidualDrift } from '../utils/contextManager.js';
 import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConfigs.js';
@@ -860,7 +861,11 @@ async function universalChatHandler(req, res, context = {}) {
   }
 
   // CRITICAL: Normalize provider to lowercase to ensure consistent handling
-  const normalizedProvider = resolvedProvider.toLowerCase();
+  // NOTE: normalizedProvider/model are LET (not const) because automatic
+  // provider failover (buildProviderChain/runWithFallback) may re-point them
+  // to a fallback tier for the remainder of the turn if the primary provider
+  // exhausts its retries on the first LLM call.
+  let normalizedProvider = resolvedProvider.toLowerCase();
   let model = resolvedModel;
 
 
@@ -873,6 +878,59 @@ async function universalChatHandler(req, res, context = {}) {
   }).catch(e => {
     console.warn('[Chat] Failed to sync provider/model to DB (non-critical):', e.message);
   });
+
+  // Build the automatic-failover provider chain for THIS TURN ONLY.
+  // tier 0 = the primary above; tiers 1..3 = the user's configured fallbacks.
+  // We load settings unconditionally here (the earlier settings fetch is
+  // block-scoped inside the provider-resolution branch and may not have run).
+  // Any failure fails safe to a single-tier chain = today's behavior.
+  // IMPORTANT: this must NOT persist the fallback provider as the default —
+  // the sync above already recorded the PRIMARY, and we never call
+  // updateUserSettings with a fallback tier.
+  let providerChain = [{ provider: normalizedProvider, model, tier: 0, primary: true }];
+  try {
+    // Phase 4: prefer the ACTIVE AGENT's own fallback chain when it has one
+    // (fallbackEnabled). A coding agent pinned to Claude-Code should fail over
+    // to ITS configured backups, not the user's global list. Only when the
+    // agent has no chain (or no agent is active) do we use the user's chain.
+    let agentChain = null;
+    if (agentId && agentId !== 'agent-chat' && agentId !== 'orchestrator') {
+      try {
+        const agentForFb = await AgentModel.findOne(agentId);
+        if (agentForFb && agentForFb.fallbackEnabled) {
+          agentChain = buildProviderChain({
+            provider: normalizedProvider,
+            model,
+            fallbackEnabled: true,
+            fallbackProviders: agentForFb.fallbackProviders,
+          });
+        }
+      } catch (agErr) {
+        console.warn('[Chat] Could not load agent fallback chain:', agErr.message);
+      }
+    }
+
+    if (agentChain && agentChain.length > 1) {
+      providerChain = agentChain;
+      console.log('[Chat] Provider failover chain (agent):', providerChain.map(t => `${t.provider}/${t.model || '(default model)'}`).join(' → '));
+    } else {
+      const fbSettings = await UserModel.getUserSettings(userId);
+      if (fbSettings && fbSettings.fallbackEnabled) {
+        providerChain = buildProviderChain({
+          provider: normalizedProvider,
+          model,
+          fallbackEnabled: fbSettings.fallbackEnabled,
+          fallbackProviders: fbSettings.fallbackProviders,
+        });
+        if (providerChain.length > 1) {
+          console.log('[Chat] Provider failover chain (user):', providerChain.map(t => `${t.provider}/${t.model || '(default model)'}`).join(' → '));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Chat] Could not build provider failover chain (using primary only):', e.message);
+    providerChain = [{ provider: normalizedProvider, model, tier: 0, primary: true }];
+  }
 
   // Validate message input (different formats for different handlers)
   let messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
@@ -1240,8 +1298,9 @@ async function universalChatHandler(req, res, context = {}) {
         })()
       : Promise.resolve();
 
-    const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-    const adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
+    // client/adapter are LET so failover can rebuild them on a fallback tier.
+    let client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
+    let adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
 
     // Store client in context
     conversationContext.llmClient = client;
@@ -1802,10 +1861,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // fire tool_pending once per tool (adapters emit tool_call_delta repeatedly
     // as args stream in).
     const announcedToolIds = new Set();
-    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = await adapter.callStream(
-      contextResult.messages,
-      finalToolSchemas,
-      (chunk) => {
+
+    // The streaming chunk handler is factored out so failover can reuse it
+    // across provider tiers. NOTE: the adapter only returns recoveredFromError
+    // when ZERO content chunks were emitted, so a failed tier never streams
+    // partial tokens — making pre-first-token failover clean.
+    const onStreamChunk = (chunk) => {
         // Handle streaming chunks
         if (chunk.type === 'content') {
           sendEvent('content_delta', {
@@ -1834,9 +1895,47 @@ IMPORTANT: The image data is already available in the system context. You don't 
             });
           }
         }
+    };
+
+    // Run the first LLM call across the provider failover chain. Each tier
+    // rebuilds client+adapter; on failover we re-point the OUTER client/adapter/
+    // normalizedProvider/model so the rest of the turn (tool loop) continues on
+    // the tier that actually worked.
+    const runTierStream = async (tier) => {
+      if (!tier.primary) {
+        // Rebuild client+adapter for the fallback tier.
+        normalizedProvider = String(tier.provider).toLowerCase();
+        model = tier.model || model;
+        client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
+        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
+        conversationContext.llmClient = client;
+        if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex') {
+          conversationContext.openai = client;
+        }
+      }
+      return adapter.callStream(
+        contextResult.messages,
+        finalToolSchemas,
+        onStreamChunk,
+        conversationContext // Pass context for vision image handling
+      );
+    };
+
+    const { result: _r0 } = await runWithFallback({
+      chain: providerChain,
+      runOne: runTierStream,
+      onFallback: ({ from, to, reason }) => {
+        console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+        sendEvent('provider_fallback', {
+          from: { provider: from.provider, model: from.model },
+          to: { provider: to.provider, model: to.model },
+          reason,
+          tier: to.tier,
+        });
       },
-      conversationContext // Pass context for vision image handling
-    );
+    });
+
+    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = _r0;
     accumulateUsage(initialUsage);
     // Fold this round's REAL prompt size (provider-reported) into the
     // estimate calibration used by every subsequent manageContext call.
