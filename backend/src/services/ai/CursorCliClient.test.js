@@ -12,6 +12,7 @@ vi.mock('./CursorCliService.js', () => ({
   default: {
     getDefaultModel: vi.fn(() => 'cursor-grok-4.5-high'),
     getDefaultWorkdir: vi.fn(() => '/tmp/cursor-test-work'),
+    getDefaultTimeoutMs: vi.fn(() => 300000),
     resolveCursorBin: vi.fn(() => 'cursor-agent'),
     runExec: vi.fn(),
   },
