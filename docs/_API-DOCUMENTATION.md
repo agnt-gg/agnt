@@ -3973,6 +3973,86 @@ Manages per-user widget layout pages for the dashboard. Each page stores a grid 
 }
 ```
 
+
+## Workspace Routes
+
+Base path: `/api/workspaces`
+
+Cross-device persistence for the Workspaces page (canvas tabs). Backed by the existing `widget_layouts` table, with rows namespaced by `route = 'workspace:<id>'` (no schema migration). Conflict resolution is last-write-wins per workspace on an `updatedAt` epoch carried inside each workspace's data.
+
+### Get Workspaces
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Get all of the authenticated user's synced workspaces
+- **Response**:
+
+```json
+{
+  "workspaces": [
+    {
+      "id": "ws_abc123",
+      "name": "Coding",
+      "order": 0,
+      "widgets": [],
+      "ai": { "provider": "groq", "model": "llama-3.1-70b" },
+      "updatedAt": 1730000000000
+    }
+  ]
+}
+```
+
+### Sync Workspaces
+
+**PUT** `/`
+
+- **Authentication**: Required
+- **Description**: Whole-set upsert of the user's workspaces (last-write-wins per workspace on `updatedAt`). `deletedIds` removes workspaces so a tab closed on one device does not resurrect from another.
+- **Body**:
+
+```json
+{
+  "workspaces": [
+    {
+      "id": "ws_abc123",
+      "name": "Coding",
+      "order": 0,
+      "widgets": [],
+      "ai": null,
+      "updatedAt": 1730000000000
+    }
+  ],
+  "deletedIds": ["ws_old"]
+}
+```
+
+- **Response**:
+
+```json
+{
+  "message": "Workspaces synced",
+  "count": 1,
+  "deleted": 1
+}
+```
+
+### Delete Workspace
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): the workspace id
+- **Response**:
+
+```json
+{
+  "message": "Workspace deleted",
+  "id": "ws_abc123"
+}
+```
+
 ---
 
 ## MCP Routes
