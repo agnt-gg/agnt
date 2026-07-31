@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isOpen && items.length > 0" class="command-menu" :style="menuStyle" ref="menuRef">
+  <div v-if="isOpen && items.length > 0" class="command-menu" :style="menuStyle" ref="menuRef" v-viewport-clamp>
     <div class="command-menu-header">
       <span class="command-menu-trigger">{{ headerLabel }}</span>
       <span class="command-menu-hint">{{ query ? `filtering: "${query}"` : 'type to filter' }}</span>

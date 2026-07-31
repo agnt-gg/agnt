@@ -2641,7 +2641,7 @@ export default {
 .connectors-section {
   background: transparent;
   border: 1px solid var(--color-light-navy);
-  padding: 24px;
+  padding: 0;
   transition: all 0.3s ease;
   border-radius: 16px;
 }

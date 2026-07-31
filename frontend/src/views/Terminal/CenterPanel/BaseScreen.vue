@@ -1563,17 +1563,13 @@ body[data-page='terminal-agent-forge'] .main-panel {
   padding: 16px 0;
 }
 
-body[data-page='terminal-workflows'] .main-panel {
-  padding: 16px 0;
-}
-
-body[data-page='terminal-marketplace'] .main-panel {
-  padding: 16px 0;
-}
-
-body[data-page='terminal-widget-manager'] .main-panel {
-  padding: 16px 0;
-}
+/* The list screens (workflows, marketplace, widget-manager, runs, tools,
+   agents) deliberately have NO per-page .main-panel padding override: they
+   inherit the base 16px 12px. Their 1048px content cap only creates gutters
+   when the center column is wider than 1048px — the base 12px side padding is
+   the floor that keeps toolbars, tabs and cards off the panel edge below that.
+   (Their old `padding: 16px 0` overrides left them flush at any width under
+   ~1048px of center column, measured live 2026-07-31.) */
 
 body[data-page='terminal-widget-forge'] .main-panel {
   padding: 16px 0;
@@ -1588,18 +1584,6 @@ body[data-page='terminal-chat'] .main-panel {
      message flow and the composer each carry theirs — so an outer pad only
      stole width from the conversation. */
   padding: 0;
-}
-
-body[data-page='terminal-runs'] .main-panel {
-  padding: 16px 0;
-}
-
-body[data-page='terminal-tools'] .main-panel {
-  padding: 16px 0;
-}
-
-body[data-page='terminal-agents'] .main-panel {
-  padding: 16px 0;
 }
 
 body[data-page='terminal-artifacts'] .main-panel {

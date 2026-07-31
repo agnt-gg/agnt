@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-tool-selector" ref="selectorRef">
+  <div class="chat-tool-selector" ref="selectorRef" v-viewport-clamp>
     <div class="tool-dropdown">
       <div class="dropdown-header">
         <span class="dropdown-title">Tools</span>

@@ -1,6 +1,6 @@
 <template>
   <div class="chat-provider-selector" :class="{ 'no-offset': cleanPosition }" ref="selectorRef">
-    <div class="provider-dropdown" :class="{ open: isOpen }">
+    <div class="provider-dropdown" :class="{ open: isOpen }" v-viewport-clamp>
       <div class="dropdown-header">
         <span class="dropdown-title">AI Provider</span>
         <Tooltip text="Close" width="auto">

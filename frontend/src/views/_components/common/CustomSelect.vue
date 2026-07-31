@@ -40,6 +40,10 @@
 <script>
 /** Breathing room kept between the open menu and the viewport edge. */
 const VIEWPORT_MARGIN_PX = 8;
+/** Below this much room, the menu flips above the trigger instead. */
+const MIN_USABLE_MENU_PX = 120;
+/** Hard floor so extreme viewports still render a usable (scrollable) menu. */
+const MIN_MENU_HEIGHT_PX = 60;
 
 // Global event bus for coordinating dropdown state across all CustomSelect instances
 const dropdownEventBus = {
@@ -219,18 +223,40 @@ export default {
       // menu is the one place the full label can always be shown. It grows to
       // content, never shrinks below the trigger, and is clamped so it cannot
       // run off the right edge of the viewport.
-      const room = window.innerWidth - rect.left - VIEWPORT_MARGIN_PX;
-      const maxWidth = Math.max(rect.width, room);
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Never anchor past the left margin, and clamp width to the room right
+      // of the anchor so the menu cannot run off the right edge.
+      const left = Math.max(VIEWPORT_MARGIN_PX, rect.left);
+      // (min-width below still wins when the trigger itself is wider than the
+      // remaining room — the menu then matches its own control, same as before.)
+      const maxWidth = viewportWidth - left - VIEWPORT_MARGIN_PX;
+
+      // Vertical: the configured maxHeight is a ceiling, not a promise. The
+      // menu shrinks to the space actually available, and when the trigger
+      // sits near the bottom of the viewport with more room above, it flips
+      // upward — otherwise a select in the bottom ~300px always bled off the
+      // bottom edge of the screen.
+      const configuredMaxHeight = parseInt(this.maxHeight, 10) || 300;
+      const spaceBelow = viewportHeight - rect.bottom - VIEWPORT_MARGIN_PX;
+      const spaceAbove = rect.top - VIEWPORT_MARGIN_PX;
+      const openUpward = spaceBelow < Math.min(configuredMaxHeight, MIN_USABLE_MENU_PX) && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(
+        MIN_MENU_HEIGHT_PX,
+        Math.min(configuredMaxHeight, openUpward ? spaceAbove : spaceBelow),
+      );
 
       this.dropdownStyle = {
         position: 'fixed',
-        top: `${rect.bottom}px`,
-        left: `${rect.left}px`,
+        top: openUpward ? 'auto' : `${rect.bottom}px`,
+        bottom: openUpward ? `${viewportHeight - rect.top}px` : 'auto',
+        left: `${left}px`,
         width: 'max-content',
         minWidth: `${rect.width}px`,
         maxWidth: `${maxWidth}px`,
         zIndex: this.zIndex,
-        maxHeight: this.maxHeight,
+        maxHeight: `${maxHeight}px`,
         fontSize,
         fontFamily,
       };

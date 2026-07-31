@@ -1,15 +1,15 @@
 <template>
   <div class="fallback-providers">
-    <!-- Header: toggle on its own row (right), title + subtitle full-width below -->
+    <!-- Header: title left + toggle right on ONE row, subtitle full-width below -->
     <div class="fb-header">
-      <div class="fb-header-toprow">
+      <div class="fb-title-row">
+        <h2 class="fb-title">Fallback AI Providers</h2>
         <label class="fb-toggle" v-tooltip="enabled ? 'Failover enabled' : 'Failover disabled'">
           <input type="checkbox" v-model="enabled" @change="markDirty" />
-          <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
           <span class="fb-toggle-label">{{ enabled ? 'Enabled' : 'Disabled' }}</span>
+          <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
         </label>
       </div>
-      <h2 class="fb-title">Fallback AI Providers</h2>
       <p class="fb-subtitle">
         If your default provider is unavailable, Annie automatically retries these
         in order — up to three backups. Used only when the default fails.
@@ -262,19 +262,22 @@ export default {
 }
 
 .fb-header { margin-bottom: 16px; }
-.fb-header-toprow {
+.fb-title-row {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
 }
 .fb-title {
-  display: block;
-  width: 100%;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
   color: var(--color-text);
   line-height: 1.3;
+  /* Take the full row so the toggle is pushed flush to the right edge. */
+  flex: 1;
+  white-space: nowrap;
 }
 .fb-subtitle {
   margin: 6px 0 0 0;
@@ -291,6 +294,9 @@ export default {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  width: auto;
 }
 /* Visually hidden but still focusable + in the tab order (a11y). */
 .fb-toggle input {
@@ -306,8 +312,9 @@ export default {
   position: relative; transition: background 0.2s ease;
   flex-shrink: 0;
 }
-.fb-toggle input:checked + .fb-toggle-track { background: var(--color-green); }
-.fb-toggle input:focus-visible + .fb-toggle-track {
+/* `~` not `+`: the text label now sits between the input and the track. */
+.fb-toggle input:checked ~ .fb-toggle-track { background: var(--color-green); }
+.fb-toggle input:focus-visible ~ .fb-toggle-track {
   outline: 2px solid var(--color-green);
   outline-offset: 2px;
 }
@@ -317,7 +324,7 @@ export default {
   background: var(--color-navy, #0d1117);
   transition: transform 0.2s ease;
 }
-.fb-toggle input:checked + .fb-toggle-track .fb-toggle-thumb { transform: translateX(18px); }
+.fb-toggle input:checked ~ .fb-toggle-track .fb-toggle-thumb { transform: translateX(18px); }
 .fb-toggle-label { font-size: 0.85rem; color: var(--color-text-muted); }
 
 .fb-body { transition: opacity 0.2s ease; }

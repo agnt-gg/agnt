@@ -339,12 +339,14 @@ export default {
           store.dispatch('tools/fetchTools'),
           store.dispatch('executionHistory/fetchExecutions'),
           store.dispatch('appAuth/fetchConnectedApps'),
-        ]).then(() => {
-          // Recalculate AGNT score with fresh data
-          store.dispatch('userStats/calculateAndStoreAgntScore');
-        }).catch((error) => {
-          console.error('Failed to refresh settings data:', error);
-        });
+        ])
+          .then(() => {
+            // Recalculate AGNT score with fresh data
+            store.dispatch('userStats/calculateAndStoreAgntScore');
+          })
+          .catch((error) => {
+            console.error('Failed to refresh settings data:', error);
+          });
 
         // Start tutorial after 2 seconds
         setTimeout(() => {
@@ -385,7 +387,8 @@ export default {
     return {
       baseScreenRef,
       emit,
-      initializeScreen,      isLoggedIn,
+      initializeScreen,
+      isLoggedIn,
       activeRightPanel,
       activeSection,
       handlePanelAction,
@@ -414,7 +417,7 @@ export default {
 .settings-section {
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  padding: 24px;
+  padding: 0;
   transition: all 0.3s ease;
   border-radius: 16px;
 }

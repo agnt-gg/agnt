@@ -73,9 +73,7 @@
                   <span class="card-name">{{ toTitleCase(skill.name) }}</span>
                   <span class="card-category">
                     {{ skill.category || 'general' }}
-                    <span v-if="skill.is_filesystem" class="source-badge filesystem"
-                      ><i class="fas fa-folder"></i> filesystem</span
-                    >
+                    <span v-if="skill.is_filesystem" class="source-badge filesystem"><i class="fas fa-folder"></i> filesystem</span>
                   </span>
                 </div>
                 <div class="card-actions">
@@ -963,7 +961,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
-  padding: 16px;
+  padding: 16px 0;
   overflow-y: auto;
   flex: 1;
   align-content: start;

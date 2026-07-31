@@ -12,6 +12,7 @@ import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { resumeInflightRuns } from '@/services/runResume.js';
 import { vTooltip } from '@/directives/tooltip.js';
+import { vViewportClamp } from '@/directives/viewportClamp.js';
 
 // Import test utilities in development mode
 if (process.env.NODE_ENV === 'development') {
@@ -31,6 +32,11 @@ app.use(store);
 // The themed replacement for the native `title` attribute. Registered
 // globally so it works in every template without a per-file import.
 app.directive('tooltip', vTooltip);
+
+// Keeps fixed-position popups (tool/provider selectors, command menus) fully
+// on screen regardless of window size — kills the hand-tuned-offset bleed bug
+// class at the root instead of per component.
+app.directive('viewport-clamp', vViewportClamp);
 
 // Initialize the new unified theme system (synchronous, fast)
 store.dispatch('theme/initTheme');
