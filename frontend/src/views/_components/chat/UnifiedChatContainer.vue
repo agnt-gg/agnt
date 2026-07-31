@@ -88,6 +88,11 @@
               <i class="fas fa-wrench"></i>
             </button>
           </Tooltip>
+          <Tooltip v-if="!streaming && showClearAction" text="Clear chat" width="auto">
+            <button @click="onClearChat" class="chat-icon-btn chat-clear-btn" type="button">
+              <i class="fas fa-trash"></i>
+            </button>
+          </Tooltip>
         </template>
         <template v-if="compactInput" #overflow-items="{ close }">
           <button ref="providerBtnRef" @click="onOverflowAction(close, toggleProviderSelector)" class="chat-overflow-item" type="button">
@@ -97,6 +102,10 @@
           <button @click="onOverflowAction(close, toggleToolSelector)" class="chat-overflow-item" type="button">
             <i class="fas fa-wrench"></i>
             <span>Tools</span>
+          </button>
+          <button v-if="showClearAction" @click="onOverflowAction(close, onClearChat)" class="chat-overflow-item chat-clear-item" type="button">
+            <i class="fas fa-trash"></i>
+            <span>Clear chat</span>
           </button>
         </template>
       </ChatInputBar>
@@ -124,6 +133,10 @@
         @close="closeToolSelector"
       />
     </Teleport>
+
+    <!-- Confirm host for the destructive clear action. Lives here, not in the
+         host panel, so every surface gets the same guard. -->
+    <SimpleModal ref="confirmModalRef" />
   </div>
 </template>
 
@@ -138,12 +151,13 @@ import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue'
 import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatProviderSelector.vue';
 import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatToolSelector.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
 export default {
   name: 'UnifiedChatContainer',
-  components: { MessageItem, ProcessingState, QuickActions, ChatInputBar, ChatScrollControls, ChatProviderSelector, ChatToolSelector, Tooltip },
+  components: { MessageItem, ProcessingState, QuickActions, ChatInputBar, ChatScrollControls, ChatProviderSelector, ChatToolSelector, Tooltip, SimpleModal },
   props: {
     channelKey: { type: String, required: true },
     chatType: { type: String, required: true },
@@ -166,6 +180,13 @@ export default {
     showAttachments: { type: Boolean, default: true },
     compactInput: { type: Boolean, default: true }, // sidebar panels are narrow → consolidate buttons
     messageItemMode: { type: String, default: 'compact' }, // 'compact' | 'full'
+    // Clear/reset this conversation. Defaults ON so any surface that embeds a
+    // chat gets the action for free — the workspace chat widget shipped with no
+    // clear button precisely because this lived in each host's header chrome
+    // instead of here, and its host (WidgetFrame) has no chat-aware header.
+    // The six panels that already render their own header button opt out, so a
+    // host that forgets gets a visible duplicate rather than a silent omission.
+    showClearAction: { type: Boolean, default: true },
     onFrontendEvent: { type: Function, default: null },
     autoSuggestions: { type: Boolean, default: true },
     suggestionsContextLabel: { type: String, default: '' },
@@ -175,6 +196,7 @@ export default {
     const store = useStore();
     const chatMessagesRef = ref(null);
     const inputBarRef = ref(null);
+    const confirmModalRef = ref(null);
     const providerBtnRef = ref(null);
     const chatInput = ref('');
     const selectedFiles = ref([]);
@@ -457,8 +479,10 @@ export default {
       return store.getters['chatUnified/getRunningToolsForMessage'](props.channelKey, message.id);
     };
 
-    const initialize = () => {
-      const welcomeMsg = props.welcomeMessage
+    // Single source of truth for the greeting, shared by first-mount init and
+    // by clear — otherwise a cleared channel drifts from a fresh one.
+    const buildWelcomeMessage = () =>
+      props.welcomeMessage
         ? {
             id: `${props.channelKey.replace(':', '-')}-welcome-${Date.now()}`,
             role: 'assistant',
@@ -466,8 +490,33 @@ export default {
             timestamp: Date.now(),
           }
         : null;
-      store.dispatch('chatUnified/initializeChannel', { channelKey: props.channelKey, welcomeMessage: welcomeMsg });
+
+    const initialize = () => {
+      store.dispatch('chatUnified/initializeChannel', { channelKey: props.channelKey, welcomeMessage: buildWelcomeMessage() });
       applyChannelProviderToVuex();
+    };
+
+    const onClearChat = async () => {
+      // No confirm host mounted => no destructive action. Never clear silently.
+      const confirmed = await confirmModalRef.value?.showModal({
+        title: 'Clear chat?',
+        message: 'This will permanently delete the conversation history for this chat.',
+        confirmText: 'Clear',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+
+      await store.dispatch('chatUnified/clearConversation', {
+        channelKey: props.channelKey,
+        welcomeMessage: buildWelcomeMessage(),
+      });
+      // Generated suggestions describe the conversation we just deleted.
+      store.dispatch('chatUnified/setSuggestions', {
+        channelKey: props.channelKey,
+        suggestions: [...props.initialSuggestions],
+      });
+      emit('cleared');
+      focusInput();
     };
 
     // Each chat surface remembers its own provider/model in chatChannelConfig.
@@ -522,7 +571,9 @@ export default {
     return {
       chatMessagesRef,
       inputBarRef,
+      confirmModalRef,
       providerBtnRef,
+      onClearChat,
       chatInput,
       selectedFiles,
       formattedMessages,
@@ -707,6 +758,16 @@ export default {
 @keyframes steering-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Destructive actions read red everywhere else in the app; match that.
+   The overflow rule carries an extra class so it outranks ChatInputBar's own
+   :slotted(.chat-overflow-item) colour regardless of stylesheet order. */
+.chat-clear-btn:hover { color: var(--color-red, #ff6b6b); }
+
+.chat-overflow-menu .chat-overflow-item.chat-clear-item,
+.chat-overflow-menu .chat-overflow-item.chat-clear-item:hover {
+  color: var(--color-red, #ff6b6b);
 }
 
 .unified-chat-container :deep(.message-wrapper) { max-width: 100%; }

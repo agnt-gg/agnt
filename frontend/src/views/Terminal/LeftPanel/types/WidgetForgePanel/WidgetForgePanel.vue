@@ -23,7 +23,9 @@
 
     <!-- Chat container -->
     <div class="panel-content">
+      <!-- This panel renders its own Clear button in the header above. -->
       <UnifiedChatContainer
+        :show-clear-action="false"
         :key="chatChannelKey"
         :channel-key="chatChannelKey"
         :chat-type="chatChatType"
