@@ -61,11 +61,9 @@ export default {
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
 
-    // Only show custom pages (pages without a route, or pages the user created manually)
-    // Route-based pages are handled by navigation buttons
-    const customPages = computed(() => {
-      return allPages.value.filter((p) => !p.route);
-    });
+    // Only show custom pages (pages without a route). Route-based pages
+    // (including workspace:*) are handled by their own UIs, not this switcher.
+    const customPages = computed(() => allPages.value.filter((p) => !p.route));
 
     const contextMenu = ref({ show: false, x: 0, y: 0, page: null });
     const simpleModal = ref(null);

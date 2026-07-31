@@ -234,6 +234,32 @@ export async function fetchRunStatus(conversationId) {
 }
 
 /**
+ * Authoritative server transcript for a conversation (conversation_logs).
+ * Used to hydrate workspace chat history across devices.
+ * @returns {Promise<{conversationId:string, messages:Array, updatedAt?:string}|null>}
+ */
+export async function fetchConversation(conversationId) {
+  if (!conversationId) return null;
+  try {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}/orchestrator/conversations/${encodeURIComponent(conversationId)}`,
+      { headers: authHeaders() },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      console.warn('chatService.fetchConversation:', response.status, response.statusText);
+      return null;
+    }
+    const json = await response.json().catch(() => null);
+    if (!json?.success || !json.conversation) return null;
+    return json.conversation;
+  } catch (e) {
+    console.warn('chatService.fetchConversation failed:', e?.message || e);
+    return null;
+  }
+}
+
+/**
  * Parse a single `event: <name>\ndata: <json>` SSE block.
  * Returns null when the block is empty / malformed.
  */

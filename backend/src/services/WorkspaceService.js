@@ -51,6 +51,11 @@ class WorkspaceService {
           order: row.page_order,
           widgets: Array.isArray(parsed.widgets) ? parsed.widgets : [],
           ai: parsed.ai || null,
+          // channelKey → conversationId so workspace chat transcripts can be
+          // reloaded from conversation_logs on another device.
+          channelConversations: (parsed.channelConversations && typeof parsed.channelConversations === 'object')
+            ? parsed.channelConversations
+            : {},
           updatedAt: parsed.updatedAt || 0,
         };
       });
@@ -101,6 +106,9 @@ class WorkspaceService {
         const layoutData = JSON.stringify({
           widgets: Array.isArray(ws.widgets) ? ws.widgets : [],
           ai: ws.ai && ws.ai.provider ? { provider: ws.ai.provider, model: ws.ai.model || null } : null,
+          channelConversations: (ws.channelConversations && typeof ws.channelConversations === 'object')
+            ? ws.channelConversations
+            : {},
           updatedAt: incomingStamp,
         });
 

@@ -29,7 +29,7 @@ import { STORAGE_KEY, LEGACY_KEY, CHAT_STORAGE_KEY, RECOVERY_FLAG } from './work
 // backed by widget_layouts rows keyed route='workspace:<id>') becomes the
 // synced store, reconciled AFTER mount via hydrateFromServer(). Last-write-wins
 // per workspace on an updatedAt epoch carried inside each workspace object.
-const SYNC_ENABLED = false;
+const SYNC_ENABLED = true;
 
 async function apiFetch(path, opts = {}) {
   // Match the app's auth convention (see chatService.js): JWT from localStorage
@@ -83,6 +83,8 @@ const blankWorkspace = (name = 'Workspace') => ({
   // Per-workspace AI provider override. null = inherit global default.
   // Rides sync (lives inside the workspace object). See workspace-sync package.
   ai: null,
+  // channelKey → conversationId for server-backed chat history sync.
+  channelConversations: {},
 });
 
 // clampInstance lives in gridUtils — ONE implementation shared with the
@@ -441,12 +443,13 @@ let saveTimer = null;
 // Ids deleted locally that must be removed server-side on next push, so a
 // tab closed on one device does not resurrect from another on next sync.
 const deletedIds = new Set();
-// Ids the server is known to have (populated on hydrate). A local workspace
-// that is in this set but ABSENT from a later server response was deleted on
-// another device — distinct from a freshly-created local tab the server has
-// never seen. Lets hydrate apply remote deletions without nuking local unsynced
-// creations.
-const syncedIds = new Set();
+// Ids the server is known to have (populated on hydrate / push, PERSISTED so
+// a reload can still apply remote deletions). A local workspace in this set
+// but ABSENT from a later server response was deleted on another device —
+// distinct from a freshly-created local tab the server has never seen.
+const syncedIds = new Set(
+  Array.isArray(persisted?.syncedIds) ? persisted.syncedIds.filter((id) => typeof id === 'string') : [],
+);
 let pushTimer = null;
 
 /** Debounced best-effort push of the whole set (+ deletions) to the server. */
@@ -460,6 +463,7 @@ function pushAll() {
       workspaces: workspaces.value.map((w, i) => ({
         id: w.id, name: w.name, order: i,
         widgets: w.widgets, ai: w.ai || null,
+        channelConversations: w.channelConversations || {},
         updatedAt: w.updatedAt || stamp,
       })),
       deletedIds: [...deletedIds],
@@ -492,21 +496,43 @@ async function hydrateFromServer() {
   // Apply remote deletions: a local workspace known to the server (synced) but
   // now missing from the server set was deleted on another device. Locally
   // created tabs the server has never seen (not in syncedIds) are preserved.
-  for (const [id] of byId) {
-    if (!remoteIds.has(id) && syncedIds.has(id)) {
+  // Also drop empty local shells that duplicate a remote tab name — guards
+  // against pre-persisted-syncedIds clients re-pushing deleted test/seed tabs.
+  for (const [id, local] of byId) {
+    if (remoteIds.has(id)) continue;
+    const knownSynced = syncedIds.has(id);
+    const emptyDup = (!local.widgets || local.widgets.length === 0)
+      && remote.workspaces.some((r) => r.name === local.name);
+    if (knownSynced || emptyDup) {
       byId.delete(id);
       syncedIds.delete(id);
+      deletedIds.add(id); // ensure pushAll tells the server to keep them gone
     }
   }
 
   for (const r of remote.workspaces) {
     const local = byId.get(r.id);
     if (!local) {
-      byId.set(r.id, { id: r.id, name: r.name, widgets: r.widgets || [],
-        ai: r.ai || null, createdAt: r.updatedAt || Date.now(), updatedAt: r.updatedAt });
+      byId.set(r.id, {
+        id: r.id, name: r.name, widgets: r.widgets || [],
+        ai: r.ai || null,
+        channelConversations: r.channelConversations || {},
+        createdAt: r.updatedAt || Date.now(), updatedAt: r.updatedAt,
+      });
     } else if ((r.updatedAt || 0) > (local.updatedAt || 0)) {
       local.name = r.name; local.widgets = r.widgets || local.widgets;
-      local.ai = r.ai || null; local.updatedAt = r.updatedAt;
+      local.ai = r.ai || null;
+      local.channelConversations = r.channelConversations || local.channelConversations || {};
+      local.updatedAt = r.updatedAt;
+    } else {
+      // Even on a stale remote write, merge any conversation ids we don't have
+      // yet so a new device can still hydrate chat history.
+      if (r.channelConversations && typeof r.channelConversations === 'object') {
+        local.channelConversations = {
+          ...(local.channelConversations || {}),
+          ...r.channelConversations,
+        };
+      }
     }
     syncedIds.add(r.id);
   }
@@ -516,6 +542,18 @@ async function hydrateFromServer() {
   workspaces.value = [...byId.values()];
   if (!workspaces.value.some((w) => w.id === activeId.value)) {
     activeId.value = workspaces.value[0]?.id;
+  }
+  // Persist reconciled set + syncedIds, then push. saveNow includes pushAll so
+  // first-time sync still uploads local-only tabs, and reloads remember which
+  // ids the server has (so remote deletions survive a hard refresh).
+  saveNow();
+  // Chat widgets mount before this async hydrate finishes, so they often miss
+  // channelConversations on first try. Tell them the map is ready so they can
+  // re-load transcripts from conversation_logs.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('agnt:workspace-sync-ready', {
+      detail: { workspaceIds: workspaces.value.map((w) => w.id) },
+    }));
   }
 }
 
@@ -529,6 +567,7 @@ function saveNow() {
       workspaces: workspaces.value,
       activeId: activeId.value,
       autoOpen: autoOpen.value,
+      syncedIds: [...syncedIds],
     }));
     // localStorage stays the offline cache + instant-paint source; the server
     // is updated best-effort. Failures never block local save.
@@ -671,6 +710,36 @@ export function useWorkspaces() {
     ws.ai = ai && ai.provider ? { provider: ai.provider, model: ai.model || null } : null;
     ws.updatedAt = Date.now();
     save();
+  }
+
+  /**
+   * Remember the server conversationId for a workspace chat channel so other
+   * devices can reload the transcript from conversation_logs.
+   * channelKey is e.g. 'workspace:ws_xxx' or 'workspace:ws_xxx:w_yyy'.
+   */
+  function setChannelConversation(channelKey, conversationId) {
+    if (!channelKey || typeof channelKey !== 'string' || !channelKey.startsWith('workspace:')) return;
+    if (!conversationId) return;
+    const rest = channelKey.slice('workspace:'.length);
+    const colon = rest.indexOf(':');
+    const wsId = colon === -1 ? rest : rest.slice(0, colon);
+    const ws = workspaces.value.find((w) => w.id === wsId);
+    if (!ws) return;
+    if (!ws.channelConversations) ws.channelConversations = {};
+    if (ws.channelConversations[channelKey] === conversationId) return;
+    ws.channelConversations[channelKey] = conversationId;
+    ws.updatedAt = Date.now();
+    save();
+  }
+
+  /** Look up a synced conversationId for a workspace channel (any device). */
+  function getChannelConversation(channelKey) {
+    if (!channelKey || typeof channelKey !== 'string' || !channelKey.startsWith('workspace:')) return null;
+    const rest = channelKey.slice('workspace:'.length);
+    const colon = rest.indexOf(':');
+    const wsId = colon === -1 ? rest : rest.slice(0, colon);
+    const ws = workspaces.value.find((w) => w.id === wsId);
+    return ws?.channelConversations?.[channelKey] || null;
   }
 
   /**
@@ -862,6 +931,8 @@ export function useWorkspaces() {
     closeWorkspace,
     renameWorkspace,
     setWorkspaceAi,
+    setChannelConversation,
+    getChannelConversation,
     hydrateFromServer,
     resolveWorkspace,
     addWidget,

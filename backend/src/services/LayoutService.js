@@ -16,8 +16,15 @@ class LayoutService {
     try {
       const userId = this._getUserId(req);
       const pages = await new Promise((resolve, reject) => {
+        // Exclude workspace:* rows — those are owned by WorkspaceService
+        // (/api/workspaces). Including them here leaks General/Coding into the
+        // left-sidebar custom-page list (CanvasScreen customPages filters only
+        // by SECTION_ROUTES, so workspace: routes look "custom").
         db.all(
-          'SELECT * FROM widget_layouts WHERE user_id = ? ORDER BY page_order ASC, created_at ASC',
+          `SELECT * FROM widget_layouts
+           WHERE user_id = ?
+             AND (route IS NULL OR route NOT LIKE 'workspace:%')
+           ORDER BY page_order ASC, created_at ASC`,
           [userId],
           (err, rows) => (err ? reject(err) : resolve(rows || [])),
         );

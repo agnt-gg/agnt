@@ -457,6 +457,24 @@ export default {
       return store.getters['chatUnified/getRunningToolsForMessage'](props.channelKey, message.id);
     };
 
+    /** Workspace history hydrate — may need retries until workspace sync lands. */
+    const hydrateWorkspaceHistory = (attempt = 0) => {
+      if (typeof props.channelKey !== 'string' || !props.channelKey.startsWith('workspace:')) return;
+      store.dispatch('chatUnified/hydrateWorkspaceChannel', { channelKey: props.channelKey })
+        .then((r) => {
+          if (r?.ok && r.reason === 'hydrated') {
+            scrollToBottom(true);
+            return;
+          }
+          // Race: chat mounts before /api/workspaces hydrate writes channelConversations.
+          // Retry a few times so the other browser can pick up the conversation id.
+          if (r?.reason === 'no_conversation_id' && attempt < 5) {
+            setTimeout(() => hydrateWorkspaceHistory(attempt + 1), 300 * (attempt + 1));
+          }
+        })
+        .catch(() => { /* offline / missing log — keep local */ });
+    };
+
     const initialize = () => {
       const welcomeMsg = props.welcomeMessage
         ? {
@@ -468,6 +486,17 @@ export default {
         : null;
       store.dispatch('chatUnified/initializeChannel', { channelKey: props.channelKey, welcomeMessage: welcomeMsg });
       applyChannelProviderToVuex();
+      // Workspace chats: reload transcript from conversation_logs when this
+      // device has no/shorter local history (cross-device sync).
+      hydrateWorkspaceHistory(0);
+    };
+
+    // After workspace layout sync finishes, conversation ids are in localStorage —
+    // re-run hydrate so we don't depend on the mount-time race.
+    const onWorkspaceSyncReady = () => {
+      if (typeof props.channelKey === 'string' && props.channelKey.startsWith('workspace:')) {
+        hydrateWorkspaceHistory(0);
+      }
     };
 
     // Each chat surface remembers its own provider/model in chatChannelConfig.
@@ -493,10 +522,12 @@ export default {
       focusInput();
       scrollToBottom();
       window.addEventListener('keydown', handleKeyboardScroll);
+      window.addEventListener('agnt:workspace-sync-ready', onWorkspaceSyncReady);
     });
 
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', handleKeyboardScroll);
+      window.removeEventListener('agnt:workspace-sync-ready', onWorkspaceSyncReady);
     });
 
     watch(() => props.channelKey, () => {
