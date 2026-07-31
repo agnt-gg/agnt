@@ -1905,10 +1905,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
       if (!tier.primary) {
         // Rebuild client+adapter for the fallback tier.
         normalizedProvider = String(tier.provider).toLowerCase();
-        model = tier.model || model;
+        // Resolve the tier's model. buildProviderChain already fills tier.model
+        // with the provider's default when none was configured, so a null here
+        // means "provider default" — do NOT carry the PRIMARY provider's model
+        // across to a different provider (it would be an invalid model id).
+        model = tier.model || (await import('./ai/ProviderRegistry.js')).getTextModels(normalizedProvider)?.[0] || tier.model;
         client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
         adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
         conversationContext.llmClient = client;
+        // Keep the shared conversation context in sync so tools that resolve
+        // provider/model from context (analyze_image, custom tool execution,
+        // etc.) use the tier that actually served the turn — not the primary.
+        conversationContext.provider = normalizedProvider;
+        conversationContext.normalizedProvider = normalizedProvider;
+        conversationContext.model = model;
         if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex') {
           conversationContext.openai = client;
         }

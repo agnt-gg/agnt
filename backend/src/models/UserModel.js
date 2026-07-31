@@ -1,4 +1,5 @@
 import db from './database/index.js';
+import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
 
 class UserModel {
   static getUserStats(userId) {
@@ -49,36 +50,6 @@ class UserModel {
     });
   }
 
-  // Parse the raw fallback_providers TEXT column (a JSON array of
-  // { provider, model }) into a clean array. Tolerates NULL, empty, and
-  // malformed JSON — all collapse to []. Non-array JSON → [].
-  static _parseFallbackProviders(raw) {
-    if (raw === null || raw === undefined || raw === '') return [];
-    let parsed = raw;
-    if (typeof raw === 'string') {
-      try { parsed = JSON.parse(raw); } catch { return []; }
-    }
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((e) => e && typeof e === 'object' && typeof e.provider === 'string' && e.provider.trim())
-      .map((e) => ({
-        provider: e.provider.trim(),
-        model: typeof e.model === 'string' && e.model.trim() ? e.model.trim() : null,
-      }))
-      .slice(0, 3);
-  }
-
-  // Serialize a fallback list for storage. Accepts an array or a pre-stringified
-  // JSON string; anything invalid becomes '[]'.
-  static _serializeFallbackProviders(value) {
-    if (typeof value === 'string') {
-      // Validate it round-trips as an array; otherwise store '[]'.
-      try { return JSON.stringify(UserModel._parseFallbackProviders(value)); }
-      catch { return '[]'; }
-    }
-    return JSON.stringify(UserModel._parseFallbackProviders(value));
-  }
-
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
@@ -108,7 +79,7 @@ class UserModel {
               // Cross-provider failover chain. Stored as a JSON array of
               // { provider, model } tiers (TEXT). Legacy/NULL rows → [].
               // Malformed JSON is tolerated and treated as no fallbacks.
-              fallbackProviders: UserModel._parseFallbackProviders(row.fallbackProviders),
+              fallbackProviders: parseFallbackChain(row.fallbackProviders),
               // Stored as INTEGER (0/1). NULL (legacy) → false (feature off).
               fallbackEnabled: row.fallbackEnabled === null || row.fallbackEnabled === undefined
                 ? false
@@ -175,7 +146,7 @@ class UserModel {
         // Persist as a JSON string; accept either an array or a pre-stringified
         // value. Invalid input collapses to an empty array so we never write junk.
         fields.push('fallback_providers = ?');
-        params.push(UserModel._serializeFallbackProviders(fallbackProviders));
+        params.push(serializeFallbackChain(fallbackProviders));
       }
 
       if (fallbackEnabled !== undefined) {

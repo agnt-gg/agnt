@@ -301,8 +301,17 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
             runOne: async (tier) => {
               if (!tier.primary) {
                 const np = String(tier.provider).toLowerCase();
+                // Resolve the tier's model; null means "provider default" — never
+                // carry the primary provider's model onto a different provider.
+                const { getTextModels } = await import('./ai/ProviderRegistry.js');
+                const tierModel = tier.model || getTextModels(np)?.[0] || tier.model;
                 client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
-                adapter = await createLlmAdapter(np, client, tier.model || context.model);
+                adapter = await createLlmAdapter(np, client, tierModel);
+                // Keep the shared context in sync so the tool loop + downstream
+                // tools resolve the tier that served the turn, not the primary.
+                context.provider = np;
+                context.normalizedProvider = np;
+                context.model = tierModel;
               }
               return adapter.callStream(loopMessages, tools, contentDeltaCb, context);
             },
