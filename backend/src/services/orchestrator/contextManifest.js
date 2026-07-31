@@ -20,6 +20,21 @@ import { priceItems } from '../../utils/contextEconomics.js';
 
 const hash = (s) => crypto.createHash('sha1').update(String(s ?? '')).digest('hex').slice(0, 12);
 
+/**
+ * Unit marker for every token count leaving the backend.
+ *
+ * Estimates are emitted RAW and carry the `calibration` factor beside them;
+ * the display boundary multiplies once. The marker exists so that conversion
+ * is IDEMPOTENT rather than positional — a payload replayed on reconnect, or
+ * restored from the frontend's localStorage cache, can be re-checked instead
+ * of re-scaled.
+ *
+ * Its ABSENCE is meaningful too: payloads written before this change were
+ * already calibrated, so "no unit" correctly means "do not touch", and the
+ * cached-status migration is a no-op in both directions.
+ */
+export const TOKEN_UNIT_RAW = 'raw';
+
 /** Human-readable provenance for a tool. Mirrors the selection rules in chatConfigs. */
 export const TOOL_REASONS = {
   default: 'default',      // DEFAULT_TOOLS — always present
@@ -42,6 +57,7 @@ export const TOOL_REASONS = {
  * @param {object}   input.contextResult   from manageContext (systemTokens, toolTokens, ...)
  * @param {object}   [input.capResult]     from capToolsToBudget when the surface was capped
  * @param {object}   [input.prior]         previous turn's fingerprints, for cache-prefix stability
+ * @param {number}   [input.calibration]   estimate->real factor for the display boundary
  * @returns {{manifest: object, fingerprints: object}}
  */
 export function buildContextManifest({
@@ -55,6 +71,7 @@ export function buildContextManifest({
   prior = null,
   economics = null,
   cacheTtlMs = null,
+  calibration = 1,
 } = {}) {
   // A per-turn price on every line item. Sections and tool schemas are re-sent
   // on every single request, so their token count is a recurring charge rather
@@ -96,6 +113,12 @@ export function buildContextManifest({
 
   const manifest = {
     mode: toolSurfaceMeta.mode || 'auto',
+    // Raw estimates + the factor to convert them. This event and the
+    // context_status event render side by side in one panel, so they MUST
+    // agree on units; shipping the factor rather than the product is what
+    // makes that structural instead of a convention two files have to keep.
+    unit: TOKEN_UNIT_RAW,
+    calibration: Number.isFinite(calibration) && calibration > 0 ? calibration : 1,
     // null when the model has no pricing metadata. A fabricated $0.00 reads as
     // "this is free", which is a worse answer than "unknown".
     economics: economics || null,

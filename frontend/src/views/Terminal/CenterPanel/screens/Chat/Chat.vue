@@ -237,6 +237,9 @@ import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ContextManifest from './components/ContextManifest.vue';
 import ContextTiles from './components/ContextTiles.vue';
 import { loadContextStatus, saveContextStatus } from '@/services/contextStatusCache.js';
+// The ONE place raw estimates become displayed tokens. Applied on ingest so no
+// component ever sees the calibration factor, and none can apply it twice.
+import { calibrateContextStatus, calibrateManifest } from '@/services/contextCalibration.js';
 import { applyContextStatusRound, markPrefixBreak } from '@/services/turnRounds.js';
 import ActivityFeed from './components/ActivityFeed.vue';
 import GoalProgressWidget from './components/GoalProgressWidget.vue';
@@ -1355,18 +1358,23 @@ export default {
         }
         case 'context_status':
           if (ms) {
+            // Convert to display units FIRST, once, so the round reducer, the
+            // panel and the localStorage cache all hold the same unit. The
+            // backend sends raw estimates plus the calibration factor.
+            const status = calibrateContextStatus(data);
             // A turn is not one request. Folded by a pure reducer so the
             // per-round bookkeeping is verifiable outside this switch.
-            applyContextStatusRound(ms, data);
+            applyContextStatusRound(ms, status);
             ms.contextStatus = {
-              currentTokens: data.currentTokens,
-              tokenLimit: data.tokenLimit,
-              utilizationPercent: data.utilizationPercent,
-              model: data.model,
-              messagesCount: data.messagesCount,
+              unit: status.unit,
+              currentTokens: status.currentTokens,
+              tokenLimit: status.tokenLimit,
+              utilizationPercent: status.utilizationPercent,
+              model: status.model,
+              messagesCount: status.messagesCount,
               // Per-component breakdown so ContextMonitor can render a
               // segmented bar (system / tools / messages / output reserve).
-              breakdown: data.breakdown || null,
+              breakdown: status.breakdown || null,
             };
             // Survive a page reload — otherwise the panel reads "0 / 1.0M"
             // until the user happens to send another message.
@@ -1468,9 +1476,12 @@ export default {
           break;
         case 'context_manifest':
           if (ms) {
-            ms.lastManifest = data || null;
-            if (data?.cacheTtlMs != null) ms.cacheTtlMs = data.cacheTtlMs;
-            markPrefixBreak(ms, data);
+            // Same conversion as context_status, from the same module — these
+            // two events render side by side and must agree on units.
+            const manifest = calibrateManifest(data);
+            ms.lastManifest = manifest || null;
+            if (manifest?.cacheTtlMs != null) ms.cacheTtlMs = manifest.cacheTtlMs;
+            markPrefixBreak(ms, manifest);
           }
           break;
         case 'agent_execution_completed':

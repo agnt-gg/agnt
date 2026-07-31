@@ -18,7 +18,7 @@ import { updateEstimateCalibration, computeResidualDrift } from '../utils/contex
 import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConfigs.js';
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
-import { buildContextManifest } from './orchestrator/contextManifest.js';
+import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
 import { buildEconomics } from '../utils/contextEconomics.js';
 import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
 import {
@@ -1707,30 +1707,44 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // compatibility but now reflect the TRUE per-request input size
     // (system + tools + messages), not just the messages-array estimate.
     // The breakdown fields drive the segmented bar in the frontend.
-    // Report CALIBRATED numbers once real usage has shown the estimator
-    // undercounts — the panel must show what the provider will count, not the
-    // guess. (A user watched "62%" while Anthropic counted 100% and rejected.)
+    //
+    // EVERY TOKEN COUNT BELOW IS RAW (`unit: 'raw'`), and `calibration` is the
+    // factor a display surface must multiply them by to show what the provider
+    // will actually count. The backend used to apply that factor here, per
+    // consumer — this event got it, the context_manifest event did not, and
+    // buildEconomics got calibrated bucket totals while priceItems priced raw
+    // per-item tokens at the same rate. The same panel therefore rendered
+    // "System 37.6k" beside an inventory whose sections summed to 24.9k, and
+    // its "recurring drivers" understated the floor cost they were meant to
+    // explain by exactly the calibration factor.
+    //
+    // A unit conversion applied N times in N places will disagree N ways.
+    // Emit ONE unit, publish the factor, and let the display boundary convert
+    // once (see frontend/src/services/contextCalibration.js).
     const displayCalibration = conversationContext._estimateCalibration > 1
       ? conversationContext._estimateCalibration
       : 1;
-    const scaleForDisplay = (n) => Math.round((n || 0) * displayCalibration);
     conversationContext._turnRound = 1;
     sendEvent('context_status', {
       round: 1,
-      currentTokens: scaleForDisplay(contextResult.totalRequestTokens),
+      unit: TOKEN_UNIT_RAW,
+      calibration: displayCalibration,
+      currentTokens: contextResult.totalRequestTokens,
       tokenLimit: contextResult.contextWindow,
-      utilizationPercent: (scaleForDisplay(contextResult.totalRequestTokens) / contextResult.contextWindow) * 100,
+      utilizationPercent: (contextResult.totalRequestTokens / contextResult.contextWindow) * 100,
       model: model,
       messagesCount: contextResult.messages.length,
       breakdown: {
-        systemTokens: scaleForDisplay(contextResult.systemTokens),
-        toolTokens: scaleForDisplay(contextResult.toolTokens),
-        messagesTokens: scaleForDisplay(contextResult.messagesTokens),
+        systemTokens: contextResult.systemTokens,
+        toolTokens: contextResult.toolTokens,
+        messagesTokens: contextResult.messagesTokens,
+        // NOT an estimate of existing text — a fixed reserve held back from the
+        // window for the reply. Calibration does not apply to it.
         outputBufferTokens: contextResult.outputBufferTokens,
-        totalRequestTokens: scaleForDisplay(contextResult.totalRequestTokens),
+        totalRequestTokens: contextResult.totalRequestTokens,
         calibration: displayCalibration,
-        // Leftover error AFTER calibration. The numbers above are already
-        // corrected, so this is what the panel should call drift.
+        // Leftover error AFTER calibration is applied, i.e. how wrong the
+        // corrected number still is. A ratio, never scaled.
         residualDrift: conversationContext._residualDrift ?? null,
       },
     });
@@ -1741,12 +1755,16 @@ IMPORTANT: The image data is already available in the system context. You don't 
     try {
       const { manifest, fingerprints } = buildContextManifest({
         cacheTtlMs: promptCacheTtlMs(normalizedProvider, model),
+        // RAW tokens, matching the per-item tokens priceItems works from. The
+        // floor cost and the itemized costs that explain it must be computed
+        // from the same unit or they cannot add up.
         economics: buildEconomics({
           provider: normalizedProvider,
           model,
-          systemTokens: scaleForDisplay(contextResult.systemTokens),
-          toolTokens: scaleForDisplay(contextResult.toolTokens),
+          systemTokens: contextResult.systemTokens,
+          toolTokens: contextResult.toolTokens,
         }),
+        calibration: displayCalibration,
         systemPrompt,
         promptSections: conversationContext._promptSections || [],
         toolSchemas: finalToolSchemas,
@@ -3007,24 +3025,28 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       // Emit updated context status so the UI reflects the growing message
       // history after each tool round (user sees tool_result bytes added).
+      // RAW, exactly like the turn-start event above — a turn whose rounds were
+      // reported in different units would draw a step change in the per-round
+      // chart that no request actually made.
       const loopDisplayCal = conversationContext._estimateCalibration > 1
         ? conversationContext._estimateCalibration
         : 1;
-      const loopScale = (n) => Math.round((n || 0) * loopDisplayCal);
       conversationContext._turnRound = (conversationContext._turnRound || 1) + 1;
       sendEvent('context_status', {
         round: conversationContext._turnRound,
-        currentTokens: loopScale(loopContextResult.totalRequestTokens),
+        unit: TOKEN_UNIT_RAW,
+        calibration: loopDisplayCal,
+        currentTokens: loopContextResult.totalRequestTokens,
         tokenLimit: loopContextResult.contextWindow,
-        utilizationPercent: (loopScale(loopContextResult.totalRequestTokens) / loopContextResult.contextWindow) * 100,
+        utilizationPercent: (loopContextResult.totalRequestTokens / loopContextResult.contextWindow) * 100,
         model: model,
         messagesCount: loopContextResult.messages.length,
         breakdown: {
-          systemTokens: loopScale(loopContextResult.systemTokens),
-          toolTokens: loopScale(loopContextResult.toolTokens),
-          messagesTokens: loopScale(loopContextResult.messagesTokens),
+          systemTokens: loopContextResult.systemTokens,
+          toolTokens: loopContextResult.toolTokens,
+          messagesTokens: loopContextResult.messagesTokens,
           outputBufferTokens: loopContextResult.outputBufferTokens,
-          totalRequestTokens: loopScale(loopContextResult.totalRequestTokens),
+          totalRequestTokens: loopContextResult.totalRequestTokens,
           calibration: loopDisplayCal,
           residualDrift: conversationContext._residualDrift ?? null,
         },
