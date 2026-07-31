@@ -93,18 +93,26 @@
       <div class="ws-ai-popover-title">Workspace AI</div>
       <label class="ws-ai-label">
         Provider
-        <select v-model="aiPicker.provider" @change="onAiProviderChange">
-          <option value="">— global default —</option>
-          <option v-for="p in aiProviderOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </select>
+        <CustomSelect
+          :options="aiProviderSelectOptions"
+          :model-value="aiPicker.provider"
+          placeholder="— global default —"
+          :z-index="10050"
+          max-height="220px"
+          @update:model-value="onAiProviderSelected"
+        />
       </label>
       <label class="ws-ai-label" v-if="aiPicker.provider">
         Model
-        <select v-model="aiPicker.model" :disabled="aiModelsLoading || !aiModelOptions.length">
-          <option v-if="aiModelsLoading" value="" disabled>Loading models…</option>
-          <option v-else-if="!aiModelOptions.length" value="" disabled>No models available</option>
-          <option v-for="m in aiModelOptions" :key="modelKey(m)" :value="modelKey(m)">{{ modelLabel(m) }}</option>
-        </select>
+        <CustomSelect
+          :options="aiModelSelectOptions"
+          :model-value="aiPicker.model"
+          :placeholder="aiModelsLoading ? 'Loading models…' : (aiModelSelectOptions.length ? 'Select model' : 'No models available')"
+          :disabled="aiModelsLoading || !aiModelSelectOptions.length"
+          :z-index="10050"
+          max-height="220px"
+          @update:model-value="onAiModelSelected"
+        />
       </label>
       <div class="ws-ai-actions">
         <button
@@ -264,6 +272,7 @@ import { useRoute, useRouter } from 'vue-router';
 import WidgetFrame from '@/canvas/WidgetFrame.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import EmbedScope from './EmbedScope.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
 import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } from '@/canvas/gridUtils.js';
 import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor } from './useWorkspaces.js';
@@ -272,7 +281,7 @@ import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
 export default {
   name: 'WorkspaceScreen',
-  components: { WidgetFrame, CustomWidgetRenderer, EmbedScope },
+  components: { WidgetFrame, CustomWidgetRenderer, EmbedScope, CustomSelect },
   setup() {
     const store = useStore();
     const route = useRoute();
@@ -998,7 +1007,9 @@ export default {
       setWorkspaceAi,
       aiPicker,
       aiProviderOptions,
+      aiProviderSelectOptions,
       aiModelOptions,
+      aiModelSelectOptions,
       aiModelsLoading,
       modelKey,
       modelLabel,
@@ -1006,6 +1017,8 @@ export default {
       aiBadgeTooltip,
       openAiPicker,
       onAiProviderChange,
+      onAiProviderSelected,
+      onAiModelSelected,
       commitWorkspaceAi,
       // tab strip overflow
       tabStripRef,
