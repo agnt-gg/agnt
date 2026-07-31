@@ -87,6 +87,17 @@ const blankWorkspace = (name = 'Workspace') => ({
   channelConversations: {},
 });
 
+/** Stock boot shell: "Workspace 1" (+ optional single chat). Auto-minted when
+ *  localStorage is empty — must NOT re-push after the server has real tabs. */
+function isStockBlank(ws) {
+  if (!ws || typeof ws.name !== 'string') return false;
+  if (!/^Workspace\s+\d+$/i.test(ws.name.trim())) return false;
+  const widgets = Array.isArray(ws.widgets) ? ws.widgets : [];
+  if (widgets.length > 1) return false;
+  if (widgets.length === 1 && widgets[0]?.widgetId !== 'workspace-chat') return false;
+  return true;
+}
+
 // clampInstance lives in gridUtils — ONE implementation shared with the
 // custom-page store, so both surfaces enforce the identical grid invariant
 // (and a fix to one is a fix to both).
@@ -451,10 +462,13 @@ const syncedIds = new Set(
   Array.isArray(persisted?.syncedIds) ? persisted.syncedIds.filter((id) => typeof id === 'string') : [],
 );
 let pushTimer = null;
+// With sync on, hold the first push until hydrate finishes so a boot-time
+// "Workspace 1" shell cannot race ahead of the remote set and re-upload.
+let allowPush = !SYNC_ENABLED;
 
 /** Debounced best-effort push of the whole set (+ deletions) to the server. */
 function pushAll() {
-  if (!SYNC_ENABLED) return;
+  if (!SYNC_ENABLED || !allowPush) return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     pushTimer = null;
@@ -488,22 +502,31 @@ async function hydrateFromServer() {
   if (!SYNC_ENABLED) return;
   let remote;
   try { remote = await apiFetch('', { method: 'GET' }); }
-  catch (e) { console.warn('[useWorkspaces] hydrate skipped:', e.message); return; }
-  if (!remote || !Array.isArray(remote.workspaces)) return;
+  catch (e) {
+    console.warn('[useWorkspaces] hydrate skipped:', e.message);
+    allowPush = true; // offline: allow later local saves to push
+    return;
+  }
+  if (!remote || !Array.isArray(remote.workspaces)) {
+    allowPush = true;
+    return;
+  }
   const remoteIds = new Set(remote.workspaces.map((r) => r.id));
   const byId = new Map(workspaces.value.map((w) => [w.id, w]));
 
   // Apply remote deletions: a local workspace known to the server (synced) but
   // now missing from the server set was deleted on another device. Locally
-  // created tabs the server has never seen (not in syncedIds) are preserved.
-  // Also drop empty local shells that duplicate a remote tab name — guards
-  // against pre-persisted-syncedIds clients re-pushing deleted test/seed tabs.
+  // created tabs the server has never seen (not in syncedIds) are preserved —
+  // EXCEPT stock "Workspace 1" boot shells (single default chat), which must
+  // not resurrect after an intentional server delete / multi-device hydrate.
+  // Also drop empty local shells that duplicate a remote tab name.
   for (const [id, local] of byId) {
     if (remoteIds.has(id)) continue;
     const knownSynced = syncedIds.has(id);
     const emptyDup = (!local.widgets || local.widgets.length === 0)
       && remote.workspaces.some((r) => r.name === local.name);
-    if (knownSynced || emptyDup) {
+    const stockBlank = isStockBlank(local) && remote.workspaces.length > 0;
+    if (knownSynced || emptyDup || stockBlank) {
       byId.delete(id);
       syncedIds.delete(id);
       deletedIds.add(id); // ensure pushAll tells the server to keep them gone
@@ -538,14 +561,17 @@ async function hydrateFromServer() {
   }
 
   // Never leave zero tabs.
-  if (byId.size === 0) return;
+  if (byId.size === 0) {
+    allowPush = true;
+    return;
+  }
   workspaces.value = [...byId.values()];
   if (!workspaces.value.some((w) => w.id === activeId.value)) {
     activeId.value = workspaces.value[0]?.id;
   }
-  // Persist reconciled set + syncedIds, then push. saveNow includes pushAll so
-  // first-time sync still uploads local-only tabs, and reloads remember which
-  // ids the server has (so remote deletions survive a hard refresh).
+  // Persist reconciled set + syncedIds, then push. First push only after
+  // hydrate so boot shells never race ahead of the remote set.
+  allowPush = true;
   saveNow();
   // Chat widgets mount before this async hydrate finishes, so they often miss
   // channelConversations on first try. Tell them the map is ready so they can
@@ -570,8 +596,9 @@ function saveNow() {
       syncedIds: [...syncedIds],
     }));
     // localStorage stays the offline cache + instant-paint source; the server
-    // is updated best-effort. Failures never block local save.
-    if (SYNC_ENABLED) pushAll();
+    // is updated best-effort. Failures never block local save. With sync on,
+    // allowPush stays false until hydrate finishes (or fails).
+    if (SYNC_ENABLED && allowPush) pushAll();
     return true;
   } catch (e) {
     console.warn('[useWorkspaces] failed to persist:', e);
