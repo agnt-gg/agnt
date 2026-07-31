@@ -8,6 +8,25 @@ import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 
+// Resolve a per-workspace AI override from persisted workspace state, given a
+// chat channel key. Returns { provider, model } or null. Reads the same
+// localStorage the Workspaces page owns; falls back to null on any parse issue
+// (→ inherit global/channel default). A named provider that isn't configured
+// on THIS device is left as-is here; the LLM client factory / failover handles
+// availability, and callers may still fall back to channelPM.
+function resolveWorkspaceAiForChannel(channelKey) {
+  if (typeof channelKey !== 'string' || !channelKey.startsWith('workspace:')) return null;
+  const wsId = channelKey.slice('workspace:'.length);
+  try {
+    const raw = localStorage.getItem('agnt:workspaces:v2');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ws = (parsed?.workspaces || []).find((w) => w.id === wsId);
+    if (ws?.ai?.provider) return { provider: ws.ai.provider, model: ws.ai.model || null };
+  } catch (_) { /* inherit default */ }
+  return null;
+}
+
 const STORAGE_KEY = 'unifiedChatConversations';
 const LEGACY_KEYS = {
   agent: 'agentChatConversations',
@@ -659,8 +678,14 @@ export default {
       // saved-agent chat, every workflow/tool/widget/artifact chat) carries
       // its own remembered config. See chatChannelConfig.js.
       const channelPM = resolveChannelProviderModel(channelKey, rootState.aiProvider);
-      const resolvedProvider = provider || channelPM.provider;
-      const resolvedModel = model || channelPM.model;
+      // Per-workspace AI override: a workspace chat channel is keyed
+      // 'workspace:<id>'. If that workspace declares its own ai provider, it
+      // wins for this turn only and must NOT be persisted as the global
+      // default (see backend persistDefault guard) — otherwise using one tab
+      // would silently rewrite the account-wide provider.
+      const wsAi = resolveWorkspaceAiForChannel(channelKey);
+      const resolvedProvider = provider || wsAi?.provider || channelPM.provider;
+      const resolvedModel = model || (wsAi ? (wsAi.model || channelPM.model) : channelPM.model);
       const resolvedEnabledTools = resolveChannelEnabledTools(channelKey);
       const resolvedReasoningValue = rootState.aiProvider?.reasoningValue || 'default';
       const resolvedReasoningEnabled = rootState.aiProvider?.reasoningEnabled || false;
@@ -671,6 +696,9 @@ export default {
           messages: history,
           provider: resolvedProvider,
           model: resolvedModel,
+          // Turn-only when a workspace override is active: do not write this
+          // provider back to the user's account-wide default.
+          persistDefault: wsAi ? false : undefined,
           conversationId: state.conversations[channelKey]?.conversationId || null,
           pageContext,
           pageState,

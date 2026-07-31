@@ -255,6 +255,7 @@ export default {
       bringToFront,
       setAutoOpen,
       save,
+      hydrateFromServer,
     } = useWorkspaces();
 
     // Window navigation state, surfaced to the template.
@@ -809,6 +810,10 @@ export default {
         if (tabStripRef.value) tabObserver.observe(tabStripRef.value);
       }
       nextTick(scrollActiveTabIntoView);
+      // Cross-device sync: reconcile with the server AFTER mount. No-op unless
+      // SYNC_ENABLED (useWorkspaces.js). Never at import — the sync boot mints
+      // the workspace conversation id and must stay synchronous.
+      hydrateFromServer?.();
     });
 
     // The grid element only exists in split mode — re-observe when it appears.

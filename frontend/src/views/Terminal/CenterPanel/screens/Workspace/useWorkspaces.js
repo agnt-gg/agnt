@@ -24,6 +24,23 @@ import { findEmptySlot, clampInstance, GRID_COLS, GRID_ROWS } from '@/canvas/gri
 
 import { STORAGE_KEY, LEGACY_KEY, CHAT_STORAGE_KEY, RECOVERY_FLAG } from './workspaceStorage.js';
 
+// Cross-device workspace sync. OFF by default: localStorage stays the source
+// of truth and boot is unchanged. When true, the server (/api/workspaces,
+// backed by widget_layouts rows keyed route='workspace:<id>') becomes the
+// synced store, reconciled AFTER mount via hydrateFromServer(). Last-write-wins
+// per workspace on an updatedAt epoch carried inside each workspace object.
+const SYNC_ENABLED = false;
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(`/api/workspaces${path}`, {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`workspaces api ${res.status}`);
+  return res.status === 204 ? null : res.json();
+}
+
 // Re-exported for existing importers; new callers that want a key WITHOUT
 // booting this singleton should import from './workspaceStorage.js' directly.
 export { STORAGE_KEY };
@@ -56,6 +73,9 @@ const blankWorkspace = (name = 'Workspace') => ({
     collapsed: false, visible: true, zIndex: 1,
   })],
   createdAt: Date.now(),
+  // Per-workspace AI provider override. null = inherit global default.
+  // Rides sync (lives inside the workspace object). See workspace-sync package.
+  ai: null,
 });
 
 // clampInstance lives in gridUtils — ONE implementation shared with the
@@ -411,6 +431,64 @@ const autoOpen = ref(persisted?.autoOpen !== false);
 
 let saveTimer = null;
 
+// Ids deleted locally that must be removed server-side on next push, so a
+// tab closed on one device does not resurrect from another on next sync.
+const deletedIds = new Set();
+let pushTimer = null;
+
+/** Debounced best-effort push of the whole set (+ deletions) to the server. */
+function pushAll() {
+  if (!SYNC_ENABLED) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    pushTimer = null;
+    const stamp = Date.now();
+    const payload = {
+      workspaces: workspaces.value.map((w, i) => ({
+        id: w.id, name: w.name, order: i,
+        widgets: w.widgets, ai: w.ai || null,
+        updatedAt: w.updatedAt || stamp,
+      })),
+      deletedIds: [...deletedIds],
+    };
+    try {
+      await apiFetch('', { method: 'PUT', body: JSON.stringify(payload) });
+      deletedIds.clear();
+    } catch (e) {
+      // Offline / server down: keep local state; retry on next save.
+      console.warn('[useWorkspaces] sync push failed:', e.message);
+    }
+  }, 400);
+}
+
+/**
+ * Reconcile local workspaces with the server AFTER mount (never at import —
+ * the sync boot mints the conversation id and must stay synchronous).
+ * Last-write-wins per workspace on updatedAt.
+ */
+async function hydrateFromServer() {
+  if (!SYNC_ENABLED) return;
+  let remote;
+  try { remote = await apiFetch('', { method: 'GET' }); }
+  catch (e) { console.warn('[useWorkspaces] hydrate skipped:', e.message); return; }
+  if (!remote || !Array.isArray(remote.workspaces)) return;
+  const byId = new Map(workspaces.value.map((w) => [w.id, w]));
+  for (const r of remote.workspaces) {
+    const local = byId.get(r.id);
+    if (!local) {
+      byId.set(r.id, { id: r.id, name: r.name, widgets: r.widgets || [],
+        ai: r.ai || null, createdAt: r.updatedAt || Date.now(), updatedAt: r.updatedAt });
+    } else if ((r.updatedAt || 0) > (local.updatedAt || 0)) {
+      local.name = r.name; local.widgets = r.widgets || local.widgets;
+      local.ai = r.ai || null; local.updatedAt = r.updatedAt;
+    }
+  }
+  workspaces.value = [...byId.values()];
+  if (!workspaces.value.some((w) => w.id === activeId.value)) {
+    activeId.value = workspaces.value[0]?.id;
+  }
+}
+
 function saveNow() {
   if (saveTimer) {
     clearTimeout(saveTimer);
@@ -422,6 +500,9 @@ function saveNow() {
       activeId: activeId.value,
       autoOpen: autoOpen.value,
     }));
+    // localStorage stays the offline cache + instant-paint source; the server
+    // is updated best-effort. Failures never block local save.
+    if (SYNC_ENABLED) pushAll();
     return true;
   } catch (e) {
     console.warn('[useWorkspaces] failed to persist:', e);
@@ -532,6 +613,8 @@ export function useWorkspaces() {
     if (workspaces.value.length <= 1) return;
     const idx = workspaces.value.findIndex((w) => w.id === id);
     if (idx === -1) return;
+    // Record for server-side removal so it does not resurrect from another device.
+    if (SYNC_ENABLED) deletedIds.add(id);
     workspaces.value.splice(idx, 1);
     if (activeId.value === id) {
       activeId.value = workspaces.value[Math.min(idx, workspaces.value.length - 1)].id;
@@ -543,6 +626,20 @@ export function useWorkspaces() {
     const ws = workspaces.value.find((w) => w.id === id);
     if (!ws || !name) return;
     ws.name = name;
+    ws.updatedAt = Date.now();
+    save();
+  }
+
+  /**
+   * Set (or clear) the per-workspace AI provider override.
+   * Pass ai = { provider, model } to override; ai = null to inherit the
+   * global default. Persisted with the workspace, so it also rides sync.
+   */
+  function setWorkspaceAi(id, ai) {
+    const ws = workspaces.value.find((w) => w.id === id);
+    if (!ws) return;
+    ws.ai = ai && ai.provider ? { provider: ai.provider, model: ai.model || null } : null;
+    ws.updatedAt = Date.now();
     save();
   }
 
@@ -734,6 +831,8 @@ export function useWorkspaces() {
     createWorkspace,
     closeWorkspace,
     renameWorkspace,
+    setWorkspaceAi,
+    hydrateFromServer,
     resolveWorkspace,
     addWidget,
     removeWidget,
