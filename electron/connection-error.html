@@ -1,9 +1,25 @@
 <!DOCTYPE html>
+<!--
+  Remote-connection STATUS page (two phases: connecting → failed).
+
+  It used to be a failure page only, shown after the health poll gave up. That
+  was the wrong shape: until it appeared, the app had no window at all, so an
+  unresponsive server looked exactly like a hang (measured: up to 366s of
+  nothing). Now main.js shows this page the instant remote mode is detected and
+  streams `connection:state` into it, so:
+
+    - there is always a window, from t≈0
+    - the way out is on screen BEFORE anything has failed
+    - "Use this computer" is per-session and does NOT rewrite connection.json,
+      so a transient outage cannot silently cost the user their remote setting
+
+  The filename is historical; it serves both phases.
+-->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AGNT — can't reach that server</title>
+    <title>AGNT — connecting</title>
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
@@ -15,27 +31,38 @@
         padding: 32px;
       }
       .card {
-        width: 100%; max-width: 440px;
+        width: 100%; max-width: 460px;
         background: #1b1b2b; border: 1px solid #2e3350; border-radius: 16px;
         padding: 32px;
       }
       .mark {
         width: 56px; height: 56px; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
-        background: rgba(255, 215, 0, 0.14); color: #ffd700;
         font-size: 26px; margin-bottom: 20px;
       }
+      .mark.wait { background: rgba(25, 239, 131, 0.12); color: #19ef83; }
+      .mark.bad  { background: rgba(255, 215, 0, 0.14); color: #ffd700; }
+      .spinner {
+        width: 22px; height: 22px; border-radius: 50%;
+        border: 2px solid rgba(25, 239, 131, 0.25); border-top-color: #19ef83;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
       h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
       p { margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #8b93a7; }
       code {
-        display: block; padding: 10px 12px; margin-bottom: 20px;
+        display: block; padding: 10px 12px; margin-bottom: 8px;
         background: #12121c; border: 1px solid #2e3350; border-radius: 8px;
         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
         color: #e0e0e0; word-break: break-all;
       }
+      .meta {
+        margin: 0 0 20px; font-size: 12px; color: #6b7285;
+        font-variant-numeric: tabular-nums; min-height: 18px;
+      }
       .row { display: flex; gap: 8px; flex-wrap: wrap; }
       button {
-        flex: 1 1 auto; min-height: 42px; min-width: 120px;
+        flex: 1 1 auto; min-height: 42px; min-width: 130px;
         padding: 10px 18px; border-radius: 10px; border: 1px solid #2e3350;
         background: #12121c; color: #e0e0e0;
         font-family: inherit; font-size: 14px; cursor: pointer;
@@ -43,55 +70,116 @@
       button:hover:not(:disabled) { border-color: #19ef83; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
       button.primary { background: #19ef83; border-color: #19ef83; color: #04120a; font-weight: 600; }
+      .linkrow { margin: 14px 0 0; text-align: center; }
+      .link {
+        background: none; border: none; padding: 6px; min-height: 32px; min-width: 0;
+        color: #6b7285; font-size: 12px; text-decoration: underline; cursor: pointer;
+      }
+      .link:hover { color: #8b93a7; border-color: transparent; }
       .hint { margin: 18px 0 0; font-size: 12px; color: #6b7285; line-height: 1.6; }
       .hint b { color: #8b93a7; font-weight: 600; }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
     <div class="card">
-      <div class="mark">!</div>
-      <h1>Can't reach that AGNT server</h1>
-      <p>
-        The desktop app is set to use a remote backend, but it didn't respond.
-        Check the machine is on, AGNT is running there, and that phone/LAN access
-        is enabled in its settings.
+      <div class="mark wait" id="mark"><div class="spinner"></div></div>
+
+      <h1 id="title">Connecting to your AGNT server…</h1>
+      <p id="blurb">
+        This app is set to use a remote backend. Getting hold of it now.
       </p>
+
       <code id="url">—</code>
+      <p class="meta" id="meta"></p>
 
       <div class="row">
-        <button class="primary" id="retry">Try again</button>
+        <button class="primary" id="retry" hidden>Try again</button>
         <button id="local">Use this computer</button>
       </div>
 
-      <p class="hint">
-        <b>Use this computer</b> switches back to a local backend and restarts the
-        app. Your remote data is untouched — you can point back at it any time from
-        <b>Settings → Connection</b>.
+      <div class="linkrow">
+        <button class="link" id="always">Always use this computer</button>
+      </div>
+
+      <p class="hint" id="hint">
+        <b>Use this computer</b> starts a backend here just for this session and leaves
+        your remote setting alone — the next launch will try the server again. Change it
+        for good in <b>Settings → Connection</b>.
       </p>
     </div>
 
     <script>
       // The preload rides the BrowserWindow, not the origin, so window.electron
-      // is available here even though the app never reached the remote frontend.
-      // That is the whole reason this page can offer a way out.
+      // exists here even though the app never reached the remote frontend. That
+      // is the entire reason this page can offer a way out.
       const api = window.electron?.connection;
-      const urlEl = document.getElementById('url');
-      const retryBtn = document.getElementById('retry');
-      const localBtn = document.getElementById('local');
+      const el = (id) => document.getElementById(id);
+      const mark = el('mark');
+      const title = el('title');
+      const blurb = el('blurb');
+      const meta = el('meta');
+      const retryBtn = el('retry');
+      const localBtn = el('local');
+      const alwaysBtn = el('always');
 
-      api?.get?.().then((cfg) => {
-        urlEl.textContent = cfg?.url || 'unknown';
-      });
+      let phase = 'connecting';
+
+      const setBusy = (btn, label) => {
+        btn.disabled = true;
+        btn.textContent = label;
+      };
+
+      function render(state) {
+        if (state.url) el('url').textContent = state.url;
+        phase = state.phase || phase;
+
+        if (phase === 'failed') {
+          mark.className = 'mark bad';
+          mark.textContent = '!';
+          title.textContent = "Can't reach that AGNT server";
+          blurb.textContent =
+            state.detail ||
+            'It did not respond. Check the machine is on, that AGNT is running there, and that LAN access is enabled in its settings.';
+          meta.textContent = state.why ? `Gave up: ${state.why}` : '';
+          retryBtn.hidden = false;
+          retryBtn.disabled = false;
+          retryBtn.textContent = 'Try again';
+          localBtn.disabled = false;
+          localBtn.textContent = 'Use this computer';
+          return;
+        }
+
+        mark.className = 'mark wait';
+        mark.innerHTML = '<div class="spinner"></div>';
+        title.textContent = 'Connecting to your AGNT server…';
+        blurb.textContent = 'This app is set to use a remote backend. Getting hold of it now.';
+        retryBtn.hidden = true;
+        // Deliberately live: "attempt 3, 5s" is the difference between a user
+        // seeing progress and a user seeing a hang.
+        const secs = Math.round((state.elapsedMs || 0) / 1000);
+        meta.textContent = state.attempt ? `Attempt ${state.attempt} · ${secs}s` : '';
+      }
+
+      api?.onState?.(render);
+      api?.get?.().then((cfg) => render({ phase: cfg?.phase || 'connecting', url: cfg?.url }));
 
       retryBtn.addEventListener('click', () => {
-        retryBtn.disabled = true;
-        retryBtn.textContent = 'Reconnecting…';
-        api?.relaunch?.();
+        setBusy(retryBtn, 'Reconnecting…');
+        localBtn.disabled = true;
+        // In-place: re-polls and loads the app on success. No process restart,
+        // which matters when the remote drops mid-session.
+        api?.retry?.();
       });
 
-      localBtn.addEventListener('click', async () => {
-        localBtn.disabled = true;
-        localBtn.textContent = 'Switching…';
+      localBtn.addEventListener('click', () => {
+        setBusy(localBtn, 'Starting…');
+        retryBtn.disabled = true;
+        api?.useLocalNow?.();
+      });
+
+      alwaysBtn.addEventListener('click', async () => {
+        setBusy(alwaysBtn, 'Saving…');
         await api?.set?.({ mode: 'local' });
         api?.relaunch?.();
       });

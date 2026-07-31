@@ -21,6 +21,18 @@
         <span><code>AGNT_REMOTE_URL</code> is set in the environment and overrides this setting.</span>
       </p>
 
+      <!-- The app is configured for a remote backend but is actually running on
+           this machine. Saying so is the whole point: the alternative is a UI
+           that claims "remote" while the user looks at local data. -->
+      <p v-if="fellBack" class="conn-note conn-note-warn">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>
+          Couldn't reach <code>{{ savedUrl }}</code>, so AGNT is running on this computer for
+          this session. Your remote setting is unchanged — it will be tried again next launch.
+          <button class="conn-inline-btn" :disabled="busy" @click="onRetry">Reconnect now</button>
+        </span>
+      </p>
+
       <div class="conn-options" :class="{ disabled: envPinned }">
         <label class="conn-opt" :class="{ on: mode === 'local' }">
           <input type="radio" value="local" v-model="mode" :disabled="envPinned || busy" />
@@ -69,6 +81,18 @@
           <i class="fas fa-exclamation-triangle"></i>
           <span>Plain <code>http</code> over a network — anyone on it can read this traffic. Fine on a trusted LAN.</span>
         </p>
+
+        <label class="conn-check">
+          <input type="checkbox" v-model="fallbackToLocal" :disabled="envPinned || busy" />
+          <span class="conn-check-body">
+            <span class="conn-check-title">If the server can't be reached, use this computer</span>
+            <span class="conn-check-desc">
+              Starts a local backend for that session instead of showing an error. Off by
+              default: a local backend is a different database, so AGNT asks first rather
+              than silently showing you different data.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div class="conn-actions">
@@ -91,7 +115,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 
 const api = typeof window !== 'undefined' ? window.electron?.connection : null;
 const available = !!api;
@@ -100,13 +124,21 @@ const mode = ref('local');
 const url = ref('');
 const savedMode = ref('local');
 const savedUrl = ref('');
+const fallbackToLocal = ref(false);
+const savedFallback = ref(false);
+const fellBack = ref(false);
 const envPinned = ref(false);
 const busy = ref(false);
 const testing = ref(false);
 const test = ref(null);
 const error = ref('');
 
-const dirty = computed(() => mode.value !== savedMode.value || (mode.value === 'remote' && url.value.trim() !== savedUrl.value));
+const dirty = computed(
+  () =>
+    mode.value !== savedMode.value ||
+    (mode.value === 'remote' &&
+      (url.value.trim() !== savedUrl.value || fallbackToLocal.value !== savedFallback.value))
+);
 
 const canSave = computed(() => {
   if (!available || envPinned.value || busy.value) return false;
@@ -133,6 +165,10 @@ async function refresh() {
     savedMode.value = cfg.mode;
     url.value = cfg.url || '';
     savedUrl.value = cfg.url || '';
+    fallbackToLocal.value = !!cfg.fallbackToLocal;
+    savedFallback.value = !!cfg.fallbackToLocal;
+    // `fellBack` is runtime truth, not configuration: mode is still 'remote'.
+    fellBack.value = !!cfg.fellBack;
     envPinned.value = !!cfg.envPinned;
     if (cfg.invalid) error.value = cfg.invalid;
   } catch (e) {
@@ -159,7 +195,10 @@ async function onSave() {
   busy.value = true;
   error.value = '';
   try {
-    const next = mode.value === 'remote' ? { mode: 'remote', url: url.value.trim() } : { mode: 'local' };
+    const next =
+      mode.value === 'remote'
+        ? { mode: 'remote', url: url.value.trim(), fallbackToLocal: fallbackToLocal.value }
+        : { mode: 'local' };
     const res = await api.set(next);
     if (!res?.ok) {
       error.value = res?.error || 'Could not save.';
@@ -175,7 +214,27 @@ async function onSave() {
   }
 }
 
-onMounted(refresh);
+/** Re-poll the configured remote in place — no relaunch. */
+async function onRetry() {
+  if (!api?.retry) return;
+  busy.value = true;
+  try {
+    await api.retry();
+  } finally {
+    busy.value = false;
+  }
+}
+
+let stopState = null;
+onMounted(() => {
+  refresh();
+  // Keeps the banner honest if a fallback happens (or is undone) while this
+  // screen is open.
+  stopState = api?.onState?.((s) => {
+    if (typeof s?.fellBack === 'boolean') fellBack.value = s.fellBack;
+  });
+});
+onBeforeUnmount(() => stopState?.());
 </script>
 
 <style scoped>
@@ -353,6 +412,54 @@ onMounted(refresh);
 .conn-note-error {
   border-color: color-mix(in srgb, #e53d8f 50%, transparent);
   color: #e53d8f;
+}
+
+.conn-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-dull-navy, #2e3350);
+  background: var(--color-darker-1, #1b1b2b);
+  cursor: pointer;
+}
+.conn-check input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--color-primary, #19ef83);
+}
+.conn-check-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.conn-check-title {
+  font-size: 13px;
+  color: var(--color-text, #e0e0e0);
+}
+.conn-check-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-light-med-navy, #8b93a7);
+}
+
+.conn-inline-btn {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.conn-inline-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .conn-fine {

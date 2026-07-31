@@ -41,7 +41,20 @@ import path from 'path';
 
 export const CONFIG_FILENAME = 'connection.json';
 
-/** @typedef {{ mode: 'local'|'remote', url: string|null, source: 'env'|'file'|'default', invalid?: string }} Connection */
+/**
+ * @typedef {{
+ *   mode: 'local'|'remote',
+ *   url: string|null,
+ *   source: 'env'|'file'|'default',
+ *   invalid?: string,
+ *   fallbackToLocal?: true
+ * }} Connection
+ *
+ * `fallbackToLocal` is OPTIONAL AND ONLY EVER PRESENT WHEN TRUE. Two reasons:
+ * a default-off boolean that is absent from the object cannot be misread as an
+ * enabled feature by any call site that forgets to check, and every existing
+ * strict-equality assertion about a resolved connection stays valid.
+ */
 
 const LOCAL = Object.freeze({ mode: 'local', url: null, source: 'default' });
 
@@ -127,7 +140,15 @@ export function readConfig(userDataPath) {
   if (!check.ok) {
     return { mode: 'local', url: null, source: 'default', invalid: `saved URL rejected: ${check.reason}` };
   }
-  return { mode: 'remote', url: check.url, source: 'file' };
+  return {
+    mode: 'remote',
+    url: check.url,
+    source: 'file',
+    // `=== true` rather than truthiness: this decides whether the app may point
+    // itself at a DIFFERENT DATABASE without asking, so a stray string or 1 in
+    // a hand-edited config must not enable it.
+    ...(parsed.fallbackToLocal === true ? { fallbackToLocal: true } : {}),
+  };
 }
 
 /**
@@ -135,7 +156,7 @@ export function readConfig(userDataPath) {
  * leave a half-file that silently reverts the user to local on next boot.
  *
  * @param {string} userDataPath
- * @param {{ mode: 'local'|'remote', url?: string }} next
+ * @param {{ mode: 'local'|'remote', url?: string, fallbackToLocal?: boolean }} next
  * @returns {{ ok: true, config: Connection } | { ok: false, reason: string }}
  */
 export function writeConfig(userDataPath, next) {
@@ -149,8 +170,17 @@ export function writeConfig(userDataPath, next) {
   const check = normalizeRemoteUrl(next.url);
   if (!check.ok) return { ok: false, reason: check.reason };
 
-  atomicWrite(configPath(userDataPath), { mode: 'remote', url: check.url, updatedAt: new Date().toISOString() });
-  return { ok: true, config: { mode: 'remote', url: check.url, source: 'file' } };
+  const fallbackToLocal = next.fallbackToLocal === true;
+  atomicWrite(configPath(userDataPath), {
+    mode: 'remote',
+    url: check.url,
+    fallbackToLocal,
+    updatedAt: new Date().toISOString(),
+  });
+  return {
+    ok: true,
+    config: { mode: 'remote', url: check.url, source: 'file', ...(fallbackToLocal ? { fallbackToLocal: true } : {}) },
+  };
 }
 
 function atomicWrite(target, payload) {

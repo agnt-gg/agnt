@@ -7,8 +7,8 @@ import { Readable } from 'stream';
 
 // DEBUG: Show which main.js is being loaded
 console.log('=== LOADING MAIN.JS FROM:', import.meta.url, '===');
-import http from 'http'; // Import http to poll the backend
-import https from 'https'; // Import https for update checks
+// http/https are no longer imported here: the only consumer was the inline
+// health poller, which now lives in electron/backendHealth.js.
 import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,6 +28,7 @@ import {
   writeConfig as writeConnectionConfig,
   normalizeRemoteUrl,
 } from './electron/connectionConfig.js';
+import { waitForBackend as pollBackendHealth } from './electron/backendHealth.js';
 
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
@@ -152,29 +153,160 @@ try {
 }
 const isRemoteMode = () => connection.mode === 'remote' && Boolean(connection.url);
 
-// Polling options for the startup health check. Local mode gets {} — the exact
-// behaviour it has today. Remote mode is bounded and, on failure, shows a page
-// offering retry / switch-to-local.
-//
-// It deliberately does NOT fall back to a local backend: that would silently
-// boot a second, empty database and present it as the user's instance, which is
-// the precise "where did all my agents go?" confusion this feature exists to
-// remove. Fail loud, offer a way out.
-function remoteWaitOptions() {
-  if (!isRemoteMode()) return {};
-  return {
+// ---------------------------------------------------------------------------
+// RUNTIME connection state (as opposed to CONFIGURED intent)
+// ---------------------------------------------------------------------------
+// `connection` is what the user asked for and never changes at runtime.
+// `activeMode` is what the app is actually talking to right now, which can
+// differ after a per-session fallback. Keeping the two separate is what lets
+// the UI say "configured for remote, currently running on this computer"
+// instead of quietly rewriting the setting behind the user's back.
+let activeMode = connection.mode;
+let fellBack = false;
+let connectPhase = isRemoteMode() ? 'connecting' : 'ready';
+let healthPoll = null;
+let localBackendSpawned = false;
+
+const isRemoteActive = () => activeMode === 'remote' && Boolean(connection.url);
+const statusPagePath = () => path.join(__dirname, 'electron', 'connection-error.html');
+const localBackendUrl = () => `http://localhost:${process.env.PORT || 3333}`;
+
+/** Fork the local backend at most once per launch. */
+function ensureLocalBackend() {
+  if (localBackendSpawned) return;
+  localBackendSpawned = true;
+  startBackend();
+}
+
+function pushConnectionState(patch = {}) {
+  notifyRenderer('connection:state', {
+    phase: connectPhase,
+    url: connection.url,
+    activeMode,
+    fellBack,
+    ...patch,
+  });
+}
+
+/**
+ * Put the connection status page on screen, creating the window if needed.
+ * The page both listens for `connection:state` and asks for it on load; push on
+ * did-finish-load so a race between loadFile and the push cannot leave it blank.
+ */
+function showStatusPage(patch = {}) {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow({ initial: 'status' });
+      mainWindow.webContents.once('did-finish-load', () => pushConnectionState(patch));
+      return;
+    }
+
+    // Already showing it? Just push the new state. Calling loadFile again
+    // RELOADS the page, which discards its listener, restarts its script and
+    // flashes the card — for the commonest transition of all, connecting ->
+    // failed, where nothing needs to be reloaded.
+    if ((mainWindow.webContents.getURL() || '').includes('connection-error.html')) {
+      pushConnectionState(patch);
+      return;
+    }
+
+    mainWindow.loadFile(statusPagePath());
+    mainWindow.webContents.once('did-finish-load', () => pushConnectionState(patch));
+  } catch (err) {
+    console.error('Failed to show the connection status page:', err.message);
+  }
+}
+
+/** Point the existing window at whatever backend is currently active. */
+function loadActiveTarget() {
+  const target = isRemoteActive() ? connection.url : localBackendUrl();
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  else mainWindow.loadURL(target);
+}
+
+/**
+ * Poll the configured remote, then load it.
+ *
+ * The bound lives in electron/backendHealth.js and is WALL CLOCK. It used to be
+ * an attempt count (24) with a 15s socket timeout per attempt, which measured
+ * 366 SECONDS before the user was told anything when the server accepted TCP
+ * and never replied — and during all of it there was no window at all.
+ */
+function beginRemoteConnect() {
+  connectPhase = 'connecting';
+  pushConnectionState({ attempt: 0, elapsedMs: 0 });
+  healthPoll = pollBackendHealth({
     baseUrl: connection.url,
-    maxAttempts: 24, // ~12s of polling before we tell the user
-    onFail: () => {
+    log: (m) => console.log('[connection]', m),
+    onAttempt: ({ attempt, elapsedMs }) => pushConnectionState({ attempt, elapsedMs }),
+    onReady: () => {
+      healthPoll = null;
+      connectPhase = 'ready';
       supervisor.state = 'running';
-      createWindow();
-      try {
-        mainWindow.loadFile(path.join(__dirname, 'electron', 'connection-error.html'));
-      } catch (err) {
-        console.error('Failed to show the connection error page:', err.message);
-      }
+      console.log(`[connection] remote backend reachable — loading ${connection.url}`);
+      loadActiveTarget();
     },
-  };
+    onFail: ({ why }) => {
+      healthPoll = null;
+      supervisor.state = 'running';
+      // Opt-in only (Settings → Connection). Silently switching which DATABASE
+      // someone is using is the "where did all my agents go?" confusion this
+      // feature exists to remove, so it happens only when asked for — and even
+      // then it is announced, per-session, and reported by connection:get.
+      if (connection.fallbackToLocal === true) {
+        console.warn(`[connection] remote unreachable (${why}) — using this computer for this session (opted in).`);
+        return startLocalSessionFallback(why);
+      }
+      connectPhase = 'failed';
+      console.error(`[connection] remote unreachable (${why}).`);
+      showStatusPage({ phase: 'failed', why });
+    },
+  });
+}
+
+/**
+ * Run a local backend for THIS LAUNCH ONLY.
+ *
+ * connection.json is deliberately untouched: a transient outage must not cost
+ * the user the remote address they configured, and the next launch has to try
+ * the remote again. Otherwise one bad afternoon permanently and silently moves
+ * someone onto a different database.
+ */
+function startLocalSessionFallback(why) {
+  healthPoll?.cancel('switching to this computer');
+  healthPoll = null;
+  activeMode = 'local';
+  fellBack = true;
+  connectPhase = 'connecting';
+  pushConnectionState({ phase: 'connecting', detail: 'Starting AGNT on this computer…' });
+  ensureLocalBackend();
+  // Local policy: unbounded, exactly as a normal local boot. Our own backend is
+  // coming up and there is nothing better to fall back TO.
+  healthPoll = pollBackendHealth({
+    port: process.env.PORT || 3333,
+    log: (m) => console.log('[connection:local]', m),
+    onReady: () => {
+      healthPoll = null;
+      connectPhase = 'ready';
+      supervisor.state = 'running';
+      console.log(`[connection] running on this computer (${why}). Configured remote left unchanged.`);
+      loadActiveTarget();
+    },
+  });
+}
+
+/** Re-try the CONFIGURED connection in place — no process restart. */
+function retryConfiguredConnection() {
+  healthPoll?.cancel('retrying');
+  healthPoll = null;
+  activeMode = connection.mode;
+  fellBack = false;
+  if (!isRemoteActive()) {
+    ensureLocalBackend();
+    return startLocalSessionFallback('retry');
+  }
+  showStatusPage({ phase: 'connecting', attempt: 0, elapsedMs: 0 });
+  beginRemoteConnect();
 }
 
 // ============================================================================
@@ -247,20 +379,24 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
         return;
       }
       startBackend();
-      waitForBackend(() => {
-        supervisor.state = 'running';
-        console.log('Backend respawned and healthy.');
-        notifyRenderer('backend:restarted');
-        // Reload the renderer so the UI reconnects to the fresh backend
-        // instead of sitting on dead sockets/requests looking frozen.
-        try {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            console.log('Reloading renderer against fresh backend...');
-            mainWindow.webContents.reload();
+      pollBackendHealth({
+        port: process.env.PORT || 3333,
+        log: (m) => console.log('[backend]', m),
+        onReady: () => {
+          supervisor.state = 'running';
+          console.log('Backend respawned and healthy.');
+          notifyRenderer('backend:restarted');
+          // Reload the renderer so the UI reconnects to the fresh backend
+          // instead of sitting on dead sockets/requests looking frozen.
+          try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              console.log('Reloading renderer against fresh backend...');
+              mainWindow.webContents.reload();
+            }
+          } catch (err) {
+            console.warn('Renderer reload after restart failed:', err.message);
           }
-        } catch (err) {
-          console.warn('Renderer reload after restart failed:', err.message);
-        }
+        },
       });
     }, 500);
     return;
@@ -704,7 +840,7 @@ function startBackend() {
 }
 
 // Function to create the main Electron window.
-function createWindow() {
+function createWindow(opts = {}) {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   const icon = nativeImage.createFromPath(iconPath);
 
@@ -904,7 +1040,29 @@ function createWindow() {
   // machine serves its own frontend, so the app is same-origin with it and
   // auth, sockets and OAuth behave exactly as they do in a browser.
   const port = process.env.PORT || 3333;
-  mainWindow.loadURL(isRemoteMode() ? connection.url : `http://localhost:${port}`);
+  if (opts.initial === 'status') {
+    // Remote mode shows a live status page FIRST so the app always has a window.
+    // Loading the remote origin here instead left a blank frame for as long as
+    // the server took to answer — which, for an unresponsive host, was forever.
+    mainWindow.loadFile(statusPagePath());
+  } else {
+    mainWindow.loadURL(isRemoteActive() ? connection.url : `http://localhost:${port}`);
+  }
+
+  // The OTHER way this app could die: the health check passes, then the origin
+  // drops (or never served a frontend), and Chromium paints its own "can't be
+  // reached" page — which has no escape hatch, no menu, and no way back. This
+  // also covers the remote disappearing mid-session and the user hitting reload.
+  // Scoped to remote mode so the local path keeps exactly today's behaviour.
+  mainWindow.webContents.on('did-fail-load', (_evt, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    if (errorCode === -3) return; // ERR_ABORTED — a superseded navigation, not a failure
+    if (!isRemoteActive()) return;
+    if (typeof validatedURL === 'string' && validatedURL.startsWith('file://')) return; // the status page itself
+    console.error(`[connection] main-frame load failed (${errorCode} ${errorDescription}) for ${validatedURL}`);
+    connectPhase = 'failed';
+    showStatusPage({ phase: 'failed', why: `${errorDescription} (${errorCode})` });
+  });
 
   mainWindow.center();
   mainWindow.show();
@@ -943,6 +1101,13 @@ ipcMain.handle('connection:get', () => ({
   mode: connection.mode,
   url: connection.url,
   source: connection.source,
+  // What the app is ACTUALLY talking to, which differs from `mode` after a
+  // per-session fallback. Without this the UI would claim "remote" while the
+  // user was demonstrably looking at local data — the exact lie to avoid.
+  activeMode,
+  fellBack,
+  phase: connectPhase,
+  fallbackToLocal: connection.fallbackToLocal === true,
   // An env-pinned value outranks the UI. Say so rather than letting someone
   // change a setting that silently does nothing.
   envPinned: connection.source === 'env',
@@ -985,93 +1150,24 @@ ipcMain.handle('connection:relaunch', () => {
   app.exit(0);
 });
 
-// Polls a backend's /api/health until it responds, then calls the callback.
-//
-// Local mode retries forever (the backend is ours; it is coming up, and a
-// desktop app that gives up on its own backend is useless). Remote mode is
-// bounded: the server may simply be off, and the user needs to be told rather
-// than watch a spinner. `onFail` fires once when the bound is exhausted.
-function waitForBackend(callback, opts = {}) {
-  const port = process.env.PORT || 3333;
-  const target = opts.baseUrl ? new URL(opts.baseUrl) : null;
-  const isHttps = target?.protocol === 'https:';
-  const transport = isHttps ? https : http;
-  const options = target
-    ? {
-        hostname: target.hostname,
-        port: target.port ? parseInt(target.port) : isHttps ? 443 : 80,
-        path: '/api/health',
-        method: 'GET',
-        timeout: 15000,
-      }
-    : {
-        hostname: '127.0.0.1', // Use IP instead of localhost
-        port: parseInt(port),
-        path: '/api/health',
-        method: 'GET',
-        timeout: 30000, // 30s per request — backend may block the event loop during plugin/skill init
-      };
-  const maxAttempts = Number.isFinite(opts.maxAttempts) ? opts.maxAttempts : Infinity;
-  const onFail = typeof opts.onFail === 'function' ? opts.onFail : null;
-  let failed = false;
+// Re-poll and load in place. Cheaper and far less jarring than a relaunch, and
+// it is the only sane recovery when the remote drops mid-session.
+ipcMain.handle('connection:retry', () => {
+  retryConfiguredConnection();
+  return { ok: true };
+});
 
-  let isBackendReady = false;
-  let retryCount = 0;
+// Escape hatch: run locally for this session WITHOUT touching connection.json.
+ipcMain.handle('connection:use-local-now', () => {
+  startLocalSessionFallback('user chose this computer');
+  return { ok: true, activeMode: 'local', configPreserved: true };
+});
 
-  const giveUp = (why) => {
-    if (failed || isBackendReady) return;
-    failed = true;
-    console.error(`Backend unreachable after ${retryCount} attempts (${why}).`);
-    if (onFail) onFail(why);
-  };
-
-  // PRD-105 P2: flat fast polling. A refused localhost connection costs ~1ms,
-  // so there is no resource to protect with backoff — exponential delays were
-  // adding 2-4s of dead air AFTER the backend was already up (the backend
-  // routinely became ready inside the 4s gap between attempts 3 and 4).
-  const getRetryDelay = () => 250;
-
-  const attempt = () => {
-    console.log(`Attempting to connect to backend (attempt ${retryCount + 1})...`);
-    if (retryCount >= maxAttempts) return giveUp('attempt limit reached');
-    const req = transport.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      res.on('end', () => {
-        if (res.statusCode === 200 && !isBackendReady) {
-          console.log('Backend is ready');
-          isBackendReady = true;
-          callback();
-        } else if (!isBackendReady) {
-          retryCount++;
-          const delay = getRetryDelay();
-          console.log(`Backend not ready (status ${res.statusCode}). Retry ${retryCount} in ${delay}ms`);
-          setTimeout(attempt, delay);
-        }
-      });
-    });
-
-    req.on('error', (error) => {
-      retryCount++;
-      const delay = getRetryDelay();
-      console.log(`Backend connection error (${error.message}). Retry ${retryCount} in ${delay}ms`);
-      setTimeout(attempt, delay);
-    });
-
-    req.on('timeout', () => {
-      // Just destroy — the resulting 'error' event handles the retry, so this
-      // doesn't double-fire (was causing back-to-back "timed out" / "socket
-      // hang up" retry pairs).
-      req.destroy();
-    });
-
-    req.end();
-  };
-
-  attempt();
-}
+// Health polling now lives in electron/backendHealth.js (imported above as
+// pollBackendHealth) so its bound can be tested. The version that used to sit
+// here was bounded by ATTEMPT COUNT, which is not a bound on anything a user can
+// feel: measured against a server that accepted TCP and never replied, the
+// documented "~12s" was really 366s. See the header of that module.
 
 app.on('ready', () => {
   // Native minidumps (V8/native aborts never reach JS) plus the four Electron
@@ -1174,54 +1270,80 @@ app.on('ready', () => {
 
   // GUARD 2: only fork a local backend when we are actually going to use one.
   // In remote mode the backend already runs on another machine.
-  if (!isRemoteMode()) startBackend();
+  if (!isRemoteMode()) ensureLocalBackend();
+
+  // In remote mode the window comes up FIRST, showing a live status page with a
+  // way out, and the health poll runs behind it. Previously createWindow() was
+  // only reachable from the success callback, so any slow or unresponsive server
+  // meant a process with no window — indistinguishable from a hang.
+  if (isRemoteMode()) {
+    createWindow({ initial: 'status' });
+    attachWindowBehaviour();
+    beginRemoteConnect();
+    return;
+  }
 
   // Instead of a fixed delay, poll until the backend is ready.
-  waitForBackend(() => {
-    supervisor.state = 'running';
-    console.log('Backend is ready. Creating main window...');
-    createWindow();
-
-    // HTML5 element fullscreen (a <video> control bar, a chart popout) ALSO
-    // puts the window in fullscreen, so isFullScreen() alone cannot tell "the
-    // user pressed F11" from "Chromium is showing a fullscreen video". Driving
-    // setFullScreen() in that state yanks the window out from under Chromium
-    // and leaves document.fullscreenElement pointing at an element that is no
-    // longer fullscreen — after which the next fullscreen click does nothing
-    // until reload. While the renderer owns fullscreen, keep hands off and let
-    // Chromium handle Escape/F11 itself.
-    let rendererOwnsFullScreen = false;
-    mainWindow.on('enter-html-full-screen', () => {
-      rendererOwnsFullScreen = true;
-    });
-    mainWindow.on('leave-html-full-screen', () => {
-      rendererOwnsFullScreen = false;
-    });
-
-    // Register local shortcuts after the window is created.
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (rendererOwnsFullScreen) return;
-      if (input.key === 'F11' && !input.alt && !input.control && !input.meta && !input.shift) {
-        const isFullScreen = mainWindow.isFullScreen();
-        mainWindow.setFullScreen(!isFullScreen);
-        event.preventDefault();
-      }
-      if (input.key === 'Escape' && mainWindow.isFullScreen()) {
-        mainWindow.setFullScreen(false);
-        event.preventDefault();
-      }
-    });
-
-    // Remove global shortcut registrations
-    // globalShortcut.register('F11', () => { ... });
-    // globalShortcut.register('Escape', () => { ... });
-
-    // Prevent default page title updates.
-    mainWindow.on('page-title-updated', (event) => {
-      event.preventDefault();
-    });
-  }, remoteWaitOptions());
+  pollBackendHealth({
+    port: process.env.PORT || 3333,
+    log: (m) => console.log('[backend]', m),
+    onReady: () => {
+      supervisor.state = 'running';
+      console.log('Backend is ready. Creating main window...');
+      createWindow();
+      attachWindowBehaviour();
+    },
+  });
 });
+
+/**
+ * Window behaviour that must be attached once per window, for BOTH boot paths.
+ * It used to live inline in the local-only success callback; remote mode now
+ * creates its window earlier, so this had to become callable from both.
+ */
+function attachWindowBehaviour() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+
+  // HTML5 element fullscreen (a <video> control bar, a chart popout) ALSO
+  // puts the window in fullscreen, so isFullScreen() alone cannot tell "the
+  // user pressed F11" from "Chromium is showing a fullscreen video". Driving
+  // setFullScreen() in that state yanks the window out from under Chromium
+  // and leaves document.fullscreenElement pointing at an element that is no
+  // longer fullscreen — after which the next fullscreen click does nothing
+  // until reload. While the renderer owns fullscreen, keep hands off and let
+  // Chromium handle Escape/F11 itself.
+  let rendererOwnsFullScreen = false;
+  mainWindow.on('enter-html-full-screen', () => {
+    rendererOwnsFullScreen = true;
+  });
+  mainWindow.on('leave-html-full-screen', () => {
+    rendererOwnsFullScreen = false;
+  });
+
+  // Register local shortcuts after the window is created.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (rendererOwnsFullScreen) return;
+    if (input.key === 'F11' && !input.alt && !input.control && !input.meta && !input.shift) {
+      const isFullScreen = mainWindow.isFullScreen();
+      mainWindow.setFullScreen(!isFullScreen);
+      event.preventDefault();
+    }
+    if (input.key === 'Escape' && mainWindow.isFullScreen()) {
+      mainWindow.setFullScreen(false);
+      event.preventDefault();
+    }
+  });
+
+  // Remove global shortcut registrations
+  // globalShortcut.register('F11', () => { ... });
+  // globalShortcut.register('Escape', () => { ... });
+
+  // Prevent default page title updates.
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

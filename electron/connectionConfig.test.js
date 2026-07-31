@@ -80,6 +80,54 @@ describe('isPlaintextRemote', () => {
   });
 });
 
+describe('fallbackToLocal (opt-in: "if the server is unreachable, use this computer")', () => {
+  it('is ABSENT rather than false when off, so no call site can misread it', () => {
+    writeConfig(dir, { mode: 'remote', url: 'http://box:3333' });
+    const cfg = readConfig(dir);
+    expect(cfg).toEqual({ mode: 'remote', url: 'http://box:3333', source: 'file' });
+    expect('fallbackToLocal' in cfg).toBe(false);
+  });
+
+  it('round-trips when enabled', () => {
+    const out = writeConfig(dir, { mode: 'remote', url: 'http://box:3333', fallbackToLocal: true });
+    expect(out.ok).toBe(true);
+    expect(out.config.fallbackToLocal).toBe(true);
+    expect(readConfig(dir).fallbackToLocal).toBe(true);
+  });
+
+  it('accepts ONLY boolean true from a hand-edited config', () => {
+    // This flag decides whether the app may point itself at a DIFFERENT
+    // DATABASE without asking, so truthiness is not good enough.
+    for (const junk of ['true', 1, 'yes', {}, []]) {
+      fs.writeFileSync(
+        configPath(dir),
+        JSON.stringify({ mode: 'remote', url: 'http://box:3333', fallbackToLocal: junk })
+      );
+      expect(readConfig(dir).fallbackToLocal, `${JSON.stringify(junk)} must not enable it`).toBeUndefined();
+    }
+    fs.writeFileSync(
+      configPath(dir),
+      JSON.stringify({ mode: 'remote', url: 'http://box:3333', fallbackToLocal: true })
+    );
+    expect(readConfig(dir).fallbackToLocal).toBe(true);
+  });
+
+  it('turning it back off removes it from the resolved config', () => {
+    writeConfig(dir, { mode: 'remote', url: 'http://box:3333', fallbackToLocal: true });
+    writeConfig(dir, { mode: 'remote', url: 'http://box:3333', fallbackToLocal: false });
+    expect(readConfig(dir).fallbackToLocal).toBeUndefined();
+  });
+
+  it('is not carried by an env-pinned connection', () => {
+    // AGNT_REMOTE_URL is a deliberate operator override (CI, kiosks). Quietly
+    // booting a local backend there would be the opposite of what was asked.
+    writeConfig(dir, { mode: 'remote', url: 'http://box:3333', fallbackToLocal: true });
+    const out = resolveConnection({ env: { AGNT_REMOTE_URL: 'http://pinned:3333' }, userDataPath: dir });
+    expect(out).toEqual({ mode: 'remote', url: 'http://pinned:3333', source: 'env' });
+    expect(out.fallbackToLocal).toBeUndefined();
+  });
+});
+
 describe('resolveConnection — the blast-radius contract', () => {
   it('resolves to LOCAL when nothing is configured', () => {
     expect(resolveConnection({ env: {}, userDataPath: dir })).toEqual({

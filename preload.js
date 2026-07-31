@@ -35,6 +35,22 @@ contextBridge.exposeInMainWorld('electron', {
     test: (url) => ipcRenderer.invoke('connection:test', url),
     set: (next) => ipcRenderer.invoke('connection:set', next),
     relaunch: () => ipcRenderer.invoke('connection:relaunch'),
+    // Re-poll the configured backend and load it in place. No process restart,
+    // which is what makes recovery viable when a remote drops mid-session.
+    retry: () => ipcRenderer.invoke('connection:retry'),
+    // Run a local backend for THIS SESSION ONLY, leaving connection.json alone.
+    useLocalNow: () => ipcRenderer.invoke('connection:use-local-now'),
+    /**
+     * Live connection phase. Used by electron/connection-error.html to show a
+     * progressing "connecting" state instead of a blank window, and by Settings
+     * to report that the app fell back to this computer.
+     * @returns {() => void} unsubscribe
+     */
+    onState: (cb) => {
+      const handler = (_evt, payload) => cb(payload);
+      ipcRenderer.on('connection:state', handler);
+      return () => ipcRenderer.removeListener('connection:state', handler);
+    },
   },
 
   // Listen for update notifications from main process
