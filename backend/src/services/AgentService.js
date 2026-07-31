@@ -50,6 +50,17 @@ class AgentService {
       const existingAgent = agent.id ? await AgentModel.findOne(agent.id) : null;
       let isNewAgent = !existingAgent;
 
+      // Older clients do not send the fallback fields. Preserve the stored
+      // chain on unrelated edits instead of silently disabling it.
+      if (existingAgent) {
+        if (!Object.prototype.hasOwnProperty.call(agent, 'fallbackEnabled')) {
+          agent.fallbackEnabled = existingAgent.fallbackEnabled;
+        }
+        if (!Object.prototype.hasOwnProperty.call(agent, 'fallbackProviders')) {
+          agent.fallbackProviders = existingAgent.fallbackProviders;
+        }
+      }
+
       if (isNewAgent) {
         agent.id = generateUUID();
         // Default provider/model come from the user's settings — never a
@@ -118,6 +129,8 @@ class AgentService {
           assignedWorkflows: agent.assignedWorkflows || [],
           systemPrompt: agent.systemPrompt || '',
           assignedSkills: agent.assignedSkills || [],
+          fallbackEnabled: agent.fallbackEnabled === true,
+          fallbackProviders: agent.fallbackProviders || [],
           toolAccessMode: agent.toolAccessMode || 'restricted',
           resourceId: resource.id,
           creditsUsed: resource.credits_used || 0,

@@ -167,6 +167,8 @@ export default {
           model: agentData.model || '',
           systemPrompt: agentData.systemPrompt || '',
           assignedSkills: agentData.assignedSkills || [],
+          fallbackEnabled: agentData.fallbackEnabled === true,
+          fallbackProviders: Array.isArray(agentData.fallbackProviders) ? agentData.fallbackProviders : [],
           toolAccessMode: agentData.toolAccessMode === 'open' ? 'open' : 'restricted',
         };
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agent.id}`, {
@@ -221,6 +223,8 @@ export default {
           model: agentData.model || '',
           systemPrompt: agentData.systemPrompt || '',
           assignedSkills: agentData.assignedSkills || [],
+          fallbackEnabled: agentData.fallbackEnabled === true,
+          fallbackProviders: Array.isArray(agentData.fallbackProviders) ? agentData.fallbackProviders : [],
           toolAccessMode: agentData.toolAccessMode === 'open' ? 'open' : 'restricted',
         };
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/save`, {

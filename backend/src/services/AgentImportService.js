@@ -57,6 +57,8 @@ export function buildAgentEnvelope(agent, options = {}) {
       category: agent.category || '',
       status: agent.status || 'ACTIVE',
       creditLimit: agent.credit_limit ?? agent.creditLimit ?? 1000,
+      fallbackEnabled: agent.fallbackEnabled === true,
+      fallbackProviders: Array.isArray(agent.fallbackProviders) ? agent.fallbackProviders.slice(0, 3) : [],
       assignedTools: rewriteList(agent.assignedTools, 'tools'),
       assignedSkills: rewriteList(agent.assignedSkills, 'skills'),
       assignedWorkflows: rewriteList(agent.assignedWorkflows, 'workflows'),
@@ -120,6 +122,8 @@ export async function importAgent(payload, userId, options = {}) {
     provider: payload.provider || '',
     model: payload.model || '',
     systemPrompt: payload.systemPrompt || '',
+    fallbackEnabled: payload.fallbackEnabled === true,
+    fallbackProviders: Array.isArray(payload.fallbackProviders) ? payload.fallbackProviders.slice(0, 3) : [],
   };
 
   await AgentModel.createOrUpdate(id, agentRow, userId);

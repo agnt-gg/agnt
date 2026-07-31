@@ -87,6 +87,54 @@
             />
           </div>
         </div>
+
+        <!-- Per-agent provider fallback chain -->
+        <div class="fallback-config">
+          <label class="checkbox-label fallback-toggle">
+            <input type="checkbox" v-model="agentConfig.fallbackEnabled" />
+            <span>Enable provider fallback for this agent</span>
+          </label>
+          <span class="input-description">
+            If this agent's primary provider fails, retry up to three backups in order. This chain overrides the global fallback chain.
+          </span>
+
+          <div v-if="agentConfig.fallbackEnabled" class="fallback-chain">
+            <div v-for="(row, index) in agentConfig.fallbackProviders" :key="index" class="fallback-row">
+              <span class="fallback-tier" :aria-label="`Fallback tier ${index + 1}`">{{ index + 1 }}</span>
+              <BaseSelect
+                :id="`agentFallbackProvider${index}`"
+                :label="`Fallback ${index + 1} Provider`"
+                v-model="row.provider"
+                :options="fallbackProviderOptions(index)"
+                placeholder="Select provider"
+                maxHeight="200px"
+              />
+              <BaseSelect
+                :id="`agentFallbackModel${index}`"
+                label="Model"
+                v-model="row.model"
+                :options="fallbackModelOptions(row.provider)"
+                :disabled="!row.provider"
+                placeholder="Provider default"
+                maxHeight="200px"
+              />
+              <button type="button" class="fallback-remove" :aria-label="`Remove fallback ${index + 1}`" @click="removeFallback(index)">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+
+            <button
+              v-if="agentConfig.fallbackProviders.length < MAX_FALLBACKS"
+              type="button"
+              class="fallback-add"
+              :disabled="!hasFallbackCandidates"
+              @click="addFallback"
+            >
+              <i class="fas fa-plus"></i>
+              Add fallback
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Assign Tools & Workflows Row -->
@@ -244,6 +292,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 const store = useStore();
 const simpleModal = ref(null);
+const MAX_FALLBACKS = 3;
 
 const props = defineProps({
   selectedAgent: {
@@ -284,6 +333,13 @@ function initializeAgentConfig(agent) {
     provider: agent.provider || '',
     model: agent.model || '',
     systemPrompt: agent.systemPrompt || '',
+    fallbackEnabled: agent.fallbackEnabled === true,
+    fallbackProviders: Array.isArray(agent.fallbackProviders)
+      ? agent.fallbackProviders.slice(0, MAX_FALLBACKS).map((entry) => ({
+          provider: entry?.provider || '',
+          model: entry?.model || '',
+        }))
+      : [],
     toolAccessMode: agent.toolAccessMode === 'open' ? 'open' : 'restricted',
     tools: agent.assignedTools ? [...agent.assignedTools] : [],
     workflows: agent.assignedWorkflows ? [...agent.assignedWorkflows] : [],
@@ -318,6 +374,43 @@ const modelOptions = computed(() => [
   })),
 ]);
 
+function fallbackProviderOptions(index) {
+  const primary = agentConfig.value.provider;
+  const chosenElsewhere = new Set(
+    agentConfig.value.fallbackProviders
+      .filter((_, rowIndex) => rowIndex !== index)
+      .map((entry) => entry.provider)
+      .filter(Boolean),
+  );
+  return aiProviders.value
+    .filter((provider) => provider !== primary)
+    .filter((provider) => !chosenElsewhere.has(provider) || provider === agentConfig.value.fallbackProviders[index]?.provider)
+    .map((provider) => ({ value: provider, label: provider }));
+}
+
+function fallbackModelOptions(provider) {
+  if (!provider) return [];
+  return [
+    { value: '', label: 'Provider default' },
+    ...(store.state.aiProvider.allModels[provider] || []).map((model) => ({ value: model, label: model })),
+  ];
+}
+
+const hasFallbackCandidates = computed(() => {
+  const primary = agentConfig.value.provider;
+  const chosen = new Set(agentConfig.value.fallbackProviders.map((entry) => entry.provider).filter(Boolean));
+  return aiProviders.value.some((provider) => provider !== primary && !chosen.has(provider));
+});
+
+function addFallback() {
+  if (agentConfig.value.fallbackProviders.length >= MAX_FALLBACKS) return;
+  agentConfig.value.fallbackProviders.push({ provider: '', model: '' });
+}
+
+function removeFallback(index) {
+  agentConfig.value.fallbackProviders.splice(index, 1);
+}
+
 watch(
   () => props.selectedAgent,
   (newAgent) => {
@@ -334,8 +427,19 @@ watch(
   async (newProvider) => {
     if (newProvider) {
       await store.dispatch('aiProvider/fetchProviderModels', { provider: newProvider });
+      agentConfig.value.fallbackProviders = agentConfig.value.fallbackProviders.filter((entry) => entry.provider !== newProvider);
     }
   },
+);
+
+watch(
+  () => agentConfig.value.fallbackProviders.map((entry) => entry.provider),
+  async (providers) => {
+    await Promise.all(
+      providers.filter(Boolean).map((provider) => store.dispatch('aiProvider/fetchProviderModels', { provider })),
+    );
+  },
+  { deep: true },
 );
 
 const updateTickSpeed = (action) => {
@@ -419,6 +523,11 @@ const saveConfiguration = async () => {
       model: agentConfig.value.model,
       avatar: agentConfig.value.avatar !== null ? agentConfig.value.avatar : props.selectedAgent.avatar,
       systemPrompt: agentConfig.value.systemPrompt,
+      fallbackEnabled: agentConfig.value.fallbackEnabled,
+      fallbackProviders: agentConfig.value.fallbackProviders
+        .filter((entry) => entry.provider)
+        .slice(0, MAX_FALLBACKS)
+        .map((entry) => ({ provider: entry.provider, model: entry.model || null })),
       toolAccessMode: agentConfig.value.toolAccessMode,
       assignedTools: agentConfig.value.tools,
       assignedWorkflows: agentConfig.value.workflows,
@@ -733,6 +842,62 @@ textarea.input {
 .system-prompt-input {
   min-height: 80px;
   resize: vertical;
+}
+
+.fallback-config {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+}
+.fallback-toggle {
+  margin-bottom: 6px;
+}
+.fallback-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.fallback-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: end;
+}
+.fallback-tier {
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(var(--green-rgb), 0.12);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  color: var(--color-green);
+  font-size: 0.8em;
+  font-weight: 700;
+}
+.fallback-remove,
+.fallback-add {
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.08);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.fallback-remove {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  color: var(--color-red);
+}
+.fallback-add {
+  align-self: flex-start;
+  padding: 8px 16px;
+  border-radius: 4px;
+}
+.fallback-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .tool-access-toggle {
