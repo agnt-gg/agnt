@@ -3,7 +3,12 @@ import { API_CONFIG } from '@/tt.config.js';
 import LicenseValidator from '@/services/LicenseValidator.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { setMediaCookie, clearMediaCookie } from '@/services/mediaAuth.js';
+import { useAppVersion } from '@/composables/useAppVersion.js';
 import { TTL } from '../_utils/freshnessConfig.js';
+import { authSubject, licenseMatchesSubject, licenseSubject } from './licenseIdentity.js';
+// `export { userFromJwt } from './jwt.js'` below re-exports the binding but does
+// NOT introduce it into this module's scope, and it is called internally.
+import { userFromJwt } from './jwt.js';
 
 // All fetch* actions in this module are wrapped with `withFreshness` so the
 // second call within the per-action TTL is a no-op. Pass `{ forceRefresh: true }`
@@ -42,42 +47,56 @@ export function classifyAuthError(error) {
   return { reason: 'unknown', timestamp };
 }
 
+// Implemented in ./jwt.js so identity helpers can read a token's subject
+// without a circular import back through this store module. Re-exported here
+// because existing call sites (and specs) import it from userAuth.js.
+export { userFromJwt } from './jwt.js';
+
 /**
- * Best-effort user from a JWT payload (no signature check — token already held
- * locally after login/pairing). Used when remote /users/auth/status is unreachable
- * or does not recognize the token (common for device-paired local sessions on /m).
- * @param {string|null|undefined} token
- * @returns {{ id: string, email: string|null, name: string, authMethod: string }|null}
+ * Degraded-mode feature derivation: when no verified license is available,
+ * derive a feature grant from the subscription the server attested via
+ * GET /users/subscription/status.
+ *
+ * Why this exists: `isPremium` was deliberately loosened to trust the
+ * subscription so a failed license validation can't lock paid users out —
+ * but the per-feature gates (webhooks, emailServer, apiAccess…) still
+ * required a valid license, so the two sources could disagree and the
+ * license-gated pages went dark while the app simultaneously reported the
+ * user as premium. This extends the same principle to the feature gates.
+ *
+ * Deliberately conservative:
+ *   - free / unknown plans get NOTHING from the fallback (strictness intact)
+ *   - only features the subscription payload actually attests are granted;
+ *     anything absent (e.g. `plugins`) stays false rather than being invented
+ *   - shapes are normalized to the license form ({ enabled, … }) so callers
+ *     like useLicense's hasWebhooks work identically in both modes
+ *
+ * @param {object|null} subscription - raw /users/subscription/status payload
+ * @param {string|null} planType
+ * @param {string} featureName
+ * @returns {boolean|object} false, or a license-shaped feature grant
  */
-export function userFromJwt(token) {
-  if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
-  try {
-    // JWT segments are base64url and often unpadded; atob (Safari/iOS) is strict.
-    let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const pad = b64.length % 4;
-    if (pad) b64 += '='.repeat(4 - pad);
-    const json =
-      typeof atob === 'function'
-        ? new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))
-        : Buffer.from(b64, 'base64').toString('utf8');
-    const payload = JSON.parse(json);
-    // A token past its own expiry is not a session. AGNT session tokens are
-    // minted by the remote auth server and carry `exp` (payload shape:
-    // id, userId, email, auth_type, iat, exp — 30-day lifetime), and an
-    // expired one outlives its usefulness in localStorage, so without this
-    // check a month-old token would still synthesize a logged-in user.
-    if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now()) return null;
-    const id = payload.id || payload.sub || payload.userId;
-    const email = payload.email || null;
-    if (!id && !email) return null;
-    return {
-      id: id || 'local',
-      email,
-      name: payload.name || (email ? String(email).split('@')[0] : 'User'),
-      authMethod: payload.authMethod || 'jwt',
-    };
-  } catch {
-    return null;
+export function featureFromSubscription(subscription, planType, featureName) {
+  if (!subscription || !planType || planType === 'free') return false;
+  const f = subscription.features || {};
+  switch (featureName) {
+    case 'webhooks':
+      return f.webhooks ? { enabled: true, interval: f.webhookInterval ?? null } : false;
+    case 'emailServer':
+      return f.emailServer ? { enabled: true, interval: f.emailInterval ?? null } : false;
+    case 'cloudSync':
+      return f.cloudSync ? { enabled: true, interval: f.syncInterval ?? null } : false;
+    case 'apiAccess':
+      return f.apiAccess ? { enabled: true, tier: planType } : false;
+    case 'multiUser':
+      return f.multiUser ? { enabled: true, maxSeats: f.maxUsers ?? 1 } : false;
+    default: {
+      // Boolean passthrough for flat flags (whiteLabel, sla, coreFeatures…).
+      // Absent keys — notably `plugins`, which the subscription payload does
+      // not carry — must NOT be synthesized from the plan tier.
+      const v = f[featureName];
+      return typeof v === 'boolean' ? v : false;
+    }
   }
 }
 
@@ -150,8 +169,20 @@ export default {
   },
   mutations: {
     SET_TOKEN(state, token) {
+      const subjectChanged = authSubject(state.token) !== authSubject(token);
       state.token = token;
       localStorage.setItem('token', token);
+
+      // The session now belongs to someone else. Any license held from the
+      // previous subject — including the anonymous one the app fetches before
+      // login — describes that subject's entitlements, not this one's. Drop it
+      // so the next validateLicense is a real request instead of a cache hit.
+      if (subjectChanged && state.signedLicense && !licenseMatchesSubject(state.signedLicense, token)) {
+        state.signedLicense = null;
+        state.planFeatures = {};
+        state.licenseStatus = 'unknown';
+        localStorage.removeItem('signedLicense');
+      }
 
       // /api/local-file requires a credential, and browser-issued subresource
       // requests (<img>, <video>, <iframe>, and relative URLs inside served
@@ -202,6 +233,23 @@ export default {
       state.lastLicenseCheck = Date.now();
 
       if (signedLicense) {
+        // A license carries the subject it was issued to. Applying one that
+        // belongs to somebody else is how a paid account renders as free:
+        // the anonymous license fetched before login is cryptographically
+        // valid, so nothing downstream questions it, and its planType 'free'
+        // silently overwrites the 'enterprise' that fetchSubscription just
+        // established. Refuse it rather than cache a confident wrong answer.
+        if (!licenseMatchesSubject(signedLicense, state.token)) {
+          console.warn(
+            `\u26a0\ufe0f Ignoring license issued to "${licenseSubject(signedLicense)}" — ` +
+            `current session is "${authSubject(state.token)}". Will revalidate.`
+          );
+          state.signedLicense = null;
+          state.licenseStatus = 'unknown';
+          localStorage.removeItem('signedLicense');
+          return;
+        }
+
         localStorage.setItem('signedLicense', JSON.stringify(signedLicense));
 
         // Extract plan info from verified license
@@ -518,7 +566,18 @@ export default {
      */
     validateLicense: withFreshness('userAuth.validateLicense', async ({ commit, state }) => {
       const machineId = await LicenseValidator.getMachineId();
-      const appVersion = window.electron?.getAppVersion?.() || '1.0.0';
+      // getAppVersion() is an IPC call and therefore a Promise. Calling it
+      // without await sent the Promise itself, which serialised as the string
+      // "[object Object]" -- 92 of 191 installs reported that as their version,
+      // and the other 99 reported the hardcoded '1.0.0' fallback because a
+      // browser has no window.electron. Neither was a real version, so version
+      // telemetry was 100% dead while looking populated.
+      //
+      // useAppVersion() awaits the IPC call, falls back to the backend's
+      // /api/version for non-Electron installs, and only then yields '0.0.0' --
+      // a sentinel that reads as "unknown" rather than impersonating a release.
+      const { fetchVersion } = useAppVersion();
+      const appVersion = await fetchVersion();
 
       // Check if we have a cached license that's still valid
       if (state.signedLicense && !navigator.onLine) {
@@ -579,7 +638,14 @@ export default {
         commit('SET_LICENSE_STATUS', 'expired');
         return null;
       }
-    }, { staleAfter: TTL.userAuthValidateLicense }),
+    }, {
+      staleAfter: TTL.userAuthValidateLicense,
+      // Scope the 1-hour cache to the session it was fetched for. Without
+      // this, the unauthenticated validateLicense that main.js fires at boot
+      // parks an anonymous license in the cache, and the post-login
+      // validateLicense below is silently answered from it.
+      identity: (ctx) => authSubject(ctx.state.token),
+    }),
 
     /**
      * Refresh license if needed (based on refreshBefore timestamp)
@@ -690,22 +756,28 @@ export default {
      * Returns the feature config or false if not available
      */
     getLicenseFeature: (state, getters) => (featureName) => {
-      if (!getters.hasValidLicense) return false;
-
       const license = state.signedLicense?.license;
-      if (!license || !license.features) return false;
 
-      const feature = license.features[featureName];
+      // Primary path: a verified license is the authoritative, stricter
+      // instrument — when present it decides, including deciding "disabled".
+      if (getters.hasValidLicense && license && license.features) {
+        const feature = license.features[featureName];
 
-      // Handle boolean features
-      if (typeof feature === 'boolean') return feature;
+        // Handle boolean features
+        if (typeof feature === 'boolean') return feature;
 
-      // Handle object features
-      if (typeof feature === 'object' && feature !== null) {
-        return feature.enabled ? feature : false;
+        // Handle object features
+        if (typeof feature === 'object' && feature !== null) {
+          return feature.enabled ? feature : false;
+        }
+
+        return false;
       }
 
-      return false;
+      // Degraded mode: no verified license (validation failed, cache dropped,
+      // or not yet fetched). Fall back to what the subscription attests so a
+      // paid account's gates don't go dark while isPremium still reads true.
+      return featureFromSubscription(state.subscription, state.planType, featureName);
     },
 
     /**

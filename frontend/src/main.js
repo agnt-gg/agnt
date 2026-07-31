@@ -6,6 +6,7 @@ import App from '@/App.vue';
 import router from '@/router';
 import axios from 'axios';
 import store from '@/store/state';
+import { authSubject, licenseMatchesSubject, licenseSubject } from '@/store/auth/licenseIdentity.js';
 import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
 import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
@@ -139,11 +140,24 @@ const initializeApp = async () => {
         const expiresAt = parsed?.license?.expiresAt;
         const now = Math.floor(Date.now() / 1000);
 
-        // License valid for more than 5 minutes - use cache
-        if (expiresAt && expiresAt > now + 300) {
+        // Unexpired is necessary but NOT sufficient. A license is issued to a
+        // subject, and the app fetches an anonymous one at boot whenever no
+        // token is present yet (see the `if (!token)` branch above). That
+        // license is genuine, signed, and good for 7 days — it just grants the
+        // free tier to nobody in particular. Caching it past login is what
+        // makes a paid account render as Community Core until it expires.
+        const belongsToThisSession = licenseMatchesSubject(parsed, token);
+
+        if (expiresAt && expiresAt > now + 300 && belongsToThisSession) {
           needsLicenseValidation = false;
           store.commit('userAuth/SET_SIGNED_LICENSE', parsed);
           console.log('Using cached license (still valid)');
+        } else if (!belongsToThisSession) {
+          console.log(
+            `Cached license was issued to "${licenseSubject(parsed)}" but this ` +
+            `session is "${authSubject(token)}" — revalidating.`
+          );
+          localStorage.removeItem('signedLicense');
         }
       } catch (e) {
         localStorage.removeItem('signedLicense');
@@ -191,7 +205,8 @@ const initializeApp = async () => {
         console.warn('fetchCustomProviders failed:', err?.message);
       });
 
-      // Only validate license if cache is expired/missing (already hydrated above otherwise).
+      // Only validate license if cache is expired, missing, or belongs to a
+      // different subject (already hydrated above otherwise).
       if (needsLicenseValidation) {
         store.dispatch('userAuth/validateLicense').catch((err) => {
           console.warn('validateLicense failed:', err?.message);
