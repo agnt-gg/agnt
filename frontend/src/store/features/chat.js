@@ -2545,6 +2545,11 @@ export default {
           }
           break;
 
+        case 'provider_fallback':
+          // Handled by Chat.vue stream callback (activity feed + terminal).
+          // Acknowledge here so we don't log "Unknown event type".
+          break;
+
         default:
           console.warn('[Realtime Chat] Unknown event type:', type);
       }
