@@ -1396,6 +1396,17 @@ export default {
           }
           break;
         }
+        case 'provider_recovered': {
+          // Recovery banner (Option 2). Backend emits this when the default
+          // provider succeeds again after an earlier failover in this
+          // conversation — the green counterpart to provider_fallback.
+          const backP = data?.backTo?.provider || 'default';
+          const backM = data?.backTo?.model ? `/${data.backTo.model}` : '';
+          const text = `Recovered: back on ${backP}${backM}`;
+          if (ms) addActivityTo(ms, { type: 'success', text });
+          if (isActiveView) terminalLines.value.push(`[Recovered] ${text}`);
+          break;
+        }
         case 'final_content':
           if (isActiveView) {
             delete messageStates.value[data.assistantMessageId];

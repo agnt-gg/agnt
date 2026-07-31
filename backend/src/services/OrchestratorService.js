@@ -5,6 +5,12 @@ import { executeTool } from './orchestrator/tools.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
+
+// Per-conversation failover memory for the recovery banner (Option 2).
+// When a turn fails over, we record { conversationId -> { provider, model } }.
+// On a later turn where the PRIMARY (default) tier wins, we emit
+// 'provider_recovered' and clear the entry. Ephemeral, per-process, tiny.
+const __failoverMemory = new Map();
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
 import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
@@ -1931,11 +1937,16 @@ IMPORTANT: The image data is already available in the system context. You don't 
       );
     };
 
-    const { result: _r0 } = await runWithFallback({
+    const { result: _r0, tier: _r0Tier } = await runWithFallback({
       chain: providerChain,
       runOne: runTierStream,
       onFallback: ({ from, to, reason }) => {
         console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+        // Remember, for THIS conversation, that we failed over — so a later
+        // turn that succeeds back on the primary can announce the recovery.
+        if (conversationId) {
+          __failoverMemory.set(conversationId, { provider: to.provider, model: to.model });
+        }
         sendEvent('provider_fallback', {
           from: { provider: from.provider, model: from.model },
           to: { provider: to.provider, model: to.model },
@@ -1944,6 +1955,17 @@ IMPORTANT: The image data is already available in the system context. You don't 
         });
       },
     });
+
+    // Recovery banner (Option 2): if this turn ran on the PRIMARY provider and
+    // an earlier turn in this conversation had failed over, the default is back.
+    // Emit once and clear the memory so it only fires on the transition.
+    if (conversationId && _r0Tier && _r0Tier.primary && !_r0?.recoveredFromError && __failoverMemory.has(conversationId)) {
+      __failoverMemory.delete(conversationId);
+      console.log(`[Chat] Provider recovered: back on ${normalizedProvider}/${model || '?'}`);
+      sendEvent('provider_recovered', {
+        backTo: { provider: normalizedProvider, model },
+      });
+    }
 
     let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = _r0;
     accumulateUsage(initialUsage);
