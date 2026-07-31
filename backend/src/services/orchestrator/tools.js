@@ -1781,6 +1781,68 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       });
     },
   },
+  mention_agent: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'mention_agent',
+        description:
+          'Pass the floor to another agent IN THIS CONVERSATION (group chat). The mentioned agent responds next, in this same thread, seeing the full shared transcript. THIS TOOL IS TERMINAL: calling it ENDS your turn immediately — make it your LAST action, say anything you want to say BEFORE calling it, and never call it alongside other tools you still need results from. Use this instead of agnt_chat/agnt_agent when the user should SEE the agent\'s reply as its own message in the conversation (a group-chat turn) rather than you privately consulting the agent and summarizing.',
+        parameters: {
+          type: 'object',
+          properties: {
+            agentId: {
+              type: 'string',
+              description: "The agent to hand the floor to — the agent's UUID or exact display name (names are resolved automatically).",
+            },
+            note: {
+              type: 'string',
+              description: 'Optional short handoff note for the agent — what you want them to focus on. The agent sees this along with the full conversation.',
+            },
+          },
+          required: ['agentId'],
+        },
+      },
+    },
+    execute: async (args, authToken) => {
+      const { agentId, note } = args;
+      if (!agentId || typeof agentId !== 'string') {
+        return JSON.stringify({ success: false, error: 'agentId is required — the UUID or display name of the agent to mention.' });
+      }
+      try {
+        const apiBaseUrl = `http://localhost:${process.env.PORT || 3333}/api`;
+        const response = await fetch(`${apiBaseUrl}/agents`, {
+          headers: { Authorization: authToken },
+        });
+        if (!response.ok) {
+          return JSON.stringify({ success: false, error: `Failed to fetch agents: ${response.statusText}` });
+        }
+        const data = await response.json();
+        const agents = data.agents || [];
+        const needle = agentId.trim().toLowerCase();
+        const match =
+          agents.find((a) => a.id === agentId) ||
+          agents.find((a) => (a.name || '').trim().toLowerCase() === needle) ||
+          agents.find((a) => (a.name || '').trim().toLowerCase().includes(needle));
+        if (!match) {
+          return JSON.stringify({
+            success: false,
+            error: `No agent found matching "${agentId}". Available: ${agents.map((a) => a.name).join(', ') || '(none)'}`,
+          });
+        }
+        return JSON.stringify({
+          success: true,
+          agentId: match.id,
+          agentName: match.name,
+          agentIcon: match.icon || null,
+          note: typeof note === 'string' && note.trim() ? note.trim() : null,
+          message: `Floor passed to @${match.name} — your turn ends here. @${match.name} will respond next in this conversation.`,
+        });
+      } catch (error) {
+        return JSON.stringify({ success: false, error: `Failed to resolve agent: ${error.message}` });
+      }
+    },
+  },
   file_operations: {
     schema: {
       type: 'function',

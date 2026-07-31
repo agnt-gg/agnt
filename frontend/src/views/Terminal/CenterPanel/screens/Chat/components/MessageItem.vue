@@ -1,6 +1,11 @@
 <template>
   <div class="message-wrapper" :class="[message.role, { compact, editing: isEditing, steered: !!message.steered }]" ref="messageRef">
-    <img v-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
+    <div
+      v-if="message.role === 'assistant' && showAvatar && emojiAvatar"
+      class="message-avatar emoji-avatar"
+      v-tooltip="message.agentName || ''"
+    >{{ emojiAvatar }}</div>
+    <img v-else-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
     <div class="message-content">
       <div class="message-card">
         <!-- Edit mode for user messages -->
@@ -324,6 +329,7 @@ import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPip
 import { vMorphHtml } from '@/utils/morphHtmlDirective';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
+import { renderMentionPills } from '@/utils/agentMentions.js';
 import { API_CONFIG } from '@/../user.config.js';
 import {
   buildLocalFileUrl as sharedBuildLocalFileUrl,
@@ -641,6 +647,18 @@ export default {
         return props.avatarUrl;
       }
       return defaultAvatar;
+    });
+
+    // Agent icons are usually emoji (🔥, 🤖…). URL-ish icons arrive via the
+    // avatarUrl prop and render through <img>; anything else non-empty is an
+    // emoji/text glyph rendered as a circular badge — so a floor-passed or
+    // @-mentioned agent's reply carries ITS identity, not Annie's avatar.
+    const emojiAvatar = computed(() => {
+      if (props.avatarUrl) return null;
+      const icon = props.message.agentIcon;
+      if (!icon || typeof icon !== 'string') return null;
+      if (/^(https?:|data:|\/)/.test(icon)) return null;
+      return icon;
     });
 
     // Copy HTML code to clipboard
@@ -2157,12 +2175,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         }
 
         // Style @mentions as pills in user messages
-        const agentNames = (store.state.agents.agents || []).map((a) => a.name).filter(Boolean);
-        for (const name of agentNames) {
-          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          userHtml = userHtml.replace(new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'), `<span class="mention-pill">@${name}</span>`);
-        }
-        return userHtml;
+        return renderMentionPills(userHtml, store.state.agents.agents);
       }
 
       // ASSISTANT MESSAGES: Process as markdown/HTML
@@ -2190,11 +2203,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       renderedHtml = renderedHtml.replace(/<table\b/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
 
       // Style @mentions as pills — match known agent names to avoid false positives in code
-      const agentNames = (store.state.agents.agents || []).map((a) => a.name).filter(Boolean);
-      for (const name of agentNames) {
-        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        renderedHtml = renderedHtml.replace(new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'), `<span class="mention-pill">@${name}</span>`);
-      }
+      renderedHtml = renderMentionPills(renderedHtml, store.state.agents.agents);
 
       return addTargetBlankToLinks(renderedHtml);
     };
@@ -2678,6 +2687,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       stopAsyncTool,
       toggleToolCall,
       assistantAvatar,
+      emojiAvatar,
       showPreviewModal,
       previewHTML,
       previewIframeSrc,
@@ -2728,6 +2738,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   align-self: flex-start;
   border: 3px solid var(--color-green);
   padding: 2px;
+}
+
+.message-avatar.emoji-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  font-size: 18px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.06);
+  user-select: none;
 }
 
 .message-wrapper {

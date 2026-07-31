@@ -1173,6 +1173,14 @@ async function universalChatHandler(req, res, context = {}) {
     if (typeof priorContext._estimateCalibration === 'number') {
       conversationContext._estimateCalibration = priorContext._estimateCalibration;
     }
+    // Persistent eviction watermark. Once context compression has to drop
+    // old message units, the SAME units must stay dropped on every later
+    // turn or the prompt prefix changes per-request and the provider's
+    // prompt cache never hits again. manageContext moves it forward in
+    // low-water chunks; we just replay it.
+    if (typeof priorContext._evictedUnits === 'number') {
+      conversationContext._evictedUnits = priorContext._evictedUnits;
+    }
     if (priorContext._loadedToolNames) {
       conversationContext._loadedToolNames = new Set(priorContext._loadedToolNames);
     }
@@ -1456,25 +1464,25 @@ async function universalChatHandler(req, res, context = {}) {
               return a ? { name: a.name, icon: a.icon || null } : null;
             })();
         if (agent) {
-          agentMeta = { agentName: agent.name, agentIcon: agent.icon || null };
+          // agentId travels with every assistant_message event so the frontend
+          // can attribute the message to a SPEAKER (group-chat transcript
+          // rendering matches own-vs-foreign by id, with name as the legacy
+          // fallback for conversations persisted before this field existed).
+          agentMeta = { agentId, agentName: agent.name, agentIcon: agent.icon || null };
         }
       } catch (e) {
         console.warn('[Chat] Failed to resolve agent metadata for message:', e.message);
       }
     }
 
-    // When an @ mentioned agent responds in an existing conversation, the history
-    // contains messages from the orchestrator (Annie). Inject a strong identity
-    // override into the last user message so the LLM doesn't continue as Annie.
-    // NOTE: Injected as a prefix to the user message (not a separate system message)
-    // because many providers reject or mishandle multiple system messages.
-    if (chatType === 'agent' && agentId && agentId !== 'agent-chat') {
-      const agentName = agentMeta.agentName || 'the requested agent';
-      const lastUserIdx = messages.length - 1;
-      if (lastUserIdx > 0 && messages[lastUserIdx].role === 'user' && typeof messages[lastUserIdx].content === 'string') {
-        messages[lastUserIdx].content = `[Identity: You are ${agentName}. Respond as ${agentName} — NOT as Annie or any other assistant.]\n\n${messages[lastUserIdx].content}`;
-      }
-    }
+    // Identity is STRUCTURAL now, not prompt-injected. The frontend renders
+    // each participant's view of the shared transcript per-speaker: the
+    // responding agent's own turns arrive as role:'assistant', and every
+    // other participant (the orchestrator, other agents) arrives as
+    // role:'user' prefixed with its speaker label ([Annie]: / [@Name]:).
+    // The model therefore never sees a foreign turn as its own words, which
+    // is what the old "[Identity: You are X — NOT Annie]" injection was
+    // papering over.
 
     // CRITICAL: If images were uploaded but model doesn't support vision, inject a system message
     // that FORCES the LLM to use the analyze_image tool
@@ -1625,7 +1633,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
       calibration: conversationContext._estimateCalibration || 1,
+      evictedUnits: conversationContext._evictedUnits || 0,
     });
+    conversationContext._evictedUnits = contextResult.evictedUnits || 0;
 
     // Send context status.
     // `currentTokens` / `utilizationPercent` are retained for backwards
@@ -2040,6 +2050,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Tool execution loop - LLM decides when to stop
     let currentRound = 0;
     const toolExecutionDetails = [];
+    // Set when mention_agent executes: the floor passes to another
+    // participant, so this speaker's turn ENDS — no further LLM rounds, no
+    // forced follow-up summary. The frontend dispatches the mentioned
+    // agent's turn when it sees the tool_end.
+    let floorPassed = false;
 
     // Gate on an EXPLICIT cancel, not on transport health. A closed socket used
     // to stop the tool loop here, which is why refreshing mid-run killed the
@@ -2712,6 +2727,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
         assistantMessageId = openSteerContinuation(sendEvent, { round: currentRound, agentMeta });
       }
 
+      // ---- Terminal floor pass -------------------------------------------
+      // mention_agent hands the floor to another participant. Once it has
+      // executed (its tool_result is already in `messages` and its tool_end
+      // already streamed to the frontend), this speaker's turn is OVER: no
+      // follow-up LLM round, no summary. Enforced here rather than trusted
+      // to the prompt — the model cannot babble past a handoff it can no
+      // longer continue.
+      if (toolCalls.some((tc) => tc.function?.name === 'mention_agent')) {
+        floorPassed = true;
+        console.log(`[Floor] mention_agent executed in round ${currentRound} — ending turn, floor passes`);
+        sendEvent('floor_passed', { assistantMessageId, round: currentRound });
+        break;
+      }
+
       // Dynamic tool loading: check if discover_tools requested new categories
       if (conversationContext._requestedToolCategories && conversationContext._requestedToolCategories.size > 0) {
         try {
@@ -2792,15 +2821,22 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // against the window. Never revert reductions for Codex.
       let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
         calibration: conversationContext._estimateCalibration || 1,
+        evictedUnits: conversationContext._evictedUnits || 0,
       });
+      conversationContext._evictedUnits = loopContextResult.evictedUnits || 0;
       const cacheGate = 0.95;
       const originalRequestTokens = loopContextResult.originalTokens + loopContextResult.toolTokens;
       const originalUtilization = loopContextResult.contextWindow > 0
         ? (originalRequestTokens / loopContextResult.contextWindow)
         : 0;
+      // A standing eviction watermark is the conversation's persistent state,
+      // not a minor truncation — reverting it mid-turn would flip the prefix
+      // between the evicted view (turn start) and the full view (tool rounds),
+      // breaking the cache twice per round AND risking the provider wall.
       const canRevert = normalizedProvider !== 'openai-codex'
         && originalUtilization < cacheGate
-        && loopContextResult.wasManaged;
+        && loopContextResult.wasManaged
+        && !(loopContextResult.evictedUnits > 0);
       if (canRevert) {
         // Original already fit comfortably; reduction was minor truncation.
         // Revert to preserve the cache prefix for the next turn.
@@ -2966,8 +3002,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     finalContentForLogging = scrubEmptyPlaceholder(extractDisplayText(responseMessage.content));
 
     // Safety net: if tool loop ran but final response has no text content,
-    // make one more LLM call to generate a summary response
-    if (currentRound > 0 && !finalContentForLogging) {
+    // make one more LLM call to generate a summary response.
+    // NOT when the floor was passed — the turn deliberately ends on the
+    // handoff; forcing a summary here would give the speaker an extra turn
+    // and defeat the terminal-tool contract.
+    if (currentRound > 0 && !finalContentForLogging && !floorPassed) {
       console.log('[Tool Loop] Final response had no text content after tool execution, requesting follow-up');
       try {
         // Add a nudge message to prompt the LLM to summarize
@@ -2986,7 +3025,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
         const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
           calibration: conversationContext._estimateCalibration || 1,
+          evictedUnits: conversationContext._evictedUnits || 0,
         });
+        conversationContext._evictedUnits = followUpContext.evictedUnits || 0;
         // Do NOT reassign `messages` — the adapter call below reads
         // followUpContext.messages directly; `messages` must stay intact
         // for full_history persistence.

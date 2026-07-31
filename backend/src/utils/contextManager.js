@@ -456,7 +456,10 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
           if (name) toolNames.add(name);
         });
       }
-      if (msg.role === 'user' && msg.content) {
+      // Only HUMAN turns feed "User topics" — in group chat, foreign speakers
+      // (agents/orchestrator) render as role:'user' with a speaker tag, and
+      // labelling their chatter as the user's topics misstates the record.
+      if (msg.role === 'user' && msg.content && (!msg.speaker || msg.speaker.type === 'human')) {
         // user content may be a string (OpenAI/Gemini) or an array of blocks
         // (Anthropic tool_result / multimodal). Calling .substring on an array
         // throws — extract a text-ish preview safely instead.
@@ -542,6 +545,73 @@ function manageContext(messages, model, tools = [], provider = null, options = {
 
   console.log(`Context management: ${currentTokens} tokens, limit: ${availableTokens}, model: ${model}`);
 
+  // ---- Chunked eviction with a persistent watermark (cache-stable) --------
+  //
+  // The old behaviour evicted the MINIMUM number of message units needed to
+  // fit, recomputed fresh every turn against the caller's full history. Once
+  // a conversation crossed the limit, the window slid forward one turn's
+  // worth of messages on EVERY request — so the prompt prefix changed every
+  // turn and the provider's prompt cache never hit again (measured: prefix
+  // rewrites == compressed turns, exactly; 27 rewrites over 40 group-chat
+  // turns). Anthropic bills cache writes at 1.25x, so that was a standing
+  // money leak, not just latency.
+  //
+  // Fix: when we must evict, cut down to a LOW-WATER mark (~70% of budget)
+  // and PERSIST the cut as a unit-count watermark the caller replays on
+  // every subsequent turn (options.evictedUnits, stored per conversation by
+  // OrchestratorService). Between cuts the prefix is byte-stable — the same
+  // 40-turn sim drops to 6 rewrites (78% fewer full-price cache writes).
+  //
+  // The watermark counts UNITS (groupMessageUnits keeps assistant+tool pairs
+  // atomic) from the FRONT of the non-system history. Unit grouping is
+  // structural (roles + tool_calls, never content), and the conversation is
+  // append-only, so the first N units are the same N units on every turn.
+  //
+  // Reset rule: if the FULL array fits the budget outright, the watermark is
+  // forgotten. In normal append-only flow that never happens after a cut
+  // (history only grows), so there is no oscillation. It fires exactly when
+  // the budget grew (model switch — which changes cache namespace anyway) or
+  // the history shrank (edit/regenerate — which already breaks the cache),
+  // and restores full fidelity in both cases.
+  const LOW_WATER_FRACTION = 0.7;
+  let evictedUnits = Math.max(0, Math.floor(Number(options.evictedUnits) || 0));
+  if (evictedUnits > 0 && currentTokens <= availableTokens) {
+    evictedUnits = 0;
+  }
+  if (evictedUnits > 0 || currentTokens > availableTokens) {
+    const evictionSystemMessage = managedMessages.find((m) => m.role === 'system') || null;
+    const units = groupMessageUnits(managedMessages.filter((m) => m.role !== 'system'));
+    // Clamp: the conversation may have been edited/truncated since the
+    // watermark was recorded. Always keep at least the last unit.
+    evictedUnits = Math.min(evictedUnits, Math.max(0, units.length - 1));
+    if (evictedUnits > 0) {
+      managedMessages = [evictionSystemMessage, ...units.slice(evictedUnits).flat()].filter(Boolean);
+      currentTokens = estimateMessagesTokens(managedMessages);
+    }
+    if (currentTokens > availableTokens && units.length > 1) {
+      // Over budget even after replaying the watermark — cut to low-water.
+      const systemTokens = evictionSystemMessage ? estimateMessagesTokens([evictionSystemMessage]) : 0;
+      const target = Math.floor(availableTokens * LOW_WATER_FRACTION);
+      let keptTokens = systemTokens;
+      let keepFrom = units.length;
+      for (let i = units.length - 1; i >= 0; i--) {
+        const unitTokens = estimateMessagesTokens(units[i]);
+        if (keptTokens + unitTokens > target && keepFrom < units.length) break;
+        keepFrom = i;
+        keptTokens += unitTokens;
+      }
+      // The watermark only ever moves forward — retreating would rewrite the
+      // prefix for no correctness gain.
+      const nextEvicted = Math.min(Math.max(evictedUnits, keepFrom), units.length - 1);
+      if (nextEvicted > evictedUnits) {
+        evictedUnits = nextEvicted;
+        managedMessages = [evictionSystemMessage, ...units.slice(evictedUnits).flat()].filter(Boolean);
+        currentTokens = estimateMessagesTokens(managedMessages);
+        console.log(`[Context Manager] Chunked eviction: dropped ${evictedUnits} oldest unit(s) to the ${Math.round(LOW_WATER_FRACTION * 100)}% low-water mark (${currentTokens} tokens); watermark persisted for prefix stability`);
+      }
+    }
+  }
+
   // If we're over the limit, apply management strategies
   if (currentTokens > availableTokens) {
     console.log('Context over limit, applying management strategies...');
@@ -619,12 +689,27 @@ function manageContext(messages, model, tools = [], provider = null, options = {
 
       // Prefer the last user message that is NOT a tool_result carrier -
       // it's the cleanest recovery point (a plain user turn).
+      //
+      // Group chat: foreign speakers (other agents, the orchestrator) are
+      // rendered as role:'user' with a `speaker` tag. Emergency recovery must
+      // keep the HUMAN's question, not the last piece of agent chatter — so
+      // pass 1 prefers messages that are human (speaker absent = legacy =
+      // human), and pass 2 falls back to today's any-plain-user behaviour.
       let plainUserIdx = -1;
       for (let i = nonSystem.length - 1; i >= 0; i--) {
         const m = nonSystem[i];
-        if (m.role === 'user' && !userHasToolResultBlock(m)) {
+        if (m.role === 'user' && !userHasToolResultBlock(m) && (!m.speaker || m.speaker.type === 'human')) {
           plainUserIdx = i;
           break;
+        }
+      }
+      if (plainUserIdx === -1) {
+        for (let i = nonSystem.length - 1; i >= 0; i--) {
+          const m = nonSystem[i];
+          if (m.role === 'user' && !userHasToolResultBlock(m)) {
+            plainUserIdx = i;
+            break;
+          }
         }
       }
 
@@ -713,6 +798,21 @@ function manageContext(messages, model, tools = [], provider = null, options = {
   const messagesTokens = estimateMessagesTokens(nonSystemMessages);
   const totalRequestTokens = systemTokens + toolTokens + messagesTokens;
 
+  // Strip the `speaker` attribution field before the messages head to the
+  // LLM adapters. It is metadata for context management (Strategy 4 human
+  // preference, summary labelling) — the Anthropic/OpenAI adapters pass
+  // unknown message fields through to the wire (verified: _normalizeHistory
+  // pushes/spreads message objects verbatim), and providers reject or
+  // mis-handle unrecognized fields. This is the single choke point every
+  // outbound request passes through, so stripping here covers all providers.
+  managedMessages = managedMessages.map((m) => {
+    if (m && typeof m === 'object' && 'speaker' in m) {
+      const { speaker: _speaker, ...rest } = m;
+      return rest;
+    }
+    return m;
+  });
+
   // Last-line-of-defence: scrub any unpaired UTF-16 surrogates from the
   // messages array before it heads to the LLM adapter. Without this, a
   // single broken character in conversation history (most commonly from
@@ -730,6 +830,10 @@ function manageContext(messages, model, tools = [], provider = null, options = {
     tokenLimit: availableTokens,
     contextWindow,
     wasManaged: currentTokens < estimateMessagesTokens(messages),
+    // Persistent eviction watermark (unit count). The caller stores this per
+    // conversation and replays it via options.evictedUnits on later turns so
+    // the prompt prefix stays byte-stable between cuts.
+    evictedUnits,
     // Effective estimate->real correction applied to the budget this turn.
     calibration,
     // Per-component breakdown for accurate "what Anthropic sees" reporting

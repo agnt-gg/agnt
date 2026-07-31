@@ -5,6 +5,7 @@ import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun } from '@/services/chatService.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { findAgentMentions } from '@/utils/agentMentions.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -38,14 +39,67 @@ const ORCHESTRATOR_CHANNEL_KEY = 'orchestrator:default';
 
 const MAX_TOOL_RESULT_CHARS = 2000; // Cap tool results in history to avoid huge payloads
 
+// Agent-initiated floor passes (mention_agent) allowed per human message.
+// Guards against runaway agent↔agent loops — when the budget is spent the
+// floor silently returns to the user.
+const FLOOR_TURN_BUDGET = 6;
+
+/**
+ * Classify who a stored message belongs to. Attribution derives from fields
+ * that already persist: role 'user' = the human (unless a speaker tag says
+ * otherwise — e.g. none today), assistant with agentId/agentName = that
+ * agent, any other assistant = the orchestrator (Annie). Absence of
+ * attribution on legacy messages therefore reproduces today's behaviour
+ * exactly.
+ */
+export function speakerOfMessage(msg) {
+  if (msg.role === 'user') {
+    return msg.speaker && msg.speaker.type ? msg.speaker : { type: 'human' };
+  }
+  if (msg.agentId || msg.agentName) {
+    return { type: 'agent', id: msg.agentId || null, name: msg.agentName || null };
+  }
+  return { type: 'orchestrator', id: null, name: 'Annie' };
+}
+
+/**
+ * Find @AgentName mentions in a finished assistant message. THE RULE IS
+ * WYSIWYG: exactly the mentions MessageItem renders as pills are the ones
+ * that pass the floor — same literal-name match, same boundary lookahead,
+ * same case sensitivity. Returns agents in order of first appearance.
+ * `exclude` drops self-mentions (a speaker never passes the floor to itself).
+ */
+export function findTextMentions(content, agents, exclude = null) {
+  return findAgentMentions(content, agents, exclude);
+}
+
+/**
+ * Is this assistant message the VIEWER's own turn?
+ * viewer null = the orchestrator (Annie). Id match is authoritative; name
+ * match is the fallback for conversations persisted before agentId existed.
+ * assumeOwnAssistant covers dedicated agent conversations whose early
+ * messages predate agent attribution entirely — in a dedicated conversation
+ * every assistant turn IS the agent.
+ */
+function isOwnAssistantMessage(speaker, viewer, assumeOwnAssistant) {
+  if (!viewer) return speaker.type === 'orchestrator';
+  if (speaker.type === 'agent') {
+    if (speaker.id && viewer.id) return speaker.id === viewer.id;
+    if (speaker.name && viewer.name) return speaker.name === viewer.name;
+    return assumeOwnAssistant === true;
+  }
+  return assumeOwnAssistant === true;
+}
+
 /**
  * Build chat history with proper tool call messages.
  * Sends OpenAI-compatible format: assistant messages with tool_calls,
  * followed by role:"tool" result messages. The backend adapters handle
  * converting to provider-specific formats (Anthropic, Gemini, etc.).
  */
-function buildChatHistory(messages, provider = null) {
+export function buildChatHistory(messages, provider = null, viewer = null, options = {}) {
   const result = [];
+  const assumeOwnAssistant = options.assumeOwnAssistant === true;
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const preserveReasoningContent = new Set(['deepseek', 'kimi', 'kimi-code', 'zai']).has(normalizedProvider);
   const validMessages = messages.filter(
@@ -53,6 +107,32 @@ function buildChatHistory(messages, provider = null) {
   );
 
   for (const msg of validMessages) {
+    // ---- Group chat: render the transcript from the responding speaker's
+    // point of view. A FOREIGN assistant turn (another agent, or Annie when
+    // an agent is responding) becomes an attributed user turn — the model
+    // must never read someone else's words as its own prior output. Foreign
+    // tool_calls are flattened to prose: replaying another speaker's
+    // tool_call ids would hard-fail provider validation (orphaned ids) and
+    // break unit grouping inside context compression.
+    if (msg.role === 'assistant') {
+      const speaker = speakerOfMessage(msg);
+      if (!isOwnAssistantMessage(speaker, viewer, assumeOwnAssistant)) {
+        const label = speaker.type === 'agent' ? `@${speaker.name || 'agent'}` : 'Annie';
+        const text = typeof msg.content === 'string' ? msg.content : '';
+        const toolNames = (msg.toolCalls || []).map((tc) => tc && tc.name).filter(Boolean);
+        if (!text && toolNames.length === 0) continue;
+        const toolNote = toolNames.length ? `\n[used tools: ${toolNames.join(', ')}]` : '';
+        result.push({
+          role: 'user',
+          content: `[${label}]: ${text}${toolNote}`,
+          // Metadata for backend context management (Strategy-4 human
+          // preference, summary labelling). Stripped before the provider wire.
+          speaker: { type: speaker.type, name: speaker.name || 'Annie' },
+        });
+        continue;
+      }
+    }
+
     const reasoningContent = preserveReasoningContent
       ? (msg.reasoning_content || msg.reasoning || '').trim()
       : '';
@@ -214,6 +294,12 @@ function createConversationState(conversationId) {
     agentAvatar: null,
     streamEventCallbacks: [],
     pendingSteer: '', // Per-conversation so switching chats doesn't drag a steer
+    // Group-chat floor state: agents queued to respond (via mention_agent),
+    // how many agent-initiated turns this human message has consumed, and the
+    // last agent dispatched (self-repeat cycle guard).
+    floorQueue: [],
+    floorTurnsUsed: 0,
+    lastFloorAgentId: null,
   };
 }
 
@@ -355,6 +441,29 @@ export default {
       const conv = state.conversations[conversationId];
       if (conv) conv.pendingSteer = '';
       if (state.activeConversationId === conversationId) state.pendingSteer = '';
+    },
+
+    // ---- Group-chat floor mutations ----------------------------------
+    SCOPED_QUEUE_FLOOR_PASS(state, { conversationId, agent }) {
+      const conv = state.conversations[conversationId];
+      if (!conv || !agent || !agent.id) return;
+      if (!Array.isArray(conv.floorQueue)) conv.floorQueue = [];
+      if (conv.floorQueue.some((a) => a.id === agent.id)) return;
+      conv.floorQueue.push(agent);
+    },
+    SCOPED_RESET_FLOOR(state, { conversationId }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      conv.floorQueue = [];
+      conv.floorTurnsUsed = 0;
+      conv.lastFloorAgentId = null;
+    },
+    SCOPED_FLOOR_DISPATCHED(state, { conversationId, agentId }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      conv.floorQueue = (conv.floorQueue || []).filter((a) => a.id !== agentId);
+      conv.floorTurnsUsed = (conv.floorTurnsUsed || 0) + 1;
+      conv.lastFloorAgentId = agentId;
     },
     SET_ACTIVE_STREAM(state, value) {
       state.activeStreamId = value;
@@ -1246,10 +1355,16 @@ export default {
      */
     async startStreamingConversation(
       { commit, state, dispatch, rootState },
-      { userInput, files = [], provider, model, reasoningValue = 'default', reasoningEnabled = false, mentionedAgent = null },
+      { userInput, files = [], provider, model, reasoningValue = 'default', reasoningEnabled = false, mentionedAgent = null, isFloorDispatch = false, conversationId = null },
     ) {
-      // Determine which conversation to stream in
-      let convId = state.activeConversationId || state.currentConversationId || `temp-${Date.now()}`;
+      // Determine which conversation to stream in. An EXPLICIT conversationId
+      // (floor dispatches) is authoritative — resolving the ACTIVE conversation
+      // at dispatch time is the cross-conversation bleed bug: the user switches
+      // chats between 'done' and the dispatch, and the agent's turn follows
+      // their eyes into the wrong conversation. Same defect class as the canvas
+      // workspace binding: a write must carry its address, not look it up when
+      // it executes.
+      let convId = conversationId || state.activeConversationId || state.currentConversationId || `temp-${Date.now()}`;
 
       // Per-conversation guard: only block if THIS conversation is already streaming
       // Allow concurrent streams for multi-agent @ mentions
@@ -1265,6 +1380,13 @@ export default {
         commit('SET_ACTIVE_CONVERSATION', convId);
       }
 
+      // A HUMAN send preempts any pending agent floor passes — the queued
+      // agents were reacting to a floor that no longer exists. (Floor
+      // dispatches themselves must not clear the very queue they drain.)
+      if (!isFloorDispatch) {
+        commit('SCOPED_RESET_FLOOR', { conversationId: convId });
+      }
+
       // Track concurrent streams so isStreaming stays true until ALL finish
       const conv0 = state.conversations[convId];
       conv0._activeStreams = (conv0._activeStreams || 0) + 1;
@@ -1277,7 +1399,19 @@ export default {
       const token = localStorage.getItem('token');
       // Read messages from the conversation slot — includes tool call context
       const conv = state.conversations[convId];
-      const chatHistory = buildChatHistory(conv.messages, provider);
+
+      // Resolve the responding speaker BEFORE rendering history — the shared
+      // transcript is rendered from that speaker's point of view (their own
+      // turns as 'assistant', everyone else attributed as 'user').
+      const resolvedAgentId = mentionedAgent?.id || conv.agentId || null;
+      const historyViewer = resolvedAgentId && resolvedAgentId !== 'agent-chat'
+        ? { id: resolvedAgentId, name: mentionedAgent?.name || conv.agentName || null }
+        : null;
+      const chatHistory = buildChatHistory(conv.messages, provider, historyViewer, {
+        // In the agent's own dedicated conversation, unattributed legacy
+        // assistant turns are the agent's (it is the only responder there).
+        assumeOwnAssistant: !!historyViewer && resolvedAgentId === conv.agentId,
+      });
 
       // Remove duplicate trailing user message if it matches what we're about to send
       const deduped = chatHistory.length > 0 &&
@@ -1308,8 +1442,7 @@ export default {
           headers['Authorization'] = `Bearer ${token}`;
         }
 
-        // Resolve agentId from @ mention or existing conversation context
-        const resolvedAgentId = mentionedAgent?.id || conv.agentId || null;
+        // (resolvedAgentId computed above, before history rendering)
 
         // Resolve per-conversation skill/goal bindings (set via /skill, /goal).
         // These get sent on every turn so the orchestrator can prepend the
@@ -1580,6 +1713,83 @@ export default {
     },
 
     /**
+     * Scan the turn's finished assistant message for text @AgentName mentions
+     * and queue floor passes for them. This is the ZERO-FRICTION group-chat
+     * path — any speaker (Annie or an agent) just writes @Name in its reply,
+     * no tool call required. Runs on 'done', immediately before the queue
+     * drains, so text mentions and mention_agent tool passes share one
+     * scheduler and one set of guards (budget, cycle, preemption, dedupe).
+     */
+    queueTextMentionFloorPasses({ commit, state, rootState }, { conversationId }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      const messages = conv.messages || [];
+      let last = null;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'assistant') { last = messages[i]; break; }
+      }
+      if (!last || !last.content) return;
+      const speaker = speakerOfMessage(last);
+      const exclude = speaker.type === 'agent' ? speaker : null;
+      const mentioned = findTextMentions(last.content, rootState.agents?.agents || [], exclude);
+      for (const agent of mentioned) {
+        commit('SCOPED_QUEUE_FLOOR_PASS', { conversationId, agent });
+      }
+    },
+
+    /**
+     * Drain the group-chat floor queue: dispatch the next agent queued by a
+     * mention_agent floor pass. Called from the 'done' stream event, so each
+     * dispatched agent's own 'done' drains the next entry — sequential by
+     * construction, every speaker sees all prior replies.
+     *
+     * Guards (non-negotiable — an agent↔agent mention loop is an unbounded
+     * token fire):
+     *  - FLOOR_TURN_BUDGET agent-initiated turns per human message
+     *  - self-repeat cycle guard (an agent can never immediately follow itself)
+     *  - a new human message resets the queue (see startStreamingConversation)
+     */
+    async processFloorQueue({ commit, state, dispatch, rootState }, { conversationId }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      if (conv.isStreaming) return; // another stream took the conversation
+      const queue = conv.floorQueue || [];
+      if (queue.length === 0) return;
+
+      if ((conv.floorTurnsUsed || 0) >= FLOOR_TURN_BUDGET) {
+        console.warn(`[Floor] Turn budget (${FLOOR_TURN_BUDGET}) exhausted — floor returns to the user; dropping ${queue.length} queued pass(es)`);
+        commit('SCOPED_RESET_FLOOR', { conversationId });
+        return;
+      }
+
+      const next = queue[0];
+      if (conv.lastFloorAgentId === next.id) {
+        console.warn(`[Floor] Cycle guard: @${next.name || next.id} would immediately follow itself — floor returns to the user`);
+        commit('SCOPED_RESET_FLOOR', { conversationId });
+        return;
+      }
+
+      commit('SCOPED_FLOOR_DISPATCHED', { conversationId, agentId: next.id });
+      console.log(`[Floor] Dispatching @${next.name || next.id} (turn ${conv.floorTurnsUsed} of ${FLOOR_TURN_BUDGET})`);
+
+      await dispatch('startStreamingConversation', {
+        userInput: next.note
+          ? `[Floor] @${next.name || 'agent'}, you have the floor. ${next.note}`
+          : `[Floor] @${next.name || 'agent'}, you have the floor — respond to the conversation above.`,
+        files: [],
+        provider: rootState.aiProvider?.selectedProvider,
+        model: rootState.aiProvider?.selectedModel,
+        reasoningValue: rootState.aiProvider?.reasoningValue,
+        reasoningEnabled: rootState.aiProvider?.reasoningEnabled,
+        mentionedAgent: { id: next.id, name: next.name, avatar: next.icon },
+        isFloorDispatch: true,
+        // The floor pass belongs to the conversation whose 'done' queued it —
+        // NEVER the conversation the user happens to be looking at now.
+        conversationId,
+      });
+    },
+
+    /**
      * Rejoin a turn that was still generating when this tab last went away.
      *
      * The server replays the turn from `conversation_started` and then continues
@@ -1676,6 +1886,12 @@ export default {
         } else {
           commit('SET_STREAM_READER', null);
         }
+      }
+
+      // Stop cancels the whole group-chat round, not just the current
+      // stream — pending floor passes must not fire after the user said stop.
+      if (conv) {
+        commit('SCOPED_RESET_FLOOR', { conversationId: convId });
       }
 
       // Stop ALL active async tools
@@ -1875,6 +2091,7 @@ export default {
             reasoning: msg.reasoning || undefined,
             reasoning_content: msg.reasoning_content || undefined,
             files: msg.files || [],
+            agentId: msg.agentId || undefined,
             agentName: msg.agentName || undefined,
             agentIcon: msg.agentIcon || undefined,
           })),
@@ -2130,7 +2347,10 @@ export default {
 
       const token = localStorage.getItem('token');
       const conv = state.conversations[convId];
-      const chatHistory = buildChatHistory(conv.messages, provider);
+      // Dedicated agent conversation: the agent is the viewer, and every
+      // assistant turn here is the agent's own (assumeOwnAssistant covers
+      // messages persisted before agent attribution existed).
+      const chatHistory = buildChatHistory(conv.messages, provider, { id: agentId, name: conv.agentName || null }, { assumeOwnAssistant: true });
 
       // Remove duplicate trailing user message if it matches what we're about to send
       const deduped = chatHistory.length > 0 &&
@@ -2945,6 +3165,22 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         result: data.toolCall.result,
         error: data.toolCall.error,
       });
+      // Group chat: a successful mention_agent queues the mentioned agent's
+      // turn. Dispatched when this stream's 'done' arrives — the floor holder
+      // finishes speaking before the next participant starts.
+      if (data.toolCall.name === 'mention_agent' && !data.toolCall.error) {
+        try {
+          const parsed = typeof data.toolCall.result === 'string'
+            ? JSON.parse(data.toolCall.result)
+            : data.toolCall.result;
+          if (parsed && parsed.success && parsed.agentId) {
+            commit('SCOPED_QUEUE_FLOOR_PASS', {
+              conversationId,
+              agent: { id: parsed.agentId, name: parsed.agentName || null, icon: parsed.agentIcon || null, note: parsed.note || null },
+            });
+          }
+        } catch { /* malformed result — no floor pass */ }
+      }
       break;
     case 'image_generated':
       commit('SCOPED_ADD_IMAGE_TO_CACHE', {
@@ -3003,6 +3239,11 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       markRunEnded(conversationId);
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: true, conversationId });
+        // Group chat: text @Name mentions in the finished reply queue floor
+        // passes (synchronous action — completes before the drain below).
+        dispatch('queueTextMentionFloorPasses', { conversationId });
+        // Drain any floor passes queued during this turn (group chat).
+        dispatch('processFloorQueue', { conversationId });
       }
       break;
 

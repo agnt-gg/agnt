@@ -92,6 +92,16 @@
               <div class="spinner"></div>
             </div>
             <div v-else class="conversation-container">
+              <!-- Group-chat roster: who's in this room (Annie is implicit) -->
+              <div v-if="chatParticipants.length > 0" class="chat-roster">
+                <span class="chat-roster-label"><i class="fas fa-users"></i></span>
+                <span class="chat-roster-chip is-annie">Annie</span>
+                <span v-for="p in chatParticipants" :key="p.name" class="chat-roster-chip">
+                  <img v-if="p.icon && (p.icon.startsWith('http') || p.icon.startsWith('data:') || p.icon.startsWith('/'))" :src="p.icon" class="chat-roster-avatar" alt="" />
+                  <i v-else-if="p.icon" :class="p.icon"></i>
+                  @{{ p.name }}
+                </span>
+              </div>
               <div v-if="hiddenMessageCount > 0" class="show-earlier-row">
                 <button type="button" class="show-earlier-btn" @click="showEarlierMessages">
                   <i class="fas fa-chevron-up"></i>
@@ -182,6 +192,13 @@
 
               <!-- Processing State -->
               <ProcessingState v-if="isProcessing" :text="`${activeAgentName} is working...`" />
+
+              <!-- Group-chat floor queue: agents waiting to respond -->
+              <div v-if="floorState.queue.length > 0" class="floor-queue-row">
+                <i class="fas fa-arrow-right"></i>
+                Floor passes to {{ floorState.queue.map((a) => '@' + (a.name || 'agent')).join(', ') }}
+                <span class="floor-queue-budget">(turn {{ floorState.turnsUsed + 1 }} of 6)</span>
+              </div>
             </div>
           </div>
           <ChatScrollControls :target-getter="getConversationEl" />
@@ -358,6 +375,26 @@ export default {
         }
       }
       return 'Annie';
+    });
+
+    // Group chat: distinct agent participants in this conversation (Annie is
+    // implicit). Drives the roster chip row above the transcript.
+    const chatParticipants = computed(() => {
+      const seen = new Map();
+      for (const m of displayMessages.value) {
+        if (m.role === 'assistant' && m.agentName && !seen.has(m.agentName)) {
+          seen.set(m.agentName, { name: m.agentName, icon: m.agentIcon || null, id: m.agentId || null });
+        }
+      }
+      return [...seen.values()];
+    });
+
+    // Group chat: pending floor passes + turn budget for the indicator line.
+    const floorState = computed(() => {
+      const convId = store.state.chat.activeConversationId;
+      const conv = convId ? store.state.chat.conversations[convId] : null;
+      if (!conv) return { queue: [], turnsUsed: 0 };
+      return { queue: conv.floorQueue || [], turnsUsed: conv.floorTurnsUsed || 0 };
     });
 
     // No provider tutorial
@@ -1187,21 +1224,23 @@ export default {
 
       clearInput();
 
-      // If multiple agents are mentioned, send requests in parallel
+      // Mentioned agents respond SEQUENTIALLY, in mention order — each agent's
+      // history is rendered after the previous agent finished, so every
+      // participant hears the ones before it. The old Promise.all fan-out ran
+      // them against identical snapshots: N parallel answers that could not
+      // reference each other, which is not a conversation.
       const agents = mentionedAgents && mentionedAgents.length > 0 ? mentionedAgents : [null];
-      await Promise.all(
-        agents.map((agent) =>
-          store.dispatch('chat/startStreamingConversation', {
-            userInput: input,
-            files: files,
-            provider: store.state.aiProvider.selectedProvider,
-            model: store.state.aiProvider.selectedModel,
-            reasoningValue: store.state.aiProvider.reasoningValue,
-            reasoningEnabled: store.state.aiProvider.reasoningEnabled,
-            mentionedAgent: agent,
-          }),
-        ),
-      );
+      for (const agent of agents) {
+        await store.dispatch('chat/startStreamingConversation', {
+          userInput: input,
+          files: files,
+          provider: store.state.aiProvider.selectedProvider,
+          model: store.state.aiProvider.selectedModel,
+          reasoningValue: store.state.aiProvider.reasoningValue,
+          reasoningEnabled: store.state.aiProvider.reasoningEnabled,
+          mentionedAgent: agent,
+        });
+      }
     };
 
     // Edit & resend: truncate from edited message, re-add with new content, resend
@@ -2570,6 +2609,8 @@ export default {
       getConversationEl,
       saveConversation,
       activeAgentName,
+      chatParticipants,
+      floorState,
       useTutorial,
       initializeScreen,
       isMobile,
@@ -2954,5 +2995,61 @@ export default {
   .message-content {
     max-width: 100%;
   }
+}
+
+/* ---- Group chat: participant roster + floor queue ---- */
+.chat-roster {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 8px;
+  font-size: 11px;
+}
+
+.chat-roster-label {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.chat-roster-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border, #2a2a44);
+  border-radius: 10px;
+  color: var(--color-text-secondary, #a0a0b8);
+  background: transparent;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.chat-roster-chip.is-annie {
+  color: var(--color-accent, #e53d8f);
+  border-color: color-mix(in srgb, var(--color-accent, #e53d8f) 40%, transparent);
+}
+
+.chat-roster-avatar {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.floor-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-accent, #e53d8f);
+}
+
+.floor-queue-budget {
+  color: var(--color-text-muted);
+  opacity: 0.7;
 }
 </style>

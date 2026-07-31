@@ -60,6 +60,9 @@ export const DEFAULT_TOOLS = new Set([
   'agnt_agents',
   'agnt_chat',
   'agnt_goals',
+  // Group chat: pass the floor to another agent in the same conversation.
+  // Terminal — ends the caller's turn; the mentioned agent responds next.
+  'mention_agent',
   'get_agnt_api',
   'activate_skill',
   'execute_javascript',

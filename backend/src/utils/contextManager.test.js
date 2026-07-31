@@ -29,7 +29,14 @@ describe('contextManager', () => {
     expect(estimateMessagesTokens(large)).toBeGreaterThan(estimateMessagesTokens(small) + 20_000);
   });
 
-  it('compresses oversized histories and keeps the summary in conversation messages', () => {
+  it('compresses oversized histories by evicting whole old units, keeping recent turns verbatim', () => {
+    // BEHAVIOUR CHANGE (deliberate): this used to assert Strategy 2's
+    // "[Previous conversation summary]" message. That summary was REGENERATED
+    // on every over-budget turn, which rewrote the cached prompt prefix per
+    // request — the exact money leak the chunked-eviction watermark fixes.
+    // The new contract: whole oldest units are dropped cleanly (watermark
+    // reported for persistence), the recent turns survive VERBATIM (the old
+    // path truncated them), and the request fits the window.
     const hugePayload = 'x'.repeat(700_000);
     const messages = [
       { role: 'system', content: 'System prompt' },
@@ -58,8 +65,16 @@ describe('contextManager', () => {
 
     expect(result.wasManaged).toBe(true);
     expect(result.totalRequestTokens).toBeLessThan(result.contextWindow);
-    expect(result.messages[1].role).toBe('user');
-    expect(result.messages[1].content).toContain('Previous conversation');
+    expect(result.evictedUnits).toBeGreaterThan(0);
+    // The system prompt survives untouched and the most recent user turn
+    // survives VERBATIM (not truncated, not summarized).
+    expect(result.messages[0].role).toBe('system');
+    expect(result.messages[0].content).toBe('System prompt');
+    const last = result.messages[result.messages.length - 1];
+    expect(last.role).toBe('user');
+    expect(last.content).toBe('Continue');
+    // No orphaned tool messages: the giant unit travelled out atomically.
+    expect(result.messages.some((m) => m.role === 'tool')).toBe(false);
   });
 });
 
