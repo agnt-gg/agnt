@@ -342,6 +342,21 @@ export default {
     });
     const modelKey = (m) => (typeof m === 'string' ? m : m?.id || m?.model || m?.name || '');
     const modelLabel = (m) => (typeof m === 'string' ? m : m?.name || m?.id || m?.model || modelKey(m));
+    // CustomSelect options/handlers (uiContracts forbids native <select>)
+    const aiProviderSelectOptions = computed(() => [
+      { label: '— global default —', value: '' },
+      ...aiProviderOptions.value.map((p) => ({ label: p.name, value: p.id })),
+    ]);
+    const aiModelSelectOptions = computed(() =>
+      aiModelOptions.value.map((m) => ({ label: modelLabel(m), value: modelKey(m) })),
+    );
+    function onAiProviderSelected(value) {
+      aiPicker.value.provider = value ?? '';
+      return onAiProviderChange();
+    }
+    function onAiModelSelected(value) {
+      aiPicker.value.model = value ?? '';
+    }
     const globalProviderShort = computed(() => {
       const p = store.state.aiProvider?.selectedProvider || '';
       if (!p) return '';
