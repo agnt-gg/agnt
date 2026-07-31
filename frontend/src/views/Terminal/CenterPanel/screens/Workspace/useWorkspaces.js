@@ -32,9 +32,16 @@ import { STORAGE_KEY, LEGACY_KEY, CHAT_STORAGE_KEY, RECOVERY_FLAG } from './work
 const SYNC_ENABLED = false;
 
 async function apiFetch(path, opts = {}) {
+  // Match the app's auth convention (see chatService.js): JWT from localStorage
+  // as a Bearer token, which authenticateToken reads from the Authorization
+  // header. Without this the endpoints 401 and sync silently no-ops.
+  const token = localStorage.getItem('token');
   const res = await fetch(`/api/workspaces${path}`, {
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...opts,
   });
   if (!res.ok) throw new Error(`workspaces api ${res.status}`);
@@ -434,6 +441,12 @@ let saveTimer = null;
 // Ids deleted locally that must be removed server-side on next push, so a
 // tab closed on one device does not resurrect from another on next sync.
 const deletedIds = new Set();
+// Ids the server is known to have (populated on hydrate). A local workspace
+// that is in this set but ABSENT from a later server response was deleted on
+// another device — distinct from a freshly-created local tab the server has
+// never seen. Lets hydrate apply remote deletions without nuking local unsynced
+// creations.
+const syncedIds = new Set();
 let pushTimer = null;
 
 /** Debounced best-effort push of the whole set (+ deletions) to the server. */
@@ -454,6 +467,7 @@ function pushAll() {
     try {
       await apiFetch('', { method: 'PUT', body: JSON.stringify(payload) });
       deletedIds.clear();
+      for (const w of workspaces.value) syncedIds.add(w.id);
     } catch (e) {
       // Offline / server down: keep local state; retry on next save.
       console.warn('[useWorkspaces] sync push failed:', e.message);
@@ -472,7 +486,19 @@ async function hydrateFromServer() {
   try { remote = await apiFetch('', { method: 'GET' }); }
   catch (e) { console.warn('[useWorkspaces] hydrate skipped:', e.message); return; }
   if (!remote || !Array.isArray(remote.workspaces)) return;
+  const remoteIds = new Set(remote.workspaces.map((r) => r.id));
   const byId = new Map(workspaces.value.map((w) => [w.id, w]));
+
+  // Apply remote deletions: a local workspace known to the server (synced) but
+  // now missing from the server set was deleted on another device. Locally
+  // created tabs the server has never seen (not in syncedIds) are preserved.
+  for (const [id] of byId) {
+    if (!remoteIds.has(id) && syncedIds.has(id)) {
+      byId.delete(id);
+      syncedIds.delete(id);
+    }
+  }
+
   for (const r of remote.workspaces) {
     const local = byId.get(r.id);
     if (!local) {
@@ -482,7 +508,11 @@ async function hydrateFromServer() {
       local.name = r.name; local.widgets = r.widgets || local.widgets;
       local.ai = r.ai || null; local.updatedAt = r.updatedAt;
     }
+    syncedIds.add(r.id);
   }
+
+  // Never leave zero tabs.
+  if (byId.size === 0) return;
   workspaces.value = [...byId.values()];
   if (!workspaces.value.some((w) => w.id === activeId.value)) {
     activeId.value = workspaces.value[0]?.id;

@@ -887,7 +887,7 @@ async function universalChatHandler(req, res, context = {}) {
       console.warn('[Chat] Failed to sync provider/model to DB (non-critical):', e.message);
     });
   } else {
-    console.log('[Chat] Skipping default-provider write-back (turn-only provider).');
+    console.debug('[Chat] Skipping default-provider write-back (turn-only provider).');
   }
 
   // Validate message input (different formats for different handlers)

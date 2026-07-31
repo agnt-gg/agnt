@@ -31,6 +31,7 @@ class WorkspaceService {
   async getWorkspaces(req, res) {
     try {
       const userId = this._getUserId(req);
+      if (!userId) return res.status(401).json({ error: 'Authentication required' });
       const rows = await new Promise((resolve, reject) => {
         db.all(
           `SELECT * FROM widget_layouts
@@ -71,10 +72,14 @@ class WorkspaceService {
   async putWorkspaces(req, res) {
     try {
       const userId = this._getUserId(req);
+      if (!userId) return res.status(401).json({ error: 'Authentication required' });
       const { workspaces = [], deletedIds = [] } = req.body || {};
 
       if (!Array.isArray(workspaces)) {
         return res.status(400).json({ error: 'workspaces must be an array' });
+      }
+      if (!Array.isArray(deletedIds)) {
+        return res.status(400).json({ error: 'deletedIds must be an array' });
       }
 
       // Deletions first (user-scoped).
@@ -137,6 +142,18 @@ class WorkspaceService {
             // Racing INSERT on the (user_id, route) unique index → fall through
             // to an UPDATE instead of failing (mirrors LayoutService).
             if (/SQLITE_CONSTRAINT|UNIQUE constraint/i.test(insertErr?.message || '')) {
+              // Re-read the row that won the INSERT race and honour LWW: only
+              // overwrite if our write is not older than what is already there.
+              const winner = await new Promise((resolve, reject) => {
+                db.get(
+                  'SELECT layout_data FROM widget_layouts WHERE user_id = ? AND route = ?',
+                  [userId, route],
+                  (err, row) => (err ? reject(err) : resolve(row)),
+                );
+              });
+              let winnerStamp = 0;
+              try { winnerStamp = Number(JSON.parse(winner?.layout_data || '{}').updatedAt) || 0; } catch { winnerStamp = 0; }
+              if (incomingStamp < winnerStamp) continue; // stale racer: leave the newer winner
               await new Promise((resolve, reject) => {
                 db.run(
                   `UPDATE widget_layouts
@@ -164,6 +181,7 @@ class WorkspaceService {
   async deleteWorkspace(req, res) {
     try {
       const userId = this._getUserId(req);
+      if (!userId) return res.status(401).json({ error: 'Authentication required' });
       const { id } = req.params;
       await new Promise((resolve, reject) => {
         db.run(
