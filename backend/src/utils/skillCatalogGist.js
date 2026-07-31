@@ -15,9 +15,18 @@ const MAX_GIST_CHARS = 220;
 // style early periods truncating the gist to a useless fragment.
 const MIN_GIST_CHARS = 40;
 
-export function skillCatalogGist(description) {
+/**
+ * @param {string} description
+ * @param {number} [maxChars=220] Hard cap. Callers with a different
+ *   pointer-to-full-text mechanism (agent memory, whose full text is one
+ *   `get_agent_memories` call away) can afford a longer gist than the skills
+ *   catalog, which has ~100 entries competing for the same budget.
+ */
+export function skillCatalogGist(description, maxChars = MAX_GIST_CHARS) {
   const text = String(description || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
+
+  const cap = Number.isFinite(maxChars) && maxChars > MIN_GIST_CHARS ? maxChars : MAX_GIST_CHARS;
 
   let gist = text;
   const boundary = /[.!?](?=\s)/g;
@@ -29,9 +38,9 @@ export function skillCatalogGist(description) {
     }
   }
 
-  if (gist.length > MAX_GIST_CHARS) {
-    const cut = gist.lastIndexOf(' ', MAX_GIST_CHARS - 1);
-    gist = gist.slice(0, cut > MIN_GIST_CHARS ? cut : MAX_GIST_CHARS).trimEnd() + '...';
+  if (gist.length > cap) {
+    const cut = gist.lastIndexOf(' ', cap - 1);
+    gist = gist.slice(0, cut > MIN_GIST_CHARS ? cut : cap).trimEnd() + '...';
   }
   return gist;
 }

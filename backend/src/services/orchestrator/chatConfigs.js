@@ -1,8 +1,9 @@
 import { getAvailableToolSchemas } from './tools.js';
-import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES } from './toolSelector.js';
+import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
 import { loadWorkspaceContextSection } from './workspaceContext.js';
-import { estimateTokens } from '../../utils/contextManager.js';
+import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
+import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
   'discover_tools',
@@ -57,11 +58,18 @@ async function loadMemorySection(userId, query, agentId = null) {
       memories = await AgentMemoryModel.findByUserId(userId, { limit: 15 });
     }
     if (!memories.length) return '';
-    const lines = memories.map(m => {
-      const source = m.agent_id && m.agent_id !== 'orchestrator' ? ' (from agent)' : '';
-      return `- [${m.memory_type}] ${m.content}${source}`;
-    }).join('\n');
-    return `\n\n## Memory\nRelevant learnings from previous activity:\n${lines}`;
+    // BUDGETED. The ranking above is respected verbatim; entries that do not
+    // fit are gisted rather than dropped, and remain readable in full via
+    // get_agent_memories. See utils/memoryDigest.js for the measurement that
+    // motivated the cap.
+    const digest = buildMemoryDigest(memories, { estimate: estimateTokens });
+    if (digest.gistCount > 0) {
+      console.log(
+        `[chatConfigs] Memory section: ${digest.fullCount} full + ${digest.gistCount} gisted ` +
+        `(budget ${estimateTokens(digest.text)} tok)`
+      );
+    }
+    return digest.text;
   } catch (e) {
     console.warn('[chatConfigs] Failed to load memories:', e.message);
     return '';
@@ -332,19 +340,17 @@ const UNIVERSAL_TOOLS = new Set([
   'scan_page_elements',
 ]);
 
-// Per-tool MCP entries are namespaced as `mcp__<server>__<tool>`. We can't
-// enumerate them in UNIVERSAL_TOOLS (the set would change every time a user
-// configures a server), so we match by prefix during whitelist filtering —
-// every mcp__-prefixed tool is implicitly universal.
-const UNIVERSAL_TOOL_PREFIXES = ['mcp__'];
-
+// NOTE ON MCP: `mcp__<server>__<tool>` entries used to be matched here by
+// PREFIX, making every MCP tool implicitly universal — i.e. resident on every
+// surface, on every turn, exempt from keyword gating and exempt from a
+// restricted agent's declared tool ceiling. Measured live 2026-07-31: 78
+// tools / 25,415 tokens, 67% of the whole discovery-path surface. They are now
+// an ordinary gated category (`mcp` in DYNAMIC_GROUP_MATCHERS), keyword-
+// triggered and loadable via discover_tools. `mcp_client` remains universal so
+// the servers themselves are always discoverable. Availability unchanged;
+// residency no longer assumed.
 function isUniversalToolName(name) {
-  if (!name) return false;
-  if (UNIVERSAL_TOOLS.has(name)) return true;
-  for (const prefix of UNIVERSAL_TOOL_PREFIXES) {
-    if (name.startsWith(prefix)) return true;
-  }
-  return false;
+  return Boolean(name) && UNIVERSAL_TOOLS.has(name);
 }
 
 // Always-on = universal system primitives + the read-only CORE_PRIMITIVES.
@@ -360,17 +366,52 @@ function isAlwaysOnToolName(name) {
   return isUniversalToolName(name) || CORE_PRIMITIVES.has(name);
 }
 
-// "All tools" is a MODE, not a list. The frontend historically enumerated
-// every tool as the orchestrator default, so a whitelist covering (nearly)
-// the entire registry doesn't mean the user narrowed anything — it means "no
-// opinion", persisted eagerly. Honouring it verbatim routes around the lazy
-// discovery system (DEFAULT_TOOLS + keyword groups + discover_tools) and
-// ships the full ~300-schema surface (~120k tokens) on every turn. At or
-// above this coverage the whitelist degrades to auto/discovery mode; any
-// explicitly unchecked names survive as a deny-list so deliberate opt-outs
-// still stick. 0.95 catches stale "everything" saves and legacy global lists
-// while leaving genuinely curated selections alone.
-const FULL_COVERAGE_AUTO_THRESHOLD = 0.95;
+/**
+ * ENABLED-TOOLS IS A CEILING, NOT A MANIFEST.
+ *
+ * A saved `enabledTools` list answers "what is this channel ALLOWED to use?".
+ * It was being read as "what must be LOADED every turn?", which are different
+ * questions with wildly different costs. Because the frontend enumerates the
+ * registry into that list, ticking a box once made a schema resident forever.
+ *
+ * The previous mitigation was a COVERAGE percentage: a list covering >=95% of
+ * the registry was treated as "no opinion" and degraded to discovery mode.
+ * That fails exactly where it matters — measured live 2026-07-31, the main
+ * orchestrator chat carried a 138-tool list at 42.5% coverage, sailed under
+ * the threshold, and was honoured verbatim at 57,274 tokens per turn. A list
+ * is not "curated" because it omits half the registry; it is curated when it
+ * is SMALL. Coverage measured the wrong axis; cost is the axis that hurts.
+ *
+ * So: if the permitted surface is cheap, ship it verbatim and honour the
+ * selection exactly. If it is expensive, keep it as the OUTER BOUND and let
+ * the ordinary gating (DEFAULT_TOOLS + keyword groups + discover_tools)
+ * choose what is resident inside it. Nothing the user permitted becomes
+ * unreachable — discover_tools is bounded by the same ceiling (see
+ * `_toolCeiling`), so everything permitted stays one call away.
+ *
+ * THRESHOLD DERIVATION (not a guess): on this 325-tool install DEFAULT_TOOLS
+ * — the always-on baseline every chat pays unconditionally — measures 10,642
+ * tokens. A selection costing no more than the baseline is not what anyone is
+ * complaining about, so it ships untouched. 12,000 rounds that up for
+ * headroom.
+ */
+export const WHITELIST_VERBATIM_BUDGET_TOKENS = 12_000;
+
+/**
+ * Resolve the channel's permitted tool set: the user's selection plus the
+ * always-on primitives that must never be strandable by a stale snapshot.
+ * Returns null when the client sent no selection at all ("no opinion").
+ */
+function resolveToolCeiling(context, allSchemas) {
+  if (!(context.enabledTools instanceof Set)) return null;
+  const ceiling = new Set();
+  for (const s of allSchemas) {
+    const name = s.function?.name;
+    if (!name) continue;
+    if (context.enabledTools.has(name) || isAlwaysOnToolName(name)) ceiling.add(name);
+  }
+  return ceiling;
+}
 
 // Append-only tool ordering for the discovery path. Without this, a newly
 // matched keyword group interleaves its tools at their registry positions,
@@ -471,7 +512,7 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
     const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames, ...UNIVERSAL_TOOLS]);
     let restrictedSchemas = allSchemas.filter((tool) => {
       const name = tool.function?.name;
-      return name && (allowedToolNames.has(name) || isUniversalToolName(name));
+      return name && allowedToolNames.has(name);
     });
     if (context.enabledTools) {
       const runtimeAllowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
@@ -480,6 +521,8 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
         return name && runtimeAllowed.has(name);
       });
     }
+    // A declared ceiling that discover_tools could step over is not a ceiling.
+    context._toolCeiling = new Set(restrictedSchemas.map((s) => s.function.name));
     console.log(
       `[UnifiedChat] Saved-agent (restricted) tool surface for ${context.agentId}: ${restrictedSchemas.length} tools`
     );
@@ -519,6 +562,9 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   });
 
   context._loadedToolGroups = allGroups;
+  // Open mode has no declared ceiling of its own; only a runtime selection
+  // can bound it.
+  context._toolCeiling = resolveToolCeiling(context, allSchemas);
 
   // Runtime enabledTools (per-channel tool selector) still narrows — the
   // user's checkboxes are the single source of truth when present. Universal
@@ -561,70 +607,58 @@ async function getUnifiedToolSchemas(context) {
     return getSavedAgentToolSchemas(context, allSchemas);
   }
 
-  // STRICT FILTER: when the frontend tool selector has sent an enabledTools
-  // list, that list is the single source of truth. The chat sees exactly the
-  // tools the user has checked, plus a small set of system primitives in
-  // UNIVERSAL_TOOLS (currently just `mcp_client`, the meta-discovery tool).
-  //
-  // The frontend already enumerates specific MCP tool names in enabledTools
-  // (e.g. `mcp__chrome-devtools-mcp__click`), so there is no need to bypass
-  // the whitelist with a `mcp__` prefix match — that bypass let MCP tools
-  // slip through even when the user explicitly turned them off.
-  //
-  // We honour an *empty* enabledTools Set as "user wants zero tools" — it's
-  // a real selection, not a missing one (see OrchestratorService where the
-  // distinction is preserved). Only `null`/missing falls through to the
-  // no-selection branch below.
-  let denyNames = null;
-  if (context.enabledTools instanceof Set) {
-    const namedSchemas = allSchemas.filter((s) => s.function?.name);
-    const coveredCount = namedSchemas.reduce(
-      (acc, s) => acc + (context.enabledTools.has(s.function.name) ? 1 : 0),
-      0
-    );
-    const coverage = namedSchemas.length > 0 ? coveredCount / namedSchemas.length : 1;
-    if (coverage >= FULL_COVERAGE_AUTO_THRESHOLD) {
-      // Near-full coverage = "all tools" mode, not a curated list. Degrade to
-      // the lazy discovery path below; keep explicit opt-outs as a deny-list.
-      denyNames = new Set();
-      for (const s of namedSchemas) {
-        const name = s.function.name;
-        if (!context.enabledTools.has(name) && !isAlwaysOnToolName(name)) denyNames.add(name);
-      }
+  // The channel's CEILING: everything the user has permitted here, plus the
+  // always-on read-only primitives. `null` means the client expressed no
+  // opinion at all. An EMPTY selection is a real answer ("zero tools") and
+  // resolves to a ceiling of just the always-on set — not to null.
+  const namedSchemas = allSchemas.filter((s) => s.function?.name);
+  const ceiling = resolveToolCeiling(context, allSchemas);
+  // Published on the context so discover_tools cannot reveal or load past it
+  // (see tools.js discover_tools, and the dynamic-load filter in
+  // OrchestratorService). Without this the ceiling would bound the FIRST turn
+  // and nothing after it.
+  context._toolCeiling = ceiling;
+
+  if (ceiling) {
+    const ceilingSchemas = namedSchemas.filter((s) => ceiling.has(s.function.name));
+    const ceilingTokens = estimateToolTokens(ceilingSchemas);
+
+    if (ceilingTokens <= WHITELIST_VERBATIM_BUDGET_TOKENS) {
+      // Cheap enough that gating would buy nothing: honour the selection
+      // exactly, which is also what a deliberately narrow list expects.
       console.log(
-        `[UnifiedChat] enabledTools covers ${(coverage * 100).toFixed(1)}% of ${namedSchemas.length} tools -> auto (discovery) mode${denyNames.size ? ` with ${denyNames.size} opt-outs` : ''}`
+        `[UnifiedChat] enabledTools ceiling ${ceilingSchemas.length} tools / ~${ceilingTokens} tok ` +
+        `<= ${WHITELIST_VERBATIM_BUDGET_TOKENS} -> verbatim whitelist`
       );
-    } else {
-      const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS, ...CORE_PRIMITIVES]);
-      const filteredSchemas = allSchemas.filter((s) => {
-        const name = s.function?.name;
-        return name && allowed.has(name);
-      });
-      console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + ${UNIVERSAL_TOOLS.size} universal + ${CORE_PRIMITIVES.size} core) -> ${filteredSchemas.length} tools`);
       const prov = {};
-      for (const s of filteredSchemas) {
-        const n = s.function?.name;
-        if (n) prov[n] = { reason: isAlwaysOnToolName(n) && !context.enabledTools.has(n) ? 'universal' : 'selected' };
+      for (const s of ceilingSchemas) {
+        const n = s.function.name;
+        prov[n] = { reason: isAlwaysOnToolName(n) && !context.enabledTools.has(n) ? 'universal' : 'selected' };
       }
       return recordToolManifest(context, {
-        schemas: filteredSchemas, registryTotal: namedSchemas.length, mode: 'whitelist', provenance: prov,
+        schemas: ceilingSchemas, registryTotal: namedSchemas.length, mode: 'whitelist', provenance: prov,
       });
     }
+
+    console.log(
+      `[UnifiedChat] enabledTools ceiling ${ceilingSchemas.length} tools / ~${ceilingTokens} tok ` +
+      `> ${WHITELIST_VERBATIM_BUDGET_TOKENS} -> gating WITHIN the ceiling (permitted stays reachable via discover_tools)`
+    );
   }
 
   // No explicit selection from the client. For sidebar chats, fall back to
   // the page's specialty set (mirrored from the frontend) so we never leak
   // tools the user hasn't asked for. For the orchestrator (no specialty
-  // set), keep the dynamic keyword-driven group selection. Universal tools
-  // (including every mcp__* entry) always ride along.
-  const specialty = detectSidebarSpecialty(context);
+  // set), keep the dynamic keyword-driven group selection.
+  const specialty = ceiling ? null : detectSidebarSpecialty(context);
   if (specialty) {
     const specialtySet = new Set(specialty);
     const allowed = new Set([...specialtySet, ...UNIVERSAL_TOOLS, ...CORE_PRIMITIVES]);
     const filteredSchemas = allSchemas.filter((s) => {
       const name = s.function?.name;
-      return name && (allowed.has(name) || isUniversalToolName(name));
+      return name && allowed.has(name);
     });
+    context._toolCeiling = new Set(filteredSchemas.map((s) => s.function.name));
     console.log(`[UnifiedChat] Sidebar specialty fallback (no enabledTools sent) -> ${filteredSchemas.length} tools`);
     const prov = {};
     for (const s of filteredSchemas) {
@@ -657,13 +691,18 @@ async function getUnifiedToolSchemas(context) {
     }
   }
 
+  const dynamicMatchers = [...allGroups].map((g) => DYNAMIC_GROUP_MATCHERS[g]).filter(Boolean);
+
   const filteredSchemas = allSchemas.filter((schema) => {
     const name = schema.function?.name;
     if (!name) return false;
-    // Auto-degraded whitelist: explicitly unchecked tools stay off even in
-    // discovery mode — the deny-list wins over DEFAULT_TOOLS and groups.
-    if (denyNames && denyNames.has(name)) return false;
+    // The ceiling wins over everything, including DEFAULT_TOOLS: a tool the
+    // user unchecked stays off. Always-on primitives were folded INTO the
+    // ceiling when it was resolved, so they survive this test by membership
+    // rather than by exception.
+    if (ceiling && !ceiling.has(name)) return false;
     if (DEFAULT_TOOLS.has(name)) return true;
+    for (const fn of dynamicMatchers) if (fn(name)) return true;
     // UNIVERSAL_TOOLS ride along on the orchestrator/keyword path too —
     // without this the tutorial tools only loaded when the user message
     // matched the `tutorial` trigger regex, which meant the assistant
@@ -692,10 +731,10 @@ async function getUnifiedToolSchemas(context) {
   return recordToolManifest(context, {
     schemas: applyStableToolOrder(context, filteredSchemas),
     registryTotal: allSchemas.length,
-    mode: denyNames ? 'auto-degraded' : 'auto',
+    mode: ceiling ? 'auto-degraded' : 'auto',
     provenance: prov,
     groups: allGroups,
-    deniedCount: denyNames ? denyNames.size : 0,
+    deniedCount: ceiling ? Math.max(0, namedSchemas.length - ceiling.size) : 0,
   });
 }
 

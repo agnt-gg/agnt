@@ -2877,7 +2877,21 @@ IMPORTANT: The image data is already available in the system context. You don't 
         try {
           const { getToolsForCategories } = await import('./orchestrator/toolSelector.js');
           const allSchemas = await (await import('./orchestrator/tools.js')).getAvailableToolSchemas();
-          const newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories);
+          let newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories);
+          // A discover_tools load must never step over the channel's ceiling.
+          // The ceiling is what the user permitted (see chatConfigs
+          // resolveToolCeiling / restricted saved agents); without this filter
+          // the model could recover, by category, every tool the user had
+          // deliberately unchecked — and a restricted agent could load past
+          // its own declared assignedTools boundary.
+          const toolCeiling = conversationContext._toolCeiling;
+          if (toolCeiling instanceof Set) {
+            const before = newSchemas.length;
+            newSchemas = newSchemas.filter((s) => toolCeiling.has(s.function?.name));
+            if (before !== newSchemas.length) {
+              console.log(`[ToolSelector] Ceiling withheld ${before - newSchemas.length} tool(s) from discover_tools load`);
+            }
+          }
           let addedCount = 0;
           if (!conversationContext._loadedToolNames) {
             conversationContext._loadedToolNames = new Set();

@@ -231,24 +231,63 @@ export const TOOL_GROUPS = {
 };
 
 /**
+ * Tool categories whose membership cannot be enumerated at authoring time.
+ *
+ * MCP tools are namespaced `mcp__<server>__<tool>` and appear/disappear as the
+ * user configures servers, so they cannot live in TOOL_GROUPS as a static
+ * list. They previously rode along on EVERY surface via a `mcp__` prefix match
+ * in the "universal tools" test — measured live 2026-07-31 at 78 tools /
+ * 25,415 tokens on every single turn, 67% of the entire discovery-path
+ * surface, never keyword-gated. That prefix match was a load-bearing bypass of
+ * the very gating system it sat next to.
+ *
+ * They are now an ordinary keyword-triggered + discoverable category.
+ * `mcp_client` stays in DEFAULT_TOOLS, so the model can always enumerate the
+ * configured servers and then pull the tools it needs — availability is
+ * preserved, residency is not assumed.
+ */
+export const DYNAMIC_GROUP_MATCHERS = {
+  mcp: (name) => name.startsWith('mcp__'),
+};
+
+function dynamicMatchersFor(groups) {
+  const fns = [];
+  for (const g of groups) {
+    const fn = DYNAMIC_GROUP_MATCHERS[g];
+    if (fn) fns.push(fn);
+  }
+  return fns;
+}
+
+/**
  * GROUP_TRIGGERS — regex patterns that trigger each group.
  * Core is included whenever ANY other group triggers (not by default).
+ *
+ * PLURALS ARE MANDATORY. Every countable noun here carries an explicit `s?`.
+ * Until 2026-07-31 they did not, so `\btool\b` did not match "tools",
+ * `\bskill\b` did not match "skills" and `\bplugin\b` did not match
+ * "plugins" — a user message reading literally "how are tools / skills /
+ * plugins loaded" matched ZERO groups and the model was handed nothing but
+ * the defaults. This is enforced by toolSelector.triggers.test.js, which
+ * requires a singular+plural probe for every group and fails when a new group
+ * ships without one.
  */
 export const GROUP_TRIGGERS = {
   core: null, // Never triggered by keywords directly — included as a dependency
-  shell: /\b(shell|terminal|bash|command\s*line|cli|codex|npm|pip|apt|brew|cmd)\b/i,
-  agnt_platform: /\b(workflow|agent|goal|tool|skill|api|agnt|plugin|forge|autonom|research|optimize|iterate|experiment)\b/i,
-  agent_management: /\b(agent|agentforge|agent\s*forge|persona|assigned\s*tools)\b/i,
-  workflow_authoring: /\b(workflow|node|edge|trigger|action|delay|checkpoint|workflow\s*version|start\s+workflow|stop\s+workflow)\b/i,
-  tool_authoring: /\b(tool|toolforge|tool\s*forge|custom\s*tool|save\s+tool|run\s+tool)\b/i,
-  widget_authoring: /\b(widget|dashboard|iframe|source\s*code|html\s*widget|widget\s*forge)\b/i,
-  artifact_code: /\b(artifact|file|files|workspace|read\s+file|write\s+file|edit\s+file|code|html|markdown|grep|glob|search\s+(?:the\s+)?(?:code|files|repo|codebase)|find\s+(?:the\s+)?files?)\b/i,
-  goal_management: /\b(goal|task|tasks|progress|evaluate|golden\s*standard)\b/i,
-  media: /\b(image|photo|picture|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshot|ocr)\b/i,
-  email: /\b(email|e-mail|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
-  memory: /\b(remember|memory|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|history|trace|traces|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
-  tutorial: /\b(tour|tutorial|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
-  canvas: /\b(canvas|workspace|widget|window|pane|tab|open\s+(?:the\s+)?(?:traces|goals|dashboard|memory|artifacts)|looking\s+at|on\s+(?:my|the)\s+screen)\b/i,
+  shell: /\b(shells?|terminals?|bash|commands?\s*line|cli|codex|npm|pip|apt|brew|cmd)\b/i,
+  agnt_platform: /\b(workflows?|agents?|goals?|tools?|skills?|apis?|agnt|plugins?|forge|autonom|research|optimize|iterate|experiment)\b/i,
+  agent_management: /\b(agents?|agentforge|agent\s*forge|personas?|assigned\s*tools?)\b/i,
+  workflow_authoring: /\b(workflows?|nodes?|edges?|triggers?|actions?|delays?|checkpoints?|workflow\s*versions?|start\s+workflow|stop\s+workflow)\b/i,
+  tool_authoring: /\b(tools?|toolforge|tool\s*forge|custom\s*tools?|save\s+tool|run\s+tool)\b/i,
+  widget_authoring: /\b(widgets?|dashboards?|iframes?|source\s*code|html\s*widgets?|widget\s*forge)\b/i,
+  artifact_code: /\b(artifacts?|files?|workspaces?|read\s+file|write\s+file|edit\s+file|code|html|markdown|grep|glob|search\s+(?:the\s+)?(?:code|files?|repo|codebase)|find\s+(?:the\s+)?files?)\b/i,
+  goal_management: /\b(goals?|tasks?|progress|evaluate|golden\s*standards?)\b/i,
+  media: /\b(images?|photos?|pictures?|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshots?|ocr)\b/i,
+  email: /\b(emails?|e-mails?|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
+  memory: /\b(remember|memor(?:y|ies)|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|histor(?:y|ies)|traces?|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
+  tutorial: /\b(tours?|tutorials?|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
+  canvas: /\b(canvas|workspaces?|widgets?|windows?|panes?|tabs?|open\s+(?:the\s+)?(?:traces|goals|dashboard|memory|artifacts)|looking\s+at|on\s+(?:my|the)\s+screen)\b/i,
+  mcp: /\b(mcp|mcps|model\s*context\s*protocols?)\b/i,
 };
 
 /**
@@ -269,6 +308,7 @@ export const GROUP_DESCRIPTIONS = {
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
   canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
+  mcp: 'Tools exposed by your configured MCP servers (mcp__<server>__<tool>)',
 };
 
 /**
@@ -344,6 +384,15 @@ const ALL_GROUPED_TOOL_NAMES = new Set(
 );
 
 /**
+ * Every category name discover_tools will accept, static and dynamic.
+ * Single source of truth — the tool validates against this rather than
+ * re-deriving `Object.keys(TOOL_GROUPS)` and silently rejecting `mcp`.
+ */
+export function getAllCategoryNames() {
+  return [...Object.keys(TOOL_GROUPS), ...Object.keys(DYNAMIC_GROUP_MATCHERS), 'installed'];
+}
+
+/**
  * Select tools for the orchestrator based on keyword matching against the user message.
  *
  * Inclusion rules (in order):
@@ -375,10 +424,11 @@ export function selectTools(allSchemas, userMessage) {
   // Build the set of tool names included via matched groups
   const includedGroupToolNames = new Set();
   for (const group of matchedGroups) {
-    for (const toolName of TOOL_GROUPS[group]) {
+    for (const toolName of (TOOL_GROUPS[group] || [])) {
       includedGroupToolNames.add(toolName);
     }
   }
+  const dynamicMatchers = dynamicMatchersFor(matchedGroups);
 
   // Build the guidance set
   const includedGuidance = new Set(ALWAYS_INCLUDED_GUIDANCE);
@@ -402,6 +452,9 @@ export function selectTools(allSchemas, userMessage) {
 
     // In a keyword-matched group
     if (includedGroupToolNames.has(name)) return true;
+
+    // In a keyword-matched DYNAMIC group (mcp__*)
+    for (const fn of dynamicMatchers) if (fn(name)) return true;
 
     // Everything else is gated behind discover_tools
     return false;
@@ -442,12 +495,17 @@ export function getToolsForCategories(allSchemas, categories) {
     }
   }
 
+  const dynamicMatchers = dynamicMatchersFor(catSet);
+
   return allSchemas.filter((schema) => {
     const name = schema.function?.name;
     if (!name) return false;
 
     // Named group match
     if (targetNames.has(name)) return true;
+
+    // Dynamic group match (mcp)
+    for (const fn of dynamicMatchers) if (fn(name)) return true;
 
     // "installed" category: include if not a default and not in any static group
     if (includeInstalled && !DEFAULT_TOOLS.has(name) && !ALL_GROUPED_TOOL_NAMES.has(name)) {

@@ -7,6 +7,9 @@ import fetch from 'node-fetch';
 import AGNT from '../../libs/agnt2.js';
 import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
+// Injected into every tool schema; kept in its own module with a cost guard
+// because this block's size is multiplied by the tool count.
+import { ASYNC_TOOL_PARAMS } from './asyncToolParams.js';
 import { getGoalToolSchemas, executeGoalTool } from './goalTools.js';
 import { getAgentToolSchemas, executeAgentTool } from './agentTools.js';
 import { getWorkflowToolSchemas, executeWorkflowTool } from './workflowTools.js';
@@ -1669,43 +1672,70 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       },
     },
     execute: async (args, authToken, context) => {
-      const { TOOL_GROUPS, GROUP_DESCRIPTIONS, getGuidanceForCategories, getInstalledToolNames } = await import('./toolSelector.js');
+      const {
+        TOOL_GROUPS, GROUP_DESCRIPTIONS, getGuidanceForCategories,
+        getInstalledToolNames, getAllCategoryNames, DYNAMIC_GROUP_MATCHERS,
+      } = await import('./toolSelector.js');
       const { getAvailableToolSchemas } = await import('./tools.js');
       const { operation, categories } = args;
 
+      // The CEILING is what the user has permitted on this channel; it is the
+      // outer bound on everything discover_tools may reveal or load. Prefer the
+      // resolved ceiling (selection + always-on primitives, computed once in
+      // chatConfigs) and fall back to the raw selection.
+      const ceiling = context?._toolCeiling instanceof Set
+        ? context._toolCeiling
+        : (context?.enabledTools instanceof Set ? context.enabledTools : null);
+      const permitted = (name) => !ceiling || ceiling.has(name);
+
+      // Category listings are a TOOL RESULT — they land in the context window.
+      // "installed" alone is 225 names on a live install, so enumerate a sample
+      // and report the true count rather than paying for the full list every
+      // time the model orients itself.
+      const MAX_LISTED = 40;
+      const summarize = (names) => (
+        names.length > MAX_LISTED
+          ? { tools: names.slice(0, MAX_LISTED), tool_count: names.length, truncated: true }
+          : { tools: names, tool_count: names.length }
+      );
+
       if (operation === 'browse') {
         const loadedGroups = context?._loadedToolGroups || new Set();
-        const userEnabledTools = context?.enabledTools || null; // From frontend tool selector
 
-        // Static groups — filter by user's tool selector if set
-        const groupResults = Object.entries(TOOL_GROUPS).map(([name, tools]) => {
-          const filteredTools = userEnabledTools
-            ? tools.filter(t => userEnabledTools.has(t))
-            : tools;
-          return {
+        // Static groups — bounded by the channel ceiling
+        const groupResults = Object.entries(TOOL_GROUPS).map(([name, tools]) => ({
+          name,
+          ...summarize(tools.filter(permitted)),
+          description: GROUP_DESCRIPTIONS[name] || '',
+          status: loadedGroups.has(name) ? 'active' : 'available',
+        })).filter(g => g.tool_count > 0);
+
+        let allSchemas = [];
+        try {
+          allSchemas = await getAvailableToolSchemas();
+        } catch (e) {
+          // Non-fatal — static groups above are still useful.
+        }
+        const allNames = allSchemas.map((s) => s.function?.name).filter(Boolean);
+
+        // Dynamic categories (mcp): membership is decided by a matcher, not a
+        // static list, so they must be enumerated from the live registry.
+        for (const [name, matches] of Object.entries(DYNAMIC_GROUP_MATCHERS)) {
+          const names = allNames.filter((n) => matches(n) && permitted(n));
+          if (names.length === 0) continue;
+          groupResults.push({
             name,
-            tools: filteredTools,
+            ...summarize(names),
             description: GROUP_DESCRIPTIONS[name] || '',
             status: loadedGroups.has(name) ? 'active' : 'available',
-          };
-        }).filter(g => g.tools.length > 0);
-
-        // Dynamic "installed" category — filter by user's tool selector
-        let installedTools = [];
-        try {
-          const allSchemas = await getAvailableToolSchemas();
-          installedTools = getInstalledToolNames(allSchemas);
-          if (userEnabledTools) {
-            installedTools = installedTools.filter(t => userEnabledTools.has(t));
-          }
-        } catch (e) {
-          // Non-fatal
+          });
         }
 
+        const installedTools = getInstalledToolNames(allSchemas).filter(permitted);
         if (installedTools.length > 0) {
           groupResults.push({
             name: 'installed',
-            tools: installedTools,
+            ...summarize(installedTools),
             description: 'Installed registry and plugin tools (not loaded by default)',
             status: loadedGroups.has('installed') ? 'active' : 'available',
           });
@@ -1714,21 +1744,19 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         return JSON.stringify({
           success: true,
           categories: groupResults,
-          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. Use "installed" to load all registry/plugin tools. Tools become usable immediately in your next response.',
+          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. Use "installed" to load all registry/plugin tools. Categories listing "truncated": true have more tools than shown — loading the category loads all of them. Tools become usable immediately in your next response.',
         });
       }
 
       if (operation === 'load') {
+        const validCategories = getAllCategoryNames();
         if (!categories || !Array.isArray(categories) || categories.length === 0) {
-          const validCategories = [...Object.keys(TOOL_GROUPS), 'installed'];
           return JSON.stringify({
             success: false,
             error: `The "load" operation requires a non-empty "categories" array. Valid: ${validCategories.join(', ')}.`,
           });
         }
 
-        // Validate category names ("installed" is a valid virtual category)
-        const validCategories = [...Object.keys(TOOL_GROUPS), 'installed'];
         const invalid = categories.filter((c) => !validCategories.includes(c));
         if (invalid.length > 0) {
           return JSON.stringify({
@@ -1752,25 +1780,36 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
         // Collect loaded tool names for the response
         const loadedTools = [];
+        const needsRegistry = [...context._requestedToolCategories]
+          .some((c) => c === 'installed' || DYNAMIC_GROUP_MATCHERS[c]);
+        let liveSchemas = [];
+        if (needsRegistry) {
+          try { liveSchemas = await getAvailableToolSchemas(); } catch { liveSchemas = []; }
+        }
+        const liveNames = liveSchemas.map((s) => s.function?.name).filter(Boolean);
+
         for (const cat of context._requestedToolCategories) {
           if (cat === 'installed') {
-            try {
-              const allSchemas = await getAvailableToolSchemas();
-              loadedTools.push(...getInstalledToolNames(allSchemas));
-            } catch (e) {
-              // Non-fatal
-            }
+            loadedTools.push(...getInstalledToolNames(liveSchemas));
+          } else if (DYNAMIC_GROUP_MATCHERS[cat]) {
+            loadedTools.push(...liveNames.filter(DYNAMIC_GROUP_MATCHERS[cat]));
           } else {
             loadedTools.push(...(TOOL_GROUPS[cat] || []));
           }
         }
+        // The ceiling bounds what will actually arrive next turn (see the
+        // OrchestratorService dynamic-load filter) — report the same set, or
+        // the model will believe it has tools it was never given.
+        const admitted = loadedTools.filter(permitted);
 
         const guidanceSections = getGuidanceForCategories(context._requestedToolCategories);
 
         return JSON.stringify({
           success: true,
-          message: `Loading ${loadedTools.length} tools from categories: ${[...context._requestedToolCategories].join(', ')}. These tools will be available in your next response.`,
-          loaded_tools: loadedTools,
+          message: `Loading ${admitted.length} tools from categories: ${[...context._requestedToolCategories].join(', ')}. These tools will be available in your next response.`,
+          tool_count: admitted.length,
+          loaded_tools: admitted.slice(0, MAX_LISTED),
+          ...(admitted.length > MAX_LISTED ? { truncated: true } : {}),
           guidance_loaded: [...guidanceSections],
         });
       }
@@ -4826,36 +4865,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 };
 
 
-/**
- * Async execution parameters injected into every tool schema.
- * This ensures LLMs see these as valid parameters and will actually use them.
- */
-const ASYNC_TOOL_PARAMS = {
-  _executeAsync: {
-    type: 'boolean',
-    description: 'Set to true to run this tool in the background (async). Returns immediately with an execution ID. Results arrive via autonomous message when complete. User can stop via UI.',
-  },
-  _estimatedMinutes: {
-    type: 'number',
-    description: 'Optional estimated duration in minutes for async execution.',
-  },
-  _interval: {
-    type: 'number',
-    description: 'For periodic/recurring execution: interval in seconds between runs. Requires _executeAsync: true.',
-  },
-  _stopAfter: {
-    type: 'integer',
-    description: 'For periodic execution: stop after this many iterations. Requires _interval.',
-  },
-  _duration: {
-    type: 'number',
-    description: 'For periodic execution: stop after this many minutes total. Requires _interval.',
-  },
-  _delayFirst: {
-    type: 'boolean',
-    description: 'For periodic execution: skip the immediate first run and wait one full _interval before the first iteration. Use for silent heartbeats / "come back later" timers. Requires _interval.',
-  },
-};
+
 
 /**
  * Inject async execution parameters into a tool schema

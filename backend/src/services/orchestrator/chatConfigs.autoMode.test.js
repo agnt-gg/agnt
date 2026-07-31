@@ -1,14 +1,22 @@
-// "All tools" is a mode, not a list — auto-degrade + stable discovery
-// ordering for getUnifiedToolSchemas.
+// enabledTools is a CEILING, not a manifest — cost-gated degrade + stable
+// discovery ordering for getUnifiedToolSchemas.
 //
 // The frontend historically sent an enumerated whitelist covering the whole
 // registry as the orchestrator default, which routed around the lazy
 // discovery system and shipped every schema (~120k tokens) on every turn.
-// These tests pin the fix: near-full whitelists degrade to discovery mode
-// (with explicit opt-outs preserved as a deny-list), genuinely narrow
-// whitelists stay strict, and the discovery surface grows append-only so
-// each turn's tools array is an exact prefix-extension of the last (prompt
-// cache stability).
+//
+// The first fix keyed the degrade on COVERAGE (>=95% of the registry). That
+// measured the wrong axis: measured live 2026-07-31 the real main chat sent a
+// 138-name list at 42.5% coverage, sailed under the threshold, and was still
+// honoured verbatim at 57,274 tokens/turn. A list is not curated because it
+// omits half the registry — it is curated when it is SMALL. The degrade is
+// now keyed on the COST of the permitted set.
+//
+// These tests pin the behaviour: expensive ceilings degrade to discovery mode
+// (with everything outside the ceiling still excluded), genuinely narrow
+// selections stay strict, and the discovery surface grows append-only so each
+// turn's tools array is an exact prefix-extension of the last (prompt cache
+// stability).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('./tools.js', () => ({ getAvailableToolSchemas: vi.fn() }));
@@ -19,13 +27,35 @@ vi.mock('./workspaceContext.js', () => ({
   loadWorkspaceContextSection: vi.fn(async () => ''),
 }));
 
-import { getChatConfig } from './chatConfigs.js';
+import { getChatConfig, WHITELIST_VERBATIM_BUDGET_TOKENS } from './chatConfigs.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { DEFAULT_TOOLS, TOOL_GROUPS, GROUP_TRIGGERS } from './toolSelector.js';
+import { estimateToolTokens } from '../../utils/contextManager.js';
+
+// REALISTICALLY SIZED. The degrade rule is a COST rule, so a fixture whose
+// schemas are an order of magnitude cheaper than production cannot exercise
+// it — a whole synthetic registry would slip under the budget and take the
+// verbatim path, passing the assertions below for entirely the wrong reason.
+// Production schemas measure ~200-400 tokens each; these are ~200.
+const FILLER = ('Performs the operation described by this tool. Accepts a target '
+  + 'identifier and an options object, validates them against the current '
+  + 'workspace state, and returns a structured result describing what changed. ')
+  .repeat(3);
 
 const schema = (name) => ({
   type: 'function',
-  function: { name, description: `${name} description`, parameters: { type: 'object', properties: {} } },
+  function: {
+    name,
+    description: `${name}: ${FILLER}`,
+    parameters: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'The identifier this call operates on.' },
+        options: { type: 'object', description: 'Optional settings for this call.' },
+      },
+      required: ['target'],
+    },
+  },
 });
 
 // Registry: every DEFAULT tool + every grouped tool + 150 plugin-ish extras
@@ -65,9 +95,18 @@ describe('trigger fixtures are what the tests assume', () => {
     expect(Object.values(GROUP_TRIGGERS).every((p) => !p || !p.test(NEUTRAL_MSG))).toBe(true);
     expect(GROUP_TRIGGERS.media.test(MEDIA_MSG)).toBe(true);
   });
+
+  // ANTI-VACUITY. Every "degrades" assertion below is meaningless unless the
+  // fixture registry genuinely exceeds the budget, and every "stays strict"
+  // assertion is meaningless unless the narrow one genuinely does not.
+  it('the fixture registry is expensive and a narrow pick is cheap', () => {
+    expect(estimateToolTokens(registry)).toBeGreaterThan(WHITELIST_VERBATIM_BUDGET_TOKENS);
+    const narrow = registry.filter((s) => ['web_search', 'execute_javascript_code'].includes(s.function.name));
+    expect(estimateToolTokens(narrow)).toBeLessThan(WHITELIST_VERBATIM_BUDGET_TOKENS);
+  });
 });
 
-describe('auto-degrade of near-full whitelists', () => {
+describe('cost-gated degrade of expensive ceilings', () => {
   it('no selection at all -> lean discovery surface, no plugin tools', async () => {
     const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: null };
     const res = await getToolSchemas(ctx);
@@ -78,7 +117,7 @@ describe('auto-degrade of near-full whitelists', () => {
     expect(res.length).toBeLessThan(registry.length / 3);
   });
 
-  it('a whitelist covering every tool degrades to the same lean discovery surface', async () => {
+  it('a whitelist covering every tool degrades to the same lean discovery surface (cost, not coverage)', async () => {
     const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: new Set(namesOf(registry)) };
     const res = await getToolSchemas(ctx);
     const ns = new Set(namesOf(res));
@@ -87,7 +126,7 @@ describe('auto-degrade of near-full whitelists', () => {
     expect(res.length).toBeLessThan(registry.length / 3);
   });
 
-  it('near-full whitelist degrades but explicit opt-outs stick, even for DEFAULT tools', async () => {
+  it('an expensive ceiling degrades but exclusions stick, even for DEFAULT tools', async () => {
     const unchecked = ['web_search', 'plugin_tool_0'];
     const ctx = {
       latestUserMessage: NEUTRAL_MSG,
@@ -95,11 +134,23 @@ describe('auto-degrade of near-full whitelists', () => {
     };
     const res = await getToolSchemas(ctx);
     const ns = new Set(namesOf(res));
-    // web_search is in DEFAULT_TOOLS — the deny-list must win over defaults.
+    // web_search is in DEFAULT_TOOLS — the ceiling must win over defaults.
     expect(ns.has('web_search')).toBe(false);
     expect(ns.has('plugin_tool_0')).toBe(false);
     expect(ns.has('discover_tools')).toBe(true);
     expect(res.length).toBeLessThan(registry.length / 3);
+  });
+
+  // A 42.5%-coverage list that costs 57k tokens is the case the coverage rule
+  // missed entirely: it is neither "everything" nor curated. Cost catches it.
+  it('a MID-SIZED whitelist (far under any coverage threshold) still degrades', async () => {
+    const half = namesOf(registry).slice(0, Math.floor(registry.length * 0.42));
+    const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: new Set(half) };
+    const coverage = half.length / registry.length;
+    expect(coverage).toBeLessThan(0.95); // would have been honoured verbatim before
+    const res = await getToolSchemas(ctx);
+    expect(res.length).toBeLessThan(half.length / 2);
+    expect(new Set(namesOf(res)).has('discover_tools')).toBe(true);
   });
 
   it('a genuinely narrow whitelist is honoured strictly (no degrade)', async () => {
