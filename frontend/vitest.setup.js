@@ -9,7 +9,7 @@ import { vTooltip } from './src/directives/tooltip.js';
  * Vue logs "Failed to resolve directive" and the binding silently does
  * nothing, which is indistinguishable from the feature being broken.
  *
- * main.js remains the source of truth for production — uiContracts.spec.js
+ * main.js remains the source of truth for production — __guards__/uiContracts.spec.js
  * asserts the registration is actually there, so this file cannot paper over
  * its absence.
  */

@@ -62,7 +62,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FA_CSS = path.resolve(SRC, '..', 'public', 'vendor', 'fontawesome', 'css', 'all.min.css');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist']);

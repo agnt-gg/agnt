@@ -26,8 +26,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FRONTEND_SRC = HERE;
-const REPO_ROOT = path.resolve(HERE, '../..');
+const FRONTEND_SRC = path.resolve(HERE, '..');
+const REPO_ROOT = path.resolve(HERE, '../../..');
 const BACKEND = path.join(REPO_ROOT, 'backend');
 const ROUTES_DIR = path.join(BACKEND, 'src/routes');
 

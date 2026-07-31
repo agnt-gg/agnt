@@ -46,7 +46,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const SRC = path.dirname(fileURLToPath(import.meta.url));
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Subtrees whose components are mounted inside a stacking-context-forming panel. */
 const PANEL_TREES = [

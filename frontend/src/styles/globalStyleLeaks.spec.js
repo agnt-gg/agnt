@@ -40,7 +40,7 @@ import { describe, expect, it } from 'vitest';
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Negative-control fixtures are written OUTSIDE src/. Vitest runs spec files in
-// parallel workers, and other guards (uiContracts.spec.js) walk src/ from disk —
+// parallel workers, and other guards (__guards__/uiContracts.spec.js) walk src/ from disk —
 // a fixture that exists at readdir() time and is gone by readFileSync() time
 // makes those guards fail with ENOENT at random. findLeaks() only needs a
 // readable path, so keeping fixtures out of the scanned tree removes the race

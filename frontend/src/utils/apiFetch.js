@@ -14,7 +14,7 @@
  * The reason it was a *class* of bug rather than one mistake is that there was
  * no single owner of the rule: `getAuthHeaders()` had been copy-pasted into
  * seven store modules and services, so any new `fetch` either duplicated it or
- * forgot it, and forgetting was silent. apiAuthContract.spec.js now fails the
+ * forgot it, and forgetting was silent. __guards__/apiAuthContract.spec.js now fails the
  * build on the forgetting case, and this module is the thing it points people
  * at.
  *
