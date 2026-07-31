@@ -22,6 +22,7 @@
         <div class="connectors-grid">
           <div class="connectors-section full-width">
             <ProviderSelector />
+            <FallbackProviders />
           </div>
         </div>
       </div>
@@ -841,6 +842,7 @@ import providerAuthService from '@/services/providerAuthService.js';
 import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import ProviderSelector from '../Settings/components/ProviderSelector/ProviderSelector.vue';
+import FallbackProviders from './components/FallbackProviders.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
@@ -864,6 +866,7 @@ export default {
     ConnectorsPanel,
     PopupTutorial,
     ProviderSelector,
+    FallbackProviders,
     ResourcesSection,
     Webhooks,
     EmailServer,

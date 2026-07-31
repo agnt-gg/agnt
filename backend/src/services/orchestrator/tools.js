@@ -946,8 +946,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             },
             timeoutMs: {
               type: 'number',
-              default: 300000,
-              description: 'Hard timeout in milliseconds (default 300000 = 5 min).',
+              description:
+                'Hard timeout in milliseconds. Defaults to AGNT_CURSOR_TIMEOUT_MS (90000 recommended, 300000 if unset).',
             },
             extraArgs: {
               type: 'array',
@@ -968,7 +968,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         sessionScope = 'conversation',
         sessionId = null,
         force = true,
-        timeoutMs = 300000,
+        timeoutMs = undefined, // fall through to AGNT_CURSOR_TIMEOUT_MS
         extraArgs = [],
       },
       _authToken,
@@ -1014,7 +1014,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           force,
           resume,
           sessionId,
-          timeoutMs,
+          ...(timeoutMs != null ? { timeoutMs } : {}),
           extraArgs: Array.isArray(extraArgs) ? extraArgs : [],
         });
 

@@ -1407,6 +1407,45 @@ export default {
         case 'files_processed':
           if (ms) addActivityTo(ms, { type: 'info', text: `Processed ${data.fileCount} file(s): ${data.fileNames.join(', ')}` });
           break;
+        case 'provider_fallback': {
+          // Automatic cross-provider failover (Phase 2/4). Backend emits this
+          // when the primary provider exhausted retries and the turn rolled
+          // over to a fallback tier. Surface it in System Activity so the
+          // user can see the switch happened (previously the event was
+          // silently dropped — no frontend handler existed).
+          const fromP = data?.from?.provider || 'primary';
+          const fromM = data?.from?.model ? `/${data.from.model}` : '';
+          const toP = data?.to?.provider || 'fallback';
+          const toM = data?.to?.model ? `/${data.to.model}` : '';
+          const reason = data?.reason ? ` (${data.reason})` : '';
+          const text = `Provider failover: ${fromP}${fromM} → ${toP}${toM}${reason}`;
+          if (ms) addActivityTo(ms, { type: 'recovery', text });
+          if (isActiveView) {
+            terminalLines.value.push(`[Failover] ${text}`);
+            // Brief status on the in-flight assistant bubble if one exists.
+            const activeMsgId = Object.keys(messageStates.value).find(
+              (id) => messageStates.value[id]?.type === 'thinking' || messageStates.value[id]?.type === 'tool',
+            );
+            if (activeMsgId) {
+              messageStates.value[activeMsgId] = {
+                type: 'thinking',
+                text: `Switched to ${toP}${toM} — continuing…`,
+              };
+            }
+          }
+          break;
+        }
+        case 'provider_recovered': {
+          // Recovery banner (Option 2). Backend emits this when the default
+          // provider succeeds again after an earlier failover in this
+          // conversation — the green counterpart to provider_fallback.
+          const backP = data?.backTo?.provider || 'default';
+          const backM = data?.backTo?.model ? `/${data.backTo.model}` : '';
+          const text = `Recovered: back on ${backP}${backM}`;
+          if (ms) addActivityTo(ms, { type: 'success', text });
+          if (isActiveView) terminalLines.value.push(`[Recovered] ${text}`);
+          break;
+        }
         case 'final_content':
           if (isActiveView) {
             delete messageStates.value[data.assistantMessageId];

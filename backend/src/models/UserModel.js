@@ -1,4 +1,5 @@
 import db from './database/index.js';
+import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
 
 class UserModel {
   static getUserStats(userId) {
@@ -52,7 +53,7 @@ class UserModel {
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -75,6 +76,14 @@ class UserModel {
               toolOutputCap: Number.isFinite(row.toolOutputCap) ? row.toolOutputCap : 100000,
               // Legacy rows return null — fall back to the documented default (100).
               maxToolRounds: Number.isFinite(row.maxToolRounds) ? row.maxToolRounds : 100,
+              // Cross-provider failover chain. Stored as a JSON array of
+              // { provider, model } tiers (TEXT). Legacy/NULL rows → [].
+              // Malformed JSON is tolerated and treated as no fallbacks.
+              fallbackProviders: parseFallbackChain(row.fallbackProviders),
+              // Stored as INTEGER (0/1). NULL (legacy) → false (feature off).
+              fallbackEnabled: row.fallbackEnabled === null || row.fallbackEnabled === undefined
+                ? false
+                : Boolean(row.fallbackEnabled),
             });
           } else {
             // User not found, return defaults
@@ -85,6 +94,8 @@ class UserModel {
               asyncToolsEnabled: false,
               toolOutputCap: 100000,
               maxToolRounds: 100,
+              fallbackProviders: [],
+              fallbackEnabled: false,
             });
           }
         }
@@ -94,7 +105,7 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds } = settings;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled } = settings;
 
       const fields = [];
       const params = [];
@@ -129,6 +140,18 @@ class UserModel {
       if (maxToolRounds !== undefined) {
         fields.push('max_tool_rounds = ?');
         params.push(maxToolRounds);
+      }
+
+      if (fallbackProviders !== undefined) {
+        // Persist as a JSON string; accept either an array or a pre-stringified
+        // value. Invalid input collapses to an empty array so we never write junk.
+        fields.push('fallback_providers = ?');
+        params.push(serializeFallbackChain(fallbackProviders));
+      }
+
+      if (fallbackEnabled !== undefined) {
+        fields.push('fallback_enabled = ?');
+        params.push(fallbackEnabled ? 1 : 0);
       }
 
       if (fields.length === 0) {

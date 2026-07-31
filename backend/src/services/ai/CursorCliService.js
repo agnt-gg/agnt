@@ -21,7 +21,18 @@ import { spawn } from 'child_process';
 import { resolveCursorInvocation } from '../../utils/cliInvocation.js';
 
 const DEFAULT_MODEL = process.env.AGNT_CURSOR_DEFAULT_MODEL || 'cursor-grok-4.5-high';
-const DEFAULT_TIMEOUT_MS = Number(process.env.AGNT_CURSOR_TIMEOUT_MS || 300000); // 5 min
+const FALLBACK_TIMEOUT_MS = 300000; // 5 min
+// Parse the env override defensively: Number('garbage') is NaN and
+// setTimeout(fn, NaN) fires immediately (treated as 0), which would make every
+// Cursor call insta-timeout on a typo'd AGNT_CURSOR_TIMEOUT_MS. Only accept a
+// finite, positive value; otherwise fall back to the safe default.
+function resolveDefaultTimeoutMs() {
+  const raw = process.env.AGNT_CURSOR_TIMEOUT_MS;
+  if (raw == null || raw === '') return FALLBACK_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : FALLBACK_TIMEOUT_MS;
+}
+const DEFAULT_TIMEOUT_MS = resolveDefaultTimeoutMs();
 // Above this size the prompt is piped via stdin instead of argv. Windows caps
 // the whole command line at 32,767 UTF-16 chars (spawn ENAMETOOLONG); POSIX
 // has ARG_MAX. `cursor-agent -p` reads the prompt from stdin when no
@@ -29,6 +40,48 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.AGNT_CURSOR_TIMEOUT_MS || 300000);
 const PROMPT_ARGV_THRESHOLD = process.platform === 'win32' ? 28 * 1024 : 80 * 1024;
 // Grace period after we see the terminal result before force-killing the hung CLI.
 const POST_RESULT_KILL_MS = 500;
+
+// --- resilience helpers (AGNT local patch) ---------------------------------
+// Healthy cursor-agent calls return in ~6s; the 300s default only ever fires on
+// a genuine stall. Retry ONCE with a FRESH session — a stalled session never
+// recovers, so resuming it would simply re-hang.
+const RETRY_ON_TIMEOUT = process.env.AGNT_CURSOR_RETRY !== '0';
+
+function isTimeoutError(e) {
+  return /timed out after \d+ms/.test(e?.message || '');
+}
+
+// The CLI prints "cursor-retrieval: tracing to '<logfile>'" on every run.
+// Strip it so it never leaks into an agent-visible error string.
+function cleanStderr(s) {
+  return String(s || '')
+    .split('\n')
+    .filter((l) => !/^\s*cursor-retrieval: tracing to /.test(l))
+    .join('\n');
+}
+
+export function getDefaultTimeoutMs() {
+  return DEFAULT_TIMEOUT_MS;
+}
+
+/** runExec + one retry on a stall. Preferred entry point for all callers. */
+async function runExecResilient(opts = {}) {
+  try {
+    return await runExec(opts);
+  } catch (err) {
+    // Never retry a STREAMING call: if the first attempt already emitted any
+    // onDelta/onReasoning output before stalling, a retry would push a second,
+    // duplicated token stream into the same consumer. A streamed timeout is
+    // rare and is better surfaced as an error than re-streamed.
+    const isStreaming =
+      typeof opts.onDelta === 'function' || typeof opts.onReasoning === 'function';
+    if (!RETRY_ON_TIMEOUT || isStreaming || !isTimeoutError(err)) throw err;
+    console.warn('[CursorCliService] stall detected, retrying once with a fresh session');
+    return runExec({ ...opts, resume: false, sessionId: null });
+  }
+}
+// --- end resilience helpers ------------------------------------------------
+
 
 function expandUserPath(p) {
   if (!p) return p;
@@ -189,7 +242,7 @@ async function runExec({
       if (resultObj) {
         finish(buildResult(resultObj, stdout, model));
       } else {
-        finish(new Error(`cursor_exec: timed out after ${timeoutMs}ms. stderr: ${stderr.slice(0, 400)}`), true);
+        finish(new Error(`cursor_exec: timed out after ${timeoutMs}ms. stderr: ${cleanStderr(stderr).slice(0, 400)}`), true);
       }
     }, timeoutMs);
 
@@ -313,5 +366,7 @@ export default {
   getDefaultWorkdir,
   resolveCursorBin,
   checkAuth,
-  runExec,
+  runExec: runExecResilient,
+  runExecRaw: runExec,
+  getDefaultTimeoutMs,
 };
