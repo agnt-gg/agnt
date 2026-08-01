@@ -2,6 +2,20 @@ import 'dotenv/config';
 // Self-configures as proc:'workflow' via IS_WORKFLOW_PROCESS.
 import '../diagnostics/bootstrap.js';
 import { dbReady } from '../models/database/index.js';
+
+// PRD-122: this process prices workflow-node LLM calls at record time, but it
+// never serves a model picker, so its in-memory pricing cache would otherwise
+// stay empty forever and every openrouter/custom-provider call would be
+// recorded with an unknown cost. Hydrate what other processes have learned;
+// the write-through hook keeps anything learned here shared back.
+dbReady.then(async () => {
+  try {
+    const { initModelMetadataPersistence } = await import('../services/ai/modelMetadataPersistence.js');
+    await initModelMetadataPersistence();
+  } catch (err) {
+    console.error('[WorkflowProcess] model metadata hydration failed (pricing degrades to unknown):', err?.message);
+  }
+});
 import ProcessManager from './ProcessManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';

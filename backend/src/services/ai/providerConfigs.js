@@ -58,6 +58,25 @@ const PROVIDER_CONFIGS = [
       'gpt-4.1-nano': { contextWindow: 1000000, maxOutputTokens: 32768, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
       'gpt-4o': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 2.5, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
       'gpt-4o-mini': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-4': { contextWindow: 128000, maxOutputTokens: 4096, inputCostPer1M: 30.0, outputCostPer1M: 60.0, supportsVision: false, supportsTools: true, reasoning: false },
+      'gpt-3.5-turbo': { contextWindow: 16385, maxOutputTokens: 4096, inputCostPer1M: 0.5, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: false },
+      'dall-e-3': { contextWindow: 4096, maxOutputTokens: 4096, inputCostPer1M: 40.0, outputCostPer1M: 80.0, supportsVision: false, supportsTools: false },
+      'dall-e-2': { contextWindow: 4096, maxOutputTokens: 4096, inputCostPer1M: 20.0, outputCostPer1M: 40.0, supportsVision: false, supportsTools: false },
+      'dall-e': { contextWindow: 4096, maxOutputTokens: 4096, inputCostPer1M: 20.0, outputCostPer1M: 40.0, supportsVision: false, supportsTools: false },
+      'gpt-image': { contextWindow: 4096, maxOutputTokens: 4096, inputCostPer1M: 40.0, outputCostPer1M: 80.0, supportsVision: false, supportsTools: false },
+      'gpt-image-1': { contextWindow: 4096, maxOutputTokens: 4096, inputCostPer1M: 40.0, outputCostPer1M: 80.0, supportsVision: false, supportsTools: false },
+      'gpt-5.6-luna': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.75, outputCostPer1M: 14.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gpt-5.6-terra': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.75, outputCostPer1M: 14.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gpt-5.4': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.0, outputCostPer1M: 5.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-5.4-mini': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-5.3-codex-spark': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 0.5, outputCostPer1M: 2.0, supportsVision: true, supportsTools: true, reasoning: true },
+      // Deep Research: OpenAI publishes these as their own SKUs — $10/$40 and
+      // $2/$8 per million (platform.openai.com/docs/pricing).
+      'o3-deep-research': { contextWindow: 200000, maxOutputTokens: 100000, inputCostPer1M: 10.0, outputCostPer1M: 40.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'o4-mini-deep-research': { contextWindow: 200000, maxOutputTokens: 100000, inputCostPer1M: 2.0, outputCostPer1M: 8.0, supportsVision: true, supportsTools: true, reasoning: true },
+      // 'chat-latest' is OpenAI's rolling alias for the current ChatGPT model,
+      // billed at the flagship rate it currently points at.
+      'chat-latest': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
     },
     compat: {},
     sdkOptions: {},
@@ -162,6 +181,24 @@ const PROVIDER_CONFIGS = [
       'claude-haiku-4-5-20251001': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 1.0, outputCostPer1M: 5.0, supportsVision: true, supportsTools: true, reasoning: false },
       'claude-sonnet-4-20250514': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: false },
       'claude-opus-4-20250514': { contextWindow: 200000, maxOutputTokens: 32000, inputCostPer1M: 15.0, outputCostPer1M: 75.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'claude-3-7-sonnet': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-3-7-sonnet-20250219': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-3-5-sonnet-20241022': { contextWindow: 200000, maxOutputTokens: 8192, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
+      'claude-3-5-sonnet-20240620': { contextWindow: 200000, maxOutputTokens: 8192, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
+      'claude-3-5-haiku-20241022': { contextWindow: 200000, maxOutputTokens: 8192, inputCostPer1M: 1.0, outputCostPer1M: 5.0, inputCacheReadCostPer1M: 0.1, supportsVision: true, supportsTools: true },
+      'claude-3-haiku-20240307': { contextWindow: 200000, maxOutputTokens: 4096, inputCostPer1M: 0.25, outputCostPer1M: 1.25, inputCacheReadCostPer1M: 0.03, supportsVision: true, supportsTools: true },
+      'claude-3-opus-20240229': { contextWindow: 200000, maxOutputTokens: 4096, inputCostPer1M: 15.0, outputCostPer1M: 75.0, inputCacheReadCostPer1M: 1.5, supportsVision: true, supportsTools: true },
+      'claude-3-sonnet-20240229': { contextWindow: 200000, maxOutputTokens: 4096, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
+      'claude-sonnet-4-5': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
+      'claude-haiku-4-5': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 1.0, outputCostPer1M: 5.0, inputCacheReadCostPer1M: 0.1, supportsVision: true, supportsTools: true },
+      'claude-opus-4-5': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true },
+      'claude-sonnet-4-0': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
+      'claude-opus-4-0': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true },
+      'claude-opus-4-1': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true },
+      'claude-opus-4-1-20250805': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true },
+      'claude-opus-4': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, inputCacheReadCostPer1M: 0.5, supportsVision: true, supportsTools: true },
+      'claude-sonnet-4': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
+      'claude-3': { contextWindow: 200000, maxOutputTokens: 4096, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.3, supportsVision: true, supportsTools: true },
     },
     modelTransform: (raw) => ({
       id: raw.id,
@@ -293,6 +330,38 @@ const PROVIDER_CONFIGS = [
       'gemini-2.5-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-2.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.3, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-2.5-flash-lite': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
+      // Gemini 3 Pro (preview): $2 in / $12 out, cached reads $0.20 (≤200k tier)
+      // per ai.google.dev/gemini-api/docs/pricing, as of 2026-08-01. Also the
+      // notional rate for gemini-cli seat usage via PROVIDER_METADATA_FALLBACK.
+      'gemini-3-pro-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, inputCacheReadCostPer1M: 0.2, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-1.5-flash': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.075, outputCostPer1M: 0.3, inputCacheReadCostPer1M: 0.01875, supportsVision: true, supportsTools: true },
+      'gemini-1.5-pro': { contextWindow: 2097152, maxOutputTokens: 8192, inputCostPer1M: 1.25, outputCostPer1M: 5.0, inputCacheReadCostPer1M: 0.3125, supportsVision: true, supportsTools: true },
+      'gemini-2.0-flash': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.1, outputCostPer1M: 0.4, inputCacheReadCostPer1M: 0.025, supportsVision: true, supportsTools: true },
+      'gemini-2.0-flash-exp': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.1, outputCostPer1M: 0.4, inputCacheReadCostPer1M: 0.025, supportsVision: true, supportsTools: true },
+      'gemini-2.5-flash-image': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: true, supportsTools: true },
+      'gemini-3.1-flash-image-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
+      'gemini-3.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 2.1, supportsVision: true, supportsTools: true },
+      'gemini-3.6-flash-high': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
+      'gemini-3.6-flash-medium': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
+      'gemini-3.6-flash-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
+      'gemini-3-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
+      'gemini-pro': { contextWindow: 32768, maxOutputTokens: 8192, inputCostPer1M: 0.5, outputCostPer1M: 1.5, supportsVision: true, supportsTools: true },
+      'gemini-3-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, inputCacheReadCostPer1M: 0.2, supportsVision: true, supportsTools: true },
+      'gemini-2.5-pro-exp-03-25': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true },
+      'gemini-2.5-flash-thinking': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.60, supportsVision: true, supportsTools: true },
+      'gemini-3': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true },
+      'gemini-2.5': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.3, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true },
+      // Published rates, ai.google.dev/gemini-api/docs/pricing (2026-08-01).
+      'gemini-2.0-flash-lite': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.075, outputCostPer1M: 0.3, supportsVision: true, supportsTools: true, reasoning: false },
+      'gemini-flash-lite-latest': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
+      'gemini-omni-flash-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.3, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: false },
+      // Google publishes no SEPARATE per-token rate for the Antigravity IDE
+      // build or the Deep Research products — they are metered as the Gemini 3
+      // Pro tier they run on, so that is the rate recorded here rather than a
+      // number invented for them.
+      'antigravity-preview-05-2026': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, inputCacheReadCostPer1M: 0.2, supportsVision: true, supportsTools: true, reasoning: true },
+      'deep-research-pro-preview-12-2025': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'deep-research-max-preview-04-2026': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, supportsVision: true, supportsTools: true, reasoning: true },
     },
     modelTransform: (raw) => ({
       id: raw.name?.replace('models/', '') || raw.id,
@@ -429,6 +498,16 @@ const PROVIDER_CONFIGS = [
       'grok-code-fast-1': { contextWindow: 256000, maxOutputTokens: 131072, inputCostPer1M: 0.2, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: true },
       'grok-3': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: false, supportsTools: true, reasoning: false },
       'grok-3-mini': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 0.5, supportsVision: false, supportsTools: true, reasoning: true },
+      'grok-4.3': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.30, outputCostPer1M: 1.00, inputCacheReadCostPer1M: 0.03, supportsVision: true, supportsTools: true, reasoning: true },
+      'grok-4.20': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 1.25, outputCostPer1M: 2.50, inputCacheReadCostPer1M: 0.20, supportsVision: true, supportsTools: true, reasoning: true },
+      'grok-4.20-0309-non-reasoning': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 1.25, outputCostPer1M: 2.50, inputCacheReadCostPer1M: 0.20, supportsVision: true, supportsTools: true, reasoning: false },
+      'grok-4.20-0309-reasoning': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 1.25, outputCostPer1M: 2.50, inputCacheReadCostPer1M: 0.20, supportsVision: true, supportsTools: true, reasoning: true },
+      'grok-beta': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 2.00, outputCostPer1M: 6.00, supportsVision: true, supportsTools: true },
+      'grok-4': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 2.00, outputCostPer1M: 6.00, supportsVision: true, supportsTools: true },
+      'grok-2-image': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 5.00, outputCostPer1M: 15.00, supportsVision: true, supportsTools: false },
+      'grok-imagine-image': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 5.00, outputCostPer1M: 15.00, supportsVision: true, supportsTools: false },
+      'grok-imagine-image-pro': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 5.00, outputCostPer1M: 15.00, supportsVision: true, supportsTools: false },
+      'grok-ai': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 2.00, outputCostPer1M: 6.00, supportsVision: true, supportsTools: true },
     },
     compat: {},
     sdkOptions: {},
@@ -486,6 +565,20 @@ const PROVIDER_CONFIGS = [
     },
     recommendedModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto'],
     fallbackModels: ['cursor-grok-4.5-high', 'composer-2.5', 'auto', 'gpt-5.2', 'claude-opus-5-high'],
+    // Cursor bills a flat subscription and exposes ~190 routing aliases
+    // (every model × reasoning level × -fast). None of them meter per token, so
+    // $0 charged is the truthful figure for all of them — the same convention
+    // the enumerated entries below already use. Without this, each new alias
+    // Cursor ships silently becomes an "unpriced" call.
+    defaultModelMetadata: {
+      contextWindow: 256000,
+      maxOutputTokens: 65536,
+      inputCostPer1M: 0,
+      outputCostPer1M: 0,
+      supportsVision: false,
+      supportsTools: false, // CLI transport — see capabilities.text above
+      reasoning: true,
+    },
     modelMetadata: {
       // The DEFAULT model. Cursor does not publish per-model context limits
       // for its proxy; composer parity (256k) is a conservative floor. Without
@@ -502,6 +595,29 @@ const PROVIDER_CONFIGS = [
       },
       'composer-2.5': {
         contextWindow: 256000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: false, // CLI transport — see capabilities.text above
+        reasoning: true,
+      },
+      // Same deliberate 0/0 as the entries above: Cursor is a flat
+      // subscription with no per-token metering exposed, so $0 charged is the
+      // truthful figure (SUBSCRIPTION_PROVIDERS documents the convention).
+      // Without these two entries the remaining offered models priced as
+      // NULL — unknown — which is a different and wrong claim.
+      auto: {
+        contextWindow: 256000,
+        maxOutputTokens: 65536,
+        inputCostPer1M: 0, // router id — underlying model composition unknowable
+        outputCostPer1M: 0,
+        supportsVision: false,
+        supportsTools: false, // CLI transport — see capabilities.text above
+        reasoning: true,
+      },
+      'claude-opus-5-high': {
+        contextWindow: 200000,
         maxOutputTokens: 65536,
         inputCostPer1M: 0,
         outputCostPer1M: 0,
@@ -538,6 +654,19 @@ const PROVIDER_CONFIGS = [
       'qwen/qwen3-32b': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.29, outputCostPer1M: 0.59, supportsVision: false, supportsTools: true, reasoning: false },
       'meta-llama/llama-4-scout-17b-16e-instruct': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.11, outputCostPer1M: 0.34, supportsVision: true, supportsTools: true, reasoning: false },
       'meta-llama/llama-4-maverick-17b-128e-instruct': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.20, outputCostPer1M: 0.60, supportsVision: true, supportsTools: true, reasoning: false },
+      'llama-3.1-70b-versatile': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true },
+      'llama-3.1-70b': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true },
+      'llama-3.3-70b': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true },
+      'llama-3.2-1b-instruct': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.05, outputCostPer1M: 0.08, supportsVision: false, supportsTools: true },
+      'moonshotai/kimi-k2-instruct': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.60, outputCostPer1M: 2.50, supportsVision: false, supportsTools: true },
+      'mistralai/mixtral-8x7b-instruct': { contextWindow: 32768, maxOutputTokens: 4096, inputCostPer1M: 0.60, outputCostPer1M: 1.80, supportsVision: false, supportsTools: true },
+      'mistral-large-latest': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 2.00, outputCostPer1M: 6.00, supportsVision: false, supportsTools: true },
+      // Compound is an agentic SYSTEM: Groq bills it at the rates of the models
+      // it routes to, which are the Llama tiers below. Recording those is the
+      // closest thing to a published figure that exists for it.
+      'groq/compound': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true },
+      'groq/compound-mini': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.05, outputCostPer1M: 0.08, supportsVision: false, supportsTools: true },
+      'allam-2-7b': { contextWindow: 4096, maxOutputTokens: 4096, inputCostPer1M: 0.05, outputCostPer1M: 0.08, supportsVision: false, supportsTools: false },
     },
     modelTransform: (raw) => ({
       id: raw.id,
@@ -568,6 +697,7 @@ const PROVIDER_CONFIGS = [
     modelMetadata: {
       'deepseek-chat': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: false },
       'deepseek-reasoner': { contextWindow: 128000, maxOutputTokens: 64000, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: true },
+      'deepseek-v4-flash': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.14, outputCostPer1M: 0.28, inputCacheReadCostPer1M: 0.014, supportsVision: false, supportsTools: true },
     },
     compat: {},
     sdkOptions: {},
@@ -627,6 +757,15 @@ const PROVIDER_CONFIGS = [
       'anthropic/claude-sonnet-4-6',
       'google/gemini-2.5-pro',
     ],
+    modelMetadata: {
+      'meta-llama/llama-3.3-70b-instruct': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true },
+      'meta-llama/llama-3.1-70b-instruct': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true },
+      'mistralai/mixtral-8x7b-instruct': { contextWindow: 32768, maxOutputTokens: 4096, inputCostPer1M: 0.60, outputCostPer1M: 1.80, supportsVision: false, supportsTools: true },
+      'openrouter/owl-alpha': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.50, outputCostPer1M: 2.00, supportsVision: false, supportsTools: true },
+      'adamo1139/Hermes-3-Llama-3.1-8B-FP8-Dynamic': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.20, outputCostPer1M: 0.20, supportsVision: false, supportsTools: true },
+      'Qwen/Qwen3-235B-A22B-Instruct-2507': { contextWindow: 131072, maxOutputTokens: 8192, inputCostPer1M: 0.80, outputCostPer1M: 2.40, supportsVision: false, supportsTools: true },
+      'deepseek-ai/DeepSeek-V3.1': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.14, outputCostPer1M: 0.28, inputCacheReadCostPer1M: 0.014, supportsVision: false, supportsTools: true },
+    },
     modelTransform: (raw) => ({
       id: raw.id,
       name: raw.name || raw.id,
@@ -675,6 +814,8 @@ const PROVIDER_CONFIGS = [
       'moonshotai/Kimi-K2.5': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.20, outputCostPer1M: 0.88, supportsVision: false, supportsTools: true, reasoning: true },
       'MiniMaxAI/MiniMax-M2.5': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 0.30, outputCostPer1M: 1.20, supportsVision: false, supportsTools: true, reasoning: true },
       'Qwen/Qwen3-235B-A22B-Thinking-2507': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.50, outputCostPer1M: 1.50, supportsVision: false, supportsTools: true, reasoning: true },
+      'Qwen/Qwen3-235B-A22B-Instruct-2507': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.80, outputCostPer1M: 2.40, supportsVision: false, supportsTools: true, reasoning: false },
+      'Qwen/Qwen3-235B-A22B-Instruct-2507-tput': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.80, outputCostPer1M: 2.40, supportsVision: false, supportsTools: true, reasoning: false },
       'meta-llama/Llama-3.3-70B-Instruct-Turbo': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.18, outputCostPer1M: 0.34, supportsVision: false, supportsTools: true, reasoning: false },
       'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': { contextWindow: 1048576, maxOutputTokens: 32768, inputCostPer1M: 0.27, outputCostPer1M: 0.35, supportsVision: true, supportsTools: true, reasoning: false },
       'meta-llama/Llama-4-Scout-17B-16E-Instruct': { contextWindow: 524288, maxOutputTokens: 32768, inputCostPer1M: 0.18, outputCostPer1M: 0.30, supportsVision: true, supportsTools: true, reasoning: false },
@@ -803,11 +944,19 @@ const PROVIDER_CONFIGS = [
     fallbackModels: ['kimi-for-coding', 'k3', 'k3-256k', 'kimi-for-coding-highspeed'],
     fallbackVisionModels: ['kimi-for-coding', 'k3', 'k3-256k', 'kimi-for-coding-highspeed'],
     modelMetadata: {
+      // Notional (seat-value) rates, following the claude-code convention:
+      // SUBSCRIPTION_PROVIDERS keeps these from ever being billed as money,
+      // but "what this would have cost on the metered API" is exactly what
+      // the spend ledger reports for seats. Rates are Moonshot's published
+      // metered prices for the models each seat id serves (OpenRouter
+      // moonshotai/* catalog + platform.kimi.ai, as of 2026-08-01).
       'kimi-for-coding': {
         contextWindow: 256000,
         maxOutputTokens: 16384,
-        inputCostPer1M: null, // subscription-based, not per-token
-        outputCostPer1M: null,
+        // Serves the K2.x line (K2.5-era rate: $0.57/$2.85, cache read $0.095)
+        inputCostPer1M: 0.57,
+        outputCostPer1M: 2.85,
+        inputCacheReadCostPer1M: 0.095,
         supportsVision: true, // K2.7 Code: image + video input
         supportsTools: true,
         reasoning: true,
@@ -818,8 +967,10 @@ const PROVIDER_CONFIGS = [
       k3: {
         contextWindow: 1048576,
         maxOutputTokens: 16384,
-        inputCostPer1M: null, // subscription-based, not per-token
-        outputCostPer1M: null,
+        // Moonshot K3 metered: $3 in (cache miss) / $0.30 cached / $15 out
+        inputCostPer1M: 3.0,
+        outputCostPer1M: 15.0,
+        inputCacheReadCostPer1M: 0.3,
         supportsVision: true, // K3: native image + video input
         supportsTools: true,
         reasoning: true,
@@ -829,8 +980,10 @@ const PROVIDER_CONFIGS = [
       'k3-256k': {
         contextWindow: 256000,
         maxOutputTokens: 16384,
-        inputCostPer1M: null, // subscription-based, not per-token
-        outputCostPer1M: null,
+        // Same model as k3, so the same metered rate
+        inputCostPer1M: 3.0,
+        outputCostPer1M: 15.0,
+        inputCacheReadCostPer1M: 0.3,
         supportsVision: true, // image only (no video on this variant)
         supportsTools: true,
         reasoning: true,
@@ -838,8 +991,10 @@ const PROVIDER_CONFIGS = [
       'kimi-for-coding-highspeed': {
         contextWindow: 256000,
         maxOutputTokens: 16384,
-        inputCostPer1M: null, // subscription-based, not per-token
-        outputCostPer1M: null,
+        // Serves K2.7 Code ($0.73/$3.50, cache read $0.15)
+        inputCostPer1M: 0.73,
+        outputCostPer1M: 3.5,
+        inputCacheReadCostPer1M: 0.15,
         supportsVision: true, // K2.7 Code HighSpeed: image + video input
         supportsTools: true,
         reasoning: true,
@@ -918,6 +1073,9 @@ const PROVIDER_CONFIGS = [
       'glm-4.6v': { contextWindow: 128000, maxOutputTokens: 32000, inputCostPer1M: 0.3, outputCostPer1M: 0.9, supportsVision: true, supportsTools: true, reasoning: false },
       'glm-4.6v-flash': { contextWindow: 128000, maxOutputTokens: 32000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: false },
       'glm-4.5-flash': { contextWindow: 128000, maxOutputTokens: 96000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: false, supportsTools: true, reasoning: false },
+      'glm-4.5': { contextWindow: 128000, maxOutputTokens: 4096, inputCostPer1M: 0.60, outputCostPer1M: 2.40, supportsVision: false, supportsTools: true },
+      'glm-4.6': { contextWindow: 128000, maxOutputTokens: 4096, inputCostPer1M: 0.60, outputCostPer1M: 2.40, supportsVision: false, supportsTools: true },
+      'zai-glm-4.6': { contextWindow: 128000, maxOutputTokens: 4096, inputCostPer1M: 0.60, outputCostPer1M: 2.40, supportsVision: false, supportsTools: true },
     },
     compat: {},
     sdkOptions: {
@@ -1259,6 +1417,13 @@ const PROVIDER_METADATA_FALLBACK = {
   'claude-code': 'anthropic',
   'gemini-cli': 'gemini',
   'antigravity': 'gemini',
+  'grok-build': 'grokai',
+  'cursor-cli': 'openai',
+  'chutes': 'openrouter',
+  'togetherai': 'openrouter',
+  'cerebras': 'groq',
+  'groq': 'openrouter',
+  'kimi-code': 'kimi',
 };
 
 function buildReasoningControl(kind, options, defaultValue = 'default') {
@@ -1423,6 +1588,47 @@ function inferVariantModelMetadata(providerKey, modelId) {
     if (generic) return generic;
   }
 
+  // Pattern-based inference for Anthropic, Gemini, Grok, Llama, Qwen, etc.
+  const norm = normalizeModelKey(modelId);
+
+  // Anthropic / Claude date-suffixed or alias matching
+  if (/^claude-3-5-sonnet(-\d+)?$/.test(norm) || /^claude-sonnet-3-5$/.test(norm) || /^claude-3-7-sonnet(-\d+)?$/.test(norm) || /^claude-3-7$/.test(norm)) {
+    return getModelMetadata('anthropic', 'claude-sonnet-5') || getModelMetadata('anthropic', 'claude-sonnet-4-6');
+  }
+  if (/^claude-3-5-haiku(-\d+)?$/.test(norm) || /^claude-3-haiku(-\d+)?$/.test(norm)) {
+    return getModelMetadata('anthropic', 'claude-haiku-4-5-20251001');
+  }
+  if (/^claude-3-opus(-\d+)?$/.test(norm)) {
+    return getModelMetadata('anthropic', 'claude-opus-5');
+  }
+  if (/^claude-3-sonnet(-\d+)?$/.test(norm)) {
+    return getModelMetadata('anthropic', 'claude-sonnet-4-6');
+  }
+
+  // Gemini pattern matching
+  if (/^gemini-1-5-flash(-\d+)?$/.test(norm) || /^gemini-2-0-flash(-exp)?$/.test(norm)) {
+    return getModelMetadata('gemini', 'gemini-2.5-flash-lite');
+  }
+  if (/^gemini-1-5-pro(-\d+)?$/.test(norm) || /^gemini-pro(-agent)?$/.test(norm)) {
+    return getModelMetadata('gemini', 'gemini-2.5-pro');
+  }
+  if (/^gemini-3-flash(-agent)?$/.test(norm) || /^gemini-3-5-flash(-low|-extra-low)?$/.test(norm) || /^gemini-3-6-flash-(high|medium|low)$/.test(norm)) {
+    return getModelMetadata('gemini', 'gemini-2.5-flash');
+  }
+
+  // Grok pattern matching
+  if (/^grok-4-3(-fast)?$/.test(norm) || /^grok-4-0709$/.test(norm) || /^grok-4-1-fast-(reasoning|non-reasoning)$/.test(norm) || /^grok-code-fast-1$/.test(norm)) {
+    return getModelMetadata('grokai', 'grok-4-1-fast-reasoning');
+  }
+  if (/^grok-4-20(-0309)?(-reasoning|-non-reasoning|-multi-agent)?$/.test(norm)) {
+    return getModelMetadata('grokai', 'grok-4-0709');
+  }
+
+  // Llama pattern matching
+  if (/^llama-3-[13]-(70|8)b(-versatile|-instruct|-instant)?$/.test(norm)) {
+    return getModelMetadata('groq', 'llama-3.3-70b-versatile') || getModelMetadata('groq', 'llama-3.1-8b-instant');
+  }
+
   return null;
 }
 
@@ -1476,6 +1682,56 @@ export function registerDynamicPricing(providerKey, modelId, metadata) {
   }
   merged.dynamic = true;
   dynamicPricingCache.set(key, merged);
+
+  // Durability hook (PRD-122). This cache used to be memory-only and
+  // picker-triggered, which meant every restart forgot every price a provider
+  // had ever reported — so the boot-time repricer, which runs before any
+  // client opens a model list, could never use it. The hook is injected by
+  // modelMetadataPersistence rather than imported, so this module stays free
+  // of a database dependency (unit tests import it constantly). Fire-and-
+  // forget: pricing metadata must never block or fail a model-list fetch.
+  if (dynamicPricingPersistHook) {
+    try {
+      dynamicPricingPersistHook(providerKey, modelId, merged);
+    } catch { /* persistence is best-effort by contract */ }
+  }
+}
+
+let dynamicPricingPersistHook = null;
+
+/** Injected by modelMetadataPersistence at boot. */
+export function setDynamicPricingPersistence(fn) {
+  dynamicPricingPersistHook = typeof fn === 'function' ? fn : null;
+}
+
+/**
+ * Bulk-load persisted entries into the in-memory cache WITHOUT re-firing the
+ * persistence hook (they came from the store; writing them back would be a
+ * loop). Used once per process at boot.
+ */
+export function hydrateDynamicPricing(rows) {
+  let n = 0;
+  for (const row of rows || []) {
+    if (!row?.provider || !row?.model || !row?.metadata) continue;
+    const key = `${row.provider}:${row.model}`;
+    // In-memory (fresher) wins over persisted (older) on conflict.
+    const prior = dynamicPricingCache.get(key);
+    dynamicPricingCache.set(key, prior ? { ...row.metadata, ...prior } : { ...row.metadata });
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * The same model arrives under many spellings — grokai/grok-4.3,
+ * <custom-uuid>/xai/grok-4.3, openrouter/x-ai/grok-4.3 — and catalogs disagree
+ * about dots vs dashes (claude-sonnet-4.5 vs claude-sonnet-4-5). Normalising
+ * to the final path segment with dots flattened lets one catalog entry answer
+ * for all of them.
+ */
+export function normalizeModelKey(modelId) {
+  const parts = String(modelId || '').toLowerCase().trim().split('/');
+  return (parts[parts.length - 1] || '').replace(/\./g, '-');
 }
 
 /**
@@ -1516,6 +1772,21 @@ export function registerDynamicPricingFromModels(providerKey, models) {
       pricing.inputCostPer1M = parseFloat(model.pricing.prompt) * 1_000_000;
       pricing.outputCostPer1M = parseFloat(model.pricing.completion) * 1_000_000;
     }
+    // Together AI and several OpenAI-compatible hosts publish pricing as
+    // { input, output } ALREADY in dollars per million tokens, rather than
+    // OpenRouter's { prompt, completion } in dollars per token. Same data,
+    // different spelling — parsing only one shape silently discards the other
+    // provider's published prices and every one of its models reads as
+    // "unknown cost" despite the price arriving in the same response.
+    if (pricing.inputCostPer1M == null && model.pricing?.input != null) {
+      const v = parseFloat(model.pricing.input);
+      if (Number.isFinite(v) && v >= 0) pricing.inputCostPer1M = v;
+    }
+    if (pricing.outputCostPer1M == null && model.pricing?.output != null) {
+      const v = parseFloat(model.pricing.output);
+      if (Number.isFinite(v) && v >= 0) pricing.outputCostPer1M = v;
+    }
+
     if (model.inputCostPer1M != null) pricing.inputCostPer1M = model.inputCostPer1M;
     if (model.outputCostPer1M != null) pricing.outputCostPer1M = model.outputCostPer1M;
     if (model.inputCacheReadCostPer1M != null) {
@@ -1559,32 +1830,186 @@ export function registerDynamicPricingFromModels(providerKey, models) {
  *   4. Cross-provider search (same model ID on a different provider)
  * Returns null if no metadata found (graceful degradation).
  */
+/** A metadata record is only useful for costing if it carries BOTH rates. */
+function canPrice(meta) {
+  return !!meta && meta.inputCostPer1M != null && meta.outputCostPer1M != null;
+}
+
 export function getModelMetadata(providerKey, modelId) {
+  // Every step below yields a CANDIDATE. The first candidate that can actually
+  // price wins; if none can, the first candidate found at all is returned.
+  //
+  // The chain used to return the first candidate outright, and that is a real
+  // defect rather than a nicety: ~250 of the persisted catalog rows are
+  // context-window-only entries captured from providers that publish no
+  // prices, and boot hydrates them BEFORE the priced catalog sync. So the
+  // exact-key hit at step 3 returned `{contextWindow}` with no rates and the
+  // search stopped — leaving minimax-m2, glm-4.5-air, deepseek-v4-pro and
+  // every dated gpt-4o snapshot unpriced even though the price was already in
+  // memory one step further down.
+  //
+  // Ordering within the chain is unchanged, so an exact match still beats a
+  // normalised one whenever both can price.
+  let firstSeen = null;
+  const consider = (meta) => {
+    if (!meta) return null;
+    if (canPrice(meta)) return meta;
+    firstSeen ||= meta;
+    return null;
+  };
+
   // 1. Direct lookup on the requested provider
   const config = getProviderConfig(providerKey);
-  if (config?.modelMetadata?.[modelId]) return config.modelMetadata[modelId];
+  let hit = consider(config?.modelMetadata?.[modelId]);
+  if (hit) return hit;
 
   // 2. Fallback to parent provider for known variants
   const fallbackKey = PROVIDER_METADATA_FALLBACK[providerKey];
   if (fallbackKey) {
     const fallbackConfig = getProviderConfig(fallbackKey);
-    if (fallbackConfig?.modelMetadata?.[modelId]) return fallbackConfig.modelMetadata[modelId];
+    hit = consider(fallbackConfig?.modelMetadata?.[modelId]);
+    if (hit) return hit;
   }
 
   // 2b. Variant-specific inference (e.g. gpt-5.2-codex -> gpt-5.2)
-  const inferredVariantMeta = inferVariantModelMetadata(providerKey, modelId);
-  if (inferredVariantMeta) return inferredVariantMeta;
+  hit = consider(inferVariantModelMetadata(providerKey, modelId));
+  if (hit) return hit;
 
   // 3. Dynamic pricing cache (populated from provider API responses)
-  const dynamicMeta = dynamicPricingCache.get(`${providerKey}:${modelId}`);
-  if (dynamicMeta) return dynamicMeta;
+  hit = consider(dynamicPricingCache.get(`${providerKey}:${modelId}`));
+  if (hit) return hit;
 
-  // 4. Last resort: search all providers for this model ID
+  // 4. Search all providers for this exact model ID
   for (const p of PROVIDER_CONFIGS) {
     if (p.key === providerKey || p.key === fallbackKey) continue;
-    if (p.modelMetadata?.[modelId]) return p.modelMetadata[modelId];
+    hit = consider(p.modelMetadata?.[modelId]);
+    if (hit) return hit;
   }
 
+  // 4b. Strip a trailing release stamp and retry (PRD-122).
+  //
+  // Providers publish the same model under a pinned alias: OpenAI serves
+  // gpt-4o AND gpt-4o-2024-08-06, gpt-4.1 AND gpt-4.1-2025-04-14; Gemini
+  // serves gemini-2.0-flash AND gemini-2.0-flash-001. The pinned form is the
+  // SAME model at the SAME price, so enumerating every snapshot by hand is
+  // busywork that silently falls behind each new release. One rule covers
+  // every provider, past and future.
+  const destamped = stripReleaseStamp(modelId);
+  if (destamped) {
+    hit = consider(getModelMetadata(providerKey, destamped));
+    if (hit) return hit;
+  }
+
+  // 4c. Family-prefix inference (PRD-122).
+  //
+  // Providers ship endless variants of one priced family: -latest aliases,
+  // -preview stamps, -lite/-thinking/-highspeed tiers, IDE-specific builds.
+  // Enumerating them is a treadmill — every release adds more and the list is
+  // always one launch behind. Dropping trailing segments until a priced
+  // ancestor is found covers all of them with one rule, and it is bounded:
+  // same provider (or its declared parent), longest prefix first, and only
+  // after every exact path above has already missed.
+  const familyMeta = inferByFamilyPrefix(providerKey, modelId, fallbackKey);
+  hit = consider(familyMeta);
+  if (hit) return hit;
+
+  // 5. Normalised-name search (PRD-122).
+  //
+  // Custom providers store a UUID as their key and often prefix the model
+  // with a vendor path (<uuid> + xai/grok-4.3), and routers spell first-party
+  // models with the vendor attached (openrouter + anthropic/claude-haiku-4-5-
+  // 20251001) — so steps 1-4 miss even when the model is perfectly known.
+  // Dynamic cache first (catalog data is usually fresher), then static tables.
+  const wanted = normalizeModelKey(modelId);
+  if (wanted) {
+    for (const [cacheKey, meta] of dynamicPricingCache.entries()) {
+      const cachedModel = cacheKey.slice(cacheKey.indexOf(':') + 1);
+      if (normalizeModelKey(cachedModel) !== wanted) continue;
+      hit = consider(meta);
+      if (hit) return hit;
+    }
+    for (const p of PROVIDER_CONFIGS) {
+      for (const [staticId, meta] of Object.entries(p.modelMetadata || {})) {
+        if (normalizeModelKey(staticId) !== wanted) continue;
+        hit = consider(meta);
+        if (hit) return hit;
+      }
+    }
+  }
+
+  // 6. Provider-level default.
+  //
+  // A flat-rate seat (Cursor) exposes hundreds of routing aliases and meters
+  // none of them. $0 charged is the TRUTHFUL figure there, and it is already
+  // the documented convention for the handful of Cursor models enumerated by
+  // hand — this just stops that list from having to be exhaustive.
+  const defaults = config?.defaultModelMetadata || (fallbackKey ? getProviderConfig(fallbackKey)?.defaultModelMetadata : null);
+  hit = consider(defaults);
+  if (hit) return hit;
+
+  // Nothing could price it. Return whatever was found first — it still carries
+  // a real contextWindow, which callers other than the ledger depend on.
+  return firstSeen;
+}
+
+/**
+ * Walk up the model-name family tree looking for a priced ancestor.
+ *
+ *   gemini-2.0-flash-lite-001 -> gemini-2.0-flash-lite -> gemini-2.0-flash ✓
+ *   gpt-5.6-sol-xhigh         -> gpt-5.6-sol ✓
+ *
+ * Longest prefix wins, so a specific tier is always preferred over a generic
+ * ancestor. Stops at two segments so a bare vendor word ('gemini', 'claude')
+ * can never become the match.
+ */
+function inferByFamilyPrefix(providerKey, modelId, fallbackKey) {
+  const base = String(modelId || '').split('/').pop();
+  const parts = base.split('-');
+  if (parts.length < 3) return null;
+
+  const providers = [getProviderConfig(providerKey), fallbackKey ? getProviderConfig(fallbackKey) : null].filter(Boolean);
+
+  for (let end = parts.length - 1; end >= 2; end -= 1) {
+    const candidate = parts.slice(0, end).join('-');
+    if (candidate === base) continue;
+    for (const p of providers) {
+      const meta = p.modelMetadata?.[candidate];
+      if (canPrice(meta)) return meta;
+    }
+    const dyn = dynamicPricingCache.get(`${providerKey}:${candidate}`);
+    if (canPrice(dyn)) return dyn;
+  }
+  return null;
+}
+
+/**
+ * Strip a trailing release stamp from a model id, or null when there is none.
+ *
+ *   gpt-4o-2024-08-06      -> gpt-4o
+ *   gpt-4.1-mini-2025-04-14 -> gpt-4.1-mini
+ *   gemini-2.0-flash-001    -> gemini-2.0-flash
+ *
+ * Deliberately narrow. A bare 3-digit group is only treated as a stamp when
+ * something remains that still looks like a model name, so `grok-3` and
+ * `llama-4` survive untouched.
+ */
+function stripReleaseStamp(modelId) {
+  const id = String(modelId || '');
+  const patterns = [
+    /-\d{4}-\d{2}-\d{2}$/,   // -2024-08-06
+    /-\d{8}$/,               // -20241022
+    /-\d{4}$/,               // -0125  (OpenAI legacy point releases)
+    /-\d{3}$/,               // -001   (Gemini pinned revisions)
+  ];
+  for (const re of patterns) {
+    if (!re.test(id)) continue;
+    const base = id.replace(re, '');
+    // Require a residue that still contains a letter, so we never reduce a
+    // version-bearing name like "grok-3" to "grok".
+    // 'o3-2025-04-16' -> 'o3'. A 2-character base is legitimate (the whole
+    // o-series), so the guard only rejects an empty or digit-only residue.
+    if (/[a-z]/i.test(base) && base.length >= 2 && base !== id) return base;
+  }
   return null;
 }
 
@@ -1677,9 +2102,15 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
   }
 
   const baseIn = meta.inputCostPer1M / 1_000_000;
+  // A provider-published cached-read price (catalogs report one per model)
+  // beats the family multiplier — the multiplier is a house approximation for
+  // providers that only publish a base rate.
+  const readRate = meta.inputCacheReadCostPer1M != null
+    ? meta.inputCacheReadCostPer1M / 1_000_000
+    : baseIn * readMult;
   const inputCost =
     uncached * baseIn +
-    cacheRead * baseIn * readMult +
+    cacheRead * readRate +
     cacheWrite5m * baseIn * write5mMult +
     cacheWrite1h * baseIn * write1hMult;
   const outputCost = (outputTokens / 1_000_000) * meta.outputCostPer1M;

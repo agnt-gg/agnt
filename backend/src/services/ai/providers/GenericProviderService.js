@@ -305,15 +305,45 @@ class GenericProviderService extends EventEmitter {
 
   /**
    * Default model transform — maps standard OpenAI-format model objects.
+   *
+   * PRESERVES the pricing and context a provider publishes. This used to emit
+   * only id/name/description/createdAt/ownedBy, which silently threw away the
+   * one thing the ledger needs: every provider that ships rates in its own
+   * /models response — Together AI publishes `pricing: { input, output }` in
+   * dollars per million — had those rates discarded here, and then every one
+   * of its models rendered as "unpriced" downstream. The data had arrived and
+   * we deleted it before anyone could read it.
+   *
+   * Only the providers WITHOUT a custom modelTransform were affected, which is
+   * why OpenRouter (which has one) looked fine and Together did not.
+   *
+   * Fields are emitted only when the provider actually sent them, so a
+   * provider that publishes nothing produces exactly the same object as before
+   * and no caller sees a shape change.
    */
   _defaultTransform(rawModel) {
-    return {
+    const out = {
       id: rawModel.id,
       name: rawModel.id,
       description: rawModel.description || '',
       createdAt: rawModel.created || null,
       ownedBy: rawModel.owned_by || null,
     };
+
+    // Published rates, in whatever shape the provider uses. Passed through
+    // verbatim: registerDynamicPricingFromModels owns the parsing, so this
+    // stays correct when a new pricing spelling appears.
+    if (rawModel.pricing && typeof rawModel.pricing === 'object') {
+      out.pricing = rawModel.pricing;
+    }
+
+    const ctx = rawModel.context_length || rawModel.context_window || rawModel.max_model_len;
+    if (ctx) out.contextLength = ctx;
+
+    const maxOut = rawModel.max_output_length || rawModel.max_output_tokens;
+    if (maxOut) out.maxOutputLength = maxOut;
+
+    return out;
   }
 
   /**
