@@ -72,7 +72,18 @@ export default {
   flex-direction: column;
   gap: 8px;
   font-size: var(--font-size-sm);
-  overflow: hidden;
+  /*
+   * auto, not hidden.
+   *
+   * A card is height-constrained by its grid row, so content that does not fit
+   * has to go somewhere. `hidden` chose to make it UNREACHABLE — the run queue
+   * stats ran off the right edge and were simply cut, with no way to see them.
+   * `auto` shows a scrollbar only in exactly that failure case, so nothing is
+   * ever silently truncated. It cannot regress anything `hidden` allowed:
+   * both clip escaping children identically, and cards whose inner lists
+   * already scroll (AgentsSwarm, GoalsMap) never overflow this box at all.
+   */
+  overflow: auto;
 }
 
 .section-title {

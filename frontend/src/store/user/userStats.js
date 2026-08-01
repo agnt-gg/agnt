@@ -149,6 +149,22 @@ export default {
       isLoading: false,
       activityDays: 14, // Track the current time range
     },
+    // --- Execution Ledger (PRD-122) ---
+    // Real spend, sourced from llm_calls, which is the only place that knows
+    // what a run actually cost across every execution path.
+    ledger: {
+      summary: null,
+      byOrigin: [],
+      byModel: [],
+      // Per-provider seat usage, so the leverage figure only counts seats the
+      // user actually used in this window rather than every seat they own.
+      byProvider: [],
+      // { providerKey: monthlyUsd }. Optional, user-supplied, {} until told.
+      subscriptionCosts: {},
+      isLoading: false,
+      lastFetchTime: null,
+      activityDays: 14,
+    },
     // --- New State for Gameplay ---
     gameState: {
       currentPhase: null,
@@ -286,6 +302,22 @@ export default {
         state.creditsActivity.lastFetchTime = lastFetchTime;
       }
       state.creditsActivity.isLoading = isLoading;
+    },
+    SET_LEDGER_DATA(state, { summary, byOrigin, byModel, byProvider, activityDays }) {
+      state.ledger.summary = summary;
+      state.ledger.byOrigin = byOrigin;
+      state.ledger.byModel = byModel;
+      state.ledger.byProvider = byProvider;
+      state.ledger.activityDays = activityDays;
+    },
+    SET_SUBSCRIPTION_COSTS(state, costs) {
+      state.ledger.subscriptionCosts = costs || {};
+    },
+    SET_LEDGER_META(state, { isLoading, lastFetchTime }) {
+      if (lastFetchTime !== undefined) {
+        state.ledger.lastFetchTime = lastFetchTime;
+      }
+      state.ledger.isLoading = isLoading;
     },
     SET_SECONDS_AUTOMATED_90_DAY(state, total) {
       state.secondsAutomated90Day = total;
@@ -597,6 +629,79 @@ export default {
         console.error('Error generating/fetching dummy tokens generated activity:', error);
         commit('SET_TOKENS_GENERATED_ACTIVITY_META', { isLoading: false }); // Ensure loading is set to false on error
       }
+    },
+
+    /**
+     * Fetch real spend from the execution ledger (PRD-122).
+     *
+     * Deliberately one action issuing three parallel reads rather than three
+     * actions: the summary and its breakdowns are read together on every render
+     * and must describe the same window, or the parts will not sum to the whole.
+     *
+     * Same 60s cache / range-change policy as fetchCreditsActivity, so the two
+     * halves of the credits area refresh in step.
+     */
+    async fetchLedger({ commit, state }, { activityDays = 14 } = {}) {
+      const now = Date.now();
+      const lastFetch = state.ledger.lastFetchTime;
+      const timeRangeChanged = state.ledger.activityDays !== activityDays;
+
+      if (lastFetch && now - lastFetch < 60000 && !timeRangeChanged) {
+        return;
+      }
+
+      commit('SET_LEDGER_META', { isLoading: true });
+
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No auth token found');
+
+        const headers = { Authorization: `Bearer ${token}` };
+        const window = `${activityDays}d`;
+
+        const [summaryRes, originRes, modelRes, providerRes, settingsRes] = await Promise.all([
+          axios.get(`${API_CONFIG.BASE_URL}/ledger/summary?window=${window}`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/ledger/breakdown?groupBy=origin&window=${window}`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/ledger/breakdown?groupBy=model&window=${window}`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/ledger/breakdown?groupBy=provider&window=${window}`, { headers }),
+          // Seat costs are optional enrichment, so a failure here must not cost
+          // the user their spend figures — hence the catch rather than letting
+          // it reject the whole Promise.all.
+          axios.get(`${API_CONFIG.BASE_URL}/users/settings`, { headers }).catch(() => null),
+        ]);
+
+        commit('SET_LEDGER_DATA', {
+          summary: summaryRes.data || null,
+          byOrigin: originRes.data?.rows || [],
+          byModel: modelRes.data?.rows || [],
+          byProvider: providerRes.data?.rows || [],
+          activityDays,
+        });
+        commit('SET_SUBSCRIPTION_COSTS', settingsRes?.data?.subscriptionCosts || {});
+        commit('SET_LEDGER_META', { isLoading: false, lastFetchTime: now });
+      } catch (error) {
+        console.error('[UserStats] Error fetching ledger:', error);
+        // Back the cache off rather than stamping a full success, so a transient
+        // failure retries in 15s instead of locking the panel out for a minute.
+        commit('SET_LEDGER_META', { isLoading: false, lastFetchTime: now - 45000 });
+      }
+    },
+
+    /**
+     * Persist what the user's subscription seats cost per month.
+     *
+     * Merged into existing settings rather than replacing them, and committed
+     * locally on success so the panel updates without a refetch.
+     */
+    async saveSubscriptionCosts({ commit }, costs) {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No auth token found');
+      await axios.put(
+        `${API_CONFIG.BASE_URL}/users/settings`,
+        { subscriptionCosts: costs || {} },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      commit('SET_SUBSCRIPTION_COSTS', costs || {});
     },
 
     async fetchCreditsActivity({ commit, state }, { activityDays = 14, isCumulativeView = true } = {}) {
@@ -1384,6 +1489,8 @@ export default {
     loginStreak: (state) => state.loginStreak,
     roiPercentage: (state) => state.roiPercentage,
     missedTokensYesterday: (state) => state.missedTokensYesterday,
+    ledger: (state) => state.ledger,
+    isLedgerLoading: (state) => state.ledger.isLoading,
     creditsActivity: (state) => state.creditsActivity,
     isCreditsActivityLoading: (state) => state.creditsActivity.isLoading,
     creditsActivityLastFetchTime: (state) => state.creditsActivity.lastFetchTime,

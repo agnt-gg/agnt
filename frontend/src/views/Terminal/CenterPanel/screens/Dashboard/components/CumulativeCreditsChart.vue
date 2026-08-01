@@ -45,6 +45,11 @@
       <div v-if="isLoading" class="loading-overlay">Loading data...</div>
       <canvas ref="chartCanvas"></canvas>
     </div>
+
+    <!-- Real spend, over the same window as the chart above (PRD-122). The chart
+         plots compute/tokens/cost over time; this answers what that cost was
+         actually made of. -->
+    <SpendLedger />
   </div>
 </template>
 
@@ -52,6 +57,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import SpendLedger from './SpendLedger.vue';
 import { Chart, registerables } from 'chart.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
@@ -59,7 +65,7 @@ Chart.register(...registerables);
 
 export default {
   name: 'CumulativeCreditsChart',
-  components: { CustomSelect, Tooltip },
+  components: { CustomSelect, Tooltip, SpendLedger },
   setup() {
     const store = useStore();
     const chartCanvas = ref(null);
@@ -126,6 +132,9 @@ export default {
         activityDays: activityDays.value,
         isCumulativeView: isCumulativeView.value,
       });
+      // Fetched from the same place and with the same range as the chart, so the
+      // two halves of this section can never describe different windows.
+      store.dispatch('userStats/fetchLedger', { activityDays: activityDays.value });
     };
 
     const renderChart = () => {

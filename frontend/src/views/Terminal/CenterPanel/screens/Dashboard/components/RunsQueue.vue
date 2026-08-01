@@ -136,11 +136,22 @@ export default {
 }
 
 .stat-line {
+  /*
+   * Wraps. It used to be `nowrap` + `space-between`, which is a promise that
+   * five stat groups will always fit on one line — and they do not. Every group
+   * sets `white-space: nowrap`, and a flex item defaults to `min-width: auto`,
+   * so nothing could shrink: the row simply grew past the card and got cut off
+   * at the edge.
+   *
+   * `space-between` is dropped deliberately. Once a row can wrap it makes the
+   * final line push its items to opposite edges, which reads as broken layout;
+   * an even gap looks the same when everything fits and stays tidy when it
+   * does not.
+   */
   display: flex;
-  flex-wrap: nowrap;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   font-size: 0.75em;
-  justify-content: space-between;
 }
 
 .stat-group {
