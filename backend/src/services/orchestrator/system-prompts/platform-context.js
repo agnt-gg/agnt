@@ -12,9 +12,9 @@ import os from 'os';
  * PowerShell or a custom shell, update getShellTarget() to match.
  */
 
-function getShellTarget() {
-  if (process.platform === 'win32') {
-    const comspec = process.env.COMSPEC || 'cmd.exe';
+function getShellTarget(platform, comspecRaw) {
+  if (platform === 'win32') {
+    const comspec = comspecRaw || 'cmd.exe';
     return {
       name: comspec.toLowerCase().includes('powershell') ? 'PowerShell' : 'cmd.exe',
       path: comspec,
@@ -23,16 +23,16 @@ function getShellTarget() {
   return { name: '/bin/sh', path: '/bin/sh' };
 }
 
-function getOsLabel() {
-  switch (process.platform) {
+function getOsLabel(platform, release) {
+  switch (platform) {
     case 'win32':
-      return `Windows (${os.release()})`;
+      return `Windows (${release})`;
     case 'darwin':
-      return `macOS (Darwin ${os.release()})`;
+      return `macOS (Darwin ${release})`;
     case 'linux':
-      return `Linux (${os.release()})`;
+      return `Linux (${release})`;
     default:
-      return `${process.platform} (${os.release()})`;
+      return `${platform} (${release})`;
   }
 }
 
@@ -70,18 +70,35 @@ function getShellRules(shellName) {
 
 /**
  * Build the EXECUTION ENVIRONMENT block. Returns a string suitable for
- * dropping directly into a system prompt. Pure function of process state at
- * call time — no caching, since the prompt is rebuilt per turn anyway.
+ * dropping directly into a system prompt. Pure function of its inputs — no
+ * caching, since the prompt is rebuilt per turn anyway.
+ *
+ * @param {object} [env] Describe a DIFFERENT host than the running one. Every
+ *   field defaults to the live process, so production callers pass nothing and
+ *   get exactly the previous behaviour.
+ *
+ *   This exists because the block is always-resident prose and therefore sits
+ *   inside a prompt budget, and its SIZE varies by host: cmd.exe ships seven
+ *   rules, /bin/sh five. Reading process state directly made the budget a fact
+ *   about whichever machine ran the suite (Windows measured 4,135 tokens where
+ *   Linux CI measured 3,981), so the ratchet could pass locally and fail in CI
+ *   — which is exactly what it did. A budget has to be a fact about the PROSE.
  */
-export function getPlatformContextSection() {
-  const shell = getShellTarget();
-  const osLabel = getOsLabel();
+export function getPlatformContextSection(env = {}) {
+  const platform = env.platform ?? process.platform;
+  const release = env.release ?? os.release();
+  const arch = env.arch ?? process.arch;
+  const nodeVersion = env.nodeVersion ?? process.version;
+  const comspec = env.comspec ?? process.env.COMSPEC;
+
+  const shell = getShellTarget(platform, comspec);
+  const osLabel = getOsLabel(platform, release);
   const rules = getShellRules(shell.name);
 
   return `EXECUTION ENVIRONMENT:
 - Operating system: ${osLabel}
-- CPU architecture: ${process.arch}
-- Node.js: ${process.version}
+- CPU architecture: ${arch}
+- Node.js: ${nodeVersion}
 - Default shell for execute_shell_command: ${shell.name} (${shell.path})
 
 When using execute_shell_command, the command runs in the shell above. Follow these rules:

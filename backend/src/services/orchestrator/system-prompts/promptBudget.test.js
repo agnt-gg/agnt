@@ -33,8 +33,10 @@ import { estimateTokens } from '../../../utils/contextManager.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-// Everything buildUnifiedPrompt pushes with no `on(...)` guard.
-const ALWAYS_RESIDENT = {
+// Everything buildUnifiedPrompt pushes with no `on(...)` guard, EXCEPT the
+// EXECUTION ENVIRONMENT block — see HOSTS below for why that one is measured
+// separately.
+const ALWAYS_RESIDENT_STATIC = {
   OFFLOADED_DATA_GUIDANCE,
   CRITICAL_TOOL_CALL_REQUIREMENTS,
   AGNT_NATIVE_EXECUTION,
@@ -43,7 +45,6 @@ const ALWAYS_RESIDENT = {
   LOCAL_FILE_RENDERING,
   CHART_CHEATSHEET,
   CRITICAL_TOOL_RESPONSE_RULES,
-  PLATFORM_CONTEXT: getPlatformContextSection(),
 };
 
 /**
@@ -51,28 +52,110 @@ const ALWAYS_RESIDENT = {
  * to size the prompt, so the budget is expressed in the same unit the panel
  * and the context manager reason about.
  */
-const total = Object.values(ALWAYS_RESIDENT).reduce((a, s) => a + estimateTokens(s || ''), 0);
+const STATIC_TOTAL = Object.values(ALWAYS_RESIDENT_STATIC)
+  .reduce((a, s) => a + estimateTokens(s || ''), 0);
 
-// Measured at 5,200 estimator-tokens after the split. 6,500 leaves room for a
-// genuinely necessary addition while failing on another cheatsheet.
-const ALWAYS_RESIDENT_BUDGET = 6_500;
+/**
+ * The EXECUTION ENVIRONMENT block is always-resident too, but unlike every
+ * other block its SIZE depends on the host: cmd.exe ships seven rules,
+ * /bin/sh five.
+ *
+ * This test used to measure the LIVE host, which made the budget a fact about
+ * whichever machine ran the suite instead of a fact about the prose. Measured
+ * 2026-08-01 at the same commit: Windows 4,135 estimator-tokens, Linux 3,981.
+ * The old 6,500 budget sat between 3,981 * 1.6 and 4,135 * 1.6, so the
+ * tightness ratchet passed on a Windows dev machine and failed on every Linux
+ * CI run — a red gate nobody could reproduce locally, which is the fastest way
+ * to teach people to ignore a red gate.
+ *
+ * So: enumerate the hosts, pin their variable parts, and assert the ceiling
+ * against the HEAVIEST while ratcheting tightness against the LIGHTEST. Then
+ * the answer is the same everywhere.
+ */
+const NODE = 'v20.19.0';
+const HOSTS = {
+  'linux /bin/sh': { platform: 'linux', release: '6.11.0-1018-azure', arch: 'x64', nodeVersion: NODE },
+  'darwin /bin/sh': { platform: 'darwin', release: '24.6.0', arch: 'arm64', nodeVersion: NODE },
+  'win32 cmd.exe': {
+    platform: 'win32', release: '10.0.19045', arch: 'x64', nodeVersion: NODE,
+    comspec: 'C:\\Windows\\system32\\cmd.exe',
+  },
+  'win32 PowerShell': {
+    platform: 'win32', release: '10.0.19045', arch: 'x64', nodeVersion: NODE,
+    comspec: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+  },
+};
+
+const TOTAL_BY_HOST = Object.fromEntries(
+  Object.entries(HOSTS).map(([name, env]) => [
+    name,
+    STATIC_TOTAL + estimateTokens(getPlatformContextSection(env)),
+  ]),
+);
+const MAX_TOTAL = Math.max(...Object.values(TOTAL_BY_HOST));
+const MIN_TOTAL = Math.min(...Object.values(TOTAL_BY_HOST));
+
+// Absorbs the few characters of `os.release()` / node version drift between
+// the pinned fixtures above and whatever machine is running this file.
+const FIXTURE_TOLERANCE = 25;
+
+// Measured 2026-08-01: 3,980 (darwin) – 4,135 (win32 cmd.exe) estimator-tokens.
+// 5,000 leaves ~865 tokens for a genuinely necessary addition while still
+// failing on another 3,187-token cheatsheet.
+//
+// RATCHET: if the resident prose shrinks again, the tightness test below goes
+// red on purpose — lower this number, do not raise the multiplier.
+const ALWAYS_RESIDENT_BUDGET = 5_000;
 
 describe('always-resident prose budget', () => {
-  it('stays under budget', () => {
-    expect(total).toBeLessThanOrEqual(ALWAYS_RESIDENT_BUDGET);
+  it.each(Object.keys(HOSTS))('stays under budget on %s', (host) => {
+    expect(TOTAL_BY_HOST[host]).toBeLessThanOrEqual(ALWAYS_RESIDENT_BUDGET);
   });
 
   it('the budget is tight enough to catch a real addition', () => {
     // A budget with 3x headroom would not have caught the 3,187-token
-    // cheatsheet that motivated this file.
-    expect(ALWAYS_RESIDENT_BUDGET).toBeLessThan(total * 1.6);
+    // cheatsheet that motivated this file. Ratcheted against the LIGHTEST
+    // host, so "tight" means tight everywhere.
+    expect(ALWAYS_RESIDENT_BUDGET).toBeLessThan(MIN_TOTAL * 1.6);
   });
 
   it('no single always-resident block dominates', () => {
     // The failure mode is one block quietly growing into a manual.
-    for (const [name, text] of Object.entries(ALWAYS_RESIDENT)) {
+    for (const [name, text] of Object.entries(ALWAYS_RESIDENT_STATIC)) {
       expect(estimateTokens(text || ''), `${name} is too large to be unconditional`).toBeLessThan(1_600);
     }
+    for (const [name, env] of Object.entries(HOSTS)) {
+      expect(
+        estimateTokens(getPlatformContextSection(env)),
+        `the platform block for ${name} is too large to be unconditional`,
+      ).toBeLessThan(1_600);
+    }
+  });
+
+  it('the host fixtures bracket the machine actually running this suite', () => {
+    // Anti-vacuity, and the guard that keeps the fixtures honest: a new shell
+    // branch with its own rule set would put the live host outside the
+    // enumerated envelope, failing here until someone adds it to HOSTS rather
+    // than silently escaping the budget.
+    const live = STATIC_TOTAL + estimateTokens(getPlatformContextSection());
+    expect(live).toBeGreaterThanOrEqual(MIN_TOTAL - FIXTURE_TOLERANCE);
+    expect(live).toBeLessThanOrEqual(MAX_TOTAL + FIXTURE_TOLERANCE);
+  });
+
+  it('the host fixtures actually describe different hosts', () => {
+    // The load-bearing anti-vacuity check. If getPlatformContextSection ever
+    // went back to reading process.platform and ignoring its argument, all
+    // four fixtures would collapse to the same number, every assertion above
+    // would quietly become a fact about this machine again, and the suite
+    // would stay green while doing nothing.
+    expect(MAX_TOTAL).toBeGreaterThan(MIN_TOTAL);
+    expect(new Set(Object.values(TOTAL_BY_HOST)).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('describing a host explicitly does not change what production sends', () => {
+    // Production calls this with no arguments; every field must default to the
+    // live process, or the test would be measuring a block nobody ships.
+    expect(getPlatformContextSection({})).toBe(getPlatformContextSection());
   });
 });
 
