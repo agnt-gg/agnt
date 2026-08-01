@@ -1205,6 +1205,39 @@ function runMigrations() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_shape
               ON agent_memory(agent_id, memory_type, content_shape)`);
 
+      // Migration: duplicate-sighting census on memories (2026-08-01).
+      // A near-duplicate write no longer inserts; it bumps these instead, so
+      // "this finding recurred 4,859 times" becomes one row carrying a count
+      // rather than 4,859 rows. `last_seen_at` is separate from `updated_at`
+      // because updated_at is a relevance SORT KEY — writing it on every
+      // sighting would make recording a duplicate silently reorder retrieval.
+      db.run(`ALTER TABLE agent_memory ADD COLUMN occurrence_count INTEGER DEFAULT 1`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding occurrence_count column to agent_memory:', err);
+        }
+      });
+      db.run(`ALTER TABLE agent_memory ADD COLUMN last_seen_at TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding last_seen_at column to agent_memory:', err);
+        }
+      });
+
+      // Migration: novelty gate in front of insight extraction (2026-08-01).
+      // Keyed by the SHAPE of an execution's outcome, so a workflow that keeps
+      // succeeding identically extracts once instead of once per run. See
+      // services/evolution/ExtractionGate.js.
+      db.run(`CREATE TABLE IF NOT EXISTS extraction_gate (
+        user_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        occurrence_count INTEGER DEFAULT 1,
+        first_seen_at TEXT,
+        last_seen_at TEXT,
+        last_extracted_at TEXT,
+        PRIMARY KEY (user_id, source_type, scope_id, signature)
+      )`);
+
       // Migration: Add current_version_id to workflows table for version control (2026-02-04)
       db.run(`ALTER TABLE workflows ADD COLUMN current_version_id INTEGER`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

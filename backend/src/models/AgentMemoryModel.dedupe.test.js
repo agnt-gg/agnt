@@ -47,8 +47,8 @@ describe('auto-extracted memories dedupe by shape', () => {
     });
     expect(id).toBe('existing-id');
     expect(insertCalls()).toHaveLength(0);
-    // Seen again = more evidence, recorded as an access bump.
-    expect(run.mock.calls.some(([sql]) => /access_count = access_count \+ 1/.test(sql))).toBe(true);
+    // Seen again = more evidence for the same finding, recorded as a census bump.
+    expect(run.mock.calls.some(([sql]) => /occurrence_count = COALESCE/.test(sql))).toBe(true);
   });
 
   it('probes with the NORMALISED shape, not the raw content', async () => {
@@ -73,7 +73,16 @@ describe('auto-extracted memories dedupe by shape', () => {
     await AgentMemoryModel.create({ agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: TIMER_A });
     const [sql, params] = insertCalls()[0];
     expect(sql).toContain('content_shape');
-    expect(params[params.length - 1]).toBeTruthy();
+    // ... content_shape, last_seen_at
+    expect(params.at(-2)).toBeTruthy();
+  });
+
+  it('seeds the occurrence census on insert', async () => {
+    await AgentMemoryModel.create({ agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: TIMER_A });
+    const [sql, params] = insertCalls()[0];
+    expect(sql).toContain('occurrence_count');
+    expect(sql).toContain('last_seen_at');
+    expect(params.at(-1)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 
@@ -97,7 +106,131 @@ describe('user-set memories are NEVER deduped', () => {
   it('stores NULL shape for user-set rows', async () => {
     await AgentMemoryModel.create({ agentId: 'orchestrator', userId: 'u1', memoryType: 'fact', content: 'x' });
     const [, params] = insertCalls()[0];
-    expect(params[params.length - 1]).toBeNull();
+    expect(params.at(-2)).toBeNull();
+  });
+
+  it('never runs the FTS similarity probe for user-set types', async () => {
+    await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'fact',
+      content: 'Nathan prefers green and works out of the agnt-pro repository on Windows',
+    });
+    expect(all.mock.calls.filter(([sql]) => /agent_memory_fts MATCH/.test(sql))).toHaveLength(0);
+  });
+});
+
+// The shape key only collapses 1.56x on live data because the extractor is an
+// LLM and rewords every time. FTS blocking + token containment is what catches
+// the paraphrases: replayed against the May 2026 firehose it blocked 51.5% of
+// writes for a 2.1x collapse.
+describe('FTS containment gate (the paraphrase catcher)', () => {
+  const ORIGINAL = 'The direct read_file call failed due to path traversal restrictions on a Windows absolute path, while file_system_operation succeeded for the same target';
+  const REWORDED = 'Direct read_file on the full Windows path failed due to path traversal restrictions, while file_system_operation succeeded reading the same file';
+  const UNRELATED = 'The user prefers dark mode and a compact sidebar layout in the workflow editor canvas';
+
+  const ftsProbes = () => all.mock.calls.filter(([sql]) => /agent_memory_fts MATCH/.test(sql));
+
+  const withCandidate = (content) => {
+    all.mockImplementation((sql, params, cb) => {
+      if (/agent_memory_fts MATCH/.test(sql)) return cb(null, [{ doc_id: 'old-id', content }]);
+      return cb(null, []);
+    });
+    get.mockImplementation((sql, params, cb) => {
+      if (/content_shape = \?/.test(sql)) return cb(null, null);
+      if (/WHERE id = \?/.test(sql)) return cb(null, { id: 'old-id', content });
+      return cb(null, null);
+    });
+  };
+
+  it('collapses a reworded duplicate the shape key misses', async () => {
+    withCandidate(ORIGINAL);
+    const id = await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'workflow_insight', content: REWORDED,
+    });
+    expect(id).toBe('old-id');
+    expect(insertCalls()).toHaveLength(0);
+    expect(run.mock.calls.some(([sql]) => /occurrence_count = COALESCE/.test(sql))).toBe(true);
+  });
+
+  it('inserts when the BM25 candidate is not actually the same finding', async () => {
+    // BM25 is the blocker, not the decision — it will happily return something
+    // that merely shares vocabulary.
+    withCandidate(UNRELATED);
+    const id = await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'workflow_insight', content: REWORDED,
+    });
+    expect(id).toBe('new-uuid');
+    expect(insertCalls()).toHaveLength(1);
+  });
+
+  it('scopes the probe to the same agent AND memory_type', async () => {
+    // A `pattern` and a `workflow_insight` sharing vocabulary are different
+    // KINDS of claim; collapsing across types loses what retrieval depends on.
+    withCandidate(ORIGINAL);
+    await AgentMemoryModel.create({
+      agentId: 'agent-7', userId: 'u1', memoryType: 'pattern', content: REWORDED,
+    });
+    const [sql, params] = ftsProbes()[0];
+    expect(sql).toContain('agent_id = ?');
+    expect(sql).toContain('memory_type = ?');
+    expect(params).toContain('agent-7');
+    expect(params).toContain('pattern');
+  });
+
+  it('ranks candidates by BM25 and bounds the window', async () => {
+    withCandidate(ORIGINAL);
+    await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: REWORDED,
+    });
+    const [sql] = ftsProbes()[0];
+    expect(sql).toMatch(/ORDER BY bm25\(agent_memory_fts\)/);
+    expect(sql).toMatch(/LIMIT \?/);
+  });
+
+  it('runs the shape probe FIRST and skips FTS on a shape hit', async () => {
+    // Cheapest matcher first: one indexed lookup beats a full-text query.
+    get.mockImplementation((sql, params, cb) => {
+      if (/content_shape = \?/.test(sql)) return cb(null, { id: 'shape-hit' });
+      return cb(null, null);
+    });
+    const id = await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: ORIGINAL,
+    });
+    expect(id).toBe('shape-hit');
+    expect(ftsProbes()).toHaveLength(0);
+  });
+
+  it('FAILS OPEN — an FTS error inserts rather than losing the memory', async () => {
+    all.mockImplementation((sql, params, cb) => {
+      if (/agent_memory_fts MATCH/.test(sql)) return cb(new Error('fts5: syntax error'));
+      return cb(null, []);
+    });
+    const id = await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: REWORDED,
+    });
+    expect(id).toBe('new-uuid');
+    expect(insertCalls()).toHaveLength(1);
+  });
+
+  it('does not rewrite the stored wording on a match', async () => {
+    // We cannot tell which paraphrase is better, and rewriting would churn the
+    // FTS row and the shape key on every sighting. First wording wins.
+    withCandidate(ORIGINAL);
+    await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: REWORDED,
+    });
+    expect(run.mock.calls.some(([sql]) => /SET content\s*=/.test(sql))).toBe(false);
+  });
+
+  it('recording a sighting does not touch updated_at', async () => {
+    // updated_at is a relevance sort key — writing it here would make recording
+    // a duplicate silently reorder retrieval.
+    withCandidate(ORIGINAL);
+    await AgentMemoryModel.create({
+      agentId: 'orchestrator', userId: 'u1', memoryType: 'pattern', content: REWORDED,
+    });
+    const [sql] = run.mock.calls.find(([s]) => /occurrence_count = COALESCE/.test(s));
+    expect(sql).not.toContain('updated_at');
+    expect(sql).toContain('last_seen_at');
   });
 });
 

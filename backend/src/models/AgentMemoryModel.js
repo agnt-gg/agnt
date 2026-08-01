@@ -1,6 +1,12 @@
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { memoryShape, isAutoExtractedMemoryType } from '../utils/memoryShape.js';
+import {
+  contentTokens,
+  isNearDuplicate,
+  buildMatchQuery,
+  CANDIDATE_LIMIT,
+} from '../utils/memorySimilarity.js';
 
 /**
  * AgentMemoryModel — CRUD for the agent_memory table.
@@ -24,16 +30,27 @@ class AgentMemoryModel {
   }
 
   /**
-   * Create a new memory entry.
+   * Create a new memory entry, collapsing near-duplicates.
    *
-   * AUTO-EXTRACTED memories (pattern / tool_insight / workflow_insight) are
-   * deduped against their normalised shape: a repeat of something already
-   * recorded bumps the existing row's access count instead of inserting.
-   * Without this a timer-driven workflow writes one near-identical memory per
-   * execution forever — measured at 80,459 auto rows collapsing to 50,484
-   * distinct shapes, worst cluster 1,092 copies. See utils/memoryShape.js.
+   * TWO-STAGE MATCH, cheapest first:
+   *   1. shape key   — one indexed lookup, catches verbatim-modulo-ids repeats
+   *   2. FTS + containment — catches the paraphrases, which is most of them
    *
-   * User-set memories always insert. See AUTO_EXTRACTED_MEMORY_TYPES for why.
+   * Stage 2 is the one that matters. The extractor is an LLM and it rewords
+   * every time, so on the live store exactly TWO of 97,504 rows were
+   * byte-identical and the shape key alone only collapses 1.56x. BM25 over the
+   * already-populated agent_memory_fts index narrows to a handful of
+   * vocabulary-sharing candidates and token containment makes the call —
+   * measured at 51.6% of auto-writes blocked. See utils/memorySimilarity.js.
+   *
+   * A match bumps `occurrence_count` / `last_seen_at` and returns the existing
+   * id. The stored CONTENT IS NOT REWRITTEN: we cannot tell which of two
+   * paraphrases is better, and rewriting would churn the FTS row and the shape
+   * key on every sighting. First wording wins and stays stable.
+   *
+   * User-set memories always insert — both matchers are lossy, and silently
+   * discarding something the user asked to remember is far worse than keeping
+   * a redundant row. See AUTO_EXTRACTED_MEMORY_TYPES.
    *
    * @returns {Promise<string>} the id of the new OR the matched existing row.
    */
@@ -46,22 +63,90 @@ class AgentMemoryModel {
     if (shape) {
       const existing = await this.findByShape(agentId, memoryType, shape);
       if (existing) {
-        // Seen again = more evidence for the same finding, not new knowledge.
-        await this.incrementAccess(existing.id).catch(() => {});
+        await this.recordDuplicateSighting(existing.id).catch(() => {});
         return existing.id;
+      }
+      const similar = await this.findSimilar(agentId, memoryType, content).catch(() => null);
+      if (similar) {
+        await this.recordDuplicateSighting(similar.id).catch(() => {});
+        return similar.id;
       }
     }
 
     const id = generateUUID();
+    const nowIso = new Date().toISOString();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO agent_memory (id, agent_id, user_id, memory_type, content, source_conversation_id, content_shape)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, agentId, userId, memoryType, content, sourceConversationId || null, shape],
+        `INSERT INTO agent_memory (id, agent_id, user_id, memory_type, content, source_conversation_id, content_shape, occurrence_count, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        [id, agentId, userId, memoryType, content, sourceConversationId || null, shape, nowIso],
         function (err) {
           if (err) reject(err);
           else resolve(id);
         }
+      );
+    });
+  }
+
+  /**
+   * Nearest stored memory that describes the same finding, or null.
+   *
+   * FTS is the BLOCKER and containment is the DECISION — BM25 ranking alone is
+   * far too loose to delete a write on, but it reduces 97k rows to a dozen with
+   * one indexed query so the exact comparison stays cheap.
+   *
+   * Scoped to the same agent AND memory_type: a `pattern` and a
+   * `workflow_insight` that share vocabulary are different KINDS of claim, and
+   * collapsing across types would lose the distinction retrieval depends on.
+   */
+  static async findSimilar(agentId, memoryType, content) {
+    const match = buildMatchQuery(content);
+    if (!match) return null;
+
+    const candidates = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT doc_id, content FROM agent_memory_fts
+         WHERE agent_memory_fts MATCH ?
+           AND agent_id = ? AND memory_type = ?
+         ORDER BY bm25(agent_memory_fts) LIMIT ?`,
+        [match, agentId, memoryType, CANDIDATE_LIMIT],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+    if (candidates.length === 0) return null;
+
+    const tokens = contentTokens(content);
+    for (const cand of candidates) {
+      if (isNearDuplicate(tokens, contentTokens(cand.content))) {
+        return this.findById(cand.doc_id);
+      }
+    }
+    return null;
+  }
+
+  static findById(id) {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT * FROM agent_memory WHERE id = ?', [id], (err, row) => (err ? reject(err) : resolve(row || null)));
+    });
+  }
+
+  /**
+   * Record that a finding recurred.
+   *
+   * Deliberately does NOT touch `updated_at` — that column is a relevance sort
+   * key, so writing it here would make recording a duplicate silently reorder
+   * retrieval. Same reasoning as incrementAccess.
+   */
+  static recordDuplicateSighting(id) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE agent_memory
+           SET occurrence_count = COALESCE(occurrence_count, 1) + 1,
+               last_seen_at = ?,
+               relevance_score = MIN(2.0, COALESCE(relevance_score, 1.0) + 0.05)
+         WHERE id = ?`,
+        [new Date().toISOString(), id],
+        function (err) { return err ? reject(err) : resolve(this.changes); }
       );
     });
   }

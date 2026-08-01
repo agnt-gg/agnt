@@ -214,6 +214,27 @@ class InsightEngine {
 
     if (nodeExecutions.length < 2) return [];
 
+    // NOVELTY GATE, in front of the LLM call rather than in front of the write.
+    // A workflow on a 5-minute timer is 288 extractions/day producing the same
+    // finding reworded; deduping downstream fixes the table but still pays for
+    // every call. Extraction now runs when the OUTCOME SHAPE is new (a node
+    // failed, the node set changed, the status flipped) or once per cooldown
+    // for a shape we have seen before. See ExtractionGate.js.
+    const { shouldExtract, workflowSignature } = await import('./ExtractionGate.js');
+    const gate = await shouldExtract({
+      userId,
+      sourceType: 'workflow',
+      scopeId: execution.workflow_id,
+      signature: workflowSignature(execution, nodeExecutions),
+    });
+    if (!gate.extract) {
+      console.log(
+        `[InsightEngine] Skipping workflow ${executionId}: ${gate.reason} ` +
+        `(outcome seen ${gate.occurrences}x for workflow ${execution.workflow_id})`
+      );
+      return [];
+    }
+
     // Build workflow trace
     const trace = this._buildWorkflowTrace(execution, nodeExecutions);
     const rawInsights = await this._llmExtractWorkflowInsights(trace, userId, provider, model);
@@ -588,12 +609,12 @@ Rules:
     try {
       const resolvedAgentId = agentId || 'orchestrator';
 
-      const existing = await AgentMemoryModel.findDuplicate(resolvedAgentId, content);
-      if (existing) {
-        await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
-        return existing.id;
-      }
-
+      // No exact-match probe here any more. It caught 2 of 97,504 live rows
+      // (0.002%) because the extractor rewords every time, and AgentMemoryModel
+      // .create now runs the shape + FTS-containment matchers that actually
+      // catch paraphrases — including bumping occurrence_count and relevance on
+      // a hit. Keeping a second, weaker dedupe here would just be a redundant
+      // query on every write.
       return await AgentMemoryModel.create({
         agentId: resolvedAgentId,
         userId,
