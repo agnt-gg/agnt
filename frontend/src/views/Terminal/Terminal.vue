@@ -37,7 +37,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, defineAsyncComponent, shallowReactive, markRaw, nextTick } from 'vue';
+import { ref, computed, onMounted, watch, shallowReactive, markRaw, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -48,23 +48,23 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 
 // Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
+import { lazyComponent } from '@/utils/chunkRecovery.js';
 
-// Chat loaded eagerly (default screen). Settings is the auth fallback but
-// wrapped in defineAsyncComponent (PRD-105 P1c): it is ALWAYS renderable
-// (navigating to it just triggers the chunk load), so the auth-fallback
-// path stays safe while its chunk leaves the eager graph.
+// Chat is the only eager screen (it is the default). Everything else —
+// including Settings, the auth fallback — is lazy but ALWAYS renderable:
+// navigating to one just triggers its chunk load.
 import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
 
 // Shallow-reactive screen registry — screens register as they load
 // Must be shallowReactive so Vue doesn't deep-proxy component objects
 // (deep proxying breaks Vue internals like emitsOptions/HMR in dev mode)
-const screenComponents = shallowReactive({
-  ChatScreen: markRaw(ChatScreen),
-  SettingsScreen: markRaw(defineAsyncComponent(() => import('./CenterPanel/screens/Settings/Settings.vue'))),
-});
-
-// Screens to preload in background after Chat renders
+// Every lazy screen registers UP FRONT as a recovery-wrapped async component.
+// Registering only on successful preload was the second half of the blank-page
+// bug: if a chunk 404'd (a rebuild deleted its hash) the screen never entered
+// the map at all, so navigating there left `activeScreenComponent` null and the
+// placeholder up forever, with nothing but a console warning.
 const screenLoaders = [
+  ['SettingsScreen', () => import('./CenterPanel/screens/Settings/Settings.vue')],
   ['AgentsScreen', () => import('./CenterPanel/screens/Agents/Agents.vue')],
   ['ToolsScreen', () => import('./CenterPanel/screens/Tools/Tools.vue')],
   ['WorkflowsScreen', () => import('./CenterPanel/screens/Workflows/Workflows.vue')],
@@ -87,7 +87,19 @@ const screenLoaders = [
   ['WorkspaceScreen', () => import('./CenterPanel/screens/Workspace/Workspace.vue')],
 ];
 
-// Preload all screen chunks in parallel, register into reactive map as each resolves
+// Shallow-reactive screen registry — screens register as they load
+// Must be shallowReactive so Vue doesn't deep-proxy component objects
+// (deep proxying breaks Vue internals like emitsOptions/HMR in dev mode)
+const screenComponents = shallowReactive({
+  ChatScreen: markRaw(ChatScreen),
+  ...Object.fromEntries(
+    screenLoaders.map(([name, loader]) => [name, markRaw(lazyComponent(loader, { name }))]),
+  ),
+});
+
+// Warm the chunks in parallel. Swapping the resolved component in for the async
+// wrapper is an optimisation only — a failure here is not fatal, because the
+// wrapper already in the map can load (and recover) on demand.
 const preloadScreens = () => {
   for (const [name, loader] of screenLoaders) {
     loader()
@@ -213,13 +225,13 @@ export default {
       // Eagerly load the active screen if it's not already available
       // This ensures reloading on /workflows (etc.) shows content immediately
       const currentScreen = activeScreen.value;
-      if (!screenComponents[currentScreen]) {
-        const entry = screenLoaders.find(([name]) => name === currentScreen);
-        if (entry) {
-          entry[1]()
-            .then((mod) => { screenComponents[currentScreen] = markRaw(mod.default); })
-            .catch((err) => console.warn(`[eager] Failed to load ${currentScreen}:`, err));
-        }
+      const entry = screenLoaders.find(([name]) => name === currentScreen);
+      if (entry) {
+        entry[1]()
+          .then((mod) => { screenComponents[currentScreen] = markRaw(mod.default); })
+          // Not fatal: the registry already holds a recovery-wrapped async
+          // component for this screen, which handles the stale-chunk case.
+          .catch((err) => console.warn(`[eager] Failed to load ${currentScreen}:`, err));
       }
 
       // Preload remaining screens AND prime dashboard data in the same idle

@@ -344,7 +344,8 @@
 </template>
 
 <script>
-import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, defineAsyncComponent } from 'vue';
+import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick } from 'vue';
+import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { useStore } from 'vuex';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -352,7 +353,7 @@ import 'highlight.js/styles/atom-one-dark.css';
 import defaultAvatar from '@/assets/images/annie-avatar.png';
 // Lazy-load ProviderSetup - only shown conditionally (message.showProviderSetup)
 // This defers the crypto-js dependency (~40KB) from the critical render path
-const ProviderSetup = defineAsyncComponent(() => import('./ProviderSetup.vue'));
+const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name: 'ProviderSetup' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';

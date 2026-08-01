@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { resolveSocketIdentity, SocketIdentitySource } from './src/utils/socketIdentity.js';
+import { createSpaFallback } from './src/routes/spaFallback.js';
 
 // Import plugin system
 import PluginInstaller from './src/plugins/PluginInstaller.js';
@@ -318,15 +319,9 @@ app.get('/api/updates/check', async (req, res) => {
 
 // Catch-all route for client-side routing (only if frontend exists)
 if (frontendExists) {
-  app.get('*', (req, res) => {
-    // Never let the SPA fallback swallow API misses — that turns 404s into
-    // silent 200 OK + HTML responses and confuses every API client (including
-    // LLM agents, which then JSON.parse the HTML and quietly continue).
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API endpoint not found', path: req.path });
-    }
-    res.sendFile(path.join(frontendDistPath, 'index.html'));
-  });
+  // Never let the SPA fallback swallow API misses or missing build artefacts —
+  // both turn into silent 200 OK + HTML. See src/routes/spaFallback.js.
+  app.get('*', createSpaFallback({ frontendDistPath }));
 } else {
   // Fallback route for backend-only mode
   app.get('*', (req, res) => {

@@ -4,6 +4,7 @@ import vue from '@vitejs/plugin-vue';
 import vueJsx from '@vitejs/plugin-vue-jsx';
 import path from 'path';
 import fs from 'fs-extra';
+import { preserveHashedAssets } from './build/assetRetention.js';
 
 // Custom plugin to copy directories
 const copyDirectoryPlugin = (directories) => ({
@@ -29,7 +30,11 @@ export default defineConfig({
     vueJsx(),
     copyDirectoryPlugin({
       'src/assets/icons': 'assets/icons'
-    })
+    }),
+    // Keeps hashes that a previous build emitted alive for a retention window
+    // instead of deleting them the moment they stop being current. Required by
+    // emptyOutDir:false below — see build/assetRetention.js for why.
+    preserveHashedAssets(),
   ],
   resolve: {
     alias: {
@@ -39,6 +44,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    // The backend serves dist/ IN PLACE. Wiping it mid-session deletes the
+    // content hashes an already-open renderer is still holding, so its
+    // not-yet-loaded lazy screens 404 into the SPA catch-all and render blank.
+    // Retirement is handled on a timer by preserveHashedAssets() instead.
+    // Set AGNT_ASSET_RETENTION_DAYS=0 for a packaged release build.
+    emptyOutDir: false,
     // Inline small assets as base64 data URLs (default 4KB)
     // Raised to 10KB so annie-avatar.png (8KB) is embedded directly
     // instead of requiring a separate HTTP request that competes with JS chunks

@@ -318,6 +318,13 @@ export default {
     // Tutorial setup
     const { tutorialConfig, startTutorial, currentStep, onTutorialClose, nextStep, initializeSettingsTutorial } = useSettingsTutorial();
 
+    // BaseScreen re-emits `base-mounted` on every KeepAlive re-activation, so
+    // bouncing between screens replayed all ten of these requests each time.
+    // They are background refreshes of slow-moving data; once a minute is
+    // plenty, and the first visit is never throttled.
+    const REFRESH_INTERVAL_MS = 60_000;
+    let lastRefreshAt = 0;
+
     const initializeScreen = () => {
       // Check if there's a requested section to navigate to
       const requestedSection = localStorage.getItem('settings-initial-section');
@@ -327,7 +334,8 @@ export default {
       }
 
       // Non-blocking: refresh all data in parallel in background
-      if (isLoggedIn.value) {
+      if (isLoggedIn.value && Date.now() - lastRefreshAt >= REFRESH_INTERVAL_MS) {
+        lastRefreshAt = Date.now();
         Promise.allSettled([
           store.dispatch('userStats/fetchReferralBalance'),
           store.dispatch('userStats/fetchReferralTree'),

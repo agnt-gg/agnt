@@ -57,7 +57,16 @@ describe('media routes are guarded for the browser, not for our JS', () => {
   it('every route file that streams bytes is a registered media route', () => {
     // The real defence: a NEW sendFile/createReadStream route cannot be added
     // without either classifying it here or failing this test.
-    const KNOWN = new Set(['FileSystemRoutes.js', 'ImageRoutes.js', 'LocalFileRoutes.js']);
+    const KNOWN = new Set([
+      'FileSystemRoutes.js',
+      'ImageRoutes.js',
+      'LocalFileRoutes.js',
+      // spaFallback.js sends exactly one file: frontend/dist/index.html, the
+      // public app shell. It is reachable unauthenticated on purpose (it is how
+      // the login screen loads) and takes no user input for the path, so there
+      // is nothing for a media cookie to protect.
+      'spaFallback.js',
+    ]);
     const streaming = fs
       .readdirSync(HERE)
       .filter((f) => f.endsWith('.js') && !f.includes('.test.'))

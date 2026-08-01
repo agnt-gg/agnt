@@ -20,8 +20,9 @@
 </template>
 
 <script>
-import { computed, onMounted, onUnmounted, defineAsyncComponent, ref, watch, nextTick, inject } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
+import { lazyComponent, isChunkLoadError } from '@/utils/chunkRecovery.js';
 
 // Lazy-load panel components on demand (cached so re-navigation is instant)
 const panelCache = new Map();
@@ -29,10 +30,15 @@ const loadPanel = (panelName) => {
   if (panelCache.has(panelName)) {
     return panelCache.get(panelName);
   }
-  const component = defineAsyncComponent(() =>
-    import(`./types/${panelName}/${panelName}.vue`).catch(() => {
-      return import('./types/ChatPanel/ChatPanel.vue');
-    }),
+  const component = lazyComponent(
+    () =>
+      import(`./types/${panelName}/${panelName}.vue`).catch((err) => {
+        // See LeftPanel: the ChatPanel fallback covers a panel that does not
+        // exist, never a chunk that a rebuild deleted.
+        if (isChunkLoadError(err)) throw err;
+        return import('./types/ChatPanel/ChatPanel.vue');
+      }),
+    { name: `RightPanel/${panelName}` },
   );
   panelCache.set(panelName, component);
   return component;
@@ -53,7 +59,7 @@ const preloadPanels = () => {
   if (panelsPreloaded) return;
   panelsPreloaded = true;
   for (const name of ALL_RIGHT_PANELS) {
-    loadPanel(name); // cache the defineAsyncComponent wrapper
+    loadPanel(name); // cache the async-component wrapper
     import(`./types/${name}/${name}.vue`).catch(() => {}); // start chunk download
   }
 };

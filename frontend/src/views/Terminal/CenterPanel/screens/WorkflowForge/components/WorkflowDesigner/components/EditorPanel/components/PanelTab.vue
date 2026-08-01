@@ -420,7 +420,8 @@
 </template>
 
 <script>
-import { ref, onMounted, computed, defineAsyncComponent, shallowRef } from 'vue';
+import { ref, onMounted, computed, shallowRef } from 'vue';
+import { lazyComponent } from '@/utils/chunkRecovery.js';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { API_CONFIG, AI_PROVIDERS_CONFIG, IMAP_EMAIL_DOMAIN } from '@/tt.config';
@@ -429,7 +430,9 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 // Lazy-load CodeMirror and its dependencies only when codearea fields are present
-const Codemirror = defineAsyncComponent(() => import('vue-codemirror').then((m) => m.Codemirror));
+// Resolves to the component itself, not { default }: Vue only unwraps `.default`
+// for genuine ES modules, and a hand-built object would render as nothing.
+const Codemirror = lazyComponent(() => import('vue-codemirror').then((m) => m.Codemirror), { name: 'Codemirror' });
 
 // Lazy-load CodeMirror extensions (cached at module level)
 let _cmExtensions = null;

@@ -124,6 +124,7 @@
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
+    "beforePack": "./scripts/prune-retired-assets.js",
     "afterPack": "./scripts/electron-builder-lite.js",
     "afterSign": "./scripts/notarize.js",
     "appId": "com.agnt.app",
