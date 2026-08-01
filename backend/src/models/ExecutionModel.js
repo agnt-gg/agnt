@@ -336,6 +336,19 @@ class ExecutionModel {
       //    365-day windows even though the response is tiny.
       //
       // idx_node_executions_execution_id covers the join + inner group by.
+      //
+      // 3. (PRD-122) Workflow cost comes from the llm_calls ledger via a
+      //    SECOND pre-aggregated derived join, not a correlated subquery.
+      //    This branch used to read `0 as estimated_cost` — a literal zero —
+      //    so every workflow LLM call in AGNT was reported as free. Using a
+      //    derived join rather than a per-row subquery preserves the O(N+M)
+      //    property point 1 exists to defend.
+      //
+      // 4. (PRD-122) A third UNION branch covers ledger rows that belong to
+      //    NO execution row at all — goal tasks and goal evaluations. Those
+      //    are real spend that appeared in neither of the original branches.
+      //    It is scoped to `execution_id IS NULL AND origin <> 'workflow_node'`
+      //    so it cannot double-count rows already counted above.
       const query = `
         SELECT
           date,
@@ -347,7 +360,7 @@ class ExecutionModel {
             DATE(we.start_time, 'localtime') as date,
             SUM(we.credits_used) as credits_used,
             COALESCE(SUM(ne_sum.tokens), 0) as total_tokens,
-            0 as estimated_cost
+            COALESCE(SUM(lc_sum.cost), 0) as estimated_cost
           FROM workflow_executions we
           LEFT JOIN (
             SELECT ne.execution_id,
@@ -357,6 +370,14 @@ class ExecutionModel {
             WHERE we2.user_id = ? AND we2.start_time BETWEEN ? AND ?
             GROUP BY ne.execution_id
           ) ne_sum ON ne_sum.execution_id = we.id
+          LEFT JOIN (
+            SELECT lc.origin_id as execution_id,
+                   SUM(lc.cost_usd) as cost
+            FROM llm_calls lc
+            WHERE lc.user_id = ? AND lc.origin = 'workflow_node'
+              AND lc.is_notional = 0 AND lc.ts BETWEEN ? AND ?
+            GROUP BY lc.origin_id
+          ) lc_sum ON lc_sum.execution_id = we.id
           WHERE we.user_id = ? AND we.start_time BETWEEN ? AND ?
           GROUP BY DATE(we.start_time, 'localtime')
           UNION ALL
@@ -368,6 +389,17 @@ class ExecutionModel {
           FROM agent_executions
           WHERE user_id = ? AND start_time BETWEEN ? AND ?
           GROUP BY DATE(start_time, 'localtime')
+          UNION ALL
+          SELECT
+            DATE(lc.ts, 'localtime') as date,
+            0 as credits_used,
+            COALESCE(SUM(lc.input_tokens + lc.output_tokens), 0) as total_tokens,
+            COALESCE(SUM(lc.cost_usd), 0) as estimated_cost
+          FROM llm_calls lc
+          WHERE lc.user_id = ? AND lc.execution_id IS NULL
+            AND lc.origin <> 'workflow_node' AND lc.is_notional = 0
+            AND lc.ts BETWEEN ? AND ?
+          GROUP BY DATE(lc.ts, 'localtime')
         )
         GROUP BY date
         ORDER BY date
@@ -375,7 +407,13 @@ class ExecutionModel {
 
       db.all(
         query,
-        [userId, startDate, endDate, userId, startDate, endDate, userId, startDate, endDate],
+        [
+          userId, startDate, endDate, // ne_sum   (workflow node tokens)
+          userId, startDate, endDate, // lc_sum   (workflow node cost, PRD-122)
+          userId, startDate, endDate, // workflow_executions
+          userId, startDate, endDate, // agent_executions
+          userId, startDate, endDate, // llm_calls with no execution row (PRD-122)
+        ],
         (err, rows) => {
           if (err) {
             console.error('Database error:', err);

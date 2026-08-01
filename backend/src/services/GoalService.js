@@ -5,6 +5,7 @@ import GoalProcessor from '../services/goal/GoalProcessor.js';
 import TaskOrchestrator from '../services/goal/TaskOrchestrator.js';
 import GoalEvaluator from '../services/goal/GoalEvaluator.js';
 import GoldenStandardModel from '../models/GoldenStandardModel.js';
+import LlmCallModel from '../models/LlmCallModel.js';
 
 class GoalService {
   healthCheck(req, res) {
@@ -164,18 +165,39 @@ class GoalService {
       const totalInputTokens = (evalTokenData.input_tokens || 0) + taskInputTokens;
       const totalOutputTokens = (evalTokenData.output_tokens || 0) + taskOutputTokens;
       const totalTokens = (evalTokenData.total_tokens || 0) + taskTotalTokens;
-      const totalCost = evalTokenData.estimated_cost || 0;
+
+      // PRD-122: cost comes from the ledger, which covers goal TASKS as well as
+      // goal EVALUATIONS.
+      //
+      // This used to read `evalTokenData.estimated_cost` — evaluations only —
+      // while the token counts three lines above summed tasks AND evaluations.
+      // The asymmetry meant a 50-iteration autonomous goal reported the cost of
+      // judging the work rather than the cost of doing it. The number was
+      // non-zero and plausible, which is what made it dangerous.
+      //
+      // Falls back to the old evaluations-only figure for goals that ran before
+      // the ledger existed, so historical rows still show something true about
+      // themselves rather than dropping to zero.
+      const ledgerTotals = await LlmCallModel.summaryForGoal(id);
+      const totalCost = ledgerTotals.calls > 0
+        ? ledgerTotals.costUsd
+        : (evalTokenData.estimated_cost || 0);
 
       res.json({
         goal: {
           ...goal,
           tasks,
           total_duration: totalDuration,
+          // NOTE: "credits" here is wall-clock seconds, not money. Retained
+          // under its historical name because existing UI reads it; the
+          // monetary figure is estimated_cost below. (PRD-122 §6.5)
           credits_used: totalDuration,
           input_tokens: totalInputTokens,
           output_tokens: totalOutputTokens,
           total_tokens: totalTokens,
           estimated_cost: totalCost,
+          unpriced_calls: ledgerTotals.unpricedCalls,
+          notional_cost: ledgerTotals.notionalUsd,
         },
       });
     } catch (error) {
