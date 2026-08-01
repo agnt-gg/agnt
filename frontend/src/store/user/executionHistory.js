@@ -257,7 +257,22 @@ export default {
 
           const agentData = response.data;
 
+          // Spread FIRST, then override.
+          //
+          // This used to be a hand-written whitelist, and it silently dropped
+          // every field it did not name — including estimatedCost, the token
+          // counts, and (once PRD-122 landed) `ledger` and `tree`. That is why
+          // an orchestrator run showed a cost on its list card, sourced from
+          // the summary mapper below which DOES copy them, and then showed no
+          // cost at all the moment you clicked it and the detail replaced it.
+          //
+          // A whitelist here is the wrong shape: the backend is the authority
+          // on what a run detail contains, and any field it adds should reach
+          // the panel by default rather than requiring a second edit in a file
+          // nobody thinks to look at. Explicit keys below still win, so the
+          // shape the UI depends on is unchanged.
           const detailedData = {
+            ...agentData,
             id: executionId,
             agentExecutionId: agentData.id,
             agentId: agentData.agentId,

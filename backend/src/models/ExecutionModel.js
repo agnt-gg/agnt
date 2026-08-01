@@ -199,6 +199,15 @@ class ExecutionModel {
     const [execution, nodeExecutions] = await Promise.all([execQuery, nodesQuery]);
     if (!execution) return null;    const totalCreditsUsed = nodeExecutions.reduce((sum, ne) => sum + (ne.credits_used || 0), 0);
 
+    // PRD-122: workflow LLM spend lives only in the ledger. node_executions
+    // carries tokens but never carried a price, which is why every workflow run
+    // in AGNT's history showed no cost at all.
+    const { default: LlmCallModel } = await import('./LlmCallModel.js');
+    const totals = await LlmCallModel.summaryForOrigin('workflow_node', execution.id).catch(() => null);
+    // A run with no LLM node has no ledger rows and no cost to report — which is
+    // a different statement from "it cost nothing", so it stays null.
+    const ledger = totals && totals.calls > 0 ? totals : null;
+
     // Rehydrate payloads. Inline rows (86% in practice) resolve without any
     // I/O; externalized rows read one compressed blob each. unpack() falls
     // through to plain JSON.parse for every pre-existing row, which is what
@@ -217,6 +226,7 @@ class ExecutionModel {
       endTime: execution.end_time,
       status: execution.status,
       log: execution.log,      creditsUsed: totalCreditsUsed,
+      ledger,
       nodeExecutions: hydrated,
     };
   }  // Public entry point for POST /executions/activity.

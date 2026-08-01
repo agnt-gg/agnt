@@ -289,6 +289,25 @@ class AgentExecutionModel {
     const safeParse = (str) => { try { return JSON.parse(str); } catch { return str; } };
     const totalCreditsUsed = toolExecutions.reduce((sum, te) => sum + (te.credits_used || 0), 0);
 
+    // PRD-122: the ledger is what knows whether this run cost money or drew on a
+    // subscription seat. agent_executions.estimated_cost cannot answer that — it
+    // has no notional flag — which is why the trace panel has been showing a
+    // dollar figure for runs on a Max/Codex seat that the user never paid.
+    const { default: LlmCallModel } = await import('./LlmCallModel.js');
+    const ledgerById = await LlmCallModel.byExecutionIds([execution.id]);
+    const ledger = ledgerById.get(execution.id) || null;
+
+    // Only attach a tree when this run actually has relatives. Every chat turn
+    // is its own root, so returning a one-node tree on every trace would be
+    // payload for nothing.
+    let tree = null;
+    try {
+      const full = await AgentExecutionModel.getRunTree(execution.id, execution.user_id);
+      if (full && (full.nodes.length > 1 || full.unattached.length > 0)) tree = full;
+    } catch {
+      // A tree is an enrichment; failing to build one must not fail the trace.
+    }
+
     return {
       id: execution.id,
       agentId: execution.agent_id,
@@ -310,6 +329,8 @@ class AgentExecutionModel {
       estimatedCost: execution.estimated_cost || 0,
       cacheReadTokens: execution.cache_read_tokens || 0,
       cacheCreationTokens: execution.cache_creation_tokens || 0,
+      ledger,
+      tree,
       type: 'agent',
       toolExecutions: toolExecutions.map((te) => ({
         id: te.id,
@@ -326,6 +347,82 @@ class AgentExecutionModel {
         outputTokens: te.output_tokens || 0,
       })),
     };
+  }
+
+  /**
+   * The run tree containing `executionId`, with per-node and subtree cost.
+   *
+   * Resolves the tree from ANY member, not just its root, so a caller holding a
+   * child id does not have to walk upwards first.
+   *
+   * Lives here rather than inline in LedgerRoutes because two consumers need it
+   * — the ledger API and the trace detail view — and two implementations of the
+   * same rollup would drift, which is the defect PRD-122 exists to prevent.
+   *
+   * @returns {Promise<object|null>} null when the execution is unknown or is
+   *   owned by another user.
+   */
+  static async getRunTree(executionId, userId) {
+    const { default: LlmCallModel } = await import('./LlmCallModel.js');
+
+    const seed = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id, root_execution_id FROM agent_executions WHERE id = ? AND user_id = ?`,
+        [executionId, userId],
+        (err, row) => (err ? reject(err) : resolve(row))
+      );
+    });
+    if (!seed) return null;
+
+    const rootId = seed.root_execution_id || seed.id;
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, parent_execution_id, root_execution_id, agent_id, agent_name, origin,
+                status, start_time, end_time, provider, model, tool_calls_count
+         FROM agent_executions
+         WHERE user_id = ? AND (root_execution_id = ? OR id = ?)
+         ORDER BY start_time`,
+        [userId, rootId, rootId],
+        (err, r) => (err ? reject(err) : resolve(r || []))
+      );
+    });
+
+    const costs = await LlmCallModel.byExecutionIds(rows.map((r) => r.id));
+    // Ledger rows belonging to this tree but with no execution row of their own
+    // — goal tasks and evaluations. Real spend; omitting it makes the subtree
+    // total quietly low.
+    const unattached = await LlmCallModel.unattachedForRoot(userId, rootId);
+
+    const nodes = rows.map((r) => ({
+      id: r.id,
+      parentExecutionId: r.parent_execution_id,
+      agentId: r.agent_id,
+      agentName: r.agent_name,
+      origin: r.origin || 'chat',
+      status: r.status,
+      startTime: r.start_time,
+      endTime: r.end_time,
+      provider: r.provider,
+      model: r.model,
+      toolCallsCount: r.tool_calls_count,
+      ledger: costs.get(r.id) || null,
+    }));
+
+    const subtree = [...costs.values()].concat(unattached).reduce(
+      (acc, t) => {
+        acc.costUsd += t.costUsd;
+        acc.notionalUsd += t.notionalUsd;
+        acc.savedUsd += t.savedUsd || 0;
+        acc.notionalSavedUsd += t.notionalSavedUsd || 0;
+        acc.unpricedCalls += t.unpricedCalls;
+        acc.calls += t.calls;
+        return acc;
+      },
+      { costUsd: 0, notionalUsd: 0, savedUsd: 0, notionalSavedUsd: 0, unpricedCalls: 0, calls: 0 }
+    );
+
+    return { rootExecutionId: rootId, nodes, unattached, subtree };
   }
 
   /**

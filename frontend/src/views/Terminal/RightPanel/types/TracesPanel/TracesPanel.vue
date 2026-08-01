@@ -54,10 +54,87 @@
               <label>Tokens:</label>
               <span>{{ (selectedExecution.inputTokens || 0).toLocaleString() }} in / {{ (selectedExecution.outputTokens || 0).toLocaleString() }} out ({{ (selectedExecution.totalTokens || 0).toLocaleString() }} total)</span>
             </div>
-            <div v-if="selectedExecution.estimatedCost" class="detail-item">
-              <label>Est. Cost:</label>
-              <span>${{ selectedExecution.estimatedCost.toFixed(4) }}</span>
+            <!--
+              Cost comes from the execution ledger, which is the only source that
+              knows whether a run drew on a subscription seat. The old row read
+              agent_executions.estimated_cost and so reported a dollar figure for
+              runs on a Max/Codex seat that were never billed.
+
+              Rendered whenever a cost is KNOWN — including a genuine $0.00 —
+              because hiding the row made "free" and "unknown" look identical.
+            -->
+            <div v-if="costDisplay" class="detail-item">
+              <label>{{ costDisplay.label }}:</label>
+              <span>
+                {{ costDisplay.value }}
+                <span v-if="costDisplay.isNotional" class="cost-tag">subscription</span>
+              </span>
             </div>
+          </div>
+        </div>
+
+        <!-- Ledger detail (PRD-122) -->
+        <div v-if="ledger" class="detail-section">
+          <h4>Cost Breakdown</h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>LLM calls:</label>
+              <span>{{ ledger.calls.toLocaleString() }}</span>
+            </div>
+            <div v-if="ledger.costUsd > 0" class="detail-item">
+              <label>Charged:</label>
+              <span>{{ formatUsd(ledger.costUsd) }}</span>
+            </div>
+            <div v-if="ledger.notionalUsd > 0" class="detail-item">
+              <label>Seat value:</label>
+              <span>{{ formatUsd(ledger.notionalUsd) }}</span>
+            </div>
+            <div v-if="ledgerSaved > 0" class="detail-item">
+              <label>Saved by cache:</label>
+              <span class="cost-saved">{{ formatUsd(ledgerSaved) }}</span>
+            </div>
+            <div v-if="ledger.cacheReadTokens > 0" class="detail-item">
+              <label>Cache reads:</label>
+              <span>{{ ledger.cacheReadTokens.toLocaleString() }} tokens</span>
+            </div>
+            <!-- An unpriced call has an UNKNOWN cost, not a zero one. Saying so
+                 is what stops the total above from reading as complete. -->
+            <div v-if="ledger.unpricedCalls > 0" class="detail-item">
+              <label>Unpriced:</label>
+              <span class="cost-unpriced">{{ ledger.unpricedCalls }} call(s) — cost unknown</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Run tree: only present when this run actually spawned work, or when
+             goal tasks/evaluations billed against it without an execution row of
+             their own. -->
+        <div v-if="runTree" class="detail-section">
+          <h4>Spawned Work ({{ runTree.nodes.length }})</h4>
+          <div class="run-tree">
+            <div
+              v-for="node in runTree.nodes"
+              :key="node.id"
+              class="tree-node"
+              :class="{ current: node.id === selectedExecution.id, child: node.parentExecutionId }"
+            >
+              <div class="tree-node-main">
+                <span class="tree-name">{{ node.agentName || 'Run' }}</span>
+                <span class="tree-origin">{{ node.origin }}</span>
+              </div>
+              <span class="tree-cost">{{ node.ledger ? formatUsd(nodeCost(node.ledger)) : '—' }}</span>
+            </div>
+            <div v-for="(u, i) in runTree.unattached" :key="'u' + i" class="tree-node child">
+              <div class="tree-node-main">
+                <span class="tree-name">{{ u.origin === 'goal_task' ? 'Goal tasks' : 'Goal evaluation' }}</span>
+                <span class="tree-origin">{{ u.calls }} call(s)</span>
+              </div>
+              <span class="tree-cost">{{ formatUsd(nodeCost(u)) }}</span>
+            </div>
+          </div>
+          <div class="tree-total">
+            <span>Total for this tree</span>
+            <strong>{{ formatUsd(nodeCost(runTree.subtree)) }}</strong>
           </div>
         </div>
 
@@ -593,6 +670,57 @@ export default {
     const updateSelectedExecution = (execution) => {
       selectedExecution.value = execution;
     };
+
+    // --- Execution ledger (PRD-122) -----------------------------------------
+
+    const formatUsd = (v) => {
+      const n = Number(v) || 0;
+      if (n === 0) return '$0.00';
+      if (Math.abs(n) < 0.01) return `$${n.toFixed(6)}`;
+      return `$${n.toFixed(4)}`;
+    };
+
+    const ledger = computed(() => selectedExecution.value?.ledger || null);
+
+    // One formula for every node AND the subtree total, so the children always
+    // add up to the parent. Picking per-node between charged and seat value
+    // made a tree of mixed providers display figures that could differ by
+    // orders of magnitude and never reconcile with their own total.
+    const nodeCost = (l) => (Number(l?.costUsd) || 0) + (Number(l?.notionalUsd) || 0);
+
+    const ledgerSaved = computed(() => {
+      const l = ledger.value;
+      if (!l) return 0;
+      return l.costUsd > 0 ? l.savedUsd || 0 : l.notionalSavedUsd || 0;
+    });
+
+    /**
+     * What to show on the cost row, and whether to mark it as seat usage.
+     *
+     * Returns null only when the cost is genuinely UNKNOWN (no ledger rows, or
+     * every call unpriced). A known $0.00 still renders, because a run that was
+     * free and a run we cannot price are different facts and the old row made
+     * them look identical by hiding both.
+     */
+    const costDisplay = computed(() => {
+      const l = ledger.value;
+      if (!l || l.calls === 0) {
+        // Fall back to the legacy column for runs that predate the ledger.
+        const legacy = selectedExecution.value?.estimatedCost;
+        return legacy ? { label: 'Est. Cost', value: formatUsd(legacy), isNotional: false } : null;
+      }
+      if (l.unpricedCalls > 0 && l.calls === l.unpricedCalls) return null;
+      if (l.costUsd === 0 && l.notionalUsd > 0) {
+        return { label: 'Cost', value: formatUsd(l.notionalUsd), isNotional: true };
+      }
+      return { label: 'Est. Cost', value: formatUsd(l.costUsd), isNotional: false };
+    });
+
+    const runTree = computed(() => {
+      const t = selectedExecution.value?.tree;
+      if (!t || (!t.nodes?.length && !t.unattached?.length)) return null;
+      return t;
+    });
 
     // Expose method to parent component
     const handlePanelAction = (action, payload) => {
@@ -1280,6 +1408,13 @@ ${execution.log}
 
     return {
       selectedExecution,
+      // Execution ledger
+      ledger,
+      ledgerSaved,
+      costDisplay,
+      runTree,
+      nodeCost,
+      formatUsd,
       showCopiedMessage,
       toggleNodeSection,
       isNodeSectionExpanded,
@@ -1430,6 +1565,101 @@ ${execution.log}
 }
 
 .detail-item span {
+  color: var(--color-text);
+}
+
+/* --- Execution ledger (PRD-122) --- */
+
+.cost-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(var(--blue-rgb), 0.12);
+  border: 1px solid rgba(var(--blue-rgb), 0.3);
+  color: var(--color-blue);
+  vertical-align: middle;
+}
+
+.cost-saved {
+  color: var(--color-green) !important;
+}
+
+.cost-unpriced {
+  color: var(--color-yellow) !important;
+}
+
+.run-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tree-node {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  background: var(--color-lighter-0);
+}
+
+.tree-node.child {
+  margin-left: 14px;
+  border-left: 2px solid rgba(var(--primary-rgb), 0.4);
+}
+
+.tree-node.current {
+  border-color: rgba(var(--primary-rgb), 0.5);
+}
+
+.tree-node-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tree-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-origin {
+  font-size: 0.7em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.tree-cost {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.tree-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--terminal-border-color);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.tree-total strong {
+  font-family: var(--font-family-mono);
   color: var(--color-text);
 }
 
