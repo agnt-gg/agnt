@@ -18,6 +18,12 @@ import {
 } from './orchestrator-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
 import { getPlatformContextSection } from './platform-context.js';
+// Declarative gates for every optional block. Kept out of this file so the
+// DECISION (is this block resident?) can be unit-tested and cache-audited
+// separately from the ASSEMBLY (what order do the blocks go in?), which is
+// what this file owns. See promptElements.js for why the gates may only read
+// conversation-stable inputs.
+import { buildGateInputs, resolveResidentElements } from './promptElements.js';
 // Per-page detailed prompt content. Each module exports a function that
 // returns the rich, page-specific guidance Annie needs when working on that
 // surface (workflow node/edge format rules, tool field shapes, widget HTML
@@ -52,19 +58,23 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     asyncToolsEnabled = true,
   } = options;
 
-  // Build the set of tool names actually exposed to the LLM this turn.
-  // OrchestratorService computes context.toolSchemas BEFORE calling this,
-  // so we can use it to gate every capability section that names specific
-  // tools — otherwise the LLM advertises tools the user has disabled in
-  // the per-channel tool selector and parrots them as available.
-  const enabledToolNames = new Set();
-  if (Array.isArray(context.toolSchemas)) {
-    for (const s of context.toolSchemas) {
-      const n = s?.function?.name;
-      if (n) enabledToolNames.add(n);
-    }
-  }
-  const has = (name) => enabledToolNames.has(name);
+  // Gate inputs are computed from the RESOLVED TOOL SURFACE (which
+  // OrchestratorService assigns to context.toolSchemas before calling this),
+  // the frozen per-user async toggle, and the provider. All three are stable
+  // or append-only within a conversation, which is what makes gating here
+  // free of prompt-cache invalidation — see promptElements.js.
+  //
+  // Note what is NOT passed: context. The gates cannot reach
+  // latestUserMessage, so a message-keyed gate (the expensive kind) cannot be
+  // written here by accident.
+  const gates = buildGateInputs({
+    toolSchemas: Array.isArray(context.toolSchemas) ? context.toolSchemas : [],
+    asyncToolsEnabled,
+    provider: context.normalizedProvider,
+  });
+  const { included } = resolveResidentElements(gates);
+  const on = (id) => included.has(id);
+  const has = gates.has;
 
   const parts = [];
 
@@ -101,17 +111,15 @@ Every Annie chat surface is functionally the same assistant. The current page co
 
   // Image-handling rules only matter if the LLM can actually receive or
   // produce images on this surface.
-  if (has('analyze_image')) parts.push(CRITICAL_IMAGE_HANDLING);
-  if (has('generate_image')) parts.push(CRITICAL_IMAGE_GENERATION);
+  if (on('critical_image_handling')) parts.push(CRITICAL_IMAGE_HANDLING);
+  if (on('critical_image_generation')) parts.push(CRITICAL_IMAGE_GENERATION);
   parts.push('IMPORTANT: Provider names are automatically normalized to lowercase by the backend. You do not need to worry about provider-name casing.');
-  if (asyncToolsEnabled) {
-    parts.push(ASYNC_EXECUTION_GUIDANCE);
-  }
+  if (on('async_execution')) parts.push(ASYNC_EXECUTION_GUIDANCE);
   parts.push(OFFLOADED_DATA_GUIDANCE);
   parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
   parts.push(AGNT_NATIVE_EXECUTION);
 
-  if (has('create_and_run_goal')) {
+  if (on('task_delegation')) {
     parts.push(`TASK DELEGATION:
 For non-trivial tasks, consider creating a Goal and delegating to agents.
 
@@ -145,16 +153,14 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
 
   // "Remember anything" recall layer — recall/list_recent/get_trace are in
   // DEFAULT_TOOLS and UNIVERSAL_TOOLS, so they're on every chat surface.
-  // Gate on has('recall') anyway so the guidance disappears cleanly if a
-  // future channel ever turns them off.
-  if (has('recall') || has('list_recent') || has('get_trace')) {
-    parts.push(MEMORY_RECALL_GUIDANCE);
-  }
+  // Gated anyway so the guidance disappears cleanly if a future channel ever
+  // turns them off.
+  if (on('memory_recall')) parts.push(MEMORY_RECALL_GUIDANCE);
 
   // Gate the long capability descriptions on whether the underlying tool
   // is actually available for this channel.
-  if (has('analyze_image')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
-  if (has('generate_image')) parts.push(IMAGE_GENERATION_CAPABILITIES);
+  if (on('image_analysis_capabilities')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
+  if (on('image_generation_capabilities')) parts.push(IMAGE_GENERATION_CAPABILITIES);
   parts.push(ARTIFACTS_VS_WIDGETS);
   parts.push(RESPONSE_FORMATTING);
   // Local file rendering applies to every surface: any tool (generation, plugin,
@@ -162,28 +168,18 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   // embed. The frontend rewrites file:/// → /api/local-file/... so <img>,
   // <video>, <iframe>, <audio> all just work. Cheap to include unconditionally.
   parts.push(LOCAL_FILE_RENDERING);
-  if (has('generate_image')) parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
+  if (on('critical_image_reference_formatting')) parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
   // IMPORTANT_GUIDELINES is almost entirely about web_search / web_scrape /
   // execute_javascript_code / file_operations / agnt_tools — skip the block
   // when none of those are enabled, otherwise the LLM advertises tools the
   // user has disabled in the per-channel selector.
-  if (
-    has('web_search') ||
-    has('web_scrape') ||
-    has('execute_javascript_code') ||
-    has('read_file') ||
-    has('write_file') ||
-    has('file_operations') ||
-    has('agnt_tools') ||
-    has('execute_custom_agnt_tool')
-  ) {
-    parts.push(IMPORTANT_GUIDELINES);
-  }
+  if (on('important_guidelines')) parts.push(IMPORTANT_GUIDELINES);
+  // Chart.js only. The D3 / Three.js / HTML guides are ON-DEMAND via
+  // discover_tools categories=["visualization"] — 2,670 tokens that were
+  // resident on every turn for a capability used on a small minority of them.
   parts.push(CHART_CHEATSHEET);
 
-  if (context.normalizedProvider !== 'claude-code') {
-    parts.push(MCP_TOOL_USE_RULES);
-  }
+  if (on('mcp_tool_use')) parts.push(MCP_TOOL_USE_RULES);
 
   parts.push(CRITICAL_TOOL_RESPONSE_RULES);
 

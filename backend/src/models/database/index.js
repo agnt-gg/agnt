@@ -1189,6 +1189,22 @@ function scheduleDeferredIndexBuild(attempt = 0) {
 function runMigrations() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
+      // Migration: normalised shape key for near-duplicate memory detection
+      // (2026-07-31). The store had 97,502 rows and exactly 2 byte-identical
+      // duplicates, so exact-match dedupe was a no-op while 82.5% of rows were
+      // near-identical auto-extracted insights. Deliberately NOT backfilled:
+      // the column only has to stop future growth, existing rows are already
+      // excluded from prompts by the user-set/auto candidate quotas, and a
+      // 97k-row rewrite at startup would be a poor trade for that. Existing
+      // rows have NULL here and simply never match a dedupe probe.
+      db.run(`ALTER TABLE agent_memory ADD COLUMN content_shape TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding content_shape column to agent_memory:', err);
+        }
+      });
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_shape
+              ON agent_memory(agent_id, memory_type, content_shape)`);
+
       // Migration: Add current_version_id to workflows table for version control (2026-02-04)
       db.run(`ALTER TABLE workflows ADD COLUMN current_version_id INTEGER`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

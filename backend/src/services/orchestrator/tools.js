@@ -9,7 +9,7 @@ import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
 // Injected into every tool schema; kept in its own module with a cost guard
 // because this block's size is multiplied by the tool count.
-import { ASYNC_TOOL_PARAMS } from './asyncToolParams.js';
+import { ASYNC_TOOL_PARAMS, isAsyncCapableSchema } from './asyncToolParams.js';
 import { getGoalToolSchemas, executeGoalTool } from './goalTools.js';
 import { getAgentToolSchemas, executeAgentTool } from './agentTools.js';
 import { getWorkflowToolSchemas, executeWorkflowTool } from './workflowTools.js';
@@ -1675,7 +1675,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       const {
         TOOL_GROUPS, GROUP_DESCRIPTIONS, getGuidanceForCategories,
         getInstalledToolNames, getAllCategoryNames, DYNAMIC_GROUP_MATCHERS,
+        GUIDANCE_ONLY_CATEGORIES,
       } = await import('./toolSelector.js');
+      const { getGuidanceCategory } = await import('./system-prompts/promptElements.js');
       const { getAvailableToolSchemas } = await import('./tools.js');
       const { operation, categories } = args;
 
@@ -1727,6 +1729,22 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             name,
             ...summarize(names),
             description: GROUP_DESCRIPTIONS[name] || '',
+            status: loadedGroups.has(name) ? 'active' : 'available',
+          });
+        }
+
+        // Guidance-only categories carry no tools — advertise them by name so
+        // the model can discover reference material the same way it discovers
+        // capability.
+        for (const name of GUIDANCE_ONLY_CATEGORIES) {
+          const g = getGuidanceCategory(name);
+          if (!g) continue;
+          groupResults.push({
+            name,
+            tools: [],
+            tool_count: 0,
+            kind: 'guidance',
+            description: g.description,
             status: loadedGroups.has(name) ? 'active' : 'available',
           });
         }
@@ -1802,10 +1820,25 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // the model will believe it has tools it was never given.
         const admitted = loadedTools.filter(permitted);
 
+        // Guidance-only categories resolve to TEXT returned right here. It
+        // lands in the message stream (append-only, cache-free) instead of the
+        // system prompt, so loading reference material never rewrites the
+        // cached prefix. Also drop them from the pending tool-category set:
+        // they load no tools, and leaving them there makes the next turn's
+        // dynamic-load step search for tools that do not exist.
+        const guidanceTexts = {};
+        for (const cat of [...context._requestedToolCategories]) {
+          const g = getGuidanceCategory(cat);
+          if (!g) continue;
+          guidanceTexts[cat] = g.text;
+          context._requestedToolCategories.delete(cat);
+        }
+
         const guidanceSections = getGuidanceForCategories(context._requestedToolCategories);
 
         return JSON.stringify({
           success: true,
+          ...(Object.keys(guidanceTexts).length ? { guidance: guidanceTexts } : {}),
           message: `Loading ${admitted.length} tools from categories: ${[...context._requestedToolCategories].join(', ')}. These tools will be available in your next response.`,
           tool_count: admitted.length,
           loaded_tools: admitted.slice(0, MAX_LISTED),
@@ -4678,7 +4711,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         const agentId = context?.agentId || 'orchestrator';
 
         const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
-        const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType: memory_type, limit: 30 });
+        // Tiered, not flat: auto-extracted insights outnumber user-set
+        // memories ~5:1 and sort by the same relevance score, so a flat read
+        // returned almost entirely machine noise. See findTiered.
+        const memories = await AgentMemoryModel.findTiered(agentId, { memoryType: memory_type, limit: 30 });
 
         return JSON.stringify({
           success: true,
@@ -4872,6 +4908,11 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
  */
 function injectAsyncParams(schema) {
   if (!schema?.function?.parameters?.properties) return schema;
+  // Documentation, not capability: the dispatcher reads `_executeAsync` off
+  // the raw arguments of ANY tool. Skipping an instant tool here removes a
+  // reminder the model does not need, never an ability it might want. See
+  // asyncToolParams.js for the measurement that motivated the gate.
+  if (!isAsyncCapableSchema(schema)) return schema;
 
   return {
     ...schema,

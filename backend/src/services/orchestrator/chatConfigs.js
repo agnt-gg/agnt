@@ -138,6 +138,24 @@ async function loadFrozenMemorySection(context, agentId = null) {
   return memorySection;
 }
 
+// Workspace context is read from disk. Frozen per conversation for the same
+// reason the skills catalog and memory digest are: it sits in the system
+// block, and the system block is a cache prefix. A 182-token section that
+// silently re-read a changed directory listing mid-conversation would rewrite
+// every cached message after it — measured at roughly $1.89 on a 178k-token
+// conversation, i.e. hundreds of times what the section itself costs.
+async function loadFrozenWorkspaceSection(context) {
+  if (context._frozenWorkspaceSection !== undefined) return context._frozenWorkspaceSection;
+  let section = '';
+  try {
+    section = await loadWorkspaceContextSection();
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to load workspace context:', e.message);
+  }
+  context._frozenWorkspaceSection = section;
+  return section;
+}
+
 async function loadCustomInstructionsSection(context) {
   if (context._frozenCustomInstructions !== undefined) return context._frozenCustomInstructions;
 
@@ -748,7 +766,7 @@ const unifiedConfig = {
     const skillsCatalogSection = await loadSkillsCatalogSection(context);
     const memorySection = await loadFrozenMemorySection(context, context.agentId && context.agentId !== 'agent-chat' ? context.agentId : null);
     const customInstructionsSection = await loadCustomInstructionsSection(context);
-    const workspaceSection = await loadWorkspaceContextSection();
+    const workspaceSection = await loadFrozenWorkspaceSection(context);
     const asyncToolsEnabled = await loadAsyncToolsEnabled(context);
 
     // Size each dynamic section BEFORE assembly. These are the parts that
@@ -758,7 +776,7 @@ const unifiedConfig = {
       { id: 'memory', label: 'Memory', tokens: estimateTokens(memorySection || ''), frozen: true },
       { id: 'skills', label: 'Skills catalog', tokens: estimateTokens(skillsCatalogSection || ''), frozen: true },
       { id: 'custom', label: 'Custom instructions', tokens: estimateTokens(customInstructionsSection || ''), frozen: true },
-      { id: 'workspace', label: 'Workspace context', tokens: estimateTokens(workspaceSection || ''), frozen: false },
+      { id: 'workspace', label: 'Workspace context', tokens: estimateTokens(workspaceSection || ''), frozen: true },
       { id: 'agent', label: 'Agent override', tokens: estimateTokens(agentOverride || ''), frozen: true },
     ];
 

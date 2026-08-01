@@ -1,5 +1,6 @@
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
+import { memoryShape, isAutoExtractedMemoryType } from '../utils/memoryShape.js';
 
 /**
  * AgentMemoryModel — CRUD for the agent_memory table.
@@ -24,23 +25,93 @@ class AgentMemoryModel {
 
   /**
    * Create a new memory entry.
+   *
+   * AUTO-EXTRACTED memories (pattern / tool_insight / workflow_insight) are
+   * deduped against their normalised shape: a repeat of something already
+   * recorded bumps the existing row's access count instead of inserting.
+   * Without this a timer-driven workflow writes one near-identical memory per
+   * execution forever — measured at 80,459 auto rows collapsing to 50,484
+   * distinct shapes, worst cluster 1,092 copies. See utils/memoryShape.js.
+   *
+   * User-set memories always insert. See AUTO_EXTRACTED_MEMORY_TYPES for why.
+   *
+   * @returns {Promise<string>} the id of the new OR the matched existing row.
    */
   static async create({ agentId, userId, memoryType, content, sourceConversationId }) {
     if (agentId === 'orchestrator') {
       await this._ensureOrchestratorAgent(userId);
     }
+
+    const shape = isAutoExtractedMemoryType(memoryType) ? memoryShape(content) : null;
+    if (shape) {
+      const existing = await this.findByShape(agentId, memoryType, shape);
+      if (existing) {
+        // Seen again = more evidence for the same finding, not new knowledge.
+        await this.incrementAccess(existing.id).catch(() => {});
+        return existing.id;
+      }
+    }
+
     const id = generateUUID();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO agent_memory (id, agent_id, user_id, memory_type, content, source_conversation_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [id, agentId, userId, memoryType, content, sourceConversationId || null],
+        `INSERT INTO agent_memory (id, agent_id, user_id, memory_type, content, source_conversation_id, content_shape)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, agentId, userId, memoryType, content, sourceConversationId || null, shape],
         function (err) {
           if (err) reject(err);
           else resolve(id);
         }
       );
     });
+  }
+
+  /** Existing row with the same normalised shape, if any. */
+  static findByShape(agentId, memoryType, shape) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM agent_memory
+         WHERE agent_id = ? AND memory_type = ? AND content_shape = ?
+         ORDER BY created_at ASC LIMIT 1`,
+        [agentId, memoryType, shape],
+        (err, row) => (err ? reject(err) : resolve(row || null))
+      );
+    });
+  }
+
+  /**
+   * Memory types saved at the user's direction. Authoritative.
+   * Shared with findRelevant so the read and write paths cannot disagree.
+   */
+  static get USER_SET_TYPE_LIST() {
+    return ['fact', 'preference', 'correction', 'context', 'prompt_guidance'];
+  }
+
+  static get AUTO_TYPE_LIST() {
+    return ['pattern', 'tool_insight', 'workflow_insight'];
+  }
+
+  /**
+   * Tiered read for the `get_agent_memories` tool.
+   *
+   * The system-prompt path (findRelevant) has quota'd user-set vs
+   * auto-extracted candidates since the memory digest work; the TOOL path
+   * never got the same treatment and called findByAgentId flat with limit 30.
+   * Because auto-extracted rows outnumber user-set ones 5:1 and sort by the
+   * same relevance score, the tool returned almost entirely machine noise —
+   * observed live as 26 of 30 results being duplicate workflow bottleneck
+   * reports. Same tiering, same reason.
+   */
+  static async findTiered(agentId, { memoryType, limit = 30 } = {}) {
+    if (memoryType) {
+      return this.findByAgentId(agentId, { memoryType, limit });
+    }
+    const userQuota = Math.max(1, Math.ceil(limit * 0.8));
+    const [userSet, auto] = await Promise.all([
+      this.findByAgentId(agentId, { limit: userQuota, memoryTypes: this.USER_SET_TYPE_LIST }),
+      this.findByAgentId(agentId, { limit: limit - userQuota, memoryTypes: this.AUTO_TYPE_LIST }),
+    ]);
+    return [...userSet, ...auto].slice(0, limit);
   }
 
   /**
@@ -61,7 +132,10 @@ class AgentMemoryModel {
       params.push(...memoryTypes);
     }
 
-    query += ' ORDER BY relevance_score DESC, updated_at DESC LIMIT ?';
+    // `id` is the final tiebreaker so equal-scoring rows come back in a
+    // stable order. Without it SQLite is free to return ties in any order and
+    // the memory digest silently reshuffles between builds.
+    query += ' ORDER BY relevance_score DESC, updated_at DESC, id ASC LIMIT ?';
     params.push(limit);
 
     return new Promise((resolve, reject) => {
@@ -129,12 +203,23 @@ class AgentMemoryModel {
 
   /**
    * Increment access count (called when memory is used in a prompt).
+   *
+   * DELIBERATELY DOES NOT TOUCH `updated_at`. That column is a SORT KEY for
+   * relevance retrieval (`relevance_score DESC, updated_at DESC`), so bumping
+   * it here made reading memory reorder memory: two identical retrievals, run
+   * back to back with no writes in between, returned different sets. Observed
+   * directly — building the same prompt twice produced digests that disagreed
+   * about which memories were shown in full vs gisted.
+   *
+   * `updated_at` means "the content changed"; access is tracked by
+   * `access_count`, which is not a sort key and therefore cannot feed back
+   * into ordering.
    */
   static incrementAccess(id) {
     return new Promise((resolve, reject) => {
       db.run(
-        'UPDATE agent_memory SET access_count = access_count + 1, updated_at = ? WHERE id = ?',
-        [new Date().toISOString(), id],
+        'UPDATE agent_memory SET access_count = access_count + 1 WHERE id = ?',
+        [id],
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
@@ -177,8 +262,8 @@ class AgentMemoryModel {
    */
   static findByUserId(userId, { limit = 5000, sort = 'recent', memoryTypes } = {}) {
     const orderBy = sort === 'relevance'
-      ? 'relevance_score DESC, updated_at DESC'
-      : 'created_at DESC';
+      ? 'relevance_score DESC, updated_at DESC, id ASC'
+      : 'created_at DESC, id ASC';
     let query = 'SELECT * FROM agent_memory WHERE user_id = ?';
     const params = [userId];
     if (Array.isArray(memoryTypes) && memoryTypes.length > 0) {

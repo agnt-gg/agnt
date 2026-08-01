@@ -1207,6 +1207,22 @@ async function universalChatHandler(req, res, context = {}) {
     if (priorContext._frozenMemorySection !== undefined) {
       conversationContext._frozenMemorySection = priorContext._frozenMemorySection;
     }
+    // Every section of the system block must be frozen for the whole
+    // conversation, not just recomputed identically and hoped for. These three
+    // were being re-derived each turn: custom instructions and the async
+    // toggle re-read the user row, and the workspace section re-read the
+    // directory from disk. Any of them changing mid-conversation silently
+    // rewrites the cached prefix and every message after it — ~$1.89 on a 178k
+    // conversation, against sections that cost 4.3k / 0.2k tokens to send.
+    if (priorContext._frozenCustomInstructions !== undefined) {
+      conversationContext._frozenCustomInstructions = priorContext._frozenCustomInstructions;
+    }
+    if (priorContext._frozenWorkspaceSection !== undefined) {
+      conversationContext._frozenWorkspaceSection = priorContext._frozenWorkspaceSection;
+    }
+    if (priorContext._frozenAsyncToolsEnabled !== undefined) {
+      conversationContext._frozenAsyncToolsEnabled = priorContext._frozenAsyncToolsEnabled;
+    }
     if (priorContext._loadedToolGroups) {
       conversationContext._loadedToolGroups = new Set(priorContext._loadedToolGroups);
     }

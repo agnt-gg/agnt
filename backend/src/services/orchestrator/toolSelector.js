@@ -389,8 +389,26 @@ const ALL_GROUPED_TOOL_NAMES = new Set(
  * re-deriving `Object.keys(TOOL_GROUPS)` and silently rejecting `mcp`.
  */
 export function getAllCategoryNames() {
-  return [...Object.keys(TOOL_GROUPS), ...Object.keys(DYNAMIC_GROUP_MATCHERS), 'installed'];
+  return [
+    ...Object.keys(TOOL_GROUPS),
+    ...Object.keys(DYNAMIC_GROUP_MATCHERS),
+    ...GUIDANCE_ONLY_CATEGORIES,
+    'installed',
+  ];
 }
+
+/**
+ * Categories that load GUIDANCE rather than tools.
+ *
+ * Their text is returned in the discover_tools result and never enters the
+ * system prompt. That placement is the whole point: a tool result lands in the
+ * append-only message region and costs nothing in cached prefix, whereas
+ * growing the system prompt mid-conversation rewrites every cached message
+ * after it. Declared here (rather than imported) so toolSelector stays free of
+ * a dependency on the prompt modules; promptElements.test.js asserts the two
+ * lists agree.
+ */
+export const GUIDANCE_ONLY_CATEGORIES = ['visualization'];
 
 /**
  * Select tools for the orchestrator based on keyword matching against the user message.

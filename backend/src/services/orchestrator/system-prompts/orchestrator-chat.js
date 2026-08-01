@@ -312,6 +312,29 @@ WHEN TO USE CHART.JS:
 - Visualizing workflow execution stats or performance metrics
 - Any time data would be clearer as a visual than a table
 
+RICHER RENDERERS ARE AVAILABLE ON DEMAND. For custom 2D visualizations (D3 —
+treemaps, force graphs, network diagrams), interactive 3D scenes (Three.js), or
+full interactive pages and dashboards (self-contained HTML), call
+discover_tools with operation="load" and categories=["visualization"] to get
+the complete guide for those renderers before writing one.`;
+
+/**
+ * D3 / Three.js / HTML renderer guides.
+ *
+ * SPLIT OUT OF CHART_CHEATSHEET 2026-07-31. Together these measured 2,670 of
+ * the cheatsheet's 3,187 tokens (~3,870 calibrated) and shipped on every turn
+ * — the tool-surface problem in prose form: capability documentation resident
+ * by default whether or not the turn had anything to do with visualization.
+ *
+ * Chart.js stayed resident because it is the cheapest of the four and by far
+ * the most used. These three are delivered as a discover_tools RESULT rather
+ * than folded back into the system prompt, and that placement is deliberate:
+ * a tool result lands in the append-only message region, which costs nothing
+ * in cached prefix, whereas growing the system prompt mid-conversation
+ * rewrites every cached message after it. See promptElements.js.
+ */
+export const VIZ_ADVANCED_CHEATSHEET = `ADVANCED VISUALIZATION GUIDE (D3 / THREE.JS / HTML)
+
 D3.JS VISUALIZATION GUIDE:
 
 For advanced/custom visualizations (treemaps, force graphs, custom SVGs, etc.), use a \\\`\\\`\\\`d3 code block with JavaScript.
@@ -496,7 +519,7 @@ WHEN TO USE HTML:
 - Content that needs third-party libraries via CDN
 
 WHEN TO USE WHICH:
-- **Chart.js** (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest
+- **Chart.js** (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest (always available, no load needed)
 - **D3** (\\\`\\\`\\\`d3): Custom 2D visualizations (treemaps, force graphs, network diagrams)
 - **Three.js** (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, physics, spatial data)
 - **HTML** (\\\`\\\`\\\`html): Full interactive pages, dashboards, mini-apps, or multi-viz layouts`;
