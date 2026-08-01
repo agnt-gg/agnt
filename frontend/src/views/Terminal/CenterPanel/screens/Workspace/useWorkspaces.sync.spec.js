@@ -145,6 +145,9 @@ describe('useWorkspaces sync — updatedAt is advanced by every mutator', () => 
     toggleCollapse: (api, ws) => api.toggleCollapse(ws.widgets[0].instanceId),
     bringToFront: (api, ws) => api.bringToFront(ws.widgets[0].instanceId),
     panelScopeFor: (api, ws) => api.panelScopeFor(ws.widgets[0].instanceId).set('left', 'open'),
+    // Order is positional, so moving a tab changes the synced shape of every
+    // tab whose index moved — including this one.
+    moveWorkspace: (api, ws) => api.moveWorkspace(ws.id, 1),
   };
 
   // Exported functions that must NOT advance a workspace's clock. setActive
@@ -165,15 +168,23 @@ describe('useWorkspaces sync — updatedAt is advanced by every mutator', () => 
   ];
 
   it.each(Object.keys(MUTATORS))('%s advances updatedAt', async (name) => {
-    const api = await boot(persistedWith([localWs({ widgets: [widget('w_1'), widget('w_2', 'traces')] })]));
-    const before = api.workspaces.value[0].updatedAt;
+    // Two workspaces so a reorder has somewhere to go. The target is found by
+    // ID, not index, because moveWorkspace changes what index 0 refers to.
+    const api = await boot(
+      persistedWith([
+        localWs({ widgets: [widget('w_1'), widget('w_2', 'traces')] }),
+        localWs({ id: 'ws_2', name: 'Second' }),
+      ]),
+    );
+    const target = () => api.workspaces.value.find((w) => w.id === 'ws_1');
+    const before = target().updatedAt;
     expect(before).toBe(900_000);
 
     tick();
-    MUTATORS[name](api, api.workspaces.value[0]);
+    MUTATORS[name](api, target());
     api.saveNow();
 
-    expect(api.workspaces.value[0].updatedAt).toBeGreaterThan(before);
+    expect(target().updatedAt).toBeGreaterThan(before);
   });
 
   it('classifies EVERY exported function — a new mutator cannot slip through', async () => {
@@ -449,6 +460,118 @@ describe('useWorkspaces sync — deletion reconcile', () => {
     await api.hydrateFromServer();
 
     expect(api.workspaces.value.map((w) => w.id)).toContain(shellId);
+  });
+});
+
+// ============================================================== tab order
+describe('useWorkspaces sync — tab order', () => {
+  // Order is a property of the COLLECTION, not of any one workspace, so the
+  // per-workspace LWW clock cannot resolve it on its own. It was also the one
+  // field the server faithfully stored and returned while the client threw it
+  // away, so tab order never crossed devices at all.
+  const two = () =>
+    persistedWith([localWs(), localWs({ id: 'ws_2', name: 'Second' })]);
+
+  const ids = (api) => api.workspaces.value.map((w) => w.id);
+
+  it('moveWorkspace reorders the tabs', async () => {
+    const api = await boot(two());
+    expect(ids(api)).toEqual(['ws_1', 'ws_2']);
+
+    tick();
+    api.moveWorkspace('ws_1', 1);
+
+    expect(ids(api)).toEqual(['ws_2', 'ws_1']);
+  });
+
+  it('stamps every tab whose position changed', async () => {
+    const api = await boot(two());
+    tick();
+    api.moveWorkspace('ws_1', 1);
+    api.saveNow();
+
+    // Both moved, so both must travel in the same LWW generation — otherwise
+    // the other device applies half a reorder.
+    for (const w of api.workspaces.value) expect(w.updatedAt).toBe(nowMs);
+  });
+
+  it('moving a tab onto itself changes nothing', async () => {
+    const api = await boot(two());
+    tick();
+    api.moveWorkspace('ws_1', 0);
+    api.saveNow();
+
+    expect(ids(api)).toEqual(['ws_1', 'ws_2']);
+    expect(api.workspaces.value[0].updatedAt).toBe(900_000);
+  });
+
+  it('pushes the new order to the server', async () => {
+    const api = await boot(two());
+    serverWorkspaces = [
+      { id: 'ws_1', name: 'Trading', order: 0, widgets: [], ai: null, channelConversations: {}, updatedAt: 100 },
+      { id: 'ws_2', name: 'Second', order: 1, widgets: [], ai: null, channelConversations: {}, updatedAt: 100 },
+    ];
+    await api.hydrateFromServer();   // unlocks pushing
+    requests.length = 0;
+
+    tick();
+    api.moveWorkspace('ws_1', 1);
+    api.saveNow();
+    await new Promise((r) => setTimeout(r, 500));   // push debounce is 400ms
+
+    const put = requests.find((r) => r.opts.method === 'PUT');
+    expect(put).toBeTruthy();
+    const body = JSON.parse(put.opts.body);
+    expect(body.workspaces.map((w) => [w.id, w.order])).toEqual([['ws_2', 0], ['ws_1', 1]]);
+  });
+
+  it('applies the server tab order on hydrate', async () => {
+    const api = await boot(two());
+    serverWorkspaces = [
+      { id: 'ws_2', name: 'Second', order: 0, widgets: [], ai: null, channelConversations: {}, updatedAt: 950_000 },
+      { id: 'ws_1', name: 'Trading', order: 1, widgets: [], ai: null, channelConversations: {}, updatedAt: 950_000 },
+    ];
+
+    await api.hydrateFromServer();
+
+    expect(ids(api)).toEqual(['ws_2', 'ws_1']);
+  });
+
+  it('keeps a local reorder that is newer than the server copy', async () => {
+    // Reordered on this device while offline. The next hydrate must not
+    // silently undo it.
+    const api = await boot(two());
+    tick(200_000);                   // now 1_200_000
+    api.moveWorkspace('ws_1', 1);
+    api.saveNow();
+    expect(ids(api)).toEqual(['ws_2', 'ws_1']);
+
+    serverWorkspaces = [
+      { id: 'ws_1', name: 'Trading', order: 0, widgets: [], ai: null, channelConversations: {}, updatedAt: 950_000 },
+      { id: 'ws_2', name: 'Second', order: 1, widgets: [], ai: null, channelConversations: {}, updatedAt: 950_000 },
+    ];
+
+    await api.hydrateFromServer();
+
+    expect(ids(api)).toEqual(['ws_2', 'ws_1']);
+  });
+
+  it('sorts tabs the server has never seen last, keeping their relative order', async () => {
+    const api = await boot(
+      persistedWith(
+        [localWs({ id: 'ws_new', name: 'Draft' }), localWs(), localWs({ id: 'ws_new2', name: 'Draft 2' })],
+        ['ws_1'],
+      ),
+    );
+    serverWorkspaces = [
+      { id: 'ws_1', name: 'Trading', order: 0, widgets: [], ai: null, channelConversations: {}, updatedAt: 950_000 },
+    ];
+
+    await api.hydrateFromServer();
+
+    // Unknown tabs collide at "no position", so they must fall back to a
+    // stable sort rather than jumbling.
+    expect(ids(api)).toEqual(['ws_1', 'ws_new', 'ws_new2']);
   });
 });
 

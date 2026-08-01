@@ -500,9 +500,15 @@ const syncedIds = new Set(
  * including it would make every persist look like a change and re-stamp
  * forever.
  */
-function shapeForSync(ws) {
+function shapeForSync(ws, index) {
   return JSON.stringify({
     name: ws.name,
+    // Tab order is POSITIONAL (the array index is what pushAll sends as
+    // `order`), so it is not a field on the object and change detection has to
+    // be told about it explicitly. Without this a reorder mutates no
+    // workspace's own fields, nothing is stamped, and last-write-wins silently
+    // discards it.
+    order: index,
     widgets: ws.widgets || [],
     ai: ws.ai || null,
     channelConversations: ws.channelConversations || {},
@@ -515,7 +521,7 @@ const lastShape = new Map();
 /** Record current shapes as the new baseline WITHOUT stamping anything. */
 function resyncShapes() {
   lastShape.clear();
-  for (const ws of workspaces.value) lastShape.set(ws.id, shapeForSync(ws));
+  workspaces.value.forEach((ws, i) => lastShape.set(ws.id, shapeForSync(ws, i)));
 }
 
 /**
@@ -530,13 +536,13 @@ function resyncShapes() {
  */
 function stampChangedWorkspaces() {
   const now = Date.now();
-  for (const ws of workspaces.value) {
-    const shape = shapeForSync(ws);
+  workspaces.value.forEach((ws, i) => {
+    const shape = shapeForSync(ws, i);
     if (lastShape.get(ws.id) !== shape) {
       ws.updatedAt = now;
       lastShape.set(ws.id, shape);
     }
-  }
+  });
   const live = new Set(workspaces.value.map((w) => w.id));
   for (const id of [...lastShape.keys()]) if (!live.has(id)) lastShape.delete(id);
 }
@@ -546,10 +552,10 @@ function stampChangedWorkspaces() {
 // would beat every remote copy forever — sync would silently become one-way.
 // A workspace with no stamp yet falls back to createdAt (0 if unknown), so a
 // server copy wins the tie rather than being clobbered by an unknown local.
-for (const ws of workspaces.value) {
+workspaces.value.forEach((ws, i) => {
   if (typeof ws.updatedAt !== 'number') ws.updatedAt = ws.createdAt || 0;
-  lastShape.set(ws.id, shapeForSync(ws));
-}
+  lastShape.set(ws.id, shapeForSync(ws, i));
+});
 
 let pushTimer = null;
 // With sync on, hold the first push until hydrate finishes so a boot-time
@@ -655,7 +661,32 @@ async function hydrateFromServer() {
     allowPush = true;
     return;
   }
-  workspaces.value = [...byId.values()];
+
+  const merged = [...byId.values()];
+
+  // Apply the server's tab order.
+  //
+  // Order is a property of the COLLECTION, not of any one workspace, so the
+  // per-workspace LWW above cannot resolve it — moving one tab changes the
+  // position of every tab after it. Use the newest stamp on each side as a
+  // collection-level clock: whichever side holds the most recent edit owns the
+  // order. Without the comparison, a reorder made while offline would be
+  // silently reverted by the next hydrate; without applying remote order at
+  // all (the original behaviour) the server stored and returned `order` and
+  // the client threw it away, so tab order never crossed devices.
+  const newestLocal = merged.reduce((m, w) => Math.max(m, w.updatedAt || 0), 0);
+  const newestRemote = remote.workspaces.reduce((m, r) => Math.max(m, r.updatedAt || 0), 0);
+  if (newestRemote >= newestLocal) {
+    const pos = new Map(
+      remote.workspaces.map((r, i) => [r.id, Number.isFinite(r.order) ? r.order : i]),
+    );
+    // Tabs the server has never seen sort last, keeping their relative order
+    // (Array#sort is stable), rather than colliding at position 0.
+    const key = (w) => (pos.has(w.id) ? pos.get(w.id) : Number.MAX_SAFE_INTEGER);
+    merged.sort((a, b) => key(a) - key(b));
+  }
+
+  workspaces.value = merged;
   if (!workspaces.value.some((w) => w.id === activeId.value)) {
     activeId.value = workspaces.value[0]?.id;
   }
@@ -811,6 +842,23 @@ export function useWorkspaces() {
     if (activeId.value === id) {
       activeId.value = workspaces.value[Math.min(idx, workspaces.value.length - 1)].id;
     }
+    save();
+  }
+
+  /**
+   * Move a workspace tab to a new index.
+   *
+   * Order is the array position, so this is a splice — and because
+   * shapeForSync carries the index, every tab whose position changed is
+   * stamped and the whole reorder travels as one last-write-wins generation.
+   */
+  function moveWorkspace(id, toIndex) {
+    const from = workspaces.value.findIndex((w) => w.id === id);
+    if (from === -1) return;
+    const to = Math.max(0, Math.min(toIndex, workspaces.value.length - 1));
+    if (from === to) return;
+    const [ws] = workspaces.value.splice(from, 1);
+    workspaces.value.splice(to, 0, ws);
     save();
   }
 
@@ -1049,6 +1097,7 @@ export function useWorkspaces() {
     setActive,
     createWorkspace,
     closeWorkspace,
+    moveWorkspace,
     renameWorkspace,
     setWorkspaceAi,
     setChannelConversation,
