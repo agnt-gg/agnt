@@ -543,21 +543,115 @@ export const AGENT_TOOLS = {
         },
       },
     },
+    // PRD-122 §6.7. This used to return `success: true`, a fabricated
+    // `exec-${Date.now()}` id that referenced nothing, and the sentence "The
+    // agent has been started and is now running" — while starting nothing at
+    // all. A model calling it would faithfully report to the user that their
+    // agent was running. That is the silent-failure pattern AGNT exists to
+    // avoid, shipping inside AGNT.
+    //
+    // It now performs a real, synchronous agent run through the same path the
+    // goal system uses (TaskOrchestrator.executeTaskViaAgentChat →
+    // LlmExecutionService), and creates a real agent_executions row so the
+    // returned executionId resolves and the run appears in Traces.
     execute: async ({ agentId, parameters }, authToken, context) => {
+      let executionId = null;
       try {
-        // This would integrate with your existing agent execution system
-        // For now, we'll return a success message with the execution details
+        const { userId } = context || {};
+        if (!userId) {
+          return JSON.stringify({ success: false, error: 'No authenticated user in context', message: 'Failed to run agent' });
+        }
+        if (!agentId) {
+          return JSON.stringify({ success: false, error: 'agentId is required', message: 'Failed to run agent' });
+        }
+
+        const [{ default: AgentModel }, { default: TaskOrchestrator }, { default: AgentExecutionModel }] = await Promise.all([
+          import('../../models/AgentModel.js'),
+          import('../goal/TaskOrchestrator.js'),
+          import('../../models/AgentExecutionModel.js'),
+        ]);
+
+        const agent = await AgentModel.findOne(agentId);
+        if (!agent || (agent.created_by && agent.created_by !== userId)) {
+          return JSON.stringify({ success: false, error: 'Agent not found or unauthorized', message: 'Failed to run agent' });
+        }
+
+        // The instruction the agent is being asked to carry out. Callers pass
+        // it as parameters.message/prompt/task; anything else is handed over
+        // verbatim as JSON so nothing the caller supplied is silently dropped.
+        const p = parameters || {};
+        const taskMessage =
+          p.message || p.prompt || p.task || p.instructions ||
+          (Object.keys(p).length ? JSON.stringify(p) : 'Run with your default configuration.');
+
+        // Real execution row, parented to the run that spawned it so the two
+        // form a tree rather than looking like unrelated siblings.
+        const parentExecutionId = context?.executionId || context?.agentExecutionId || null;
+        const rootExecutionId = parentExecutionId
+          ? await AgentExecutionModel.getRootFor(parentExecutionId)
+          : null;
+
+        executionId = await AgentExecutionModel.create(
+          userId,
+          agent.id,
+          agent.name,
+          context?.conversationId || null,
+          String(taskMessage).substring(0, 500),
+          agent.provider || null,
+          agent.model || null,
+          'running',
+          { parentExecutionId, rootExecutionId, origin: 'agent' }
+        );
+
+        const startedAt = Date.now();
+        // Attribute the spend to THIS run and this agent, and hang it on the
+        // same tree as the run that spawned it, so the cost shows up on the
+        // execution row above rather than as orphaned goal spend.
+        const result = await TaskOrchestrator.executeTaskViaAgentChat(
+          agent, taskMessage, userId, agent.provider || null, agent.model || null, null,
+          {
+            origin: 'agent',
+            originId: agent.id,
+            executionId,
+            parentExecutionId,
+            rootExecutionId: rootExecutionId || executionId,
+          }
+        );
+
+        const usage = result?.usage || null;
+        await AgentExecutionModel.update(
+          executionId,
+          'completed',
+          typeof result?.content === 'string' ? result.content : JSON.stringify(result?.content ?? ''),
+          (Date.now() - startedAt) / 1000,
+          Array.isArray(result?.tool_executions) ? result.tool_executions.length : 0,
+          null,
+          usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens } : null
+        );
+
         return JSON.stringify({
           success: true,
           agentId,
-          parameters: parameters || {},
-          message: 'Agent execution initiated successfully',
-          executionId: `exec-${Date.now()}`,
-          suggestion: 'The agent has been started and is now running with the provided parameters.',
+          executionId,
+          content: result?.content ?? '',
+          toolCallsCount: Array.isArray(result?.tool_executions) ? result.tool_executions.length : 0,
+          usage: usage || undefined,
+          message: 'Agent run completed',
         });
       } catch (error) {
+        // A failed run is reported as failed. The execution row is closed out
+        // so it does not sit in Traces as "running" forever.
+        if (executionId) {
+          try {
+            const { default: AgentExecutionModel } = await import('../../models/AgentExecutionModel.js');
+            await AgentExecutionModel.update(executionId, 'failed', '', 0, 0, error.message, null);
+          } catch { /* the original error is what matters */ }
+        }
+        log.error('[run_agent] execution failed', { agentId, error: error.message });
         return JSON.stringify({
           success: false,
+          agentId,
+          executionId,
           error: error.message,
           message: 'Failed to run agent',
         });
