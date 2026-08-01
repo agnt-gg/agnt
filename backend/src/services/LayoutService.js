@@ -1,6 +1,17 @@
 import db from '../models/database/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * widget_layouts is SHARED with WorkspaceService (/api/workspaces), which
+ * namespaces its rows as route='workspace:<id>'. Every custom-page query has
+ * to exclude them, not just the listing one: page_id is only unique per user,
+ * so a collision would let the pages API silently UPDATE, RESET or DELETE a
+ * user's synced workspace through an endpoint that has no business touching
+ * it. One predicate, used by all four queries, so the isolation cannot be
+ * half-applied again.
+ */
+const NOT_WORKSPACE_ROW = "(route IS NULL OR route NOT LIKE 'workspace:%')";
+
 class LayoutService {
   /**
    * Get the authenticated user's ID from request.
@@ -16,14 +27,13 @@ class LayoutService {
     try {
       const userId = this._getUserId(req);
       const pages = await new Promise((resolve, reject) => {
-        // Exclude workspace:* rows — those are owned by WorkspaceService
-        // (/api/workspaces). Including them here leaks General/Coding into the
+        // Excluding workspace:* rows here also keeps General/Coding out of the
         // left-sidebar custom-page list (CanvasScreen customPages filters only
-        // by SECTION_ROUTES, so workspace: routes look "custom").
+        // by SECTION_ROUTES, so workspace: routes would look "custom").
         db.all(
           `SELECT * FROM widget_layouts
            WHERE user_id = ?
-             AND (route IS NULL OR route NOT LIKE 'workspace:%')
+             AND ${NOT_WORKSPACE_ROW}
            ORDER BY page_order ASC, created_at ASC`,
           [userId],
           (err, rows) => (err ? reject(err) : resolve(rows || [])),
@@ -111,8 +121,10 @@ class LayoutService {
 
       // Check if page exists for this user
       const existing = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM widget_layouts WHERE page_id = ? AND user_id = ?', [pageId, userId], (err, row) =>
-          err ? reject(err) : resolve(row),
+        db.get(
+          `SELECT id FROM widget_layouts WHERE page_id = ? AND user_id = ? AND ${NOT_WORKSPACE_ROW}`,
+          [pageId, userId],
+          (err, row) => (err ? reject(err) : resolve(row)),
         );
       });
 
@@ -127,7 +139,7 @@ class LayoutService {
                  route = COALESCE(?, route),
                  layout_data = COALESCE(?, layout_data),
                  updated_at = CURRENT_TIMESTAMP
-             WHERE page_id = ? AND user_id = ?`,
+             WHERE page_id = ? AND user_id = ? AND ${NOT_WORKSPACE_ROW}`,
             [page_name, page_icon, page_order, route, layout_data, pageId, userId],
             (err) => (err ? reject(err) : resolve()),
           );
@@ -161,8 +173,10 @@ class LayoutService {
       const { pageId } = req.params;
 
       await new Promise((resolve, reject) => {
-        db.run('DELETE FROM widget_layouts WHERE page_id = ? AND user_id = ?', [pageId, userId], (err) =>
-          err ? reject(err) : resolve(),
+        db.run(
+          `DELETE FROM widget_layouts WHERE page_id = ? AND user_id = ? AND ${NOT_WORKSPACE_ROW}`,
+          [pageId, userId],
+          (err) => (err ? reject(err) : resolve()),
         );
       });
 
@@ -184,7 +198,8 @@ class LayoutService {
 
       await new Promise((resolve, reject) => {
         db.run(
-          `UPDATE widget_layouts SET layout_data = ?, updated_at = CURRENT_TIMESTAMP WHERE page_id = ? AND user_id = ?`,
+          `UPDATE widget_layouts SET layout_data = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE page_id = ? AND user_id = ? AND ${NOT_WORKSPACE_ROW}`,
           [layout_data || '[]', pageId, userId],
           (err) => (err ? reject(err) : resolve()),
         );
