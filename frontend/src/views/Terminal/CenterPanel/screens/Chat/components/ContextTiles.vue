@@ -339,6 +339,11 @@ export default {
     const hasBreakdown = computed(() => !!breakdown.value);
     const tokenLimit = computed(() => props.contextStatus?.tokenLimit || 0);
     const currentTokens = computed(() => props.contextStatus?.currentTokens || 0);
+    // A window is known as soon as a model is chosen, so `tokenLimit` alone is
+    // not evidence of anything. Utilization is only reportable once a request
+    // has actually been sized — otherwise the panel states "0% full" about a
+    // conversation it has never measured.
+    const hasRequest = computed(() => tokenLimit.value > 0 && currentTokens.value > 0);
 
     const utilization = computed(() => {
       if (!tokenLimit.value) return 0;
@@ -525,7 +530,7 @@ export default {
     const isNotional = computed(() => props.subscriptionBased === true);
     const stripStats = computed(() => {
       const out = [];
-      if (tokenLimit.value) {
+      if (hasRequest.value) {
         out.push({ key: 'full', value: `${utilization.value.toFixed(0)}%`, cls: utilizationClass.value });
       }
       if ((props.totalCost || 0) > 0) {
@@ -549,7 +554,7 @@ export default {
     const tiles = computed(() => {
       const out = [];
 
-      out.push(tokenLimit.value
+      out.push(hasRequest.value
         ? {
           key: 'request',
           label: 'Request',

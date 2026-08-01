@@ -17,8 +17,15 @@
       <div class="automation-interface" :class="{ 'mobile-view': isMobile }">
 
 
-        <!-- Context Monitoring Panel -->
-        <div v-if="!isMobile" class="monitoring-panel" :class="{ collapsed: isMonitoringCollapsed }">
+        <!-- Context Monitoring Panel — absent until the conversation has
+             actually produced a measurement. A model's window is known as soon
+             as a model is picked, so rendering on that alone made a brand-new
+             chat open with "0% full · 0 / 1.0M" above an empty transcript. -->
+        <div
+          v-if="!isMobile && hasMonitoringData"
+          class="monitoring-panel"
+          :class="{ collapsed: isMonitoringCollapsed }"
+        >
           <!-- Six summary tiles; each expands its own detail. The panel used to
                render all three columns at once, which meant the answer to
                "what is this costing me" was always somewhere on screen but
@@ -237,6 +244,7 @@ import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ContextManifest from './components/ContextManifest.vue';
 import ContextTiles from './components/ContextTiles.vue';
 import { loadContextStatus, saveContextStatus } from '@/services/contextStatusCache.js';
+import { hasContextActivity } from '@/services/contextActivity.js';
 // The ONE place raw estimates become displayed tokens. Applied on ingest so no
 // component ever sees the calibration factor, and none can apply it twice.
 import { calibrateContextStatus, calibrateManifest } from '@/services/contextCalibration.js';
@@ -651,6 +659,17 @@ export default {
     const systemActivities = computed(() => activeMonitoring.value.systemActivities);
     const turnRounds = computed(() => (activeMonitoring.value.turnRounds || []).filter(Boolean));
     const growthPerTurn = computed(() => activeMonitoring.value.growthPerTurn || 0);
+
+    // The panel's whole existence hangs off this one predicate, kept in its own
+    // module so "has this conversation started?" is defined once and testable
+    // without mounting a 3000-line component.
+    const hasMonitoringData = computed(() => hasContextActivity({
+      contextStatus: contextStatus.value,
+      totalTokenUsage: totalTokenUsage.value,
+      totalCost: totalCost.value,
+      executionsCount: executionsCount.value,
+      rounds: turnRounds.value,
+    }));
 
     // Known context windows for common models (static data, no API call needed)
     const MODEL_CONTEXT_WINDOWS = {
@@ -2621,6 +2640,7 @@ export default {
       suggestions,
       isLoadingSuggestions,
       contextStatus,
+      hasMonitoringData,
       lastContextManaged,
       contextManaged,
       errorsCaught,

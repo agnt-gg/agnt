@@ -558,6 +558,47 @@ describe('ContextTiles — slots', () => {
   });
 });
 
+describe('ContextTiles — an unmeasured conversation reports nothing', () => {
+  // A model's window is populated as soon as a model is selected, so tokenLimit
+  // arrives long before any request does. Reporting utilization off it alone
+  // produced "0% full · 0 / 1.0M" on an empty chat.
+  const untouched = {
+    contextStatus: { currentTokens: 0, tokenLimit: 1_000_000, model: 'claude-opus-5', breakdown: null },
+    manifest: null,
+    totalTokenUsage: {},
+    totalCost: 0,
+    totalUncachedCost: null,
+    totalCacheMetrics: {},
+    executionsCount: 0,
+    rounds: [],
+    growthPerTurn: 0,
+    lastTurnCost: null,
+  };
+
+  it('REGRESSION: shows no "0% full" on the strip when only the window is known', () => {
+    const w = make(untouched);
+    expect(w.findAll('.strip-key').map((k) => k.text())).not.toContain('full');
+    expect(w.find('.tiles-strip').text()).not.toContain('0%');
+  });
+
+  it('REGRESSION: the request tile is a placeholder, not a measured zero', () => {
+    const t = tileByLabel(make(untouched), 'Request');
+    expect(t.find('.tile-value').text()).toBe('\u2014');
+    expect(t.find('.tile-sub').text()).toBe('no request yet');
+    expect(t.classes()).toContain('placeholder');
+    expect(t.find('.tile-sub').text()).not.toContain('1.0M');
+  });
+
+  it('reports the moment a single token is actually measured', () => {
+    const w = make({
+      ...untouched,
+      contextStatus: { ...untouched.contextStatus, currentTokens: 41_200 },
+    });
+    expect(w.findAll('.strip-key').map((k) => k.text())).toContain('full');
+    expect(tileByLabel(w, 'Request').find('.tile-sub').text()).toBe('41.2k / 1.0M');
+  });
+});
+
 describe('ContextTiles — degenerate input', () => {
   it('renders a full row of placeholders with no data at all', () => {
     const w = mount(ContextTiles, { props: { collapsed: false } });
