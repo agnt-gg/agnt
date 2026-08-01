@@ -233,6 +233,31 @@ app.use('/api/evolution', EvolutionCoreRoutes);
 app.use('/api/system', SystemRoutes);
 app.use('/api/pairing', PairingRoutes);
 
+// PRD-122: inherit pre-ledger history from agent_executions, once. Marker-
+// guarded and per-row idempotent, so this line is a no-op on every boot after
+// the first. Without it, a spend window of "last 30 days" and "last 1 day"
+// returned identical figures — the ledger only knew about calls made after it
+// shipped.
+dbReady.then(async () => {
+  const { backfillFromAgentExecutions, backfillFromNodeExecutions, repriceUnpricedCalls } =
+    await import('./src/services/execution/LedgerRecorder.js');
+  const { initModelMetadataPersistence, syncPublicModelCatalog } = await import('./src/services/ai/modelMetadataPersistence.js');
+  try {
+    // Order matters: hydrate what past runs learned, refresh from the public
+    // catalog (fail-soft when offline), THEN reprice — so a model that gained
+    // a price since the last boot heals its history in this same boot.
+    await initModelMetadataPersistence();
+    await syncPublicModelCatalog();
+    await backfillFromAgentExecutions();
+    await backfillFromNodeExecutions();
+    // Runs every start on purpose: when a model gains pricing metadata,
+    // history heals itself without anyone remembering this exists.
+    await repriceUnpricedCalls();
+  } catch (err) {
+    console.error('[Ledger] backfill/reprice failed (will retry next boot):', err);
+  }
+});
+
 // PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
 dbReady.then(() => {
   SchedulerService.start().catch((err) => {

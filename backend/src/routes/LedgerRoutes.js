@@ -1,6 +1,6 @@
 import express from 'express';
-import db from '../models/database/index.js';
 import LlmCallModel from '../models/LlmCallModel.js';
+import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { getLedgerStats } from '../services/execution/LedgerRecorder.js';
 import { authenticateToken } from './Middleware.js';
 
@@ -15,22 +15,36 @@ import { authenticateToken } from './Middleware.js';
 
 const LedgerRoutes = express.Router();
 
-const dbAll = (q, p) => new Promise((res, rej) => db.all(q, p, (e, r) => (e ? rej(e) : res(r || []))));
-
-/** Local-midnight boundary as a UTC string, matching the `ts` column. */
-function startOfLocalDay() {
+/**
+ * Local midnight, `daysAgo` days back, as a UTC string matching the `ts` column.
+ *
+ * setHours AFTER setDate on purpose: it re-normalises to local midnight of the
+ * target date, so a DST transition inside the window cannot shift the boundary
+ * by an hour.
+ */
+function startOfLocalDay(daysAgo = 0) {
   const d = new Date();
+  if (daysAgo) d.setDate(d.getDate() - daysAgo);
   d.setHours(0, 0, 0, 0);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().replace('T', ' ').slice(0, 19);
 }
 
+/**
+ * Resolve a query into a time window.
+ *
+ * `Nd` means N CALENDAR DAYS back to local midnight — not a rolling N×24 hours.
+ * That distinction is load-bearing: the dashboard usage chart asks for calendar
+ * dates and the rollup groups them with DATE(..., 'localtime'), so a rolling
+ * window would start up to 24h later than the chart's and the two figures would
+ * never reconcile. Anyone comparing them would reasonably conclude one was
+ * wrong. Same boundary, same buckets.
+ */
 function windowFrom(query) {
   const { since, until, window } = query || {};
   if (since || until) return { since: since || null, until: until || null };
   if (window === 'today' || !window) return { since: startOfLocalDay(), until: null };
   const days = Number(String(window).replace(/\D/g, '')) || 7;
-  const d = new Date(Date.now() - days * 86400000);
-  return { since: d.toISOString().replace('T', ' ').slice(0, 19), until: null };
+  return { since: startOfLocalDay(days), until: null };
 }
 
 // GET /api/ledger/summary?window=today|7d|30d  |  ?since=&until=
@@ -83,55 +97,11 @@ LedgerRoutes.get('/breakdown', authenticateToken, async (req, res) => {
  */
 LedgerRoutes.get('/tree/:executionId', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { executionId } = req.params;
-
-    const seed = await dbAll(
-      `SELECT id, root_execution_id FROM agent_executions WHERE id = ? AND user_id = ?`,
-      [executionId, userId]
-    );
-    if (!seed.length) return res.status(404).json({ error: 'Execution not found' });
-    const rootId = seed[0].root_execution_id || seed[0].id;
-
-    const rows = await dbAll(
-      `SELECT id, parent_execution_id, root_execution_id, agent_id, agent_name, origin,
-              status, start_time, end_time, provider, model, tool_calls_count
-       FROM agent_executions
-       WHERE user_id = ? AND (root_execution_id = ? OR id = ?)
-       ORDER BY start_time`,
-      [userId, rootId, rootId]
-    );
-
-    const costs = await LlmCallModel.byExecutionIds(rows.map((r) => r.id));
-    const unattached = await LlmCallModel.unattachedForRoot(userId, rootId);
-
-    const nodes = rows.map((r) => ({
-      id: r.id,
-      parentExecutionId: r.parent_execution_id,
-      agentId: r.agent_id,
-      agentName: r.agent_name,
-      origin: r.origin || 'chat',
-      status: r.status,
-      startTime: r.start_time,
-      endTime: r.end_time,
-      provider: r.provider,
-      model: r.model,
-      toolCallsCount: r.tool_calls_count,
-      ledger: costs.get(r.id) || null,
-    }));
-
-    const sum = (acc, t) => {
-      acc.costUsd += t.costUsd;
-      acc.notionalUsd += t.notionalUsd;
-      acc.unpricedCalls += t.unpricedCalls;
-      acc.calls += t.calls;
-      return acc;
-    };
-    const subtree = [...costs.values()]
-      .concat(unattached)
-      .reduce(sum, { costUsd: 0, notionalUsd: 0, unpricedCalls: 0, calls: 0 });
-
-    res.json({ success: true, rootExecutionId: rootId, nodes, unattached, subtree });
+    // Shared with the trace detail view (AgentExecutionModel.getRunTree) so the
+    // two surfaces cannot disagree about what a run tree cost.
+    const tree = await AgentExecutionModel.getRunTree(req.params.executionId, req.user.userId);
+    if (!tree) return res.status(404).json({ error: 'Execution not found' });
+    res.json({ success: true, ...tree });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -67,6 +67,11 @@ class LlmCallModel {
     durationMs = null,
     status = 'ok',
     error = null,
+    // Explicit timestamp, used ONLY by the one-time backfill so a run from
+    // March lands in March. Live recording always omits it and gets the
+    // database clock — COALESCE, because passing NULL to a column with a
+    // DEFAULT stores the NULL rather than the default.
+    ts = null,
   }) {
     const id = generateUUID();
     await dbRun(
@@ -76,15 +81,15 @@ class LlmCallModel {
          input_tokens, output_tokens, cache_read_tokens,
          cache_write_5m_tokens, cache_write_1h_tokens,
          cost_usd, uncached_cost_usd, is_notional,
-         duration_ms, status, error
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         duration_ms, status, error, ts
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))`,
       [
         id, userId, executionId, parentExecutionId, rootExecutionId,
         origin, originId, conversationId, provider, model,
         inputTokens | 0, outputTokens | 0, cacheReadTokens | 0,
         cacheCreation5mTokens | 0, cacheCreation1hTokens | 0,
         costUsd, uncachedCostUsd, isNotional ? 1 : 0,
-        durationMs, status, error,
+        durationMs, status, error, ts,
       ]
     );
     return id;
@@ -208,6 +213,19 @@ class LlmCallModel {
     return rows.map((r) => ({ origin: r.origin, originId: r.origin_id, ...LlmCallModel._shape(r) }));
   }
 
+  /**
+   * Totals for a single origin row — e.g. one workflow execution's LLM spend.
+   * Hits idx_llm_calls_origin directly rather than aggregating every bucket for
+   * the user and discarding all but one.
+   */
+  static async summaryForOrigin(origin, originId) {
+    const row = await dbGet(
+      `SELECT ${LlmCallModel.AGG_SELECT} FROM llm_calls WHERE origin = ? AND origin_id = ?`,
+      [origin, originId]
+    );
+    return LlmCallModel._shape(row);
+  }
+
   /** Totals for one goal (tasks + evaluations), sourced from the ledger. */
   static async summaryForGoal(goalId) {
     const row = await dbGet(
@@ -217,6 +235,31 @@ class LlmCallModel {
       [goalId]
     );
     return LlmCallModel._shape(row);
+  }
+
+  /** Rows whose cost is currently unknown — the repricer's work queue. */
+  static async findUnpriced(limit = 10000) {
+    return dbAll(
+      `SELECT id, provider, model, input_tokens, output_tokens,
+              cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens
+       FROM llm_calls WHERE cost_usd IS NULL LIMIT ?`,
+      [limit]
+    );
+  }
+
+  /**
+   * Resolve a previously-unknown cost (PRD-122 repricer).
+   *
+   * Guarded by `cost_usd IS NULL` so it can only ever turn UNKNOWN into KNOWN
+   * — a priced row is immutable no matter what the caller passes.
+   */
+  static async setPrice(id, { costUsd, uncachedCostUsd = null }) {
+    const r = await dbRun(
+      `UPDATE llm_calls SET cost_usd = ?, uncached_cost_usd = ?
+       WHERE id = ? AND cost_usd IS NULL`,
+      [costUsd, uncachedCostUsd, id]
+    );
+    return r.changes > 0;
   }
 
   /**

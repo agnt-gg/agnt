@@ -137,7 +137,8 @@ function createTables() {
         tool_output_cap INTEGER DEFAULT 100000,
         max_tool_rounds INTEGER DEFAULT 100,
         fallback_providers TEXT,
-        fallback_enabled INTEGER DEFAULT 0
+        fallback_enabled INTEGER DEFAULT 0,
+        subscription_costs TEXT
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -673,6 +674,22 @@ function createTables() {
       // Keyed by process role so a failure can be traced to the process that
       // suffered it. Written best-effort: if THIS write fails too, it is
       // swallowed, because bookkeeping about bookkeeping must never be fatal.
+      // Durable mirror of providerConfigs' in-memory dynamicPricingCache
+      // (PRD-122). That cache is populated whenever a provider's model list is
+      // fetched — including per-model pricing for catalogs that publish it —
+      // but it lived only in one process's memory and died on restart. So the
+      // boot-time repricer, which runs before any client opens a model picker,
+      // could never use it, and models AGNT had already seen priced went
+      // "unknown" again every boot. Every process hydrates from this table at
+      // startup; registerDynamicPricing writes through to it best-effort.
+      db.run(`CREATE TABLE IF NOT EXISTS model_metadata_cache (
+        cache_key TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        metadata TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
       db.run(`CREATE TABLE IF NOT EXISTS ledger_write_failures (
         source TEXT PRIMARY KEY,
         failures INTEGER NOT NULL DEFAULT 0,
@@ -1420,6 +1437,26 @@ function runMigrations() {
           console.error('Error adding fallback_providers column to users:', err);
         } else if (!err) {
           console.log('✓ Added fallback_providers column to users table');
+        }
+      });
+
+      // Migration: what each subscription seat costs per month (PRD-122).
+      //
+      // AGNT already knows WHICH providers are flat-rate seats
+      // (SUBSCRIPTION_PROVIDERS) and what their usage would have cost on a
+      // metered API. The one thing it cannot know is what the user actually
+      // pays for them — nothing ever asked. Without it the spend panel can say
+      // "your seats did $18,463 of metered work" but not what that work cost
+      // you, which is the only figure that turns the number into a decision.
+      //
+      // JSON object keyed by provider: { "claude-code": 200, "openai-codex": 20 }.
+      // Entirely optional — NULL means "not told", and every seat figure still
+      // renders, just without the comparison.
+      db.run(`ALTER TABLE users ADD COLUMN subscription_costs TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding subscription_costs column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added subscription_costs column to users table');
         }
       });
 

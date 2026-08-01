@@ -142,6 +142,57 @@ describe('GET /summary', () => {
   });
 });
 
+describe('the Nd window means calendar days, not a rolling N x 24h', () => {
+  // This is what makes the panel reconcile with the usage chart above it. The
+  // chart asks for calendar dates and the rollup groups them with
+  // DATE(..., 'localtime'); a rolling window would start up to 24 hours later,
+  // so the same "Last 14 Days" would cover two different spans and anyone
+  // comparing the two figures would reasonably conclude one was broken.
+
+  const DAYS = 14;
+  const marker = 'user-window-boundary';
+
+  /** Local midnight `daysAgo` days back, expressed the way `ts` is stored. */
+  const localMidnightUtc = (daysAgo, offsetMs = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    d.setHours(0, 0, 0, 0);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000 + offsetMs)
+      .toISOString().replace('T', ' ').slice(0, 19);
+  };
+
+  const seed = async (ts) => {
+    const id = await recordLlmCall({
+      userId: marker, origin: 'chat', ...PRICED,
+      usage: { inputTokens: 1000, outputTokens: 100 },
+    });
+    await dbRun('UPDATE llm_calls SET ts = ? WHERE id = ?', [ts, id]);
+  };
+
+  beforeAll(async () => {
+    await dbRun('INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)', [
+      marker, 'window@test.local', 'Window',
+    ]);
+  });
+
+  it('includes a call from the MORNING of the first day in range', async () => {
+    // One minute past local midnight, 14 days ago. A rolling 14x24h window
+    // computed at any time after 00:01 would miss this.
+    await seed(localMidnightUtc(DAYS, 60_000));
+
+    const { body } = await get(`/ledger/summary?window=${DAYS}d`, marker);
+    expect(body.calls).toBe(1);
+  });
+
+  it('excludes a call from just before that midnight', async () => {
+    // One minute earlier is the previous calendar day, and must fall outside.
+    await seed(localMidnightUtc(DAYS, -60_000));
+
+    const { body } = await get(`/ledger/summary?window=${DAYS}d`, marker);
+    expect(body.calls).toBe(1); // still only the in-range row from above
+  });
+});
+
 describe('GET /breakdown', () => {
   it('buckets by origin and the buckets reconcile to the summary', async () => {
     await recordLlmCall({
