@@ -58,6 +58,7 @@ import ConversationSettingsRoutes from './src/routes/ConversationSettingsRoutes.
 import ScheduleRoutes from './src/routes/ScheduleRoutes.js';
 import SchedulerService from './src/services/scheduler/SchedulerService.js';
 import WalletRoutes from './src/routes/WalletRoutes.js';
+import LedgerRoutes from './src/routes/LedgerRoutes.js';
 import ContractRoutes from './src/routes/ContractRoutes.js';
 import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
 import EvolutionCoreRoutes from './src/routes/EvolutionCoreRoutes.js';
@@ -225,6 +226,7 @@ app.use('/api/admin', AdminClientVersionRoutes);
 app.use('/api/conversations', ConversationSettingsRoutes);
 app.use('/api/schedules', ScheduleRoutes);
 app.use('/api/wallets', WalletRoutes);
+app.use('/api/ledger', LedgerRoutes);
 app.use('/api/contracts', ContractRoutes);
 app.use('/api/mutations', MutationHistoryRoutes);
 app.use('/api/evolution', EvolutionCoreRoutes);

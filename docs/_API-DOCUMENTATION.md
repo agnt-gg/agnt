@@ -23,6 +23,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Goal Routes](#goal-routes)
 - [Group Routes](#group-routes)
 - [Layout Routes](#layout-routes)
+- [Ledger Routes](#ledger-routes)
 - [MCP Routes](#mcp-routes)
 - [Memory Routes](#memory-routes)
 - [Model Routes](#model-routes)
@@ -4052,6 +4053,125 @@ Cross-device persistence for the Workspaces page (canvas tabs). Backed by the ex
   "id": "ws_abc123"
 }
 ```
+
+---
+
+## Ledger Routes
+
+Base path: `/api/ledger`
+
+The execution ledger (PRD-122): one row per LLM request/response round-trip, across **every** execution path — orchestrator chat, agent runs, workflow LLM nodes, goal tasks and goal evaluations.
+
+Before this existed, four subsystems each kept their own books and two kept none, so "what did this cost?" was not answerable from AGNT's own data. Every row is written by exactly one function (`services/execution/LedgerRecorder.js`); `backend/src/services/execution/ledgerContracts.spec.js` fails the build if a second write path appears.
+
+### The cost triple
+
+Every monetary response carries three numbers, and consumers must render all three:
+
+| Field | Meaning |
+|---|---|
+| `costUsd` | Charged spend. Excludes subscription-seat usage. |
+| `unpricedCalls` | Calls whose model has no pricing metadata. Their cost is **unknown**, stored as `NULL`, and deliberately NOT folded into the total as zero. |
+| `notionalUsd` | What subscription-provider usage (Claude Code, Codex, Gemini CLI…) *would* have cost on a metered API. Not money charged. |
+
+A total that silently omits `unpricedCalls` reintroduces the defect this ledger was built to fix, so surfaces should read `"$1.23 · 3 calls unpriced"` rather than presenting a bare figure.
+
+### Get Spend Summary
+
+**GET** `/summary`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `window` (query, optional): `today` (default), or `7d` / `30d` style
+  - `since` / `until` (query, optional): explicit bounds; override `window`
+- **Response**:
+
+```json
+{
+  "success": true,
+  "costUsd": 3.4212,
+  "notionalUsd": 0.88,
+  "uncachedCostUsd": 15.22,
+  "savedUsd": 11.80,
+  "notionalUncachedUsd": 4.10,
+  "notionalSavedUsd": 3.22,
+  "unpricedCalls": 2,
+  "calls": 147,
+  "inputTokens": 1840233,
+  "outputTokens": 92011,
+  "cacheReadTokens": 1502000,
+  "cacheWriteTokens": 210500,
+  "ledgerHealth": {
+    "totalFailures": 0,
+    "byProcess": [],
+    "thisProcess": { "recorded": 147, "failed": 0, "lastError": null, "scope": "backend", "pid": 24924 }
+  }
+}
+```
+
+`savedUsd` is what prompt caching saved: the same pricing function run with and without the cache breakdown, so the two can never drift. It is negative on a turn that first writes a cache prefix (Anthropic cache writes cost 1.25x/2.0x), which is reported honestly rather than clamped to zero.
+
+**Charged and notional are separate axes throughout.** `savedUsd` pairs with `costUsd`; `notionalSavedUsd` pairs with `notionalUsd`. Crossing them would produce arithmetic nonsense, and reporting only the charged axis would make savings a structural zero for every subscription user — the exact audience for whom savings is the only meaningful money on the page.
+
+**`ledgerHealth.totalFailures` is the tripwire.** A non-zero value means ledger writes are being dropped and every total above is understated.
+
+It is deliberately **cross-process**. AGNT runs the workflow engine as a separate OS process (`backend/src/workflow/WorkflowProcess.js`) from the HTTP API (`backend/server.js`). Both write LLM calls to the same SQLite file but share no memory, so an in-process counter answering this endpoint would report a serene zero while the workflow process dropped every write — a tripwire that cannot trip for the path most likely to break. `byProcess` therefore reads from the shared `ledger_write_failures` table, keyed by process role.
+
+`thisProcess` is the in-memory counter for whichever process served the request. It is kept because it still works when the database itself is the broken thing, and it carries an explicit `scope` so it can never be mistaken for a global figure.
+
+### Get Spend Breakdown
+
+**GET** `/breakdown`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `groupBy` (query, optional): one of `origin` (default), `provider`, `model`, `origin_id`, `conversation`, `day`
+  - `window` / `since` / `until` (query, optional): as above
+- **Response**: `{ "success": true, "groupBy": "origin", "rows": [ { "bucket": "goal_task", ...cost triple } ] }`
+- **Errors**: `400` if `groupBy` is not whitelisted. It is the one value that reaches SQL as an identifier rather than a bound parameter, so the whitelist is what makes it safe.
+
+Origins: `chat`, `agent`, `goal_task`, `goal_eval`, `workflow_node`, `insight`, `system`.
+
+### Get Run Tree
+
+**GET** `/tree/:executionId`
+
+The run tree rooted at the given execution, with per-node and subtree cost. Resolves the whole tree from any member, not just the root.
+
+- **Authentication**: Required
+- **Response**:
+
+```json
+{
+  "success": true,
+  "rootExecutionId": "uuid",
+  "nodes": [
+    {
+      "id": "uuid",
+      "parentExecutionId": "uuid|null",
+      "agentName": "Research Assistant",
+      "origin": "agent",
+      "status": "completed",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "ledger": { "costUsd": 0.42, "calls": 6, "unpricedCalls": 0 }
+    }
+  ],
+  "unattached": [
+    { "origin": "goal_task", "originId": "goal-uuid", "costUsd": 1.10, "calls": 12 }
+  ],
+  "subtree": { "costUsd": 1.52, "notionalUsd": 0, "unpricedCalls": 0, "calls": 18 }
+}
+```
+
+- **Errors**: `404` if the execution does not exist or belongs to another user.
+
+`unattached` carries ledger rows that belong to the tree but have no `agent_executions` row of their own — goal tasks and evaluations. They are real spend, and omitting them would make `subtree.costUsd` quietly low.
+
+### Notes
+
+- **`credits_used` is not money.** Across `agent_executions`, `workflow_executions` and goal detail, that column stores **wall-clock seconds**. It is retained under its historical name because existing UI reads it. Every monetary figure comes from this ledger.
+- **Cost is an estimate, not an invoice.** `estimate_calibration` corrects for CLI-backed providers that inject invisible preamble, but surfaces should label the figure *estimated*.
 
 ---
 
