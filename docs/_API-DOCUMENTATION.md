@@ -4084,6 +4084,8 @@ A total that silently omits `unpricedCalls` reintroduces the defect this ledger 
 - **Parameters**:
   - `window` (query, optional): `today` (default), or `7d` / `30d` style
   - `since` / `until` (query, optional): explicit bounds; override `window`
+
+**`Nd` means N CALENDAR DAYS back to local midnight — not a rolling N×24 hours.** The dashboard usage chart asks for calendar dates and the rollup groups them with `DATE(..., 'localtime')`, so a rolling window would begin up to 24 hours later than the chart's and the two figures would never reconcile; anyone comparing them would reasonably conclude one was broken. Same boundary, same buckets. Pinned by `LedgerRoutes.test.js`.
 - **Response**:
 
 ```json
@@ -4170,6 +4172,13 @@ The run tree rooted at the given execution, with per-node and subtree cost. Reso
 
 ### Notes
 
+- **History before 2026-08-01 was inherited, not fabricated.** The ledger began recording on 2026-08-01; on first boot after that it backfills earlier history from two sources, each stamped with the run's original date:
+  - **Agent runs** from `agent_executions`, copying the cost that was **measured at run time** (provider, model, tokens and cache split included). Marker `prd122_backfill_agent_executions`.
+  - **Workflow LLM nodes** from `node_executions`, which stored tokens but never provider or model. Those are recovered from the workflow definition (`workflows.workflow_data` → `nodes[].parameters`) — the same place the run read them from. Marker `prd122_backfill_node_executions`.
+
+  Two limitations, stated rather than hidden. The workflow definition consulted is the **current** one, so a node whose model was changed after a run is priced with today's model; and `node_executions` never stored a cache split, so those rows price at standard rates and **claim zero savings** rather than assuming a hit rate. A node deleted from its workflow since the run is left unpriced rather than guessed at.
+
+  Both backfills are per-row idempotent and resumable: dedup is by "does this execution already have a ledger row", so an interrupted run simply continues on the next boot. Goal-evaluation history is not backfilled — `goal_evaluations` records neither provider nor model, and nothing else can supply them.
 - **`credits_used` is not money.** Across `agent_executions`, `workflow_executions` and goal detail, that column stores **wall-clock seconds**. It is retained under its historical name because existing UI reads it. Every monetary figure comes from this ledger.
 - **Cost is an estimate, not an invoice.** `estimate_calibration` corrects for CLI-backed providers that inject invisible preamble, but surfaces should label the figure *estimated*.
 
