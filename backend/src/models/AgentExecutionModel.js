@@ -27,17 +27,31 @@ class AgentExecutionModel {
   /**
    * Create a new agent execution record
    */
-  static create(userId, agentId, agentName, conversationId, initialPrompt, provider, model, status = 'running') {
+  static create(
+    userId, agentId, agentName, conversationId, initialPrompt, provider, model, status = 'running',
+    // PRD-122 run-tree linkage. Trailing + optional so the ~1 existing caller
+    // and any future one keep working unchanged; a run with no parent is a
+    // root, which is the overwhelmingly common case.
+    { parentExecutionId = null, rootExecutionId = null, origin = 'chat' } = {}
+  ) {
     const id = generateUUID();
     const startTime = new Date().toISOString();
+
+    // A root run is its own root. Denormalising this at INSERT (rather than
+    // walking the parent chain at read time) is what lets subtree cost be a
+    // single indexed scan instead of a recursive CTE on every dashboard render.
+    // Written once, never updated, so it cannot drift from the parent chain.
+    const root = rootExecutionId || (parentExecutionId ? null : id);
 
     const operation = () =>
       new Promise((resolve, reject) => {
         db.run(
           `INSERT INTO agent_executions
-           (id, agent_id, agent_name, user_id, conversation_id, status, start_time, initial_prompt, provider, model)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, agentId, agentName, userId, conversationId, status, startTime, initialPrompt, provider, model],
+           (id, agent_id, agent_name, user_id, conversation_id, status, start_time, initial_prompt, provider, model,
+            parent_execution_id, root_execution_id, origin)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, agentId, agentName, userId, conversationId, status, startTime, initialPrompt, provider, model,
+            parentExecutionId, root, origin],
           function (err) {
             if (err) reject(err);
             else resolve(id);
@@ -46,6 +60,24 @@ class AgentExecutionModel {
       });
 
     return retryOnBusy(operation);
+  }
+
+  /**
+   * Resolve the tree root for a would-be child (PRD-122).
+   *
+   * Returns the parent's root, so a grandchild attaches to the same tree as its
+   * grandparent rather than starting a new one. Falls back to the parent's own
+   * id when the parent predates this column.
+   */
+  static getRootFor(parentExecutionId) {
+    if (!parentExecutionId) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      db.get(
+        `SELECT id, root_execution_id FROM agent_executions WHERE id = ?`,
+        [parentExecutionId],
+        (err, row) => resolve(err || !row ? parentExecutionId : (row.root_execution_id || row.id))
+      );
+    });
   }
 
   /**

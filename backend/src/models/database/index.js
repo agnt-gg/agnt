@@ -610,6 +610,76 @@ function createTables() {
         PRIMARY KEY (provider, model)
       )`);
 
+      // ==================== EXECUTION LEDGER (PRD-122) ====================
+      // One row per LLM request/response round-trip, written by exactly one
+      // caller: services/execution/LedgerRecorder.js.
+      //
+      // This table exists because four subsystems (orchestrator chat, workflow
+      // LLM node, goal task, goal evaluation) each invented their own
+      // bookkeeping and two of them kept no books at all — so "what did this
+      // cost?" was not answerable from AGNT's own data.
+      //
+      // cost_usd IS NULLABLE ON PURPOSE. NULL means "this model has no pricing
+      // metadata, so the cost is unknown". Writing 0 there is the exact defect
+      // this table was created to fix (see the old `0 as estimated_cost` in
+      // ExecutionModel._computeActivityRaw), so every aggregate reports an
+      // unpriced COUNT alongside the SUM rather than presenting a total it
+      // cannot vouch for.
+      //
+      // is_notional is frozen at write time rather than looked up at read time:
+      // a provider can move between subscription and metered billing, and a
+      // historical row must keep describing what was actually true when it was
+      // written.
+      db.run(`CREATE TABLE IF NOT EXISTS llm_calls (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        execution_id TEXT,
+        parent_execution_id TEXT,
+        root_execution_id TEXT,
+        origin TEXT NOT NULL,
+        origin_id TEXT,
+        conversation_id TEXT,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        cache_read_tokens INTEGER DEFAULT 0,
+        cache_write_5m_tokens INTEGER DEFAULT 0,
+        cache_write_1h_tokens INTEGER DEFAULT 0,
+        cost_usd REAL,
+        uncached_cost_usd REAL,
+        is_notional INTEGER DEFAULT 0,
+        duration_ms INTEGER,
+        status TEXT NOT NULL DEFAULT 'ok',
+        error TEXT,
+        ts DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_user_ts ON llm_calls(user_id, ts)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_execution ON llm_calls(execution_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_root ON llm_calls(root_execution_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_origin ON llm_calls(origin, origin_id)`);
+
+      // Cross-process tripwire for dropped ledger writes.
+      //
+      // recordLlmCall never throws — losing a bookkeeping row must not fail a
+      // provider response the user already paid for. The counter is what keeps
+      // that swallow honest, and it MUST be shared: AGNT runs the workflow
+      // engine in a separate OS process (backend/src/workflow/WorkflowProcess.js)
+      // from the HTTP API, so a counter held in one process's memory is
+      // structurally blind to failures in the other — a tripwire that cannot
+      // trip for the very path most likely to break.
+      //
+      // Keyed by process role so a failure can be traced to the process that
+      // suffered it. Written best-effort: if THIS write fails too, it is
+      // swallowed, because bookkeeping about bookkeeping must never be fatal.
+      db.run(`CREATE TABLE IF NOT EXISTS ledger_write_failures (
+        source TEXT PRIMARY KEY,
+        failures INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_at DATETIME
+      )`);
+
       db.run(`CREATE TABLE IF NOT EXISTS agent_tool_executions (
         id TEXT PRIMARY KEY,
         execution_id TEXT NOT NULL,
@@ -1399,6 +1469,86 @@ function runMigrations() {
           }
         });
       });
+
+      // Migration: run-tree columns on agent_executions (PRD-122, 2026-08-01)
+      //
+      // Without a parent pointer a nested run is indistinguishable from a
+      // user-initiated one, so "what did this run spawn, and what did the whole
+      // tree cost?" was not answerable by any query — the edge was never
+      // stored.
+      //
+      // root_execution_id is denormalised deliberately. Subtree cost is the
+      // most frequent query the run tree and the spend HUD will issue, and a
+      // recursive CTE on every render is a cost AGNT does not need to pay. It
+      // is written once at insert (root = parent ? parent.root : self.id) and
+      // never updated, so it cannot drift out of agreement with the parent
+      // chain.
+      const runTreeColumns = [
+        { table: 'agent_executions', name: 'parent_execution_id', type: 'TEXT' },
+        { table: 'agent_executions', name: 'root_execution_id', type: 'TEXT' },
+        { table: 'agent_executions', name: 'origin', type: "TEXT DEFAULT 'chat'" },
+      ];
+
+      runTreeColumns.forEach((col) => {
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to ${col.table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to ${col.table} table`);
+          }
+        });
+      });
+
+      db.run(
+        `CREATE INDEX IF NOT EXISTS idx_agent_executions_root ON agent_executions(root_execution_id)`,
+        () => {}
+      );
+
+      // One-time cache invalidation for the usage rollup (PRD-122).
+      //
+      // daily_usage_stats is a derived cache of _computeActivityRaw, and that
+      // query used to hard-code `0 as estimated_cost` for every workflow day.
+      // Rows computed under the old query would keep reporting zero forever,
+      // because only "yesterday" carries a freshness window — older days are
+      // cached permanently.
+      //
+      // The predicate is deliberately `computed_at < <now>` rather than an
+      // unqualified delete: the rows that need invalidating are exactly those
+      // computed by the PREVIOUS version of the query, and this migration body
+      // runs once (marker-guarded). Rows written afterwards come from the
+      // corrected query and must survive. Nothing is lost either way — it is a
+      // cache, and the recompute is the same query the dashboard runs anyway.
+      db.run(
+        `CREATE TABLE IF NOT EXISTS schema_markers (
+          marker TEXT PRIMARY KEY,
+          applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        () => {
+          db.get(
+            `SELECT marker FROM schema_markers WHERE marker = ?`,
+            ['prd122_usage_rollup_reset'],
+            (markerErr, markerRow) => {
+              if (markerErr || markerRow) return; // already applied, or cannot tell — leave it alone
+              const cutoff = new Date().toISOString().replace('T', ' ').slice(0, 19);
+              db.run(
+                `DELETE FROM daily_usage_stats WHERE computed_at <= ?`,
+                [cutoff],
+                (delErr) => {
+                  if (delErr) {
+                    // Status quo (stale cache persists); self-heals next boot.
+                    console.error('[migrations] usage rollup reset failed:', delErr);
+                    return;
+                  }
+                  db.run(`INSERT OR IGNORE INTO schema_markers (marker) VALUES (?)`, [
+                    'prd122_usage_rollup_reset',
+                  ]);
+                  console.log('✓ Reset stale daily_usage_stats so workflow spend recomputes (PRD-122)');
+                }
+              );
+            }
+          );
+        }
+      );
 
       // Migration: Covering index for the activity chart's token aggregation (2026-07-03).
       // Contains every column the /executions/activity inner subquery touches, so
