@@ -494,7 +494,11 @@ export default {
     /** Workspace history hydrate — may need retries until workspace sync lands. */
     const hydrateWorkspaceHistory = (attempt = 0) => {
       if (typeof props.channelKey !== 'string' || !props.channelKey.startsWith('workspace:')) return;
-      store.dispatch('chatUnified/hydrateWorkspaceChannel', { channelKey: props.channelKey })
+      // Promise.resolve, not a bare .then: Vuex returns UNDEFINED for an action
+      // it does not have registered, and this hydrate is a best-effort extra.
+      // A host that mounts a chat without the workspace sync actions must still
+      // get a working chat, not a TypeError during setup().
+      Promise.resolve(store.dispatch('chatUnified/hydrateWorkspaceChannel', { channelKey: props.channelKey }))
         .then((r) => {
           if (r?.ok && r.reason === 'hydrated') {
             scrollToBottom(true);
