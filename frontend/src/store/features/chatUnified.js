@@ -8,6 +8,11 @@ import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { hydrateMessage } from '@/services/chatStreamReducer.js';
+// The key only — workspaceStorage.js is deliberately import-free and
+// side-effect-free, so reading workspace state here never boots the
+// useWorkspaces singleton (which MINTS a workspace on import). Two writers to
+// one blob is already delicate; two spellings of its key would be worse.
+import { STORAGE_KEY as WORKSPACES_STORAGE_KEY } from '@/views/Terminal/CenterPanel/screens/Workspace/workspaceStorage.js';
 
 // Resolve a per-workspace AI override from persisted workspace state, given a
 // chat channel key. Returns { provider, model } or null. Reads the same
@@ -19,7 +24,7 @@ function resolveWorkspaceAiForChannel(channelKey) {
   if (typeof channelKey !== 'string' || !channelKey.startsWith('workspace:')) return null;
   const wsId = channelKey.slice('workspace:'.length).split(':')[0];
   try {
-    const raw = localStorage.getItem('agnt:workspaces:v2');
+    const raw = localStorage.getItem(WORKSPACES_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const ws = (parsed?.workspaces || []).find((w) => w.id === wsId);
@@ -45,7 +50,7 @@ function readWorkspaceChannelConversation(channelKey) {
   const wsId = workspaceIdFromChannel(channelKey);
   if (!wsId) return null;
   try {
-    const raw = localStorage.getItem('agnt:workspaces:v2');
+    const raw = localStorage.getItem(WORKSPACES_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const ws = (parsed?.workspaces || []).find((w) => w.id === wsId);
@@ -59,7 +64,7 @@ function writeWorkspaceChannelConversation(channelKey, conversationId) {
   const wsId = workspaceIdFromChannel(channelKey);
   if (!wsId || !conversationId) return;
   try {
-    const raw = localStorage.getItem('agnt:workspaces:v2');
+    const raw = localStorage.getItem(WORKSPACES_STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed?.workspaces)) return;
@@ -69,7 +74,7 @@ function writeWorkspaceChannelConversation(channelKey, conversationId) {
     if (ws.channelConversations[channelKey] === conversationId) return;
     ws.channelConversations[channelKey] = conversationId;
     ws.updatedAt = Date.now();
-    localStorage.setItem('agnt:workspaces:v2', JSON.stringify(parsed));
+    localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(parsed));
     // Notify Workspaces page so in-memory workspaces + server push pick it up.
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('agnt:workspace-conversation', {

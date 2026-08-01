@@ -357,13 +357,6 @@ export default {
     function onAiModelSelected(value) {
       aiPicker.value.model = value ?? '';
     }
-    const globalProviderShort = computed(() => {
-      const p = store.state.aiProvider?.selectedProvider || '';
-      if (!p) return '';
-      const custom = (store.state.aiProvider?.customProviders || []).find((cp) => cp.id === p);
-      const name = custom?.provider_name || p;
-      return String(name).replace(/\./g, '-');
-    });
     /** Tab label: override provider name, or plain "default" (no global name). */
     function aiBadgeLabel(ws) {
       if (ws?.ai?.provider) return ws.ai.provider;
@@ -1021,13 +1014,11 @@ export default {
       closeWorkspace,
       setWorkspaceAi,
       aiPicker,
-      aiProviderOptions,
+      // Only the *SelectOptions are bound in the template; the raw lists and
+      // the key/label helpers they are built from stay internal.
       aiProviderSelectOptions,
-      aiModelOptions,
       aiModelSelectOptions,
       aiModelsLoading,
-      modelKey,
-      modelLabel,
       aiBadgeLabel,
       aiBadgeTooltip,
       openAiPicker,
@@ -1137,21 +1128,8 @@ export default {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
 }
-.ws-ai-label select {
-  font-size: 12px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.14));
-  background: rgba(0, 0, 0, 0.35);
-  color: var(--color-text, rgba(255, 255, 255, 0.88));
-  outline: none;
-}
-.ws-ai-label select:focus {
-  border-color: rgba(var(--primary-rgb, 229, 61, 143), 0.55);
-}
-.ws-ai-label select:disabled {
-  opacity: 0.5;
-}
+/* The AI picker uses CustomSelect (uiContracts forbids a native <select> here),
+   so the native-control rules that used to live at this spot are gone. */
 .ws-ai-actions {
   display: flex;
   flex-direction: column;

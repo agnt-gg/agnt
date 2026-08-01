@@ -880,8 +880,6 @@ async function universalChatHandler(req, res, context = {}) {
   let normalizedProvider = resolvedProvider.toLowerCase();
   let model = resolvedModel;
 
-
-
   // Keep DB in sync with the provider/model the frontend is actually using,
   // so background processes (InsightEngine, etc.) always have current values.
   //
