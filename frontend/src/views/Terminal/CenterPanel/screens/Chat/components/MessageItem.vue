@@ -79,11 +79,39 @@
 
                 <div v-if="isExpanded(tc.index)" class="tool-call-content">
                   <div class="tool-params">
-                    <div class="params-label">Input Parameters:</div>
-                    <pre class="params-content"><code class="language-json" v-html="formatJSON(tc.toolCall.args)"></code></pre>
+                    <div class="params-label">
+                      <span>Input Parameters:</span>
+                      <template v-if="payloadInfo(tc.toolCall.args, payloadKey(tc, 'args')).canExpand">
+                        <span class="payload-meta">{{ payloadInfo(tc.toolCall.args, payloadKey(tc, 'args')).meta }}</span>
+                        <span class="payload-actions">
+                          <button type="button" class="payload-btn" @click="togglePayload(payloadKey(tc, 'args'))">
+                            {{ isPayloadExpanded(payloadKey(tc, 'args')) ? 'Collapse' : 'Expand' }}
+                          </button>
+                          <button type="button" class="payload-btn" @click="copyPayload(tc.toolCall.args, payloadKey(tc, 'args'))">
+                            {{ isPayloadCopied(payloadKey(tc, 'args')) ? 'Copied' : 'Copy all' }}
+                          </button>
+                          <button type="button" class="payload-btn" @click="downloadPayload(tc.toolCall.args, `${tc.toolCall.name || 'tool'}-input.json`)">Download</button>
+                        </span>
+                      </template>
+                    </div>
+                    <pre class="params-content"><code class="language-json" :key="payloadKey(tc, 'args') + (isPayloadExpanded(payloadKey(tc, 'args')) ? ':x' : '')" v-html="payloadHtml(tc.toolCall.args, payloadKey(tc, 'args'))"></code></pre>
                   </div>
                   <div v-if="tc.toolCall.result" class="tool-result">
-                    <div class="result-label">Output:</div>
+                    <div class="result-label">
+                      <span>Output:</span>
+                      <template v-if="!hasImages(tc.toolCall.result) && payloadInfo(tc.toolCall.result, payloadKey(tc, 'result')).canExpand">
+                        <span class="payload-meta">{{ payloadInfo(tc.toolCall.result, payloadKey(tc, 'result')).meta }}</span>
+                        <span class="payload-actions">
+                          <button type="button" class="payload-btn" @click="togglePayload(payloadKey(tc, 'result'))">
+                            {{ isPayloadExpanded(payloadKey(tc, 'result')) ? 'Collapse' : 'Expand' }}
+                          </button>
+                          <button type="button" class="payload-btn" @click="copyPayload(tc.toolCall.result, payloadKey(tc, 'result'))">
+                            {{ isPayloadCopied(payloadKey(tc, 'result')) ? 'Copied' : 'Copy all' }}
+                          </button>
+                          <button type="button" class="payload-btn" @click="downloadPayload(tc.toolCall.result, `${tc.toolCall.name || 'tool'}-output.json`)">Download</button>
+                        </span>
+                      </template>
+                    </div>
 
                     <!-- Image Gallery for image generation results -->
                     <div v-if="hasImages(tc.toolCall.result)" class="tool-images">
@@ -121,11 +149,13 @@
                     </div>
 
                     <!-- Regular JSON output for non-image results -->
-                    <pre v-else class="result-content"><code class="language-json" v-html="formatJSON(tc.toolCall.result)"></code></pre>
+                    <template v-else>
+                      <pre class="result-content"><code class="language-json" :key="payloadKey(tc, 'result') + (isPayloadExpanded(payloadKey(tc, 'result')) ? ':x' : '')" v-html="payloadHtml(tc.toolCall.result, payloadKey(tc, 'result'))"></code></pre>
+                    </template>
                   </div>
                   <div v-if="tc.toolCall.error" class="tool-error">
                     <div class="error-label">Error:</div>
-                    <pre class="error-content"><code v-html="tc.toolCall.error"></code></pre>
+                    <pre class="error-content"><code v-html="payloadHtml(tc.toolCall.error, payloadKey(tc, 'error'))"></code></pre>
                   </div>
                 </div>
 
@@ -2310,34 +2340,165 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       { immediate: true, deep: false },
     );
 
-    const formatJSON = (obj) => {
+    // Largest slice of a single offloaded blob we will splice back into the
+    // on-screen payload. The backend deliberately ships the FULL content of every
+    // offloaded field to the browser (see sendEvent('data_content')), so without a
+    // cap here a 10 MB read gets re-inflated and stringified on every render.
+    // Export (`full: true`) is uncapped — nothing is ever unreachable.
+    const MAX_INLINE_DATA_REF = 100000;
+
+    // ---- Bounded tool payloads -------------------------------------------------
+    // The ONLY behavioural change to these blocks: the string handed to the
+    // existing markup is clipped, and a bar offers Expand / Copy all / Download.
+    // Markup, classes and CSS are untouched, so highlight.js keeps working
+    // (MessageItem's own pass targets `pre code:not(.hljs)`) and the type size
+    // stays exactly what it was.
+    const PAYLOAD_PREVIEW_CHARS = 2000;
+    const PAYLOAD_EXPANDED_CHARS = 50000;
+
+    const expandedPayloads = ref(new Set());
+    const payloadKey = (tc, field) => `${tc?.toolCall?.id || tc?.index}:${field}`;
+    const isPayloadExpanded = (key) => expandedPayloads.value.has(key);
+    const togglePayload = (key) => {
+      const next = new Set(expandedPayloads.value);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      expandedPayloads.value = next;
+      // The :key on <code> forces a fresh element (no stale .hljs), so the
+      // existing highlight pass will pick the new text up.
+      nextTick(() => debouncedHighlightCode());
+    };
+
+    const escapeToolHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Serializing a multi-megabyte payload is the expensive part, so do it once
+    // per object identity instead of on every re-render.
+    const payloadCache = new WeakMap();
+    const payloadFull = (obj) => {
+      if (obj && typeof obj === 'object') {
+        const hit = payloadCache.get(obj);
+        if (hit !== undefined) return hit;
+        const out = serializeToolPayload(obj, { full: false });
+        payloadCache.set(obj, out);
+        return out;
+      }
+      return serializeToolPayload(obj, { full: false });
+    };
+
+    const payloadHtml = (obj, key) => {
+      const full = payloadFull(obj);
+      const limit = isPayloadExpanded(key) ? PAYLOAD_EXPANDED_CHARS : PAYLOAD_PREVIEW_CHARS;
+      if (full.length <= limit) return escapeToolHtml(full);
+      return `${escapeToolHtml(full.slice(0, limit))}\n… [clipped for display — use Copy all or Download for everything]`;
+    };
+
+    const payloadInfo = (obj, key) => {
+      const full = payloadFull(obj);
+      const canExpand = full.length > PAYLOAD_PREVIEW_CHARS;
+      if (!canExpand) return { canExpand: false, meta: '' };
+      const bytes =
+        full.length < 1024
+          ? `${full.length} B`
+          : full.length < 1048576
+            ? `${(full.length / 1024).toFixed(1)} KB`
+            : `${(full.length / 1048576).toFixed(1)} MB`;
+      let lines = 1;
+      for (let i = 0; i < full.length; i += 1) if (full.charCodeAt(i) === 10) lines += 1;
+      return { canExpand: true, meta: `${bytes} · ${lines.toLocaleString()} lines` };
+    };
+
+    // Per-payload copy confirmation. Keyed like the expansion state, because a
+    // message can show several tool cards and only the clicked button should
+    // change. Timers are tracked so a rapid second click restarts the window
+    // instead of the first timer cutting the second confirmation short.
+    const COPIED_FEEDBACK_MS = 1500;
+    const copiedPayloads = ref(new Set());
+    const copiedTimers = new Map();
+    const isPayloadCopied = (key) => copiedPayloads.value.has(key);
+
+    const markPayloadCopied = (key) => {
+      const next = new Set(copiedPayloads.value);
+      next.add(key);
+      copiedPayloads.value = next;
+
+      clearTimeout(copiedTimers.get(key));
+      copiedTimers.set(
+        key,
+        setTimeout(() => {
+          const cleared = new Set(copiedPayloads.value);
+          cleared.delete(key);
+          copiedPayloads.value = cleared;
+          copiedTimers.delete(key);
+        }, COPIED_FEEDBACK_MS),
+      );
+    };
+
+    const copyPayload = async (obj, key) => {
       try {
-        // Resolve DATA_REF references before displaying
+        await navigator.clipboard.writeText(serializeToolPayload(obj, { full: true }));
+        // Only confirm what actually happened — clipboard writes fail on
+        // insecure origins and when permission is denied.
+        markPayloadCopied(key);
+      } catch (e) {
+        console.error('[MessageItem] payload copy failed', e);
+      }
+    };
+
+    // A message can unmount inside the feedback window (scrolled out, chat
+    // cleared). Without this the callback still runs and writes to a ref on a
+    // dead component.
+    onBeforeUnmount(() => {
+      copiedTimers.forEach((timer) => clearTimeout(timer));
+      copiedTimers.clear();
+    });
+
+    const downloadPayload = (obj, filename) => {
+      try {
+        const blob = new Blob([serializeToolPayload(obj, { full: true })], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch (e) {
+        console.error('[MessageItem] payload download failed', e);
+      }
+    };
+
+    /**
+     * Serialize a tool payload for display or export.
+     * @param {*} obj      raw args / result
+     * @param {{full?: boolean}} opts  `full` skips the per-field inline cap (copy/download)
+     */
+    const serializeToolPayload = (obj, { full = false } = {}) => {
+      try {
         const resolveDataRefs = (data) => {
           if (typeof data === 'string') {
-            // Check for DATA_REF pattern
             const dataRefMatch = data.match(/^\{\{DATA_REF:(.+?)\}\}$/);
-            if (dataRefMatch) {
-              const dataId = dataRefMatch[1];
-              // Try to resolve from cache
-              const cached = props.dataCache.get(dataId);
-              // The store writes this entry as { content, toolCallId, messageId,
-              // size, path } — see ADD_DATA_TO_CACHE. Reading `.data` here (the
-              // key the IMAGE cache uses) always yielded undefined, so every
-              // DATA_REF fell through to the placeholder below even when the
-              // payload was cached and available.
-              if (cached && cached.content !== undefined) {
-                console.log(`[MessageItem] Resolved DATA_REF: ${dataId}`);
-                return cached.content; // Return the actual data
-              }
-              // Fallback: show placeholder if not in cache
-              console.warn(`[MessageItem] DATA_REF not found in cache: ${dataId}`);
+            if (!dataRefMatch) return data;
+
+            const dataId = dataRefMatch[1];
+            // The store writes this entry as { content, toolCallId, messageId,
+            // size, path } — see ADD_DATA_TO_CACHE. Reading `.data` here (the
+            // key the IMAGE cache uses) always yielded undefined, so every
+            // DATA_REF fell through to the placeholder even when cached.
+            const cached = props.dataCache.get(dataId);
+            if (!cached || cached.content === undefined) {
               return `[Large data - ${dataId}]`;
             }
-            return data;
-          } else if (Array.isArray(data)) {
-            return data.map((item) => resolveDataRefs(item));
-          } else if (data !== null && typeof data === 'object') {
+
+            const content =
+              typeof cached.content === 'string' ? cached.content : JSON.stringify(cached.content, null, 2);
+            if (full || content.length <= MAX_INLINE_DATA_REF) return content;
+
+            const omitted = content.length - MAX_INLINE_DATA_REF;
+            return `${content.slice(0, MAX_INLINE_DATA_REF)}\n… [${omitted.toLocaleString()} more characters — use Download for the full payload]`;
+          }
+          if (Array.isArray(data)) return data.map((item) => resolveDataRefs(item));
+          if (data !== null && typeof data === 'object') {
             const resolved = {};
             for (const [key, value] of Object.entries(data)) {
               resolved[key] = resolveDataRefs(value);
@@ -2348,9 +2509,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         };
 
         const resolvedObj = resolveDataRefs(obj);
-
-        // Just stringify the JSON with proper indentation
-        // The CSS white-space: pre-wrap will handle the formatting
+        if (typeof resolvedObj === 'string') return resolvedObj;
         return JSON.stringify(resolvedObj, null, 2);
       } catch (e) {
         return String(obj);
@@ -2673,7 +2832,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       submitEdit,
       handleEditKeydown,
       autoResizeEdit,
-      formatJSON,
+      serializeToolPayload,
+      payloadKey,
+      payloadHtml,
+      payloadInfo,
+      isPayloadExpanded,
+      togglePayload,
+      copyPayload,
+      isPayloadCopied,
+      downloadPayload,
       formatTime,
       isExpanded,
       isRunning,
@@ -3200,6 +3367,16 @@ span.nodeLabel p {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
+  /* Hosts the payload meta + controls on the same row. A lone text node in a
+     flex container renders identically to before, so the label is unchanged.
+     align-items: center, not baseline: under baseline the row is sized by the
+     tallest ascent PLUS the deepest descent across items, so adding a <button>
+     grew the row 1px taller than a plain label. Centring sizes it to the
+     tallest item, keeping every label row the same height. All items share a
+     font-size, so nothing shifts visually. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .params-content,
@@ -3211,11 +3388,86 @@ span.nodeLabel p {
   padding: 2em;
   background-color: rgba(0, 0, 0, 0.4);
   border-radius: 6px;
-  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
   border: none;
+
+  /* A payload block may never own the page. The character cap alone does not
+     achieve that: measured at 1400x900, a 50,000-char expanded payload rendered
+     12,348px tall — 13.7 viewports of chat pushed down.
+
+     Applied in BOTH states rather than only when expanded, because height is a
+     function of width as well as length: the 2,000-char collapsed preview is
+     560px at desktop width but roughly 950px on a 390px phone. A state-
+     dependent cap would leave that case unbounded. One rule, always true.
+
+     max-height only engages once content exceeds it, so any payload short
+     enough to fit renders exactly as it did before.
+
+     vh, not px: the guarantee wanted is "never more than a fraction of the
+     screen", which is relative to the viewport rather than to a number picked
+     on one monitor. overflow: auto (was overflow-x) scrolls both axes, so the
+     vertical overflow stays reachable instead of being clipped.
+
+     border-box, because a <pre> is content-box by default and the padding is
+     then added ON TOP of max-height: the block measured 590px against a 540px
+     cap. With border-box the cap is the whole box, so 60vh means 60vh. */
+  box-sizing: border-box;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+/* The payload controls sit inside the label row and inherit its typography —
+   0.75em uppercase micro-caps in the muted text colour — so they read as card
+   chrome, like .tool-label and .tool-status-indicator, instead of as buttons
+   competing with the output they describe. Hence `font: inherit` and no border,
+   background or radius of their own.
+
+   Deliberately always visible rather than revealed on hover: a touch pointer
+   cannot hover, so a hover-only affordance is not subtle on a phone, it is
+   absent. Low contrast plus a hover brighten gets quiet without unreachable. */
+.payload-meta {
+  font-family: var(--font-family-mono);
+  opacity: 0.65;
+  /* Must never wrap: this sits in the label row, and a wrapped meta string grew
+     that row from 13px to 40px, which is the opposite of unobtrusive. Shrinks
+     and ellipsises on narrow widths instead. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.payload-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.payload-btn {
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  /* The `font` shorthand resets line-height to normal, which makes the button's
+     line box taller than its siblings' and grows the label row by 2px. */
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+/* Hover brightens by opacity alone, never by swapping in a colour token — the
+   same thing .message-edit-btn does. The inherited colour is the theme's own
+   --color-text-muted, so raising opacity is monotonically more contrast on all
+   8 themes by construction. A literal token cannot promise that:
+   --color-bright-light-navy is #e2e2ec under the light theme, i.e. invisible. */
+.payload-btn:hover {
+  opacity: 1;
 }
 
 .uploaded-image-preview {

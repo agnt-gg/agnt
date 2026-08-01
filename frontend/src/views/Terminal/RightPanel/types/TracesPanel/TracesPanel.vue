@@ -98,7 +98,7 @@
             </div>
             <div v-if="isNodeSectionExpanded('agent-prompt', 'input')" class="io-content">
               <div v-if="isRawView('agent-prompt')" class="output-raw">
-                <pre class="io-data">{{ selectedExecution.initialPrompt }}</pre>
+                <BoundedJson :value="selectedExecution.initialPrompt" filename="prompt.txt" />
               </div>
               <div v-else class="output-rendered" v-html="renderOutput(selectedExecution.initialPrompt)"></div>
             </div>
@@ -116,7 +116,7 @@
             </div>
             <div v-if="isNodeSectionExpanded('agent-response', 'output')" class="io-content">
               <div v-if="isRawView('agent-response')" class="output-raw">
-                <pre class="io-data">{{ typeof selectedExecution.finalResponse === 'object' ? JSON.stringify(selectedExecution.finalResponse, null, 2) : selectedExecution.finalResponse }}</pre>
+                <BoundedJson :value="selectedExecution.finalResponse" filename="response.json" />
               </div>
               <div v-else class="output-rendered" v-html="renderOutput(selectedExecution.finalResponse)"></div>
             </div>
@@ -170,7 +170,7 @@
                   </div>
                   <div v-if="isNodeSectionExpanded(toolExec.id, 'input')" class="io-content">
                     <div v-if="isRawView(toolExec.id + '-input')" class="output-raw">
-                      <pre class="io-data">{{ formatJSON(toolExec.input) }}</pre>
+                      <BoundedJson :value="formatJSON(toolExec.input)" filename="tool-input.json" />
                     </div>
                     <div v-else class="output-rendered" v-html="renderOutput(toolExec.input)"></div>
                   </div>
@@ -189,7 +189,7 @@
                   </div>
                   <div v-if="isNodeSectionExpanded(toolExec.id, 'output')" class="io-content">
                     <div v-if="isRawView(toolExec.id + '-output')" class="output-raw">
-                      <pre class="io-data">{{ formatJSON(toolExec.output) }}</pre>
+                      <BoundedJson :value="formatJSON(toolExec.output)" filename="tool-output.json" />
                     </div>
                     <div v-else class="output-rendered" v-html="renderOutput(toolExec.output)"></div>
                   </div>
@@ -259,7 +259,7 @@
                   </div>
                   <div v-if="isNodeSectionExpanded(task.id, 'input')" class="io-content">
                     <div v-if="isRawView(task.id + '-input')" class="output-raw">
-                      <pre class="io-data">{{ formatJSON(task.input) }}</pre>
+                      <BoundedJson :value="formatJSON(task.input)" filename="task-input.json" />
                     </div>
                     <div v-else class="output-rendered" v-html="renderOutput(task.input)"></div>
                   </div>
@@ -278,7 +278,7 @@
                   </div>
                   <div v-if="isNodeSectionExpanded(task.id, 'output')" class="io-content">
                     <div v-if="isRawView(task.id)" class="output-raw">
-                      <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+                      <BoundedJson :value="formatJSON(task.output)" filename="task-output.json" />
                     </div>
                     <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
                   </div>
@@ -307,11 +307,11 @@
                       <div v-if="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-detail-body">
                         <div v-if="toolExecItem.arguments || toolExecItem.args || toolExecItem.input" class="tool-exec-detail-block">
                           <div class="tool-exec-detail-block-label">Input</div>
-                          <pre class="io-data">{{ formatToolResponse(toolExecItem.arguments || toolExecItem.args || toolExecItem.input) }}</pre>
+                          <BoundedJson :value="formatToolResponse(toolExecItem.arguments || toolExecItem.args || toolExecItem.input)" filename="tool-input.json" />
                         </div>
                         <div v-if="toolExecItem.response || toolExecItem.output || toolExecItem.result" class="tool-exec-detail-block">
                           <div class="tool-exec-detail-block-label">Output</div>
-                          <pre class="io-data" :class="{ 'error-data': toolHasError(toolExecItem) }">{{ formatToolResponse(toolExecItem.response || toolExecItem.output || toolExecItem.result) }}</pre>
+                          <BoundedJson :value="formatToolResponse(toolExecItem.response || toolExecItem.output || toolExecItem.result)" :tone="toolHasError(toolExecItem) ? 'error' : 'neutral'" filename="tool-output.json" />
                         </div>
                       </div>
                     </div>
@@ -378,7 +378,7 @@
                   </div>
                   <div v-if="isNodeSectionExpanded(nodeExecution.id, 'input')" class="io-content">
                     <div v-if="isRawView(nodeExecution.id + '-input')" class="output-raw">
-                      <pre class="io-data">{{ formatJSON(nodeExecution.input) }}</pre>
+                      <BoundedJson :value="formatJSON(nodeExecution.input)" filename="node-input.json" />
                     </div>
                     <div v-else class="output-rendered" v-html="renderOutput(nodeExecution.input)"></div>
                   </div>
@@ -397,7 +397,7 @@
                   </div>
                   <div v-if="isNodeSectionExpanded(nodeExecution.id, 'output')" class="io-content">
                     <div v-if="isRawView(nodeExecution.id + '-output')" class="output-raw">
-                      <pre class="io-data">{{ formatJSON(nodeExecution.output) }}</pre>
+                      <BoundedJson :value="formatJSON(nodeExecution.output)" filename="node-output.json" />
                     </div>
                     <div v-else class="output-rendered" v-html="renderOutput(nodeExecution.output)"></div>
                   </div>
@@ -420,7 +420,7 @@
 
         <div v-if="selectedExecution.log" class="detail-section">
           <h4>Execution Log</h4>
-          <pre class="execution-log">{{ filteredExecutionLog }}</pre>
+          <BoundedJson :value="filteredExecutionLog" filename="execution-log.txt" />
         </div>
 
         <!-- Linked Insights -->
@@ -529,8 +529,10 @@
 import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
+import DOMPurify from 'dompurify';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import BoundedJson from '@/components/common/BoundedJson.vue';
 
 const mdConverter = new showdown.Converter({
   tables: true,
@@ -540,11 +542,17 @@ const mdConverter = new showdown.Converter({
   ghCodeBlocks: true,
 });
 
+// showdown passes raw HTML straight through, and this panel renders agent/tool
+// output — data the user never authored. Every markdown render in this file goes
+// through here so a new call site cannot silently skip sanitization.
+const renderMarkdown = (text) => DOMPurify.sanitize(mdConverter.makeHtml(text));
+
 export default {
   name: 'TracesPanel',
   components: {
     ResourcesSection,
     Tooltip,
+    BoundedJson,
   },
   props: {
     selectedExecutionId: {
@@ -1140,12 +1148,12 @@ ${execution.log}
             parsed = JSON.parse(trimmed);
           }
         } catch (e) {
-          return mdConverter.makeHtml(parsed);
+          return renderMarkdown(parsed);
         }
       }
 
       if (typeof parsed === 'string') {
-        return mdConverter.makeHtml(parsed);
+        return renderMarkdown(parsed);
       }
 
       const extractText = (obj, depth = 0) => {
@@ -1183,7 +1191,7 @@ ${execution.log}
         return `<pre><code>${json.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
       }
 
-      return mdConverter.makeHtml(text);
+      return renderMarkdown(text);
     };
 
     // Tool execution helpers

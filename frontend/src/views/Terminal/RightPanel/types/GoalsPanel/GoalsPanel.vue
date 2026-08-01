@@ -86,7 +86,7 @@
               </div>
               <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-body">
                 <div v-if="isRawView(task.id)" class="output-raw">
-                  <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+                  <BoundedJson :value="formatJSON(task.output)" filename="task-output.json" />
                 </div>
                 <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
               </div>
@@ -115,11 +115,11 @@
                   <div v-show="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-details">
                     <div v-if="tool.arguments || tool.args || tool.input" class="tool-exec-block">
                       <div class="tool-exec-block-label">Input</div>
-                      <pre class="io-data">{{ formatToolResponse(tool.arguments || tool.args || tool.input) }}</pre>
+                      <BoundedJson :value="formatToolResponse(tool.arguments || tool.args || tool.input)" filename="tool-input.json" />
                     </div>
                     <div v-if="tool.response || tool.output || tool.result" class="tool-exec-block">
                       <div class="tool-exec-block-label">Output</div>
-                      <pre class="io-data" :class="{ 'error-text': toolHasError(tool) }">{{ formatToolResponse(tool.response || tool.output || tool.result) }}</pre>
+                      <BoundedJson :value="formatToolResponse(tool.response || tool.output || tool.result)" :tone="toolHasError(tool) ? 'error' : 'neutral'" filename="tool-output.json" />
                     </div>
                   </div>
                 </div>
@@ -133,7 +133,7 @@
                 <span>Error</span>
               </div>
               <div v-show="isNodeSectionExpanded(task.id, 'error')" class="io-body">
-                <pre class="io-data error-text">{{ task.error }}</pre>
+                <BoundedJson :value="task.error" tone="error" filename="task-error.txt" />
               </div>
             </div>
           </div>
@@ -154,7 +154,7 @@
         </div>
         <div v-show="isNodeSectionExpanded('eval', 'output')" class="io-body">
           <div v-if="isRawView('eval')" class="output-raw">
-            <pre class="eval-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+            <BoundedJson :value="formatJSON(selectedGoal.evaluation)" filename="evaluation.json" />
           </div>
           <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
         </div>
@@ -297,9 +297,11 @@
 import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
+import DOMPurify from 'dompurify';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import BoundedJson from '@/components/common/BoundedJson.vue';
 
 const mdConverter = new showdown.Converter({
   tables: true,
@@ -309,12 +311,18 @@ const mdConverter = new showdown.Converter({
   ghCodeBlocks: true,
 });
 
+// showdown passes raw HTML straight through, and this panel renders agent/tool
+// output — data the user never authored. Every markdown render in this file goes
+// through here so a new call site cannot silently skip sanitization.
+const renderMarkdown = (text) => DOMPurify.sanitize(mdConverter.makeHtml(text));
+
 export default {
   name: 'GoalsPanel',
   components: {
     ResourcesSection,
     Tooltip,
     BaseButton,
+    BoundedJson,
   },
   props: {
     selectedGoalId: {
@@ -366,13 +374,13 @@ export default {
           }
         } catch (e) {
           // Not JSON — treat as plain text/markdown
-          return mdConverter.makeHtml(parsed);
+          return renderMarkdown(parsed);
         }
       }
 
       // If it's still a plain string after parsing attempt, render as markdown
       if (typeof parsed === 'string') {
-        return mdConverter.makeHtml(parsed);
+        return renderMarkdown(parsed);
       }
 
       // Extract renderable text from structured output objects
@@ -413,7 +421,7 @@ export default {
         return `<pre><code>${json.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
       }
 
-      return mdConverter.makeHtml(text);
+      return renderMarkdown(text);
     };
 
     const goalProgress = computed(() => {
