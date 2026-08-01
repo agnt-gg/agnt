@@ -1677,7 +1677,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         getInstalledToolNames, getAllCategoryNames, DYNAMIC_GROUP_MATCHERS,
         GUIDANCE_ONLY_CATEGORIES,
       } = await import('./toolSelector.js');
-      const { getGuidanceCategory } = await import('./system-prompts/promptElements.js');
+      const { getGuidanceCategory, getGuidanceForTools } = await import('./system-prompts/promptElements.js');
       const { getAvailableToolSchemas } = await import('./tools.js');
       const { operation, categories } = args;
 
@@ -1832,6 +1832,16 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           if (!g) continue;
           guidanceTexts[cat] = g.text;
           context._requestedToolCategories.delete(cat);
+        }
+
+        // Capability prose for tools that arrived AFTER the system prompt was
+        // frozen. The prompt's gate decisions are fixed on turn 1 so the system
+        // block stays a stable cache prefix; without this the model would get a
+        // tool with no instructions. Delivered here, in the tool RESULT, it
+        // lands in the append-only message region and costs nothing in cached
+        // prefix. Blocks already resident are skipped rather than repeated.
+        for (const g of getGuidanceForTools(admitted, context?._frozenPromptGates || [])) {
+          guidanceTexts[g.id] = g.text;
         }
 
         const guidanceSections = getGuidanceForCategories(context._requestedToolCategories);

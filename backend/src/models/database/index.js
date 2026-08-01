@@ -1222,6 +1222,24 @@ function runMigrations() {
         }
       });
 
+      // Migration: durable prompt-prefix state (2026-08-01).
+      // The frozen system-prompt sections, tool ordering and eviction
+      // watermark lived only in ConversationManager's in-memory Map, so every
+      // backend restart re-derived the prefix for every live conversation and
+      // the next turn paid the 2.0x cache-WRITE rate instead of the 0.1x read
+      // rate. Measured at 69,617 rewritten tokens on one 147k conversation.
+      // See services/orchestrator/conversationStateStore.js.
+      db.run(`CREATE TABLE IF NOT EXISTS conversation_prompt_state (
+        conversation_id TEXT PRIMARY KEY,
+        user_id TEXT,
+        state TEXT NOT NULL,
+        state_hash TEXT,
+        updated_at TEXT
+      )`);
+      // Prune scans by age, never by user.
+      db.run(`CREATE INDEX IF NOT EXISTS idx_conversation_prompt_state_updated
+              ON conversation_prompt_state(updated_at)`);
+
       // Migration: novelty gate in front of insight extraction (2026-08-01).
       // Keyed by the SHAPE of an execution's outcome, so a workflow that keeps
       // succeeding identically extracts once instead of once per run. See

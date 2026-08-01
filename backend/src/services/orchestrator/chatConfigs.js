@@ -1,6 +1,11 @@
 import { getAvailableToolSchemas } from './tools.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
+import {
+  buildGateInputs,
+  resolveResidentElements,
+  ORCHESTRATOR_RESIDENT_GROUPS,
+} from './system-prompts/promptElements.js';
 import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
@@ -154,6 +159,37 @@ async function loadFrozenWorkspaceSection(context) {
   }
   context._frozenWorkspaceSection = section;
   return section;
+}
+
+/**
+ * Resolve the gated prompt blocks ONCE, on turn 1, and replay that decision.
+ *
+ * The gates read the resolved tool surface, which is append-only — so a block
+ * can only ever switch ON. That satisfied the monotonicity property I tested
+ * for, and still cost real money, because the system block is a CACHE PREFIX:
+ * switching a block on at turn 4 rewrites every cached message before it.
+ * Monotonic is not the same as constant, and only constant is free.
+ *
+ * Measured on a real conversation (2026-08-01): discover_tools pulled
+ * generate_image and friends onto the surface mid-conversation, the image and
+ * memory blocks flipped on, and the system prompt changed on turns 2 and 3
+ * with no tool reorder at all.
+ *
+ * Freezing costs nothing in capability. A tool discovered after turn 1 gets its
+ * guidance delivered in the discover_tools RESULT (see
+ * promptElements.getGuidanceForTools), which lands in the append-only message
+ * region where adding text is free.
+ */
+function loadFrozenPromptGates(context, asyncToolsEnabled) {
+  if (Array.isArray(context._frozenPromptGates)) return context._frozenPromptGates;
+  const gateInputs = buildGateInputs({
+    toolSchemas: Array.isArray(context.toolSchemas) ? context.toolSchemas : [],
+    asyncToolsEnabled,
+    provider: context.normalizedProvider,
+  });
+  const { included } = resolveResidentElements(gateInputs);
+  context._frozenPromptGates = [...included];
+  return context._frozenPromptGates;
 }
 
 async function loadCustomInstructionsSection(context) {
@@ -694,7 +730,26 @@ async function getUnifiedToolSchemas(context) {
   const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
   const forcedGroups = getForcedToolGroups(context);
   const previousGroups = context._loadedToolGroups || new Set();
-  const allGroups = new Set([...previousGroups, ...matchedGroups, ...forcedGroups]);
+  // EVERY STATIC GROUP IS RESIDENT FROM TURN 1.
+  //
+  // Keyword gating made sense while the alternative was a 300-schema surface,
+  // but it optimises resident tokens — which are billed at the cache-READ rate
+  // — by trading them for discoveries, which append to the tool array and
+  // rewrite the system block plus every message after it at the WRITE rate.
+  // Measured on a real conversation: the three turns that called discover_tools
+  // read 48%/49%/26% from cache; the one turn that loaded nothing read 94.6%.
+  //
+  // ~22k extra resident tokens cost ~2.2k token-equivalents/turn once warm; one
+  // avoided break on a 100k conversation saves ~190k. See
+  // ORCHESTRATOR_RESIDENT_GROUPS. The large tail (MCP + installed plugins)
+  // stays behind discover_tools, which is the surface that actually motivated
+  // gating in the first place.
+  const allGroups = new Set([
+    ...previousGroups,
+    ...ORCHESTRATOR_RESIDENT_GROUPS,
+    ...matchedGroups,
+    ...forcedGroups,
+  ]);
 
   const groupToolNames = new Set();
   // First group to contribute a tool is the one credited in the manifest.
@@ -787,6 +842,7 @@ const unifiedConfig = {
       workspaceSection,
       agentOverride,
       asyncToolsEnabled,
+      residentElementIds: loadFrozenPromptGates(context, asyncToolsEnabled),
     });
   },
   maxToolRounds: 100,

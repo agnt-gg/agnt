@@ -30,6 +30,7 @@ vi.mock('./workspaceContext.js', () => ({
 import { getChatConfig, WHITELIST_VERBATIM_BUDGET_TOKENS } from './chatConfigs.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { DEFAULT_TOOLS, TOOL_GROUPS, GROUP_TRIGGERS } from './toolSelector.js';
+import { ORCHESTRATOR_RESIDENT_GROUPS } from './system-prompts/promptElements.js';
 import { estimateToolTokens } from '../../utils/contextManager.js';
 
 // REALISTICALLY SIZED. The degrade rule is a COST rule, so a fixture whose
@@ -72,8 +73,19 @@ function buildRegistry() {
   for (const n of DEFAULT_TOOLS) push(n);
   for (const group of Object.values(TOOL_GROUPS)) for (const n of group) push(n);
   for (let i = 0; i < 150; i++) push(`plugin_tool_${i}`);
+  // The dynamic MCP category — the tail that is still gated now that every
+  // STATIC group is resident. See ORCHESTRATOR_RESIDENT_GROUPS.
+  for (let i = 0; i < 20; i++) push(`mcp__srv__tool_${i}`);
   return names.map(schema);
 }
+
+// What "lean" means now. Every static group is resident from turn 1, because
+// trading resident tokens (billed at the cache-READ rate) for discoveries
+// (which rewrite the prefix at the WRITE rate) was a net loss — measured at
+// 48%/49%/26% cache hits on discovery turns vs 94.6% on a turn that loaded
+// nothing. So the assertion is no longer "the surface is small", it is "the
+// surface excludes the large gated tail": plugins and MCP.
+const isGatedTail = (n) => /^plugin_tool_\d+$/.test(n) || n.startsWith('mcp__');
 
 const namesOf = (schemas) => schemas.map((s) => s.function?.name);
 const getToolSchemas = (ctx) => getChatConfig('orchestrator').getToolSchemas(ctx);
@@ -113,8 +125,28 @@ describe('cost-gated degrade of expensive ceilings', () => {
     const ns = new Set(namesOf(res));
     expect(ns.has('discover_tools')).toBe(true);
     expect(ns.has('web_search')).toBe(true);
-    expect(ns.has('plugin_tool_0')).toBe(false);
-    expect(res.length).toBeLessThan(registry.length / 3);
+    expect(namesOf(res).filter(isGatedTail)).toEqual([]);
+    expect(res.length).toBeLessThan(registry.length);
+  });
+
+  it('the resident floor is APPLIED, not merely declared', async () => {
+    // Every other assertion in this file checks what is ABSENT from the
+    // surface, so deleting the floor from the group union left them all green
+    // while restoring a discovery on almost every turn. "Declared but not
+    // wired" is invisible to absence checks — this one checks presence.
+    //
+    // NEUTRAL_MSG matches no keyword trigger, so anything here arrived because
+    // the floor put it there rather than because the message asked for it.
+    const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: null };
+    const ns = new Set(namesOf(await getToolSchemas(ctx)));
+    for (const group of ORCHESTRATOR_RESIDENT_GROUPS) {
+      const members = TOOL_GROUPS[group] || [];
+      if (members.length === 0) continue;
+      expect(
+        members.some((n) => ns.has(n)),
+        `group "${group}" is declared resident but no member reached the surface`,
+      ).toBe(true);
+    }
   });
 
   it('a whitelist covering every tool degrades to the same lean discovery surface (cost, not coverage)', async () => {
@@ -122,8 +154,8 @@ describe('cost-gated degrade of expensive ceilings', () => {
     const res = await getToolSchemas(ctx);
     const ns = new Set(namesOf(res));
     expect(ns.has('discover_tools')).toBe(true);
-    expect(ns.has('plugin_tool_0')).toBe(false);
-    expect(res.length).toBeLessThan(registry.length / 3);
+    expect(namesOf(res).filter(isGatedTail)).toEqual([]);
+    expect(res.length).toBeLessThan(registry.length);
   });
 
   it('an expensive ceiling degrades but exclusions stick, even for DEFAULT tools', async () => {
@@ -136,9 +168,9 @@ describe('cost-gated degrade of expensive ceilings', () => {
     const ns = new Set(namesOf(res));
     // web_search is in DEFAULT_TOOLS — the ceiling must win over defaults.
     expect(ns.has('web_search')).toBe(false);
-    expect(ns.has('plugin_tool_0')).toBe(false);
+    expect(namesOf(res).filter(isGatedTail)).toEqual([]);
     expect(ns.has('discover_tools')).toBe(true);
-    expect(res.length).toBeLessThan(registry.length / 3);
+    expect(res.length).toBeLessThan(registry.length);
   });
 
   // A 42.5%-coverage list that costs 57k tokens is the case the coverage rule
@@ -149,7 +181,10 @@ describe('cost-gated degrade of expensive ceilings', () => {
     const coverage = half.length / registry.length;
     expect(coverage).toBeLessThan(0.95); // would have been honoured verbatim before
     const res = await getToolSchemas(ctx);
-    expect(res.length).toBeLessThan(half.length / 2);
+    // Degraded = gated, not verbatim: the permitted plugin tail is excluded
+    // even though the ceiling allows it.
+    expect(namesOf(res).filter(isGatedTail)).toEqual([]);
+    expect(half.filter(isGatedTail).length).toBeGreaterThan(0); // the ceiling DID permit some
     expect(new Set(namesOf(res)).has('discover_tools')).toBe(true);
   });
 
@@ -188,15 +223,19 @@ describe('cost-gated degrade of expensive ceilings', () => {
 
 describe('append-only discovery ordering (prompt-cache prefix stability)', () => {
   it('a newly matched keyword group extends the tools array, never reorders it', async () => {
+    // MCP, because every STATIC group is now resident from turn 1 and cannot
+    // be "newly matched" — which is the point: the only surface that still
+    // grows mid-conversation is the tail nobody needs by default.
     const ctx = { latestUserMessage: NEUTRAL_MSG, enabledTools: null };
     const A = namesOf(await getToolSchemas(ctx));
+    expect(A.some((n) => n.startsWith('mcp__'))).toBe(false);
 
-    ctx.latestUserMessage = MEDIA_MSG;
+    ctx.latestUserMessage = 'use the mcp server to open a page';
     const B = namesOf(await getToolSchemas(ctx));
 
     expect(B.length).toBeGreaterThan(A.length);
     expect(B.slice(0, A.length)).toEqual(A); // exact prefix
-    expect(B).toContain('generate_image');
+    expect(B).toContain('mcp__srv__tool_0');
     expect(ctx._toolOrder).toEqual(B);
   });
 

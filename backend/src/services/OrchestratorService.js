@@ -39,6 +39,7 @@ import { startRun, publish as publishToRun, endRun } from './orchestrator/active
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
+import { loadConversationState, saveConversationState } from './orchestrator/conversationStateStore.js';
 import autonomousMessageService from './AutonomousMessageService.js';
 import { shouldTriggerAutonomousFollowup } from './orchestrator/autonomousFollowupConfig.js';
 import UserModel from '../models/UserModel.js';
@@ -1187,8 +1188,15 @@ async function universalChatHandler(req, res, context = {}) {
   // CRITICAL for prompt caching: restore frozen-per-conversation state from prior turns.
   // The system prompt must be byte-identical across turns or the Anthropic prompt cache
   // (and OpenAI/Gemini equivalents) miss on every request.
-  // We persist: _frozenSkillsCatalog, _frozenMemorySection, _loadedToolGroups, activatedSkills.
-  const priorContext = conversationManager.get(conversationId);
+  //
+  // TWO SOURCES, ONE RESTORE PATH. The in-memory Map is authoritative and free;
+  // the DB row is the fallback that survives a backend restart, which otherwise
+  // re-derived the whole prefix for every live conversation and paid the 2.0x
+  // cache-write rate on the next turn. Both produce the same shape and feed the
+  // identical block below, so the two can never drift apart — which is the only
+  // way a fallback like this stays correct.
+  const priorContext = conversationManager.get(conversationId)
+    || await loadConversationState(conversationId);
   // A brand-new conversation used to start at calibration 1.0 and rediscover
   // the provider's real overhead over its first few turns, under-reporting
   // size and cost the whole time. The ratio is a property of the provider, so
@@ -1222,6 +1230,14 @@ async function universalChatHandler(req, res, context = {}) {
     }
     if (priorContext._frozenAsyncToolsEnabled !== undefined) {
       conversationContext._frozenAsyncToolsEnabled = priorContext._frozenAsyncToolsEnabled;
+    }
+    // Which gated prompt blocks are resident. Frozen for the same reason as
+    // everything above, and for a sharper one: the gates read the tool
+    // surface, which GROWS via discover_tools, so re-resolving each turn let
+    // the system block change mid-conversation and rewrite every cached
+    // message before it. See chatConfigs.loadFrozenPromptGates.
+    if (Array.isArray(priorContext._frozenPromptGates)) {
+      conversationContext._frozenPromptGates = priorContext._frozenPromptGates;
     }
     if (priorContext._loadedToolGroups) {
       conversationContext._loadedToolGroups = new Set(priorContext._loadedToolGroups);
@@ -3480,6 +3496,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
     });
 
     console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);
+
+    // Mirror the prefix-critical subset to disk so a restart does not cost a
+    // full cache write on this conversation's next turn. Fire-and-forget: it is
+    // an optimisation in front of an already-correct path, and skips itself
+    // entirely when nothing changed (the frozen sections settle on turn 1).
+    saveConversationState(conversationId, userId, conversationContext).catch((err) => {
+      console.error('[ConversationState] Persist failed (non-critical):', err.message);
+    });
 
     // Fire-and-forget: trigger insight extraction from chat execution
     if (agentExecutionId && userId) {

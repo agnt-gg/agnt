@@ -56,6 +56,9 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     // prompt so the LLM doesn't advertise (or attempt to use) async params
     // that aren't on the tool schemas this turn.
     asyncToolsEnabled = true,
+    // Gate decisions resolved once on turn 1 and replayed for the life of the
+    // conversation. See below.
+    residentElementIds = null,
   } = options;
 
   // Gate inputs are computed from the RESOLVED TOOL SURFACE (which
@@ -72,7 +75,17 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     asyncToolsEnabled,
     provider: context.normalizedProvider,
   });
-  const { included } = resolveResidentElements(gates);
+  // FROZEN DECISIONS WIN. chatConfigs resolves the gates once on turn 1 and
+  // replays that exact set for the rest of the conversation, because the system
+  // block is a cache prefix: a block switching on at turn 4 rewrites every
+  // cached message before it. Guidance for tools discovered later is delivered
+  // through the discover_tools RESULT instead — see
+  // promptElements.getGuidanceForTools — which lands in the append-only message
+  // region and costs nothing. Callers that pass nothing (tests, one-shot
+  // builds) still get a live resolve.
+  const included = residentElementIds
+    ? new Set(residentElementIds)
+    : resolveResidentElements(gates).included;
   const on = (id) => included.has(id);
   const has = gates.has;
 

@@ -1,5 +1,16 @@
 import { surfaceHasAsyncCapableTool } from '../asyncToolParams.js';
-import { VIZ_ADVANCED_CHEATSHEET } from './orchestrator-chat.js';
+import {
+  VIZ_ADVANCED_CHEATSHEET,
+  CRITICAL_IMAGE_HANDLING,
+  CRITICAL_IMAGE_GENERATION,
+  IMAGE_ANALYSIS_CAPABILITIES,
+  IMAGE_GENERATION_CAPABILITIES,
+  CRITICAL_IMAGE_REFERENCE_FORMATTING,
+  MEMORY_RECALL_GUIDANCE,
+  IMPORTANT_GUIDELINES,
+  MCP_TOOL_USE_RULES,
+} from './orchestrator-chat.js';
+import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
 
 /**
  * Which optional prompt blocks are resident, and why.
@@ -44,6 +55,48 @@ import { VIZ_ADVANCED_CHEATSHEET } from './orchestrator-chat.js';
  */
 
 /**
+ * Groups the orchestrator keeps resident from turn 1.
+ *
+ * ── WHY THE FLOOR IS HIGH ─────────────────────────────────────────────────
+ * An earlier pass cut the orchestrator's resident surface to 31 tools and
+ * treated that as the win. It was optimising the wrong number. Resident tokens
+ * are billed at the CACHE-READ rate (0.1x) once the prefix is warm; a
+ * discovery appends to the tool array, which invalidates the system block and
+ * every message after it, and those are rebuilt at the WRITE rate (2.0x).
+ *
+ * Measured on a real five-turn conversation (2026-08-01): the three turns that
+ * called discover_tools rewrote 33.6k / 43.5k / 145.7k tokens and read 48%,
+ * 49% and 26% from cache. The one turn that loaded nothing read 94.6%.
+ *
+ * The arithmetic that follows: ~22k extra resident tokens cost ~2.2k
+ * token-equivalents per turn once cached, while ONE avoided prefix break on a
+ * 100k conversation saves ~190k. The floor pays for itself if it prevents a
+ * single discovery per ~85 turns. In that conversation it would have prevented
+ * three out of five.
+ *
+ * So every STATIC group is resident. What stays behind discover_tools is the
+ * genuinely large tail that no ordinary request needs: the 78 MCP tools and
+ * the ~147 installed plugin/registry tools, which are the surface the
+ * "everything is loaded" complaint was actually about.
+ */
+export const ORCHESTRATOR_RESIDENT_GROUPS = [
+  'core',
+  'shell',
+  'agnt_platform',
+  'agent_management',
+  'workflow_authoring',
+  'tool_authoring',
+  'widget_authoring',
+  'artifact_code',
+  'goal_management',
+  'media',
+  'email',
+  'memory',
+  'tutorial',
+  'canvas',
+];
+
+/**
  * Compute the gate inputs for a turn.
  *
  * NOTE THE SIGNATURE. It takes the resolved tool schemas, the frozen per-user
@@ -80,31 +133,42 @@ export const RESIDENT_GATED_ELEMENTS = [
   {
     id: 'critical_image_handling',
     label: 'Image upload handling',
+    tools: ['analyze_image'],
+    text: CRITICAL_IMAGE_HANDLING,
     gate: (g) => g.has('analyze_image'),
   },
   {
     id: 'critical_image_generation',
     label: 'Image generation display rules',
+    tools: ['generate_image'],
+    text: CRITICAL_IMAGE_GENERATION,
     gate: (g) => g.has('generate_image'),
   },
   {
     id: 'image_analysis_capabilities',
     label: 'Vision provider matrix',
+    tools: ['analyze_image'],
+    text: IMAGE_ANALYSIS_CAPABILITIES,
     gate: (g) => g.has('analyze_image'),
   },
   {
     id: 'image_generation_capabilities',
     label: 'Image provider matrix',
+    tools: ['generate_image'],
+    text: IMAGE_GENERATION_CAPABILITIES,
     gate: (g) => g.has('generate_image'),
   },
   {
     id: 'critical_image_reference_formatting',
     label: 'IMAGE_REF formatting',
+    tools: ['generate_image'],
+    text: CRITICAL_IMAGE_REFERENCE_FORMATTING,
     gate: (g) => g.has('generate_image'),
   },
   {
     id: 'async_execution',
     label: 'Async & periodic execution',
+    text: ASYNC_EXECUTION_GUIDANCE,
     // Two conditions, both conversation-stable: the user's frozen toggle, and
     // whether anything on the surface actually carries the params. Explaining
     // background execution on a surface of instant read-only tools taught the
@@ -114,6 +178,8 @@ export const RESIDENT_GATED_ELEMENTS = [
   {
     id: 'memory_recall',
     label: 'History recall guidance',
+    tools: ['recall', 'list_recent', 'get_trace'],
+    text: MEMORY_RECALL_GUIDANCE,
     gate: (g) => g.hasAny('recall', 'list_recent', 'get_trace'),
   },
   {
@@ -124,6 +190,12 @@ export const RESIDENT_GATED_ELEMENTS = [
   {
     id: 'important_guidelines',
     label: 'Multi-tool workflow guidelines',
+    text: IMPORTANT_GUIDELINES,
+    tools: [
+      'web_search', 'web_scrape', 'execute_javascript_code',
+      'read_file', 'write_file', 'file_operations',
+      'agnt_tools', 'execute_custom_agnt_tool',
+    ],
     gate: (g) => g.hasAny(
       'web_search', 'web_scrape', 'execute_javascript_code',
       'read_file', 'write_file', 'file_operations',
@@ -133,6 +205,7 @@ export const RESIDENT_GATED_ELEMENTS = [
   {
     id: 'mcp_tool_use',
     label: 'MCP calling convention',
+    text: MCP_TOOL_USE_RULES,
     // claude-code injects its own MCP framing upstream; duplicating it there
     // was contradictory as well as expensive.
     gate: (g) => g.provider !== 'claude-code',
@@ -186,4 +259,36 @@ export function resolveResidentElements(gateInputs) {
     else omitted.add(el.id);
   }
   return { included, omitted };
+}
+
+/**
+ * Capability prose for tools that arrive AFTER the system prompt was frozen.
+ *
+ * The gate decisions are frozen on turn 1 (see chatConfigs
+ * `_frozenPromptGates`) because the system block is a cache prefix: letting a
+ * block switch on mid-conversation rewrites every cached message after it.
+ * That freeze would otherwise silently strand guidance — a tool discovered on
+ * turn 4 would arrive with no instructions on how to use it.
+ *
+ * So the guidance follows the tool instead, delivered as part of the
+ * discover_tools RESULT. Tool results land in the append-only message region,
+ * which costs nothing in cached prefix. Same mechanism as the on-demand
+ * renderer guides; the model ends up with exactly the same instructions, in a
+ * region where adding them is free.
+ *
+ * @param {string[]} toolNames  tools just loaded
+ * @param {Iterable<string>} residentIds  element ids already in the prompt
+ * @returns {Array<{id: string, label: string, text: string}>}
+ */
+export function getGuidanceForTools(toolNames, residentIds = []) {
+  const names = new Set(toolNames || []);
+  const resident = new Set(residentIds || []);
+  const out = [];
+  for (const el of RESIDENT_GATED_ELEMENTS) {
+    if (!el.text || !el.tools || resident.has(el.id)) continue;
+    if (el.tools.some((t) => names.has(t))) {
+      out.push({ id: el.id, label: el.label, text: el.text });
+    }
+  }
+  return out;
 }

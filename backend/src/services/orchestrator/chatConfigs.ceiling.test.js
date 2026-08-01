@@ -109,21 +109,27 @@ describe('nothing inside the ceiling becomes unreachable', () => {
   });
 
   it('a permitted-but-hidden tool is loadable by category, bounded by the ceiling', async () => {
-    const permitted = new Set(['web_search', 'send_email', 'discover_tools', ...Array.from({ length: 140 }, (_, i) => `plugin_tool_${i}`)]);
+    // MCP, not email: every STATIC group is resident from turn 1 now, so the
+    // only surface that is still "permitted but hidden" is the gated tail.
+    const permitted = new Set([
+      'web_search', 'discover_tools',
+      ...Array.from({ length: 20 }, (_, i) => `mcp__srv__tool_${i}`),
+      ...Array.from({ length: 140 }, (_, i) => `plugin_tool_${i}`),
+    ]);
     const ctx = { latestUserMessage: 'hello', enabledTools: permitted };
     const first = namesOf(await getToolSchemas(ctx));
-    expect(first).not.toContain('send_email'); // hidden: no keyword match
+    expect(first).not.toContain('mcp__srv__tool_0'); // hidden: no keyword match
 
     // Replicate the OrchestratorService dynamic-load step.
-    const loaded = getToolsForCategories(registry, ['email'])
+    const loaded = getToolsForCategories(registry, ['mcp'])
       .filter((s) => ctx._toolCeiling.has(s.function.name))
       .map((s) => s.function.name);
-    expect(loaded).toContain('send_email');
+    expect(loaded).toContain('mcp__srv__tool_0');
   });
 
   it('the ceiling withholds a category load that reaches past it', () => {
     const ceiling = new Set(['web_search']);
-    const loaded = getToolsForCategories(registry, ['email'])
+    const loaded = getToolsForCategories(registry, ['mcp'])
       .filter((s) => ceiling.has(s.function.name));
     expect(loaded).toHaveLength(0);
   });
