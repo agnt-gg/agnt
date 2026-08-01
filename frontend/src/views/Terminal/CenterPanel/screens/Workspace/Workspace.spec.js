@@ -739,6 +739,68 @@ describe('Workspace.vue', () => {
     expect(wrapper.find('.ws-canvas').classes()).not.toContain('is-split');
   });
 
+  // Closing a workspace deletes its windows and, once sync is on, records the
+  // id in deletedIds so the tab is removed from EVERY signed-in device. That is
+  // not something a mis-aimed click on a 12px button may do silently.
+  describe('closing a workspace is confirmed', () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    const withTwoTabs = async () => {
+      const wrapper = await mountPage();
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const ws = useWorkspaces();
+      ws.createWorkspace('Second');
+      await wrapper.vm.$nextTick();
+      return { wrapper, ws, modal: wrapper.findComponent({ name: 'SimpleModal' }) };
+    };
+
+    it('asks before closing, and removes nothing while the prompt is open', async () => {
+      const { wrapper, ws, modal } = await withTwoTabs();
+      expect(ws.workspaces.value).toHaveLength(2);
+
+      await wrapper.findAll('.ws-tab-x')[0].trigger('click');
+      await flush();
+
+      expect(modal.vm.isOpen).toBe(true);
+      expect(ws.workspaces.value).toHaveLength(2);
+    });
+
+    it('keeps the workspace when the prompt is cancelled', async () => {
+      const { wrapper, ws, modal } = await withTwoTabs();
+      const before = ws.workspaces.value.map((w) => w.id);
+
+      await wrapper.findAll('.ws-tab-x')[0].trigger('click');
+      await flush();
+      modal.vm.cancel();
+      await flush();
+
+      expect(ws.workspaces.value.map((w) => w.id)).toEqual(before);
+    });
+
+    it('closes the workspace once confirmed', async () => {
+      const { wrapper, ws, modal } = await withTwoTabs();
+      const doomed = ws.workspaces.value[0].id;
+
+      await wrapper.findAll('.ws-tab-x')[0].trigger('click');
+      await flush();
+      modal.vm.confirm();
+      await flush();
+
+      expect(ws.workspaces.value).toHaveLength(1);
+      expect(ws.workspaces.value.map((w) => w.id)).not.toContain(doomed);
+    });
+
+    it('names the workspace in the prompt, so the wrong tab is obvious', async () => {
+      const { wrapper, ws, modal } = await withTwoTabs();
+      const name = ws.workspaces.value[0].name;
+
+      await wrapper.findAll('.ws-tab-x')[0].trigger('click');
+      await flush();
+
+      expect(modal.vm.message).toContain(name);
+    });
+  });
+
   it('mounts a REAL WidgetFrame per instance when widgets are added', async () => {
     const wrapper = await mountPage();
     const { useWorkspaces } = await import('./useWorkspaces.js');

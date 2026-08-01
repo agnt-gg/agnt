@@ -15,13 +15,23 @@
     <div class="ws-tabbar">
       <div ref="tabStripRef" class="ws-tabs" :class="{ 'more-left': tabsMoreLeft, 'more-right': tabsMoreRight }" @scroll="updateTabOverflow">
         <div
-          v-for="ws in workspaces"
+          v-for="(ws, i) in workspaces"
           :ref="(el) => setTabRef(ws.id, el)"
           :key="ws.id"
           class="ws-tab"
-          :class="{ on: ws.id === activeId }"
+          :class="{
+            on: ws.id === activeId,
+            'is-dragging': dragTabId === ws.id,
+            'drop-before': dropIndex === i,
+            'drop-after': dropIndex === workspaces.length && i === workspaces.length - 1,
+          }"
+          :draggable="renamingId !== ws.id"
           @click="setActive(ws.id)"
           @dblclick="beginRename(ws)"
+          @dragstart="onTabDragStart(ws, $event)"
+          @dragover="onTabDragOver(i, $event)"
+          @drop="onTabDrop($event)"
+          @dragend="onTabDragEnd"
         >
           <span class="ws-dot"></span>
           <input
@@ -36,7 +46,7 @@
           />
           <span v-else class="ws-tab-name">{{ ws.name }}</span>
           <span class="ws-count">{{ ws.widgets.length }}</span>
-          <button v-if="workspaces.length > 1" class="ws-tab-x" v-tooltip="'Close workspace'" @click.stop="closeWorkspace(ws.id)">
+          <button v-if="workspaces.length > 1" class="ws-tab-x" v-tooltip="'Close workspace'" @click.stop="onCloseWorkspace(ws)">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -262,6 +272,11 @@
         <div v-if="paletteGroups.every((g) => !g.items.length)" class="ws-palette-empty">No match for “{{ paletteQuery }}”</div>
       </div>
     </div>
+
+    <!-- Confirm host for destructive workspace actions. Closing a tab now
+         propagates to every device via the sync layer, so it must not be one
+         mis-aimed click away. -->
+    <SimpleModal ref="confirmModalRef" />
   </div>
 </template>
 
@@ -273,6 +288,7 @@ import WidgetFrame from '@/canvas/WidgetFrame.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import EmbedScope from './EmbedScope.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
 import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } from '@/canvas/gridUtils.js';
 import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor } from './useWorkspaces.js';
@@ -281,7 +297,7 @@ import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
 export default {
   name: 'WorkspaceScreen',
-  components: { WidgetFrame, CustomWidgetRenderer, EmbedScope, CustomSelect },
+  components: { WidgetFrame, CustomWidgetRenderer, EmbedScope, CustomSelect, SimpleModal },
   setup() {
     const store = useStore();
     const route = useRoute();
@@ -297,6 +313,7 @@ export default {
       setActive,
       createWorkspace,
       closeWorkspace,
+      moveWorkspace,
       renameWorkspace,
       addWidget,
       removeWidget,
@@ -693,6 +710,67 @@ export default {
       renamingId.value = '';
     };
 
+    // ── reorder tabs by dragging ───────────────────────────────────
+    //
+    // Same native HTML5 DnD as the palette. The canvas handlers all early-return
+    // on `!dragItem.value`, so a tab dragged over the canvas is inert and cannot
+    // spawn a widget — no cross-target guard is needed.
+    const dragTabId = ref('');
+    /** Insertion slot, 0..length. -1 = no active drop. */
+    const dropIndex = ref(-1);
+
+    const onTabDragStart = (ws, e) => {
+      dragTabId.value = ws.id;
+      try {
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox refuses to start a drag unless some data is set.
+        e.dataTransfer.setData('text/plain', ws.id);
+      } catch { /* older browsers */ }
+    };
+
+    const onTabDragOver = (i, e) => {
+      if (!dragTabId.value) return;
+      e.preventDefault();                        // required to allow the drop
+      e.dataTransfer.dropEffect = 'move';
+      // Insert before or after the hovered tab by its midpoint, so the
+      // indicator shows where the tab will actually land.
+      const r = e.currentTarget.getBoundingClientRect();
+      dropIndex.value = e.clientX < r.left + r.width / 2 ? i : i + 1;
+    };
+
+    const onTabDragEnd = () => {
+      dragTabId.value = '';
+      dropIndex.value = -1;
+    };
+
+    const onTabDrop = (e) => {
+      if (!dragTabId.value || dropIndex.value < 0) return onTabDragEnd();
+      e.preventDefault();
+      e.stopPropagation();
+      const from = workspaces.value.findIndex((w) => w.id === dragTabId.value);
+      // dropIndex is a slot in the CURRENT array; removing the dragged tab
+      // shifts every later position down by one.
+      const to = dropIndex.value > from ? dropIndex.value - 1 : dropIndex.value;
+      moveWorkspace(dragTabId.value, to);
+      onTabDragEnd();
+    };
+
+    // ── destructive actions ──────────────────────────────────────
+    const confirmModalRef = ref(null);
+
+    const onCloseWorkspace = async (ws) => {
+      const windows = ws.widgets?.length || 0;
+      // No confirm host mounted => no destructive action. Never close silently.
+      const confirmed = await confirmModalRef.value?.showModal({
+        title: 'Close workspace?',
+        message: `“${ws.name}”${windows ? ` and its ${windows} window${windows === 1 ? '' : 's'}` : ''} will be removed — on this device and every other one you are signed in on.`,
+        confirmText: 'Close workspace',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+      closeWorkspace(ws.id);
+    };
+
     // ── drag a widget from the palette onto the canvas ──────────────────
     //
     // Uses native HTML5 drag-and-drop rather than a pointer-event
@@ -1068,6 +1146,15 @@ export default {
       renameInput,
       beginRename,
       commitRename,
+      // tab reorder + destructive actions
+      dragTabId,
+      dropIndex,
+      onTabDragStart,
+      onTabDragOver,
+      onTabDrop,
+      onTabDragEnd,
+      confirmModalRef,
+      onCloseWorkspace,
       // palette
       paletteOpen,
       paletteQuery,
@@ -1271,12 +1358,41 @@ body.custom-bg .ws-root {
   font-size: 11.5px;
   color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
-  cursor: pointer;
+  /* Draggable to reorder, so it advertises lift rather than click. */
+  cursor: grab;
   transition: all 0.15s ease;
   /* Never shrink a tab into an unreadable sliver — the strip scrolls instead. */
   flex: 0 0 auto;
+  /* Positioning context for the drop caret below. */
+  position: relative;
 }
 
+.ws-tab:active {
+  cursor: grabbing;
+}
+.ws-tab.is-dragging {
+  opacity: 0.4;
+}
+/* Insertion caret, drawn INSIDE the tab's own edge. The strip is
+   overflow-x: auto with a 2px gap, so a caret in the gap would be clipped
+   exactly at the first and last tab — where a reorder most often lands. */
+.ws-tab.drop-before::before,
+.ws-tab.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgb(var(--primary-rgb, 229, 61, 143));
+  pointer-events: none;
+}
+.ws-tab.drop-before::before {
+  left: 0;
+}
+.ws-tab.drop-after::after {
+  right: 0;
+}
 .ws-tab:hover {
   color: var(--color-text, #fff);
   background: rgba(255, 255, 255, 0.04);
