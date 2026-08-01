@@ -14,6 +14,7 @@ const __failoverMemory = new Map();
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
 import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
+import { recordLlmCall } from './execution/LedgerRecorder.js';
 import { updateEstimateCalibration, computeResidualDrift } from '../utils/contextManager.js';
 import { isSubscriptionProvider, providerSupportsTools } from './ai/providerConfigs.js';
 import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } from '../utils/contextManager.js';
@@ -1332,6 +1333,15 @@ async function universalChatHandler(req, res, context = {}) {
             const initialPromptText = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content) || '';
             const agentNameForExecution = agentContext?.name || (chatType === 'agent' ? 'Agent Chat' : chatType === 'orchestrator' ? 'Orchestrator' : chatType.charAt(0).toUpperCase() + chatType.slice(1));
 
+            // PRD-122: stamp the run with its origin and (when nested) its
+            // parent, so a subagent run is distinguishable from a
+            // user-initiated one. `parentExecutionId` arrives via the handler
+            // context when one run spawns another; a plain chat turn is a root.
+            const parentExecutionId = context?.parentExecutionId || null;
+            const rootExecutionId = parentExecutionId
+              ? await AgentExecutionModel.getRootFor(parentExecutionId)
+              : null;
+
             const execId = await AgentExecutionModel.create(
               userId,
               agentId || null,
@@ -1340,7 +1350,8 @@ async function universalChatHandler(req, res, context = {}) {
               typeof initialPromptText === 'string' ? initialPromptText.substring(0, 500) : String(initialPromptText).substring(0, 500),
               resolvedProvider,
               model,
-              'running'
+              'running',
+              { parentExecutionId, rootExecutionId, origin: chatType === 'agent' ? 'agent' : 'chat' }
             );
 
             agentExecutionId = execId;
@@ -3416,6 +3427,27 @@ IMPORTANT: The image data is already available in the system context. You don't 
             ? ` (cache: ${tokenAccumulator.cacheReadTokens} read, ${write5m} write-5m, ${write1h} write-1h, ${uncached} uncached)`
             : '';
           console.log(`[Token Usage] ${tokenAccumulator.inputTokens} in${cacheInfo} / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total, est. cost: $${(tokenUsageForDb.estimatedCost || 0).toFixed(6)}`);
+        }
+
+        // PRD-122: mirror this turn into the ledger.
+        //
+        // agent_executions.estimated_cost stays authoritative for the existing
+        // Traces/ContextMonitor surfaces; the ledger is what makes cross-path
+        // totals possible at all. Both are written from the SAME accumulator,
+        // so they cannot disagree — an integration test pins that.
+        if (tokenAccumulator.totalTokens > 0) {
+          await recordLlmCall({
+            userId,
+            executionId: agentExecutionId,
+            origin: chatType === 'agent' ? 'agent' : 'chat',
+            conversationId,
+            provider: normalizedProvider,
+            model,
+            usage: tokenAccumulator,
+            durationMs: Date.now() - executionStartTime,
+            status: streamErrorForLogging ? 'error' : 'ok',
+            error: streamErrorForLogging ? streamErrorForLogging.message : null,
+          });
         }
 
         const computeSeconds = (Date.now() - executionStartTime) / 1000;

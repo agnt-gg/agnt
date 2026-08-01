@@ -10,6 +10,7 @@ import AntigravityAuthManager from '../../../services/auth/AntigravityAuthManage
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels } from '../../../services/ai/providerConfigs.js';
+import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -475,6 +476,8 @@ class GenerateWithAiLlm extends BaseAction {
       const mode = params.mode || 'Text Generation';
       let response;
 
+      const startedAt = Date.now();
+
       switch (mode) {
         case 'Text Generation':
           response = await this.handleTextGeneration(paramsWithAuth);
@@ -488,6 +491,27 @@ class GenerateWithAiLlm extends BaseAction {
         default:
           throw new Error(`Unsupported mode: ${mode}`);
       }
+
+      // PRD-122: record the call.
+      //
+      // Deliberately ONE call site rather than one per provider. Every branch
+      // of handleTextGeneration/handleVision already normalises its provider's
+      // usage into { inputTokens, outputTokens } and funnels through here, so
+      // pricing at the funnel cannot be forgotten when a ninth provider is
+      // added — which is precisely how the workflow path came to capture
+      // tokens for years without ever pricing them.
+      await recordLlmCall({
+        userId,
+        origin: 'workflow_node',
+        originId: workflowEngine?.currentExecutionId || null,
+        provider: normalizedProvider,
+        model: params.model || response?.model || 'unknown',
+        usage: {
+          inputTokens: response?.inputTokens || 0,
+          outputTokens: response?.outputTokens || 0,
+        },
+        durationMs: Date.now() - startedAt,
+      });
 
       return this.formatOutput(response);
     } catch (error) {

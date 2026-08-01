@@ -289,7 +289,10 @@ class TaskOrchestrator {
 
       // Step 4: Execute task via agent chat
       console.log(`[TaskOrchestrator] Step 4: Executing task via agent ${agent.name}`);
-      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal);
+      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal, {
+        origin: 'goal_task',
+        originId: task.goal_id,
+      });
       console.log(`[TaskOrchestrator] Step 4 Complete: Agent completed task execution`);
 
       // Step 5: Process and store results
@@ -363,7 +366,7 @@ Begin working on this task now.`;
 
     return message;
   }
-  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null, signal = null) {
+  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null, signal = null, ledgerCtx = null) {
     console.log(`[TaskOrchestrator] Sending task to agent ${agent.name} via chat`);
 
     try {
@@ -430,6 +433,14 @@ Begin working on this task now.`;
           agentId: agent.id,
           agentName: agent.name,
         },
+        // PRD-122: attribute this call's spend to whatever caused it.
+        //
+        // Supplied by the caller rather than hard-coded, because this method
+        // has two callers with genuinely different answers: the goal system
+        // (goal_task) and the run_agent tool (agent). Hard-coding 'goal_task'
+        // filed every run_agent invocation under goal spend with a null goal
+        // id — real money attributed to a goal that does not exist.
+        ledger: ledgerCtx || { origin: 'system', originId: null },
         maxToolRounds: 10,
         signal,
       });

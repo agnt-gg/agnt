@@ -7,6 +7,7 @@ import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
 import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { getModelCost } from '../ai/providerConfigs.js';
+import { recordLlmCall } from '../execution/LedgerRecorder.js';
 
 /**
  * GoalEvaluator - AI-powered evaluation system for goals and tasks
@@ -84,6 +85,21 @@ class GoalEvaluator {
           estimatedCost: costInfo?.totalCost || 0,
         };
         console.log(`[GoalEvaluator] Token Usage: ${tokenAccumulator.inputTokens} in / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total, est. cost: $${(tokenUsage.estimatedCost || 0).toFixed(6)}`);
+
+        // PRD-122: this path already priced itself correctly, but it did so
+        // independently — which is exactly why two of the other three paths
+        // could skip pricing without anyone noticing. Routing it through the
+        // ledger means goal cost has one source of truth instead of two, and
+        // the local getModelCost call above stays only to populate the legacy
+        // goal_evaluations.estimated_cost column that existing UI reads.
+        await recordLlmCall({
+          userId,
+          origin: 'goal_eval',
+          originId: goalId,
+          provider: resolvedProvider,
+          model: resolvedModel,
+          usage: tokenAccumulator,
+        });
       }
 
       // Step 6: Store evaluation in database

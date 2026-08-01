@@ -4,6 +4,7 @@ import { executeTool } from '../orchestrator/tools.js';
 import { loadWorkspaceContextSection } from '../orchestrator/workspaceContext.js';
 import { getPlatformContextSection } from '../orchestrator/system-prompts/platform-context.js';
 import { manageContext } from '../../utils/contextManager.js';
+import { recordLlmCall } from '../execution/LedgerRecorder.js';
 import { raceWithAbort } from '../../utils/abortUtils.js';
 import {
   sanitizeOrphanToolCalls,
@@ -142,7 +143,14 @@ class LlmExecutionService {
    */
   async executeWithTools(config) {
     const startTime = Date.now();
-    const { provider, model, userId, messages: inputMessages, toolSchemas = [], systemPrompt = null, context = {}, maxToolRounds = 10, signal = null } = config;
+    const {
+      provider, model, userId, messages: inputMessages, toolSchemas = [],
+      systemPrompt = null, context = {}, maxToolRounds = 10, signal = null,
+      // PRD-122 ledger attribution. Optional: a caller that supplies no origin
+      // still runs identically, it simply records under 'system'. Making these
+      // required would have meant touching every call site in one change.
+      ledger = null,
+    } = config;
 
     // Check cache first (only for non-tool calls to avoid stale data)
     const cacheKey = this._generateCacheKey(config);
@@ -321,6 +329,27 @@ class LlmExecutionService {
     const executionTime = Date.now() - startTime;
     const actualTokens = accumulatedUsage.totalTokens || contextResult.managedTokens || 0;
     this._updateMetrics(provider, model, executionTime, actualTokens, allToolExecutions.length);
+
+    // PRD-122: persist what we just measured.
+    //
+    // accumulatedUsage has been correct for a long time — it sums usage across
+    // every tool-call round above — but it was discarded when this function
+    // returned. Every goal task in AGNT runs through here, so that discard is
+    // why an autonomous goal could run 50 iterations and report the cost of
+    // judging the work rather than doing it.
+    await recordLlmCall({
+      userId,
+      executionId: ledger?.executionId || null,
+      parentExecutionId: ledger?.parentExecutionId || null,
+      rootExecutionId: ledger?.rootExecutionId || null,
+      origin: ledger?.origin || 'system',
+      originId: ledger?.originId || null,
+      conversationId: ledger?.conversationId || null,
+      provider,
+      model,
+      usage: accumulatedUsage,
+      durationMs: executionTime,
+    });
 
     const result = {
       responseMessage,
