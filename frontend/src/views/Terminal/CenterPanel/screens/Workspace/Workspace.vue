@@ -731,7 +731,10 @@ export default {
     const onTabDragOver = (i, e) => {
       if (!dragTabId.value) return;
       e.preventDefault();                        // required to allow the drop
-      e.dataTransfer.dropEffect = 'move';
+      // dataTransfer is always present in a real drag, but reading it
+      // unguarded makes the handler throw for any synthetic event — which is
+      // the only kind a test, or an assistive tool, can dispatch.
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       // Insert before or after the hovered tab by its midpoint, so the
       // indicator shows where the tab will actually land.
       const r = e.currentTarget.getBoundingClientRect();

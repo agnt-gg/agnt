@@ -739,6 +739,128 @@ describe('Workspace.vue', () => {
     expect(wrapper.find('.ws-canvas').classes()).not.toContain('is-split');
   });
 
+  // The reorder ITSELF is unit-tested against useWorkspaces; these drive the
+  // real handlers through the DOM, which is where the index arithmetic and the
+  // rename interaction actually live.
+  describe('reordering tabs by drag', () => {
+    const threeTabs = async () => {
+      const wrapper = await mountPage();
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const ws = useWorkspaces();
+      ws.createWorkspace('Second');
+      ws.createWorkspace('Third');
+      await wrapper.vm.$nextTick();
+      return { wrapper, ws };
+    };
+
+    const names = (ws) => ws.workspaces.value.map((w) => w.name);
+
+    /** Half of a tab, so clientX can be placed either side of the midpoint. */
+    const rectFor = (el, left) => {
+      el.element.getBoundingClientRect = () => ({ left, width: 100, right: left + 100, top: 0, bottom: 22, height: 22 });
+    };
+
+    it('exposes every tab as draggable', async () => {
+      const { wrapper } = await threeTabs();
+      const tabs = wrapper.findAll('.ws-tab');
+      expect(tabs).toHaveLength(3);
+      for (const t of tabs) expect(t.attributes('draggable')).toBe('true');
+    });
+
+    it('drops a tab AFTER the one it was dragged past', async () => {
+      const { wrapper, ws } = await threeTabs();
+      const before = names(ws);
+      const tabs = wrapper.findAll('.ws-tab');
+      rectFor(tabs[2], 200);
+
+      await tabs[0].trigger('dragstart');
+      // Past the midpoint of the third tab => insert after it.
+      await tabs[2].trigger('dragover', { clientX: 280 });
+      await tabs[2].trigger('drop');
+
+      expect(names(ws)).toEqual([before[1], before[2], before[0]]);
+    });
+
+    it('lands on the right slot when moving forward into the MIDDLE', async () => {
+      // The end-of-list case cannot see an off-by-one: an over-large index is
+      // clamped to length-1 and happens to be correct. Only a move that lands
+      // mid-list distinguishes "insert at slot N" from "insert at slot N after
+      // the dragged tab has been removed".
+      const wrapper = await mountPage();
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const ws = useWorkspaces();
+      ws.createWorkspace('Second');
+      ws.createWorkspace('Third');
+      ws.createWorkspace('Fourth');
+      await wrapper.vm.$nextTick();
+
+      const before = ws.workspaces.value.map((w) => w.name);
+      const tabs = wrapper.findAll('.ws-tab');
+      expect(tabs).toHaveLength(4);
+      rectFor(tabs[2], 200);
+
+      await tabs[0].trigger('dragstart');
+      // Past the midpoint of the third tab => slot 3, i.e. between C and D.
+      await tabs[2].trigger('dragover', { clientX: 280 });
+      await tabs[2].trigger('drop');
+
+      expect(ws.workspaces.value.map((w) => w.name))
+        .toEqual([before[1], before[2], before[0], before[3]]);
+    });
+
+    it('drops a tab BEFORE the one it was dragged onto', async () => {
+      const { wrapper, ws } = await threeTabs();
+      const before = names(ws);
+      const tabs = wrapper.findAll('.ws-tab');
+      rectFor(tabs[0], 0);
+
+      await tabs[2].trigger('dragstart');
+      // Left of the midpoint of the first tab => insert before it.
+      await tabs[0].trigger('dragover', { clientX: 10 });
+      await tabs[0].trigger('drop');
+
+      expect(names(ws)).toEqual([before[2], before[0], before[1]]);
+    });
+
+    it('shows the drop caret on the tab the drop would land against', async () => {
+      const { wrapper } = await threeTabs();
+      const tabs = wrapper.findAll('.ws-tab');
+      rectFor(tabs[1], 100);
+
+      await tabs[0].trigger('dragstart');
+      await tabs[1].trigger('dragover', { clientX: 110 });
+
+      expect(wrapper.findAll('.ws-tab')[1].classes()).toContain('drop-before');
+      expect(wrapper.findAll('.ws-tab')[0].classes()).toContain('is-dragging');
+    });
+
+    it('clears the caret when the drag ends without a drop', async () => {
+      const { wrapper, ws } = await threeTabs();
+      const before = names(ws);
+      const tabs = wrapper.findAll('.ws-tab');
+      rectFor(tabs[1], 100);
+
+      await tabs[0].trigger('dragstart');
+      await tabs[1].trigger('dragover', { clientX: 110 });
+      await tabs[0].trigger('dragend');
+
+      expect(wrapper.find('.drop-before').exists()).toBe(false);
+      expect(wrapper.find('.is-dragging').exists()).toBe(false);
+      expect(names(ws)).toEqual(before);
+    });
+
+    it('is not draggable while the tab is being renamed', async () => {
+      // draggable wins over text selection, so a draggable tab makes the
+      // rename input impossible to select with the mouse.
+      const { wrapper } = await threeTabs();
+      await wrapper.findAll('.ws-tab')[0].trigger('dblclick');
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.findAll('.ws-tab')[0].attributes('draggable')).toBe('false');
+      expect(wrapper.findAll('.ws-tab')[1].attributes('draggable')).toBe('true');
+    });
+  });
+
   // Closing a workspace deletes its windows and, once sync is on, records the
   // id in deletedIds so the tab is removed from EVERY signed-in device. That is
   // not something a mis-aimed click on a 12px button may do silently.
