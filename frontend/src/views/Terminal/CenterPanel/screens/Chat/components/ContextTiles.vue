@@ -89,7 +89,7 @@
           <div class="blk narrow">
             <div class="accent accent-indigo">
               <div class="accent-head">
-                <span class="accent-label">Per-turn floor</span>
+                <span class="accent-label">Every turn</span>
                 <span class="accent-amount">{{ formatUsd(economics.floorCost) }}</span>
               </div>
               <div class="mini-track">
@@ -141,7 +141,7 @@
         </template>
 
         <!-- SPENT / SAVED — both open the full cost detail, which is one story. -->
-        <template v-else-if="openTile === 'spent' || openTile === 'saved'">
+        <template v-else-if="openTile === 'tokens' || openTile === 'saved'">
           <div v-if="cacheState" class="blk full">
             <div class="accent" :class="cacheState === 'expired' ? 'accent-pink' : 'accent-green'">
               <span class="blk-note">
@@ -178,7 +178,7 @@
           <div class="blk narrow">
             <div class="accent accent-gold">
               <div class="accent-head">
-                <span class="accent-label">Estimate drift</span>
+                <span class="accent-label">Estimate off</span>
                 <span class="accent-amount warn">&times;{{ driftFactor.toFixed(2) }}</span>
               </div>
               <div class="mini-track">
@@ -398,6 +398,22 @@ export default {
     /* ── economics ── */
     const economics = computed(() => props.manifest?.economics || null);
     const hasEconomics = computed(() => !!economics.value && economics.value.floorTokens > 0);
+
+    /**
+     * Why the per-turn tile has no number yet.
+     *
+     * It used to say "no pricing for this model" in all three cases, and that
+     * is false in two of them: a missing manifest and a zero floor have
+     * nothing to do with pricing. Claude Opus 5 prices perfectly well and
+     * still showed that message, sitting next to a cost tile confidently
+     * displaying $290 — two tiles contradicting each other about the same
+     * model.
+     */
+    const floorPendingReason = computed(() => {
+      if (!props.manifest) return 'waiting for the first reply';
+      if (!economics.value) return 'no pricing for this model';
+      return 'nothing fixed to re-send';
+    });
     const floorSystemPct = computed(() => {
       const e = economics.value;
       if (!e || !e.floorTokens) return 50;
@@ -528,19 +544,56 @@ export default {
 
     /* ── strip ── */
     const isNotional = computed(() => props.subscriptionBased === true);
+
+    /**
+     * Money that never reached a bill, by either mechanism.
+     *
+     * On a seat the metered figure was not charged EITHER, so it is avoided
+     * money exactly as the cache saving is — and the two belong in one number.
+     * Reporting them apart produced the defect this replaces: a "Would cost
+     * $355.74" tile beside a "Saved $917.78" tile, where the phrase promised
+     * the uncached counterfactual ($1,273.52) but showed the post-cache figure.
+     * Two numbers, two baselines, no way to reconcile them.
+     */
+    const subscriptionSaved = computed(() => (isNotional.value ? (props.totalCost || 0) : 0));
+    const totalAvoided = computed(() => (totalSaved.value || 0) + subscriptionSaved.value);
+    const hasAvoided = computed(() => Math.abs(totalAvoided.value) > 1e-9);
+
+    /**
+     * One tile, and its SIGN decides what it is called.
+     *
+     * Caching is not free: writing a prefix bills at 1.25x-2x, so a turn that
+     * writes more than it reads genuinely costs money instead of saving it.
+     * "Saved −$12.34" is a contradiction on its face, and clamping it to zero
+     * would hide the one turn where the number is worth acting on.
+     *
+     * Computed from the DISPLAYED total, not the cache saving alone: a seat
+     * absorbing a write turn usually pulls it back above zero, and the label
+     * has to describe the figure actually on screen.
+     */
+    const savedIsCost = computed(() => totalAvoided.value < 0);
+
+    /** Why this turn cost money — recoverable investment, or wasted rewrite. */
+    const costReason = computed(() => (prefixBroke.value
+      ? 'cache prefix rewritten · not reused'
+      : 'cache write · pays back next turn'));
+
     const stripStats = computed(() => {
       const out = [];
       if (hasRequest.value) {
         out.push({ key: 'full', value: `${utilization.value.toFixed(0)}%`, cls: utilizationClass.value });
       }
-      if ((props.totalCost || 0) > 0) {
-        out.push({ key: isNotional.value ? 'notional' : 'spent', value: formatUsd(props.totalCost), cls: '' });
+      // On a seat nothing was billed, so a spend chip would read $0 forever and
+      // waste the slot. The avoided figure carries the story for both cases.
+      if (!isNotional.value && (props.totalCost || 0) > 0) {
+        out.push({ key: 'spent', value: formatUsd(props.totalCost), cls: '' });
       }
-      if (hasSavings.value) {
+      if (hasAvoided.value) {
+        // Same word as the tile below it, for the same number.
         out.push({
-          key: isInvestment.value ? 'invested' : 'saved',
-          value: formatUsd(totalSaved.value),
-          cls: isInvestment.value ? 'warn' : 'good',
+          key: savedIsCost.value ? 'cost' : 'saved',
+          value: formatUsd(Math.abs(totalAvoided.value)),
+          cls: savedIsCost.value ? 'warn' : 'good',
         });
       }
       return out;
@@ -554,65 +607,79 @@ export default {
     const tiles = computed(() => {
       const out = [];
 
+      // "Request" described the payload; what the number actually answers is
+      // how full the context window is.
       out.push(hasRequest.value
         ? {
           key: 'request',
-          label: 'Request',
+          label: 'Context used',
           value: `${utilization.value.toFixed(0)}%`,
           cls: utilizationClass.value,
-          sub: `${formatNumber(currentTokens.value)} / ${formatNumber(tokenLimit.value)}`,
+          sub: `${formatNumber(currentTokens.value)} of ${formatNumber(tokenLimit.value)}`,
         }
-        : { key: 'request', label: 'Request', value: '—', cls: '', sub: 'no request yet', pending: true });
+        : { key: 'request', label: 'Context used', value: '—', cls: '', sub: 'nothing sent yet', pending: true });
 
+      // "Floor / turn" is economics jargon for a plain idea: this is what every
+      // single turn costs before you type a word.
       out.push(hasEconomics.value
         ? {
           key: 'floor',
-          label: 'Floor / turn',
+          label: 'Every turn',
           value: formatUsd(economics.value.floorCost),
           cls: 'indigo',
-          sub: `${formatNumber(economics.value.floorTokens)} re-sent`
+          sub: `${formatNumber(economics.value.floorTokens)} tokens re-sent`
             + (props.executionsCount > 0 ? ` · ${props.executionsCount}×` : ''),
         }
-        : { key: 'floor', label: 'Floor / turn', value: '—', cls: '', sub: 'no pricing for this model', pending: true });
+        : { key: 'floor', label: 'Every turn', value: '—', cls: '', sub: floorPendingReason.value, pending: true });
 
-      const inTok = props.totalTokenUsage?.inputTokens || 0;
-      out.push((props.totalCost || 0) > 0
-        ? {
-          key: 'spent',
-          label: isNotional.value ? 'Notional' : 'Spent',
-          value: formatUsd(props.totalCost),
-          cls: '',
-          sub: `${props.executionsCount} call${props.executionsCount === 1 ? '' : 's'}`
-            + (inTok ? ` · ${formatNumber(inTok)} in` : ''),
-        }
-        : { key: 'spent', label: 'Spent', value: '—', cls: '', sub: 'no billed turns yet', pending: true });
-
+      // The scale of the conversation — the one major fact the strip never
+      // carried. It replaces a cost tile that could only ever restate, badly,
+      // what the Saved tile beside it already says.
       const hit = props.totalCacheMetrics?.hitRate;
-      out.push(hasSavings.value
+      const totalTokens = props.totalTokenUsage?.totalTokens || 0;
+      out.push(totalTokens > 0
+        ? {
+          key: 'tokens',
+          label: 'Tokens',
+          value: formatNumber(totalTokens),
+          cls: '',
+          // Turns, not calls: each turn is however many requests the tool loop
+          // needed, which is why these totals exceed the context window.
+          sub: `${props.executionsCount} turn${props.executionsCount === 1 ? '' : 's'}`
+            + (hit && parseFloat(hit) > 0 ? ` · ${parseFloat(hit).toFixed(0)}% cached` : ''),
+        }
+        : { key: 'tokens', label: 'Tokens', value: '—', cls: '', sub: 'no turns yet', pending: true });
+
+      out.push(hasAvoided.value
         ? {
           key: 'saved',
-          label: isInvestment.value ? 'Cache invested' : 'Saved',
-          value: formatUsd(totalSaved.value),
-          cls: isInvestment.value ? 'warn' : 'good',
+          label: savedIsCost.value ? 'Cost' : 'Saved',
+          // Absolute value: the label already carries the direction, and
+          // "Cost −$12.34" reads as a double negative.
+          value: formatUsd(Math.abs(totalAvoided.value)),
+          cls: savedIsCost.value ? 'warn' : 'good',
           // The cache clock outranks the hit rate here: a 90% historical hit
           // rate is cold comfort if the prefix expired four minutes ago.
-          sub: isInvestment.value
-            ? 'first prefix write · pays back next turn'
-            : `${Math.abs(savedPct.value).toFixed(1)}%`
+          sub: savedIsCost.value
+            ? costReason.value
+            : (isNotional.value ? 'caching + subscription' : `${Math.abs(savedPct.value).toFixed(0)}% cheaper`)
               + (cacheLabel.value
                 ? ` \u00b7 ${cacheLabel.value}`
                 : (hit && parseFloat(hit) > 0 ? ` · cache ${hit}%` : '')),
           subCls: cacheState.value === 'expired' ? 'warn' : '',
         }
-        : { key: 'saved', label: 'Saved', value: '—', cls: '', sub: 'nothing cached yet', pending: true });
+        : { key: 'saved', label: 'Saved', value: '—', cls: '', sub: 'nothing avoided yet', pending: true });
 
       if (driftWarning.value) {
         out.push({
           key: 'drift',
-          label: 'Drift',
+          label: 'Estimate off',
           value: `×${driftFactor.value.toFixed(2)}`,
           cls: 'warn',
-          sub: `${driftPct.value}% off after calibration`,
+          // Direction matters and the factor knows it: >1 means the provider
+          // counted MORE than predicted, <1 means less. "undercounts" in both
+          // cases would be plain-language phrasing of a false claim.
+          sub: `${driftFactor.value >= 1 ? 'undercounts' : 'overcounts'} by ${driftPct.value}%`,
         });
       }
 
@@ -645,7 +712,8 @@ export default {
       utilization, utilizationClass,
       systemPct, toolsPct, messagesPct, outputPct,
       relPct, miniPct, compositionTitle, legendRows,
-      economics, hasEconomics, floorSystemPct, recurringDrivers, topThreeSaving,
+      economics, hasEconomics, floorPendingReason, floorSystemPct, recurringDrivers, topThreeSaving,
+      subscriptionSaved, totalAvoided, hasAvoided, savedIsCost, costReason,
       totalSaved, savedPct, hasSavings, isInvestment,
       driftFactor, driftWarning, driftPct, providerCounted, headroom, turnsToCompression,
       cacheState, cacheLabel, cacheExpiresInMs, cacheAgeLabel, cacheTtl, fmtDuration,

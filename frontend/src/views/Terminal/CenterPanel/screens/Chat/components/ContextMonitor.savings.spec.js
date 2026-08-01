@@ -62,7 +62,8 @@ describe('first-turn cache investment (negative saving)', () => {
 
   it('is reported honestly, not clamped to zero', () => {
     const w = mountWith(investment);
-    expect(w.text()).toContain('Cache Investment');
+    // Same word as the ContextTiles "Cost" tile that opens this drawer.
+    expect(w.text()).toContain('Cost of Caching');
     expect(w.text()).toContain('0.0625');
   });
 
@@ -259,7 +260,7 @@ describe('mixed-model conversations', () => {
     { model: 'claude-opus-4-6', calls: 1, cost: 32.44 },
   ];
 
-  it('lists every model with its own call count and cost', () => {
+  it('lists every model with its own turn count and cost', () => {
     const w = mountWith({ totalCost: 209.84, modelMix: mix });
     const text = w.find('.model-mix').text();
     expect(text).toContain('claude-opus-5');
@@ -276,12 +277,12 @@ describe('mixed-model conversations', () => {
     expect(head).toContain('209.8400');
   });
 
-  it('pluralizes call counts', () => {
+  it('pluralizes turn counts', () => {
     const w = mountWith({ totalCost: 209.84, modelMix: mix });
     const rows = w.findAll('.model-mix-calls').map((r) => r.text());
-    expect(rows).toContain('10 calls');
-    expect(rows).toContain('1 call');
-    expect(rows).not.toContain('1 calls');
+    expect(rows).toContain('10 turns');
+    expect(rows).toContain('1 turn');
+    expect(rows).not.toContain('1 turns');
   });
 
   it('names it the metered split only on a seat', () => {
@@ -294,6 +295,67 @@ describe('mixed-model conversations', () => {
   it('stays hidden when only one model ran', () => {
     const w = mountWith({ totalCost: 209.84, modelMix: [mix[0]] });
     expect(w.find('.model-mix').exists()).toBe(false);
+  });
+});
+
+describe('a turn is not a call', () => {
+  // THE defect this block exists for.
+  //
+  // The backend accumulates usage once per tool round, and every round
+  // re-sends the whole conversation because an LLM API is stateless. So a
+  // 7-round turn over a 612k context legitimately bills ~4.2M input tokens.
+  // Labelled "Last Call" that read as a single 4.2M-token request into a 1M
+  // window — an impossibility that made the panel look broken while the number
+  // was right all along.
+  const TURN = {
+    tokenUsage: { inputTokens: 4_200_000, outputTokens: 7419, totalTokens: 4_207_419 },
+    estimatedCost: 8.0381,
+    rounds: [
+      { tokens: 560_000 }, { tokens: 580_000 }, { tokens: 600_000 }, { tokens: 610_000 },
+      { tokens: 612_000 }, { tokens: 618_000 }, { tokens: 620_000 },
+    ],
+  };
+
+  it('calls the section a turn and says how many requests it took', () => {
+    const w = mountWith(TURN);
+    const divider = w.find('.last-call-divider').text();
+    expect(divider).toContain('Last turn');
+    expect(divider).toContain('7 rounds');
+    expect(divider).not.toMatch(/call/i);
+  });
+
+  it('claims no round count when live turn state is gone', () => {
+    // A page reload drops `rounds`. Saying "Last turn" alone is honest; an
+    // assumed count would not be.
+    const w = mountWith({ ...TURN, rounds: [] });
+    expect(w.find('.last-call-divider').text()).toBe('Last turn');
+  });
+
+  it('pluralizes the round count', () => {
+    const w = mountWith({ ...TURN, rounds: [{ tokens: 600_000 }] });
+    expect(w.find('.last-call-divider').text()).toContain('1 round');
+    expect(w.find('.last-call-divider').text()).not.toContain('1 rounds');
+  });
+
+  it('counts the conversation in turns', () => {
+    const w = mountWith({
+      executionsCount: 34,
+      totalTokenUsage: { inputTokens: 216_300_000, outputTokens: 777_800, totalTokens: 217_077_800 },
+    });
+    const divider = w.findAll('.section-divider').map((d) => d.text()).join(' ');
+    expect(divider).toContain('34 turns');
+    expect(divider).not.toMatch(/\d+ calls?\b/);
+  });
+
+  it('never uses the word "call" for a turn anywhere in the panel', () => {
+    const w = mountWith({
+      ...TURN,
+      executionsCount: 34,
+      totalTokenUsage: { inputTokens: 216_300_000, outputTokens: 777_800, totalTokens: 217_077_800 },
+      modelMix: [{ model: 'claude-opus-5', calls: 29, cost: 245.9 }],
+      totalCost: 329.65,
+    });
+    expect(w.text()).not.toMatch(/\d+\s+calls?\b/i);
   });
 });
 

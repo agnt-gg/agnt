@@ -48,7 +48,12 @@
     </div>
 
     <!-- Conversation Totals (cumulative across all turns) -->
-    <div v-if="hasTotals" class="section-divider">Conversation{{ executionsCount > 0 ? ` · ${executionsCount} call${executionsCount === 1 ? '' : 's'}` : '' }}</div>
+    <!--
+      "calls" was wrong: one row here is one TURN, and a turn is however many
+      API requests the tool loop needed. Calling it a call made the token
+      totals look impossible against the context window.
+    -->
+    <div v-if="hasTotals" class="section-divider">Conversation{{ executionsCount > 0 ? ` · ${executionsCount} turn${executionsCount === 1 ? '' : 's'}` : '' }}</div>
 
     <div v-if="hasTotals" class="token-usage-row">
       <span class="usage-label">Tokens</span>
@@ -92,7 +97,8 @@
 
     <div v-if="hasTotals && hasSavings" class="savings-block" :class="{ investment: isInvestment }">
       <div class="savings-head">
-        <span class="savings-label">{{ isInvestment ? 'Cache Investment' : 'Saved by Caching' }}</span>
+        <!-- Same word as the tile that opens this drawer: one number, one name. -->
+        <span class="savings-label">{{ isInvestment ? 'Cost of Caching' : 'Saved by Caching' }}</span>
         <span class="savings-amount">
           {{ formatUsd(totalSaved) }}
           <span v-if="!isInvestment" class="savings-pct">{{ totalSavedPct.toFixed(1) }}%</span>
@@ -105,9 +111,6 @@
       </div>
       <div v-if="isInvestment" class="savings-note">
         Writing the cache prefix costs more up front &mdash; it pays back on the next turn.
-      </div>
-      <div v-else-if="isNotional" class="savings-note">
-        Caching cut the metered figure first; your seat absorbed the rest.
       </div>
     </div>
 
@@ -129,14 +132,22 @@
       </div>
       <div v-for="m in modelMix" :key="m.model" class="model-mix-row">
         <span class="model-mix-name">{{ m.model }}</span>
-        <span class="model-mix-calls">{{ m.calls }} {{ m.calls === 1 ? 'call' : 'calls' }}</span>
+        <span class="model-mix-calls">{{ m.calls }} {{ m.calls === 1 ? 'turn' : 'turns' }}</span>
         <span class="model-mix-cost">{{ formatUsd(m.cost) }}</span>
       </div>
     </div>
 
 
-    <!-- Last Call (per-turn debug row) -->
-    <div v-if="tokenUsage || cacheMetrics || (estimatedCost != null && estimatedCost > 0)" class="section-divider last-call-divider">Last Call</div>
+    <!--
+      Last TURN, not last call.
+
+      The backend accumulates usage once per tool round and each round re-sends
+      the whole conversation, so this input figure is a SUM over N requests.
+      Labelled "Last Call" it read as a single request of 4.2M tokens into a 1M
+      window — an impossibility that made the whole panel look broken, when the
+      number was the correct billed total all along.
+    -->
+    <div v-if="tokenUsage || cacheMetrics || (estimatedCost != null && estimatedCost > 0)" class="section-divider last-call-divider">Last turn{{ roundCount > 0 ? ` · ${roundCount} round${roundCount === 1 ? '' : 's'}` : '' }}</div>
 
     <div v-if="tokenUsage" class="token-usage-row subtle">
       <span class="usage-label">Tokens</span>
@@ -250,6 +261,15 @@ export default {
       type: Number,
       default: 0,
     },
+    /**
+     * Requests made during the last turn, round 1 first. Live state, so it is
+     * empty after a page reload — the copy degrades to naming the mechanism
+     * without claiming a count it cannot know.
+     */
+    rounds: {
+      type: Array,
+      default: () => [],
+    },
   },
   setup(props) {
     const utilizationPercent = computed(() => {
@@ -288,6 +308,10 @@ export default {
     };
 
     const cacheHitClass = computed(() => hitClass(props.cacheMetrics?.hitRate));
+
+    const roundCount = computed(() => props.rounds?.length || 0);
+
+
     const totalCacheHitClass = computed(() => hitClass(props.totalCacheMetrics?.hitRate));
 
     const hasTotals = computed(() => (props.totalTokenUsage?.totalTokens || 0) > 0);
@@ -368,6 +392,7 @@ export default {
       utilizationPercent,
       getUsageClass,
       cacheHitClass,
+      roundCount,
       totalCacheHitClass,
       hasTotals,
       hasTotalCache,

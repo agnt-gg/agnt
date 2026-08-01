@@ -123,19 +123,19 @@ describe('ContextTiles — collapsed strip', () => {
 
 describe('ContextTiles — tiles', () => {
   it('renders the six summary tiles with full data', () => {
-    expect(tileKeys(make())).toEqual(['Request', 'Floor / turn', 'Spent', 'Saved', 'Drift', 'This turn']);
+    expect(tileKeys(make())).toEqual(['Context used', 'Every turn', 'Tokens', 'Saved', 'Estimate off', 'This turn']);
   });
 
   it('shows utilization and the token pair on the request tile', () => {
-    const t = tileByLabel(make(), 'Request');
+    const t = tileByLabel(make(), 'Context used');
     expect(t.find('.tile-value').text()).toBe('78%');
-    expect(t.find('.tile-sub').text()).toBe('781.1k / 1.0M');
+    expect(t.find('.tile-sub').text()).toBe('781.1k of 1.0M');
   });
 
   it('states the floor as money, tokens and how many times it was paid', () => {
-    const t = tileByLabel(make(), 'Floor / turn');
+    const t = tileByLabel(make(), 'Every turn');
     expect(t.find('.tile-value').text()).toBe('$0.21');
-    expect(t.find('.tile-sub').text()).toContain('69.1k re-sent');
+    expect(t.find('.tile-sub').text()).toContain('69.1k tokens re-sent');
     expect(t.find('.tile-sub').text()).toContain('42');
   });
 
@@ -143,7 +143,7 @@ describe('ContextTiles — tiles', () => {
     // Dropping it let auto-fit stretch the surviving tiles across the whole
     // panel, which made a 4% context read as a nearly-full bar.
     const w = make({ manifest: { ...manifest, economics: null } });
-    const t = tileByLabel(w, 'Floor / turn');
+    const t = tileByLabel(w, 'Every turn');
     expect(t.find('.tile-value').text()).toBe('\u2014');
     expect(t.classes()).toContain('placeholder');
     expect(t.attributes('disabled')).toBeDefined();
@@ -151,7 +151,7 @@ describe('ContextTiles — tiles', () => {
 
   it('never expands a placeholder into an empty drawer', async () => {
     const w = make({ manifest: { ...manifest, economics: null } });
-    await tileByLabel(w, 'Floor / turn').trigger('click');
+    await tileByLabel(w, 'Every turn').trigger('click');
     expect(w.find('.tiles-drawer').exists()).toBe(false);
 
     // The rendered button is also `disabled`, which alone would satisfy the
@@ -165,10 +165,11 @@ describe('ContextTiles — tiles', () => {
   it('keeps the grid full on a brand-new conversation', () => {
     const w = make({
       totalCost: 0, totalUncachedCost: null, executionsCount: 0, rounds: [],
+      totalTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       manifest: { ...manifest, economics: null },
       contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1 } },
     });
-    expect(tileKeys(w)).toEqual(['Request', 'Floor / turn', 'Spent', 'Saved']);
+    expect(tileKeys(w)).toEqual(['Context used', 'Every turn', 'Tokens', 'Saved']);
     expect(w.findAll('.tile.placeholder')).toHaveLength(3);
   });
 
@@ -176,25 +177,126 @@ describe('ContextTiles — tiles', () => {
     const w = make({
       contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1 } },
     });
-    expect(tileKeys(w)).not.toContain('Drift');
+    expect(tileKeys(w)).not.toContain('Estimate off');
   });
 
   it('drops the rounds tile before any request has been made', () => {
     expect(tileKeys(make({ rounds: [] }))).not.toContain('This turn');
   });
 
-  it('labels a negative saving as a cache investment rather than a loss', () => {
+  it('turns into a Cost tile when the number goes negative', () => {
+    // Caching is not free — writing a prefix bills at 1.25x-2x — so a turn that
+    // writes more than it reads genuinely costs money. "Saved −$0.10" is a
+    // contradiction on its face; the label has to follow the sign.
     const w = make({ totalCost: 0.5, totalUncachedCost: 0.4 });
-    const t = tileByLabel(w, 'Cache invested');
-    expect(t).toBeTruthy();
+    expect(tileKeys(w)).toContain('Cost');
+    expect(tileKeys(w)).not.toContain('Saved');
+
+    const t = tileByLabel(w, 'Cost');
+    // Absolute value: "Cost −$0.10" would be a double negative.
+    expect(t.find('.tile-value').text()).toBe('$0.10');
     expect(t.find('.tile-value').classes()).toContain('warn');
     expect(t.find('.tile-sub').text()).toContain('pays back');
   });
 
-  it('calls the spend notional on a subscription seat', () => {
+  it('says so plainly when the prefix was rewritten rather than reused', () => {
+    // A write that pays back next turn and a write thrown away by a broken
+    // prefix are different problems, and only one of them is recoverable.
+    const w = make({
+      totalCost: 0.5,
+      totalUncachedCost: 0.4,
+      manifest: { ...manifest, cache: { prefixStable: false } },
+    });
+    expect(tileByLabel(w, 'Cost').find('.tile-sub').text()).toContain('rewritten');
+  });
+
+  it('stays Saved when a seat absorbs a write turn', () => {
+    // The label follows the DISPLAYED total, not the cache saving alone: the
+    // seat pulls a −$0.10 cache write back to +$0.40 avoided.
+    const w = make({ totalCost: 0.5, totalUncachedCost: 0.4, subscriptionBased: true });
+    const t = tileByLabel(w, 'Saved');
+    expect(t.find('.tile-value').text()).toBe('$0.40');
+    expect(t.find('.tile-value').classes()).toContain('good');
+  });
+
+  it('mirrors the flip on the collapsed strip, using the same word', () => {
+    const cost = make({ totalCost: 0.5, totalUncachedCost: 0.4 });
+    expect(cost.findAll('.strip-key').map((n) => n.text())).toContain('cost');
+    const saved = make();
+    expect(saved.findAll('.strip-key').map((n) => n.text())).toContain('saved');
+  });
+
+  it('counts a seat\u2019s metered value as avoided, in one number with the cache saving', () => {
+    // THE defect this replaces. "Would cost $355.74" beside "Saved $917.78"
+    // put two figures on two different baselines next to each other: the
+    // phrase promised the uncached counterfactual ($1,273.52) while showing
+    // the post-cache metered figure. Neither tile could be reconciled with the
+    // other, and the seat money was never counted as avoided at all.
     const w = make({ subscriptionBased: true });
-    expect(tileKeys(w)).toContain('Notional');
+    expect(tileKeys(w)).not.toContain('Would cost');
+    expect(tileKeys(w)).not.toContain('Notional');
     expect(tileKeys(w)).not.toContain('Spent');
+
+    // 34.3608 saved by caching + 12.8433 absorbed by the seat.
+    const saved = tileByLabel(w, 'Saved');
+    expect(saved.find('.tile-value').text()).toBe('$47.20');
+    expect(saved.find('.tile-sub').text()).toContain('caching + subscription');
+  });
+
+  it('on a seat, everything metered was avoided — the figure IS the uncached baseline', () => {
+    // A seat user pays nothing per token, so avoided must equal what the whole
+    // conversation would have cost without caching AND without the seat. If
+    // these ever diverge, one of the two mechanisms is being double-counted or
+    // dropped.
+    const w = make({ subscriptionBased: true });
+    const shown = parseFloat(tileByLabel(w, 'Saved').find('.tile-value').text().replace(/[$,]/g, ''));
+    expect(shown).toBeCloseTo(defaults.totalUncachedCost, 2);
+  });
+
+  it('on a metered key, avoided is the cache saving alone', () => {
+    const w = make({ subscriptionBased: false });
+    const saved = tileByLabel(w, 'Saved');
+    expect(saved.find('.tile-value').text()).toBe('$34.36');
+    expect(saved.find('.tile-sub').text()).toContain('73% cheaper');
+  });
+
+  it('reports the size of the conversation, which no other tile carried', () => {
+    const t = tileByLabel(make(), 'Tokens');
+    expect(t.find('.tile-value').text()).toBe('8.6M');
+    // Turns, not calls — each turn is however many requests the tool loop made.
+    expect(t.find('.tile-sub').text()).toBe('42 turns · 90% cached');
+  });
+
+  it('holds the tokens slot with a placeholder before anything is sent', () => {
+    const w = make({ totalTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } });
+    const t = tileByLabel(w, 'Tokens');
+    expect(t.find('.tile-value').text()).toBe('\u2014');
+    expect(t.classes()).toContain('placeholder');
+  });
+
+  it('explains an unavailable per-turn cost honestly, never blaming pricing', () => {
+    // All three states used to read "no pricing for this model", which is
+    // false for a priced model that simply has no manifest yet — and it sat
+    // next to a cost tile showing real money for that same model.
+    const noManifest = make({ manifest: null });
+    expect(tileByLabel(noManifest, 'Every turn').find('.tile-sub').text())
+      .toBe('waiting for the first reply');
+
+    const unpriced = make({ manifest: { ...manifest, economics: null } });
+    expect(tileByLabel(unpriced, 'Every turn').find('.tile-sub').text())
+      .toBe('no pricing for this model');
+
+    const zeroFloor = make({ manifest: { ...manifest, economics: { ...economics, floorTokens: 0 } } });
+    expect(tileByLabel(zeroFloor, 'Every turn').find('.tile-sub').text())
+      .toBe('nothing fixed to re-send');
+  });
+
+  it('uses no accounting jargon anywhere in the tile strip', () => {
+    const w = make({ subscriptionBased: true });
+    const text = w.find('.tiles-grid').text();
+    for (const word of ['Notional', 'Floor', 'Drift']) {
+      expect(text, word).not.toContain(word);
+    }
   });
 
   it('fills the tile bar to the utilization it sits under, not to the track', () => {
@@ -218,7 +320,7 @@ describe('ContextTiles — tiles', () => {
 
   it('escalates the request tile colour past 90%', () => {
     const w = make({ contextStatus: { ...contextStatus, currentTokens: 960_000 } });
-    expect(tileByLabel(w, 'Request').find('.tile-value').classes()).toContain('critical');
+    expect(tileByLabel(w, 'Context used').find('.tile-value').classes()).toContain('critical');
   });
 });
 
@@ -229,27 +331,27 @@ describe('ContextTiles — drawer', () => {
 
   it('opens, switches and closes on tile clicks', async () => {
     const w = make();
-    await tileByLabel(w, 'Floor / turn').trigger('click');
+    await tileByLabel(w, 'Every turn').trigger('click');
     expect(w.find('.tiles-drawer').exists()).toBe(true);
-    expect(w.find('.accent-label').text()).toBe('Per-turn floor');
+    expect(w.find('.accent-label').text()).toBe('Every turn');
 
-    await tileByLabel(w, 'Drift').trigger('click');
-    expect(w.find('.accent-label').text()).toBe('Estimate drift');
+    await tileByLabel(w, 'Estimate off').trigger('click');
+    expect(w.find('.accent-label').text()).toBe('Estimate off');
 
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     expect(w.find('.tiles-drawer').exists()).toBe(false);
   });
 
   it('multiplies the floor by the turns actually taken', async () => {
     const w = make();
-    await tileByLabel(w, 'Floor / turn').trigger('click');
+    await tileByLabel(w, 'Every turn').trigger('click');
     // 0.207237 * 42 = 8.704
     expect(w.find('.tiles-drawer').text()).toContain('$8.70');
   });
 
   it('ranks recurring segments by cost, biggest first', async () => {
     const w = make();
-    await tileByLabel(w, 'Floor / turn').trigger('click');
+    await tileByLabel(w, 'Every turn').trigger('click');
     const names = w.findAll('.driver-name').map((n) => n.text());
     expect(names[0]).toBe('Memory');
     expect(names[1]).toBe('Core instructions');
@@ -260,7 +362,7 @@ describe('ContextTiles — drawer', () => {
 
   it('sums the top three into an actionable saving', async () => {
     const w = make();
-    await tileByLabel(w, 'Floor / turn').trigger('click');
+    await tileByLabel(w, 'Every turn').trigger('click');
     // 0.04593 + 0.031836 + 0.011436 = 0.089202 -> $0.09, x42 = $3.75
     const text = w.find('.tiles-drawer').text();
     expect(text).toContain('$0.09');
@@ -269,27 +371,27 @@ describe('ContextTiles — drawer', () => {
 
   it('forecasts when compression will start, from measured growth', async () => {
     const w = make();
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     // (1,000,000 - 781,090) / 73,000 = 2.99 -> 2 safe turns
     expect(w.find('.tiles-drawer').text()).toContain('~2 turns');
   });
 
   it('says "not growing" rather than inventing a forecast', async () => {
     const w = make({ growthPerTurn: 0 });
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     expect(w.find('.tiles-drawer').text()).toContain('not growing');
   });
 
   it('shows the composition legend on the request drawer', async () => {
     const w = make();
-    await tileByLabel(w, 'Request').trigger('click');
+    await tileByLabel(w, 'Context used').trigger('click');
     const labels = w.findAll('.legend-label').map((l) => l.text());
     expect(labels).toEqual(['System', 'Tools', 'Messages', 'Output reserve']);
   });
 
   it('closes a drawer whose tile stops existing', async () => {
     const w = make();
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     expect(w.find('.tiles-drawer').exists()).toBe(true);
     await w.setProps({
       contextStatus: { ...contextStatus, breakdown: { ...contextStatus.breakdown, residualDrift: 1 } },
@@ -360,40 +462,42 @@ describe('ContextTiles — drift reports leftover error, not the correction', ()
     // screen; reporting it as drift told the user their figures were 61% wrong
     // when they were correct. Only the residual is error.
     const w = make(bd({ calibration: 1.61, residualDrift: 1.0 }));
-    expect(tileKeys(w)).not.toContain('Drift');
+    expect(tileKeys(w)).not.toContain('Estimate off');
     expect(w.find('.strip-pip').exists()).toBe(false);
   });
 
   it('ignores the correction factor entirely, however large', () => {
     const w = make(bd({ calibration: 2.9, residualDrift: 1.03 }));
-    expect(tileKeys(w)).not.toContain('Drift');
+    expect(tileKeys(w)).not.toContain('Estimate off');
   });
 
   it('flags genuine leftover error', () => {
     const w = make(bd({ calibration: 1.61, residualDrift: 1.4 }));
-    const t = tileByLabel(w, 'Drift');
+    const t = tileByLabel(w, 'Estimate off');
     expect(t.find('.tile-value').text()).toBe('\u00d71.40');
-    expect(t.find('.tile-sub').text()).toBe('40% off after calibration');
+    expect(t.find('.tile-sub').text()).toBe('undercounts by 40%');
   });
 
   it('treats over-estimating as drift too', () => {
     // 0.75 means the provider counted a quarter LESS than we predicted. Being
     // wrong in the cheap direction is still being wrong.
     const w = make(bd({ calibration: 1.2, residualDrift: 0.75 }));
-    const t = tileByLabel(w, 'Drift');
+    const t = tileByLabel(w, 'Estimate off');
     expect(t).toBeTruthy();
-    expect(t.find('.tile-sub').text()).toBe('25% off after calibration');
+    // ...and the copy must say which DIRECTION, or it states a falsehood in
+    // one of the two cases it covers.
+    expect(t.find('.tile-sub').text()).toBe('overcounts by 25%');
   });
 
   it('makes no claim when the backend has not measured a residual yet', () => {
     // Turn one, or an older backend. Silence beats a fabricated number.
     const w = make(bd({ calibration: 1.61, residualDrift: null }));
-    expect(tileKeys(w)).not.toContain('Drift');
+    expect(tileKeys(w)).not.toContain('Estimate off');
   });
 
   it('contrasts what the panel predicted against what the provider counted', async () => {
     const w = make(bd({ calibration: 1.61, residualDrift: 1.4 }));
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     const text = w.find('.tiles-drawer').text();
     expect(text).toContain('already applies this correction');
     expect(text).toContain('781.1k');   // predicted (already calibrated)
@@ -404,15 +508,15 @@ describe('ContextTiles — drift reports leftover error, not the correction', ()
 describe('ContextTiles — running out of window means compression, not a wall', () => {
   it('never calls the limit a wall', async () => {
     const w = make();
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     // AGNT compresses and the conversation continues; "wall" claims otherwise.
     expect(w.find('.tiles-drawer').text().toLowerCase()).not.toContain('wall');
-    expect(tileByLabel(w, 'Drift').find('.tile-sub').text().toLowerCase()).not.toContain('wall');
+    expect(tileByLabel(w, 'Estimate off').find('.tile-sub').text().toLowerCase()).not.toContain('wall');
   });
 
   it('says what actually happens when the window fills', async () => {
     const w = make();
-    await tileByLabel(w, 'Drift').trigger('click');
+    await tileByLabel(w, 'Estimate off').trigger('click');
     const text = w.find('.tiles-drawer').text();
     expect(text).toContain('Compression starts in');
     expect(text).toContain('Nothing stops when the window fills');
@@ -528,9 +632,11 @@ describe('ContextTiles — prompt cache freshness', () => {
 });
 
 describe('ContextTiles — slots', () => {
-  it('renders the cost detail for both spend tiles', async () => {
+  it('renders the cost detail for both money tiles', async () => {
+    // Tokens and Saved are one story — the drawer breaks the same conversation
+    // down into turns, tokens and the caching/subscription split.
     const w = make({}, { cost: '<div class="slot-cost">COST</div>' });
-    await tileByLabel(w, 'Spent').trigger('click');
+    await tileByLabel(w, 'Tokens').trigger('click');
     expect(w.find('.slot-cost').exists()).toBe(true);
     await tileByLabel(w, 'Saved').trigger('click');
     expect(w.find('.slot-cost').exists()).toBe(true);
@@ -538,7 +644,7 @@ describe('ContextTiles — slots', () => {
 
   it('renders inventory under the request tile', async () => {
     const w = make({}, { inventory: '<div class="slot-inv">INV</div>' });
-    await tileByLabel(w, 'Request').trigger('click');
+    await tileByLabel(w, 'Context used').trigger('click');
     expect(w.find('.slot-inv').exists()).toBe(true);
   });
 
@@ -582,9 +688,9 @@ describe('ContextTiles — an unmeasured conversation reports nothing', () => {
   });
 
   it('REGRESSION: the request tile is a placeholder, not a measured zero', () => {
-    const t = tileByLabel(make(untouched), 'Request');
+    const t = tileByLabel(make(untouched), 'Context used');
     expect(t.find('.tile-value').text()).toBe('\u2014');
-    expect(t.find('.tile-sub').text()).toBe('no request yet');
+    expect(t.find('.tile-sub').text()).toBe('nothing sent yet');
     expect(t.classes()).toContain('placeholder');
     expect(t.find('.tile-sub').text()).not.toContain('1.0M');
   });
@@ -595,7 +701,7 @@ describe('ContextTiles — an unmeasured conversation reports nothing', () => {
       contextStatus: { ...untouched.contextStatus, currentTokens: 41_200 },
     });
     expect(w.findAll('.strip-key').map((k) => k.text())).toContain('full');
-    expect(tileByLabel(w, 'Request').find('.tile-sub').text()).toBe('41.2k / 1.0M');
+    expect(tileByLabel(w, 'Context used').find('.tile-sub').text()).toBe('41.2k of 1.0M');
   });
 });
 
@@ -619,7 +725,7 @@ describe('ContextTiles — degenerate input', () => {
 
   it('survives a manifest with no sections or tools', async () => {
     const w = make({ manifest: { economics, system: { total: 0 }, tools: { total: 0 } } });
-    await tileByLabel(w, 'Floor / turn').trigger('click');
+    await tileByLabel(w, 'Every turn').trigger('click');
     expect(w.findAll('.driver')).toHaveLength(0);
     expect(w.html()).not.toContain('NaN');
   });

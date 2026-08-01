@@ -62,6 +62,7 @@
                 :subscriptionBased="subscriptionBased"
                 :totalCacheMetrics="totalCacheMetrics"
                 :executionsCount="executionsCount"
+                :rounds="turnRounds"
               />
             </template>
 
