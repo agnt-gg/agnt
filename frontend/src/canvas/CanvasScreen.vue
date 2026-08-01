@@ -461,8 +461,14 @@ export default {
     const mainSections = MAIN_SECTIONS;
     const settingsSections = SETTINGS_SECTIONS;
 
-    // Custom pages = pages that don't belong to any section
-    const customPages = computed(() => allPages.value.filter((p) => !SECTION_ROUTES.has(p.route)));
+    // Custom pages = pages that don't belong to any section.
+    // Also exclude workspace:* rows (owned by /api/workspaces) so tab names
+    // like General/Coding never appear as left-sidebar custom pages.
+    const customPages = computed(() =>
+      allPages.value.filter(
+        (p) => !SECTION_ROUTES.has(p.route) && !(typeof p.route === 'string' && p.route.startsWith('workspace:')),
+      ),
+    );
 
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);

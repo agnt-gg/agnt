@@ -51,6 +51,18 @@
       </button>
 
       <div class="ws-tabbar-right">
+        <!-- Per-workspace AI: lives with auto/widget (active tab only), not on the tab name. -->
+        <button
+          v-if="active"
+          class="ws-pill ws-ai-pill"
+          :class="{ on: !!active.ai?.provider }"
+          v-tooltip="aiBadgeTooltip(active)"
+          @click="openAiPicker(active, $event)"
+        >
+          <i class="fas fa-robot"></i>
+          {{ aiBadgeLabel(active) }}
+        </button>
+
         <button
           class="ws-pill"
           :class="{ on: autoOpen }"
@@ -69,6 +81,45 @@
           <i class="fas fa-plus"></i>
           widget
         </button>
+      </div>
+    </div>
+
+    <div
+      v-if="aiPicker.open"
+      class="ws-ai-popover"
+      :style="{ top: aiPicker.top + 'px', left: aiPicker.left + 'px' }"
+      @click.stop
+    >
+      <div class="ws-ai-popover-title">Workspace AI</div>
+      <label class="ws-ai-label">
+        Provider
+        <CustomSelect
+          :options="aiProviderSelectOptions"
+          :model-value="aiPicker.provider"
+          placeholder="— global default —"
+          :z-index="10050"
+          max-height="220px"
+          @update:model-value="onAiProviderSelected"
+        />
+      </label>
+      <label class="ws-ai-label" v-if="aiPicker.provider">
+        Model
+        <CustomSelect
+          :options="aiModelSelectOptions"
+          :model-value="aiPicker.model"
+          :placeholder="aiModelsLoading ? 'Loading models…' : (aiModelSelectOptions.length ? 'Select model' : 'No models available')"
+          :disabled="aiModelsLoading || !aiModelSelectOptions.length"
+          :z-index="10050"
+          max-height="220px"
+          @update:model-value="onAiModelSelected"
+        />
+      </label>
+      <div class="ws-ai-actions">
+        <button
+          class="ws-ai-btn primary"
+          @click="commitWorkspaceAi"
+          :disabled="!!aiPicker.provider && (!aiPicker.model || aiModelsLoading)"
+        >Apply</button>
       </div>
     </div>
 
@@ -221,14 +272,16 @@ import { useRoute, useRouter } from 'vue-router';
 import WidgetFrame from '@/canvas/WidgetFrame.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import EmbedScope from './EmbedScope.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
 import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } from '@/canvas/gridUtils.js';
 import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor } from './useWorkspaces.js';
 import { widgetForToolCall, SCREEN_WIDGET_MAP } from './surfaceRegistry.js';
+import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
 export default {
   name: 'WorkspaceScreen',
-  components: { WidgetFrame, CustomWidgetRenderer, EmbedScope },
+  components: { WidgetFrame, CustomWidgetRenderer, EmbedScope, CustomSelect },
   setup() {
     const store = useStore();
     const route = useRoute();
@@ -255,7 +308,123 @@ export default {
       bringToFront,
       setAutoOpen,
       save,
+      hydrateFromServer,
+      setWorkspaceAi,
+      setChannelConversation,
     } = useWorkspaces();
+
+    // ── per-workspace AI provider picker ────────────────────────────
+    // Tab badge = set/show THIS workspace's AI. Top-right CanvasScreen
+    // selector stays the GLOBAL account default (untouched).
+    const aiPicker = ref({ open: false, wsId: '', provider: '', model: '', top: 0, left: 0 });
+    // Only providers that are actually connected (same rule as ChatProviderSelector).
+    // Local + custom providers are always offered; built-ins require appAuth.connectedApps.
+    const aiProviderOptions = computed(() => {
+      const list = store.getters['aiProvider/allProviders'] || [];
+      const connected = (store.state.appAuth?.connectedApps || []).map((p) => String(p).toLowerCase());
+      return list
+        .map((p) => ({ id: p.id || p.key, name: p.name || p.displayName || p.id || p.key, isCustom: !!p.isCustom }))
+        .filter((p) => {
+          if (!p.id) return false;
+          if (p.isCustom) return true;
+          if (String(p.id).toLowerCase() === 'local') return true;
+          const key = resolveProviderKey(p.id);
+          return key && connected.includes(String(key).toLowerCase());
+        });
+    });
+    const aiModelOptions = computed(() => {
+      if (!aiPicker.value.provider) return [];
+      return store.state.aiProvider?.allModels?.[aiPicker.value.provider] || [];
+    });
+    const aiModelsLoading = computed(() => {
+      const p = aiPicker.value.provider;
+      return !!(p && store.state.aiProvider?.loadingModels?.[p]);
+    });
+    const modelKey = (m) => (typeof m === 'string' ? m : m?.id || m?.model || m?.name || '');
+    const modelLabel = (m) => (typeof m === 'string' ? m : m?.name || m?.id || m?.model || modelKey(m));
+    // CustomSelect options/handlers (uiContracts forbids native <select>)
+    const aiProviderSelectOptions = computed(() => [
+      { label: '— global default —', value: '' },
+      ...aiProviderOptions.value.map((p) => ({ label: p.name, value: p.id })),
+    ]);
+    const aiModelSelectOptions = computed(() =>
+      aiModelOptions.value.map((m) => ({ label: modelLabel(m), value: modelKey(m) })),
+    );
+    function onAiProviderSelected(value) {
+      aiPicker.value.provider = value ?? '';
+      return onAiProviderChange();
+    }
+    function onAiModelSelected(value) {
+      aiPicker.value.model = value ?? '';
+    }
+    const globalProviderShort = computed(() => {
+      const p = store.state.aiProvider?.selectedProvider || '';
+      if (!p) return '';
+      const custom = (store.state.aiProvider?.customProviders || []).find((cp) => cp.id === p);
+      const name = custom?.provider_name || p;
+      return String(name).replace(/\./g, '-');
+    });
+    /** Tab label: override provider name, or plain "default" (no global name). */
+    function aiBadgeLabel(ws) {
+      if (ws?.ai?.provider) return ws.ai.provider;
+      return 'default';
+    }
+    function aiBadgeTooltip(ws) {
+      if (ws?.ai?.provider) {
+        return `This workspace uses ${ws.ai.provider}${ws.ai.model ? ` / ${ws.ai.model}` : ''} — click to change`;
+      }
+      return 'Using account default — click to set a provider for this workspace';
+    }
+    /** Fetch models into the store (same path as the top-right ChatProviderSelector). */
+    async function ensureModelsForProvider(provider) {
+      if (!provider) return;
+      try {
+        await store.dispatch('aiProvider/fetchProviderModels', { provider });
+      } catch (e) {
+        console.warn('[Workspace] fetchProviderModels failed:', e);
+      }
+      const models = store.state.aiProvider?.allModels?.[provider] || [];
+      const current = aiPicker.value.model;
+      const stillValid = current && models.some((m) => modelKey(m) === current);
+      if (!stillValid) {
+        aiPicker.value.model = models.length ? modelKey(models[0]) : '';
+      }
+    }
+    function openAiPicker(ws, evt) {
+      const rect = evt?.currentTarget?.getBoundingClientRect?.() || { bottom: 80, left: 40, right: 200 };
+      // Pill sits on the right toolbar — anchor to its right edge and keep the
+      // popover inside the viewport so Apply isn't clipped off-screen.
+      const width = 280;
+      const left = Math.max(8, Math.min(Math.round(rect.right) - width, window.innerWidth - width - 8));
+      aiPicker.value = {
+        open: true,
+        wsId: ws.id,
+        provider: ws.ai?.provider || '',
+        model: ws.ai?.model || '',
+        top: Math.round(rect.bottom + 6),
+        left,
+      };
+      if (aiPicker.value.provider) ensureModelsForProvider(aiPicker.value.provider);
+    }
+    async function onAiProviderChange() {
+      aiPicker.value.model = '';
+      await ensureModelsForProvider(aiPicker.value.provider);
+    }
+    function commitWorkspaceAi() {
+      const { wsId, provider, model } = aiPicker.value;
+      if (!provider) setWorkspaceAi(wsId, null);
+      else setWorkspaceAi(wsId, { provider, model: model || null });
+      aiPicker.value.open = false;
+    }
+    function onDocClickAiPicker(e) {
+      if (!aiPicker.value.open) return;
+      const pop = document.querySelector('.ws-ai-popover');
+      if (pop && pop.contains(e.target)) return;
+      if (e.target?.closest?.('.ws-ai-pill')) return;
+      aiPicker.value.open = false;
+    }
+    onMounted(() => document.addEventListener('click', onDocClickAiPicker));
+    onBeforeUnmount(() => document.removeEventListener('click', onDocClickAiPicker));
 
     // Window navigation state, surfaced to the template.
     const hasHistory = (instance) => Array.isArray(instance?.history) && instance.history.length > 1;
@@ -796,9 +965,17 @@ export default {
     const setDataPage = () => document.body.setAttribute('data-page', WORKSPACE_DATA_PAGE);
     onActivated(setDataPage);
 
+    // chatUnified writes conversation ids into localStorage and emits this so
+    // the in-memory workspace + server push stay in sync with the chat module.
+    const onWorkspaceConversation = (e) => {
+      const { channelKey, conversationId } = e?.detail || {};
+      if (channelKey && conversationId) setChannelConversation?.(channelKey, conversationId);
+    };
+
     onMounted(() => {
       setDataPage();
       window.addEventListener('keydown', onKeydown);
+      window.addEventListener('agnt:workspace-conversation', onWorkspaceConversation);
       updateCellDimensions();
       if (typeof ResizeObserver !== 'undefined') {
         gridObserver = new ResizeObserver(updateCellDimensions);
@@ -809,6 +986,10 @@ export default {
         if (tabStripRef.value) tabObserver.observe(tabStripRef.value);
       }
       nextTick(scrollActiveTabIntoView);
+      // Cross-device sync: reconcile with the server AFTER mount. No-op unless
+      // SYNC_ENABLED (useWorkspaces.js). Never at import — the sync boot mints
+      // the workspace conversation id and must stay synchronous.
+      hydrateFromServer?.();
     });
 
     // The grid element only exists in split mode — re-observe when it appears.
@@ -823,6 +1004,7 @@ export default {
 
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onKeydown);
+      window.removeEventListener('agnt:workspace-conversation', onWorkspaceConversation);
       if (gridObserver) gridObserver.disconnect();
       if (tabObserver) tabObserver.disconnect();
     });
@@ -837,6 +1019,22 @@ export default {
       setActive,
       createWorkspace,
       closeWorkspace,
+      setWorkspaceAi,
+      aiPicker,
+      aiProviderOptions,
+      aiProviderSelectOptions,
+      aiModelOptions,
+      aiModelSelectOptions,
+      aiModelsLoading,
+      modelKey,
+      modelLabel,
+      aiBadgeLabel,
+      aiBadgeTooltip,
+      openAiPicker,
+      onAiProviderChange,
+      onAiProviderSelected,
+      onAiModelSelected,
+      commitWorkspaceAi,
       // tab strip overflow
       tabStripRef,
       setTabRef,
@@ -892,6 +1090,103 @@ export default {
 </script>
 
 <style scoped>
+/* Workspace AI — pill beside auto (inherits .ws-pill). Override = pink like widget. */
+.ws-ai-pill {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none; /* provider ids stay readable */
+  letter-spacing: 0.04em;
+}
+.ws-ai-pill.on {
+  color: var(--color-pink, #e53d8f);
+  border-color: rgba(var(--primary-rgb, 229, 61, 143), 0.4);
+  background: rgba(var(--primary-rgb, 229, 61, 143), 0.08);
+}
+
+/* Popover: match terminal chrome (NOT --color-surface — that can be light). */
+.ws-ai-popover {
+  position: fixed;
+  z-index: 10050;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--color-background, #0e0e16);
+  border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--color-text, rgba(255, 255, 255, 0.88));
+}
+.ws-ai-popover-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-family-mono, monospace);
+}
+.ws-ai-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.ws-ai-label select {
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.14));
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--color-text, rgba(255, 255, 255, 0.88));
+  outline: none;
+}
+.ws-ai-label select:focus {
+  border-color: rgba(var(--primary-rgb, 229, 61, 143), 0.55);
+}
+.ws-ai-label select:disabled {
+  opacity: 0.5;
+}
+.ws-ai-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ws-ai-btn {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.18));
+  cursor: pointer;
+  font-family: var(--font-family-mono, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.ws-ai-btn.primary {
+  color: var(--color-text, #fff);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.ws-ai-btn.primary:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.ws-ai-btn.primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .ws-root {
   display: flex;
   flex-direction: column;

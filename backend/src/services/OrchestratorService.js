@@ -787,6 +787,11 @@ async function universalChatHandler(req, res, context = {}) {
     // canvas tools address their writes to it, so a widget asked for in one
     // workspace cannot land in another when the user switches tabs mid-turn.
     workspaceState,
+    // When false, use this turn's provider/model but do NOT persist them as the
+    // account-wide default. Sent by per-workspace-provider turns so that using a
+    // tab with its own provider never rewrites the user's global default.
+    // Defaults true → existing callers are unaffected.
+    persistDefault = true,
     goalId,
     goalContext,
     codeId,
@@ -879,12 +884,23 @@ async function universalChatHandler(req, res, context = {}) {
 
   // Keep DB in sync with the provider/model the frontend is actually using,
   // so background processes (InsightEngine, etc.) always have current values.
-  UserModel.updateUserSettings(userId, {
-    selectedProvider: resolvedProvider,
-    selectedModel: model,
-  }).catch(e => {
-    console.warn('[Chat] Failed to sync provider/model to DB (non-critical):', e.message);
-  });
+  //
+  // GUARDED: a per-workspace-provider turn passes persistDefault=false (or a
+  // workspaceState carrying its own ai override), meaning "use this provider
+  // for THIS turn only". In that case we must NOT write it back as the global
+  // default, or selecting a provider for one workspace/tab would silently
+  // change the account-wide default for every other surface.
+  const workspaceHasAiOverride = !!(workspaceState && workspaceState.ai && workspaceState.ai.provider);
+  if (persistDefault && !workspaceHasAiOverride) {
+    UserModel.updateUserSettings(userId, {
+      selectedProvider: resolvedProvider,
+      selectedModel: model,
+    }).catch(e => {
+      console.warn('[Chat] Failed to sync provider/model to DB (non-critical):', e.message);
+    });
+  } else {
+    console.debug('[Chat] Skipping default-provider write-back (turn-only provider).');
+  }
 
   // Build the automatic-failover provider chain for THIS TURN ONLY.
   // tier 0 = the primary above; tiers 1..3 = the user's configured fallbacks.

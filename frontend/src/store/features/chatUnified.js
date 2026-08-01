@@ -3,10 +3,99 @@
 // 'tool:<id>', 'widget:<id>'). The orchestrator's rich Chat.vue continues to use
 // the legacy `chat` module; this module powers all five per-page panels.
 
-import { streamChat, toChatHistory, reattachRun, cancelRun } from '@/services/chatService.js';
+import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
+import { hydrateMessage } from '@/services/chatStreamReducer.js';
+
+// Resolve a per-workspace AI override from persisted workspace state, given a
+// chat channel key. Returns { provider, model } or null. Reads the same
+// localStorage the Workspaces page owns; falls back to null on any parse issue
+// (→ inherit global/channel default). A named provider that isn't configured
+// on THIS device is left as-is here; the LLM client factory / failover handles
+// availability, and callers may still fall back to channelPM.
+function resolveWorkspaceAiForChannel(channelKey) {
+  if (typeof channelKey !== 'string' || !channelKey.startsWith('workspace:')) return null;
+  const wsId = channelKey.slice('workspace:'.length).split(':')[0];
+  try {
+    const raw = localStorage.getItem('agnt:workspaces:v2');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ws = (parsed?.workspaces || []).find((w) => w.id === wsId);
+    if (ws?.ai?.provider) return { provider: ws.ai.provider, model: ws.ai.model || null };
+  } catch (_) { /* inherit default */ }
+  return null;
+}
+
+/** Workspace id from channel key workspace:<id> or workspace:<id>:<chatKey>. */
+function workspaceIdFromChannel(channelKey) {
+  if (typeof channelKey !== 'string' || !channelKey.startsWith('workspace:')) return null;
+  const rest = channelKey.slice('workspace:'.length);
+  const colon = rest.indexOf(':');
+  return colon === -1 ? rest : rest.slice(0, colon);
+}
+
+/**
+ * Read/write the channelKey → conversationId map that rides workspace sync
+ * (layout_data.channelConversations). Keeps chatUnified decoupled from the
+ * Vue composable while still sharing the same persisted blob.
+ */
+function readWorkspaceChannelConversation(channelKey) {
+  const wsId = workspaceIdFromChannel(channelKey);
+  if (!wsId) return null;
+  try {
+    const raw = localStorage.getItem('agnt:workspaces:v2');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ws = (parsed?.workspaces || []).find((w) => w.id === wsId);
+    return ws?.channelConversations?.[channelKey] || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeWorkspaceChannelConversation(channelKey, conversationId) {
+  const wsId = workspaceIdFromChannel(channelKey);
+  if (!wsId || !conversationId) return;
+  try {
+    const raw = localStorage.getItem('agnt:workspaces:v2');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.workspaces)) return;
+    const ws = parsed.workspaces.find((w) => w.id === wsId);
+    if (!ws) return;
+    if (!ws.channelConversations) ws.channelConversations = {};
+    if (ws.channelConversations[channelKey] === conversationId) return;
+    ws.channelConversations[channelKey] = conversationId;
+    ws.updatedAt = Date.now();
+    localStorage.setItem('agnt:workspaces:v2', JSON.stringify(parsed));
+    // Notify Workspaces page so in-memory workspaces + server push pick it up.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agnt:workspace-conversation', {
+        detail: { channelKey, conversationId, workspaceId: wsId },
+      }));
+    }
+  } catch (e) {
+    console.warn('[chatUnified] failed to persist workspace conversation id:', e?.message || e);
+  }
+}
+
+/** Convert server conversation_logs messages into UI message shapes. */
+function serverMessagesToUi(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+    .map((m, i) => hydrateMessage({
+      id: m.id || `srv-${i}-${Date.now().toString(36)}`,
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : (m.content == null ? '' : String(m.content)),
+      toolCalls: m.toolCalls || m.tool_calls || [],
+      contentParts: m.contentParts || null,
+      reasoning: m.reasoning || '',
+      timestamp: m.timestamp || Date.now(),
+    }));
+}
 
 const STORAGE_KEY = 'unifiedChatConversations';
 const LEGACY_KEYS = {
@@ -572,6 +661,58 @@ export default {
       commit('INITIALIZE_CHANNEL', { channelKey, welcomeMessage });
     },
 
+    /**
+     * Hydrate a workspace chat channel from the server conversation log when
+     * this device has no (or shorter) local transcript. Uses the conversationId
+     * stored on the workspace (synced via /api/workspaces) or already on the
+     * local channel. No-op for non-workspace channels and when offline.
+     */
+    async hydrateWorkspaceChannel({ commit, state }, { channelKey } = {}) {
+      if (!channelKey || !channelKey.startsWith('workspace:')) return { ok: false, reason: 'not_workspace' };
+      if (state.streamingChannels[channelKey]) return { ok: false, reason: 'streaming' };
+
+      const local = state.conversations[channelKey] || blankConversation();
+      const localCount = Array.isArray(local.messages) ? local.messages.length : 0;
+      // Prefer the id already on this channel, then the id synced via workspaces.
+      let conversationId = local.conversationId || readWorkspaceChannelConversation(channelKey);
+      // Publish any local id so other devices can discover this thread even
+      // before the next chat turn (backfill for pre-sync conversations).
+      if (local.conversationId) {
+        writeWorkspaceChannelConversation(channelKey, local.conversationId);
+      }
+      if (!conversationId) return { ok: false, reason: 'no_conversation_id' };
+
+      // Always keep the workspace map + local channel id aligned.
+      if (local.conversationId !== conversationId) {
+        commit('SET_CONVERSATION_ID', { channelKey, conversationId });
+      }
+      writeWorkspaceChannelConversation(channelKey, conversationId);
+
+      const remote = await fetchConversation(conversationId);
+      if (!remote) return { ok: false, reason: 'not_found' };
+
+      const remoteMessages = serverMessagesToUi(remote.messages);
+      // Keep the longer transcript (local may have unsent/partial UI state).
+      if (remoteMessages.length <= localCount && localCount > 0) {
+        return { ok: true, reason: 'local_newer_or_equal', localCount, remoteCount: remoteMessages.length };
+      }
+      if (remoteMessages.length === 0) {
+        return { ok: true, reason: 'remote_empty' };
+      }
+
+      commit('SET_CONVERSATION', {
+        channelKey,
+        conversation: {
+          messages: remoteMessages,
+          conversationId: remote.conversationId || conversationId,
+          lastUpdate: remote.updatedAt ? Date.parse(remote.updatedAt) || Date.now() : Date.now(),
+          suggestions: local.suggestions || [],
+        },
+      });
+      writeWorkspaceChannelConversation(channelKey, remote.conversationId || conversationId);
+      return { ok: true, reason: 'hydrated', count: remoteMessages.length };
+    },
+
     clearConversation({ commit }, { channelKey, welcomeMessage = null }) {
       if (!channelKey) return;
       commit('CLEAR_CONVERSATION', { channelKey, welcomeMessage });
@@ -659,8 +800,14 @@ export default {
       // saved-agent chat, every workflow/tool/widget/artifact chat) carries
       // its own remembered config. See chatChannelConfig.js.
       const channelPM = resolveChannelProviderModel(channelKey, rootState.aiProvider);
-      const resolvedProvider = provider || channelPM.provider;
-      const resolvedModel = model || channelPM.model;
+      // Per-workspace AI override: a workspace chat channel is keyed
+      // 'workspace:<id>'. If that workspace declares its own ai provider, it
+      // wins for this turn only and must NOT be persisted as the global
+      // default (see backend persistDefault guard) — otherwise using one tab
+      // would silently rewrite the account-wide provider.
+      const wsAi = resolveWorkspaceAiForChannel(channelKey);
+      const resolvedProvider = provider || wsAi?.provider || channelPM.provider;
+      const resolvedModel = model || (wsAi ? (wsAi.model || channelPM.model) : channelPM.model);
       const resolvedEnabledTools = resolveChannelEnabledTools(channelKey);
       const resolvedReasoningValue = rootState.aiProvider?.reasoningValue || 'default';
       const resolvedReasoningEnabled = rootState.aiProvider?.reasoningEnabled || false;
@@ -671,6 +818,9 @@ export default {
           messages: history,
           provider: resolvedProvider,
           model: resolvedModel,
+          // Turn-only when a workspace override is active: do not write this
+          // provider back to the user's account-wide default.
+          persistDefault: wsAi ? false : undefined,
           conversationId: state.conversations[channelKey]?.conversationId || null,
           pageContext,
           pageState,
@@ -932,6 +1082,10 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
   switch (eventName) {
     case 'conversation_started':
       commit('SET_CONVERSATION_ID', { channelKey, conversationId: data.conversationId });
+      // Publish id into workspace sync blob so other devices can reload this thread.
+      if (channelKey && channelKey.startsWith('workspace:') && data.conversationId) {
+        writeWorkspaceChannelConversation(channelKey, data.conversationId);
+      }
       break;
 
     // Head frame of a reattach. The local transcript may predate the user turn
