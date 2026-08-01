@@ -1,6 +1,40 @@
 import db from './database/index.js';
 import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
 
+/**
+ * What each subscription seat costs per month (PRD-122), as
+ * `{ providerKey: monthlyUsd }`.
+ *
+ * Tolerant on read and strict on write: a malformed or legacy value becomes
+ * `{}` rather than throwing, because this is optional enrichment for one
+ * dashboard panel and must never be able to break loading a user's settings.
+ * Non-finite and negative amounts are dropped — a negative subscription fee is
+ * not a thing, and letting one through would invert every figure derived from
+ * it.
+ */
+function parseSubscriptionCosts(raw) {
+  if (!raw) return {};
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out = {};
+    for (const [provider, amount] of Object.entries(parsed)) {
+      const n = Number(amount);
+      if (Number.isFinite(n) && n > 0) out[String(provider).toLowerCase()] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function serializeSubscriptionCosts(value) {
+  const clean = parseSubscriptionCosts(value);
+  // An empty map is stored as NULL, so "never told us" and "told us nothing"
+  // are the same state rather than two.
+  return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}
+
 class UserModel {
   static getUserStats(userId) {
     return new Promise((resolve, reject) => {
@@ -53,7 +87,7 @@ class UserModel {
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled, subscription_costs as subscriptionCosts
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -84,6 +118,10 @@ class UserModel {
               fallbackEnabled: row.fallbackEnabled === null || row.fallbackEnabled === undefined
                 ? false
                 : Boolean(row.fallbackEnabled),
+              // Optional: what each flat-rate seat costs per month. {} means
+              // the user has not said, which is a normal state — every seat
+              // figure still renders, just without a cost comparison.
+              subscriptionCosts: parseSubscriptionCosts(row.subscriptionCosts),
             });
           } else {
             // User not found, return defaults
@@ -96,6 +134,7 @@ class UserModel {
               maxToolRounds: 100,
               fallbackProviders: [],
               fallbackEnabled: false,
+              subscriptionCosts: {},
             });
           }
         }
@@ -105,7 +144,7 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled } = settings;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts } = settings;
 
       const fields = [];
       const params = [];
@@ -152,6 +191,11 @@ class UserModel {
       if (fallbackEnabled !== undefined) {
         fields.push('fallback_enabled = ?');
         params.push(fallbackEnabled ? 1 : 0);
+      }
+
+      if (subscriptionCosts !== undefined) {
+        fields.push('subscription_costs = ?');
+        params.push(serializeSubscriptionCosts(subscriptionCosts));
       }
 
       if (fields.length === 0) {

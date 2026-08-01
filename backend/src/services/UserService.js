@@ -94,7 +94,7 @@ class UserService {
 
   async updateUserSettings(req, res) {
     try {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled } = req.body;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts } = req.body;
 
       if (
         selectedProvider === undefined &&
@@ -104,9 +104,10 @@ class UserService {
         toolOutputCap === undefined &&
         maxToolRounds === undefined &&
         fallbackProviders === undefined &&
-        fallbackEnabled === undefined
+        fallbackEnabled === undefined &&
+        subscriptionCosts === undefined
       ) {
-        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, or fallbackEnabled) is required' });
+        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, or subscriptionCosts) is required' });
       }
 
       if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 10000) {
@@ -153,6 +154,16 @@ class UserService {
         return res.status(400).json({ error: 'fallbackEnabled must be a boolean' });
       }
 
+      // What each flat-rate seat costs per month, as { providerKey: monthlyUsd }.
+      // Only the SHAPE is checked here; the model drops non-finite, zero and
+      // negative amounts, because a zero fee would become the denominator of
+      // the leverage figure and yield an infinite multiple.
+      if (subscriptionCosts !== undefined) {
+        if (subscriptionCosts === null || typeof subscriptionCosts !== 'object' || Array.isArray(subscriptionCosts)) {
+          return res.status(400).json({ error: 'subscriptionCosts must be an object of { providerKey: monthlyUsd }' });
+        }
+      }
+
       const result = await UserModel.updateUserSettings(req.user.id, {
         selectedProvider,
         selectedModel,
@@ -162,6 +173,7 @@ class UserService {
         maxToolRounds,
         fallbackProviders,
         fallbackEnabled,
+        subscriptionCosts,
       });
 
       res.json({
@@ -176,6 +188,7 @@ class UserService {
           maxToolRounds,
           fallbackProviders,
           fallbackEnabled,
+          subscriptionCosts,
         },
       });
     } catch (error) {
