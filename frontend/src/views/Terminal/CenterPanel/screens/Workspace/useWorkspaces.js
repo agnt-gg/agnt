@@ -22,13 +22,18 @@ import { ref, computed } from 'vue';
 import { getWidget } from '@/canvas/widgetRegistry.js';
 import { findEmptySlot, clampInstance, GRID_COLS, GRID_ROWS } from '@/canvas/gridUtils.js';
 
+import { API_CONFIG } from '@/tt.config.js';
+
 import { STORAGE_KEY, LEGACY_KEY, CHAT_STORAGE_KEY, RECOVERY_FLAG } from './workspaceStorage.js';
 
-// Cross-device workspace sync. OFF by default: localStorage stays the source
-// of truth and boot is unchanged. When true, the server (/api/workspaces,
-// backed by widget_layouts rows keyed route='workspace:<id>') becomes the
-// synced store, reconciled AFTER mount via hydrateFromServer(). Last-write-wins
-// per workspace on an updatedAt epoch carried inside each workspace object.
+// Cross-device workspace sync. ON: the server (/api/workspaces, backed by
+// widget_layouts rows keyed route='workspace:<id>') is the synced store,
+// reconciled AFTER mount via hydrateFromServer(). Last-write-wins per
+// workspace on an updatedAt epoch carried inside each workspace object.
+//
+// localStorage remains the offline cache and the instant-paint source, so
+// turning this off later degrades to the previous local-only behaviour and
+// leaves nothing behind but unread rows.
 const SYNC_ENABLED = true;
 
 async function apiFetch(path, opts = {}) {
@@ -36,13 +41,19 @@ async function apiFetch(path, opts = {}) {
   // as a Bearer token, which authenticateToken reads from the Authorization
   // header. Without this the endpoints 401 and sync silently no-ops.
   const token = localStorage.getItem('token');
-  const res = await fetch(`/api/workspaces${path}`, {
+  // API_CONFIG.BASE_URL, not a bare '/api/...': there is no vite dev proxy, so
+  // a relative URL resolves against the dev server (5173) and every request
+  // silently 404s. Same absolute base as every other service in the app.
+  const res = await fetch(`${API_CONFIG.BASE_URL}/workspaces${path}`, {
     credentials: 'same-origin',
+    // opts BEFORE headers: spreading it after would let any caller passing its
+    // own headers drop the Authorization header entirely.
+    ...opts,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts.headers || {}),
     },
-    ...opts,
   });
   if (!res.ok) throw new Error(`workspaces api ${res.status}`);
   return res.status === 204 ? null : res.json();
@@ -66,9 +77,15 @@ const LEGACY_SURFACE_WIDGET = {
 
 const newId = (prefix) => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
-const blankWorkspace = (name = 'Workspace') => ({
+const blankWorkspace = (name = 'Workspace', { bootShell = false } = {}) => ({
   id: newId('ws'),
   name,
+  // The name we MINTED it with, so a later rename is detectable without
+  // pattern-matching the user's own text. See isStockBlank.
+  defaultName: name,
+  // True only for the shell auto-minted because localStorage was empty. A tab
+  // the user asked for is never a boot shell, however empty it looks.
+  ...(bootShell ? { bootShell: true } : {}),
   widgets: [clampInstance({
     instanceId: newId('w'),
     widgetId: 'workspace-chat',
@@ -87,11 +104,25 @@ const blankWorkspace = (name = 'Workspace') => ({
   channelConversations: {},
 });
 
-/** Stock boot shell: "Workspace 1" (+ optional single chat). Auto-minted when
- *  localStorage is empty — must NOT re-push after the server has real tabs. */
+/**
+ * Stock boot shell: the untouched tab auto-minted when localStorage was empty.
+ * Such a shell must NOT re-push after the server already has real tabs, or
+ * every device adds one.
+ *
+ * Identified by PROVENANCE, never by a name-shaped regex. Matching
+ * /^Workspace \d+$/ meant a user who named a tab "Workspace 2" and left it
+ * empty had it silently deleted on the next hydrate. Deleting a tab the user
+ * made is unrecoverable; keeping a stray empty one costs a click.
+ */
 function isStockBlank(ws) {
-  if (!ws || typeof ws.name !== 'string') return false;
-  if (!/^Workspace\s+\d+$/i.test(ws.name.trim())) return false;
+  if (!ws || ws.bootShell !== true) return false;
+  // Renamed => the user adopted it. Legacy rows carry no defaultName and are
+  // never auto-deleted.
+  if (typeof ws.name !== 'string' || typeof ws.defaultName !== 'string') return false;
+  if (ws.name.trim() !== ws.defaultName.trim()) return false;
+  // A conversation id is only recorded once a turn actually ran here
+  // (Workspace.vue -> setChannelConversation), so this is "has real content".
+  if (Object.keys(ws.channelConversations || {}).length > 0) return false;
   const widgets = Array.isArray(ws.widgets) ? ws.widgets : [];
   if (widgets.length > 1) return false;
   if (widgets.length === 1 && widgets[0]?.widgetId !== 'workspace-chat') return false;
@@ -441,7 +472,7 @@ const panelScopes = new Map();
 
 const persisted = load();
 
-const workspaces = ref(persisted?.workspaces || [blankWorkspace('Workspace 1')]);
+const workspaces = ref(persisted?.workspaces || [blankWorkspace('Workspace 1', { bootShell: true })]);
 const activeId = ref(
   persisted?.activeId && workspaces.value.some((w) => w.id === persisted.activeId)
     ? persisted.activeId
@@ -461,6 +492,65 @@ const deletedIds = new Set();
 const syncedIds = new Set(
   Array.isArray(persisted?.syncedIds) ? persisted.syncedIds.filter((id) => typeof id === 'string') : [],
 );
+
+/**
+ * The fields that actually travel to the server, as a comparable string.
+ *
+ * updatedAt is deliberately EXCLUDED: it is DERIVED from this shape, so
+ * including it would make every persist look like a change and re-stamp
+ * forever.
+ */
+function shapeForSync(ws) {
+  return JSON.stringify({
+    name: ws.name,
+    widgets: ws.widgets || [],
+    ai: ws.ai || null,
+    channelConversations: ws.channelConversations || {},
+  });
+}
+
+/** id -> shape at last persist. The baseline change detection compares against. */
+const lastShape = new Map();
+
+/** Record current shapes as the new baseline WITHOUT stamping anything. */
+function resyncShapes() {
+  lastShape.clear();
+  for (const ws of workspaces.value) lastShape.set(ws.id, shapeForSync(ws));
+}
+
+/**
+ * Advance updatedAt on every workspace whose synced shape changed.
+ *
+ * ONE chokepoint, not one line per mutator. Of the 15 functions that persist,
+ * only 3 used to stamp; the other 12 included the entire widget layout, which
+ * IS the synced payload. A tab rearranged on device A kept its old stamp, so a
+ * later edit to a STALE copy on device B won last-write-wins and overwrote the
+ * live layout. Detecting the change here means a 16th mutator cannot
+ * reintroduce that by forgetting a line.
+ */
+function stampChangedWorkspaces() {
+  const now = Date.now();
+  for (const ws of workspaces.value) {
+    const shape = shapeForSync(ws);
+    if (lastShape.get(ws.id) !== shape) {
+      ws.updatedAt = now;
+      lastShape.set(ws.id, shape);
+    }
+  }
+  const live = new Set(workspaces.value.map((w) => w.id));
+  for (const id of [...lastShape.keys()]) if (!live.has(id)) lastShape.delete(id);
+}
+
+// Seed the baseline BEFORE anything can persist. Without this the first save
+// would see every workspace as changed, stamp them all with now(), and local
+// would beat every remote copy forever — sync would silently become one-way.
+// A workspace with no stamp yet falls back to createdAt (0 if unknown), so a
+// server copy wins the tie rather than being clobbered by an unknown local.
+for (const ws of workspaces.value) {
+  if (typeof ws.updatedAt !== 'number') ws.updatedAt = ws.createdAt || 0;
+  lastShape.set(ws.id, shapeForSync(ws));
+}
+
 let pushTimer = null;
 // With sync on, hold the first push until hydrate finishes so a boot-time
 // "Workspace 1" shell cannot race ahead of the remote set and re-upload.
@@ -571,6 +661,11 @@ async function hydrateFromServer() {
   }
   // Persist reconciled set + syncedIds, then push. First push only after
   // hydrate so boot shells never race ahead of the remote set.
+  //
+  // Re-baseline FIRST: what we just applied came FROM the server, and stamping
+  // it as a local edit would make this device newer than the server on every
+  // hydrate — the same one-way-sync failure the boot seed prevents.
+  resyncShapes();
   allowPush = true;
   saveNow();
   // Chat widgets mount before this async hydrate finishes, so they often miss
@@ -588,6 +683,7 @@ function saveNow() {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
+  stampChangedWorkspaces();
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       workspaces: workspaces.value,
@@ -722,7 +818,6 @@ export function useWorkspaces() {
     const ws = workspaces.value.find((w) => w.id === id);
     if (!ws || !name) return;
     ws.name = name;
-    ws.updatedAt = Date.now();
     save();
   }
 
@@ -735,7 +830,6 @@ export function useWorkspaces() {
     const ws = workspaces.value.find((w) => w.id === id);
     if (!ws) return;
     ws.ai = ai && ai.provider ? { provider: ai.provider, model: ai.model || null } : null;
-    ws.updatedAt = Date.now();
     save();
   }
 
@@ -755,7 +849,6 @@ export function useWorkspaces() {
     if (!ws.channelConversations) ws.channelConversations = {};
     if (ws.channelConversations[channelKey] === conversationId) return;
     ws.channelConversations[channelKey] = conversationId;
-    ws.updatedAt = Date.now();
     save();
   }
 
