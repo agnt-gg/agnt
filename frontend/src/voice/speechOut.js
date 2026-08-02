@@ -166,6 +166,22 @@ export function createSpeechOut(config = {}, deps = {}) {
     }
 
     if (gen !== generation) return { ok: false, reason: 'stale' };
+
+    /**
+     * Some provider failures are PERMANENT for the session, not transient:
+     * an exhausted quota, a revoked key, a forbidden org. Retrying one of
+     * those on the next sentence cannot succeed, and it is not free — every
+     * chunk pays a failed network round trip before falling back, so the
+     * whole conversation gains latency for an outcome that is already known.
+     * Demote to the local voice once and stop asking.
+     */
+    if (res.status === 401 || res.status === 403 || res.status === 429) {
+      cfg.engine = 'webspeech';
+      // eslint-disable-next-line no-console
+      console.warn(`[voice] provider TTS unavailable (${res.status}); using the local voice for this session`);
+      return { ok: false, reason: `http-${res.status}` };
+    }
+
     if (!res.ok) return { ok: false, reason: `http-${res.status}` };
 
     const type = res.headers?.get?.('content-type') || '';

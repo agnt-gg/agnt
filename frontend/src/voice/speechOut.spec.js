@@ -405,6 +405,61 @@ describe('speechOut — provider engine and fallback', () => {
     expect(synth.spoken).toEqual(['Network trouble here.']);
   });
 
+  it('stops retrying the provider after a quota/auth failure', async () => {
+    // Found by a live smoke test against a real OpenAI key with no credits:
+    // a 429 is permanent for the session, so retrying it once per SENTENCE
+    // makes every chunk pay a doomed round trip before falling back.
+    const calls = [];
+    const { out, synth } = build(
+      { engine: 'provider' },
+      {
+        fetch: async () => {
+          calls.push(1);
+          return { ok: false, status: 429, headers: { get: () => '' } };
+        },
+      }
+    );
+
+    out.speak('First sentence here.');
+    await drain(synth);
+    expect(calls.length).toBe(1);
+    expect(out.config.engine).toBe('webspeech');
+
+    out.speak('Second sentence here.');
+    out.speak('Third sentence here.');
+    await drain(synth);
+
+    expect(calls.length).toBe(1); // never asked again
+    expect(synth.spoken).toEqual([
+      'First sentence here.',
+      'Second sentence here.',
+      'Third sentence here.',
+    ]);
+  });
+
+  it('keeps retrying after a TRANSIENT provider failure', async () => {
+    // A 500 or a dropped connection may well succeed next time; demoting on
+    // those would give up the good voice for the rest of the session.
+    const calls = [];
+    const { out, synth } = build(
+      { engine: 'provider' },
+      {
+        fetch: async () => {
+          calls.push(1);
+          return { ok: false, status: 503, headers: { get: () => '' } };
+        },
+      }
+    );
+
+    out.speak('First sentence here.');
+    await drain(synth);
+    out.speak('Second sentence here.');
+    await drain(synth);
+
+    expect(calls.length).toBe(2);
+    expect(out.config.engine).toBe('provider');
+  });
+
   it('falls back when fetch throws outright', async () => {
     const { out, synth } = build(
       { engine: 'provider' },
