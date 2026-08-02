@@ -110,6 +110,26 @@ body {
      saturated neon in the fill slot, so the readable label is the ink colour. */
   --text-on-fill: var(--color-black-navy);
 
+  /* ── TEXT ON A FIXED-DARK BACKDROP ──────────────────────────────────────
+     INVARIANT IN EVERY THEME, AND THAT IS CORRECT.
+
+     Some backdrops do not follow the theme: a modal scrim, a video or image
+     overlay, and Marketplace's generated HSL card art, which is dark in every
+     theme by construction. Text on those must stay light in light mode too.
+
+     Marketplace already encoded this as a prose "ART-INK RULE" comment telling
+     humans not to use theme tokens there. That was correct but unenforceable —
+     a comment cannot be checked, and a blanket migration would have silently
+     broken all 11 of its declarations.
+
+     Naming it makes the exception explicit, greppable, and testable: the guard
+     accepts these tokens precisely because they are DECLARED invariant here,
+     rather than being an unexplained #fff at a call site. If you reach for one
+     of these, the backdrop must genuinely be theme-independent. */
+  --text-on-scrim: #ffffff;
+  --text-on-scrim-muted: rgba(255, 255, 255, 0.78);
+  --text-on-scrim-dim: rgba(255, 255, 255, 0.6);
+
   /* ── GLOWS ────────────────────────────────────────────────────────────────
      A `0 0 Npx <accent>` box-shadow is a NEON HALO. It is a dark-mode idiom:
      it works because the surface behind it is nearly black, so a coloured
@@ -250,10 +270,27 @@ body.dark {
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
 
-  --text-primary: var(--color-text);
-  --text-secondary: var(--color-text-secondary);
-  --text-tertiary: var(--color-text-muted);
-  --text-quaternary: var(--color-text-dull);
+  /* A REAL four-tier ramp for dark.
+
+     --color-text-muted and --color-text-secondary are both #7f8193 in the dark
+     themes, so the legacy scale only ever had TWO usable steps (18.72 and
+     5.22). Components filled the gap by hand with rgba(255,255,255,a) at a
+     dozen arbitrary alphas — which is the idiom that vanishes in light mode.
+
+     These four are evenly spaced and all clear AA on the canvas AND the raised
+     surface. They are deliberately set HERE rather than by editing
+     --color-text-* , so existing components that consume the legacy scale keep
+     their exact current appearance; only code migrated to the semantic ramp
+     picks these up.
+
+     They were chosen to land on the same luminance as the rgba(255,255,255,a)
+     values they replace — a=0.72 measured 10.31:1 against tier 2's 10.52:1,
+     a=0.6 measured 7.31:1 against tier 3's 7.01:1 — so migrating those
+     declarations is visually a no-op in dark while fixing them in light. */
+  --text-primary: var(--color-text); /* #f7f7f7  18.72:1 */
+  --text-secondary: #b9bbc9; /* 10.52:1 */
+  --text-tertiary: #9598a8; /*  7.01:1 */
+  --text-quaternary: #7f8193; /*  5.22:1 */
 
   --border-subtle: var(--terminal-border-color);
   --border-strong: var(--color-duller-navy);

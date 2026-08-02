@@ -2894,7 +2894,7 @@ body.dark .form-actions {
 
 .locked-overlay p {
   margin: 0;
-  color: #fff;
+  color: var(--text-on-scrim);
   font-weight: 600;
   font-size: 1.1em;
 }
@@ -3349,7 +3349,7 @@ body.dark .view-btn:not(:last-child) {
 
 .add-btn {
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: none;
   border-radius: 6px;
   padding: 8px 16px;

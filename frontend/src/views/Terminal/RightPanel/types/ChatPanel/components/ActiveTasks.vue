@@ -102,7 +102,7 @@ export default {
 
 .task-description {
   font-size: 0.85em;
-  color: var(--color-bright-light-navy);
+  color: var(--text-primary);
   margin-bottom: 12px;
   line-height: 1.5;
 }

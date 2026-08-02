@@ -1158,7 +1158,7 @@ onMounted(() => {
 }
 .source-badge.user {
   background: rgba(100, 149, 237, 0.1);
-  color: #6495ed;
+  color: var(--status-blue-text);
 }
 .source-badge.filesystem {
   background: rgba(245, 158, 11, 0.1);

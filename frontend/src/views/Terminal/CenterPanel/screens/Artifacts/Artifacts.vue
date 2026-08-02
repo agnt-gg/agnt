@@ -2656,7 +2656,7 @@ export default {
   padding: 0 3px;
   border-radius: 7px;
   background: var(--color-red);
-  color: #fff;
+  color: var(--on-fill-danger);
   font-size: 9px;
   font-weight: 600;
   line-height: 14px;
@@ -2830,11 +2830,11 @@ export default {
 
 .ce-console-msg-warn {
   background: rgba(255, 170, 0, 0.04);
-  color: #f5b73a;
+  color: var(--status-amber-text);
 }
 
 .ce-console-msg-warn .ce-console-msg-icon {
-  color: #f5b73a;
+  color: var(--status-amber-text);
   opacity: 1;
 }
 
@@ -3388,7 +3388,7 @@ export default {
   margin: 0;
   font-size: 1.1em;
   font-weight: 600;
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 .share-modal-close {
   background: none;
@@ -3498,7 +3498,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 10px 12px;
-  color: var(--color-white);
+  color: var(--text-primary);
   font-family: var(--font-family-mono);
   font-size: 0.85em;
 }
@@ -3580,7 +3580,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 12px 14px;
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.95em;
 }
 .share-form-field input:focus {

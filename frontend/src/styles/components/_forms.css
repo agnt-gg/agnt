@@ -11,7 +11,7 @@ select {
   padding: 3px 3px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-dull-white);
@@ -57,7 +57,7 @@ input[type='color'] {
   padding: 3px 8px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-ultra-light-navy);
@@ -68,7 +68,7 @@ input[type='file'] {
   width: -webkit-fill-available;
   font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
-  color: var(--color-navy);
+  color: var(--text-primary);
   background-color: var(--color-ultra-light-navy);
   cursor: pointer;
 }
@@ -88,7 +88,7 @@ input[type='textarea'],
   padding: 8px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   line-height: 150%;
   background-color: var(--color-ultra-light-navy);
@@ -101,7 +101,7 @@ input[type='textarea'],
 } */
 
 *::placeholder {
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
   opacity: 1;
 }
 
@@ -155,7 +155,7 @@ textarea,
   display: flex;
   width: auto;
   padding: 0 8px;
-  color: var(--color-white);
+  color: var(--text-primary);
   cursor: pointer;
   height: 31px;
   flex-direction: row;

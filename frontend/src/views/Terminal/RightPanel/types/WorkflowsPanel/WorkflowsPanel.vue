@@ -753,7 +753,7 @@ export default {
 .workflow-description {
   margin-bottom: 18px;
   line-height: 1.4;
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 .workflow-tools {
@@ -814,7 +814,7 @@ h3 {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.8em;
 }
 

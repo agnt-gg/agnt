@@ -246,7 +246,7 @@ body.dark .menu-item:hover {
 }
 
 .menu-item.danger {
-  color: #dc3545;
+  color: var(--color-red);
 }
 
 .menu-item.danger:hover {

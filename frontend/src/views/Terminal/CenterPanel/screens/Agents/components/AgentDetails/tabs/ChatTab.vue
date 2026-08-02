@@ -402,7 +402,7 @@ const clearAgentChat = () => {
 .clear-chat-button:hover {
   background: rgba(255, 107, 107, 0.2);
   border-color: rgba(255, 107, 107, 0.4);
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 /* Copied from AgentDetails.vue */
@@ -519,7 +519,7 @@ h3.section-title {
 
 .chat-mic-button.is-listening {
   background: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
   animation: pulse 1.5s ease-in-out infinite;
 }
 

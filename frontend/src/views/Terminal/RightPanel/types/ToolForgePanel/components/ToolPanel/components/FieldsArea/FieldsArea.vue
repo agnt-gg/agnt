@@ -571,7 +571,7 @@ template-fields {
 .edit-field-button {
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid rgba(59, 130, 246, 0.3);
-  color: rgba(59, 130, 246, 0.9);
+  color: var(--status-blue-text);
 }
 
 .edit-field-button:hover {
@@ -583,7 +583,7 @@ template-fields {
 .delete-field-button {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: rgba(239, 68, 68, 0.9);
+  color: var(--color-red);
 }
 
 .delete-field-button:hover {

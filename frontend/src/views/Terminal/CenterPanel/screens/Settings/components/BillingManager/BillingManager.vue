@@ -1364,12 +1364,12 @@ body.dark .billing-toggle {
 
 .cancel-button:hover:not(:disabled) {
   background: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
 }
 
 .reactivate-button {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border-color: var(--color-primary);
   margin-top: 24px;
 }
@@ -1412,7 +1412,7 @@ body.dark .billing-toggle {
 
 .cancel-button-bottom {
   background: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
   border-color: var(--color-red);
   padding: 12px 32px;
   font-size: 0.9em;
@@ -1481,7 +1481,7 @@ body.dark .billing-toggle {
   position: absolute;
   top: -10px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   padding: 2px 8px 0;
   border-radius: 8px;
   font-size: 0.6em;
@@ -1911,7 +1911,7 @@ body.dark .upload-label {
   right: 8px;
   background: rgba(0, 0, 0, 0.7);
   border: none;
-  color: white;
+  color: var(--text-on-scrim);
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -1970,7 +1970,7 @@ body.dark .scheduled-change-notice.upgrade-notice {
 }
 
 .notice-content h3 {
-  color: rgba(255, 193, 7, 1);
+  color: var(--color-yellow);
   font-size: 1.1em;
   font-weight: 700;
   margin: 0 0 8px 0;
@@ -2002,7 +2002,7 @@ body.dark .scheduled-change-notice.upgrade-notice {
   margin-top: 12px;
   padding: 10px 20px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border: 2px solid var(--color-primary);
   border-radius: 8px;
   font-size: 0.85em;
@@ -2092,7 +2092,7 @@ body.dark .scheduled-change-notice.upgrade-notice {
 }
 
 .ribbon-text {
-  color: white;
+  color: var(--on-fill-accent);
   font-size: 1em;
   font-weight: 600;
   text-align: center;

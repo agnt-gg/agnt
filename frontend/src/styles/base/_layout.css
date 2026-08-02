@@ -23,7 +23,7 @@ app {
 }
 
 *::placeholder {
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
   opacity: 1;
 }
 

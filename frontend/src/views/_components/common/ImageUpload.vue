@@ -460,9 +460,9 @@ export default {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(239, 68, 68, 0.9);
+  background: var(--fill-danger);
   border: none;
-  color: white;
+  color: var(--on-fill-danger);
   cursor: pointer;
   display: flex;
   align-items: center;

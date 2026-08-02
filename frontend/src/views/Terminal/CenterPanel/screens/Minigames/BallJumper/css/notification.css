@@ -11,7 +11,7 @@
 
 .notification {
   background: rgba(40,40,60,0.98);
-  color: #fff;
+  color: var(--text-on-scrim);
   border-radius: 12px;
   padding: 20px 32px;
   margin-bottom: 16px;

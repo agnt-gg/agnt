@@ -306,7 +306,7 @@ export default {
 .toggle-button {
   padding: 4px 12px;
   background: transparent;
-  color: #666;
+  color: var(--text-quaternary);
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -320,7 +320,7 @@ export default {
 
 .toggle-button.active {
   background: var(--color-blue);
-  color: white;
+  color: var(--on-fill-info);
 }
 
 /* Markdown-specific drag & drop styles */

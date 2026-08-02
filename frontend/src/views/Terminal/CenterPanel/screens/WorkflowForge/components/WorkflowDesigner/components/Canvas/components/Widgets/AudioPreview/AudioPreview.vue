@@ -426,7 +426,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: white;
+  color: var(--text-primary);
   padding: 0 4px;
 }
 
@@ -573,7 +573,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--text-primary);
   font-weight: 600;
   gap: 12px;
   font-size: 16px;
@@ -602,7 +602,7 @@ export default {
   z-index: 10;
   border-radius: 4px;
   backdrop-filter: blur(2px);
-  color: white;
+  color: var(--text-on-scrim);
   font-weight: 600;
   gap: 12px;
   font-size: 14px;

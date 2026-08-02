@@ -91,7 +91,7 @@
   .indicator-value {
     font-size: 0.9em;
     font-weight: 500;
-    color: var(--color-white);
+    color: var(--text-primary);
   }
 
   .indicator-label {

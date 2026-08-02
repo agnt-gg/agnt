@@ -424,7 +424,7 @@ input:checked + .slider:before {
 button.test-button {
   padding: 10px 20px;
   background: var(--color-primary);
-  color: var(--color-white) !important;
+  color: var(--on-fill-accent) !important;
   border: none;
   border-radius: 6px;
   font-size: 0.9em;
@@ -509,7 +509,7 @@ button.preview-button {
 
 .preview-button:hover:not(:disabled) {
   background: var(--color-primary);
-  color: var(--color-white) !important;
+  color: var(--on-fill-accent) !important;
 }
 
 .preview-button:disabled {

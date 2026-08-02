@@ -346,7 +346,7 @@ body[data-page='docs'] a {
   cursor: pointer;
 }
 body[data-page='docs'] a:visited {
-  color: #0000ee;
+  color: var(--status-blue-text);
 }
 
 /* FORCE WHITE ON LINKS IN DARK MODE OR IT DOES WEIRD STUFF */

@@ -3039,7 +3039,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 .message-text {
   font-size: var(--font-size-sm);
   line-height: 1.35;
-  color: var(--color-bright-light-navy);
+  color: var(--text-primary);
   margin: 0;
   overflow-wrap: anywhere;
   width: 100%;
@@ -3525,7 +3525,7 @@ span.nodeLabel p {
 }
 
 .params-content {
-  color: var(--color-bright-light-navy);
+  color: var(--text-primary);
 }
 
 .result-content {
@@ -3634,8 +3634,8 @@ span.nodeLabel p {
   justify-content: center;
   width: 18px;
   height: 18px;
-  background: #ef4444;
-  color: #fff;
+  background: var(--fill-danger);
+  color: var(--on-fill-danger);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -4011,7 +4011,7 @@ span.nodeLabel p {
   margin: 0;
   font-size: 1.5em;
   font-weight: 700;
-  color: var(--color-white);
+  color: var(--on-fill-info);
   background: linear-gradient(135deg, var(--color-green), var(--color-blue));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -4402,7 +4402,7 @@ span.nodeLabel p {
   margin: 0;
   font-size: 1.1em;
   font-weight: 600;
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 .share-modal-close {
@@ -4534,7 +4534,7 @@ span.nodeLabel p {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 10px 12px;
-  color: var(--color-white);
+  color: var(--text-primary);
   font-family: var(--font-family-mono);
   font-size: 0.85em;
 }
@@ -4630,7 +4630,7 @@ span.nodeLabel p {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 12px 14px;
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.95em;
 }
 
@@ -4941,7 +4941,7 @@ span.nodeLabel p {
   background: var(--color-darker-2, #1a1a2e);
   border: 1px solid var(--color-primary, #6c63ff);
   border-radius: 8px;
-  color: var(--color-bright-light-navy, #e0e0e0);
+  color: var(--text-primary);
   font-family: inherit;
   font-size: var(--font-size-sm, 13px);
   line-height: 1.4;
@@ -4986,7 +4986,7 @@ span.nodeLabel p {
 
 .edit-send-btn {
   background: var(--color-primary, #6c63ff);
-  color: #fff;
+  color: var(--on-fill-accent);
 }
 
 .edit-send-btn:hover {

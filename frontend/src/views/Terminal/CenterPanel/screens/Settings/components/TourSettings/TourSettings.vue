@@ -653,7 +653,7 @@ button.btn-reset {
 
 button.btn-start {
   background: var(--color-primary);
-  color: var(--color-white) !important;
+  color: var(--on-fill-accent) !important;
 }
 
 .btn-start:hover {

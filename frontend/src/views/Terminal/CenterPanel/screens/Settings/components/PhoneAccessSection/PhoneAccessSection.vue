@@ -585,11 +585,11 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 .pa-note-warn {
   border-color: color-mix(in srgb, #ffd700 40%, transparent);
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 .pa-note-error {
   border-color: color-mix(in srgb, #e53d8f 50%, transparent);
-  color: #e53d8f;
+  color: var(--color-red);
 }
 
 .pa-restart {
@@ -607,7 +607,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 /* ── body ── */
@@ -687,7 +687,7 @@ onBeforeUnmount(() => clearInterval(ticker));
   color: var(--color-light-med-navy, #8b93a7);
 }
 .pa-countdown.expiring {
-  color: #e53d8f;
+  color: var(--color-red);
 }
 
 .pa-info-col {
@@ -877,7 +877,7 @@ onBeforeUnmount(() => clearInterval(ticker));
 }
 
 .pa-witness.warn {
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 .pa-witness code {
@@ -912,7 +912,7 @@ onBeforeUnmount(() => clearInterval(ticker));
 .pa-btn-primary {
   background: var(--color-primary, #19ef83);
   border-color: var(--color-primary, #19ef83);
-  color: #04120a;
+  color: var(--on-fill-accent);
   font-weight: 600;
 }
 

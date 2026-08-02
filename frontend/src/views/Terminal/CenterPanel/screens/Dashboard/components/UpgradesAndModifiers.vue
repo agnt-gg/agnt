@@ -196,7 +196,7 @@ export default {
   transition: transform 0.3s ease;
 }
 .tab-button:hover {
-  color: var(--color-white);
+  color: var(--text-primary);
   background-color: var(--color-primary-transparent-light);
 }
 .tab-button.active {
@@ -302,7 +302,7 @@ export default {
 
 .item-name {
   font-weight: 600; /* Adjusted font-weight */
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 1.05em; /* Adjusted font-size */
   /* Removed text-shadow */
 }
@@ -367,7 +367,7 @@ export default {
 }
 
 .action-button {
-  color: var(--color-white); /* Default text color for contrast */
+  color: var(--text-primary); /* Default text color for contrast */
   border: 1px solid transparent;
   padding: 8px 12px;
   border-radius: 3px;
@@ -405,7 +405,7 @@ export default {
 .purchase-button {
   background-color: var(--color-purple);
   border-color: var(--color-purple-dark);
-  color: var(--color-white); /* White text on purple */
+  color: var(--on-fill-indigo); /* White text on purple */
 }
 .purchase-button:hover:not(:disabled) {
   background-color: var(--color-purple-light);

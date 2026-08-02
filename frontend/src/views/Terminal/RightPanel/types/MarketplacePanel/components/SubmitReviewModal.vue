@@ -644,7 +644,7 @@ export default {
   border: none;
   /* fixed dark chip: it sits on the user's image, not on a theme surface */
   background: rgba(7, 7, 16, 0.72);
-  color: #fff;
+  color: var(--text-on-scrim);
   font-size: 10px;
   display: flex;
   align-items: center;
@@ -714,7 +714,7 @@ export default {
 
 .btn-primary {
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
 }
 
 .btn-primary:hover:not(:disabled) {

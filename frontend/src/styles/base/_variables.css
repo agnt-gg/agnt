@@ -33,7 +33,14 @@
   --color-bright-light-navy: #ebebeb;
   --color-ultra-light-navy: #fafafa;
   --color-dull-white: #f7f7f7;
-  --color-white: #f1f0f5;
+  /* LITERAL WHITE, IN EVERY THEME. Was #f1f0f5, which made this token mean
+     "the light text colour" in the dark themes while the light theme redefined
+     it to #ffffff — two incompatible jobs, and light mode could only satisfy
+     one. 53 declarations used it as TEXT and went to 1.03:1 on a white page.
+     Those now use --text-primary / --on-fill-*; what is left genuinely wants
+     white (.bg-white, toggle knobs, workflow connectors), so the name is now
+     true and the value no longer varies. */
+  --color-white: #ffffff;
 
   --color-lighter-0: rgba(255, 255, 255, 0.1);
   --color-lighter-1: rgba(255, 255, 255, 0.2);

@@ -134,7 +134,7 @@ export default {
 }
 
 .detail-row .label {
-  color: var(--color-white);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 10px;

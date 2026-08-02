@@ -271,13 +271,13 @@ export default {
 .manifest-alert.ok {
   background: rgba(25, 239, 131, 0.06);
   border-color: var(--green, #19ef83);
-  color: rgba(141, 240, 187, 0.95);
+  color: var(--color-green);
 }
 
 .manifest-alert.warn {
   background: rgba(255, 149, 0, 0.07);
   border-color: var(--gold, #ff9500);
-  color: rgba(255, 194, 102, 0.95);
+  color: var(--status-amber-text);
 }
 
 .manifest-group {
@@ -300,7 +300,7 @@ export default {
 .group-arrow {
   font-size: 10px;
   width: 10px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-secondary);
 }
 
 .group-head:hover .group-arrow {
@@ -360,7 +360,7 @@ export default {
 .show-more {
   font-family: var(--font-family-mono, monospace);
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -414,7 +414,7 @@ export default {
 }
 
 .item-tokens {
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--text-secondary);
   min-width: 36px;
   text-align: right;
 }
@@ -437,12 +437,12 @@ export default {
 
 .why-default {
   background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
 }
 
 .why-group {
   background: rgba(125, 61, 229, 0.2);
-  color: #b98cff;
+  color: var(--status-purple-text);
 }
 
 .why-discovered {

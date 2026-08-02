@@ -372,7 +372,7 @@ input[type='number'] {
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-ultra-light-navy);
-  color: var(--color-navy);
+  color: var(--text-primary);
 }
 
 input[type='number']:focus {
@@ -398,7 +398,7 @@ button {
   width: 100%;
   padding: 0.5rem;
   background-color: var(--color-med-navy);
-  color: white;
+  color: var(--text-primary);
   border: none;
   border-radius: 16px;
   cursor: pointer;

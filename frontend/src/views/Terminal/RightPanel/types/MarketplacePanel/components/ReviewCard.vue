@@ -357,7 +357,7 @@ export default {
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(7, 7, 16, 0.6);
-  color: #fff;
+  color: var(--text-on-scrim);
   font-size: 15px;
   display: flex;
   align-items: center;

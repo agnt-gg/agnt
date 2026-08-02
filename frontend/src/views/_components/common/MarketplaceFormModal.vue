@@ -642,7 +642,7 @@ export default {
 }
 
 .upgrade-link:hover {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .stripe-warning {
@@ -675,7 +675,7 @@ export default {
   padding: 10px 16px;
   background: var(--color-yellow);
   border: 1px solid var(--color-yellow);
-  color: var(--color-darker-3);
+  color: var(--on-fill-warning);
   font-weight: 600;
   font-size: 13px;
   border-radius: 6px;
@@ -759,7 +759,7 @@ export default {
 .publish-btn {
   background: var(--color-green);
   border: none;
-  color: var(--color-navy);
+  color: var(--text-primary);
 }
 
 .publish-btn:hover:not(:disabled) {

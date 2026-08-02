@@ -225,7 +225,7 @@ export default {
 
 .stat-info p {
   margin: 5px 0 0 0;
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 1.2em;
   font-weight: bold;
   line-height: 1.1;
@@ -338,7 +338,7 @@ export default {
 @keyframes number-flash {
   0% {
     transform: scale(1);
-    color: var(--color-white);
+    color: var(--text-primary);
   }
   50% {
     transform: scale(1.1);
@@ -346,7 +346,7 @@ export default {
   }
   100% {
     transform: scale(1);
-    color: var(--color-white);
+    color: var(--text-primary);
   }
 }
 </style>

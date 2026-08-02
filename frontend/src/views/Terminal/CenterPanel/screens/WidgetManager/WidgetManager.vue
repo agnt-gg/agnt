@@ -471,11 +471,11 @@ export default {
           .replace(/\n/g, '<br/>');
         return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'JetBrains Mono', monospace; background: #0c0c18; color: #c8c8d4; padding: 12px; overflow: hidden; font-size: 13px; line-height: 1.5; }
+          body { font-family: 'JetBrains Mono', monospace; background: #0c0c18; color: var(--text-secondary); padding: 12px; overflow: hidden; font-size: 13px; line-height: 1.5; }
           h1, h2, h3 { color: var(--color-green); margin-bottom: 4px; }
           h1 { font-size: 18px; } h2 { font-size: 15px; } h3 { font-size: 13px; }
           code { background: rgba(255,255,255,0.05); padding: 1px 4px; border-radius: 3px; }
-          strong { color: #eee; }
+          strong { color: var(--text-primary); }
         </style></head><body>${rendered}</body></html>`;
       }
 

@@ -147,8 +147,8 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
 .card-icon.skill_recommendation { background: rgba(59, 130, 246, 0.15); color: var(--status-blue-text); }
 .card-icon.memory { background: rgba(236, 72, 153, 0.15); color: var(--color-pink); }
 .card-icon.bottleneck { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
-.card-icon.parameter_tune { background: rgba(20, 184, 166, 0.15); color: #14b8a6; }
-.card-icon.tool_preference { background: rgba(99, 102, 241, 0.15); color: #6366f1; }
+.card-icon.parameter_tune { background: rgba(20, 184, 166, 0.15); color: var(--color-blue); }
+.card-icon.tool_preference { background: rgba(99, 102, 241, 0.15); color: var(--status-blue-text); }
 .card-icon.default { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
 
 .card-title-block {

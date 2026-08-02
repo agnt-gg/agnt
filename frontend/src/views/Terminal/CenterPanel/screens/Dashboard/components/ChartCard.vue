@@ -348,10 +348,10 @@ export default {
 .insight-card.status-warning {
   background: rgba(255, 99, 132, 0.1);
   border-color: rgba(255, 99, 132, 0.3);
-  color: #ff6384;
+  color: var(--color-red);
 }
 .insight-card.status-warning i {
-  color: #ff6384;
+  color: var(--color-red);
 }
 
 .insight-card i {

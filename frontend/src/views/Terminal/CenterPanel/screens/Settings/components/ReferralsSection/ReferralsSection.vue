@@ -1190,7 +1190,7 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 1.5em;
-  color: white;
+  color: var(--on-fill-accent);
 }
 
 .card-title {
@@ -1282,7 +1282,7 @@ export default {
 .copy-button {
   padding: 12px 24px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -1437,7 +1437,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-darker-3);
+  color: var(--on-fill-info);
   font-size: 1.2em;
 }
 
@@ -1576,7 +1576,7 @@ export default {
   height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
-  color: white;
+  color: var(--on-fill-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1890,7 +1890,7 @@ export default {
 .submit-button {
   padding: 12px 24px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -2062,7 +2062,7 @@ export default {
 .stripe-connect-button {
   padding: 10px 20px;
   background: var(--color-violet);
-  color: white;
+  color: var(--on-fill-violet);
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -2112,7 +2112,7 @@ export default {
 
 .toggle-all-button:hover {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   transform: translateY(-1px);
 }
 
@@ -2290,7 +2290,7 @@ export default {
 
 .view-all-button:hover {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
 }
 
 .commission-empty {

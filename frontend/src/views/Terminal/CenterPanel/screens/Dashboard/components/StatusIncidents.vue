@@ -174,7 +174,7 @@ export default {
 }
 
 .status-resolved {
-  color: #10b981;
+  color: var(--color-green);
 }
 
 .status-monitoring {

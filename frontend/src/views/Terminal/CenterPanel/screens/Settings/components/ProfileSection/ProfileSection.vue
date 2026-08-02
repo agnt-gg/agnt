@@ -588,7 +588,7 @@ export default {
 .cancel-button {
   background: var(--color-green);
   border: none;
-  color: var(--color-darker-3);
+  color: var(--on-fill-success);
   cursor: pointer;
   padding: 6px 10px;
   border-radius: 4px;
@@ -884,7 +884,7 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   min-width: 40px;

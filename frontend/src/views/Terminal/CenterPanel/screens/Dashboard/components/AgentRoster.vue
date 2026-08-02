@@ -164,7 +164,7 @@ export default {
 
 .agent-name {
   font-weight: 600;
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.95em;
 }
 
@@ -203,7 +203,7 @@ export default {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.75em;
   line-height: 18px;
   font-weight: bold;
@@ -244,7 +244,7 @@ export default {
 
 .upgrade-agent-button {
     background-color: var(--color-blue-dark);
-    color: var(--color-white);
+    color: var(--on-fill-info);
     border: 1px solid var(--color-blue);
     padding: 6px 10px;
     border-radius: 3px;

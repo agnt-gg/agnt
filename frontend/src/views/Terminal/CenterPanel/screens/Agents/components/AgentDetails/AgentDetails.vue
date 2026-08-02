@@ -995,7 +995,7 @@ h4.section-title {
   padding: 6px 10px;
   background: rgba(255, 50, 50, 0.1);
   border: 1px solid rgba(255, 50, 50, 0.3);
-  color: rgba(255, 50, 50, 0.8);
+  color: var(--color-red);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1008,14 +1008,14 @@ h4.section-title {
 /* Danger (red) button for destructive actions */
 .action-button.danger {
   background: var(--color-red);
-  color: #fff;
+  color: var(--on-fill-danger);
   border: 1px solid var(--color-red);
   transition: background 0.2s, color 0.2s;
 }
 
 .action-button.danger:hover {
   background: var(--color-red);
-  color: #fff;
+  color: var(--on-fill-danger);
   border-color: var(--color-red);
 }
 
@@ -1569,12 +1569,12 @@ h4.section-title {
 
 .goal-status.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: #28a745;
+  color: var(--color-green);
 }
 
 .goal-status.failed {
   background: rgba(220, 53, 69, 0.2);
-  color: #dc3545;
+  color: var(--color-red);
 }
 
 .goal-meta {
@@ -1846,12 +1846,12 @@ select option {
 
 .task-status-badge.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: #28a745;
+  color: var(--color-green);
 }
 
 .task-status-badge.failed {
   background: rgba(220, 53, 69, 0.2);
-  color: #dc3545;
+  color: var(--color-red);
 }
 
 .task-tools {

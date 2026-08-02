@@ -2771,7 +2771,7 @@ export default {
   line-height: 1.2;
   border: 1px solid rgba(160, 120, 255, 0.4);
   background: rgba(160, 120, 255, 0.1);
-  color: #a078ff;
+  color: var(--status-purple-text);
   max-width: max-content;
 }
 

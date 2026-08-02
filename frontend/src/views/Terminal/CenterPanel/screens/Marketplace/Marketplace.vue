@@ -2172,7 +2172,7 @@ body.dark .view-btn:not(:last-child) {
 .table-install-button {
   padding: 6px 12px;
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   font-weight: 600;
   font-size: 12px;
   border-radius: 6px;
@@ -2547,7 +2547,7 @@ body.dark .view-btn:not(:last-child) {
   z-index: 0;
   font-size: 210px;
   line-height: 1;
-  color: #fff;
+  color: var(--text-on-scrim);
   opacity: 0.13;
   transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -2579,7 +2579,7 @@ body.dark .view-btn:not(:last-child) {
   padding: 4px 11px;
   border-radius: var(--border-radius-full);
   /* art-ink rule */
-  color: #fff;
+  color: var(--text-on-scrim);
   background: rgba(7, 7, 16, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.14);
   text-transform: capitalize;
@@ -2591,7 +2591,7 @@ body.dark .view-btn:not(:last-child) {
   letter-spacing: -0.025em;
   line-height: 1.12;
   margin: 0 0 6px;
-  color: #fff; /* art-ink rule */
+  color: var(--text-on-scrim); /* art-ink rule */
 }
 
 .mk-hero-by {
@@ -2600,7 +2600,7 @@ body.dark .view-btn:not(:last-child) {
   gap: 6px;
   font-size: var(--font-size-xs);
   margin-bottom: 10px;
-  color: rgba(255, 255, 255, 0.75); /* art-ink rule */
+  color: var(--text-on-scrim-muted); /* art-ink rule */
 }
 /* ART-INK RULE: this link sits on the always-dark banner gradient, so its ink is
    pinned to white. A theme token would flip to dark in light/rose and vanish. */
@@ -2610,7 +2610,7 @@ body.dark .view-btn:not(:last-child) {
   background: none;
   cursor: pointer;
   font: inherit;
-  color: #fff;
+  color: var(--text-on-scrim);
   opacity: 0.88;
   transition: opacity var(--transition-fast);
 }
@@ -2624,7 +2624,7 @@ body.dark .view-btn:not(:last-child) {
   line-height: 1.5;
   max-width: 440px;
   margin: 0 0 14px;
-  color: rgba(255, 255, 255, 0.86); /* art-ink rule */
+  color: var(--text-on-scrim); /* art-ink rule */
 }
 .mk-hero-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
 .mk-hero-chips span {
@@ -2635,7 +2635,7 @@ body.dark .view-btn:not(:last-child) {
   padding: 3px 10px;
   border-radius: var(--border-radius-full);
   /* art-ink rule */
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--text-on-scrim);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.13);
 }
@@ -2664,9 +2664,9 @@ body.dark .view-btn:not(:last-child) {
   transform: none;
   box-shadow: none;
 }
-.mk-hero-stats { display: flex; gap: 16px; font-size: var(--font-size-xs); color: rgba(255, 255, 255, 0.75); }
+.mk-hero-stats { display: flex; gap: 16px; font-size: var(--font-size-xs); color: var(--text-on-scrim-muted); }
 .mk-hero-stats span { display: flex; align-items: center; gap: 5px; }
-.mk-hero-stats b { color: #fff; font-family: var(--font-family-mono); } /* art-ink rule */
+.mk-hero-stats b { color: var(--text-on-scrim); font-family: var(--font-family-mono); } /* art-ink rule */
 
 /* ─────────────────────── collections ─────────────────────── */
 .mk-collections {
@@ -2934,7 +2934,7 @@ body.dark .view-btn:not(:last-child) {
   bottom: -22px;
   font-size: 118px;
   line-height: 1;
-  color: #fff; /* art-ink rule */
+  color: var(--text-on-scrim); /* art-ink rule */
   opacity: 0.17;
   transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity var(--transition-fast);
 }
@@ -2951,7 +2951,7 @@ body.dark .view-btn:not(:last-child) {
   overflow: hidden;
   text-overflow: ellipsis;
   /* art-ink rule: fixed ink on the always-dark gradient */
-  color: #fff;
+  color: var(--text-on-scrim);
   background: rgba(7, 7, 16, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.13);
 }

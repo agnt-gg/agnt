@@ -168,7 +168,7 @@ export default {
   transform: translateY(-50%);
   background: rgba(0, 0, 0, 0.3);
   border: none;
-  color: white;
+  color: var(--text-on-scrim);
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -228,7 +228,7 @@ export default {
 }
 
 .rate-limit-text {
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.9em;
   font-weight: 700;
   text-align: center;
@@ -238,7 +238,7 @@ export default {
 }
 
 .rate-limit-reset {
-  color: var(--color-white);
+  color: var(--text-on-scrim);
   font-size: 0.85em;
   font-weight: 700;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);

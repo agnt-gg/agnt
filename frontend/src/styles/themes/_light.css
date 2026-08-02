@@ -32,7 +32,8 @@ body:not(.dark):not(.rose) {
   --color-dull-white: var(--color-text); /* was #f7f7f7. This IS the text token
      for the dark family (_dark.css: --color-text: var(--color-dull-white)), so
      in light mode it must track --color-text rather than restate its value. */
-  --color-white: #ffffff; /* was #f1f0f5 - now true white */
+  /* --color-white no longer needs a light-mode override: it is literal white
+     in the base palette now. See the note in _variables.css. */
 
   /* Text hierarchy - dark text on light backgrounds.
      --color-text is the single source of truth: --color-dull-white,

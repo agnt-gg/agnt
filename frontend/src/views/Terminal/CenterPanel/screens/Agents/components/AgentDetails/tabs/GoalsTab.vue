@@ -423,12 +423,12 @@ h4.section-title {
 
 .goal-status.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: #28a745;
+  color: var(--color-green);
 }
 
 .goal-status.failed {
   background: rgba(220, 53, 69, 0.2);
-  color: #dc3545;
+  color: var(--color-red);
 }
 
 .goal-meta {

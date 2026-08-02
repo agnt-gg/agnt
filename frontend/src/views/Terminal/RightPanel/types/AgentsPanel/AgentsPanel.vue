@@ -846,7 +846,7 @@ select.input {
   padding: 6px 10px;
   background: rgba(255, 50, 50, 0.1);
   border: 1px solid rgba(255, 50, 50, 0.3);
-  color: rgba(255, 50, 50, 0.8);
+  color: var(--color-red);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;

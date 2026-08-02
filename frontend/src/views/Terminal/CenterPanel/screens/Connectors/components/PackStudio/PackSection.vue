@@ -212,7 +212,7 @@ export default {
 .armed-eject:hover {
   background: rgba(255, 100, 100, 0.12);
   border-color: rgba(255, 100, 100, 0.5);
-  color: #ff8585;
+  color: var(--color-red);
   transform: rotate(90deg);
 }
 
@@ -285,14 +285,14 @@ export default {
 }
 
 .ref-gem.is-external {
-  color: #f5b342;
+  color: var(--status-amber-text);
   border-color: rgba(245, 179, 66, 0.5);
   background: rgba(245, 179, 66, 0.06);
 }
 .ref-gem.is-external .gem-jewel { background: #f5b342; box-shadow: 0 0 4px #f5b342; }
 
 .ref-gem.is-missing {
-  color: #ff8585;
+  color: var(--color-red);
   border-color: rgba(255, 100, 100, 0.55);
   background: rgba(255, 100, 100, 0.07);
 }

@@ -208,7 +208,7 @@ body.dark .pro-locked-message h4 {
 
 .locked-overlay p {
   margin: 0;
-  color: #fff;
+  color: var(--text-on-scrim);
   font-weight: 600;
   font-size: 0.85em;
   display: inline;

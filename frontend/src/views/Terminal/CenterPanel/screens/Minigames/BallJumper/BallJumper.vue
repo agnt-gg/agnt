@@ -60,7 +60,7 @@ canvas#world {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 2em;
   border: none;
   cursor: pointer;

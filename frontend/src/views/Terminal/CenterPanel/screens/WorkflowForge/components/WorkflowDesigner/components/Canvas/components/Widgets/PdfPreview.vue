@@ -203,7 +203,7 @@ export default {
 .pdf-button {
   padding: 8px;
   background: rgba(0, 0, 0, 0.7);
-  color: white;
+  color: var(--text-on-scrim);
   border: none;
   border-radius: 4px;
   cursor: pointer;

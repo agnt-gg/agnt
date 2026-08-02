@@ -212,7 +212,7 @@ export default {
 }
 
 .mobile-close-button:hover {
-  color: var(--color-white);
+  color: var(--text-primary);
   opacity: 0.5;
 }
 

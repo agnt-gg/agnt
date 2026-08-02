@@ -219,7 +219,7 @@ body.dark .editor-footer {
 
 .ͼo .cm-gutters {
   background-color: transparent;
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
   margin-left: 0;
   border: none;
   user-select: none !important;
@@ -293,7 +293,7 @@ body.dark .editor-footer {
 }
 
 .ͼr {
-  color: #ffd97d;
+  color: var(--status-amber-text);
   font-weight: 300;
 }
 
@@ -312,12 +312,12 @@ body.dark .editor-footer {
 }
 
 .ͼw {
-  color: #7d8799;
+  color: var(--text-tertiary);
   opacity: 0.85;
 }
 
 .ͼo .cm-gutters {
-  color: #3e405a85;
+  color: var(--text-quaternary);
 }
 
 .ͼo .cm-activeLineGutter {

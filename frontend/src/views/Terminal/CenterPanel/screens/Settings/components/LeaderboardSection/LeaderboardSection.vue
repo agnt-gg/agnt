@@ -564,7 +564,7 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 1.5em;
-  color: white;
+  color: var(--on-fill-accent);
 }
 
 .card-title {
@@ -618,14 +618,14 @@ export default {
 
 .tab-button.active {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3);
 }
 
 .sync-button {
   padding: 10px 20px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -889,7 +889,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-darker-3);
+  color: var(--on-fill-info);
   font-size: 1.1em;
 }
 
@@ -1001,7 +1001,7 @@ export default {
   height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
-  color: white;
+  color: var(--on-fill-accent);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -160,12 +160,12 @@ export default {
 }
 .refresh-models-btn.success {
   opacity: 1;
-  color: #2ea043;
+  color: var(--color-green);
   border-color: rgba(46, 160, 67, 0.3);
 }
 .refresh-models-btn.error {
   opacity: 1;
-  color: #d73a49;
+  color: var(--color-red);
   border-color: rgba(215, 58, 73, 0.3);
 }
 .refresh-models-btn .label {

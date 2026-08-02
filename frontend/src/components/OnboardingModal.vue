@@ -998,7 +998,7 @@ export default {
   align-items: center;
   justify-content: center;
   margin: 0 auto 24px;
-  color: #ffffff;
+  color: var(--on-fill-accent);
 }
 
 .input-group {
@@ -1385,7 +1385,7 @@ export default {
 
 .btn-primary {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--on-fill-accent);
 }
 
 .btn-primary:hover {

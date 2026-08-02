@@ -2245,7 +2245,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   border: 1px solid rgba(255, 107, 107, 0.25);
   border-radius: 6px;
   font-size: 0.8em;
-  color: rgba(255, 107, 107, 0.9);
+  color: var(--color-red);
 }
 
 .input-disabled-notice i {
