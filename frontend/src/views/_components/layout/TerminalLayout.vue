@@ -436,7 +436,7 @@ export default {
 }
 
 .narration {
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 1.5em;
   text-align: center;
   max-width: 80ch;

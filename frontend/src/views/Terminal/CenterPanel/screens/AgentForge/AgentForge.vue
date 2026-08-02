@@ -923,7 +923,7 @@ export default {
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: white;
+  color: var(--text-primary);
 }
 
 .banner-title {
@@ -1090,7 +1090,7 @@ export default {
   padding: 8px 14px;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: rgba(239, 68, 68, 0.9);
+  color: var(--color-red);
   border-radius: 8px;
   cursor: pointer;
   display: inline-flex;

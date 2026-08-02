@@ -94,7 +94,7 @@ export default {
 .icon-option.selected {
   background-color: var(--color-primary);
   border: 1px solid rgb(255, 255, 255, 0);
-  color: white;
+  color: var(--on-fill-accent);
   opacity: 1;
   filter: grayscale(0);
 }

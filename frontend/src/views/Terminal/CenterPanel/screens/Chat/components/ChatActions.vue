@@ -163,7 +163,7 @@ export default {
 .save-button:hover:not(:disabled) {
   background: rgba(var(--green-rgb), 0.2);
   border-color: rgba(var(--green-rgb), 0.4);
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 .save-button:disabled {
@@ -174,7 +174,7 @@ export default {
 .new-chat-button:hover {
   background: rgba(var(--green-rgb, 18, 224, 255), 0.18);
   border-color: rgba(var(--green-rgb, 18, 224, 255), 0.4);
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 @keyframes pulse {

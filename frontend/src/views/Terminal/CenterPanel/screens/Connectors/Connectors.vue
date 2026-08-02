@@ -2757,12 +2757,12 @@ body.dark .form-actions {
 
 .health-dot.healthy {
   background: var(--color-green);
-  box-shadow: 0 0 4px var(--color-green);
+  box-shadow: var(--glow-success);
 }
 
 .health-dot.degraded {
   background: var(--color-yellow);
-  box-shadow: 0 0 4px var(--color-yellow);
+  box-shadow: var(--glow-accent);
 }
 
 .health-dot.error,
@@ -2894,7 +2894,7 @@ body.dark .form-actions {
 
 .locked-overlay p {
   margin: 0;
-  color: #fff;
+  color: var(--text-on-scrim);
   font-weight: 600;
   font-size: 1.1em;
 }
@@ -3349,7 +3349,7 @@ body.dark .view-btn:not(:last-child) {
 
 .add-btn {
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: none;
   border-radius: 6px;
   padding: 8px 16px;

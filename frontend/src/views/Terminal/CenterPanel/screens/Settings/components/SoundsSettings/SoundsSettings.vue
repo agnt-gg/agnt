@@ -390,13 +390,13 @@ input:checked + .slider:before {
   border-radius: 50%;
   background: var(--color-primary);
   cursor: pointer;
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.5);
+  box-shadow: var(--glow-accent);
   transition: all 0.2s ease;
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.8);
+  box-shadow: var(--glow-accent-strong);
 }
 
 .volume-slider::-moz-range-thumb {
@@ -406,13 +406,13 @@ input:checked + .slider:before {
   background: var(--color-primary);
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.5);
+  box-shadow: var(--glow-accent);
   transition: all 0.2s ease;
 }
 
 .volume-slider::-moz-range-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.8);
+  box-shadow: var(--glow-accent-strong);
 }
 
 .volume-slider:disabled {
@@ -424,7 +424,7 @@ input:checked + .slider:before {
 button.test-button {
   padding: 10px 20px;
   background: var(--color-primary);
-  color: var(--color-white) !important;
+  color: var(--on-fill-accent) !important;
   border: none;
   border-radius: 6px;
   font-size: 0.9em;
@@ -509,7 +509,7 @@ button.preview-button {
 
 .preview-button:hover:not(:disabled) {
   background: var(--color-primary);
-  color: var(--color-white) !important;
+  color: var(--on-fill-accent) !important;
 }
 
 .preview-button:disabled {

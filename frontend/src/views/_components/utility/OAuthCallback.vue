@@ -246,7 +246,7 @@ export default {
   width: 80px;
   height: 80px;
   background: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
   border-radius: 50%;
   display: flex;
   align-items: center;

@@ -90,6 +90,22 @@ app.config.errorHandler = (err, _instance, info) => {
 // This eliminates the blank screen while API calls complete
 app.mount('#app');
 
+// Dev-only: `__auditContrast()` in the console reports any on-screen text that
+// is unreadable against its ACTUAL rendered backdrop. Static analysis cannot
+// see compositional failures (text from one component over a background painted
+// by another, or a blanket selector outranking a component's own colour), which
+// is how the Workspace palette shipped invisible in light mode.
+// The dynamic import keeps it out of the production bundle entirely.
+if (import.meta.env.DEV) {
+  import('./utils/contrastAudit.js')
+    .then(({ auditContrast }) => {
+      window.__auditContrast = auditContrast;
+    })
+    .catch(() => {
+      /* the auditor is a convenience; never let it break boot */
+    });
+}
+
 // License refresh interval (1 hour)
 const LICENSE_REFRESH_INTERVAL = 60 * 60 * 1000;
 let licenseRefreshTimer = null;

@@ -276,7 +276,7 @@ export default {
 
 .locked-overlay p {
   margin: 0;
-  color: #fff;
+  color: var(--text-on-scrim);
   font-weight: 600;
   font-size: 1.1em;
 }

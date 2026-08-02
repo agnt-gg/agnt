@@ -299,7 +299,7 @@ body.dark .theme-label {
 .theme-option.active {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  color: var(--color-white);
+  color: var(--on-fill-accent);
 }
 
 .theme-option i {
@@ -536,7 +536,7 @@ body.dark .theme-label {
 .mode-toggle.active {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  color: var(--color-white);
+  color: var(--on-fill-accent);
 }
 
 .mode-toggle i {

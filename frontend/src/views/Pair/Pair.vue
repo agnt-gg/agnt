@@ -131,7 +131,7 @@ onMounted(async () => {
   border-radius: 10px;
   border: none;
   background: var(--color-primary, #19ef83);
-  color: #04120a;
+  color: var(--on-fill-accent);
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;

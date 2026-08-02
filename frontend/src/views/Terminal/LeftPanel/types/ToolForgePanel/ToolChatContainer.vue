@@ -840,7 +840,7 @@ export default {
 
 .chat-mic-button.is-listening {
   background: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
   animation: pulse 1.5s ease-in-out infinite;
 }
 

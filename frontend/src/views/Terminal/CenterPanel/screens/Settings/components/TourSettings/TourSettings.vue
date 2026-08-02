@@ -617,7 +617,10 @@ input:checked + .slider:before {
 }
 
 .tour-status.completed {
-  background: var(--terminal-muted-color);
+  /* --terminal-muted-color is a MID grey (#6d6d78 light, #1f1f2f dark), so it
+     works as a border but not as a fill: accent text on it measured 1.01:1 in
+     light. A sunken surface with primary text reads the same and inverts. */
+  background: var(--surface-sunken);
   color: var(--color-primary);
 }
 
@@ -653,7 +656,7 @@ button.btn-reset {
 
 button.btn-start {
   background: var(--color-primary);
-  color: var(--color-white) !important;
+  color: var(--on-fill-accent) !important;
 }
 
 .btn-start:hover {

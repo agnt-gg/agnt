@@ -798,7 +798,7 @@ export default {
   font-size: 9px;
   letter-spacing: 0.9px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.36);
+  color: var(--text-quaternary);
 }
 
 .strip-pip {
@@ -874,14 +874,14 @@ export default {
 }
 
 .tile.placeholder .tile-value {
-  color: rgba(255, 255, 255, 0.28);
+  color: var(--text-quaternary);
 }
 
 .tile-key {
   font-size: 9px;
   letter-spacing: 1.1px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.36);
+  color: var(--text-quaternary);
 }
 
 .tile-value {
@@ -895,7 +895,7 @@ export default {
 .tile-value small {
   font-size: 11px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.36);
+  color: var(--text-quaternary);
   /* The template's whitespace is collapsed by the compiler, so the unit needs
      its own gap or it renders jammed against the numeral ("6rds"). */
   margin-left: 3px;
@@ -954,7 +954,7 @@ export default {
   font-size: 9px;
   letter-spacing: 1.2px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.36);
+  color: var(--text-quaternary);
 }
 
 .blk-note {
@@ -966,11 +966,11 @@ export default {
 .blk-note b { color: var(--color-text); }
 
 .blk-note.dim {
-  color: rgba(255, 255, 255, 0.36);
+  color: var(--text-quaternary);
   font-size: 9px;
 }
 
-.blk-note.dim b { color: rgba(255, 255, 255, 0.55); font-weight: 500; }
+.blk-note.dim b { color: var(--text-secondary); font-weight: 500; }
 .blk-note b.danger { color: var(--pink, #e53d8f); }
 .blk-note b.warn { color: var(--color-orange, #ff9500); }
 
@@ -1083,7 +1083,7 @@ export default {
   font-size: 9px;
   letter-spacing: 1.1px;
   text-transform: uppercase;
-  color: #b98cff;
+  color: var(--status-purple-text);
 }
 
 .accent-gold .accent-label { color: var(--color-orange, #ff9500); }
@@ -1114,7 +1114,7 @@ export default {
   font-size: 8px;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--text-quaternary);
   padding-bottom: 2px;
 }
 
@@ -1136,7 +1136,7 @@ export default {
   font-size: 9px;
   /* The rank carries the ordering, so it has to be readable rather than
      decorative; 0.3 alpha was the dimmest text in the panel. */
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-tertiary);
   width: 10px;
   flex: none;
 }
@@ -1162,7 +1162,7 @@ export default {
 }
 
 .why-system { background: rgba(var(--blue-rgb), 0.16); color: var(--color-blue); }
-.why-tool { background: rgba(125, 61, 229, 0.2); color: #b98cff; }
+.why-tool { background: rgba(125, 61, 229, 0.2); color: var(--status-purple-text); }
 .why-discovered { background: rgba(var(--green-rgb), 0.14); color: var(--color-green); }
 
 .driver-per,
@@ -1238,7 +1238,7 @@ export default {
   margin-top: 3px;
   font-family: var(--font-family-mono, monospace);
   font-size: 8.5px;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--text-quaternary);
 }
 
 .rounds-sel { color: var(--color-blue); }
@@ -1247,6 +1247,6 @@ export default {
 .good { color: var(--color-green); }
 .warn { color: var(--color-orange, #ff9500); }
 .critical { color: var(--color-red); }
-.indigo { color: #b98cff; }
+.indigo { color: var(--status-purple-text); }
 .danger { color: var(--pink, #e53d8f); }
 </style>

@@ -370,9 +370,9 @@ button.generate {
   width: -webkit-fill-available;
   height: 48px;
   /* background: var(--color-pink); */
-  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
+  background-image: var(--gradient-brand);
   border: none;
-  color: var(--color-white);
+  color: var(--on-fill-accent);
   font-family: var(--font-family-primary);
   font-size: var(--font-size-md);
   letter-spacing: 1px;

@@ -718,7 +718,7 @@ export default {
 .baseline-inline {
   /* Fixed rgba rather than a theme token: --color-text-muted resolves very
      dim in some themes, and this number is the anchor of the comparison. */
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--text-secondary);
   margin-right: 6px;
 }
 
@@ -731,7 +731,7 @@ export default {
 /* No strike here: at this size the line merges with the digit crossbars.
    The "was" label already carries the meaning. */
 .baseline-inline {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
 }
 
 .paid-nothing {
@@ -740,7 +740,7 @@ export default {
 
 /* Not money that was charged - must not outrank the $0.00 beneath it. */
 .cost-value.notional {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -750,7 +750,7 @@ export default {
   font-weight: 500;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-tertiary);
 }
 
 .savings-block.subscription {
@@ -776,7 +776,7 @@ export default {
   font-size: 9px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-secondary);
 }
 
 .savings-total-value {
@@ -800,14 +800,14 @@ export default {
   font-size: 9px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
   margin-bottom: 4px;
 }
 
 .model-mix-total {
   font-family: var(--font-family-mono, monospace);
   letter-spacing: 0;
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--text-secondary);
 }
 
 .model-mix-row {
@@ -821,18 +821,18 @@ export default {
 
 .model-mix-name {
   flex: 1;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .model-mix-calls {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-tertiary);
 }
 
 .model-mix-cost {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
   min-width: 52px;
   text-align: right;
 }

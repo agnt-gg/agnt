@@ -344,7 +344,7 @@ export default {
 
 .gpw-status-badge.running {
   background: rgba(0, 255, 136, 0.15);
-  color: #00ff88;
+  color: var(--color-green);
 }
 
 .gpw-status-badge.completed {
@@ -525,7 +525,7 @@ export default {
   color: var(--status-green-text);
 }
 .gpw-score-mid {
-  color: #eab308;
+  color: var(--color-yellow);
 }
 .gpw-score-low {
   color: var(--color-red);

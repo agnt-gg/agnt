@@ -499,7 +499,7 @@ export default {
   width: 28px;
   height: 28px;
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;

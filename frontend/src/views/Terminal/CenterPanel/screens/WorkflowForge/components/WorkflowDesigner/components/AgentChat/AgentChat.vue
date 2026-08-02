@@ -254,7 +254,7 @@ export default {
   border-radius: 16px 16px 0px 16px;
   padding: 12px;
   background-color: var(--color-blue);
-  color: white;
+  color: var(--on-fill-info);
   align-self: flex-end;
 }
 
@@ -285,7 +285,7 @@ export default {
 .chat-input button {
   padding: 8px 15px;
   background-color: var(--color-green);
-  color: white;
+  color: var(--on-fill-success);
   border: none;
   border-radius: 32px;
   cursor: pointer;

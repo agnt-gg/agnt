@@ -1185,12 +1185,12 @@ export default {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.5em;
-  color: white;
+  color: var(--on-fill-accent);
 }
 
 .card-title {
@@ -1282,7 +1282,7 @@ export default {
 .copy-button {
   padding: 12px 24px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -1433,11 +1433,11 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-darker-3);
+  color: var(--on-fill-info);
   font-size: 1.2em;
 }
 
@@ -1575,8 +1575,8 @@ export default {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
-  color: white;
+  background: var(--gradient-brand);
+  color: var(--on-fill-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1842,7 +1842,7 @@ export default {
 }
 
 .bonus-icon {
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -1890,7 +1890,7 @@ export default {
 .submit-button {
   padding: 12px 24px;
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -1936,7 +1936,7 @@ export default {
 }
 
 .success-icon {
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
 }
 
 .bonus-info {
@@ -1975,7 +1975,7 @@ export default {
 
 /* Commission Card Styles */
 .commission-icon {
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
 }
 
 .commission-value {
@@ -2062,7 +2062,7 @@ export default {
 .stripe-connect-button {
   padding: 10px 20px;
   background: var(--color-violet);
-  color: white;
+  color: var(--on-fill-violet);
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -2112,7 +2112,7 @@ export default {
 
 .toggle-all-button:hover {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   transform: translateY(-1px);
 }
 
@@ -2290,7 +2290,7 @@ export default {
 
 .view-all-button:hover {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
 }
 
 .commission-empty {

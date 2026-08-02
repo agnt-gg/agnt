@@ -967,11 +967,11 @@ onMounted(() => {
 }
 .badge.ineligible {
   background: rgba(255, 77, 79, 0.1);
-  color: #ff6b6b;
+  color: var(--color-red);
 }
 .badge.forged {
   background: rgba(100, 149, 237, 0.15);
-  color: #6495ed;
+  color: var(--status-blue-text);
 }
 .goal-desc {
   font-size: 0.8em;
@@ -1000,7 +1000,7 @@ onMounted(() => {
 .reason {
   font-size: 0.65em;
   background: rgba(255, 77, 79, 0.08);
-  color: #ff6b6b;
+  color: var(--color-red);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -1105,8 +1105,8 @@ onMounted(() => {
   text-transform: uppercase;
 }
 .meta-badge.high { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
-.meta-badge.medium { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
-.meta-badge.low { background: rgba(255, 77, 79, 0.15); color: #ff4d4f; }
+.meta-badge.medium { background: rgba(255, 193, 7, 0.15); color: var(--color-yellow); }
+.meta-badge.low { background: rgba(255, 77, 79, 0.15); color: var(--color-red); }
 .meta-info { font-size: 0.8em; color: var(--color-grey); }
 .analysis-summary { font-size: 0.85em; color: var(--color-text); margin: 8px 0; line-height: 1.4; }
 .candidate-preview {
@@ -1253,8 +1253,8 @@ onMounted(() => {
   font-weight: 600;
 }
 .version-status.active { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
-.version-status.superseded { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
-.version-status.discarded { background: rgba(255, 77, 79, 0.15); color: #ff4d4f; }
+.version-status.superseded { background: rgba(255, 193, 7, 0.15); color: var(--color-yellow); }
+.version-status.discarded { background: rgba(255, 77, 79, 0.15); color: var(--color-red); }
 .version-date { font-size: 0.75em; color: var(--color-grey); margin-left: auto; }
 .version-ses { font-size: 0.85em; color: var(--color-green); font-weight: 600; margin-bottom: 4px; }
 .version-instructions {

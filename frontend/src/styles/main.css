@@ -29,6 +29,10 @@
 /* Semantic role-named tokens. MUST load last: resolves equal-specificity ties
    against the per-theme blocks above. */
 @import './themes/_semantic.css';
+/* Compatibility shim for legacy token names that were referenced but never
+   defined. Must follow _semantic.css — every alias resolves to a token
+   declared there. */
+@import './themes/_aliases.css';
 
 /* Utility styles */
 @import './utilities/_utilities.css';

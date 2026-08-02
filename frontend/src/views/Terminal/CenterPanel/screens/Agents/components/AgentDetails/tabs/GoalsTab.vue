@@ -346,7 +346,7 @@ h4.section-title {
 
 .goal-card.executing {
   border-color: var(--color-green);
-  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.3);
+  box-shadow: var(--glow-success);
 }
 
 .goal-card.executing::before {
@@ -423,12 +423,12 @@ h4.section-title {
 
 .goal-status.completed {
   background: rgba(40, 167, 69, 0.2);
-  color: #28a745;
+  color: var(--color-green);
 }
 
 .goal-status.failed {
   background: rgba(220, 53, 69, 0.2);
-  color: #dc3545;
+  color: var(--color-red);
 }
 
 .goal-meta {

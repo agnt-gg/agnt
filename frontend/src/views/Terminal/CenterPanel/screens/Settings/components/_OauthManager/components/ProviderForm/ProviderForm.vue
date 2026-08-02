@@ -206,7 +206,7 @@ textarea {
 
 button {
   background-color: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
   padding: 10px 15px;
   border: none;
   border-radius: 4px;

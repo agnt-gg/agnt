@@ -827,7 +827,7 @@ export default {
 
 .status-badge.status-needs-input {
   background: rgba(99, 102, 241, 0.2);
-  color: #6366f1;
+  color: var(--status-blue-text);
   border: 1px solid rgba(99, 102, 241, 0.3);
 }
 
@@ -857,7 +857,7 @@ export default {
 
 .task-card-meta .goal-priority.low {
   background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  color: var(--color-green);
 }
 
 .task-card-meta .goal-priority.medium {
@@ -867,7 +867,7 @@ export default {
 
 .task-card-meta .goal-priority.high {
   background: rgba(249, 115, 22, 0.2);
-  color: #f97316;
+  color: var(--status-amber-text);
 }
 
 .task-card-meta .goal-priority.urgent {
@@ -1403,7 +1403,7 @@ export default {
 
 .goal-status-indicator.status-needs-input {
   background: rgba(99, 102, 241, 0.2);
-  color: #6366f1;
+  color: var(--status-blue-text);
   border: 1px solid rgba(99, 102, 241, 0.3);
 }
 

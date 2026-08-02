@@ -1183,7 +1183,7 @@ export default {
   color: var(--color-primary);
   border-color: rgba(var(--primary-rgb), 0.25);
   background: rgba(var(--primary-rgb), 0.06);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.1);
+  box-shadow: var(--glow-accent);
 }
 
 .cv-sb-add {

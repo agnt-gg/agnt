@@ -1,5 +1,22 @@
 button {
-  color: var(--color-dull-navy);
+  /* `inherit`, not a token.
+
+     A <button> does not inherit colour by default (the UA gives it
+     `buttontext`), which is why each theme used to force it with
+     `body:not(.dark) button { color: ... }` / `body.dark button { ... }`.
+
+     Those selectors are specificity (0,2,1), so they beat EVERY component's
+     own `.btn-primary { color: ... }` at (0,1,0). The result: in light mode
+     every filled button's label was forced to the body text colour, which put
+     dark ink on a dark accent fill — measured 1.67:1 on .btn-accent, in a real
+     browser, with the real cascade. No static analysis can see this, because
+     the component's declaration is present and looks correct; it just never
+     wins.
+
+     `inherit` here at (0,0,1) reproduces exactly what those rules did for
+     unstyled buttons — body colour is themed — while letting any component
+     class override it. */
+  color: inherit;
   user-select: none;
 }
 
@@ -50,9 +67,9 @@ button.generate {
   width: -webkit-fill-available;
   height: 48px;
   /* background: var(--color-primary); */
-  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
+  background-image: var(--gradient-brand);
   border: none;
-  color: var(--color-white);
+  color: var(--on-fill-accent);
   font-family: var(--font-family-primary);
   font-size: var(--font-size-md);
   letter-spacing: 1px;
@@ -109,7 +126,7 @@ button.delete-field-button {
 }
 
 button.copy-button {
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 .modal-close-btn {

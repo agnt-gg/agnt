@@ -540,7 +540,7 @@ export default {
 
 .status-indicator.active {
   background: var(--color-green);
-  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.6);
+  box-shadow: var(--glow-success);
 }
 
 .user-info {
@@ -588,7 +588,7 @@ export default {
 .cancel-button {
   background: var(--color-green);
   border: none;
-  color: var(--color-darker-3);
+  color: var(--on-fill-success);
   cursor: pointer;
   padding: 6px 10px;
   border-radius: 4px;
@@ -846,7 +846,7 @@ export default {
 
 .xp-progress-fill-large {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   border-radius: 12px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 2%;
@@ -884,7 +884,7 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   min-width: 40px;

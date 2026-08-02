@@ -1,0 +1,143 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEGACY TOKEN ALIASES — a compatibility shim, not a palette.
+   ───────────────────────────────────────────────────────────────────────────
+   WHY THIS FILE EXISTS
+
+   192 `var(--x)` references across the app name tokens that are defined in NO
+   theme: --Dark-Navy, --color-text-primary, --cyan, --terminal-bg, --gold …
+
+   A `var()` with an undefined token silently falls through to whatever sits
+   after the comma — and with no comma at all it falls through to `unset`.
+   So these were not "missing colours" that failed loudly; they were HARDCODED
+   colours wearing a token's clothing. The fallback painted in every theme,
+   which is why they looked correct in dark and broke in light.
+
+   They are typos and renames that nobody could see, because CSS has no
+   undefined-variable error.
+
+   ─── THE RULES ─────────────────────────────────────────────────────────────
+   1. NOTHING NEW GOES IN THIS FILE. `themeTokens.spec.js` pins the list to
+      exactly the entries below; adding a reference to a token that is not
+      defined in a theme fails the build.
+   2. This block is the ONLY place a legacy name may be resolved. Each alias
+      points at a SEMANTIC token, so it is theme-correct by construction — the
+      light theme cannot fall out of sync with it.
+   3. This list only shrinks. Migrating a call site to the semantic token on
+      the right and deleting the alias is always the better fix.
+
+   Loaded AFTER _semantic.css so the semantic tokens it references exist.
+
+   ─── WHY `body` AND NOT `:root` ────────────────────────────────────────────
+   A var() is substituted at the element where the property is DECLARED, not
+   where it is used. Every theme puts its tokens on `body` (`body.dark`,
+   `body:not(.dark):not(.rose)`), so an alias declared on `:root` resolves
+   against the html element — where those theme overrides do not apply — and
+   freezes to the base palette. Descendants then inherit the already-computed
+   value and can never see the theme.
+
+   Measured: with these on `:root`, --color-primary-rgb came out "229, 61, 143"
+   in BOTH themes, ignoring the dark theme's own 25, 239, 131. Declaring on
+   `body` re-substitutes at the element the themes actually style.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+body {
+  /* ── Surfaces ─────────────────────────────────────────────────────────────
+     Every one of these was used as a `background`. Aliasing to a semantic
+     surface makes them invert with the theme instead of staying dark. */
+  --terminal-bg: var(--surface-canvas);
+  --terminal-section-bg: var(--surface-sunken);
+  --terminal-background-color: var(--surface-canvas);
+  --color-background-soft: var(--surface-sunken);
+  --color-background-primary: var(--surface-canvas);
+  --color-bg: var(--surface-canvas);
+  --color-bg-secondary: var(--surface-sunken);
+  --color-bg-dark-navy: var(--surface-raised);
+  --color-background-hover: var(--surface-hover);
+  /* Used as a background on 8 of 11 sites; the 3 `color:` uses were migrated
+     to --on-fill-success, which is what they actually meant. */
+  --color-darkest: var(--surface-sunken);
+
+  /* ── Text ─────────────────────────────────────────────────────────────────
+     --Dark-Navy is `color:` sitting on a --color-dull-white fill. That fill is
+     the TEXT colour in both themes (light #4a4a60, dark #f7f7f7), so the
+     readable label on it is the canvas colour — which inverts correctly. */
+  --Dark-Navy: var(--surface-canvas);
+  --color-text-primary: var(--text-primary);
+  --color-lightest: var(--text-primary);
+  --color-lightest-navy: var(--text-primary);
+  --fg: var(--text-primary);
+  --fg-dim: var(--text-tertiary);
+  --color-grey: var(--text-tertiary);
+  --color-grey-light: var(--text-quaternary);
+  --color-grey-medium: var(--text-tertiary);
+  --color-red-desaturated: var(--color-red);
+
+  /* ── Accents ──────────────────────────────────────────────────────────────
+     Un-prefixed hue names from an older palette. They resolve to the themed
+     accent, so they darken automatically on a light canvas. */
+  --cyan: var(--color-blue);
+  --color-cyan: var(--color-blue);
+  --green: var(--color-green);
+  --color-green-light: var(--color-green);
+  --pink: var(--color-pink);
+  --gold: var(--color-yellow);
+  --purple: var(--color-indigo);
+  --accent: var(--color-primary);
+  --accent-color: var(--color-primary);
+  --color-accent: var(--color-primary);
+  --color-success: var(--color-green);
+  --color-danger: var(--color-red);
+  --color-warning: var(--color-yellow);
+  --color-blue-dark: var(--color-blue);
+  --color-primary-hover: var(--color-primary);
+  --color-primary-dark: var(--color-primary);
+
+  /* RGB triplet: the real name has no `color-` prefix. */
+  --color-primary-rgb: var(--primary-rgb);
+
+  /* ── Translucent accents (borders, glows) ─────────────────────────────────
+     These were invented at the call site with a "assuming this exists" comment
+     next to them. They never did. */
+  --color-blue-medium: rgba(var(--blue-rgb), 0.4);
+  --color-green-medium: rgba(var(--green-rgb), 0.4);
+  --color-green-transparent: rgba(var(--green-rgb), 0.35);
+  --color-yellow-transparent: rgba(var(--yellow-rgb), 0.35);
+  --color-primary-transparent-light: rgba(var(--primary-rgb), 0.12);
+
+  /* ── Found by themeTokens.spec.js on its first run ────────────────────────────
+     A second wave of 17, all of the same kind. Four of them
+     (--color-black, --color-light-gray, --color-dark-gray, --color-med-gray)
+     are referenced from a palette block in _variables.css that is entirely
+     COMMENTED OUT — the references outlived the declarations and nobody could
+     tell, because a dead var() just paints its fallback. */
+  --color-black: #000000; /* literal: used for scrims and shadows */
+  --color-light-gray: var(--border-subtle);
+  --color-dark-gray: var(--text-secondary);
+  --color-med-gray: var(--text-tertiary);
+  --color-grey-dark: var(--text-secondary);
+  --color-grey-darker: var(--text-primary);
+  --color-grey-lighter: var(--text-quaternary);
+  --color-green-dark: var(--color-green);
+  --color-green-light: var(--color-green);
+  --color-yellow-dark: var(--color-yellow);
+  --color-purple-dark: var(--color-indigo);
+  --color-purple-light: var(--color-indigo);
+  --color-accent-light: var(--color-primary);
+  --color-accent-rgb: var(--primary-rgb);
+  --color-blue-rgb: var(--blue-rgb);
+  --color-green-rgb: var(--green-rgb);
+  --color-yellow-rgb: var(--yellow-rgb);
+  --color-purple-rgb: var(--indigo-rgb);
+
+  /* ── Non-colour knobs ─────────────────────────────────────────────────────
+     Same failure mode, no contrast consequence: the fallback always won, so
+     the theme could never restyle them. */
+  --font-mono: var(--font-family-mono);
+  --font-family-monospace: var(--font-family-mono);
+  --font-size-xxs: 10px;
+  --font-weight: 400;
+  --terminal-screen-border-radius: 0;
+  --terminal-screen-border: none;
+  --terminal-screen-box-shadow: none;
+  --terminal-container-padding: 0;
+}

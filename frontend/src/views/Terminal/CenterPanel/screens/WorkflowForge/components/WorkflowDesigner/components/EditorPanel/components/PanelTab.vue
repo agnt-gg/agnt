@@ -1529,7 +1529,7 @@ export default {
   padding: 3px 3px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-dull-white);
@@ -1791,8 +1791,10 @@ body.dark .form-group.output-value p {
 .file-upload-button {
   display: inline-block;
   padding: 6px 12px 4px;
-  background-color: var(--color-light-navy);
-  color: var(--color-dull-white);
+  /* --color-light-navy is light in BOTH themes (#d0d0dd / #d9d9d9), so the
+     themed text colour landed light-on-light in dark mode: 1.32:1. */
+  background-color: var(--surface-sunken);
+  color: var(--text-primary);
   border-radius: 4px;
   font-size: 14px;
   transition: background-color 0.3s ease;
@@ -1808,7 +1810,7 @@ body.dark .form-group.output-value p {
 
 .file-text-display {
   font-size: 16px;
-  color: var(--color-navy);
+  color: var(--text-primary);
   margin-top: 4px;
   margin-right: 2px;
 }
@@ -2216,7 +2218,7 @@ body.dark .logic-select {
 .tool-docs-content th {
   background: linear-gradient(135deg, var(--color-dull-white), rgba(248, 250, 252, 0.8));
   font-weight: 700;
-  color: var(--color-navy);
+  color: var(--text-primary);
   text-transform: uppercase;
   font-size: 0.85em;
   letter-spacing: 0.05em;
@@ -2376,7 +2378,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 .ͼo .cm-gutters {
   /* display: none !important; */
   background-color: transparent;
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
   margin-left: 4px;
   border: none;
 }
@@ -2434,7 +2436,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼr {
-  color: #ffd97d;
+  color: var(--status-amber-text);
   font-weight: 300;
 }
 
@@ -2454,7 +2456,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼw {
-  color: #7d8799;
+  color: var(--text-tertiary);
   opacity: 0.85;
 }
 
@@ -2463,7 +2465,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼo .cm-gutters {
-  color: #3e405a85;
+  color: var(--text-quaternary);
 }
 
 .ͼo .cm-activeLineGutter {
@@ -2506,7 +2508,7 @@ body.dark .ͼo.cm-focused .cm-nonmatchingBracket {
   font-family: inherit;
   line-height: 125%;
   background-color: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
   cursor: pointer;
   transition:
     background-color 0.2s ease-in-out,

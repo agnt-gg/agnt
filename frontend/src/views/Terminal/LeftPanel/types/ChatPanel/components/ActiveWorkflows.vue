@@ -155,7 +155,7 @@ export default {
 .workflow-status {
   font-size: 0.8em;
   font-weight: 500;
-  color: var(--color-white);
+  color: var(--text-primary);
   text-transform: capitalize;
   flex-shrink: 0;
   margin-left: 8px;

@@ -921,7 +921,7 @@ export default {
 .dot.active {
   background: var(--color-primary);
   transform: scale(1.3);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.25);
+  box-shadow: var(--glow-accent-strong);
 }
 
 .dot.completed {
@@ -998,7 +998,7 @@ export default {
   align-items: center;
   justify-content: center;
   margin: 0 auto 24px;
-  color: #ffffff;
+  color: var(--on-fill-accent);
 }
 
 .input-group {
@@ -1257,7 +1257,7 @@ export default {
   height: 8px;
   border-radius: 50%;
   background: var(--color-green);
-  box-shadow: 0 0 6px var(--color-green);
+  box-shadow: var(--glow-success);
 }
 
 .provider-name {
@@ -1385,7 +1385,7 @@ export default {
 
 .btn-primary {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--on-fill-accent);
 }
 
 .btn-primary:hover {

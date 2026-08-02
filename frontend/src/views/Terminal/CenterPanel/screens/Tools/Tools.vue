@@ -1887,7 +1887,7 @@ export default {
 
 .install-btn {
   background: var(--color-primary);
-  color: var(--color-white);
+  color: var(--on-fill-accent);
   border: none;
   padding: 6px 12px;
   border-radius: 8px;
@@ -2100,7 +2100,7 @@ export default {
 
 .install-button:hover {
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
   transform: translateY(-1px);
 }

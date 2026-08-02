@@ -571,7 +571,7 @@ export default {
 
 .chart-type-toggle.active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--on-fill-accent);
 }
 
 .toggle-label {

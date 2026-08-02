@@ -1387,7 +1387,7 @@ export default {
   width: 100%;
   padding: 12px 16px;
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   font-weight: 700;
   font-size: 14px;
   border-radius: 8px;
@@ -1520,7 +1520,7 @@ export default {
 .write-review-btn,
 .write-first-review-btn {
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: none;
   padding: 8px 16px;
   border-radius: 6px;

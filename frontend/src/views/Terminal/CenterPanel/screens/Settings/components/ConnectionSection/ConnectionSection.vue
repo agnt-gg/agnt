@@ -352,7 +352,7 @@ onBeforeUnmount(() => stopState?.());
   color: var(--color-primary, #19ef83);
 }
 .conn-result.bad {
-  color: #e53d8f;
+  color: var(--color-red);
 }
 
 .conn-actions {
@@ -386,7 +386,7 @@ onBeforeUnmount(() => stopState?.());
 .conn-btn-primary {
   background: var(--color-primary, #19ef83);
   border-color: var(--color-primary, #19ef83);
-  color: #04120a;
+  color: var(--on-fill-accent);
   font-weight: 600;
 }
 
@@ -407,11 +407,11 @@ onBeforeUnmount(() => stopState?.());
 }
 .conn-note-warn {
   border-color: color-mix(in srgb, #ffd700 40%, transparent);
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 .conn-note-error {
   border-color: color-mix(in srgb, #e53d8f 50%, transparent);
-  color: #e53d8f;
+  color: var(--color-red);
 }
 
 .conn-check {

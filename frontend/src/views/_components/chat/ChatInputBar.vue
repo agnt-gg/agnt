@@ -526,7 +526,7 @@ export default {
 .chat-mic-btn.is-listening,
 .chat-overflow-item.is-listening {
   background: var(--color-red);
-  color: white;
+  color: var(--on-fill-danger);
   animation: chat-pulse 1.5s ease-in-out infinite;
 }
 
@@ -556,7 +556,7 @@ export default {
 
 .chat-stop-btn {
   background: var(--color-red, #ff6b6b);
-  color: white;
+  color: var(--on-fill-danger);
   animation: chat-pulse-stop 2s ease-in-out infinite;
 }
 .chat-stop-btn:hover {

@@ -209,7 +209,7 @@ defineExpose({
 
 .download-btn {
   background: var(--color-green, #19ef83);
-  color: #070710;
+  color: var(--on-fill-success);
 }
 
 .download-btn:hover {

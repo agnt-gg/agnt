@@ -103,7 +103,7 @@ export default {
 
 .close-window:hover {
   background-color: #e81123;
-  color: white;
+  color: var(--text-on-scrim);
 }
 
 .window-control svg {

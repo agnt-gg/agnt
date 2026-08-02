@@ -995,7 +995,7 @@ export default {
 }
 
 .tool-support-warning .warning-text {
-  color: rgba(255, 193, 7, 0.9);
+  color: var(--color-yellow);
   line-height: 1.4;
 }
 

@@ -368,7 +368,7 @@ export default {
 }
 
 .status-value.status-needs-input {
-  color: #6366f1;
+  color: var(--status-blue-text);
 }
 
 .status-value.priority {
@@ -377,7 +377,7 @@ export default {
 }
 
 .status-value.priority.low {
-  color: #10b981;
+  color: var(--color-green);
 }
 
 .status-value.priority.medium {
@@ -385,7 +385,7 @@ export default {
 }
 
 .status-value.priority.high {
-  color: #f97316;
+  color: var(--status-amber-text);
 }
 
 .status-value.priority.urgent {

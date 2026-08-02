@@ -142,7 +142,7 @@ export default {
 
 .clear-button:hover {
   background: rgba(127, 129, 147, 0.2);
-  color: var(--color-bright-light-navy);
+  color: var(--text-primary);
 }
 
 .activity-list {
@@ -234,7 +234,7 @@ export default {
 
 .activity-text {
   font-size: 0.7em;
-  color: var(--color-bright-light-navy);
+  color: var(--text-primary);
   line-height: 1.3;
   flex: 1;
 }

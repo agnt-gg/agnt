@@ -194,7 +194,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-darker-3);
+  color: var(--on-fill-success);
   font-weight: 700;
   font-size: 14px;
   flex-shrink: 0;
@@ -357,7 +357,7 @@ export default {
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(7, 7, 16, 0.6);
-  color: #fff;
+  color: var(--text-on-scrim);
   font-size: 15px;
   display: flex;
   align-items: center;

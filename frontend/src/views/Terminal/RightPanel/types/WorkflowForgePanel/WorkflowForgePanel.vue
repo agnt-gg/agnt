@@ -458,11 +458,11 @@ export default {
 
 /* Special styling for the clear chat button */
 .clear-chat-button:hover {
-  color: rgba(255, 107, 107, 0.8) !important;
+  color: var(--color-red) !important;
 }
 
 .clear-chat-button:hover .tab-name {
-  color: rgba(255, 107, 107, 0.8);
+  color: var(--color-red);
 }
 
 .no-selection-placeholder {

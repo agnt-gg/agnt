@@ -284,7 +284,7 @@ export default {
 .output-type {
   padding: 2px 8px;
   background: var(--color-green, #22c55e);
-  color: white;
+  color: var(--on-fill-success);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
@@ -303,7 +303,7 @@ export default {
   padding: 6px 10px;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: rgba(239, 68, 68, 0.9);
+  color: var(--color-red);
   border-radius: 6px;
   cursor: pointer;
   display: inline-flex;

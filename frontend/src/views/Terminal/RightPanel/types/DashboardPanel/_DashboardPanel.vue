@@ -381,7 +381,7 @@ h4 {
 
 .leaderboard-item .name {
   flex: 1;
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 .leaderboard-item .score {

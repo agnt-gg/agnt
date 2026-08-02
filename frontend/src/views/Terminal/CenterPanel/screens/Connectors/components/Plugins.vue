@@ -1656,7 +1656,7 @@ export default {
 
 .locked-overlay p {
   margin: 0;
-  color: #fff;
+  color: var(--text-on-scrim);
   font-weight: 600;
   font-size: 1.1em;
 }
@@ -2139,7 +2139,7 @@ body.dark .manual-install-section {
 }
 
 .version-summary.blocked i {
-  color: #ff9500;
+  color: var(--status-amber-text);
 }
 
 /* Publish Section Styles */
@@ -2195,7 +2195,7 @@ body.dark .manual-install-section {
   width: 28px;
   height: 28px;
   background: var(--color-green);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -2435,7 +2435,7 @@ body.dark .manual-install-section {
   padding: 10px 16px;
   background: var(--color-yellow);
   border: 1px solid var(--color-yellow);
-  color: var(--color-darker-3);
+  color: var(--on-fill-warning);
   font-weight: 600;
   font-size: 13px;
   border-radius: 6px;

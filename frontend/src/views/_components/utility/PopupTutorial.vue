@@ -836,8 +836,9 @@ export default {
   margin-top: 12px;
 }
 .back-button {
-  background-color: var(--terminal-muted-color);
-  color: var(--color-text) !important;
+  /* --terminal-muted-color is a MID grey; body text on it was 1.68:1 in light. */
+  background-color: var(--surface-sunken);
+  color: var(--text-primary) !important;
   border: none;
   padding: 8px 15px;
   border-radius: 8px;
@@ -932,12 +933,12 @@ export default {
 }
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
+  background: var(--gradient-brand);
   transition: width 0.3s ease-in-out;
 }
 .skip-button {
-  background-color: var(--terminal-muted-color);
-  color: var(--color-text) !important;
+  background-color: var(--surface-sunken);
+  color: var(--text-primary) !important;
   border: none;
   padding: 8px 15px;
   border-radius: 8px;

@@ -250,7 +250,7 @@ export default {
   padding: 24px;
   overflow-y: auto;
   flex-grow: 1;
-  color: var(--color-light-navy, #d9d9d9);
+  color: var(--text-secondary);
 }
 
 .modal-body-dashboard p {
@@ -372,7 +372,7 @@ export default {
 
 .skill-name-dashboard {
   font-size: 0.85em; /* Adjusted size */
-  color: var(--color-white, #f7f8f0);
+  color: var(--text-primary);
   font-weight: 600; /* Bolder name */
   margin-bottom: 6px;
   line-height: 1.2; /* Adjusted line height */
@@ -381,7 +381,7 @@ export default {
 
 .skill-description-dashboard {
   font-size: 0.75em; /* Adjusted size */
-  color: var(--color-light-navy, #d1d1db);
+  color: var(--text-secondary);
   margin-bottom: 8px;
   min-height: 2.4em; /* approx 2 lines */
   line-height: 1.2;

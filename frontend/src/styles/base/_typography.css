@@ -153,8 +153,18 @@ pre {
 
 /* LINKS */
 a {
-  color: var(--color-blue);
+  /* --color-primary, not --color-blue: both themes used to override this with
+     `body.dark a` / `body:not(.dark) a`, which are (0,2,1) and outranked every
+     component's own link colour. The effective value was always primary, so
+     it moves here at (0,0,1) and the theme-scoped overrides are gone. */
+  color: var(--color-primary);
   text-decoration: none;
+}
+
+/* Form labels. Same story: each theme set this via a body-scoped selector that
+   no component could beat. --text-tertiary is the themed muted tier. */
+label {
+  color: var(--text-tertiary);
 }
 
 a:hover {

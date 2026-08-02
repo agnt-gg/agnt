@@ -509,8 +509,8 @@ onBeforeUnmount(() => {
   opacity: 0.4;
 }
 .ml-send.stop {
-  background: #ff5c5c;
-  color: #fff;
+  background: var(--fill-danger);
+  color: var(--on-fill-danger);
 }
 .ml-error {
   margin: 0 0 8px;

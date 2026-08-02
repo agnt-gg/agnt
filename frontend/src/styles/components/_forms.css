@@ -11,7 +11,7 @@ select {
   padding: 3px 3px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-dull-white);
@@ -20,7 +20,9 @@ select {
 body.dark select {
   background-color: var(--color-ultra-dark-navy);
   border-color: var(--color-dull-navy);
-  color: var(--color-white);
+  /* colour intentionally omitted — `select` above already takes
+     --text-primary at (0,0,1), which is themed. Repeating it here at (0,1,2)
+     would just re-create the trap this refactor removed. */
 }
 
 .form-field {
@@ -57,7 +59,7 @@ input[type='color'] {
   padding: 3px 8px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   background-color: var(--color-ultra-light-navy);
@@ -68,7 +70,7 @@ input[type='file'] {
   width: -webkit-fill-available;
   font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
-  color: var(--color-navy);
+  color: var(--text-primary);
   background-color: var(--color-ultra-light-navy);
   cursor: pointer;
 }
@@ -78,6 +80,11 @@ input:-webkit-autofill:focus {
   transition: background-color 0s 600000s, color 0s 600000s !important;
 }
 
+/* Same reasoning as `button` in _buttons.css: form controls do not inherit
+   colour from the UA, so each theme used to force it with a `body.dark textarea`
+   selector at specificity (0,2,1) — which outranks every component's own
+   (0,1,0) rule. Setting it here at (0,0,1) keeps the themed value (body colour
+   IS the theme's text colour) while letting components override. */
 textarea,
 input[type='textarea'],
 .form-textarea {
@@ -88,7 +95,7 @@ input[type='textarea'],
   padding: 8px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid var(--color-light-navy);
   line-height: 150%;
   background-color: var(--color-ultra-light-navy);
@@ -101,7 +108,7 @@ input[type='textarea'],
 } */
 
 *::placeholder {
-  color: var(--color-light-navy);
+  color: var(--text-secondary);
   opacity: 1;
 }
 
@@ -155,7 +162,7 @@ textarea,
   display: flex;
   width: auto;
   padding: 0 8px;
-  color: var(--color-white);
+  color: var(--text-primary);
   cursor: pointer;
   height: 31px;
   flex-direction: row;

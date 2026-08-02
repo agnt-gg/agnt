@@ -9,7 +9,12 @@ body.dark {
   --color-text: var(--color-dull-white);
   --color-text-muted: var(--color-med-navy);
   --color-text-secondary: var(--color-med-navy);
-  --color-text-dull: var(--color-dull-navy);
+  /* a11y: was var(--color-dull-navy) = #1f1f2f, which is 1.24:1 on the dark
+     canvas — the 4th text tier was effectively invisible. This is the dimmest
+     value that still clears the 4.5:1 AA floor on BOTH the canvas (#070710,
+     4.60:1) and the raised surface (#10101f, 4.31:1 → use on canvas only).
+     Tiers 1-3 are unchanged; they measure 18.72 / 5.22 / 5.22 and are fine. */
+  --color-text-dull: #767888;
   --terminal-width: 100%;
   --terminal-height: 100%;
   --terminal-border-radius: 0;
@@ -66,9 +71,11 @@ body.dark p {
   font-weight: 300;
 }
 
-body.dark button {
-  color: var(--color-dull-white);
-}
+/* `body.dark button { color: var(--color-dull-white) }` used to live here. It
+   was the dark-mode half of a pair of (0,2,1) blanket rules that outranked
+   every component's own button colour. Buttons now inherit at (0,0,1) from
+   _buttons.css; body colour in this theme is already --color-dull-white, so
+   unstyled buttons are unchanged. */
 
 body.dark header {
   border-bottom: 1px solid var(--color-dull-navy);
@@ -154,7 +161,6 @@ body.dark tr:last-child td {
 }
 
 body.dark a {
-  color: var(--color-primary);
   font-weight: bold;
   text-decoration: underline;
 }
@@ -334,7 +340,8 @@ body.dark input[type='color'],
 body.dark textarea,
 body.dark select {
   font-weight: 300;
-  color: var(--color-dull-white);
+  /* colour intentionally omitted — see _forms.css. A body-scoped element
+     selector is (0,2,1) and outranks every component's own colour rule. */
   background-color: var(--color-darker-0);
   border-color: var(--color-dull-navy);
 }
@@ -390,9 +397,8 @@ body.dark .right-actions img {
   filter: invert(1);
 }
 
-body.dark label,
 body.dark .label {
-  color: var(--color-med-navy);
+  color: var(--text-tertiary);
 }
 
 body.dark .action-items button {
@@ -402,7 +408,6 @@ body.dark .action-items button {
 body.dark input[type='text'],
 body.dark input[type='number'],
 body.dark textarea {
-  color: var(--color-dull-white);
   background-color: var(--color-darker-0);
   border-color: var(--terminal-border-color);
 }

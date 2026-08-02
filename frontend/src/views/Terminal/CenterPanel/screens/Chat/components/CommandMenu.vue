@@ -220,18 +220,18 @@ export default {
 
 .item-icon.icon-agent {
   background: rgba(100, 200, 255, 0.12);
-  color: #64c8ff;
+  color: var(--status-blue-text);
   overflow: hidden;
 }
 
 .item-icon.icon-command {
   background: rgba(160, 120, 255, 0.12);
-  color: #a078ff;
+  color: var(--status-purple-text);
 }
 
 .item-icon.icon-hashtag {
   background: rgba(100, 255, 160, 0.12);
-  color: #64ffa0;
+  color: var(--color-green);
 }
 
 .item-content {

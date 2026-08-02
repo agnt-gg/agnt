@@ -245,8 +245,12 @@
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
   line-height: 1;
-  color: var(--color-black);
-  text-shadow: 0 1px 0 var(--color-white);
+  /* Was var(--color-black) + a white text-shadow, a light-mode-only idiom.
+     Until now --color-black was undefined, so the declaration was invalid and
+     the glyph quietly inherited its parent's colour — which is why nobody saw
+     it. Defining the token would have made it genuinely black, and invisible on
+     a dark canvas. It follows the theme instead. */
+  color: var(--text-primary);
   opacity: 0.5;
 }
 

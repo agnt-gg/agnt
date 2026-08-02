@@ -27,19 +27,134 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Defaults: dark-appropriate, so an unstyled/unknown theme degrades to the
-      values the app already shipped with. ─────────────────────────────────── */
-:root {
+      values the app already shipped with. ───────────────────────────────────
+
+   DECLARED ON BOTH `:root` AND `body`, deliberately.
+
+   A var() is substituted at the element where the property is DECLARED. Every
+   theme puts its palette on `body` (`body.dark`, `body:not(.dark):not(.rose)`),
+   so a token declared only on `:root` resolves against the html element — where
+   no theme applies — and freezes to the BASE palette. Descendants inherit that
+   frozen value and the theme never reaches them.
+
+   Measured before this line existed: --fill-accent came out pink (#e53d8f, the
+   base value) in the dark theme instead of the dark theme's own neon green,
+   because the substitution happened on html. Repeating the block on `body`
+   makes it re-substitute where the palette actually lives, while `:root` stays
+   as the degrade path for a document with no body class at all.
+
+   `body` is specificity (0,0,1), so both the light block (0,2,1) and the dark
+   block (0,1,1) still win where they declare. ────────────────────────────── */
+:root,
+body {
   --surface-canvas: var(--color-black-navy);
   --surface-raised: var(--color-navy);
   --surface-sunken: var(--color-ultra-dark-navy);
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
 
+  /* ── THE TEXT RAMP ────────────────────────────────────────────────────────
+     FOUR tiers. This is the complete vocabulary for text colour — there is no
+     fifth, and there is no "just dim it a bit" option.
+
+     If you are reaching for `rgba(255,255,255,0.45)` to make something quieter,
+     STOP: that is a dark-mode idiom that dims toward the DARK canvas, so in
+     light mode it dims toward white and the text vanishes. 43 declarations did
+     exactly that. Use the next tier down, or express "quieter" with size,
+     weight and whitespace instead of less contrast.
+
+     Every tier clears WCAG AA against its own theme's canvas, in both themes. */
   --text-primary: var(--color-text);
   --text-secondary: var(--color-text-secondary);
   --text-tertiary: var(--color-text-muted);
   --text-quaternary: var(--color-text-dull);
-  --text-on-fill: #ffffff;
+
+  /* ── FILL / ON-FILL PAIRS ─────────────────────────────────────────────────
+     THE RULE THAT KILLS THE INVERSE-BUG CLASS.
+
+     A fill token NEVER ships alone. Every --fill-x has a mandatory companion
+     --on-fill-x, defined on the adjacent line, in the same theme block. If you
+     paint a background with --fill-x, the text on it MUST be --on-fill-x.
+
+     Why this exists: --color-primary is dark pink (#c43278) in light mode but
+     NEON GREEN (#19ef83) in dark. `color:#fff; background:var(--color-primary)`
+     therefore measured 5.15:1 in light and 1.53:1 in dark — the same rule,
+     legible in one theme and unreadable in the other, across 24 buttons.
+
+     Hardcoding the label colour cannot work, because the correct label colour
+     is a function of the theme. Pairing makes contrast a property of the token
+     pair (defined once, here, where both halves are visible together) rather
+     than of every call site.
+
+     Ratios below are measured against the fill each theme actually resolves. */
+  --fill-accent: var(--color-primary);
+  --on-fill-accent: var(--color-black-navy); /* #070710 on #19ef83 = 13.10:1 */
+  --fill-info: var(--color-secondary);
+  --on-fill-info: var(--color-black-navy); /* #070710 on #12e0ff = 12.54:1 */
+  --fill-success: var(--color-green);
+  --on-fill-success: var(--color-black-navy); /* #070710 on #19ef83 = 13.10:1 */
+  --fill-danger: var(--color-red);
+  --on-fill-danger: var(--color-black-navy); /* #070710 on #fe4e4e =  6.13:1 */
+  --fill-warning: var(--color-yellow);
+  --on-fill-warning: var(--color-black-navy); /* #070710 on #ffd700 = 14.30:1 */
+  --fill-brand: var(--color-pink);
+  --on-fill-brand: var(--color-black-navy); /* #070710 on #e53d8f =  5.15:1 */
+  /* Measured, not assumed: dark --color-violet is #d13de5, on which WHITE is
+     3.81:1 and fails AA. Ink wins here. */
+  --fill-violet: var(--color-violet);
+  --on-fill-violet: var(--color-black-navy); /* #070710 on #d13de5 =  5.26:1 */
+  --fill-indigo: var(--color-indigo);
+  --on-fill-indigo: #ffffff; /* #ffffff on #7d3de5 =  5.72:1 */
+
+  /* Generic companion for any accent fill not covered above. Dark themes put
+     saturated neon in the fill slot, so the readable label is the ink colour. */
+  --text-on-fill: var(--color-black-navy);
+
+  /* ── TEXT ON A FIXED-DARK BACKDROP ──────────────────────────────────────
+     INVARIANT IN EVERY THEME, AND THAT IS CORRECT.
+
+     Some backdrops do not follow the theme: a modal scrim, a video or image
+     overlay, and Marketplace's generated HSL card art, which is dark in every
+     theme by construction. Text on those must stay light in light mode too.
+
+     Marketplace already encoded this as a prose "ART-INK RULE" comment telling
+     humans not to use theme tokens there. That was correct but unenforceable —
+     a comment cannot be checked, and a blanket migration would have silently
+     broken all 11 of its declarations.
+
+     Naming it makes the exception explicit, greppable, and testable: the guard
+     accepts these tokens precisely because they are DECLARED invariant here,
+     rather than being an unexplained #fff at a call site. If you reach for one
+     of these, the backdrop must genuinely be theme-independent. */
+  --text-on-scrim: #ffffff;
+  --text-on-scrim-muted: rgba(255, 255, 255, 0.78);
+  --text-on-scrim-dim: rgba(255, 255, 255, 0.6);
+
+  /* ── GLOWS ────────────────────────────────────────────────────────────────
+     A `0 0 Npx <accent>` box-shadow is a NEON HALO. It is a dark-mode idiom:
+     it works because the surface behind it is nearly black, so a coloured
+     bloom reads as emission. On a near-white enterprise canvas the identical
+     shadow reads as a coloured smudge or a printing error.
+
+     70 of these shipped unscoped. They are tokenised here so the light theme
+     can swap the whole class for real elevation instead of hunting each one. */
+  --glow-accent: 0 0 8px rgba(var(--primary-rgb), 0.35);
+  --glow-accent-strong: 0 0 14px rgba(var(--primary-rgb), 0.55);
+  --glow-success: 0 0 8px rgba(var(--green-rgb), 0.35);
+  --glow-danger: 0 0 8px rgba(var(--red-rgb), 0.35);
+  --glow-ring: 0 0 0 2px rgba(var(--primary-rgb), 0.25);
+
+  /* ── GRADIENTS ────────────────────────────────────────────────────────────
+     Saturated multi-hue gradients are the other dark-mode signature. 87 of
+     them shipped unscoped. Tokenised for the same reason as the glows. */
+  /* The dark values are the MAJORITY existing form of each idiom, not a new
+     design: 12 of the 17 call sites already wrote the brand gradient as
+     135deg secondary -> primary, and the accent one as green -> blue. Picking
+     the most common spelling means tokenising them leaves dark mode where it
+     was, and only light mode changes. */
+  --gradient-brand: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
+  --gradient-accent: linear-gradient(135deg, var(--color-green), var(--color-blue));
+  --gradient-wash: linear-gradient(180deg, rgba(var(--primary-rgb), 0.08), rgba(var(--primary-rgb), 0.03));
 
   --border-subtle: var(--terminal-border-color);
   --border-strong: var(--color-duller-navy);
@@ -80,7 +195,54 @@ body:not(.dark) {
   --text-secondary: var(--color-text-muted); /* #5c5c72   6.34:1 */
   --text-tertiary: var(--color-text-secondary); /* #6b6b80   5.07:1 */
   --text-quaternary: var(--color-text-dull); /* #6d6d78   4.98:1 — AA floor */
+
+  /* Light-mode accents are already darkened to clear 4.5:1 on a white page,
+     which means they are mid-dark — so WHITE is the readable label on every
+     one of them. That is the opposite of the dark themes, where the accents
+     are neon and the readable label is ink. Exactly the inversion that made
+     hardcoding the label colour impossible. */
+  --fill-accent: var(--color-primary);
+  --on-fill-accent: #ffffff; /* #ffffff on #c43278 = 5.15:1 */
+  --fill-info: var(--color-secondary);
+  --on-fill-info: #ffffff; /* #ffffff on #0a7892 = 5.10:1 */
+  --fill-success: var(--color-green);
+  --on-fill-success: #ffffff; /* #ffffff on #0d7e47 = 5.13:1 */
+  --fill-danger: var(--color-red);
+  --on-fill-danger: #ffffff; /* #ffffff on #ca3737 = 5.11:1 */
+  --fill-warning: var(--color-yellow);
+  --on-fill-warning: #ffffff; /* #ffffff on #806c00 = 5.17:1 */
+  --fill-brand: var(--color-pink);
+  --on-fill-brand: #ffffff; /* #ffffff on #c43278 = 5.15:1 */
+  --fill-violet: var(--color-violet);
+  --on-fill-violet: #ffffff; /* #ffffff on #ae34c6 = 5.11:1 */
+  --fill-indigo: var(--color-indigo);
+  --on-fill-indigo: #ffffff; /* #ffffff on #6d35c8 = 7.02:1 */
+
   --text-on-fill: #ffffff;
+
+  /* ── ENTERPRISE LIGHT: no neon halos ─────────────────────────────────────
+     Every glow degrades to real elevation. A coloured bloom needs a dark
+     surface to read as emission; on white it reads as a smudge. The focus ring
+     stays a ring (it carries meaning) but becomes a crisp 2px outline rather
+     than a soft coloured haze. */
+  --glow-accent: var(--shadow-sm);
+  --glow-accent-strong: var(--shadow-md);
+  --glow-success: var(--shadow-sm);
+  --glow-danger: var(--shadow-sm);
+  --glow-ring: 0 0 0 2px rgba(var(--primary-rgb), 0.28);
+
+  /* ── ENTERPRISE LIGHT: gradients flatten ─────────────────────────────────
+     A two-hue saturated gradient is a consumer/neon signature. Flat accent
+     fills read as enterprise software. `background` accepts a colour wherever
+     it accepts a gradient, so these are drop-in.
+     The wash keeps a gradient but drops to a barely-there neutral tint — on
+     white, an 8% pink wash is visible as a stain; 3% neutral reads as paper. */
+  --gradient-brand: var(--color-primary);
+  --gradient-accent: var(--color-secondary);
+  /* 3.5%/1.2% was so faint it read as "the token failed to resolve" rather
+     than as a surface. 5.5%/2% is still quiet enough to be paper, but the
+     band is actually visible against a white panel. */
+  --gradient-wash: linear-gradient(180deg, rgba(16, 24, 40, 0.055), rgba(16, 24, 40, 0.02));
 
   --border-subtle: var(--terminal-border-color);
   --border-strong: #87898e; /* 3.50:1 on white — meets WCAG 1.4.11 */
@@ -116,10 +278,27 @@ body.dark {
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
 
-  --text-primary: var(--color-text);
-  --text-secondary: var(--color-text-secondary);
-  --text-tertiary: var(--color-text-muted);
-  --text-quaternary: var(--color-text-dull);
+  /* A REAL four-tier ramp for dark.
+
+     --color-text-muted and --color-text-secondary are both #7f8193 in the dark
+     themes, so the legacy scale only ever had TWO usable steps (18.72 and
+     5.22). Components filled the gap by hand with rgba(255,255,255,a) at a
+     dozen arbitrary alphas — which is the idiom that vanishes in light mode.
+
+     These four are evenly spaced and all clear AA on the canvas AND the raised
+     surface. They are deliberately set HERE rather than by editing
+     --color-text-* , so existing components that consume the legacy scale keep
+     their exact current appearance; only code migrated to the semantic ramp
+     picks these up.
+
+     They were chosen to land on the same luminance as the rgba(255,255,255,a)
+     values they replace — a=0.72 measured 10.31:1 against tier 2's 10.52:1,
+     a=0.6 measured 7.31:1 against tier 3's 7.01:1 — so migrating those
+     declarations is visually a no-op in dark while fixing them in light. */
+  --text-primary: var(--color-text); /* #f7f7f7  18.72:1 */
+  --text-secondary: #b9bbc9; /* 10.52:1 */
+  --text-tertiary: #9598a8; /*  7.01:1 */
+  --text-quaternary: #7f8193; /*  5.22:1 */
 
   --border-subtle: var(--terminal-border-color);
   --border-strong: var(--color-duller-navy);

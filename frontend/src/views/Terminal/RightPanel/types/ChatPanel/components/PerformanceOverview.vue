@@ -173,7 +173,7 @@ export default {
 .metric-primary {
   font-size: 1.8em;
   font-weight: 300;
-  color: var(--color-white);
+  color: var(--text-primary);
 }
 
 .metric-label {
@@ -203,7 +203,7 @@ export default {
 
 .stat-value {
   font-size: 0.95em;
-  color: var(--color-bright-light-navy);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 

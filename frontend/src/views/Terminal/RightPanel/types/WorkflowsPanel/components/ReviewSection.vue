@@ -324,7 +324,7 @@ export default {
   padding: 8px 16px;
   background: var(--color-green);
   border: 1px solid var(--color-green);
-  color: var(--color-darker-0);
+  color: var(--on-fill-success);
   font-weight: 600;
   font-size: 12px;
   border-radius: 6px;

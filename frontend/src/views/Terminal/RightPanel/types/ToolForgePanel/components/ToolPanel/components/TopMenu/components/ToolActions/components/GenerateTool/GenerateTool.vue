@@ -178,7 +178,7 @@ export default {
   transform: translateX(-50%);
   white-space: nowrap;
   font-size: 0.8em;
-  color: #666;
+  color: var(--text-quaternary);
 }
 
 .modal {

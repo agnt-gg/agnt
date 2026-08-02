@@ -558,8 +558,8 @@ export default {
 .category-val.skill_recommendation { color: var(--status-blue-text); }
 .category-val.memory { color: var(--color-pink); }
 .category-val.bottleneck { color: var(--status-amber-text); }
-.category-val.parameter_tune { color: #14b8a6; }
-.category-val.tool_preference { color: #6366f1; }
+.category-val.parameter_tune { color: var(--color-blue); }
+.category-val.tool_preference { color: var(--status-blue-text); }
 
 /* Confidence inline */
 .conf-inline {

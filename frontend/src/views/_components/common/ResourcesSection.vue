@@ -875,7 +875,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 }
 
 .status-declined {
-  color: #ff5555;
+  color: var(--color-red);
   border-color: rgba(255, 85, 85, 0.4);
   background: rgba(255, 85, 85, 0.08);
 }
@@ -1137,7 +1137,7 @@ body.dark .upload-label {
   right: 8px;
   background: rgba(0, 0, 0, 0.7);
   border: none;
-  color: white;
+  color: var(--text-on-scrim);
   width: 28px;
   height: 28px;
   border-radius: 50%;

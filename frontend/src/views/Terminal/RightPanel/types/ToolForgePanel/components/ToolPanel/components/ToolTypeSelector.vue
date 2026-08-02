@@ -85,7 +85,7 @@ export default {
   background: var(--color-dull-white, #fff);
   border: 1px solid var(--terminal-border-color, #ddd);
   border-radius: 6px;
-  color: var(--color-navy, #01052a);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -106,7 +106,7 @@ export default {
 .type-btn.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: white;
+  color: var(--on-fill-accent);
 }
 
 .type-btn i {

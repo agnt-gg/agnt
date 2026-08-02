@@ -1214,8 +1214,8 @@ onMounted(() => initializeScreen());
 .type-badge.skill_recommendation { background: rgba(59, 130, 246, 0.1); color: var(--status-blue-text); }
 .type-badge.memory { background: rgba(236, 72, 153, 0.1); color: var(--color-pink); }
 .type-badge.bottleneck { background: rgba(245, 158, 11, 0.1); color: var(--status-amber-text); }
-.type-badge.parameter_tune { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }
-.type-badge.tool_preference { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
+.type-badge.parameter_tune { background: rgba(20, 184, 166, 0.1); color: var(--color-blue); }
+.type-badge.tool_preference { background: rgba(99, 102, 241, 0.1); color: var(--status-blue-text); }
 .target-chip-sm {
   display: inline-flex;
   align-items: center;

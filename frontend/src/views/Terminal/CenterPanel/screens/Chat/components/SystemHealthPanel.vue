@@ -212,12 +212,12 @@ export default {
 
 .health-item.healthy .indicator {
   background: var(--color-green);
-  box-shadow: 0 0 6px rgba(var(--green-rgb), 0.4);
+  box-shadow: var(--glow-success);
 }
 
 .health-item.active .indicator {
   background: var(--color-blue);
-  box-shadow: 0 0 6px rgba(var(--blue-rgb), 0.4);
+  box-shadow: var(--glow-accent);
   animation: pulse 2s infinite;
 }
 
@@ -228,7 +228,7 @@ export default {
 
 .health-item.error .indicator {
   background: var(--color-red);
-  box-shadow: 0 0 6px rgba(var(--red-rgb), 0.4);
+  box-shadow: var(--glow-danger);
 }
 
 .health-item.idle .indicator {

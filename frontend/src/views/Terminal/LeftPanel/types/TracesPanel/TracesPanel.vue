@@ -428,15 +428,15 @@ export default {
 }
 
 .type-item i.fa-robot {
-  color: rgb(167, 139, 250);
+  color: var(--status-purple-text);
 }
 
 .type-item i.fa-bullseye {
-  color: rgb(248, 113, 113);
+  color: var(--color-red);
 }
 
 .type-item i.fa-project-diagram {
-  color: rgb(96, 165, 250);
+  color: var(--status-blue-text);
 }
 
 /* Filter Lists */

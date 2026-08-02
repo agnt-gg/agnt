@@ -263,7 +263,7 @@ export default {
   align-items: flex-start;
   width: 100%;
   border: none;
-  color: var(--color-navy);
+  color: var(--text-primary);
   padding: 0;
   border-radius: 0px;
 }
@@ -296,7 +296,7 @@ select {
   border: 1px solid var(--color-light-navy);
   border-radius: 6px;
   background-color: var(--color-ultra-light-navy);
-  color: var(--color-navy);
+  color: var(--text-primary);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;

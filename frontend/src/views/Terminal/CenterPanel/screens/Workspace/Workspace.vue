@@ -1208,7 +1208,7 @@ export default {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-secondary);
   font-family: var(--font-family-mono, monospace);
 }
 .ws-ai-label {
@@ -1216,7 +1216,7 @@ export default {
   flex-direction: column;
   gap: 4px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-tertiary);
 }
 /* The AI picker uses CustomSelect (uiContracts forbids a native <select> here),
    so the native-control rules that used to live at this spot are gone. */
@@ -1246,7 +1246,7 @@ export default {
   border-color: rgba(255, 255, 255, 0.22);
 }
 .ws-ai-btn.primary:hover:not(:disabled) {
-  color: #fff;
+  color: var(--text-primary);
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.35);
 }
@@ -1359,7 +1359,7 @@ body.custom-bg .ws-root {
   border-radius: 16px;
   border: 1px solid transparent;
   font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-tertiary);
   white-space: nowrap;
   /* Draggable to reorder, so it advertises lift rather than click. */
   cursor: grab;
@@ -1445,7 +1445,7 @@ body.custom-bg .ws-root {
   padding: 2px 5px;
   border-radius: 99px;
   border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.14));
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-quaternary);
 }
 
 .ws-tab.on .ws-count {
@@ -1456,7 +1456,7 @@ body.custom-bg .ws-root {
 .ws-tab-x {
   background: transparent;
   border: 0;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-quaternary);
   font-size: 9px;
   cursor: pointer;
   padding: 2px;
@@ -1475,7 +1475,7 @@ body.custom-bg .ws-root {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--text-quaternary);
   font-size: 10px;
   cursor: pointer;
 }
@@ -1503,7 +1503,7 @@ body.custom-bg .ws-root {
   border-radius: 16px;
   border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.14));
   background: transparent;
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--text-tertiary);
   font-family: var(--font-family-mono, monospace);
   font-size: 9.5px;
   letter-spacing: 0.1em;
@@ -1528,7 +1528,7 @@ body.custom-bg .ws-root {
   background: rgba(var(--primary-rgb, 229, 61, 143), 0.08);
 }
 .ws-pill-primary:hover {
-  color: #fff;
+  color: var(--text-primary);
   background: rgba(var(--primary-rgb, 229, 61, 143), 0.22);
   border-color: rgba(var(--primary-rgb, 229, 61, 143), 0.6);
 }
@@ -1571,12 +1571,12 @@ body.custom-bg .ws-root {
 .ws-palette-grip {
   width: 8px;
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.18);
+  color: var(--text-quaternary);
   transition: color 0.12s ease;
 }
 
 .ws-palette-item:hover .ws-palette-grip {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-tertiary);
 }
 
 /* Landing zone: the exact cells the widget will occupy on release. */
@@ -1591,7 +1591,7 @@ body.custom-bg .ws-root {
   gap: 6px;
   border: 2px dashed rgba(var(--primary-rgb, 229, 61, 143), 0.85);
   background: rgba(var(--primary-rgb, 229, 61, 143), 0.1);
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-primary);
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -1804,7 +1804,7 @@ body.custom-bg .ws-root {
   place-content: center;
   justify-items: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.32);
+  color: var(--text-quaternary);
   font-size: 12px;
 }
 .ws-embed-empty i {
@@ -1914,7 +1914,7 @@ body.custom-bg .ws-root {
   font-size: 8.5px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.28);
+  color: var(--text-quaternary);
   padding: 10px 8px 4px;
 }
 
@@ -1927,7 +1927,7 @@ body.custom-bg .ws-root {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
   font-size: 12px;
   text-align: left;
   /* Rows are draggable onto the canvas, so they advertise lift, not click.
@@ -1936,11 +1936,11 @@ body.custom-bg .ws-root {
   transition: background 0.12s ease;
 }
 .ws-palette-item:active { cursor: grabbing; }
-.ws-palette-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.ws-palette-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text-primary); }
 .ws-palette-item i {
   width: 14px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-tertiary);
 }
 .ws-palette-item.open i {
   color: var(--color-green, #19ef83);
@@ -1965,6 +1965,6 @@ body.custom-bg .ws-root {
   padding: 22px 12px;
   text-align: center;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--text-quaternary);
 }
 </style>

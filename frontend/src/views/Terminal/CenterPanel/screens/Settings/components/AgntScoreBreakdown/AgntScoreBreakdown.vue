@@ -627,7 +627,7 @@ export default {
 
 .tier-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -737,7 +737,7 @@ export default {
 
 .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 2%;
@@ -775,7 +775,7 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: var(--color-white);
+  color: var(--text-primary);
   /* text-shadow: 0 0 3px rgba(255, 255, 255, 0.8); */
   white-space: nowrap;
   margin-bottom: -2px;

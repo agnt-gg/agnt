@@ -373,7 +373,7 @@ div.sidebar-section {
 
 #sidebar p {
   font-weight: 400;
-  color: var(--color-navy);
+  color: var(--text-primary);
   opacity: 1;
   line-height: normal;
   white-space: nowrap;
@@ -559,7 +559,7 @@ body.dark .close-sidebar-button {
 
 .expand-section {
   cursor: pointer;
-  color: var(--color-navy);
+  color: var(--text-primary);
   opacity: 0.5;
   font-size: var(--font-size-xs);
   /* font-weight: bold; */
@@ -574,7 +574,7 @@ body.dark .expand-section {
   width: calc(100% - 40px) !important;
   min-height: 26px;
   margin-bottom: 16px;
-  color: var(--color-navy);
+  color: var(--text-primary);
   border: 1px solid rgba(1, 5, 42, 0.15);
   border-radius: 8px;
   font-size: var(--font-size-sm);

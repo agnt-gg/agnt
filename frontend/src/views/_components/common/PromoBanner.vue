@@ -132,7 +132,7 @@ export default {
   left: 0;
   right: 0;
   z-index: 1000;
-  background: linear-gradient(135deg, var(--color-blue) 0%, var(--color-green) 50%, var(--color-blue) 100%);
+  background: var(--gradient-accent);
   border-bottom: 2px solid var(--color-primary);
   padding: 8px 40px 8px 16px;
   cursor: pointer;
@@ -147,7 +147,7 @@ export default {
   transform: translateY(-50%);
   background: rgba(0, 0, 0, 0.3);
   border: none;
-  color: white;
+  color: var(--text-on-scrim);
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -214,7 +214,7 @@ export default {
 }
 
 .promo-countdown {
-  color: var(--color-white);
+  color: var(--text-primary);
   font-size: 0.85em;
   font-weight: 700;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
