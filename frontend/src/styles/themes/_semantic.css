@@ -278,9 +278,25 @@ body:not(.dark) {
      used to be — 4/255 per channel, which is why it read as no grid at all. */
   --canvas-grid-dot: rgba(100, 100, 140, 0.165);
 
-  /* A light-mode field needs a real white fill and a real border — a
-     transparent one lets the panel tint through and reads as DISABLED. */
-  --field-bg: var(--surface-raised);
+  /* A FIELD IS A WELL, NOT A CARD.
+
+     This pointed at --surface-raised, i.e. the RAISED surface token used for a
+     RECESSED control. Measured: dark insets its fields (ΔL* -0.68 below the
+     panel), light lifted them (+1.04 above the canvas, and dead flush with a
+     white panel). The metaphor was inverted between the themes.
+
+     On a small input the border hides it. On a textarea the fill is most of the
+     control, so it rendered as a bright white slab.
+
+     An ALPHA token, not a hex, so it composites correctly on a white panel, on
+     the canvas, and on a tinted card alike — same reason dark uses one. 5% lands
+     ΔL* -2.63 under a white panel: unmistakably a well, still quiet.
+
+     The previous note here warned that a transparent field "reads as DISABLED".
+     That was a field with NO fill of its own; this one has a definite fill and
+     --border-strong at 3.5:1. There is no :disabled styling anywhere in the
+     stylesheets to collide with, and text on the field still measures 8.06:1. */
+  --field-bg: var(--color-darker-1);
   --field-border: var(--border-strong);
   --field-border-focus: var(--color-primary);
 

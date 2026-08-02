@@ -224,6 +224,114 @@ describe('theme tokens: every fill ships with its on-fill companion', () => {
   });
 });
 
+/* ─────────── check 2b: a form field is a well, not a card ─────────── */
+describe('theme tokens: form fields are inset in every theme', () => {
+  /**
+   * --field-bg once pointed at --surface-raised in light mode: the RAISED
+   * surface token, used for a RECESSED control. Dark inset its fields (ΔL* -0.68
+   * below the panel) while light lifted them (+1.04 above the canvas, and dead
+   * flush with a white panel) — the metaphor was inverted between themes.
+   *
+   * On a small input the border hides that. On a textarea the fill IS most of
+   * the control, so it rendered as a bright white slab.
+   *
+   * Pinning the VALUE would be brittle. Pinning the RELATIONSHIP is what
+   * actually matters: whatever a theme picks, a field must composite DARKER
+   * than the surface it sits on, in every theme.
+   */
+  const readTheme = (f) => stripComments(fs.readFileSync(path.join(THEMES, f), 'utf8'));
+  const VARS = stripComments(fs.readFileSync(path.join(SRC, 'styles', 'base', '_variables.css'), 'utf8'));
+
+  const blockOf = (css, selector) => {
+    const out = {};
+    const re = new RegExp(`(^|\\})\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^{}]*)\\}`, 'g');
+    for (const m of css.matchAll(re)) {
+      for (const d of m[2].matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+    }
+    return out;
+  };
+
+  const semanticCss = readTheme('_semantic.css');
+  const MAPS = {
+    light: {
+      ...blockOf(VARS, ':root'),
+      ...blockOf(semanticCss, ':root,\nbody'),
+      ...blockOf(readTheme('_light.css'), 'body:not(.dark):not(.rose)'),
+      ...blockOf(semanticCss, 'body:not(.dark)'),
+    },
+    dark: {
+      ...blockOf(VARS, ':root'),
+      ...blockOf(semanticCss, ':root,\nbody'),
+      ...blockOf(readTheme('_dark.css'), 'body.dark'),
+      ...blockOf(semanticCss, 'body.dark'),
+    },
+  };
+
+  /** Resolve a value to {rgb, a}, following var() chains through the theme map. */
+  function resolve(value, map, depth = 0) {
+    if (value == null || depth > 8) return null;
+    const v = String(value).trim();
+    const varM = v.match(/^var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,\s*([\s\S]+))?\)$/);
+    if (varM) return resolve(map[varM[1]] ?? varM[2], map, depth + 1);
+    const hex = v.match(/^#([0-9a-f]{3,8})$/i);
+    if (hex) {
+      let h = hex[1];
+      if (h.length === 3) h = [...h].map((c) => c + c).join('');
+      if (h.length !== 6 && h.length !== 8) return null;
+      return {
+        rgb: [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)),
+        a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
+      };
+    }
+    const rgba = v.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgba) {
+      const p = rgba[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+      if (p.length < 3 || p.slice(0, 3).some(Number.isNaN)) return null;
+      return { rgb: p.slice(0, 3), a: p[3] === undefined ? 1 : p[3] };
+    }
+    return null;
+  }
+
+  const chan = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  const lum = ([r, g, b]) => 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
+  const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  const over = (fg, bg) => (fg.a >= 0.999 ? fg.rgb : fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a)));
+
+  for (const theme of ['light', 'dark']) {
+    it(`${theme}: --field-bg composites DARKER than --surface-raised`, () => {
+      const map = MAPS[theme];
+      const raised = resolve('var(--surface-raised)', map);
+      const field = resolve('var(--field-bg)', map);
+      expect(raised, `${theme}: --surface-raised did not resolve`).toBeTruthy();
+      expect(field, `${theme}: --field-bg did not resolve`).toBeTruthy();
+
+      expect(
+        lum(over(field, raised.rgb)),
+        `${theme}: --field-bg is the same as, or lighter than, --surface-raised.\n`
+        + 'A text field is a recessed well, not a raised card. Pointing --field-bg at\n'
+        + '--surface-raised makes it flush with the panel it sits on, so a large\n'
+        + 'control like a textarea renders as a bright slab.'
+      ).toBeLessThan(lum(raised.rgb));
+    });
+
+    it(`${theme}: text on a field still clears AA`, () => {
+      const map = MAPS[theme];
+      const field = over(resolve('var(--field-bg)', map), resolve('var(--surface-raised)', map).rgb);
+      const text = resolve('var(--text-primary)', map);
+      expect(text, `${theme}: --text-primary did not resolve`).toBeTruthy();
+      expect(ratio(over(text, field), field)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it('resolves real values rather than silently comparing nulls (anti-vacuity)', () => {
+    expect(resolve('var(--field-bg)', MAPS.light)).toBeTruthy();
+    expect(resolve('var(--field-bg)', MAPS.dark)).toBeTruthy();
+    // Negative control: a field that IS the raised surface must not be darker.
+    const raised = resolve('var(--surface-raised)', MAPS.light);
+    expect(lum(over(raised, raised.rgb))).toBe(lum(raised.rgb));
+  });
+});
+
 /* ───────────────── check 3: no NEW hardcoded text colours ───────────────── */
 describe('theme tokens: hardcoded text colours do not grow', () => {
   const DARK_T = ['dark', 'cyberpunk', 'ember', 'hacker', 'midnight', 'nord'];
