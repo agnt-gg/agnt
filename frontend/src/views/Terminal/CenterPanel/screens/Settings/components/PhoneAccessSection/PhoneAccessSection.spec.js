@@ -31,6 +31,7 @@ vi.mock('@/utils/qrcode.js', () => ({ toSvg: (...a) => toSvg(...a) }));
 const encodedUrl = () => toSvg.mock.calls.at(-1)?.[0];
 
 import PhoneAccessSection from './PhoneAccessSection.vue';
+import { clearAsyncResourceCache } from '@/composables/useAsyncResource.js';
 
 const baseStatus = (over = {}) => ({
   success: true,
@@ -48,6 +49,9 @@ const baseStatus = (over = {}) => ({
 
 beforeEach(() => {
   vi.useRealTimers();
+  // The status resource outlives the component on purpose (see below). Without
+  // this, one test's fixture seeds the next one's first frame.
+  clearAsyncResourceCache();
   toSvg.mockClear();
   getStatus.mockReset();
   createCode.mockReset();
@@ -347,5 +351,98 @@ describe('which client the QR pairs', () => {
     await w.findAll('.pa-target-btn')[1].trigger('click');
     await flushPromises();
     expect(encodedUrl()).toBe('http://192.168.40.208:3333/pair?c=' + 'b'.repeat(32));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NOTHING IS CLAIMED BEFORE IT IS MEASURED
+// ---------------------------------------------------------------------------
+// The panel used to declare its state as `ref(false)` and render immediately,
+// so for one frame after every mount it asserted "AGNT is bound to 127.0.0.1",
+// "Localhost only", an OFF toggle and an empty address list -- then replaced
+// all four when the status request landed. Nothing was broken; the UI was
+// answering a question it had not asked yet. And because Settings sections are
+// a plain v-if chain that remounts them, the user paid it on every visit.
+// ---------------------------------------------------------------------------
+describe('the panel before it has measured anything', () => {
+  /** Every negative claim this panel is capable of making. */
+  const CLAIMS = ['127.0.0.1', 'Localhost only', 'No network address found', 'must be'];
+
+  it('makes none of its claims while the status request is still in flight', async () => {
+    let land;
+    getStatus.mockReturnValue(new Promise((res) => { land = res; }));
+
+    const w = mount(PhoneAccessSection);
+    await w.vm.$nextTick();
+
+    CLAIMS.forEach((claim) => expect(w.text()).not.toContain(claim));
+    expect(w.attributes('aria-busy')).toBe('true');
+    expect(w.find('.pa-skeleton').exists()).toBe(true);
+    // A switch rendered OFF is itself a claim about a setting nobody has read.
+    expect(w.find('input[type="checkbox"]').exists()).toBe(false);
+
+    land(baseStatus());
+    await flushPromises();
+
+    expect(w.find('.pa-skeleton').exists()).toBe(false);
+    expect(w.attributes('aria-busy')).toBe('false');
+    expect(w.find('input[type="checkbox"]').element.checked).toBe(true);
+  });
+
+  // Negative control: without this, the suite above would pass just as happily
+  // against a panel that renders nothing at all, and the guarantee would
+  // quietly degrade from "honest" to "empty".
+  it('DOES show the loopback warnings once they are known to be true', async () => {
+    const w = await mountPanel({
+      lanEnabled: false,
+      desiredLanEnabled: false,
+      bindHost: '127.0.0.1',
+      urls: [],
+      addresses: [],
+    });
+    expect(w.text()).toContain('127.0.0.1');
+    expect(w.text()).toContain('Localhost only');
+    expect(w.find('input[type="checkbox"]').element.checked).toBe(false);
+  });
+
+  it('surfaces an error instead of an endless skeleton when status fails', async () => {
+    getStatus.mockRejectedValue(new Error('Network Error'));
+    const w = mount(PhoneAccessSection);
+    await flushPromises();
+
+    expect(w.find('.pa-note-error').text()).toContain('Network Error');
+    expect(w.find('.pa-skeleton').exists()).toBe(false);
+    CLAIMS.forEach((claim) => expect(w.text()).not.toContain(claim));
+  });
+
+  it('paints last-known-good on re-entry instead of a second skeleton', async () => {
+    const first = await mountPanel();
+    expect(first.text()).toContain('192.168.40.208');
+    first.unmount();
+
+    // Re-entering the tab remounts the component while revalidation is still
+    // in flight. The answer has not changed since a moment ago; show it.
+    getStatus.mockReturnValue(new Promise(() => {}));
+    const second = mount(PhoneAccessSection);
+    await second.vm.$nextTick();
+
+    expect(second.find('.pa-skeleton').exists()).toBe(false);
+    expect(second.text()).toContain('192.168.40.208');
+  });
+
+  it('keeps the last good status when a poll fails mid-session', async () => {
+    // A failed poll must not blank a panel that was working a second ago.
+    const w = await mountPanel();
+    getStatus.mockRejectedValue(new Error('offline'));
+    await w.vm.refresh();
+    await flushPromises();
+
+    expect(w.text()).toContain('192.168.40.208');
+    expect(w.find('.pa-note-error').text()).toContain('offline');
+  });
+
+  it('does not tell a Windows or Linux user they are on a Mac', async () => {
+    const w = await mountPanel({ lanEnabled: false, desiredLanEnabled: false, urls: [] });
+    expect(w.text()).not.toMatch(/\bMac\b/);
   });
 });
