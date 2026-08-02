@@ -1,5 +1,5 @@
 <template>
-  <div class="phone-access">
+  <div class="phone-access" :aria-busy="!ready">
     <div class="pa-header">
       <div>
         <h3 class="pa-title"><i class="fas fa-mobile-alt"></i> Phone Access</h3>
@@ -7,11 +7,14 @@
       </div>
       <!-- Bound to the SAVED setting, not the live socket: after switching on,
            the socket has not moved until the backend restarts, and a toggle that
-           springs back to off is indistinguishable from "it did not save". -->
-      <label class="pa-switch" :class="{ disabled: busy || envPinned }">
+           springs back to off is indistinguishable from "it did not save".
+           Absent entirely until measured: a switch rendered off is a claim, and
+           an unread setting has not earned one. -->
+      <label v-if="ready" class="pa-switch" :class="{ disabled: busy || envPinned }">
         <input type="checkbox" :checked="desiredLanEnabled" :disabled="busy || envPinned" @change="onToggle" />
         <span class="pa-slider"></span>
       </label>
+      <span v-else class="pa-sk pa-sk-switch" aria-hidden="true"></span>
     </div>
 
     <p v-if="envPinned" class="pa-note pa-note-warn">
@@ -19,12 +22,12 @@
       <span><code>BIND_HOST</code> is set in the environment and overrides this toggle.</span>
     </p>
 
-    <p v-if="!desiredLanEnabled && !envPinned" class="pa-note">
+    <p v-if="loopbackOnly" class="pa-note">
       <i class="fas fa-shield-alt"></i>
       <span>AGNT is bound to <code>127.0.0.1</code> — reachable only from this machine.</span>
     </p>
 
-    <div v-if="restartRequired" class="pa-restart">
+    <div v-if="ready && restartRequired" class="pa-restart">
       <div class="pa-restart-text">
         <i class="fas fa-sync-alt"></i>
         <span>
@@ -36,17 +39,18 @@
       <button class="pa-btn pa-btn-primary" :disabled="busy" @click="onRestart">Restart now</button>
     </div>
 
-    <!-- Pairing works on loopback for iOS Simulator; LAN still required for a real phone. -->
-    <template v-if="!restartRequired">
-      <p v-if="!lanEnabled" class="pa-note">
+    <!-- Pairing works on loopback for a simulator on this machine; LAN is still
+         required for a real phone. -->
+    <template v-if="ready && !restartRequired">
+      <p v-if="localhostOnly" class="pa-note">
         <i class="fas fa-laptop"></i>
         <span>
-          Localhost only — fine for <strong>iOS Simulator</strong> on this Mac. Enable the toggle
-          above (and restart) for a physical phone on Wi‑Fi.
+          Localhost only — reachable from this computer, including a simulator running on it.
+          Enable the toggle above (and restart) for a physical phone on Wi‑Fi.
         </span>
       </p>
 
-      <div v-if="lanEnabled && !urls.length" class="pa-note pa-note-warn">
+      <div v-if="noAddressFound" class="pa-note pa-note-warn">
         <i class="fas fa-exclamation-triangle"></i>
         <span>No network address found. Connect to Wi-Fi or Ethernet (Simulator can still use 127.0.0.1).</span>
       </div>
@@ -214,44 +218,118 @@
       </div>
     </template>
 
+    <!-- Occupies the settled layout rather than collapsing, so nothing below
+         the panel jumps when the real answer lands. -->
+    <div v-else-if="!ready && !error" class="pa-skeleton" aria-hidden="true">
+      <div class="pa-sk pa-sk-note"></div>
+      <div class="pa-body">
+        <div class="pa-qr-col">
+          <div class="pa-sk pa-sk-target"></div>
+          <div class="pa-sk pa-sk-qr"></div>
+          <div class="pa-sk pa-sk-btn"></div>
+        </div>
+        <div class="pa-info-col">
+          <div class="pa-sk pa-sk-req"></div>
+          <div class="pa-sk pa-sk-line"></div>
+          <div class="pa-sk pa-sk-line"></div>
+          <div class="pa-sk pa-sk-url"></div>
+          <div class="pa-sk pa-sk-url"></div>
+          <div class="pa-sk pa-sk-fine"></div>
+        </div>
+      </div>
+    </div>
+
     <p v-if="error" class="pa-note pa-note-error"><i class="fas fa-exclamation-circle"></i><span>{{ error }}</span></p>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { toSvg } from '@/utils/qrcode.js';
 import pairingService from '@/services/pairingService.js';
+import { useAsyncResource } from '@/composables/useAsyncResource.js';
 
-// Two distinct facts, deliberately not collapsed into one:
+// Everything this panel asserts about the network comes from ONE measured
+// resource, which is null until the server has actually answered. Defaults
+// like `ref(false)` are not "unknown", they are claims, and the template
+// believed them: for one frame after every mount the panel announced
+// "bound to 127.0.0.1", "localhost only" and an empty address list, then
+// replaced all three. See composables/useAsyncResource.js.
+//
+// Two fields are deliberately not collapsed into one:
 //   lanEnabled        - the socket we are ACTUALLY listening on (gates the QR)
 //   desiredLanEnabled - the saved setting (drives the toggle)
 // They differ exactly while a restart is pending, which is the state that
 // previously reported itself as "all good" and produced an unreachable QR code.
-const lanEnabled = ref(false);
-const desiredLanEnabled = ref(false);
-const bindHost = ref('');
-const envPinned = ref(false);
-const restartRequired = ref(false);
+const {
+  data: status,
+  error,
+  ready,
+  refresh: loadStatus,
+  patch: patchStatus,
+} = useAsyncResource(
+  async () => {
+    const s = await pairingService.getStatus();
+    // Normalise at the boundary so nothing downstream handles two shapes.
+    return {
+      ...s,
+      // Older backends do not send desiredLanEnabled; fall back so the toggle
+      // reflects something sane rather than silently reading undefined.
+      desiredLanEnabled: s.desiredLanEnabled ?? s.lanEnabled,
+      envPinned: s.bindSource === 'env',
+      origins: toOrigins(s),
+    };
+  },
+  // Settings sections are a plain v-if chain, so this component is destroyed
+  // on every tab change. Without the cache the skeleton is paid on every
+  // single visit; with it, only the first.
+  { cacheKey: 'pairing:status' },
+);
+
+const refresh = () => loadStatus({ onError: friendly });
+
+const lanEnabled = computed(() => status.value?.lanEnabled === true);
+const desiredLanEnabled = computed(() => status.value?.desiredLanEnabled === true);
+const bindHost = computed(() => status.value?.bindHost || '');
+const envPinned = computed(() => status.value?.envPinned === true);
+const restartRequired = computed(() => status.value?.restartRequired === true);
+// Named network + reachability witness: the two facts that turn "it doesn't
+// work" into a specific, checkable statement.
+const networkName = computed(() => status.value?.networkName || '');
+const lastExternalRequest = computed(() => status.value?.lastExternalRequest || null);
 // Candidate addresses another device could use, best first. The server derives
 // these from the request that asked for them (see services/ReachableOrigin.js)
 // rather than from its own network cards, which is only correct when the server
 // IS this desktop.
-const origins = ref([]);
+const origins = computed(() => status.value?.origins || []);
+
+// Every warning that asserts a NEGATIVE carries `ready` in its own condition,
+// not merely in an ancestor's v-if. An outer gate can be refactored away by
+// someone who does not know it was load-bearing; this cannot.
+const loopbackOnly = computed(() => ready.value && !desiredLanEnabled.value && !envPinned.value);
+const localhostOnly = computed(() => ready.value && !lanEnabled.value);
+const noAddressFound = computed(() => ready.value && lanEnabled.value && !urls.value.length);
+
 const selectedOrigin = ref('');
 const code = ref(null);
 const expiresAt = ref(0);
 const now = ref(Date.now());
 const busy = ref(false);
-const error = ref('');
 const copied = ref('');
-// Named network + reachability witness: the two facts that turn "it doesn't
-// work" into a specific, checkable statement.
-const networkName = ref('');
-const lastExternalRequest = ref(null);
 const codeShownAt = ref(0);
 let ticker = null;
 let statusTicks = 0;
+
+// Keep the user's pick across polls; only fall back when it disappears.
+watch(
+  origins,
+  (list) => {
+    if (!list.some((o) => o.origin === selectedOrigin.value)) {
+      selectedOrigin.value = list[0]?.origin || '';
+    }
+  },
+  { immediate: true },
+);
 
 const secondsLeft = computed(() => Math.max(0, Math.ceil((expiresAt.value - now.value) / 1000)));
 
@@ -372,35 +450,15 @@ const qrSvg = computed(() => {
   }
 });
 
-async function refresh() {
-  try {
-    const s = await pairingService.getStatus();
-    lanEnabled.value = s.lanEnabled;
-    // Older backends do not send desiredLanEnabled; fall back so the toggle
-    // reflects something sane rather than silently reading undefined.
-    desiredLanEnabled.value = s.desiredLanEnabled ?? s.lanEnabled;
-    bindHost.value = s.bindHost || '';
-    networkName.value = s.networkName || '';
-    lastExternalRequest.value = s.lastExternalRequest || null;
-    restartRequired.value = s.restartRequired;
-    origins.value = toOrigins(s);
-    // Keep the user's pick across polls; only fall back when it disappears.
-    if (!origins.value.some((o) => o.origin === selectedOrigin.value)) {
-      selectedOrigin.value = origins.value[0]?.origin || '';
-    }
-    envPinned.value = s.bindSource === 'env';
-  } catch (e) {
-    error.value = friendly(e);
-  }
-}
-
 function friendly(e) {
   if (e?.response?.status === 401) return 'Session expired — sign in again.';
   // 409: the server refused to mint a code because it is loopback-only, so the
   // QR would have encoded an address nothing is listening on.
   if (e?.response?.status === 409) {
-    restartRequired.value = e.response.data?.restartRequired ?? true;
-    bindHost.value = e.response.data?.bindHost || bindHost.value;
+    patchStatus({
+      restartRequired: e.response.data?.restartRequired ?? true,
+      bindHost: e.response.data?.bindHost || bindHost.value,
+    });
     return e.response.data?.error || 'This server is not reachable from your network yet.';
   }
   return e?.response?.data?.error || e?.message || 'Something went wrong.';
@@ -412,11 +470,13 @@ async function onToggle(evt) {
   error.value = '';
   try {
     const r = await pairingService.setLanAccess(next);
-    lanEnabled.value = r.lanEnabled;
-    desiredLanEnabled.value = r.desiredLanEnabled ?? next;
-    bindHost.value = r.bindHost || bindHost.value;
-    envPinned.value = !!r.envPinned;
-    restartRequired.value = !!r.restartRequired;
+    patchStatus({
+      lanEnabled: r.lanEnabled,
+      desiredLanEnabled: r.desiredLanEnabled ?? next,
+      bindHost: r.bindHost || bindHost.value,
+      envPinned: !!r.envPinned,
+      restartRequired: !!r.restartRequired,
+    });
     if (!r.restartRequired) await refresh();
   } catch (e) {
     error.value = friendly(e);
@@ -435,15 +495,17 @@ async function onGenerate() {
     // Minting re-derives candidates from this very request, so it is the
     // freshest answer available — prefer it over the polled status.
     const minted = toOrigins(c);
-    if (minted.length) {
-      origins.value = minted;
-      if (!minted.some((o) => o.origin === selectedOrigin.value)) selectedOrigin.value = minted[0].origin;
-    }
     expiresAt.value = c.expiresAt;
     now.value = Date.now();
     // Anchor for the witness: only connections after this instant count.
     codeShownAt.value = Date.now();
-    lastExternalRequest.value = null;
+    // Clearing the witness alongside the fresher candidate list, in one write:
+    // a hit recorded before this code existed must not read as success.
+    // selectedOrigin is reconciled by the watcher on `origins`.
+    patchStatus({
+      ...(minted.length ? { origins: minted } : {}),
+      lastExternalRequest: null,
+    });
   } catch (e) {
     error.value = friendly(e);
   } finally {
@@ -456,11 +518,14 @@ async function onRestart() {
   error.value = '';
   try {
     await pairingService.restartBackend();
-    restartRequired.value = false;
+    patchStatus({ restartRequired: false });
     // The backend drains for ~2s then respawns; poll until status answers.
+    // refresh() resolves to null rather than rejecting, so the retry has to
+    // test the result — the previous .catch() could never fire and the panel
+    // stayed stale forever if the first attempt landed too early.
     setTimeout(function poll(attempt = 0) {
-      refresh().catch(() => {
-        if (attempt < 15) setTimeout(() => poll(attempt + 1), 2000);
+      refresh().then((ok) => {
+        if (!ok && attempt < 15) setTimeout(() => poll(attempt + 1), 2000);
       });
     }, 4000);
   } catch (e) {
@@ -486,7 +551,9 @@ onMounted(() => {
     // Poll the witness while a code is live, so the panel reflects the phone
     // within a few seconds instead of only on a manual refresh.
     statusTicks++;
-    if (code.value && statusTicks % 3 === 0) refresh(); now.value = Date.now(); }, 1000);
+    if (code.value && statusTicks % 3 === 0) refresh();
+    now.value = Date.now();
+  }, 1000);
 });
 onBeforeUnmount(() => clearInterval(ticker));
 </script>
@@ -914,6 +981,73 @@ onBeforeUnmount(() => clearInterval(ticker));
   border-color: var(--color-primary, #19ef83);
   color: var(--on-fill-accent);
   font-weight: 600;
+}
+
+/* ── loading skeleton ──
+   Deliberately mirrors the settled geometry (208px QR column, 40px button,
+   flexible info column) so the panel does not resize when data lands. A
+   spinner would say "working"; this says "here is where it goes". */
+.pa-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pa-sk {
+  border-radius: 8px;
+  background: var(--color-dull-navy, #2e3350);
+  opacity: 0.35;
+  animation: pa-sk-pulse 1.4s ease-in-out infinite;
+}
+.pa-sk-switch {
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+.pa-sk-note {
+  height: 38px;
+}
+.pa-sk-target {
+  width: 208px;
+  height: 32px;
+}
+.pa-sk-qr {
+  width: 208px;
+  height: 208px;
+}
+.pa-sk-btn {
+  width: 208px;
+  height: 40px;
+}
+.pa-sk-req {
+  height: 56px;
+}
+.pa-sk-line {
+  height: 18px;
+  width: 78%;
+}
+.pa-sk-url {
+  height: 44px;
+}
+.pa-sk-fine {
+  height: 72px;
+}
+
+@keyframes pa-sk-pulse {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-sk {
+    animation: none;
+  }
 }
 
 @media (max-width: 800px) {
