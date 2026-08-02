@@ -104,6 +104,31 @@ body {
   --color-yellow-transparent: rgba(var(--yellow-rgb), 0.35);
   --color-primary-transparent-light: rgba(var(--primary-rgb), 0.12);
 
+  /* ── Found by themeTokens.spec.js on its first run ────────────────────────────
+     A second wave of 17, all of the same kind. Four of them
+     (--color-black, --color-light-gray, --color-dark-gray, --color-med-gray)
+     are referenced from a palette block in _variables.css that is entirely
+     COMMENTED OUT — the references outlived the declarations and nobody could
+     tell, because a dead var() just paints its fallback. */
+  --color-black: #000000; /* literal: used for scrims and shadows */
+  --color-light-gray: var(--border-subtle);
+  --color-dark-gray: var(--text-secondary);
+  --color-med-gray: var(--text-tertiary);
+  --color-grey-dark: var(--text-secondary);
+  --color-grey-darker: var(--text-primary);
+  --color-grey-lighter: var(--text-quaternary);
+  --color-green-dark: var(--color-green);
+  --color-green-light: var(--color-green);
+  --color-yellow-dark: var(--color-yellow);
+  --color-purple-dark: var(--color-indigo);
+  --color-purple-light: var(--color-indigo);
+  --color-accent-light: var(--color-primary);
+  --color-accent-rgb: var(--primary-rgb);
+  --color-blue-rgb: var(--blue-rgb);
+  --color-green-rgb: var(--green-rgb);
+  --color-yellow-rgb: var(--yellow-rgb);
+  --color-purple-rgb: var(--indigo-rgb);
+
   /* ── Non-colour knobs ─────────────────────────────────────────────────────
      Same failure mode, no contrast consequence: the fallback always won, so
      the theme could never restyle them. */

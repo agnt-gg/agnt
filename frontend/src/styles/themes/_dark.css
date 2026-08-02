@@ -161,7 +161,6 @@ body.dark tr:last-child td {
 }
 
 body.dark a {
-  color: var(--color-primary);
   font-weight: bold;
   text-decoration: underline;
 }
@@ -341,7 +340,8 @@ body.dark input[type='color'],
 body.dark textarea,
 body.dark select {
   font-weight: 300;
-  color: var(--color-dull-white);
+  /* colour intentionally omitted — see _forms.css. A body-scoped element
+     selector is (0,2,1) and outranks every component's own colour rule. */
   background-color: var(--color-darker-0);
   border-color: var(--color-dull-navy);
 }
@@ -397,9 +397,8 @@ body.dark .right-actions img {
   filter: invert(1);
 }
 
-body.dark label,
 body.dark .label {
-  color: var(--color-med-navy);
+  color: var(--text-tertiary);
 }
 
 body.dark .action-items button {
@@ -409,7 +408,6 @@ body.dark .action-items button {
 body.dark input[type='text'],
 body.dark input[type='number'],
 body.dark textarea {
-  color: var(--color-dull-white);
   background-color: var(--color-darker-0);
   border-color: var(--terminal-border-color);
 }

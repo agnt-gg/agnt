@@ -154,13 +154,8 @@ body:not(.dark) td {
   opacity: 1;
 }
 
-body:not(.dark) a {
-  color: var(--color-primary);
-}
-
-body:not(.dark) label,
 body:not(.dark) .label {
-  color: var(--color-text-muted);
+  color: var(--text-tertiary);
 }
 
 body:not(.dark) .separator {
@@ -246,7 +241,8 @@ body:not(.dark) input[type='search'],
 body:not(.dark) input[type='color'],
 body:not(.dark) textarea,
 body:not(.dark) select {
-  color: var(--color-text);
+  /* colour intentionally omitted — see _forms.css. A body-scoped element
+     selector is (0,2,1) and outranks every component's own colour rule. */
   /* Was `transparent`, which let the grey panel show through so every field
      read as DISABLED. A light-mode input needs a white fill + a real border. */
   background-color: var(--surface-raised);
