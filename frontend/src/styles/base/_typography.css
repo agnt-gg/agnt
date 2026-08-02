@@ -221,7 +221,7 @@ inner-editor-area#response-area ul {
 }
 
 inner-editor-area#response-area h2 {
-  border-top: 1px solid var(--color-light-navy);
+  border-top: 1px solid var(--terminal-border-color);
   padding-top: 16px;
   width: 100%;
 }

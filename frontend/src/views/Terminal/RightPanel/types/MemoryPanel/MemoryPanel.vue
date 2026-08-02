@@ -289,7 +289,7 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   border-radius: 4px;
   font-size: 0.82em;
 }

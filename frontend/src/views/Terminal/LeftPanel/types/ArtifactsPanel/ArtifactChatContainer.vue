@@ -465,7 +465,7 @@ export default {
   padding: 10px 16px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 24px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--field-bg);
   color: var(--color-light-green);
   font-size: var(--font-size-sm);
   transition: all 0.2s ease;

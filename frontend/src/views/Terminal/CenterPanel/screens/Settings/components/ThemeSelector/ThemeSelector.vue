@@ -281,7 +281,7 @@ body.dark .theme-label {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;

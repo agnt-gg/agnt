@@ -812,7 +812,7 @@ h4.section-title {
 }
 
 .config-group {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
@@ -1052,7 +1052,7 @@ h4.section-title {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
 }
@@ -1168,7 +1168,7 @@ h4.section-title {
   padding: 8px 12px;
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--field-bg);
   color: var(--color-text);
   font-size: 0.9em;
 }
@@ -1227,7 +1227,7 @@ h4.section-title {
 }
 
 .create-task-form {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
@@ -1412,7 +1412,7 @@ h4.section-title {
 }
 
 .goal-input-section {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--field-bg);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   padding: 16px;
@@ -1430,7 +1430,7 @@ h4.section-title {
   padding: 16px;
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--field-bg);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;

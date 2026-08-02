@@ -168,7 +168,7 @@ onMounted(() => initializeScreen());
 }
 
 .stat-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
@@ -228,7 +228,7 @@ onMounted(() => initializeScreen());
 
 /* Section Cards */
 .section-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;

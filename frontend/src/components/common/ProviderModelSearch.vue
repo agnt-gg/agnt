@@ -227,7 +227,10 @@ export default {
 }
 
 .search-input-wrapper.focused {
-  border-color: var(--color-light-med-navy);
+  /* --color-light-med-navy is #d1d1db in dark and the TEXT colour in light, so
+     it drew a white edge in dark and a heavy ink edge in light. A focus ring
+     has a token. */
+  border-color: var(--field-border-focus);
 }
 
 .search-icon {

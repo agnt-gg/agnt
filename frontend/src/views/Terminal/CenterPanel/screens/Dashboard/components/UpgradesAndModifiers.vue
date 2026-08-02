@@ -135,7 +135,7 @@ export default {
 
 <style scoped>
 .data-section {
-  background: rgba(0,0,0,0.15); /* Simplified background */
+  background: var(--color-darker-0); /* Simplified background */
   border: 1px solid rgba(var(--green-rgb), 0.2); /* Standard accent border */
   border-radius: 6px; /* Standard border-radius */
   padding: 16px; /* Standard padding */
@@ -163,7 +163,7 @@ export default {
 .tabs-container {
   display: flex;
   margin-bottom: 16px; /* Adjusted margin */
-  background-color: rgba(0,0,0,0.2);
+  background-color: var(--color-darker-1);
   border-radius: 32px;
   padding: 5px;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
@@ -429,9 +429,12 @@ export default {
 
 .action-button.purchased-button,
 .action-button.unavailable-button {
-  background-color: var(--color-grey-dark);
-  border-color: var(--color-grey-darker);
-  color: var(--color-grey-light); 
+  background-color: var(--surface-sunken);
+  /* was --color-grey-darker, which aliases --text-primary: a near-white edge in
+     dark and a near-black one in light. A spent/unavailable button is quieter
+     than a live one, not louder. */
+  border-color: var(--terminal-border-color);
+  color: var(--text-tertiary); 
   cursor: default;
   opacity: 0.8; 
 }
@@ -513,7 +516,7 @@ export default {
 .modifier-duration-bar {
   width: 100%;
   height: 8px; /* Slimmer than XP bar */
-  background-color: rgba(0, 0, 0, 0.4); /* Dark background for the bar */
+  background-color: var(--color-darker-2); /* Dark background for the bar */
   border-radius: 4px; /* Rounded corners for the bar container */
   overflow: hidden; /* Ensures the fill stays within the rounded bounds */
   border: 1px solid rgba(var(--color-accent-rgb), 0.1); /* Subtle border, consistent with other elements */

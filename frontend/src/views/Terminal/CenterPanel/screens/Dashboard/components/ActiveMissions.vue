@@ -216,7 +216,7 @@ export default {
 
 <style scoped>
 .mission-order-board {
-  background: rgba(0, 0, 0, 0.15); /* Darker for mission board */
+  background: var(--color-darker-0); /* Darker for mission board */
   border: 1px solid rgba(var(--green-rgb), 0.25);
   padding: 10px;
   height: 100%; /* Fill available space in panel */

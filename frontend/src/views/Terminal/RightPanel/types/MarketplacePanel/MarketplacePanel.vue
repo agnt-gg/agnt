@@ -1932,7 +1932,7 @@ export default {
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
 }
 
 .preview-image {

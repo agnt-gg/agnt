@@ -202,7 +202,7 @@ export default {
 
 .pdf-button {
   padding: 8px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--color-darker-3);
   color: var(--text-on-scrim);
   border: none;
   border-radius: 4px;
@@ -214,7 +214,7 @@ export default {
 }
 
 .pdf-button:hover {
-  background: rgba(0, 0, 0, 0.9);
+  background: var(--color-darker-3);
 }
 
 /* PDF-specific drag & drop styles */

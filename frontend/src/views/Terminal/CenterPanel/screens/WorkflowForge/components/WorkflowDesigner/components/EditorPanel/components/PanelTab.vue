@@ -1530,7 +1530,7 @@ export default {
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   background-color: var(--color-dull-white);
 }
@@ -1638,13 +1638,13 @@ body.dark .download-button:hover {
 
 .hr {
   width: 100%;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 .form-divider {
   width: 1px;
   height: 24px;
-  border-right: 1px solid #ddd;
+  border-right: 1px solid var(--terminal-border-color);
 }
 
 .form-row {
@@ -1723,7 +1723,7 @@ p.static-value:hover {
   margin-top: 0;
   font-family: var(--font-family-mono);
   padding: 6px 8px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   /* border-color: limegreen; */
   border-radius: 8px;
   background: var(--color-bright-light-navy);
@@ -2071,7 +2071,7 @@ body.dark .logic-select {
 
 .tool-docs-content h2 {
   font-size: 1.4em;
-  border-bottom: 1px solid var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
   padding-bottom: 0.4em;
 }
 
@@ -2130,7 +2130,7 @@ body.dark .logic-select {
 
 .tool-docs-content pre {
   background: linear-gradient(135deg, var(--color-darker-0), rgba(26, 32, 44, 0.95));
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 20px;
   overflow-x: auto;
@@ -2209,7 +2209,7 @@ body.dark .logic-select {
 
 .tool-docs-content th,
 .tool-docs-content td {
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   padding: 12px 16px;
   text-align: left;
   vertical-align: top;

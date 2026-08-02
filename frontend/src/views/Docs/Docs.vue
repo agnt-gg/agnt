@@ -332,7 +332,7 @@ body[data-page='docs'] .sidebar {
      name describes the DARK-theme value. Using it as a background painted a
      near-black panel under near-black text: 1.00:1, body copy invisible. */
   background: var(--surface-sunken);
-  border-right: 1px solid var(--color-light-navy);
+  border-right: 1px solid var(--terminal-border-color);
   overflow: scroll;
 }
 
@@ -362,7 +362,7 @@ body[data-page='docs'].dark .sidebar {
 }
 
 body[data-page='docs'] div.sidebar-section {
-  border-bottom: 1px solid var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 body[data-page='docs'].dark div.sidebar-section {
@@ -411,8 +411,8 @@ body[data-page='docs'] .content.markdown-body {
   min-height: 100%;
   /* Same inversion as .sidebar above — see note there. */
   background: var(--surface-raised);
-  border-left: 1px solid var(--color-light-navy);
-  border-right: 1px solid var(--color-light-navy);
+  border-left: 1px solid var(--terminal-border-color);
+  border-right: 1px solid var(--terminal-border-color);
 }
 
 body[data-page='docs'] .content.markdown-body img {
@@ -443,7 +443,7 @@ body[data-page='docs'] .content.markdown-body h1,
 body[data-page='docs'] .content.markdown-body h2 {
   width: 100%;
   padding-top: 16px;
-  border-top: 1px solid var(--color-light-navy);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 body[data-page='docs'].dark .content.markdown-body h1,
@@ -467,9 +467,9 @@ body[data-page='docs'].dark .content hr {
   width: 100%;
   margin: 0;
   border-bottom: none;
-  border-top: 1px solid var(--color-light-navy);
-  border-left: 1px solid var(--color-light-navy);
-  border-right: 1px solid var(--color-light-navy);
+  border-top: 1px solid var(--terminal-border-color);
+  border-left: 1px solid var(--terminal-border-color);
+  border-right: 1px solid var(--terminal-border-color);
 }
 
 body[data-page='docs'].dark .content hr {
@@ -602,7 +602,7 @@ body[data-page='docs'] em {
 
 body[data-page='docs'] .docs-container img {
   border-radius: 16px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
 }
 
 body[data-page='docs'].dark .docs-container img {

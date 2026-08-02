@@ -368,7 +368,7 @@ div.sidebar-section {
   padding-top: 16px;
   padding-bottom: 16px;
   text-align: left;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 #sidebar p {

@@ -971,7 +971,7 @@ onMounted(() => {
 .skill-card {
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 14px;
@@ -1271,7 +1271,7 @@ onMounted(() => {
   gap: 8px;
 }
 .stat-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 12px;

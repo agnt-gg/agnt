@@ -1048,7 +1048,7 @@ onMounted(() => initializeScreen());
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border-radius: 4px;
   font-size: 0.8em;
 }

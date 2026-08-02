@@ -1244,7 +1244,7 @@ body.dark .billing-section {
   justify-content: center;
   margin-top: 16px;
   padding: 4px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   border-radius: 8px;
   width: fit-content;
   margin-left: auto;
@@ -1909,7 +1909,7 @@ body.dark .upload-label {
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--color-darker-3);
   border: none;
   color: var(--text-on-scrim);
   width: 28px;

@@ -249,7 +249,7 @@ export default {
   padding: 2px 8px 2px 6px;
   font-size: 9px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   color: var(--color-text-muted);
   max-width: 180px;

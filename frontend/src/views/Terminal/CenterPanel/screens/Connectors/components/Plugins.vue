@@ -1758,7 +1758,7 @@ export default {
 
 .plugin-card {
   background: transparent;
-  border: 2px solid var(--color-light-navy);
+  border: 2px solid var(--terminal-border-color);
   border-radius: 12px;
   padding: 16px;
   transition: all 0.2s ease;
@@ -2028,7 +2028,7 @@ button.base-button.primary.refresh {
   margin-bottom: 8px;
   padding: 20px;
   /* background: var(--color-ultra-light-navy); */
-  border: 2px dashed var(--color-light-navy);
+  border: 2px dashed var(--terminal-border-color);
   border-radius: 12px;
 }
 

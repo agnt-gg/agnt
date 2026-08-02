@@ -746,11 +746,11 @@ export default {
 }
 
 .label-node:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--color-darker-0);
 }
 
 .label-node:focus-within {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
 }
 
 .connector {

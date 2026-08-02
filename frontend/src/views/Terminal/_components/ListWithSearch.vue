@@ -267,7 +267,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 0px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border-radius: 0px;
   padding: 8px;
   flex: 1;

@@ -330,7 +330,7 @@ export default {
   font-family: 'Courier New', monospace;
   font-size: 0.8em;
   color: var(--color-text);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   padding: 12px;
   border-radius: 4px;
   white-space: pre-wrap;

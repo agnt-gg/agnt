@@ -626,7 +626,7 @@ export default {
 
 <style scoped>
 .goals-section {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 0 0 0 8px;
   padding: 16px;

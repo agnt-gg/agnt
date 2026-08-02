@@ -200,7 +200,7 @@ select,
 textarea {
   width: 100%;
   padding: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
 }
 

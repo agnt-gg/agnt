@@ -2640,7 +2640,7 @@ export default {
 
 .connectors-section {
   background: transparent;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   padding: 0;
   transition: all 0.3s ease;
   border-radius: 16px;
@@ -2901,7 +2901,7 @@ body.dark .form-actions {
 
 .mcp-server-card {
   background: transparent;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 12px 16px;
   transition: all 0.2s ease;
@@ -3103,7 +3103,7 @@ body.dark .mcp-server-card {
 
 .npm-package-card {
   background: transparent;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 12px;
   cursor: pointer;
@@ -3313,7 +3313,7 @@ body.dark .capability-item {
 .view-toggle {
   display: flex;
   gap: 0;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
 }
 
 body.dark .view-toggle {
@@ -3340,7 +3340,7 @@ body.dark .view-toggle {
 }
 
 .view-btn:not(:last-child) {
-  border-right: 1px solid var(--color-light-navy);
+  border-right: 1px solid var(--terminal-border-color);
 }
 
 body.dark .view-btn:not(:last-child) {
@@ -3376,7 +3376,7 @@ body.dark .view-btn:not(:last-child) {
   flex-wrap: wrap;
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 body.dark .category-pills {
@@ -3385,7 +3385,7 @@ body.dark .category-pills {
 
 .category-pill {
   background: transparent;
-  border: 2px solid var(--color-light-navy);
+  border: 2px solid var(--terminal-border-color);
   border-radius: 20px;
   padding: 6px 14px;
   font-size: 0.85em;
@@ -3441,7 +3441,7 @@ body.dark .results-info {
   gap: 16px;
   padding: 12px 16px;
   background: transparent;
-  border: 2px solid var(--color-light-navy);
+  border: 2px solid var(--terminal-border-color);
   border-radius: 8px;
   transition: all 0.2s ease;
   cursor: pointer;
@@ -3546,7 +3546,7 @@ body.dark .category-tag {
 
 .action-btn {
   background: rgba(127, 129, 147, 0.1);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 6px 10px;
   cursor: pointer;
@@ -3573,7 +3573,7 @@ body.dark .action-btn {
   gap: 16px;
   margin-top: 24px;
   padding-top: 16px;
-  border-top: 1px solid var(--color-light-navy);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 body.dark .pagination {
@@ -3582,7 +3582,7 @@ body.dark .pagination {
 
 .page-btn {
   background: transparent;
-  border: 2px solid var(--color-light-navy);
+  border: 2px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 8px 16px;
   cursor: pointer;

@@ -41,7 +41,7 @@ defineProps({ dimensions: { type: Array, required: true, default: () => [] } });
 
 .dimension-row {
   padding: 12px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }

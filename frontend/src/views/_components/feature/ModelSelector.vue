@@ -271,7 +271,7 @@ export default {
 body[data-page='terminal-chat'] .field-group.model-selector {
   width: calc(100% - 18px);
   padding: 8px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
 }
 
 body[data-page='terminal-chat'].dark .field-group.model-selector {
@@ -293,7 +293,7 @@ body[data-page='terminal-chat'].dark .field-group.model-selector {
 
 select {
   padding: 7px 0px 5px 4px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   background-color: var(--color-ultra-light-navy);
   color: var(--text-primary);

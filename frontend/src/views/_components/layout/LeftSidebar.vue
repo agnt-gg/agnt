@@ -294,7 +294,7 @@ export default {
   width: 48px;
   height: calc(100% - 40px);
   height: -webkit-fill-available;
-  border-right: 1px solid var(--color-light-navy);
+  border-right: 1px solid var(--terminal-border-color);
   background: var(--color-background, var(--color-dull-white));
 }
 

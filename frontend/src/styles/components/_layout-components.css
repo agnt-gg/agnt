@@ -42,7 +42,7 @@
 
 div#saved-templates,
 div#saved-outputs {
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
 
@@ -58,7 +58,7 @@ bottom-menu {
   width: -webkit-fill-available;
   height: fit-content;
   padding: 16px 0 0;
-  border-top: 1px solid var(--color-light-navy);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 form {
@@ -98,7 +98,7 @@ form {
   width: -webkit-fill-available;
   gap: 16px;
   padding: 16px 12px;
-  border: 1px dashed var(--color-light-navy);
+  border: 1px dashed var(--terminal-border-color);
   border-radius: 8px;
 }
 
@@ -196,7 +196,7 @@ inner-editor-area {
   min-height: 240px;
   padding: 32px;
   background: var(--color-dull-white);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 16px 16px 0 0;
   user-select: all;
   line-height: 150%;
@@ -325,7 +325,7 @@ inner-editor-area.pdf-download {
 }
 
 .placeholder.active {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--color-darker-0);
 }
 
 .field-group.drag-over {

@@ -1014,7 +1014,7 @@ h3 {
 }
 
 .task-card:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
 }
 
 .task-header {
@@ -1322,7 +1322,7 @@ h3 {
 }
 
 .eval-log {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   padding: 10px;
@@ -1353,7 +1353,10 @@ h3 {
   padding: 8px 10px;
   border-radius: 4px;
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-grey);
+  /* was --color-grey, which aliases --text-tertiary: a mid grey bright enough
+     to read as a highlight on the dark canvas. --border-strong is the token
+     for "a heavier edge" and inverts properly. */
+  border-left: 3px solid var(--border-strong);
 }
 
 .iteration-item.passed {
@@ -1576,7 +1579,7 @@ h3 {
   border-left: 3px solid var(--color-green);
   margin: 6px 8px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   overflow: hidden;
 }
 

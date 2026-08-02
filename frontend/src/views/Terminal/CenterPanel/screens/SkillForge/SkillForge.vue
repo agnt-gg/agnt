@@ -716,7 +716,7 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 .stat-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
@@ -762,7 +762,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   cursor: pointer;
@@ -770,7 +770,7 @@ onMounted(() => {
 }
 .leaderboard-item:hover {
   border-color: rgba(var(--green-rgb), 0.4);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-darker-1);
 }
 .leaderboard-item.selected {
   border-color: var(--color-green);
@@ -796,7 +796,7 @@ onMounted(() => {
   gap: 8px;
 }
 .eval-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
@@ -877,7 +877,7 @@ onMounted(() => {
 .forge-filters .form-input:focus { outline: none; border-color: var(--color-primary); }
 .filter-btn {
   padding: 7px 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-grey);
@@ -912,7 +912,7 @@ onMounted(() => {
 }
 .goal-card {
   padding: 12px 14px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   cursor: pointer;
@@ -920,7 +920,7 @@ onMounted(() => {
 }
 .goal-card:hover {
   border-color: rgba(var(--green-rgb), 0.3);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-darker-1);
 }
 .goal-card.selected {
   border-color: var(--color-green);
@@ -1074,7 +1074,7 @@ onMounted(() => {
 
 /* Result Panels */
 .result-panel {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 16px;
@@ -1165,7 +1165,7 @@ onMounted(() => {
   gap: 10px;
 }
 .setting-item {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
@@ -1200,7 +1200,7 @@ onMounted(() => {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--terminal-border-color);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   color: var(--color-grey);
   width: fit-content;
   transition: all 0.15s;
@@ -1232,7 +1232,7 @@ onMounted(() => {
   gap: 8px;
 }
 .version-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 12px;

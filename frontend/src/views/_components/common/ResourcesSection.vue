@@ -557,7 +557,7 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   color: var(--color-text-muted);
   text-decoration: none;
@@ -571,7 +571,7 @@ body.dark .resource-link {
 }
 
 body:not(.dark):not(.rose) button.resource-link.resource-button {
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   color: var(--color-text-muted);
 }
 
@@ -1135,7 +1135,7 @@ body.dark .upload-label {
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--color-darker-3);
   border: none;
   color: var(--text-on-scrim);
   width: 28px;

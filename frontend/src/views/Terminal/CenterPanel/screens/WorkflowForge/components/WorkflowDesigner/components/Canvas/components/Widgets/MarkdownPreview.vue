@@ -315,7 +315,7 @@ export default {
 }
 
 .toggle-button:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--color-darker-0);
 }
 
 .toggle-button.active {

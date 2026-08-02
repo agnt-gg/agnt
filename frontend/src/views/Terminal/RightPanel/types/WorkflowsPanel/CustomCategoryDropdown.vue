@@ -306,7 +306,7 @@ export default {
 }
 
 .subcategories {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
 }
 
 .no-results {

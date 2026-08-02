@@ -384,7 +384,7 @@ body.dark .version-card {
   gap: 12px;
   padding: 12px;
   background: var(--color-dull-white);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   margin-bottom: 8px;
   transition: all 0.2s ease;
@@ -538,7 +538,7 @@ body.dark .feature-item {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   color: var(--color-light-med-navy);
   cursor: pointer;

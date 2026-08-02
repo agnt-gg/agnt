@@ -2811,7 +2811,7 @@ export default {
   width: 100%;
   margin: 4px 0 0;
   padding: 6px 8px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border-radius: 3px;
   font-size: 11px;
   color: var(--color-text-muted);
@@ -2937,7 +2937,7 @@ export default {
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--color-darker-2);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   backdrop-filter: blur(8px);

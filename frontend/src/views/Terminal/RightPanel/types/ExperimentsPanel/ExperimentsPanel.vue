@@ -635,7 +635,7 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   border-radius: 4px;
   font-size: 0.82em;
 }
@@ -699,7 +699,7 @@ export default {
 
 /* Evidence */
 .evidence-block {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   padding: 8px 10px;
@@ -767,7 +767,7 @@ export default {
 .dim-bar-container {
   flex: 1;
   height: 12px;
-  background: rgba(0,0,0,0.2);
+  background: var(--color-darker-1);
   border-radius: 2px;
   position: relative;
   overflow: hidden;
@@ -829,7 +829,7 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
-  background: rgba(0,0,0,0.1);
+  background: var(--color-darker-0);
   border-radius: 3px;
   font-size: 0.8em;
 }
@@ -909,7 +909,7 @@ export default {
   display: flex;
   gap: 8px;
   padding: 6px 8px;
-  background: rgba(0,0,0,0.1);
+  background: var(--color-darker-0);
   border-radius: 4px;
   border-left: 2px solid rgba(var(--green-rgb), 0.3);
 }

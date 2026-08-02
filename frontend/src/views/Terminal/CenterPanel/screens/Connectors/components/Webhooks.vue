@@ -350,7 +350,7 @@ export default {
 
 .webhook-card {
   background: transparent;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 16px;
   display: flex;

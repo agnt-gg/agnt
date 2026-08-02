@@ -263,7 +263,7 @@ body[data-page='terminal-chat'] .user-message-sent {
   margin-bottom: 64px;
   padding: 16px 24px;
   /* background: var(--color-white); */
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 32px 32px 0 32px;
   gap: 16px;
   align-self: flex-end;

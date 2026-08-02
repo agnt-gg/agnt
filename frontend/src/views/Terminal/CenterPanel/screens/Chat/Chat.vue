@@ -2864,7 +2864,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--color-darker-1);
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 11px;
   color: var(--color-text-secondary, #aaa);

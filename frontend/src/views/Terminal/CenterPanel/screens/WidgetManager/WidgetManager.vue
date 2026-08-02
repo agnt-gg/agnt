@@ -809,7 +809,7 @@ export default {
 }
 
 .wm-main-content::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3) !important;
+  background: var(--color-darker-1) !important;
 }
 
 .wm-main-content::-webkit-scrollbar-thumb {

@@ -217,7 +217,7 @@ body.dark .pro-locked-message h4 {
 input {
   flex-grow: 1;
   padding: 8px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   background-color: var(--color-dull-white);
   color: var(--color-dark-navy);

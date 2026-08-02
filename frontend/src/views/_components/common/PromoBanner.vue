@@ -145,7 +145,7 @@ export default {
   top: 50%;
   right: 12px;
   transform: translateY(-50%);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border: none;
   color: var(--text-on-scrim);
   width: 24px;
@@ -162,7 +162,7 @@ export default {
 }
 
 .close-banner-btn:hover {
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--color-darker-2);
   transform: translateY(-50%) scale(1.1);
 }
 
@@ -218,7 +218,7 @@ export default {
   font-size: 0.85em;
   font-weight: 700;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   padding: 2px 8px 0;
   border-radius: 4px;
   letter-spacing: 0.5px;

@@ -1414,13 +1414,13 @@ div#saved-outputs {
   align-items: center;
   padding: 16px 0;
   background: var(--color-dull-white);
-  border-bottom: 1px solid var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
   width: calc(100%);
 }
 
 .search-input {
   padding: 8px 16px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: 200px;
   height: 18px;
@@ -1648,7 +1648,7 @@ div#saved-outputs {
 
 .create-new {
   padding: 16px;
-  border-bottom: 1px solid var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 .create-output-btn {

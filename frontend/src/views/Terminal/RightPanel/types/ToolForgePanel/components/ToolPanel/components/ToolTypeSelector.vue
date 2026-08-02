@@ -83,7 +83,7 @@ export default {
   flex: 0;
   padding: 6px 16px 4px;
   background: var(--color-dull-white, #fff);
-  border: 1px solid var(--terminal-border-color, #ddd);
+  border: 1px solid var(--terminal-border-color, var(--terminal-border-color));
   border-radius: 6px;
   color: var(--text-primary);
   font-size: 13px;

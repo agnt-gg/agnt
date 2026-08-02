@@ -206,7 +206,7 @@ export default {
 body.light .modal-content {
   background: #f0f0f0;
   color: #333;
-  border: 1px solid #ccc;
+  border: 1px solid var(--terminal-border-color);
 }
 
 .modal-content p {

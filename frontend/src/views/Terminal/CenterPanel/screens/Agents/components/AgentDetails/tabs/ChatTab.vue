@@ -454,7 +454,7 @@ h3.section-title {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
   display: flex;
@@ -466,7 +466,7 @@ h3.section-title {
 .quick-actions-wrapper {
   padding: 12px 16px;
   border-top: 1px solid var(--terminal-border-color);
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
 }
 
 .quick-actions-wrapper :deep(.suggestions-bar) {
@@ -489,7 +489,7 @@ h3.section-title {
   padding: 8px 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--field-bg);
   color: var(--color-light-green);
   font-size: 0.9em;
 }

@@ -169,9 +169,13 @@ export default {
   /* bottom: 20px; */
   /* right: 20px; */
   width: 400px;
-  border: 1px solid var(--color-light-med-navy);
+  /* This widget predates the theme layer and was written in light-mode
+     literals: --color-light-med-navy is #d1d1db in dark, and #fff is #fff
+     everywhere, so it rendered a white panel with a white edge on the dark
+     canvas. */
+  border: 1px solid var(--terminal-border-color);
   border-radius: 32px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   color: var(--color-text-muted);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   z-index: 1000;
@@ -231,8 +235,8 @@ export default {
   flex-grow: 1;
   padding: 16px;
   overflow-y: auto;
-  background-color: #f9f9f9;
-  border-top: 1px solid var(--color-light-med-navy);
+  background-color: var(--color-darker-0);
+  border-top: 1px solid var(--terminal-border-color);
   display: flex;
   flex-direction: column;
 }
@@ -270,14 +274,14 @@ export default {
 .chat-input {
   display: flex;
   padding: 10px;
-  border-top: 1px solid #ccc;
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 .chat-input input {
   flex-grow: 1;
   padding: 8px;
   padding-left: 16px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--terminal-border-color);
   border-radius: 32px;
   margin-right: 5px;
 }

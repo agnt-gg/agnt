@@ -347,7 +347,7 @@ export default {
 
 .group-body {
   padding: 3px 16px 9px 32px;
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--color-darker-1);
 }
 
 .body-controls {

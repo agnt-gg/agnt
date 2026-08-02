@@ -1548,7 +1548,7 @@ export default {
 }
 
 .workflows-main-content::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3) !important;
+  background: var(--color-darker-1) !important;
 }
 
 .workflows-main-content::-webkit-scrollbar-thumb {
@@ -2065,7 +2065,7 @@ export default {
   width: 60px;
   height: 60px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   display: flex;
   align-items: center;
   justify-content: center;

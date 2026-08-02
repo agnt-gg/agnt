@@ -1083,7 +1083,7 @@ export default {
 
 /* General Section Styling */
 .data-section {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;

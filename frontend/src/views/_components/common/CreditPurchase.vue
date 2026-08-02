@@ -369,7 +369,7 @@ input[type='number'] {
   padding: 0.5rem 0.5rem 0.5rem 1.5rem;
   margin-bottom: 0.5rem;
   font-size: 16px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   background-color: var(--color-ultra-light-navy);
   color: var(--text-primary);
@@ -417,7 +417,7 @@ button.button-ready {
 
 .stripe-element-container {
   background-color: var(--color-ultra-light-navy);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 6px 0 2px 4px;
   transition: all 0.3s ease;

@@ -78,7 +78,7 @@ export default {
 <style scoped>
 /* Styles from Dashboard.vue relevant to agent roster */
 .data-section {
-  background: rgba(0,0,0,0.15);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
@@ -185,7 +185,7 @@ export default {
 .agent-xp-bar {
   width: 100%;
   height: 18px;
-  background-color: rgba(0,0,0, 0.3);
+  background-color: var(--color-darker-1);
   border-radius: 16px;
   position: relative;
   overflow: hidden;

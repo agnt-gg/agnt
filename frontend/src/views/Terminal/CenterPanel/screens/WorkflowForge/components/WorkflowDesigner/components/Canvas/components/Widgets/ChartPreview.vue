@@ -448,7 +448,7 @@ export default {
   padding: 6px 12px;
   background: white;
   color: #333;
-  border: 1px solid #ddd;
+  border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   font-size: 12px;
   cursor: pointer;

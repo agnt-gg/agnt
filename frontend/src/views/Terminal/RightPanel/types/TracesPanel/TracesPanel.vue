@@ -2546,7 +2546,7 @@ ${execution.log}
   border-left: 3px solid var(--color-green);
   margin: 6px 8px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   overflow: hidden;
 }
 
@@ -2675,7 +2675,7 @@ ${execution.log}
 }
 .linked-insight-item {
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--primary-rgb), 0.08);
   border-left: 3px solid rgba(245, 158, 11, 0.4);
   border-radius: 4px;

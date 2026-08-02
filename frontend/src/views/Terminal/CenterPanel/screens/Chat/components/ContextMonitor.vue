@@ -466,7 +466,7 @@ export default {
   height: 6px;
   /* Must be recessed relative to the card, not equal to it, or the meter has
      no visible extent and low fills look like stray pixels. */
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-darker-2);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
@@ -885,7 +885,7 @@ export default {
   display: flex;
   height: 4px;
   margin-top: 7px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--color-darker-2);
   overflow: hidden;
 }
 

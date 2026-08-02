@@ -476,7 +476,7 @@ body.dark #editor-panel .right-tabs button i {
   gap: 16px;
   padding: 16px;
   background: var(--color-dull-white);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 0 0 8px 8px; /* Round bottom corners */
   overflow: auto; /* Change to auto for scrolling */
   flex-grow: 1; /* Allow body to fill available space */
@@ -558,7 +558,7 @@ body.dark #editor-panel.full-screen .panel-body {
   color: var(--color-red);
   font-family: var(--font-family-mono);
   padding: 3px 8px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   /* animation: error-breathe-inset 1s ease-in-out infinite; */
   border-color: var(--color-red);
@@ -570,7 +570,7 @@ body.dark #editor-panel.full-screen .panel-body {
   margin-top: 8px;
   font-family: var(--font-family-mono);
   padding: 6px 8px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   /* border-color: limegreen; */
   border-radius: 8px;
   background: var(--color-bright-light-navy);
@@ -578,7 +578,7 @@ body.dark #editor-panel.full-screen .panel-body {
 
 .hr {
   width: 100%;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 body.dark .hr {

@@ -90,7 +90,9 @@ body.dark .separator {
 }
 
 body.dark #left-sidebar {
-  border-right: 1px solid var(--color-dull-navy);
+  /* border-right removed: LeftSidebar.vue now uses --terminal-border-color,
+     which IS --color-dull-navy in this theme. This line existed only to patch
+     a component that had written the light-mode grey. */
   background: var(--color-background);
 }
 
@@ -122,10 +124,12 @@ body.dark main-area {
   background: var(--color-black-navy);
 }
 
-body.dark div#saved-templates,
-body.dark div#saved-outputs {
-  border: 1px solid var(--color-dull-navy);
-}
+/* `body.dark div#saved-templates, body.dark div#saved-outputs` used to patch a
+   border here. _layout-components.css now uses --terminal-border-color, which
+   resolves to the same --color-dull-navy in this theme, so the patch is a
+   no-op. Per-selector patches like this are how the white-border class hid:
+   the ones nobody remembered to patch (.list-header, .create-new) drew a
+   near-white line in dark mode for as long as they existed. */
 
 body.dark table {
   font-weight: 300;

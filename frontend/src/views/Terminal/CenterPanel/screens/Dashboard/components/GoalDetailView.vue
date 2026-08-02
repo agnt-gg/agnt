@@ -421,7 +421,7 @@ export default {
 .tasks-list {
   max-height: 300px;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border-radius: 8px;
   padding: 8px;
 }
@@ -529,7 +529,7 @@ export default {
 .task-details-content {
   margin-top: 8px;
   padding: 8px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border-radius: 4px;
 }
 
@@ -544,7 +544,7 @@ export default {
   font-size: 0.75em;
   line-height: 1.4;
   color: var(--color-grey);
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-darker-2);
   padding: 8px;
   border-radius: 4px;
   overflow-x: auto;

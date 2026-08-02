@@ -542,7 +542,7 @@ onUnmounted(() => {
 }
 
 .app-item:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--color-darker-0);
 }
 
 body.dark .app-item:hover {
@@ -585,7 +585,7 @@ body.dark .app-item:hover {
 
 .categories button {
   padding: 4px 8px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
 

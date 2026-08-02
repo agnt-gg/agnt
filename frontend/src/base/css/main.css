@@ -650,7 +650,7 @@ button.delete-field-button {
 }
 
 .placeholder.active {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--color-darker-0);
 }
 
 .pdf-download-loader {

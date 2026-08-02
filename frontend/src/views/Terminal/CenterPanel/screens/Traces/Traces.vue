@@ -1657,7 +1657,7 @@ ${execution.log}
 }
 
 .runs-main-content::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3) !important;
+  background: var(--color-darker-1) !important;
 }
 
 .runs-main-content::-webkit-scrollbar-thumb {
@@ -1725,7 +1725,7 @@ ${execution.log}
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--color-darker-3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1905,7 +1905,7 @@ ${execution.log}
 }
 
 .execution-log {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 12px;
@@ -2016,7 +2016,7 @@ ${execution.log}
 }
 
 .node-card:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border-color: rgba(var(--green-rgb), 0.3);
 }
 

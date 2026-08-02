@@ -53,7 +53,7 @@ const formatDate = (d) => {
 <style scoped>
 /* Card */
 .dataset-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
@@ -65,7 +65,7 @@ const formatDate = (d) => {
 }
 .dataset-card:hover {
   border-color: rgba(var(--green-rgb), 0.4);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-darker-1);
 }
 .dataset-card.selected {
   border-color: var(--color-green);

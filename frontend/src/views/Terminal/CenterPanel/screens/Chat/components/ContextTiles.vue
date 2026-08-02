@@ -765,7 +765,7 @@ export default {
   flex: none;
   display: flex;
   gap: 1px;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-darker-2);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
@@ -907,7 +907,7 @@ export default {
   width: 100%;
   height: 4px;
   margin-top: 2px;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-darker-2);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
@@ -978,7 +978,7 @@ export default {
   display: flex;
   gap: 1px;
   height: 6px;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-darker-2);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   border-radius: 3px;
   overflow: hidden;
@@ -1099,7 +1099,7 @@ export default {
   display: flex;
   gap: 1px;
   height: 4px;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--color-darker-2);
 }
 
 .mt-system { background: var(--color-blue); }

@@ -96,7 +96,7 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
 
 <style scoped>
 .insight-card {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
@@ -109,7 +109,7 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
 }
 .insight-card:hover {
   border-color: rgba(var(--green-rgb), 0.4);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-darker-1);
 }
 .insight-card.selected {
   border-color: var(--color-green);

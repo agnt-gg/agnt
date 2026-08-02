@@ -68,7 +68,9 @@
   --color-darker-3: rgba(0, 0, 0, 0.8);
 
   /* Chat message backgrounds — themes can override per-role */
-  --user-message-bg: var(--color-darker-1);
+  /* --user-message-bg removed: user and assistant bubbles now share
+     --color-darker-0. It had exactly one consumer, and a palette knob nothing
+     reads is a knob that silently rots. */
 
   --color-popup: rgba(16, 16, 24, 0.95);
 

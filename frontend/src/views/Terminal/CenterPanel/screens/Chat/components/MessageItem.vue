@@ -2979,7 +2979,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   justify-content: flex-start;
   align-items: flex-start;
   gap: 16px;
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   padding: 20px 24px;
   width: fit-content;
@@ -2996,16 +2996,20 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   width: 100%;
 }
 
+/* Both roles share ONE fill, the subtlest overlay step. The user/assistant
+   distinction is carried by alignment and the asymmetric corner, not by tint —
+   two competing washes in a long transcript read as noise.
+
+   The user bubble used --user-message-bg, a token with exactly one consumer;
+   it is removed from the palette rather than left behind as a dead knob. */
 .message-wrapper.assistant .message-card {
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  /* border-left: 3px solid var(--color-primary); */
 }
 
 .message-wrapper.user .message-card {
-  background: var(--user-message-bg);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  /* border-right: 3px solid var(--color-blue); */
   margin-left: auto;
 }
 
@@ -3300,7 +3304,7 @@ span.nodeLabel p {
 }
 
 .tool-header:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-0);
   border-color: rgba(127, 129, 147, 0.1);
 }
 
@@ -3392,7 +3396,7 @@ span.nodeLabel p {
   font-size: 0.9em;
   line-height: 1.5;
   padding: 2em;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--color-darker-2);
   border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -3885,7 +3889,7 @@ span.nodeLabel p {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--color-darker-3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4155,7 +4159,7 @@ span.nodeLabel p {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border-radius: 8px;
   padding: 16px;
   border: 1px solid rgba(127, 129, 147, 0.15);
@@ -4168,7 +4172,7 @@ span.nodeLabel p {
   border: 1px solid rgba(127, 129, 147, 0.2);
   object-fit: contain;
   max-height: 600px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
 }
 
 .image-actions {
@@ -4214,7 +4218,7 @@ span.nodeLabel p {
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 12px;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border-radius: 8px;
   border: 1px solid rgba(127, 129, 147, 0.15);
 }
@@ -4223,7 +4227,7 @@ span.nodeLabel p {
   position: relative;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-1);
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid rgba(127, 129, 147, 0.2);
@@ -4252,7 +4256,7 @@ span.nodeLabel p {
   display: flex;
   gap: 4px;
   padding: 8px;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-darker-2);
   justify-content: center;
 }
 
