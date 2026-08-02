@@ -332,6 +332,186 @@ describe('theme tokens: form fields are inset in every theme', () => {
   });
 });
 
+/* ───── check 2c: content elements are not surfaces ───── */
+describe('theme tokens: table cells and rows never paint an opaque background', () => {
+  /**
+   * A <td>, <tr> or <li> is CONTENT inside a container, not a surface.
+   *
+   * CSS paints tables in the order table > row groups > ROWS > CELLS, so the
+   * cell is painted LAST, on top of the row. An opaque cell therefore HIDES
+   * every row-level background: `tr:hover`, `tr.selected`, `tr:nth-child(even)`.
+   *
+   * Measured in Chrome before this was fixed: with
+   * `body:not(.dark) td { background: var(--surface-raised) }`, a plain row, a
+   * hovered row, a selected row and a zebra row ALL rendered #ffffff. Row hover
+   * and row selection were invisible in light mode on three screens. Dark never
+   * had the bug because its cell tint is an ALPHA overlay, which composites.
+   *
+   * An opaque cell also punches a bright hole when the table sits inside a
+   * modal, a well, or a tinted card.
+   *
+   * A tint is fine. It just has to be alpha.
+   */
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
+  const blockOf = (css, selector) => {
+    const out = {};
+    const re = new RegExp(`(^|\\})\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^{}]*)\\}`, 'g');
+    for (const m of css.matchAll(re)) {
+      for (const d of m[2].matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+    }
+    return out;
+  };
+  const semanticCss = strip(fs.readFileSync(path.join(THEMES, '_semantic.css'), 'utf8'));
+  const varsCss = strip(fs.readFileSync(path.join(SRC, 'styles', 'base', '_variables.css'), 'utf8'));
+  const MAPS = {
+    light: {
+      ...blockOf(varsCss, ':root'),
+      ...blockOf(semanticCss, ':root,\nbody'),
+      ...blockOf(strip(fs.readFileSync(path.join(THEMES, '_light.css'), 'utf8')), 'body:not(.dark):not(.rose)'),
+      ...blockOf(semanticCss, 'body:not(.dark)'),
+    },
+    dark: {
+      ...blockOf(varsCss, ':root'),
+      ...blockOf(semanticCss, ':root,\nbody'),
+      ...blockOf(strip(fs.readFileSync(path.join(THEMES, '_dark.css'), 'utf8')), 'body.dark'),
+      ...blockOf(semanticCss, 'body.dark'),
+    },
+  };
+
+  function resolve(value, map, depth = 0) {
+    if (value == null || depth > 8) return null;
+    const v = String(value).trim();
+    const varM = v.match(/^var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,\s*([\s\S]+))?\)$/);
+    if (varM) return resolve(map[varM[1]] ?? varM[2], map, depth + 1);
+    const hexM = v.match(/^#([0-9a-f]{3,8})$/i);
+    if (hexM) {
+      let h = hexM[1];
+      if (h.length === 3) h = [...h].map((c) => c + c).join('');
+      if (h.length !== 6 && h.length !== 8) return null;
+      return { a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1 };
+    }
+    const rgbaM = v.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgbaM) {
+      const p = rgbaM[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+      if (p.length < 3) return null;
+      return { a: p[3] === undefined ? 1 : p[3] };
+    }
+    if (/^(white|black)$/i.test(v)) return { a: 1 };
+    return null;
+  }
+
+  function rulesOf(css) {
+    const out = []; const stack = []; let buf = ''; let i = 0;
+    while (i < css.length) {
+      const c = css[i];
+      if (c === '{') {
+        const h = buf.trim(); buf = '';
+        stack.push(h.startsWith('@') ? { at: 1 } : { sel: h, start: i + 1 });
+        i += 1; continue;
+      }
+      if (c === '}') {
+        const t = stack.pop();
+        if (t?.sel !== undefined) out.push({ sel: t.sel, body: css.slice(t.start, i) });
+        buf = ''; i += 1; continue;
+      }
+      buf += c; i += 1;
+    }
+    return out;
+  }
+
+  /** Selector whose LAST compound is a content element. */
+  const CONTENT = /(^|[\s>+~])(td|th|tr|tbody|thead|li)(?::[-\w()]+)*\s*$/i;
+  /**
+   * Surfaces that legitimately paint themselves and are exempt:
+   *   - anything self-contained / always-dark (already exempt elsewhere)
+   *   - a POSITION:STICKY header. It must be opaque or rows scroll visibly
+   *     through it. Verified on DataTableTemplate's .dt-table th.
+   */
+  const EXEMPT_FILE = /base\/js\/libs|\.min\.|__old-|main copy|MobileLite|Minigames|Marketplace\.vue|CodePreview/;
+
+  it('no td/tr/li paints an opaque background in the theme it applies to', () => {
+    const offenders = [];
+    for (const file of ALL_FILES) {
+      const r = rel(file);
+      if (EXEMPT_FILE.test(r)) continue;
+      const css = blankComments(styleText(file));
+      for (const rule of rulesOf(css)) {
+        const parts = rule.sel.split(',').map((s) => s.trim()).filter((s) => CONTENT.test(s));
+        if (!parts.length) continue;
+
+        // A sticky element MUST be opaque; that is the whole point of it.
+        if (/position\s*:\s*sticky/i.test(rule.body)) continue;
+
+        const bg = rule.body.match(/(?:^|[;{])\s*background(?:-color)?\s*:\s*([^;}]+)/i);
+        if (!bg) continue;
+        const val = bg[1].trim();
+        if (/gradient|url\(|^(transparent|none|inherit|unset)\b/i.test(val)) continue;
+
+        /**
+         * Only judge a rule in the theme it actually applies to.
+         *
+         * ORDER MATTERS: `:not(.dark)` CONTAINS the substring `.dark`, so a
+         * naive `.dark` test classifies a light-only rule as dark-only and then
+         * resolves its tokens against the wrong map. Caught by the negative
+         * control below, which reported `body:not(.dark) td` as `[dark]`.
+         * Strip the negations first, then look for a real dark scope.
+         */
+        const s = rule.sel.toLowerCase();
+        const withoutNegations = s.replace(/:not\([^)]*\)/g, '');
+        const themes = /:not\(\s*\.dark\s*\)|\.rose\b/.test(s) ? ['light']
+          : /(^|[\s,>+~])(body)?\.(dark|cyberpunk|ember|hacker|midnight|nord)\b/.test(withoutNegations) ? ['dark']
+            : ['light', 'dark'];
+
+        for (const theme of themes) {
+          const col = resolve(val, MAPS[theme]);
+          if (!col || col.a < 0.999) continue;
+          offenders.push(`${r}  [${theme}]  ${parts.join(', ').slice(0, 60)}  {background: ${val}}`);
+        }
+      }
+    }
+    expect(
+      offenders.join('\n') || 'clean',
+      'A table cell / row / list item paints an OPAQUE background.\n'
+      + 'Cells are painted AFTER rows, so this hides tr:hover, tr.selected and\n'
+      + 'tr:nth-child(even) entirely, and punches a bright hole when the table sits\n'
+      + 'inside a modal or a tinted card. Use an alpha overlay token\n'
+      + '(--color-darker-0 / --surface-hover), or no background at all.\n'
+      + 'A position:sticky header is exempt — it has to be opaque.\n'
+    ).toBe('clean');
+  });
+
+  it('classifies a body:not(.dark) rule as LIGHT, not dark (regression)', () => {
+    // `:not(.dark)` contains `.dark`. Testing for `.dark` first got this exactly
+    // backwards, which would resolve a light rule against the dark token map.
+    const classify = (sel) => {
+      const s = sel.toLowerCase();
+      const withoutNegations = s.replace(/:not\([^)]*\)/g, '');
+      return /:not\(\s*\.dark\s*\)|\.rose\b/.test(s) ? ['light']
+        : /(^|[\s,>+~])(body)?\.(dark|cyberpunk|ember|hacker|midnight|nord)\b/.test(withoutNegations) ? ['dark']
+          : ['light', 'dark'];
+    };
+    expect(classify('body:not(.dark) td')).toEqual(['light']);
+    expect(classify('body.dark td')).toEqual(['dark']);
+    expect(classify('body.dark.cyberpunk td')).toEqual(['dark']);
+    expect(classify('.datasets-table td')).toEqual(['light', 'dark']);
+  });
+
+  it('still finds table rules to check, and the exemption is real (anti-vacuity)', () => {
+    let contentRules = 0;
+    let stickyExempt = 0;
+    for (const file of ALL_FILES) {
+      if (EXEMPT_FILE.test(rel(file))) continue;
+      for (const rule of rulesOf(blankComments(styleText(file)))) {
+        if (!rule.sel.split(',').some((s) => CONTENT.test(s.trim()))) continue;
+        contentRules += 1;
+        if (/position\s*:\s*sticky/i.test(rule.body)) stickyExempt += 1;
+      }
+    }
+    expect(contentRules).toBeGreaterThan(20);
+    expect(stickyExempt).toBeGreaterThan(0);
+  });
+});
+
 /* ───────────────── check 3: no NEW hardcoded text colours ───────────────── */
 describe('theme tokens: hardcoded text colours do not grow', () => {
   const DARK_T = ['dark', 'cyberpunk', 'ember', 'hacker', 'midnight', 'nord'];

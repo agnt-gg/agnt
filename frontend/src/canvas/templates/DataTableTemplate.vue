@@ -102,7 +102,10 @@ export default {
 }
 
 .dt-table tr:hover td {
-  background: rgba(255,255,255,0.02);
+  /* Was rgba(255,255,255,0.02): 2% WHITE, which is a faint lift on a dark
+     canvas and completely invisible on a light one. --surface-hover inverts
+     (white-alpha in dark, ink-alpha in light) so the row responds in both. */
+  background: var(--surface-hover);
 }
 
 .dt-empty {

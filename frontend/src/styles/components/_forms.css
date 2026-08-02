@@ -130,10 +130,16 @@ input:-webkit-autofill:focus {
   color: var(--color-primary);
 }
 
+/* This set an OPAQUE background (--color-ultra-dark-navy, which is #ffffff in
+   light mode) at specificity (0,1,1), so it beat the :where() defaults above and
+   a <select> inside a .form-group rendered white while the input next to it
+   rendered the tinted --field-bg. Same field, two different fills.
+
+   It now consumes the same tokens as every other field, so they match. */
 .form-group select {
-  color: var(--color-dull-white);
-  background-color: var(--color-ultra-dark-navy);
-  border-color: var(--color-dull-navy);
+  color: var(--text-primary);
+  background-color: var(--field-bg);
+  border-color: var(--field-border);
 }
 
 /* Focus RECOLOURS the existing border. It must not use the `border` shorthand

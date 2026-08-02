@@ -265,7 +265,23 @@ body:not(.dark) th {
 }
 
 body:not(.dark) td {
-  background: var(--surface-raised);
+  /* NO BACKGROUND, DELIBERATELY. A cell is content inside a container, not a
+     surface of its own.
+
+     This was var(--surface-raised) — opaque #ffffff — and CSS paints tables in
+     the order table > row groups > ROWS > CELLS, so the cell painted last, on
+     top. That did not just look wrong, it HID every row-level background:
+     `tr:hover`, `tr.selected` and `tr:nth-child(even)` all render on the row.
+
+     Measured in Chrome before the fix: a plain row, a hovered row, a selected
+     row and a zebra row ALL rendered #ffffff. Row hover and row selection were
+     invisible in light mode on the EvalDatasets, Experiments and Memory
+     screens, and zebra striping was invisible in the tool docs.
+
+     Dark never had this bug because its cell tint is an ALPHA overlay
+     (--color-darker-1), which composites instead of covering.
+
+     The cell grid is drawn by the borders below — it does not need a fill. */
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }
