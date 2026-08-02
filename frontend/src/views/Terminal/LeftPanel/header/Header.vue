@@ -213,7 +213,10 @@ export default {
 }
 
 .progress-text {
-  color: var(--color-text-muted);
+  /* Nested inside .progress-fill, whose background is --color-primary: a
+     saturated fill in both themes. A themed muted grey lands mid-tone on it. */
+  color: var(--text-on-scrim);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   font-size: var(--font-size-xs);
   padding: 2px 8px 0px;
   width: 100%;

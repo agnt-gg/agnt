@@ -987,8 +987,22 @@ h3 {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: var(--text-primary);
+  /* Centred over the WHOLE bar, so which backdrop it lands on depends on the
+     percentage: the saturated fill above ~50%, the pale track below it.
+     --text-primary was dark ink, unreadable on the fill.
+
+     Light ink alone is not the answer either — at 38% it would sit on a
+     near-white track and only a text-shadow would rescue it, which reads as a
+     rendering artefact rather than a design. So the label carries its OWN
+     scrim: a small dark chip that guarantees the same contrast at 1% and 99%.
+     Text over an unpredictable backdrop needs a backdrop of its own. */
+  color: var(--text-on-scrim);
+  background: var(--scrim);
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-weight: 600;
   font-size: 0.8em;
+  line-height: 1.4;
 }
 
 /* Tasks list */

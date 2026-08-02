@@ -814,8 +814,16 @@ h3 {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: var(--text-primary);
+  /* Same as GoalsPanel: centred over the whole bar, so the backdrop depends on
+     the percentage. The label carries its own scrim chip rather than leaning on
+     a text-shadow, so contrast is identical at 1% and 99%. */
+  color: var(--text-on-scrim);
+  background: var(--scrim);
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-weight: 600;
   font-size: 0.8em;
+  line-height: 1.4;
 }
 
 .workflow-info {

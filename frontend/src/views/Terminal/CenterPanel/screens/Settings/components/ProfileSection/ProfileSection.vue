@@ -884,7 +884,13 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: var(--text-primary);
+  /* This span is nested INSIDE .xp-progress-fill-large, so it is always sitting
+     on the brand gradient — a saturated fill in both themes. --text-primary is
+     dark ink in light mode, which put dark-on-dark right here.
+
+     --text-on-scrim is declared invariant in _semantic.css for exactly this:
+     text over a backdrop that does not follow the theme. */
+  color: var(--text-on-scrim);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   min-width: 40px;

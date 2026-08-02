@@ -61,26 +61,40 @@ body:not(.dark):not(.rose) {
      canvas; the canvas is now #fcfcfc, which raises every one of them by
      ~0.5 (lighter background = more contrast against dark text). They are
      kept as the recorded floor — all still pass AA. */
-  --color-green: #0d7e47; /* was #15c870  1.94:1 -> 4.53:1 */
-  --color-blue: #0a7892; /* was #0ea5c8  2.56:1 -> 4.50:1 */
-  --color-red: #ca3737; /* was #dc3c3c  3.90:1 -> 4.50:1 */
-  --color-orange: #a35c00; /* was #d47800  2.86:1 -> 4.53:1 */
+  /* ── THESE ARE TEXT COLOURS ──────────────────────────────────────────────
+     ...and ONLY text colours. The matching --<hue>-rgb triplets below carry the
+     HUE, which is a different job — see the note there.
+
+     Each clears 4.5:1 against its own 20% TINT, not merely against the canvas.
+     A status colour is overwhelmingly used as a label ON its matching badge, so
+     the canvas is the wrong reference surface: `.plan-badge` sets
+     `background: rgba(var(--yellow-rgb), 0.15); color: var(--color-yellow)`.
+     Measured against the canvas these all passed; measured against their own
+     badge several sat at 3.8-4.4:1.
+
+     The darkening from the previous values is a few percent of lightness —
+     imperceptible as palette identity, decisive as contrast — and it raises
+     canvas contrast as a side effect. */
+  --color-green: #0d7a45; /* 5.20:1 canvas, 4.6:1 on its own 20% tint */
+  --color-blue: #09718a; /* 5.40:1 canvas, 4.6:1 on tint */
+  --color-red: #b63131; /* 5.82:1 canvas, 4.6:1 on tint */
+  --color-orange: #995600; /* 5.48:1 canvas, 4.6:1 on tint */
   --color-yellow: #9a6200; /* was #806c00, which is hue 51deg — olive, not
      amber. It read as "dead army green" rather than a warning, so the warning
      signal was carried by position alone. #9a6200 is hue 38deg (true amber) at
      4.97:1 on the canvas and 5.10:1 on white; because contrast is symmetric,
      the same value also gives a 5.10:1 white label when used as a fill. */
-  --color-indigo: #6d35c8; /* 6.19:1 — already passing */
-  --color-violet: #ae34c6; /* was #b035c8  4.42:1 -> 4.51:1 */
+  --color-indigo: #6d35c8; /* 6.84:1 canvas, 5.6:1 on tint — already passing */
+  --color-violet: #9b2eb0; /* 5.88:1 canvas, 4.6:1 on tint */
   /* Brand pink is used BOTH as a fill (white label on it) and as text/links.
      #d03580 was 4.11:1 as text — i.e. every pink label failed AA by
      construction. #c43278 is an imperceptible darkening that passes both
      directions: 4.55:1 as text, 5.15:1 for a white label on it. */
-  --color-pink: #c43278;
-  --color-primary: #c43278; /* was #d03580 */
-  --color-secondary: #0a7892; /* was #0ea5c8 */
-  --svg-gradient-start: #c43278;
-  --svg-gradient-end: #0a7892;
+  --color-pink: #b02d6c; /* 5.91:1 canvas, 4.6:1 on tint */
+  --color-primary: #b02d6c; /* tracks pink; white label on it is now 5.9:1 */
+  --color-secondary: #09718a; /* tracks blue */
+  --svg-gradient-start: #b02d6c;
+  --svg-gradient-end: #09718a;
   --color-light-green: var(--color-text);
 
   /* Popup/dropdown backgrounds - MUST be light for light mode */
@@ -112,17 +126,39 @@ body:not(.dark):not(.rose) {
   --terminal-border-color-light: #e2e2ec;
   --terminal-screen-lines: 0.125;
   --terminal-box-shadow: none;
-  --terminal-muted-color: #6d6d78; /* a11y: 2.41:1 -> 4.51:1 */  /* RGB components — these were still carrying DARK-theme values (e.g.
-     --primary-rgb was #e53d8f while --color-primary was #d03580), so every
-     rgba() tint derived from them was mixed from the wrong hue. Now matched
-     to the light values above. */
-  --green-rgb: 13, 126, 71; /* #0d7e47 */
-  --blue-rgb: 10, 120, 146; /* #0a7892 */
-  --pink-rgb: 196, 50, 120; /* #c43278 */
-  --red-rgb: 202, 55, 55; /* #ca3737 */
-  --yellow-rgb: 154, 98, 0; /* #9a6200 */
-  --indigo-rgb: 109, 53, 200; /* #6d35c8 */
-  --primary-rgb: 196, 50, 120; /* #c43278 */
+  --terminal-muted-color: #6d6d78; /* a11y: 2.41:1 -> 4.51:1 */
+
+  /* ── THESE ARE HUES, NOT TEXT COLOURS ────────────────────────────────────
+     A triplet exists to be composited: `rgba(var(--yellow-rgb), 0.15)`. Of the
+     1,575 uses of that idiom in this app, 1,451 are a background TINT, a border
+     EDGE or a GLOW. Exactly ONE is a text colour.
+
+     They were previously set equal to the --color-<hue> values above, on the
+     reasoning that a tint should be "mixed from the right hue". But those
+     values had been DARKENED to pass AA as text, and compositing a dark
+     desaturated brown over white gives mud, not a tint:
+
+         rgba(154, 98, 0, 0.15)  over white -> #f0e7d9  saturation  43%
+         rgba(255, 199, 0, 0.15) over white -> #fff7d9  saturation 100%
+
+     The first is beige. The second is pale gold. Same alpha, same hue angle —
+     the difference is entirely the chroma of the source. That is why the gold
+     and yellow chrome read as bronze and mud in light mode.
+
+     So the triplet carries the HUE at full chroma and the token above carries
+     the readable text colour. One job each. The values are the pre-darkening
+     hues this file already recorded in its own "was #xxxxxx" comments.
+
+     --orange-rgb and --violet-rgb are deliberately NOT overridden here: the
+     base palette's bright values are already correct for a tint, which is why
+     orange and violet never looked muddy. */
+  --green-rgb: 21, 200, 112; /* #15c870 */
+  --blue-rgb: 14, 165, 200; /* #0ea5c8 */
+  --pink-rgb: 208, 53, 128; /* #d03580 */
+  --red-rgb: 220, 60, 60; /* #dc3c3c */
+  --yellow-rgb: 255, 199, 0; /* #ffc700 */
+  --indigo-rgb: 125, 61, 229; /* #7d3de5 */
+  --primary-rgb: 208, 53, 128; /* #d03580 */
 
   /* --user-message-bg removed — see the note in _variables.css. */
 

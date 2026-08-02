@@ -102,6 +102,9 @@ const chan = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s +
 const lum = ([r, g, b]) => 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
 const Lstar = (y) => (y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y);
 const over = (fg, bg) => (fg.a >= 0.999 ? fg.rgb : fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a)));
+/* WCAG contrast. The original checks in this file only ever compared
+   luminances, so there was no ratio helper to reach for. */
+const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
 function saturation([r, g, b]) {
   const R = r / 255; const G = g / 255; const B = b / 255;
   const mx = Math.max(R, G, B); const mn = Math.min(R, G, B);
@@ -236,6 +239,108 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
     ).toBe('clean');
   });
 
+  /**
+   * A --<hue>-rgb triplet exists to be COMPOSITED: rgba(var(--yellow-rgb), .15).
+   * 1,451 of its 1,575 uses are a tint, an edge or a glow; exactly one is text.
+   *
+   * The light triplets were once set equal to the --color-<hue> text values,
+   * which had been darkened to pass AA on white. Compositing a dark desaturated
+   * brown over white gives mud:
+   *     rgba(154, 98, 0, .15)  -> #f0e7d9  saturation  43%   (beige)
+   *     rgba(255, 199, 0, .15) -> #fff7d9  saturation 100%   (pale gold)
+   * Same alpha, same hue angle. The difference is the chroma of the source, and
+   * it is why every gold and yellow surface read as bronze in light mode.
+   */
+  it('every light-mode hue triplet is a HUE, not a darkened text colour', () => {
+    const HUES = ['yellow', 'green', 'blue', 'red', 'pink', 'primary', 'indigo', 'orange', 'violet'];
+    const weak = [];
+    for (const h of HUES) {
+      const raw = MAPS.light[`--${h}-rgb`];
+      if (!raw) continue;
+      const rgb = raw.split(',').map((x) => parseFloat(x));
+      if (rgb.length !== 3 || rgb.some(Number.isNaN)) continue;
+      const s = saturation(rgb);
+      const L = Lstar(lum(rgb));
+      // A hue is saturated. A darkened-for-text value is mid-dark and duller.
+      if (s < 0.55 || L < 35) weak.push(`--${h}-rgb: ${raw}  (saturation ${(s * 100).toFixed(0)}%, L* ${L.toFixed(0)})`);
+    }
+    expect(
+      weak.join('\n') || 'clean',
+      'A light-mode --<hue>-rgb triplet is dark and/or desaturated, which means it\n'
+      + 'is a TEXT colour rather than a hue. Tints derived from it composite to mud\n'
+      + 'over white. Keep the triplet at full chroma and put the readable value in\n'
+      + '--color-<hue> instead — they are two different jobs.\n'
+    ).toBe('clean');
+  });
+
+  /**
+   * A status colour is overwhelmingly used as a label ON its matching badge, so
+   * the canvas is the wrong reference surface. Measured against the canvas the
+   * old values all passed; measured against their own 15-20% tint several sat
+   * at 3.8-4.4:1.
+   */
+  it('every status text colour clears AA on its own tint, not just the canvas', () => {
+    const HUES = ['yellow', 'green', 'blue', 'red', 'pink', 'indigo', 'orange', 'violet'];
+
+    /**
+     * KNOWN DEBT, frozen so it cannot grow. These three fail in the DARK theme
+     * and always have -- they were surfaced by the probe written for the light
+     * fix, not caused by it:
+     *     pink   #e53d8f on its own tint  3.92:1
+     *     violet #d13de5                  3.97:1
+     *     indigo #7d3de5                  2.80:1
+     * Fixing them means brightening the dark accent hues (indigo would go
+     * #7d3de5 -> #a071ec), which is a visible change to a theme nobody reported
+     * a problem with. Tracked on triage/dark-status-text-on-tint.
+     *
+     * An entry here is a promise to come back, not a licence: anything NOT on
+     * this list fails immediately.
+     */
+    const KNOWN_DARK_DEBT = new Set(['pink', 'violet', 'indigo']);
+
+    const bad = [];
+    for (const theme of ['light', 'dark']) {
+      for (const h of HUES) {
+        if (theme === 'dark' && KNOWN_DARK_DEBT.has(h)) continue;
+        const text = resolve(`var(--color-${h})`, MAPS[theme]);
+        const trip = MAPS[theme][`--${h}-rgb`];
+        if (!text || !trip) continue;
+        const rgb = trip.split(',').map((x) => parseFloat(x));
+        if (rgb.length !== 3 || rgb.some(Number.isNaN)) continue;
+        for (const a of [0.1, 0.15, 0.2]) {
+          const tint = over({ rgb, a }, CANVAS[theme]);
+          const c = ratio(over(text, tint), tint);
+          if (c < 4.5) bad.push(`[${theme}] --color-${h} on its own ${a} tint: ${c.toFixed(2)}:1`);
+        }
+      }
+    }
+    expect(
+      bad.join('\n') || 'clean',
+      'A status text colour fails AA against its own badge tint. Badges are written\n'
+      + 'as `background: rgba(var(--<hue>-rgb), .15); color: var(--color-<hue>)`, so\n'
+      + 'the tint is the surface that matters, not the canvas.\n'
+    ).toBe('clean');
+  });
+
+  it('the known dark debt is still real, and still exactly three (anti-rot)', () => {
+    // If someone fixes one, this fails and tells them to shrink the list -- so
+    // the exemption cannot outlive the problem.
+    const stillFailing = [];
+    for (const h of ['pink', 'violet', 'indigo']) {
+      const text = resolve(`var(--color-${h})`, MAPS.dark);
+      const trip = MAPS.dark[`--${h}-rgb`];
+      if (!text || !trip) continue;
+      const rgb = trip.split(',').map((x) => parseFloat(x));
+      const tint = over({ rgb, a: 0.2 }, CANVAS.dark);
+      if (ratio(over(text, tint), tint) < 4.5) stillFailing.push(h);
+    }
+    expect(
+      stillFailing.sort(),
+      'The frozen dark-theme debt list no longer matches reality. If you fixed one,\n'
+      + 'remove it from KNOWN_DARK_DEBT above so the guard starts enforcing it.'
+    ).toEqual(['indigo', 'pink', 'violet']);
+  });
+
   it('detects the exact bugs this guard exists for (negative control)', () => {
     // --color-light-navy as a border in dark: the sidebar / conversation-list bug.
     const leak = resolve('var(--color-light-navy)', MAPS.dark);
@@ -253,5 +358,12 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
     // rgba(0,0,0,0.2) really is --color-darker-1 in dark, and is not in light
     expect(resolve('rgba(0,0,0,0.2)', MAPS.dark)).toEqual(resolve('var(--color-darker-1)', MAPS.dark));
     expect(resolve('rgba(0,0,0,0.2)', MAPS.light)).not.toEqual(resolve('var(--color-darker-1)', MAPS.light));
+
+    // The old muddy triplet would fail the hue check; the shipped one passes.
+    expect(saturation([154, 98, 0])).toBeGreaterThan(0.55); // chroma alone is not the tell
+    const muddy = over({ rgb: [154, 98, 0], a: 0.15 }, CANVAS.light);
+    const clean = over({ rgb: [255, 199, 0], a: 0.15 }, CANVAS.light);
+    expect(saturation(muddy)).toBeLessThan(0.6); // the TINT is what goes dull
+    expect(saturation(clean)).toBeGreaterThan(0.9);
   });
 });
