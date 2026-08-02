@@ -13,6 +13,8 @@
  * else is null: silence is safer than a confident false claim about money.
  */
 
+import { openRouterCacheTtlMs } from './openRouterCache.js';
+
 // Anthropic-family. AGNT explicitly requests this on every cache breakpoint.
 export const ANTHROPIC_REQUESTED_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -70,6 +72,14 @@ export function promptCacheTtlMs(provider, model = null) {
       if (OPENAI_GPT56_OR_LATER.test(model)) return OPENAI_GPT56_CACHE_TTL_MS;
       if (OPENAI_EXTENDED_CACHE_MODELS.test(model)) return OPENAI_EXTENDED_CACHE_TTL_MS;
       return OPENAI_IDLE_EVICTION_MS;
+    case 'openrouter':
+      // Only the families AGNT sends an explicit breakpoint to report a
+      // window, and only because the breakpoint names the duration. The
+      // automatic families return null by design: their caches demonstrably
+      // work, but nothing AGNT sends controls how long they live and we have
+      // no reproducible measurement of it. Guessing here would put a
+      // confident countdown on a panel about money.
+      return openRouterCacheTtlMs(model);
     default:
       return null;
   }

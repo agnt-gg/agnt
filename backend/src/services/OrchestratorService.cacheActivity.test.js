@@ -22,6 +22,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
+import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC_PATH = path.join(__dirname, 'OrchestratorService.js');
@@ -47,7 +49,14 @@ function extractAccumulateUsage(source) {
 
 const BODY = extractAccumulateUsage(SRC);
 
-function makeHarness() {
+/**
+ * @param {object} [opts]
+ * @param {string} [opts.provider] Drives cache-write TTL bucketing. The write
+ *   duration is a property of the REQUEST, so the function needs to know which
+ *   provider/model the round was sent to.
+ * @param {string} [opts.model]
+ */
+function makeHarness({ provider = 'openai', model = 'gpt-4o' } = {}) {
   const events = [];
   const tokenAccumulator = {
     inputTokens: 0,
@@ -61,15 +70,30 @@ function makeHarness() {
   const conversationContext = { _turnRound: 1 };
   const sendEvent = (name, data) => events.push({ name, data });
 
+  // Collaborators are injected as the REAL implementations, not stubs, so the
+  // extracted bytes are exercised against the same helpers that ship. A stub
+  // here would let a broken usage-parser or TTL table pass unnoticed.
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     'tokenAccumulator',
     'conversationContext',
     'sendEvent',
+    'readOpenAiShapedCacheUsage',
+    'promptCacheTtlMs',
+    'normalizedProvider',
+    'model',
     `return function accumulateUsage(usage) ${BODY};`
   );
   return {
-    accumulateUsage: factory(tokenAccumulator, conversationContext, sendEvent),
+    accumulateUsage: factory(
+      tokenAccumulator,
+      conversationContext,
+      sendEvent,
+      readOpenAiShapedCacheUsage,
+      promptCacheTtlMs,
+      provider,
+      model
+    ),
     events,
     tokenAccumulator,
     conversationContext,
@@ -215,5 +239,67 @@ describe('accumulateUsage token accounting (regression guard)', () => {
     });
     expect(h.tokenAccumulator.cacheCreation5mTokens).toBe(1000);
     expect(h.tokenAccumulator.cacheCreation1hTokens).toBe(2000);
+  });
+});
+
+describe('accumulateUsage: OpenRouter cache writes', () => {
+  // REGRESSION: `prompt_tokens_details.cache_write_tokens` was never read, so
+  // every OpenRouter cache write accumulated as zero. 816 executions in the
+  // live ledger recorded cache_creation_tokens = 0 while paying a 2x write
+  // premium — caching looked switched off exactly when it was working.
+  const openRouterWrite = {
+    prompt_tokens: 8522,
+    completion_tokens: 5,
+    prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 8519 },
+  };
+
+  it('records the write', () => {
+    const h = makeHarness({ provider: 'openrouter', model: 'anthropic/claude-haiku-4.5' });
+    h.accumulateUsage(openRouterWrite);
+    expect(h.tokenAccumulator.cacheCreationTokens).toBe(8519);
+  });
+
+  it('buckets it as 1h when that is the TTL the request asked for', () => {
+    // Priced at 2.0x, not 1.25x. Getting this wrong understates the write.
+    const h = makeHarness({ provider: 'openrouter', model: 'anthropic/claude-haiku-4.5' });
+    h.accumulateUsage(openRouterWrite);
+    expect(h.tokenAccumulator.cacheCreation1hTokens).toBe(8519);
+    expect(h.tokenAccumulator.cacheCreation5mTokens).toBe(0);
+  });
+
+  it('buckets it as 5m where no hour was requested', () => {
+    const h = makeHarness({ provider: 'openrouter', model: 'qwen/qwen3-coder-plus' });
+    h.accumulateUsage(openRouterWrite);
+    expect(h.tokenAccumulator.cacheCreation5mTokens).toBe(8519);
+    expect(h.tokenAccumulator.cacheCreation1hTokens).toBe(0);
+  });
+
+  it('does NOT re-add the write to input — prompt_tokens already includes it', () => {
+    // Verified live: prompt_tokens 8522 alongside cache_write_tokens 8519.
+    // Adding them would double-bill every write turn.
+    const h = makeHarness({ provider: 'openrouter', model: 'anthropic/claude-haiku-4.5' });
+    h.accumulateUsage(openRouterWrite);
+    expect(h.tokenAccumulator.inputTokens).toBe(8522);
+  });
+
+  it('emits cache_activity for a write-only round', () => {
+    // The freshness clock must start ticking on the turn that WRITES the
+    // prefix, not only once something reads it back.
+    const h = makeHarness({ provider: 'openrouter', model: 'anthropic/claude-haiku-4.5' });
+    h.accumulateUsage(openRouterWrite);
+    expect(h.cacheEvents()).toHaveLength(1);
+    expect(h.cacheEvents()[0].data.cacheCreationTokens).toBe(8519);
+  });
+
+  it('records the read on the following turn', () => {
+    const h = makeHarness({ provider: 'openrouter', model: 'anthropic/claude-haiku-4.5' });
+    h.accumulateUsage({
+      prompt_tokens: 8525,
+      completion_tokens: 4,
+      prompt_tokens_details: { cached_tokens: 8513, cache_write_tokens: 0 },
+    });
+    expect(h.tokenAccumulator.cacheReadTokens).toBe(8513);
+    expect(h.tokenAccumulator.cacheCreationTokens).toBe(0);
+    expect(h.tokenAccumulator.inputTokens).toBe(8525);
   });
 });

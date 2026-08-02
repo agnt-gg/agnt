@@ -22,6 +22,7 @@ import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orches
 import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
 import { buildEconomics } from '../utils/contextEconomics.js';
 import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
+import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
 import {
   getCalibration,
   recordCalibration,
@@ -1371,7 +1372,7 @@ async function universalChatHandler(req, res, context = {}) {
 
     // client/adapter are LET so failover can rebuild them on a fallback tier.
     let client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-    let adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
+    let adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
 
     // Store client in context
     conversationContext.llmClient = client;
@@ -1916,12 +1917,34 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // figure under `input_tokens_details.cached_tokens`. Reading only the
         // Chat Completions shape meant every Codex cache hit was accumulated as
         // zero, so no dashboard could ever show whether Codex caching worked.
-        const cachedReadTokens = usage.prompt_tokens_details?.cached_tokens
-          ?? usage.input_tokens_details?.cached_tokens
-          ?? 0;
+        const { cacheReadTokens: cachedReadTokens, cacheWriteTokens } =
+          readOpenAiShapedCacheUsage(usage);
         if (cachedReadTokens > 0) {
           tokenAccumulator.cacheReadTokens += cachedReadTokens;
           roundCacheRead = cachedReadTokens;
+        }
+
+        // Cache WRITES on an OpenAI-shaped response. OpenRouter reports these
+        // as `prompt_tokens_details.cache_write_tokens` for every upstream with
+        // explicit caching and a cache-write price. AGNT read only the `cached_
+        // tokens` half of that object, so a write was indistinguishable from no
+        // caching at all: 816 OpenRouter executions in the live ledger recorded
+        // cache_creation_tokens = 0 while genuinely paying a write premium.
+        // Unlike Anthropic's native shape, `prompt_tokens` here ALREADY
+        // includes these tokens (verified live: prompt_tokens 8522 with
+        // cache_write_tokens 8513), so inputTokens must not be incremented
+        // again — only the write bucket is credited.
+        if (cacheWriteTokens > 0) {
+          tokenAccumulator.cacheCreationTokens += cacheWriteTokens;
+          // Bucket by the TTL we actually ASKED for. The response does not echo
+          // it back, and the request is the only place the duration is known.
+          const writeTtlMs = promptCacheTtlMs(normalizedProvider, model);
+          if (writeTtlMs != null && writeTtlMs >= 60 * 60 * 1000) {
+            tokenAccumulator.cacheCreation1hTokens += cacheWriteTokens;
+          } else {
+            tokenAccumulator.cacheCreation5mTokens += cacheWriteTokens;
+          }
+          roundCacheWrite = cacheWriteTokens;
         }
       }
 
@@ -2002,7 +2025,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // across to a different provider (it would be an invalid model id).
         model = tier.model || (await import('./ai/ProviderRegistry.js')).getTextModels(normalizedProvider)?.[0] || tier.model;
         client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
+        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
         conversationContext.llmClient = client;
         // Keep the shared conversation context in sync so tools that resolve
         // provider/model from context (analyze_image, custom tool execution,

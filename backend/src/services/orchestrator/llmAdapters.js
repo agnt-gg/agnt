@@ -10,6 +10,7 @@ import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../ai/reasoni
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from './messageSanitizers.js';
 import { openAIPromptCachePolicy } from '../../utils/promptCacheTtl.js';
+import { resolveOpenRouterCacheContract } from '../../utils/openRouterCache.js';
 
 /**
  * Return the upstream provider error verbatim.
@@ -285,6 +286,108 @@ class BaseAdapter {
     }
     this.client = client;
     this.model = model;
+  }
+
+  /**
+   * Apply cache_control marker to a message's content.
+   * Handles string content, array content, and tool_result messages.
+   *
+   * Lives on BaseAdapter, not AnthropicAdapter, because `cache_control` is not
+   * an Anthropic-SDK concept — it is a CONTENT-BLOCK concept. OpenRouter
+   * accepts the identical shape on the OpenAI-compatible endpoint and
+   * translates it to each upstream's native format, so the Anthropic adapter
+   * and the OpenAI-like adapter need the exact same primitive. Duplicating it
+   * would let the two copies drift, and the drift would be invisible: a
+   * mis-placed breakpoint does not error, it silently bills full price.
+   */
+  _applyCacheMarker(msg, marker) {
+    const content = msg.content;
+
+    // tool_result or empty content — mark at message level (not supported, skip)
+    if (content == null || content === '') return;
+
+    // String content → convert to content block array with marker
+    if (typeof content === 'string') {
+      msg.content = [{ type: 'text', text: content, cache_control: marker }];
+      return;
+    }
+
+    // Array content → mark the last block
+    if (Array.isArray(content) && content.length > 0) {
+      content[content.length - 1].cache_control = marker;
+    }
+  }
+
+  /**
+   * Strip all cache_control markers from conversation messages.
+   * Must be called before applying fresh markers to avoid exceeding
+   * Anthropic's 4-breakpoint limit across tool loop rounds.
+   */
+  _stripCacheMarkers(messages) {
+    for (const msg of messages) {
+      delete msg.cache_control;
+      const content = msg.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          delete block.cache_control;
+        }
+      }
+    }
+  }
+
+  /**
+   * All-1h rolling breakpoints (PRD-113).
+   *
+   * With `count >= 2`:
+   *   - 1-hour marker on the second-to-last non-system message (the end of the
+   *     stable prior-turn prefix). Anthropic caches everything up to and
+   *     including this block, so prior turns survive long tool pauses / reads.
+   *   - 1-hour marker on the last non-system message (the current turn).
+   *
+   * Why the tail is 1h and NOT 5m: a 5m tail double-writes every turn — the
+   * newest message is written once at the 5m rate (1.25x), then re-written at
+   * the 1h rate (2x) next turn when it joins the long-lived prefix. Measured
+   * live (2026-07-06, cache-wars-bench E4 vs E4b, Sonnet 4.5): 5m-tail hybrid
+   * wrote ~10.4k tokens/turn steady-state vs ~5.2k for all-1h — all-1h was
+   * strictly cheaper ($0.262 vs $0.323 over 5 turns + one idle gap).
+   *
+   * With `count === 1` (or only one eligible message): a single 1h marker on
+   * the latest message.
+   *
+   * The caller (Anthropic adapter) must also mark system + tools with 1h,
+   * for a total of 4 breakpoints, all 1h.
+   *
+   * `marker` is a parameter rather than a hardcoded literal so the same
+   * placement strategy can carry a different TTL. Not every upstream honours
+   * 1h: routed through OpenRouter, Alibaba's cache is a fixed 5-minute window
+   * and rejects nothing — it just ignores the field. Passing the marker in
+   * keeps ONE placement implementation while letting the caller state the only
+   * thing that actually varies.
+   *
+   * IMPORTANT: Always strip stale markers first. When the adapter loops
+   * through multiple tool-call rounds in one turn, markers on old message
+   * positions must be cleared or the 4-breakpoint cap is exceeded.
+   */
+  _applyRollingCacheBreakpoints(messages, count = 2, marker = { type: 'ephemeral', ttl: '1h' }) {
+    if (!messages || messages.length === 0) return;
+
+    this._stripCacheMarkers(messages);
+
+    const indices = [];
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role !== 'system') indices.push(i);
+    }
+    if (indices.length === 0) return;
+
+    const latestIdx = indices[indices.length - 1];
+
+    if (count >= 2 && indices.length >= 2) {
+      const prefixIdx = indices[indices.length - 2];
+      this._applyCacheMarker(messages[prefixIdx], { ...marker });
+      this._applyCacheMarker(messages[latestIdx], { ...marker });
+    } else if (count >= 1) {
+      this._applyCacheMarker(messages[latestIdx], { ...marker });
+    }
   }
 
   /**
@@ -598,6 +701,78 @@ class OpenAiLikeAdapter extends BaseAdapter {
     this.extraBody = options.extraBody || null;
     // Provider key — used to gate provider-specific request shaping (e.g., Kimi schema sanitization)
     this.provider = options.provider || null;
+    // Conversation identity. OpenRouter uses this to pin a conversation to one
+    // upstream endpoint (sticky routing) from the FIRST request, instead of
+    // only after it has already observed a cache hit.
+    this.conversationId = options.conversationId || null;
+    // Resolved once per adapter: which cache protocol this specific routed
+    // model speaks. Null for every provider that is not OpenRouter.
+    this.cacheContract = this.provider === 'openrouter'
+      ? resolveOpenRouterCacheContract(model)
+      : null;
+  }
+
+  /**
+   * Return a copy of `messages` carrying OpenRouter cache breakpoints, or the
+   * original array when this model caches automatically.
+   *
+   * Three breakpoints, under Anthropic's cap of four:
+   *   1. the last system message — AGNT's system prompt plus tool definitions,
+   *      the largest and most stable block in the request, and the one that
+   *      produced the measured 94.8% saving;
+   *   2. + 3. the rolling pair from _applyRollingCacheBreakpoints, so prior
+   *      turns survive long tool pauses.
+   *
+   * Returns a COPY. The array handed to an adapter is the orchestrator's live
+   * message ledger, and _applyCacheMarker rewrites string content into content
+   * blocks in place. Mutating it here would leak provider-specific request
+   * shape back into conversation state that other providers, the token
+   * estimator, and the persisted transcript all read.
+   */
+  _shapeCacheBreakpoints(messages) {
+    const contract = this.cacheContract;
+    if (!contract || contract.mode !== 'explicit') return messages;
+    if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+    const marker = contract.marker;
+    if (!marker) return messages;
+
+    const shaped = messages.map((msg) => ({
+      ...msg,
+      content: Array.isArray(msg.content) ? msg.content.map((b) => ({ ...b })) : msg.content,
+    }));
+
+    // Strips stale markers, then marks the rolling pair.
+    this._applyRollingCacheBreakpoints(shaped, 2, marker);
+
+    // Then the stable prefix. Must come AFTER the rolling call, which strips.
+    for (let i = shaped.length - 1; i >= 0; i--) {
+      if (shaped[i].role === 'system') {
+        this._applyCacheMarker(shaped[i], { ...marker });
+        break;
+      }
+    }
+
+    return shaped;
+  }
+
+  /**
+   * Request fields that identify this conversation to OpenRouter.
+   *
+   * OpenRouter pins a conversation to one upstream endpoint so the prefix that
+   * endpoint cached stays reachable. Without an explicit key it derives
+   * identity by hashing the opening messages, and per its own docs only
+   * establishes stickiness AFTER it has already observed cache usage — so the
+   * first hop of a conversation can land on a different upstream and start
+   * cold. `session_id` is the documented sticky-routing key and makes that
+   * deterministic from request one.
+   *
+   * Capped at 256 chars per the API contract; AGNT conversation ids are UUIDs,
+   * so the slice is a guard against a future id format, not a live concern.
+   */
+  _cacheRoutingParams() {
+    if (this.provider !== 'openrouter' || !this.conversationId) return null;
+    return { session_id: `agnt-${this.conversationId}`.slice(0, 256) };
   }
 
   /**
@@ -694,7 +869,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
       try {
         const requestParams = {
           model: this.model,
-          messages: currentMessages,
+          messages: this._shapeCacheBreakpoints(currentMessages),
           tools: preparedTools.length > 0 ? preparedTools : undefined,
           tool_choice: preparedTools.length > 0 ? 'auto' : undefined,
         };
@@ -702,6 +877,8 @@ class OpenAiLikeAdapter extends BaseAdapter {
         if (this.extraBody) {
           Object.assign(requestParams, this.extraBody);
         }
+        const routingParams = this._cacheRoutingParams();
+        if (routingParams) Object.assign(requestParams, routingParams);
         const response = await this.client.chat.completions.create(requestParams);
 
         const message = response.choices[0].message;
@@ -921,7 +1098,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
         const requestParams = {
           model: this.model,
-          messages: currentMessages,
+          messages: this._shapeCacheBreakpoints(currentMessages),
           tools: effectiveTools.length > 0 ? effectiveTools : undefined,
           tool_choice: effectiveTools.length > 0 ? 'auto' : undefined,
           stream: true,
@@ -932,6 +1109,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
           Object.assign(requestParams, this.extraBody);
           console.log('[OpenAI Debug] Extra body params merged:', JSON.stringify(this.extraBody));
         }
+        const routingParams = this._cacheRoutingParams();
+        if (routingParams) Object.assign(requestParams, routingParams);
         // Log key request params (excluding message content for brevity)
         const requestBodySize = JSON.stringify(requestParams).length;
         console.log('[OpenAI Debug] Request params:', {
@@ -1581,91 +1760,6 @@ class AnthropicAdapter extends BaseAdapter {
       description: tool.function.description,
       input_schema: tool.function.parameters,
     }));
-  }
-
-  /**
-   * Apply cache_control marker to a message's content.
-   * Handles string content, array content, and tool_result messages.
-   */
-  _applyCacheMarker(msg, marker) {
-    const content = msg.content;
-
-    // tool_result or empty content — mark at message level (not supported, skip)
-    if (content == null || content === '') return;
-
-    // String content → convert to content block array with marker
-    if (typeof content === 'string') {
-      msg.content = [{ type: 'text', text: content, cache_control: marker }];
-      return;
-    }
-
-    // Array content → mark the last block
-    if (Array.isArray(content) && content.length > 0) {
-      content[content.length - 1].cache_control = marker;
-    }
-  }
-
-  /**
-   * Strip all cache_control markers from conversation messages.
-   * Must be called before applying fresh markers to avoid exceeding
-   * Anthropic's 4-breakpoint limit across tool loop rounds.
-   */
-  _stripCacheMarkers(messages) {
-    for (const msg of messages) {
-      delete msg.cache_control;
-      const content = msg.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          delete block.cache_control;
-        }
-      }
-    }
-  }  /**
-   * All-1h rolling breakpoints (PRD-113).
-   *
-   * With `count >= 2`:
-   *   - 1-hour marker on the second-to-last non-system message (the end of the
-   *     stable prior-turn prefix). Anthropic caches everything up to and
-   *     including this block, so prior turns survive long tool pauses / reads.
-   *   - 1-hour marker on the last non-system message (the current turn).
-   *
-   * Why the tail is 1h and NOT 5m: a 5m tail double-writes every turn — the
-   * newest message is written once at the 5m rate (1.25x), then re-written at
-   * the 1h rate (2x) next turn when it joins the long-lived prefix. Measured
-   * live (2026-07-06, cache-wars-bench E4 vs E4b, Sonnet 4.5): 5m-tail hybrid
-   * wrote ~10.4k tokens/turn steady-state vs ~5.2k for all-1h — all-1h was
-   * strictly cheaper ($0.262 vs $0.323 over 5 turns + one idle gap).
-   *
-   * With `count === 1` (or only one eligible message): a single 1h marker on
-   * the latest message.
-   *
-   * The caller (Anthropic adapter) must also mark system + tools with 1h,
-   * for a total of 4 breakpoints, all 1h.
-   *
-   * IMPORTANT: Always strip stale markers first. When the adapter loops
-   * through multiple tool-call rounds in one turn, markers on old message
-   * positions must be cleared or the 4-breakpoint cap is exceeded.
-   */
-  _applyRollingCacheBreakpoints(messages, count = 2) {
-    if (!messages || messages.length === 0) return;
-
-    this._stripCacheMarkers(messages);
-
-    const indices = [];
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i].role !== 'system') indices.push(i);
-    }
-    if (indices.length === 0) return;
-
-    const latestIdx = indices[indices.length - 1];
-
-    if (count >= 2 && indices.length >= 2) {
-      const prefixIdx = indices[indices.length - 2];
-      this._applyCacheMarker(messages[prefixIdx], { type: 'ephemeral', ttl: '1h' });
-      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral', ttl: '1h' });
-    } else if (count >= 1) {
-      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral', ttl: '1h' });
-    }
   }
 
   /**
@@ -6857,6 +6951,9 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
       // gets pre-sanitized tool parameters (array fields require an `items` definition).
       const adapterOptions = { provider: lowerCaseProvider };
       if (extraBody) adapterOptions.extraBody = extraBody;
+      // OpenRouter uses this as its sticky-routing key so a conversation keeps
+      // hitting the upstream endpoint that holds its cached prefix.
+      if (options.conversationId) adapterOptions.conversationId = options.conversationId;
       return new OpenAiLikeAdapter(client, model, adapterOptions);
     }
 

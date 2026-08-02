@@ -774,6 +774,22 @@ const PROVIDER_CONFIGS = [
       pricing: {
         prompt: parseFloat(raw.pricing?.prompt || '0'),
         completion: parseFloat(raw.pricing?.completion || '0'),
+        // Cache rates, per token, exactly as OpenRouter publishes them.
+        // Dropping these was why an OpenRouter cache read was priced at the
+        // full input rate: with no published rate to prefer, getModelCost fell
+        // through to the generic 1.0x multiplier and reported a saving of zero
+        // on traffic that was genuinely 90% cheaper. 183 of 337 live models
+        // publish a read rate, 58 a write rate, 21 a 1-hour write rate.
+        //
+        // `null` when absent, never 0 — a missing rate means "unknown", and
+        // coercing it to free would under-report cost, which is a worse lie
+        // than the over-report it replaces.
+        input_cache_read: raw.pricing?.input_cache_read != null
+          ? parseFloat(raw.pricing.input_cache_read) : null,
+        input_cache_write: raw.pricing?.input_cache_write != null
+          ? parseFloat(raw.pricing.input_cache_write) : null,
+        input_cache_write_1h: raw.pricing?.input_cache_write_1h != null
+          ? parseFloat(raw.pricing.input_cache_write_1h) : null,
       },
     }),
     modelFilter: (m) => m.id && m.name,
@@ -1787,10 +1803,32 @@ export function registerDynamicPricingFromModels(providerKey, models) {
       if (Number.isFinite(v) && v >= 0) pricing.outputCostPer1M = v;
     }
 
+    // Published cache rates (OpenRouter's per-token spelling). A provider that
+    // states its own cached-read/write price is authoritative; the multiplier
+    // table in getModelCost is only a fallback for providers that publish a
+    // base rate and nothing else.
+    const perToken = (v) => {
+      if (v == null) return null;
+      const n = parseFloat(v);
+      return Number.isFinite(n) && n >= 0 ? n * 1_000_000 : null;
+    };
+    const cacheReadRate = perToken(model.pricing?.input_cache_read);
+    if (cacheReadRate != null) pricing.inputCacheReadCostPer1M = cacheReadRate;
+    const cacheWriteRate = perToken(model.pricing?.input_cache_write);
+    if (cacheWriteRate != null) pricing.inputCacheWriteCostPer1M = cacheWriteRate;
+    const cacheWrite1hRate = perToken(model.pricing?.input_cache_write_1h);
+    if (cacheWrite1hRate != null) pricing.inputCacheWrite1hCostPer1M = cacheWrite1hRate;
+
     if (model.inputCostPer1M != null) pricing.inputCostPer1M = model.inputCostPer1M;
     if (model.outputCostPer1M != null) pricing.outputCostPer1M = model.outputCostPer1M;
     if (model.inputCacheReadCostPer1M != null) {
       pricing.inputCacheReadCostPer1M = model.inputCacheReadCostPer1M;
+    }
+    if (model.inputCacheWriteCostPer1M != null) {
+      pricing.inputCacheWriteCostPer1M = model.inputCacheWriteCostPer1M;
+    }
+    if (model.inputCacheWrite1hCostPer1M != null) {
+      pricing.inputCacheWrite1hCostPer1M = model.inputCacheWrite1hCostPer1M;
     }
 
     // Provider-specific extras (Chutes' chuteId/root/ownedBy/etc.).
@@ -2085,7 +2123,23 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
   const cacheWriteTotal = cacheWrite5m + cacheWrite1h;
   const uncached = Math.max(0, inputTokens - cacheRead - cacheWriteTotal);
 
-  const key = (providerKey || '').toLowerCase();
+  let key = (providerKey || '').toLowerCase();
+
+  // OpenRouter is a router, not a vendor: the family that decides cache
+  // economics is named in the model slug, not the provider key. Selecting the
+  // multiplier by 'openrouter' fell through to the generic 1.0x branch, which
+  // priced a read at full rate AND a write at no premium — the read error
+  // over-reported cost, the write error under-reported it, and the two do not
+  // cancel. This is the same family table below, reached by the correct key;
+  // it is NOT a second price list to maintain. Published per-model rates still
+  // win over any multiplier (see readRate/writeRate below); this only governs
+  // the fallback for models whose catalog entry has not been fetched yet.
+  if (key === 'openrouter') {
+    const vendor = String(modelId || '').toLowerCase().split('/')[0];
+    if (vendor === 'anthropic') key = 'anthropic';
+    else if (vendor === 'openai') key = 'openai';
+  }
+
   let readMult, write5mMult, write1hMult;
   if (key === 'anthropic' || key === 'claude-code') {
     readMult = 0.1;
@@ -2108,11 +2162,26 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
   const readRate = meta.inputCacheReadCostPer1M != null
     ? meta.inputCacheReadCostPer1M / 1_000_000
     : baseIn * readMult;
+  // Same precedence for WRITES. Without this, a routed provider whose write
+  // premium differs from the family default (or whose family isn't in the
+  // table at all) is billed at 1.0x — i.e. a cache write looks free, and the
+  // savings figure derived from it is wrong in the user's favour, which is the
+  // dangerous direction for a number attached to money.
+  const write5mRate = meta.inputCacheWriteCostPer1M != null
+    ? meta.inputCacheWriteCostPer1M / 1_000_000
+    : baseIn * write5mMult;
+  // A model can publish a 5m write rate without a 1h one. Falling back to the
+  // 5m PUBLISHED rate before the multiplier keeps the two consistent.
+  const write1hRate = meta.inputCacheWrite1hCostPer1M != null
+    ? meta.inputCacheWrite1hCostPer1M / 1_000_000
+    : (meta.inputCacheWriteCostPer1M != null
+      ? meta.inputCacheWriteCostPer1M / 1_000_000
+      : baseIn * write1hMult);
   const inputCost =
     uncached * baseIn +
     cacheRead * readRate +
-    cacheWrite5m * baseIn * write5mMult +
-    cacheWrite1h * baseIn * write1hMult;
+    cacheWrite5m * write5mRate +
+    cacheWrite1h * write1hRate;
   const outputCost = (outputTokens / 1_000_000) * meta.outputCostPer1M;
 
   return {
