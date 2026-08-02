@@ -3316,7 +3316,9 @@ span.nodeLabel p {
 }
 
 .tool-icon {
-  font-size: 1.1em;
+  /* 100%, not 1.1em: the icon rides the tool row's own type size instead of
+     being 10% larger than the label it sits beside. */
+  font-size: 100%;
 }
 
 .tool-label {
