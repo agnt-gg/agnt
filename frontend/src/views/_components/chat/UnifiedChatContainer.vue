@@ -58,6 +58,23 @@
           <i class="fas fa-times"></i>
         </button>
       </div>
+      <!--
+        Voice status strip. Voice has no visible surface of its own, so without
+        this the user cannot tell whether it is hearing them, thinking, or
+        broken — and a hands-free mode you cannot read is one you cannot trust.
+      -->
+      <div v-if="voiceActive" class="voice-status-strip" :class="'voice-' + voiceState">
+        <span class="voice-dot"></span>
+        <span class="voice-status-text">
+          <template v-if="voiceError">{{ voiceError }}</template>
+          <template v-else-if="voiceState === 'listening'">{{ voicePartial || 'Listening…' }}</template>
+          <template v-else-if="voiceState === 'reopen'">{{ voicePartial || 'Listening…' }}</template>
+          <template v-else-if="voiceState === 'thinking'">Thinking…</template>
+          <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
+          <template v-else>Voice ready</template>
+        </span>
+        <button class="voice-end-btn" type="button" @click="toggleVoice">End</button>
+      </div>
       <ChatInputBar
         ref="inputBarRef"
         v-model="chatInput"
@@ -78,6 +95,26 @@
         @toggle-voice="toggleListening"
       >
         <template v-if="!compactInput" #extra-buttons="{ isStreaming: streaming }">
+          <Tooltip
+            :text="voiceActive ? 'End voice conversation' : 'Start a voice conversation (hands-free)'"
+            width="auto"
+          >
+            <button
+              @click="toggleVoice"
+              class="chat-icon-btn chat-voice-btn"
+              :class="['voice-' + voiceState, { 'voice-on': voiceActive }]"
+              type="button"
+              :aria-pressed="voiceActive ? 'true' : 'false'"
+              aria-label="Toggle hands-free voice conversation"
+            >
+              <i :class="voiceActive ? 'fas fa-headset' : 'far fa-comment-dots'"></i>
+              <span
+                v-if="voiceActive"
+                class="voice-level-ring"
+                :style="{ transform: 'scale(' + (1 + voiceLevel * 0.5) + ')' }"
+              ></span>
+            </button>
+          </Tooltip>
           <Tooltip v-if="!streaming" text="AI Provider Settings" width="auto">
             <button ref="providerBtnRef" @click="toggleProviderSelector" class="chat-icon-btn chat-provider-btn" type="button">
               <i class="fas fa-robot"></i>
@@ -153,6 +190,7 @@ import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/componen
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
+import { useVoiceSession } from '@/composables/useVoiceSession';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
 export default {
@@ -438,6 +476,68 @@ export default {
       focusInput();
     };
 
+    // ---- hands-free voice conversation ---------------------------------
+    //
+    // Declared here, after formattedMessages/isProcessing/onSend, because the
+    // watchers below read them immediately — wiring this block earlier is a
+    // temporal-dead-zone crash at setup, not a lint nit.
+    //
+    // Deliberately SEPARATE from the push-to-talk mic. That button is a
+    // dictation aid: it fills the textarea and the user still presses send.
+    // This is a CONVERSATION — it endpoints on its own, speaks the reply, and
+    // can be interrupted. Two different interactions, so two controls;
+    // collapsing them would make the mic unpredictable for everyone already
+    // used to it.
+    const voice = useVoiceSession({
+      onCommit: ({ text }) => {
+        chatInput.value = text;
+        onSend();
+      },
+      onSteer: async ({ text }) => {
+        // A voice interruption is exactly the mid-run steer the text path
+        // already implements — reuse it rather than racing a second POST.
+        const resp = await store.dispatch('chatUnified/steerInFlight', {
+          channelKey: props.channelKey,
+          content: text,
+        });
+        if (!resp?.ok) {
+          chatInput.value = text;
+          onSend();
+        }
+      },
+      getAgents: () => {
+        const list = store.getters['agents/allAgents'];
+        return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
+      },
+    });
+
+    /**
+     * Bridge the assistant stream into the voice pipeline.
+     *
+     * Watching the rendered message rather than tapping the SSE socket is
+     * deliberate: the store already owns stream decoding for every chat
+     * surface, and a second subscriber would be a second place for the wire
+     * protocol to drift. The accumulated content is what the chunker wants.
+     */
+    watch(
+      () => {
+        if (!voice.isActive.value) return null;
+        const list = formattedMessages.value || [];
+        const last = list[list.length - 1];
+        return last && last.role === 'assistant' ? last.content || '' : null;
+      },
+      (content) => {
+        if (content === null) return;
+        voice.handleStreamEvent('content_delta', { accumulated: content });
+      }
+    );
+
+    watch(isProcessing, (streaming, was) => {
+      if (was && !streaming && voice.isActive.value) {
+        voice.handleStreamEvent('done', {});
+      }
+    });
+
     const onCancelSteer = () => {
       store.dispatch('chatUnified/cancelSteer', { channelKey: props.channelKey });
     };
@@ -637,6 +737,12 @@ export default {
       isListening,
       isSupported,
       toggleListening,
+      voiceActive: voice.isActive,
+      voiceState: voice.state,
+      voiceLevel: voice.level,
+      voiceError: voice.error,
+      voicePartial: voice.partialTranscript,
+      toggleVoice: voice.toggle,
       // Provider/Tool selectors
       isProviderSelectorOpen,
       isToolSelectorOpen,
@@ -652,6 +758,121 @@ export default {
 </script>
 
 <style scoped>
+/* ---- hands-free voice ------------------------------------------------ */
+
+/*
+ * The button is a STATE indicator, not just a control. Voice has no other
+ * visible surface, so if the button looks the same whether or not the mic is
+ * open, the only way to find out is to talk to a machine that may not be
+ * listening. Colour follows the conversation state.
+ */
+.chat-voice-btn {
+  position: relative;
+}
+
+.chat-voice-btn.voice-on {
+  color: var(--color-blue, #4a9eff);
+}
+
+.chat-voice-btn.voice-listening {
+  color: var(--color-green, #46d17d);
+}
+
+.chat-voice-btn.voice-thinking {
+  color: var(--color-yellow, #e6c34a);
+}
+
+.chat-voice-btn.voice-speaking {
+  color: var(--color-blue, #4a9eff);
+}
+
+/* Mic level, so "is it hearing me?" is answerable at a glance. */
+.voice-level-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0.35;
+  pointer-events: none;
+  transition: transform 80ms linear;
+}
+
+.voice-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 0 8px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--color-darker-3, #2a2a2a);
+  font-size: 12px;
+  color: var(--color-lighter-2, #b8b8b8);
+  min-height: 28px;
+}
+
+.voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-lighter-3, #888);
+  flex: 0 0 auto;
+}
+
+.voice-status-strip.voice-listening .voice-dot {
+  background: var(--color-green, #46d17d);
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+
+.voice-status-strip.voice-reopen .voice-dot {
+  background: var(--color-green, #46d17d);
+}
+
+.voice-status-strip.voice-thinking .voice-dot {
+  background: var(--color-yellow, #e6c34a);
+  animation: voice-pulse 0.9s ease-in-out infinite;
+}
+
+.voice-status-strip.voice-speaking .voice-dot {
+  background: var(--color-blue, #4a9eff);
+  animation: voice-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* The partial transcript can be long; it must never push the composer around. */
+.voice-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-end-btn {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--color-darker-3, #2a2a2a);
+  color: var(--color-lighter-2, #b8b8b8);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.voice-end-btn:hover {
+  color: var(--color-lighter-1, #e8e8e8);
+  border-color: var(--color-lighter-3, #888);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-status-strip .voice-dot { animation: none; }
+  .voice-level-ring { transition: none; }
+}
+
 .unified-chat-container {
   display: flex;
   flex-direction: column;
