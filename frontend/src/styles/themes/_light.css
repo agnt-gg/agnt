@@ -5,41 +5,55 @@
    (a light theme) inherits the same structural/component overrides. */
 
 body:not(.dark):not(.rose) {
-  --color-background: #f1f0f5;
-  --color-background-rgb: 241, 240, 245;
+  --color-background: #fcfcfc;
+  --color-background-rgb: 252, 252, 252;
 
   /* ═══ OVERRIDE BASE COLOR SCALE FOR LIGHT MODE ═══ */
   /* These base variables are used directly by many components.
      In light mode they must map to light backgrounds / dark text. */
-  --color-black-navy: #f1f0f5; /* was #070710 - now matches background */
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
   --color-ultra-dark-navy: #ffffff; /* was #0b0b17 - now white surfaces */
   --color-dark-navy: #ffffff; /* was #10101f. RAISED SURFACE: cards/panels sit
-     above the tinted canvas. Previously #eeedf3, which is 2.4 L* from the
-     #f1f0f5 background — an invisible step, and inverted (panels darker than
-     the page) because that is how dark themes express elevation. */
+     above the canvas. The canvas is #fcfcfc (L* 99.0), so white is only 1.0 L*
+     above it — elevation here is carried by --terminal-border-color, NOT by
+     lightness. Do not reintroduce a darker panel fill: that inverts the
+     hierarchy (panels below the page), which is how dark themes express
+     elevation and reads as a bug in light mode. */
   --color-navy: #ffffff; /* was #131322 - now white */
   --color-dull-navy: #d0d0dd; /* was #1f1f2f - now border-like */
   --color-duller-navy: #b0b0c0; /* was #3e405a - now medium gray */
   --color-med-navy: #6b6b80; /* was #7f8193 - slightly darker for contrast */
-  --color-light-med-navy: #4a4a60; /* was #d1d1db - now darker for text */
+  --color-light-med-navy: var(--color-text); /* was #d1d1db, then #4a4a60 — a
+     remap of the navy scale to "dark enough for text", which is now exactly
+     --color-text. Aliased so the two cannot drift apart. */
   --color-light-navy: #d0d0dd; /* was #d9d9d9 - similar, subtle border */
   --color-bright-light-navy: #e2e2ec; /* was #ebebeb - similar */
   --color-ultra-light-navy: #f5f5fa; /* was #fafafa - similar light surface */
-  --color-dull-white: #2a2a3a; /* was #f7f7f7 - now dark (used as text in dark themes) */
+  --color-dull-white: var(--color-text); /* was #f7f7f7. This IS the text token
+     for the dark family (_dark.css: --color-text: var(--color-dull-white)), so
+     in light mode it must track --color-text rather than restate its value. */
   --color-white: #ffffff; /* was #f1f0f5 - now true white */
 
-  /* Text hierarchy - dark text on light backgrounds */
-  --color-text: #2a2a3a;
+  /* Text hierarchy - dark text on light backgrounds.
+     --color-text is the single source of truth: --color-dull-white,
+     --color-light-green and the body `color` below all alias it. Three copies
+     of one literal is how the canvas colour drifted; do not reintroduce it. */
+  --color-text: #4a4a60; /* was #2a2a3a. 8.39:1 on the canvas, 8.61:1 on white
+     panels — still AAA, and stays clearly above the muted tier (L* 32.3 vs
+     39.8) so the four-step hierarchy keeps its ordering. */
   --color-text-muted: #5c5c72; /* a11y: 4.58:1 -> 5.74:1 for 12px secondary text */  --color-text-secondary: #6b6b80; /* a11y: 4.58:1 */
   /* a11y: was #9b9bab = 2.41:1, the single largest source of contrast failures
-     (used for metadata, badges and timestamps app-wide). On a #f1f0f5 canvas
-     the lightest possible AA-passing text is L*=15.6, so a genuinely lighter
+     (used for metadata, badges and timestamps app-wide). On a #fcfcfc canvas
+     the lightest possible AA-passing text is L*=17.4, so a genuinely lighter
      4th tier cannot exist — this is now the FLOOR, and "quieter" must be
      expressed with size/weight/whitespace rather than less contrast. */
   --color-text-dull: #6d6d78; /* 2.41:1 -> 4.51:1 */  /* Accent colors — re-derived for a light substrate rather than nudged.
      Each is the original hue darkened until it clears 4.5:1 on the canvas,
      so status text is legible without changing the palette's identity.
-     Ratios are vs --color-background #f1f0f5. */
+     Ratios below are the ORIGINAL measurements against the previous #f1f0f5
+     canvas; the canvas is now #fcfcfc, which raises every one of them by
+     ~0.5 (lighter background = more contrast against dark text). They are
+     kept as the recorded floor — all still pass AA. */
   --color-green: #0d7e47; /* was #15c870  1.94:1 -> 4.53:1 */
   --color-blue: #0a7892; /* was #0ea5c8  2.56:1 -> 4.50:1 */
   --color-red: #ca3737; /* was #dc3c3c  3.90:1 -> 4.50:1 */
@@ -56,7 +70,7 @@ body:not(.dark):not(.rose) {
   --color-secondary: #0a7892; /* was #0ea5c8 */
   --svg-gradient-start: #c43278;
   --svg-gradient-end: #0a7892;
-  --color-light-green: #2a2a3a;
+  --color-light-green: var(--color-text);
 
   /* Popup/dropdown backgrounds - MUST be light for light mode */
   --color-popup: rgba(255, 255, 255, 0.98);
@@ -104,7 +118,10 @@ body:not(.dark):not(.rose) {
 
   font-size: var(--font-size-sm);
   line-height: 1.25;
-  color: #2a2a3a;
+  /* Inherited body text must BE the token, not a copy of it — this is the
+     declaration that actually paints, so a stale literal here silently wins
+     over any change to --color-text above. */
+  color: var(--color-text);
 }
 
 /* ═══════════════════ TYPOGRAPHY ═══════════════════ */
@@ -189,7 +206,10 @@ body:not(.dark) a.router-link-active .svg-icon path {
 /* ═══════════════════ MAIN AREA ═══════════════════ */
 
 body:not(.dark) main-area {
-  background: #f5f5fa;
+  /* The app backdrop must BE the canvas, not a near-duplicate of it. This was
+     hardcoded #f5f5fa, which silently drifted whenever --color-background
+     changed and then rendered as a darker band behind the screens. */
+  background: var(--color-background);
 }
 
 /* body:not(.dark) .card-inner {

@@ -75,10 +75,11 @@ body:not(.dark) {
   --surface-hover: rgba(16, 24, 40, 0.04);
   --surface-active: rgba(16, 24, 40, 0.07);
 
-  --text-primary: var(--color-text); /* #2a2a3a  12.43:1 */
-  --text-secondary: var(--color-text-muted); /* #5c5c72   5.74:1 */
-  --text-tertiary: var(--color-text-secondary); /* #6b6b80   4.58:1 */
-  --text-quaternary: var(--color-text-dull); /* #6d6d78   4.51:1 — AA floor */
+  /* Ratios are against the #fcfcfc canvas. */
+  --text-primary: var(--color-text); /* #4a4a60   8.39:1 */
+  --text-secondary: var(--color-text-muted); /* #5c5c72   6.34:1 */
+  --text-tertiary: var(--color-text-secondary); /* #6b6b80   5.07:1 */
+  --text-quaternary: var(--color-text-dull); /* #6d6d78   4.98:1 — AA floor */
   --text-on-fill: #ffffff;
 
   --border-subtle: var(--terminal-border-color);

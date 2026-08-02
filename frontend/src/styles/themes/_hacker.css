@@ -3,7 +3,7 @@ body.dark.hacker {
   --color-background: #000000;
   --color-background-rgb: 0, 0, 0;
   /* Background hierarchy — pure black */
-  --color-black-navy: #000000;
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
   --color-ultra-dark-navy: #0a0a0a;
   --color-dark-navy: #0a0e0a;
   --color-navy: #0c100c;

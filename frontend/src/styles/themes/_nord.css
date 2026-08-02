@@ -3,7 +3,7 @@ body.dark.nord {
   --color-background: #2e3440;
   --color-background-rgb: 46, 52, 64;
   /* Background hierarchy — Nord Polar Night */
-  --color-black-navy: #2e3440;
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
   --color-ultra-dark-navy: #3b4252;
   --color-dark-navy: #343a48;
   --color-navy: #3b4252;

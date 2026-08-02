@@ -1172,7 +1172,7 @@ export default {
   border-color: #19ef83;
 }
 .swatch-light {
-  background: #f1f0f5;
+  background: #fcfcfc;
   border-color: #d03580;
 }
 .swatch-rose {

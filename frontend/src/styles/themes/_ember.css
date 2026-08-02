@@ -3,7 +3,7 @@ body.dark.ember {
   --color-background: #120c08;
   --color-background-rgb: 18, 12, 8;
   /* Background hierarchy */
-  --color-black-navy: #120c08;
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
   --color-ultra-dark-navy: #1a1210;
   --color-dark-navy: #1c1410;
   --color-navy: #1e1614;

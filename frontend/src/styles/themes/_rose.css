@@ -3,7 +3,7 @@ body.rose {
   --color-background: #faf4f4;
   --color-background-rgb: 250, 244, 244;
   /* Background hierarchy — light warm pinks */
-  --color-black-navy: #faf4f4;
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
   --color-ultra-dark-navy: #ffffff;
   --color-dark-navy: #f4ecec;
   --color-navy: #ffffff;
@@ -66,7 +66,8 @@ body.rose {
   /* Text */
   --color-text: #3a2828;
   --color-text-muted: #75605f; /* a11y: lift small muted text above the AA floor */
-  --color-text-secondary: #887070;
+  --color-text-secondary: #826b6b; /* a11y: #887070 was 4.20:1 on the #faf4f4
+     canvas — below AA. Minimal hue-preserving darkening to 4.53:1. */
   --color-text-dull: #e8d8d8;
 
   /* RGB components */
