@@ -219,8 +219,10 @@
     </template>
 
     <!-- Occupies the settled layout rather than collapsing, so nothing below
-         the panel jumps when the real answer lands. -->
-    <div v-else-if="!ready && !error" class="pa-skeleton" aria-hidden="true">
+         the panel jumps when the real answer lands. Withheld for the first
+         120ms: /pairing/status answers in ~8ms, and a skeleton that comes and
+         goes inside one frame IS the flicker it was added to remove. -->
+    <div v-else-if="showPlaceholder" class="pa-skeleton" aria-hidden="true">
       <div class="pa-sk pa-sk-note"></div>
       <div class="pa-body">
         <div class="pa-qr-col">
@@ -265,6 +267,7 @@ const {
   data: status,
   error,
   ready,
+  showPlaceholder,
   refresh: loadStatus,
   patch: patchStatus,
 } = useAsyncResource(

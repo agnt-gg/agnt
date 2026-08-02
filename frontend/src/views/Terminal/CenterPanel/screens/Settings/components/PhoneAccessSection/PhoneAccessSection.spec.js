@@ -377,9 +377,17 @@ describe('the panel before it has measured anything', () => {
 
     CLAIMS.forEach((claim) => expect(w.text()).not.toContain(claim));
     expect(w.attributes('aria-busy')).toBe('true');
-    expect(w.find('.pa-skeleton').exists()).toBe(true);
     // A switch rendered OFF is itself a claim about a setting nobody has read.
     expect(w.find('input[type="checkbox"]').exists()).toBe(false);
+    // ...and no skeleton yet either: the answer usually arrives in ~8ms, and a
+    // placeholder that comes and goes inside a frame is just a flicker.
+    expect(w.find('.pa-skeleton').exists()).toBe(false);
+
+    // Once the wait is long enough for a human to notice, reserve the space.
+    await new Promise((r) => setTimeout(r, 200));
+    await w.vm.$nextTick();
+    expect(w.find('.pa-skeleton').exists()).toBe(true);
+    CLAIMS.forEach((claim) => expect(w.text()).not.toContain(claim));
 
     land(baseStatus());
     await flushPromises();
@@ -387,6 +395,18 @@ describe('the panel before it has measured anything', () => {
     expect(w.find('.pa-skeleton').exists()).toBe(false);
     expect(w.attributes('aria-busy')).toBe('false');
     expect(w.find('input[type="checkbox"]').element.checked).toBe(true);
+  });
+
+  it('never draws a skeleton at all when the answer is quick', async () => {
+    // The common case now that /pairing/status no longer waits on the OS.
+    const w = mount(PhoneAccessSection);
+    const seen = [];
+    for (let i = 0; i < 6; i++) {
+      seen.push(w.find('.pa-skeleton').exists());
+      await flushPromises();
+    }
+    expect(seen).not.toContain(true);
+    expect(w.text()).toContain('192.168.40.208');
   });
 
   // Negative control: without this, the suite above would pass just as happily
