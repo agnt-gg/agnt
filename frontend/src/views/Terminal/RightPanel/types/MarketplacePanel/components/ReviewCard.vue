@@ -194,7 +194,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-darker-3);
+  color: var(--on-fill-success);
   font-weight: 700;
   font-size: 14px;
   flex-shrink: 0;

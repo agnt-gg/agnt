@@ -102,7 +102,7 @@ onMounted(() => {
   margin-right: 6px;
 }
 .song-title {
-  color: var(--color-white, #fff);
+  color: var(--text-primary);
   font-weight: bold;
 }
 .song-artist {
