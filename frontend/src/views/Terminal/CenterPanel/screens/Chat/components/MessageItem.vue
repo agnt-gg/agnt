@@ -4035,8 +4035,8 @@ span.nodeLabel p {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green), var(--color-blue));
-  color: var(--color-darkest);
+  background: var(--gradient-accent);
+  color: var(--on-fill-success);
   font-weight: 700;
   font-size: 1.1em;
   display: flex;
@@ -4671,10 +4671,10 @@ span.nodeLabel p {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: var(--color-green);
+  background: var(--fill-success);
   border: none;
   border-radius: 6px;
-  color: var(--color-darkest);
+  color: var(--on-fill-success);
   font-size: 0.9em;
   font-weight: 600;
   cursor: pointer;

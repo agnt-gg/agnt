@@ -3615,10 +3615,10 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: var(--color-green);
+  background: var(--fill-success);
   border: none;
   border-radius: 6px;
-  color: var(--color-darkest);
+  color: var(--on-fill-success);
   font-size: 0.9em;
   font-weight: 600;
   cursor: pointer;

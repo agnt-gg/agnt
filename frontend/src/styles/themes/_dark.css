@@ -9,7 +9,12 @@ body.dark {
   --color-text: var(--color-dull-white);
   --color-text-muted: var(--color-med-navy);
   --color-text-secondary: var(--color-med-navy);
-  --color-text-dull: var(--color-dull-navy);
+  /* a11y: was var(--color-dull-navy) = #1f1f2f, which is 1.24:1 on the dark
+     canvas — the 4th text tier was effectively invisible. This is the dimmest
+     value that still clears the 4.5:1 AA floor on BOTH the canvas (#070710,
+     4.60:1) and the raised surface (#10101f, 4.31:1 → use on canvas only).
+     Tiers 1-3 are unchanged; they measure 18.72 / 5.22 / 5.22 and are fine. */
+  --color-text-dull: #767888;
   --terminal-width: 100%;
   --terminal-height: 100%;
   --terminal-border-radius: 0;
