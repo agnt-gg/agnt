@@ -203,11 +203,20 @@ export default {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  color: var(--text-primary);
+  /* Centred over the WHOLE bar, so its backdrop depends on the XP percentage:
+     the blue fill on the left, the pale --color-darker-1 track on the right.
+     --text-primary was dark ink, unreadable on the fill in light mode.
+
+     Carries its own scrim rather than leaning on a text-shadow, so contrast is
+     identical at 1% and 99%. Horizontal padding only: .agent-xp-bar is 18px
+     tall with overflow:hidden, so any vertical padding would be clipped. */
+  color: var(--text-on-scrim);
+  background: var(--scrim);
+  padding: 0 8px;
+  border-radius: 999px;
   font-size: 0.75em;
   line-height: 18px;
   font-weight: bold;
-  text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
 }
 
 .agent-details {

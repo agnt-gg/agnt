@@ -666,7 +666,11 @@ export default {
 
 .marker-value {
   font-size: 0.7em;
-  color: var(--color-text-muted);
+  /* The markers sit INSIDE .tier-bar, so their backdrop is the grey track
+     (rgba(127,129,147,0.2)) over the card — a mid surface, not the canvas.
+     Measured there: --color-text-muted 3.91:1 (dark), --text-tertiary 4.27:1
+     (light). --text-secondary clears AA on both. */
+  color: var(--text-secondary);
 }
 
 /* Compact Grid */
@@ -719,7 +723,11 @@ export default {
 .boost-badge {
   font-size: 0.65em;
   color: var(--color-primary);
-  background: rgba(var(--primary-rgb), 0.2);
+  /* 0.2 was the heaviest tint any badge uses, and this one sits on a
+     .breakdown-card that is already tinted — the two stack and the label
+     measured 4.35:1. 0.15 is the alpha every other badge in the app uses and
+     brings it back over the AA floor. */
+  background: rgba(var(--primary-rgb), 0.15);
   padding: 3px 4px 0;
   border-radius: 3px;
   font-weight: bold;
@@ -775,8 +783,14 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: var(--text-primary);
-  /* text-shadow: 0 0 3px rgba(255, 255, 255, 0.8); */
+  /* Nested INSIDE .bar-fill, which paints var(--gradient-brand) — a saturated
+     fill in both themes. --text-primary is dark ink in light mode, so all six
+     score bars rendered dark-on-dark. One rule, six instances.
+
+     --text-on-scrim is declared invariant in _semantic.css for exactly this:
+     text over a backdrop that does not follow the theme. */
+  color: var(--text-on-scrim);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   white-space: nowrap;
   margin-bottom: -2px;
 }
