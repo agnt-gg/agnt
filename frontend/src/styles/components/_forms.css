@@ -6,15 +6,15 @@ label,
   margin-bottom: 0;
 }
 
-select {
+:where(select) {
   height: 32px;
   padding: 3px 3px 1px;
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--field-border);
   border-radius: 8px;
-  background-color: var(--color-dull-white);
+  background-color: var(--field-bg);
 }
 
 body.dark select {
@@ -40,19 +40,30 @@ body.dark select {
   font-weight: 400;
 }
 
-input[type='text'],
-input[type='number'],
-input[type='email'],
-input[type='password'],
-input[type='time'],
-input[type='date'],
-input[type='datetime-local'],
-input[type='month'],
-input[type='week'],
-input[type='tel'],
-input[type='url'],
-input[type='search'],
-input[type='color'] {
+/* :where() — ZERO SPECIFICITY, deliberately.
+
+   This is a DEFAULT, not an override: "a field nobody styled looks like this".
+   `input[type='text']` is (0,1,1) because an attribute selector counts as a
+   class, so it silently beats a plain component class at (0,1,0) and ties
+   awkwardly with a Vue-scoped one. Wrapping the list in :where() drops it to
+   (0,0,0), so ANY component rule wins without needing !important or a
+   specificity hack — which is the whole reason composed fields could not turn
+   their own chrome off. */
+:where(
+  input[type='text'],
+  input[type='number'],
+  input[type='email'],
+  input[type='password'],
+  input[type='time'],
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='month'],
+  input[type='week'],
+  input[type='tel'],
+  input[type='url'],
+  input[type='search'],
+  input[type='color']
+) {
   width: 100%;
   width: -webkit-fill-available !important;
   height: 26px;
@@ -60,18 +71,18 @@ input[type='color'] {
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--field-border);
   border-radius: 8px;
-  background-color: var(--color-ultra-light-navy);
+  background-color: var(--field-bg);
 }
 
-input[type='file'] {
+:where(input[type='file']) {
   width: 100%;
   width: -webkit-fill-available;
   font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  background-color: var(--color-ultra-light-navy);
+  background-color: var(--field-bg);
   cursor: pointer;
 }
 
@@ -85,9 +96,7 @@ input:-webkit-autofill:focus {
    selector at specificity (0,2,1) — which outranks every component's own
    (0,1,0) rule. Setting it here at (0,0,1) keeps the themed value (body colour
    IS the theme's text colour) while letting components override. */
-textarea,
-input[type='textarea'],
-.form-textarea {
+:where(textarea, input[type='textarea'], .form-textarea) {
   width: 100% !important;
   width: -webkit-fill-available !important;
   /* height: 82px; */
@@ -96,9 +105,9 @@ input[type='textarea'],
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--field-border);
   line-height: 150%;
-  background-color: var(--color-ultra-light-navy);
+  background-color: var(--field-bg);
   border-radius: 8px;
   resize: vertical;
 }
@@ -127,15 +136,27 @@ input[type='textarea'],
   border-color: var(--color-dull-navy);
 }
 
-input[type='text']:focus,
-input[type='password']:focus,
-input[type='number']:focus,
-textarea:focus,
-select:focus {
-  outline: none !important;
-  border: 1px solid var(--color-primary) !important;
-  /* outline: 1px solid var(--color-primary) !important;
-  border: none !important; */
+/* Focus RECOLOURS the existing border. It must not use the `border` shorthand
+   and must not add a second ring.
+
+   This used to be `border: 1px solid ... !important`, plus the light theme
+   layered `box-shadow: var(--focus-ring)` on top — a 1px border AND a 4px halo,
+   which is the "double border on focus" that got reported. The !important also
+   meant no component could opt out.
+
+   Setting only `border-color` means a component that removed its border
+   (`border: none`, i.e. width 0) stays borderless on focus — recolouring a
+   zero-width border draws nothing — while a default field still lights up.
+   Composed fields put the indicator on their shell with :focus-within. */
+:where(
+  input[type='text']:focus,
+  input[type='password']:focus,
+  input[type='number']:focus,
+  textarea:focus,
+  select:focus
+) {
+  outline: none;
+  border-color: var(--field-border-focus);
 }
 
 input::placeholder,
@@ -144,15 +165,11 @@ textarea::placeholder {
   opacity: 0.5;
 }
 
-input[type='text'],
-input[type='number'],
-input[type='textarea'],
-textarea,
-.form-textarea {
-  color: var(--color-dull-white);
-  background-color: var(--color-black-navy);
-  border-color: var(--color-dull-navy);
-}
+/* A second, conflicting declaration of the same selectors used to sit here,
+   setting background-color: var(--color-black-navy). It silently beat the real
+   rule above by being later at equal specificity, so the field chrome written
+   at the top of this file was never what rendered. Both now come from
+   --field-bg / --field-border in one place. */
 
 .form-group select option {
   background-color: var(--color-ultra-dark-navy) !important;

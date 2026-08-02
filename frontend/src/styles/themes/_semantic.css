@@ -154,6 +154,39 @@ body {
      was, and only light mode changes. */
   --gradient-brand: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
   --gradient-accent: linear-gradient(135deg, var(--color-green), var(--color-blue));
+
+  /* ── WORKFLOW CANVAS GRID ───────────────────────────────────────────────
+     THE FINAL COLOUR, ALPHA INCLUDED. The dot must never be dimmed again by an
+     element `opacity` on top of this.
+
+     The dots used to get their strength from TWO multiplied knobs in TWO files:
+     `.grid-overlay { opacity }` in each theme sheet, times the alpha inside the
+     radial-gradient colour. Nobody can read 0.4 x 0.2 off the CSS and see that
+     it means 8%, so each theme tuned one factor and ignored the other. Measured
+     from rendered pixels, the dot's ΔL* against its own canvas ranged from 1.29
+     (hacker) and 1.36 (light) — invisible — to 9.06 (dark). A 7x spread; only
+     two of eight themes had usable dots.
+
+     Each theme keeps its own HUE (that part was deliberate — hacker's grid is
+     green, ember's is warm), but the alpha is now solved so every theme lands
+     at ΔL* ≈ 8.5 against its own canvas. */
+  --canvas-grid-dot: rgba(255, 255, 255, 0.075);
+
+  /* ── FORM FIELD CHROME ──────────────────────────────────────────────────
+     The fill and border of a DEFAULT, standalone field. These used to be set by
+     `body.dark input[type='text']` / `body:not(.dark) input[...]` — specificity
+     (0,2,1), which outranks a scoped component class at (0,2,0). So a component
+     that composed an input inside its own decorated shell and asked for
+     `background: transparent; border: none` was simply ignored, and rendered a
+     lighter inner box with a second border. Measured on FileTreePanel's search
+     bar: shell rgba(100,100,140,0.05) vs input #ffffff, plus a 1px border
+     inside a 1px border, in BOTH themes.
+
+     Living on the base element rule instead means a component class always
+     wins, so "this input is bare, the shell owns the chrome" works. */
+  --field-bg: var(--color-darker-0);
+  --field-border: var(--terminal-border-color);
+  --field-border-focus: var(--color-primary);
   --gradient-wash: linear-gradient(180deg, rgba(var(--primary-rgb), 0.08), rgba(var(--primary-rgb), 0.03));
 
   --border-subtle: var(--terminal-border-color);
@@ -239,6 +272,18 @@ body:not(.dark) {
      white, an 8% pink wash is visible as a stain; 3% neutral reads as paper. */
   --gradient-brand: var(--color-primary);
   --gradient-accent: var(--color-secondary);
+
+  /* Light canvas: the dot goes DARKER, and needs a much higher alpha than the
+     dark themes to reach the same perceived weight. 0.025 effective is what it
+     used to be — 4/255 per channel, which is why it read as no grid at all. */
+  --canvas-grid-dot: rgba(100, 100, 140, 0.165);
+
+  /* A light-mode field needs a real white fill and a real border — a
+     transparent one lets the panel tint through and reads as DISABLED. */
+  --field-bg: var(--surface-raised);
+  --field-border: var(--border-strong);
+  --field-border-focus: var(--color-primary);
+
   /* 3.5%/1.2% was so faint it read as "the token failed to resolve" rather
      than as a surface. 5.5%/2% is still quiet enough to be paper, but the
      band is actually visible against a white panel. */
@@ -268,6 +313,16 @@ body:not(.dark) {
   --status-amber-text: #915d06; /* was #f59e0b  1.77:1 → 4.60:1 */
   --status-green-text: #157839; /* was #22c55e  1.86:1 → 4.55:1 */
   --status-yellow-text: #80680b; /* was #facc15  1.30:1 → 4.57:1 */
+}
+
+/* Rose is a light theme and inherits the whole block above. Its own overrides
+   must live HERE, not in _rose.css: `body.rose` and `body:not(.dark)` are both
+   (0,1,1), and this file is imported last, so any token _rose.css declares that
+   is ALSO declared above is silently dead. Measured before this moved: rose's
+   grid dot rendered #e1dce3, the cool navy from the light block, instead of the
+   warm tone _rose.css asked for. */
+body.rose {
+  --canvas-grid-dot: rgba(120, 90, 90, 0.165);
 }
 
 /* ── DARK FAMILY ──────────────────────────────────────────────────────────── */

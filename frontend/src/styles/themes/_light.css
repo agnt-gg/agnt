@@ -227,36 +227,19 @@ body:not(.dark) main-area {
 
 /* ═══════════════════ FORM ELEMENTS ═══════════════════ */
 
-body:not(.dark) input[type='text'],
-body:not(.dark) input[type='number'],
-body:not(.dark) input[type='email'],
-body:not(.dark) input[type='password'],
-body:not(.dark) input[type='date'],
-body:not(.dark) input[type='datetime-local'],
-body:not(.dark) input[type='month'],
-body:not(.dark) input[type='week'],
-body:not(.dark) input[type='tel'],
-body:not(.dark) input[type='url'],
-body:not(.dark) input[type='search'],
-body:not(.dark) input[type='color'],
-body:not(.dark) textarea,
-body:not(.dark) select {
-  /* colour intentionally omitted — see _forms.css. A body-scoped element
-     selector is (0,2,1) and outranks every component's own colour rule. */
-  /* Was `transparent`, which let the grey panel show through so every field
-     read as DISABLED. A light-mode input needs a white fill + a real border. */
-  background-color: var(--surface-raised);
-  border-color: var(--border-strong);
-}
+/* The light field-chrome block that used to live here is gone. Its values moved
+   to --field-bg / --field-border in _semantic.css, consumed by the base element
+   rule in _forms.css.
 
-body:not(.dark) input[type='text']:focus,
-body:not(.dark) input[type='number']:focus,
-body:not(.dark) textarea:focus,
-body:not(.dark) select:focus {
-  outline: none;
-  border: 1px solid var(--color-primary);
-  box-shadow: var(--focus-ring);
-}
+   Why it had to move: `body:not(.dark) input[type='text']` is specificity
+   (0,2,1), which beats a scoped component class at (0,2,0). Any component that
+   composed an input inside its own decorated shell — a search bar, say — asked
+   for a transparent, borderless input and was overruled, so it rendered a
+   lighter inner box with a second border.
+
+   The focus rule went with it. It set the `border` shorthand AND
+   `box-shadow: var(--focus-ring)`, so a focused field in light mode drew a 1px
+   border plus a 4px halo: two rings, where dark mode drew one. */
 
 body:not(.dark) input::placeholder,
 body:not(.dark) textarea::placeholder {
@@ -343,15 +326,14 @@ body:not(.dark) .modal-content {
 
 /* ═══════════════════ WORKFLOW DESIGNER ═══════════════════ */
 
-body:not(.dark) .grid-overlay {
-  opacity: 0.25;
-  background-image: radial-gradient(circle, var(--color-darker-2) 1px, transparent 1px);
-}
+/* The two `.grid-overlay` rules that used to live here are gone. Canvas.vue now
+   paints the dot with var(--canvas-grid-dot) at opacity 1.
 
-body.dark .grid-overlay {
-  opacity: 0.25;
-  background-image: radial-gradient(circle, var(--color-lighter-2) 1px, transparent 1px);
-}
+   The second one was `body.dark .grid-overlay` — in a file whose every other
+   rule is light-only. It was DEAD: _dark.css declares the same selector at the
+   same specificity and is imported later, so it always won. Proven by measuring
+   the rendered dot (#232331, which is opacity 0.2 from _dark.css, not the 0.25
+   written here). */
 
 body:not(.dark) .node {
   color: var(--color-text);

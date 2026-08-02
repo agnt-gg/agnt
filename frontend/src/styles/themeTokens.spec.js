@@ -168,6 +168,60 @@ describe('theme tokens: every fill ships with its on-fill companion', () => {
     const d = Object.keys(base).filter((k) => /^--fill-/.test(k)).sort();
     expect(l).toEqual(d);
   });
+
+  /**
+   * I broke this while adding a `body.rose` block: I closed `body:not(.dark)`
+   * early, so --shadow-*, --focus-ring and every --status-*-text silently moved
+   * into the rose block and vanished from light mode.
+   *
+   * Braces stayed balanced, so cssIntegrity.spec.js could not see it, and no
+   * component test renders light mode. Only reading the file back caught it.
+   * Pin the light block's contents so the next person gets a failure instead.
+   */
+  it('the light block still declares its whole token set', () => {
+    const REQUIRED = [
+      '--surface-canvas', '--surface-raised', '--surface-sunken',
+      '--text-primary', '--text-secondary', '--text-tertiary', '--text-quaternary',
+      '--fill-accent', '--on-fill-accent', '--field-bg', '--field-border', '--field-border-focus',
+      '--canvas-grid-dot', '--gradient-wash', '--border-subtle', '--border-strong',
+      '--shadow-xs', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-overlay',
+      '--scrim', '--focus-ring',
+      '--status-blue-text', '--status-purple-text', '--status-amber-text',
+      '--status-green-text', '--status-yellow-text',
+    ];
+    const missing = REQUIRED.filter((t) => light[t] === undefined);
+    expect(
+      missing,
+      'These tokens are no longer inside the body:not(.dark) block of _semantic.css.\n'
+      + 'The usual cause is a stray `}` that closed the block early and dropped the\n'
+      + 'rest into whatever selector follows — braces stay balanced, so nothing else\n'
+      + 'catches it, and light mode loses the tokens entirely.'
+    ).toEqual([]);
+  });
+
+  /**
+   * _semantic.css is imported LAST and its light block is `body:not(.dark)`,
+   * specificity (0,1,1). `body.rose` in _rose.css is also (0,1,1). Equal
+   * specificity, later wins — so any token _rose.css declares that _semantic.css
+   * also declares for light is dead on arrival.
+   *
+   * Measured when this bit: rose's grid dot rendered the cool navy from the light
+   * block, not the warm tone _rose.css asked for.
+   */
+  it('_rose.css declares no token that the semantic light block overrides', () => {
+    const roseCss = stripComments(fs.readFileSync(path.join(THEMES, '_rose.css'), 'utf8'));
+    const roseBlock = roseCss.match(/(^|\})\s*body\.rose\s*\{([^{}]*)\}/);
+    expect(roseBlock, 'expected a body.rose token block').toBeTruthy();
+
+    const declared = [...roseBlock[2].matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]);
+    const dead = declared.filter((t) => light[t] !== undefined);
+    expect(
+      dead,
+      'These _rose.css declarations are DEAD: _semantic.css declares the same tokens\n'
+      + 'for body:not(.dark) at equal specificity and is imported later, so it always\n'
+      + 'wins. Move the override into the body.rose block in _semantic.css.'
+    ).toEqual([]);
+  });
 });
 
 /* ───────────────── check 3: no NEW hardcoded text colours ───────────────── */

@@ -1221,6 +1221,13 @@ export default {
   margin: 0 0 4px 0;
 }
 
+/* The shell carries the focus indicator, not the input. The input inside is
+   deliberately bare (transparent, no border), so putting the ring here is what
+   gives exactly ONE border instead of a ring nested inside the shell's edge. */
+.search-bar:focus-within {
+  border-color: var(--field-border-focus);
+}
+
 .search-icon {
   font-size: 11px;
   color: var(--color-text-muted);

@@ -44,6 +44,9 @@ body.dark.midnight {
   --color-lighter-0: rgba(160, 170, 220, 0.05);
   --color-lighter-1: rgba(160, 170, 220, 0.1);
   --color-lighter-2: rgba(160, 170, 220, 0.2);
+
+  /* Workflow canvas grid. Final colour + alpha; canvas #080818. */
+  --canvas-grid-dot: rgba(160, 170, 220, 0.125);
   --color-lighter-3: rgba(160, 170, 220, 0.4);
 
   /* Dark overlays */

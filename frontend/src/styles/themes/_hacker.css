@@ -44,6 +44,9 @@ body.dark.hacker {
   --color-lighter-0: rgba(25, 239, 131, 0.03);
   --color-lighter-1: rgba(25, 239, 131, 0.06);
   --color-lighter-2: rgba(25, 239, 131, 0.12);
+
+  /* Workflow canvas grid. Final colour + alpha; canvas #000000 — the green grid was 1.29 ΔL*, invisible. */
+  --canvas-grid-dot: rgba(25, 239, 131, 0.12);
   --color-lighter-3: rgba(25, 239, 131, 0.25);
 
   /* Dark overlays */

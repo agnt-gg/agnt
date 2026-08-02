@@ -45,6 +45,10 @@ body.rose {
   --color-lighter-0: rgba(255, 255, 255, 0.3);
   --color-lighter-1: rgba(255, 255, 255, 0.5);
   --color-lighter-2: rgba(255, 255, 255, 0.7);
+
+  /* --canvas-grid-dot lives in _semantic.css under body.rose: a declaration
+     here would be dead, because _semantic.css ties on specificity and loads
+     later. */
   --color-lighter-3: rgba(255, 255, 255, 0.9);
 
   /* Dark overlays */

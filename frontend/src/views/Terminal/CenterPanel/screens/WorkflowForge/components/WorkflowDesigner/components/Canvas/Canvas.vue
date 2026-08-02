@@ -851,9 +851,13 @@ export default {
   right: 0;
   bottom: 0;
   background-size: 16px 16px;
-  background-image: radial-gradient(circle, #01052ab0 1px, transparent 1px);
+  /* The token carries the FINAL colour and alpha — see --canvas-grid-dot in
+     _semantic.css. `opacity` stays 1 on purpose: dimming here as well is what
+     made the dot strength a product of two numbers in two files, and left the
+     grid invisible in the light and hacker themes. */
+  background-image: radial-gradient(circle, var(--canvas-grid-dot) 1px, transparent 1px);
   background-position: center;
-  opacity: 0.1;
+  opacity: 1;
   z-index: 0;
   width: 300%;
   height: 300%;

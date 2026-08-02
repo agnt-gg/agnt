@@ -44,6 +44,9 @@ body.dark.ember {
   --color-lighter-0: rgba(200, 170, 130, 0.05);
   --color-lighter-1: rgba(200, 170, 130, 0.1);
   --color-lighter-2: rgba(200, 170, 130, 0.2);
+
+  /* Workflow canvas grid. Final colour + alpha; canvas #120c08. */
+  --canvas-grid-dot: rgba(200, 170, 130, 0.115);
   --color-lighter-3: rgba(200, 170, 130, 0.4);
 
   /* Dark overlays */

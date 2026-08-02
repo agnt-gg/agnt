@@ -270,10 +270,9 @@ body.dark div.sidebar-section {
   background-color: var(--color-dark-1);
 } */
 
-body.dark .grid-overlay {
-  opacity: 0.2;
-  background-image: radial-gradient(circle, var(--color-lighter-2) 1px, transparent 1px);
-}
+/* `.grid-overlay` is no longer themed here. Canvas.vue paints the dot with
+   var(--canvas-grid-dot), which carries the final colour AND alpha, so the
+   strength is one number in one place instead of opacity x colour-alpha. */
 
 body.dark .edges path {
   stroke: var(--color-duller-navy);
@@ -325,25 +324,14 @@ body.dark #editor-panel {
   background: transparent;
 }
 
+/* Field chrome moved to --field-bg / --field-border in _semantic.css: this
+   block was (0,2,1) and outranked every component's own field styling. The
+   values are unchanged — the dark tokens ARE var(--color-darker-0) and
+   var(--terminal-border-color), which is what these rules resolved to. */
 body.dark input[type='text'],
-body.dark input[type='number'],
-body.dark input[type='email'],
-body.dark input[type='password'],
-body.dark input[type='date'],
-body.dark input[type='datetime-local'],
-body.dark input[type='month'],
-body.dark input[type='week'],
-body.dark input[type='tel'],
-body.dark input[type='url'],
-body.dark input[type='search'],
-body.dark input[type='color'],
 body.dark textarea,
 body.dark select {
   font-weight: 300;
-  /* colour intentionally omitted — see _forms.css. A body-scoped element
-     selector is (0,2,1) and outranks every component's own colour rule. */
-  background-color: var(--color-darker-0);
-  border-color: var(--color-dull-navy);
 }
 
 body.dark input[type='time'] {
@@ -405,12 +393,7 @@ body.dark .action-items button {
   border: 1px solid var(--terminal-border-color);
 }
 
-body.dark input[type='text'],
-body.dark input[type='number'],
-body.dark textarea {
-  background-color: var(--color-darker-0);
-  border-color: var(--terminal-border-color);
-}
+/* (was a second copy of the same field chrome — see the note above) */
 
 body.dark .form-group select {
   color: var(--color-dull-white);
@@ -424,13 +407,8 @@ body.dark input:-webkit-autofill:focus {
   background-color: var(--color-ultra-dark-navy);
 }
 
-body.dark input[type='text']:focus,
-body.dark input[type='number']:focus,
-body.dark textarea:focus,
-body.dark select:focus {
-  outline: none;
-  border: 1px solid var(--color-primary);
-}
+/* Focus now recolours the border from the base rule in _forms.css, so a
+   component that removed its border stays borderless when focused. */
 
 body.dark input::placeholder,
 body.dark textarea::placeholder {

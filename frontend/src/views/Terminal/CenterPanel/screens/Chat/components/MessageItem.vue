@@ -3326,7 +3326,12 @@ span.nodeLabel p {
 
 .tool-call-item {
   display: flex;
-  background: #0000001a;
+  /* 10% black is a dark-mode inset: on the near-black chat panel it is barely
+     a shade (ΔL* 0.69), but on a white panel it renders #e5e5e5 — ΔL* 9.06, a
+     grey slab. The token is rgba(0,0,0,0.1) in the dark themes, so dark is
+     byte-identical, and a 2.5% navy tint in light (ΔL* 1.31) which matches the
+     subtlety dark always had. */
+  background: var(--color-darker-0);
   border-radius: 8px;
   border: 1px solid rgba(127, 129, 147, 0.1);
   flex-direction: column;
