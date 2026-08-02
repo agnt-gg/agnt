@@ -147,7 +147,12 @@ body {
   /* ── GRADIENTS ────────────────────────────────────────────────────────────
      Saturated multi-hue gradients are the other dark-mode signature. 87 of
      them shipped unscoped. Tokenised for the same reason as the glows. */
-  --gradient-brand: linear-gradient(45deg, var(--color-primary), var(--color-violet));
+  /* The dark values are the MAJORITY existing form of each idiom, not a new
+     design: 12 of the 17 call sites already wrote the brand gradient as
+     135deg secondary -> primary, and the accent one as green -> blue. Picking
+     the most common spelling means tokenising them leaves dark mode where it
+     was, and only light mode changes. */
+  --gradient-brand: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
   --gradient-accent: linear-gradient(135deg, var(--color-green), var(--color-blue));
   --gradient-wash: linear-gradient(180deg, rgba(var(--primary-rgb), 0.08), rgba(var(--primary-rgb), 0.03));
 
@@ -234,7 +239,10 @@ body:not(.dark) {
      white, an 8% pink wash is visible as a stain; 3% neutral reads as paper. */
   --gradient-brand: var(--color-primary);
   --gradient-accent: var(--color-secondary);
-  --gradient-wash: linear-gradient(180deg, rgba(16, 24, 40, 0.035), rgba(16, 24, 40, 0.012));
+  /* 3.5%/1.2% was so faint it read as "the token failed to resolve" rather
+     than as a surface. 5.5%/2% is still quiet enough to be paper, but the
+     band is actually visible against a white panel. */
+  --gradient-wash: linear-gradient(180deg, rgba(16, 24, 40, 0.055), rgba(16, 24, 40, 0.02));
 
   --border-subtle: var(--terminal-border-color);
   --border-strong: #87898e; /* 3.50:1 on white — meets WCAG 1.4.11 */

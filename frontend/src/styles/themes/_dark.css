@@ -71,9 +71,11 @@ body.dark p {
   font-weight: 300;
 }
 
-body.dark button {
-  color: var(--color-dull-white);
-}
+/* `body.dark button { color: var(--color-dull-white) }` used to live here. It
+   was the dark-mode half of a pair of (0,2,1) blanket rules that outranked
+   every component's own button colour. Buttons now inherit at (0,0,1) from
+   _buttons.css; body colour in this theme is already --color-dull-white, so
+   unstyled buttons are unchanged. */
 
 body.dark header {
   border-bottom: 1px solid var(--color-dull-navy);

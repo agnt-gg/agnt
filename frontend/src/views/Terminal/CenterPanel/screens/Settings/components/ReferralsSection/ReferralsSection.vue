@@ -1185,7 +1185,7 @@ export default {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1433,7 +1433,7 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1575,7 +1575,7 @@ export default {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   color: var(--on-fill-accent);
   display: flex;
   align-items: center;
@@ -1842,7 +1842,7 @@ export default {
 }
 
 .bonus-icon {
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -1936,7 +1936,7 @@ export default {
 }
 
 .success-icon {
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
 }
 
 .bonus-info {
@@ -1975,7 +1975,7 @@ export default {
 
 /* Commission Card Styles */
 .commission-icon {
-  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
 }
 
 .commission-value {

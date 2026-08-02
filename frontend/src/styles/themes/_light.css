@@ -42,13 +42,19 @@ body:not(.dark):not(.rose) {
   --color-text: #4a4a60; /* was #2a2a3a. 8.39:1 on the canvas, 8.61:1 on white
      panels — still AAA, and stays clearly above the muted tier (L* 32.3 vs
      39.8) so the four-step hierarchy keeps its ordering. */
-  --color-text-muted: #5c5c72; /* a11y: 4.58:1 -> 5.74:1 for 12px secondary text */  --color-text-secondary: #6b6b80; /* a11y: 4.58:1 */
+  --color-text-muted: #5c5c72; /* tier 2 — 6.34:1 on the canvas */
+  --color-text-secondary: #66667a; /* tier 3 — was #6b6b80 (5.07:1), which sat
+     only 0.09 above the 4th tier: a four-step ramp that rendered as three.
+     Now 5.46:1, giving a visible step on both sides. */
   /* a11y: was #9b9bab = 2.41:1, the single largest source of contrast failures
-     (used for metadata, badges and timestamps app-wide). On a #fcfcfc canvas
-     the lightest possible AA-passing text is L*=17.4, so a genuinely lighter
-     4th tier cannot exist — this is now the FLOOR, and "quieter" must be
-     expressed with size/weight/whitespace rather than less contrast. */
-  --color-text-dull: #6d6d78; /* 2.41:1 -> 4.51:1 */  /* Accent colors — re-derived for a light substrate rather than nudged.
+     (used for metadata, badges and timestamps app-wide).
+
+     THE FLOOR, and it is set by the SUNKEN surface (#f5f5fa), not the canvas —
+     that is the lightest thing text sits on, so it binds first. Measured: the
+     lightest neutral that still clears 4.5:1 there is #6f6f7c at 4.56:1;
+     #70707d already fails at 4.49:1. Anything quieter than this must be
+     expressed with size, weight and whitespace, not less contrast. */
+  --color-text-dull: #6f6f7c; /* 4.83:1 canvas, 4.56:1 on sunken — the floor */  /* Accent colors — re-derived for a light substrate rather than nudged.
      Each is the original hue darkened until it clears 4.5:1 on the canvas,
      so status text is legible without changing the palette's identity.
      Ratios below are the ORIGINAL measurements against the previous #f1f0f5
@@ -59,7 +65,11 @@ body:not(.dark):not(.rose) {
   --color-blue: #0a7892; /* was #0ea5c8  2.56:1 -> 4.50:1 */
   --color-red: #ca3737; /* was #dc3c3c  3.90:1 -> 4.50:1 */
   --color-orange: #a35c00; /* was #d47800  2.86:1 -> 4.53:1 */
-  --color-yellow: #806c00; /* was #c8a800  2.05:1 -> 4.56:1 */
+  --color-yellow: #9a6200; /* was #806c00, which is hue 51deg — olive, not
+     amber. It read as "dead army green" rather than a warning, so the warning
+     signal was carried by position alone. #9a6200 is hue 38deg (true amber) at
+     4.97:1 on the canvas and 5.10:1 on white; because contrast is symmetric,
+     the same value also gives a 5.10:1 white label when used as a fill. */
   --color-indigo: #6d35c8; /* 6.19:1 — already passing */
   --color-violet: #ae34c6; /* was #b035c8  4.42:1 -> 4.51:1 */
   /* Brand pink is used BOTH as a fill (white label on it) and as text/links.
@@ -110,7 +120,7 @@ body:not(.dark):not(.rose) {
   --blue-rgb: 10, 120, 146; /* #0a7892 */
   --pink-rgb: 196, 50, 120; /* #c43278 */
   --red-rgb: 202, 55, 55; /* #ca3737 */
-  --yellow-rgb: 128, 108, 0; /* #806c00 */
+  --yellow-rgb: 154, 98, 0; /* #9a6200 */
   --indigo-rgb: 109, 53, 200; /* #6d35c8 */
   --primary-rgb: 196, 50, 120; /* #c43278 */
 
@@ -160,13 +170,15 @@ body:not(.dark) .separator {
 
 /* ═══════════════════ BUTTONS ═══════════════════ */
 
-body:not(.dark) button {
-  color: var(--color-text);
-}
+/* `body:not(.dark) button { color: var(--color-text) }` used to live here.
+   It was (0,2,1) and silently outranked every component's own button colour,
+   so filled buttons rendered dark ink on a dark accent fill. Buttons now take
+   `color: inherit` from _buttons.css at (0,0,1) — same result for unstyled
+   buttons, but components can override. See the note there. */
 
 body:not(.dark) button.generate {
-  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
-  color: #ffffff;
+  background-image: var(--gradient-brand);
+  color: var(--on-fill-accent);
   font-weight: 600;
 }
 

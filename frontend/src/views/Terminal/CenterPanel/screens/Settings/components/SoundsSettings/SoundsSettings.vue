@@ -390,13 +390,13 @@ input:checked + .slider:before {
   border-radius: 50%;
   background: var(--color-primary);
   cursor: pointer;
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.5);
+  box-shadow: var(--glow-accent);
   transition: all 0.2s ease;
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.8);
+  box-shadow: var(--glow-accent-strong);
 }
 
 .volume-slider::-moz-range-thumb {
@@ -406,13 +406,13 @@ input:checked + .slider:before {
   background: var(--color-primary);
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.5);
+  box-shadow: var(--glow-accent);
   transition: all 0.2s ease;
 }
 
 .volume-slider::-moz-range-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.8);
+  box-shadow: var(--glow-accent-strong);
 }
 
 .volume-slider:disabled {

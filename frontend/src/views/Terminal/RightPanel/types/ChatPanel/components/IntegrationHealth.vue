@@ -1001,7 +1001,7 @@ export default {
 
 .meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-blue) 0%, var(--color-green) 100%);
+  background: var(--gradient-accent);
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1177,7 +1177,7 @@ export default {
 
 .integration-status-dot.healthy {
   background: var(--color-green);
-  box-shadow: 0 0 4px var(--color-green);
+  box-shadow: var(--glow-success);
 }
 
 .integration-status-dot.error {

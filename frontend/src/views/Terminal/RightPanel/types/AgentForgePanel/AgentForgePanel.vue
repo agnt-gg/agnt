@@ -242,13 +242,13 @@ span.button-inner-container {
   border-radius: 10px;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
+  background-image: var(--gradient-accent);
   color: var(--color-dark-navy);
   font-weight: 600;
 }
 
 .create-agent-button:focus {
-  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
+  background-image: var(--gradient-accent);
   color: var(--color-dark-navy);
   font-weight: 600;
   outline: inherit;
@@ -257,7 +257,7 @@ span.button-inner-container {
 
 .create-agent-button:hover:not(:disabled) {
   transform: translateY(-3px);
-  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
+  background-image: var(--gradient-accent);
   color: var(--color-dark-navy);
   font-weight: 600;
   /* color: var(--color-green);
@@ -268,7 +268,7 @@ span.button-inner-container {
   opacity: 0.7 5;
   cursor: not-allowed;
   transform: none;
-  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
+  background-image: var(--gradient-accent);
   color: var(--color-dark-navy);
   font-weight: 600;
   /* color: var(--color-green);

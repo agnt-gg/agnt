@@ -132,7 +132,7 @@ export default {
   left: 0;
   right: 0;
   z-index: 1000;
-  background: linear-gradient(135deg, var(--color-blue) 0%, var(--color-green) 50%, var(--color-blue) 100%);
+  background: var(--gradient-accent);
   border-bottom: 2px solid var(--color-primary);
   padding: 8px 40px 8px 16px;
   cursor: pointer;

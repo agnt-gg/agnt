@@ -1896,13 +1896,13 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 
 .resize-handle:hover .resize-handle-indicator {
   background: var(--color-med-navy);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.4);
+  box-shadow: var(--glow-accent);
   height: 50px;
 }
 
 .resize-handle:active .resize-handle-indicator {
   background: var(--color-primary);
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.6);
+  box-shadow: var(--glow-accent-strong);
 }
 
 /* Switch mode styles */
@@ -1913,7 +1913,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 
 .resize-handle.switch-mode .resize-handle-indicator {
   background: rgba(var(--yellow-rgb), 0.8);
-  box-shadow: 0 0 10px rgba(var(--yellow-rgb), 0.6);
+  box-shadow: var(--glow-accent);
   height: 60px;
   width: 4px;
 }
@@ -2014,7 +2014,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 .left-panel-component.collapsed:hover::before,
 .right-panel-component.collapsed:hover::before {
   background: var(--color-med-navy);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.4);
+  box-shadow: var(--glow-accent);
   height: 80px;
   cursor: pointer;
 }

@@ -4012,7 +4012,7 @@ span.nodeLabel p {
   font-size: 1.5em;
   font-weight: 700;
   color: var(--on-fill-info);
-  background: linear-gradient(135deg, var(--color-green), var(--color-blue));
+  background: var(--gradient-accent);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

@@ -932,7 +932,7 @@ export default {
 }
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
+  background: var(--gradient-brand);
   transition: width 0.3s ease-in-out;
 }
 .skip-button {

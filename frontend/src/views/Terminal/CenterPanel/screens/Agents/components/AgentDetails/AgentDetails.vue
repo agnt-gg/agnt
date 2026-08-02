@@ -1492,7 +1492,7 @@ h4.section-title {
 
 .goal-card.executing {
   border-color: var(--color-green);
-  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.3);
+  box-shadow: var(--glow-success);
 }
 
 .goal-card.executing::before {

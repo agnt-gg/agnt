@@ -540,7 +540,7 @@ export default {
 
 .status-indicator.active {
   background: var(--color-green);
-  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.6);
+  box-shadow: var(--glow-success);
 }
 
 .user-info {
@@ -846,7 +846,7 @@ export default {
 
 .xp-progress-fill-large {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+  background: var(--gradient-brand);
   border-radius: 12px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 2%;

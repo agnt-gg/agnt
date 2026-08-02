@@ -59,11 +59,11 @@ export default {
 
 .base-button:hover {
   background: rgba(var(--primary-rgb), 0.1);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.5);
+  box-shadow: var(--glow-accent);
 }
 
 .base-button:focus {
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.7);
+  box-shadow: var(--glow-accent-strong);
   background: rgba(var(--primary-rgb), 0.15);
   outline: none;
 }
@@ -75,11 +75,11 @@ export default {
 
 .base-button.success:hover {
   background: rgba(var(--green-rgb), 0.1);
-  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
+  box-shadow: var(--glow-success);
 }
 
 .base-button.success:focus {
-  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.7);
+  box-shadow: var(--glow-success);
   background: rgba(var(--green-rgb), 0.15);
 }
 
@@ -105,12 +105,12 @@ export default {
 
 .base-button.secondary:hover {
   background: rgba(var(--primary-rgb), 0.05);
-  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.2);
+  box-shadow: var(--glow-accent);
   color: var(--color-text);
 }
 
 .base-button.secondary:focus {
-  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.3);
+  box-shadow: var(--glow-accent-strong);
   background: rgba(var(--primary-rgb), 0.08);
 }
 

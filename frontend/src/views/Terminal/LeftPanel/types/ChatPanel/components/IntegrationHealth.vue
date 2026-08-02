@@ -335,12 +335,12 @@ export default {
 
 .integration-status-dot.healthy {
   background: var(--color-green);
-  box-shadow: 0 0 4px var(--color-green);
+  box-shadow: var(--glow-success);
 }
 
 .integration-status-dot.error {
   background: var(--color-red);
-  box-shadow: 0 0 4px var(--color-red);
+  box-shadow: var(--glow-danger);
 }
 
 .integration-status-dot.checking {

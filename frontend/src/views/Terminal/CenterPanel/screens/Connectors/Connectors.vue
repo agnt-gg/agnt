@@ -2757,12 +2757,12 @@ body.dark .form-actions {
 
 .health-dot.healthy {
   background: var(--color-green);
-  box-shadow: 0 0 4px var(--color-green);
+  box-shadow: var(--glow-success);
 }
 
 .health-dot.degraded {
   background: var(--color-yellow);
-  box-shadow: 0 0 4px var(--color-yellow);
+  box-shadow: var(--glow-accent);
 }
 
 .health-dot.error,
