@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { effectScope } from 'vue';
 import { useAsyncResource, clearAsyncResourceCache } from './useAsyncResource.js';
 
 function deferred() {
@@ -100,6 +101,47 @@ describe('useAsyncResource', () => {
     const remount = useAsyncResource(() => new Promise(() => {}), { cacheKey: 'k' });
     expect(remount.ready.value).toBe(true); // no second skeleton
     expect(remount.data.value).toEqual({ n: 1 });
+  });
+
+  it('withholds the placeholder until the wait is humanly noticeable', async () => {
+    const { showPlaceholder, ready } = useAsyncResource(() => new Promise(() => {}), {
+      placeholderDelayMs: 50,
+    });
+    expect(ready.value).toBe(false);
+    expect(showPlaceholder.value).toBe(false); // too fast to be worth drawing
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(showPlaceholder.value).toBe(true); // slow enough that space should be reserved
+  });
+
+  it('never shows a placeholder when the answer beats the delay', async () => {
+    const { showPlaceholder, refresh } = useAsyncResource(() => Promise.resolve({ n: 1 }), {
+      placeholderDelayMs: 50,
+    });
+    await refresh();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(showPlaceholder.value).toBe(false);
+  });
+
+  it('shows an error instead of a placeholder when the load fails', async () => {
+    const { showPlaceholder, refresh } = useAsyncResource(() => Promise.reject(new Error('x')), {
+      placeholderDelayMs: 0,
+    });
+    await refresh();
+    expect(showPlaceholder.value).toBe(false);
+  });
+
+  it('cancels its placeholder timer when the scope is disposed', async () => {
+    // A component torn down mid-load must not keep a timer alive; under test
+    // that surfaces as a pending handle, in the app as a wasted wakeup.
+    const scope = effectScope();
+    let handle;
+    scope.run(() => {
+      handle = useAsyncResource(() => new Promise(() => {}), { placeholderDelayMs: 50 });
+    });
+    scope.stop();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(handle.showPlaceholder.value).toBe(false);
   });
 
   it('does not share state between different cache keys', async () => {

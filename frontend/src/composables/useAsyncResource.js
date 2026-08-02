@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref, computed, onScopeDispose } from 'vue';
 
 /**
  * One async fact, with "not measured yet" as a first-class state.
@@ -26,10 +26,10 @@ const cache = new Map();
 /**
  * @param {() => Promise<object>} fetcher Resolves to the resource. Normalise
  *   response shapes in here so consumers see exactly one shape.
- * @param {{ cacheKey?: string }} [options]
+ * @param {{ cacheKey?: string, placeholderDelayMs?: number }} [options]
  */
 export function useAsyncResource(fetcher, options = {}) {
-  const { cacheKey = null } = options;
+  const { cacheKey = null, placeholderDelayMs = 120 } = options;
 
   const seed = cacheKey && cache.has(cacheKey) ? { ...cache.get(cacheKey) } : null;
 
@@ -42,6 +42,28 @@ export function useAsyncResource(fetcher, options = {}) {
     if (ready.value) return 'ready';
     return error.value ? 'error' : 'loading';
   });
+
+  /**
+   * Whether to draw a loading placeholder.
+   *
+   * Separate from `ready` on purpose, because they answer different questions.
+   * `ready` is a correctness gate — never render a claim you have not
+   * measured. This is a cosmetic one: a skeleton that appears and vanishes
+   * within a frame is itself the flicker it was added to prevent, so say
+   * nothing at all until the wait is long enough for a human to notice.
+   */
+  const pastPlaceholderDelay = ref(placeholderDelayMs <= 0);
+  let placeholderTimer = null;
+  if (!pastPlaceholderDelay.value) {
+    placeholderTimer = setTimeout(() => {
+      pastPlaceholderDelay.value = true;
+    }, placeholderDelayMs);
+  }
+  onScopeDispose(() => clearTimeout(placeholderTimer));
+
+  const showPlaceholder = computed(
+    () => !ready.value && !error.value && pastPlaceholderDelay.value,
+  );
 
   // Guards against an in-flight response from an earlier refresh() landing
   // after a later one and reinstating stale data.
@@ -85,7 +107,7 @@ export function useAsyncResource(fetcher, options = {}) {
     if (cacheKey) cache.set(cacheKey, { ...data.value });
   }
 
-  return { data, error, ready, state, refresh, patch };
+  return { data, error, ready, state, showPlaceholder, refresh, patch };
 }
 
 /** Test seam. Production code has no reason to call this. */

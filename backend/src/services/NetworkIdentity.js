@@ -9,9 +9,20 @@
  *
  *     "On your phone, connect to Wi-Fi:  Example Network 5G"
  *
- * Best-effort by design. Every failure path returns null and the UI falls back
+ * Best-effort by design. Every failure path yields null and the UI falls back
  * to the generic wording. A settings panel must never hang or throw because an
  * OS command was slow, missing, or worded differently on some locale.
+ *
+ * WHY IT NEVER BLOCKS A REQUEST
+ * This value is one line of garnish, and it used to hold the entire panel
+ * hostage: /pairing/status awaited `netsh wlan show interfaces`, measured at
+ * 133ms on the machine this was written on and capped at 1500ms, which made a
+ * 8ms endpoint take 142ms — every 60 seconds, forever, plus once per poll
+ * whenever the TTL happened to lapse mid-session. A decorative field must
+ * never be on the critical path of a response.
+ *
+ * So reads are synchronous and always cheap: return what is known now, and if
+ * that is stale, start a refresh for the NEXT caller. Never await the OS.
  */
 
 import { execFile } from 'child_process';
@@ -20,12 +31,19 @@ const CACHE_TTL_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 1500;
 
 let cache = { value: null, at: 0 };
+/** The in-flight probe, so N concurrent polls cannot spawn N processes. */
+let inflight = null;
 
 /** Test seam. */
 export function _resetNetworkNameCache() {
   cache = { value: null, at: 0 };
+  inflight = null;
 }
 
+/**
+ * @returns {Promise<string|null>} stdout, or null if the command could not be
+ * run to completion (missing, timed out, non-zero exit).
+ */
 function run(cmd, args) {
   return new Promise((resolve) => {
     let done = false;
@@ -76,31 +94,96 @@ export function parseLinuxSsid(text) {
 }
 
 /**
- * @returns {Promise<string|null>} the Wi-Fi network name, or null when it
- * cannot be determined (wired, unsupported OS, command unavailable).
+ * Ask the OS.
+ *
+ * Distinguishes two outcomes that both used to collapse to null, and must not:
+ *   { ok: true,  value: null }  we asked and this machine is not on Wi-Fi
+ *   { ok: false, value: null }  we could not ask (command missing/timed out)
+ *
+ * The first is evidence and should clear a previously-known name. The second
+ * is the absence of evidence and must not — a momentarily busy `netsh` is no
+ * reason to stop telling the user which network to join.
+ *
+ * @returns {Promise<{ok: boolean, value: string|null}>}
  */
-export async function getNetworkName() {
-  const now = Date.now();
-  if (cache.at && now - cache.at < CACHE_TTL_MS) return cache.value;
-
-  let value = null;
-  try {
-    if (process.platform === 'win32') {
-      value = parseWindowsSsid(await run('netsh', ['wlan', 'show', 'interfaces']));
-    } else if (process.platform === 'darwin') {
-      value = parseMacSsid(
-        await run('/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport', ['-I'])
-      );
-      if (!value) value = parseMacSsid(await run('networksetup', ['-getairportnetwork', 'en0']));
-    } else {
-      value = parseLinuxSsid(await run('iwgetid', ['-r']));
-    }
-  } catch {
-    value = null;
+async function detect() {
+  if (process.platform === 'win32') {
+    const out = await run('netsh', ['wlan', 'show', 'interfaces']);
+    return out === null ? { ok: false, value: null } : { ok: true, value: parseWindowsSsid(out) };
   }
 
-  cache = { value, at: now };
-  return value;
+  if (process.platform === 'darwin') {
+    const airport = await run(
+      '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport',
+      ['-I']
+    );
+    if (airport !== null) {
+      const value = parseMacSsid(airport);
+      if (value) return { ok: true, value };
+    }
+    // airport is removed on recent macOS; networksetup is the supported path.
+    const ns = await run('networksetup', ['-getairportnetwork', 'en0']);
+    if (ns === null) return { ok: airport !== null, value: null };
+    return { ok: true, value: parseMacSsid(ns) };
+  }
+
+  const out = await run('iwgetid', ['-r']);
+  return out === null ? { ok: false, value: null } : { ok: true, value: parseLinuxSsid(out) };
 }
 
-export default { getNetworkName, parseWindowsSsid, parseMacSsid, parseLinuxSsid, _resetNetworkNameCache };
+/**
+ * Start a probe unless one is already running. Never rejects.
+ * @returns {Promise<string|null>} the value after the probe settles.
+ */
+function refresh() {
+  if (inflight) return inflight;
+  inflight = detect()
+    .then(({ ok, value }) => {
+      cache = { value: ok ? value : cache.value, at: Date.now() };
+      return cache.value;
+    })
+    .catch(() => {
+      // Mark the attempt so a persistently throwing probe backs off to one
+      // try per TTL instead of spawning a process per request.
+      cache = { value: cache.value, at: Date.now() };
+      return cache.value;
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+
+const isFresh = () => cache.at !== 0 && Date.now() - cache.at < CACHE_TTL_MS;
+
+/**
+ * The network name as currently known. Synchronous and always cheap.
+ *
+ * Returns null before the first probe settles; callers treat that exactly as
+ * "unknown", which is the same fallback used on wired and unsupported setups.
+ * Call primeNetworkName() at boot so that window closes before any user opens
+ * the panel.
+ *
+ * @returns {string|null}
+ */
+export function getNetworkName() {
+  if (!isFresh()) refresh(); // deliberately not awaited
+  return cache.value;
+}
+
+/**
+ * Warm the cache. Fire-and-forget at startup; awaited only by tests.
+ * @returns {Promise<string|null>}
+ */
+export function primeNetworkName() {
+  return isFresh() ? Promise.resolve(cache.value) : refresh();
+}
+
+export default {
+  getNetworkName,
+  primeNetworkName,
+  parseWindowsSsid,
+  parseMacSsid,
+  parseLinuxSsid,
+  _resetNetworkNameCache,
+};

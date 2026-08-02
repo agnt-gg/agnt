@@ -36,6 +36,11 @@ import { requireAuthHeader, extractToken, verifyAuthToken } from '../utils/authG
 import { rateLimit } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
 import NetworkIdentity from '../services/NetworkIdentity.js';
+
+// Warm the network name at boot, so the first user to open the panel is not
+// the one who pays for the OS probe. Fire-and-forget by design: nothing waits
+// on it, and every failure path inside resolves to null.
+NetworkIdentity.primeNetworkName();
 import {
   candidateOrigins,
   evaluateReachability,
@@ -121,7 +126,11 @@ router.get('/status', requireAuthHeader, async (req, res) => {
     // Name the network so "connect your phone to the same Wi-Fi" becomes an
     // instruction the user can actually check. null on wired/unknown setups,
     // where the UI falls back to generic wording.
-    networkName: await NetworkIdentity.getNetworkName(),
+    //
+    // Read, never awaited: this is one line of garnish and it used to block
+    // the whole response on `netsh` (8ms endpoint -> 142ms measured), once per
+    // minute forever. NetworkIdentity refreshes itself in the background.
+    networkName: NetworkIdentity.getNetworkName(),
     // Has anything other than this machine reached us? Splits "the phone never
     // got here" from "it got here and something later went wrong".
     lastExternalRequest: RemoteAccessConfig.getLastExternalRequest(),
