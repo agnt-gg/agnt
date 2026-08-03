@@ -33,11 +33,14 @@ const COMMAND_TIMEOUT_MS = 1500;
 let cache = { value: null, at: 0 };
 /** The in-flight probe, so N concurrent polls cannot spawn N processes. */
 let inflight = null;
+/** A probe queued for after the current response, so N reads queue one. */
+let scheduled = false;
 
 /** Test seam. */
 export function _resetNetworkNameCache() {
   cache = { value: null, at: 0 };
   inflight = null;
+  scheduled = false;
 }
 
 /**
@@ -167,7 +170,18 @@ const isFresh = () => cache.at !== 0 && Date.now() - cache.at < CACHE_TTL_MS;
  * @returns {string|null}
  */
 export function getNetworkName() {
-  if (!isFresh()) refresh(); // deliberately not awaited
+  // The probe is not merely un-awaited, it is not even STARTED here: execFile()
+  // costs ~8ms of syscall on Windows before it returns a handle, and a response
+  // should not pay that either. setImmediate puts it after the current request
+  // has been written, which makes "a request never spawns a process" an
+  // invariant rather than a usually.
+  if (!isFresh() && !inflight && !scheduled) {
+    scheduled = true;
+    setImmediate(() => {
+      scheduled = false;
+      if (!isFresh()) refresh(); // may have been primed while we waited
+    });
+  }
   return cache.value;
 }
 

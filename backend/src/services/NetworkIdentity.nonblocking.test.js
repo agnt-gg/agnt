@@ -64,7 +64,14 @@ describe('getNetworkName', () => {
     const v = getNetworkName();
     expect(Date.now() - started).toBeLessThan(5);
     expect(v).toBeNull(); // nothing known yet — the same fallback as a wired machine
-    expect(probe.calls).toBe(1); // ...but the probe is now running
+  });
+
+  it('does not even SPAWN during the read — execFile itself costs ~8ms', async () => {
+    getNetworkName();
+    expect(probe.calls).toBe(0); // nothing started while the response is being written
+
+    await new Promise((r) => setImmediate(r));
+    expect(probe.calls).toBe(1); // ...and exactly one starts straight after
   });
 
   it('serves the real name once the background probe settles', async () => {
@@ -76,6 +83,7 @@ describe('getNetworkName', () => {
   it('collapses a burst of polls into a single OS call', async () => {
     for (let i = 0; i < 25; i++) getNetworkName();
     await primeNetworkName();
+    await new Promise((r) => setImmediate(r)); // let any queued probe run too
     expect(probe.calls).toBe(1);
   });
 
