@@ -28,10 +28,35 @@ const dbRun = (q, p) =>
     })
   );
 
-/** Recognised origins. A row must name where it came from. */
-export const ORIGINS = Object.freeze([
-  'chat',
+/**
+ * Recognised origins. A row must name where it came from.
+ *
+ * The first block mirrors `detectChatType()` one-for-one: these ARE the user-
+ * facing chat surfaces (Orchestrator, Agent Forge, Workflow Forge, Tool Forge,
+ * Widget Forge, Goals, Artifacts). They are listed individually and not folded
+ * into a single 'chat' because folding them is exactly what made feature usage
+ * unmeasurable for the first eight months of this table's life — the surface
+ * was known at the call site and thrown away one line before the INSERT.
+ *
+ * `chatSurfaceOrigins.spec.js` fails the build if detectChatType() ever grows a
+ * surface that is not listed here, so a new forge cannot silently vanish from
+ * analytics again.
+ *
+ * 'chat' is retained for historical rows written before surfaces were split.
+ */
+export const CHAT_SURFACE_ORIGINS = Object.freeze([
+  'orchestrator',
   'agent',
+  'workflow',
+  'tool',
+  'widget',
+  'goal',
+  'artifact',
+]);
+
+export const ORIGINS = Object.freeze([
+  ...CHAT_SURFACE_ORIGINS,
+  'chat', // legacy: pre-split rows, and any surface we failed to classify
   'goal_task',
   'goal_eval',
   'workflow_node',

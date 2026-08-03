@@ -1352,7 +1352,10 @@ async function universalChatHandler(req, res, context = {}) {
               resolvedProvider,
               model,
               'running',
-              { parentExecutionId, rootExecutionId, origin: chatType === 'agent' ? 'agent' : 'chat' }
+              // Record the surface verbatim. `chatType` is already exactly the
+              // set in CHAT_SURFACE_ORIGINS; collapsing it to 'chat' here threw
+              // away the only feature-attribution signal this table ever had.
+              { parentExecutionId, rootExecutionId, origin: chatType }
             );
 
             agentExecutionId = execId;
@@ -3462,7 +3465,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           await recordLlmCall({
             userId,
             executionId: agentExecutionId,
-            origin: chatType === 'agent' ? 'agent' : 'chat',
+            origin: chatType, // same surface tag as the agent_executions row above
             conversationId,
             provider: normalizedProvider,
             model,
