@@ -434,7 +434,10 @@ body.dark #editor-panel .right-tabs button i {
   user-select: none;
   padding: 16px; /* Add padding here */
   cursor: grab; /* Indicate draggable header */
-  background: var(--color-dull-white); /* Give header a background */
+  /* was var(--color-dull-white), which the light theme remaps to
+     var(--color-text) = #4a4a60 — a dark band with themed text on it. An alpha
+     overlay reads as a header in both themes. */
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color); /* Add border */
   border-radius: 8px 8px 0 0; /* Round top corners */
   border-bottom: none; /* Remove bottom border if panel-body has top border */

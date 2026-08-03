@@ -341,6 +341,68 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
     ).toEqual(['indigo', 'pink', 'violet']);
   });
 
+  /**
+   * A --gradient-* TOKEN MUST BE A VALID <image> IN EVERY THEME.
+   *
+   * `background-image` accepts an <image>, not a <color>. A theme that defines
+   * --gradient-accent as a plain colour makes every
+   *     background-image: var(--gradient-accent)
+   * an INVALID declaration, which the browser silently DROPS -- the element
+   * loses its fill entirely and keeps the ink chosen to sit on that fill.
+   *
+   * This happened: the light theme set --gradient-brand/-accent to
+   * var(--color-primary)/var(--color-secondary) and the Agent Forge "Create
+   * Agent" button rendered #ffffff on #fcfcfc -- 1.03:1, invisible. Seven
+   * declarations across four files were affected.
+   *
+   * Nothing else catches this. The token resolves, the syntax parses, and the
+   * rule is discarded at computed-value time with no error. The `background`
+   * SHORTHAND does accept a colour, which is why the 21 other
+   * `background: var(--gradient-*)` uses kept working and masked it.
+   */
+  it('every --gradient-* token resolves to an <image> in every theme', () => {
+    /** Follow var() chains to a literal, without assuming it is a colour. */
+    const resolveRaw = (value, map, depth = 0) => {
+      if (value == null || depth > 8) return null;
+      const v = String(value).trim();
+      const m = v.match(/^var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,\s*([\s\S]+))?\)$/);
+      if (m) return resolveRaw(map[m[1]] ?? m[2], map, depth + 1);
+      return v;
+    };
+
+    const bad = [];
+    for (const theme of ['light', 'dark']) {
+      const names = Object.keys(MAPS[theme]).filter((k) => /^--gradient-/.test(k));
+      for (const name of names) {
+        const raw = resolveRaw(MAPS[theme][name], MAPS[theme]);
+        if (raw == null) continue;
+        // An <image>: any *-gradient() function, url(), or image-set().
+        if (/(^|\s)(repeating-)?(linear|radial|conic)-gradient\(|^url\(|^image-set\(/i.test(raw)) continue;
+        bad.push(`[${theme}] ${name}: ${raw}`);
+      }
+    }
+    expect(
+      bad.join('\n') || 'clean',
+      'A --gradient-* token does not resolve to a valid <image>.\n'
+      + 'Every `background-image: var(--gradient-*)` using it becomes an invalid\n'
+      + 'declaration and is DROPPED, so the element loses its fill while keeping the\n'
+      + 'ink that was chosen for that fill. If a theme wants a flat look, use a\n'
+      + 'single-hue gradient (linear-gradient(135deg, #aaa, #999)) rather than a\n'
+      + 'bare colour -- it reads as flat and keeps the token type-correct.\n'
+    ).toBe('clean');
+  });
+
+  it('finds the gradient tokens it claims to check (anti-vacuity)', () => {
+    for (const theme of ['light', 'dark']) {
+      const names = Object.keys(MAPS[theme]).filter((k) => /^--gradient-/.test(k));
+      expect(names.length, `${theme} declares no --gradient-* tokens`).toBeGreaterThanOrEqual(2);
+    }
+    // A bare colour must fail the predicate this test relies on.
+    const isImage = (raw) => /(^|\s)(repeating-)?(linear|radial|conic)-gradient\(|^url\(|^image-set\(/i.test(raw);
+    expect(isImage('#b02d6c')).toBe(false);
+    expect(isImage('linear-gradient(135deg, #b02d6c, #9a2760)')).toBe(true);
+  });
+
   it('detects the exact bugs this guard exists for (negative control)', () => {
     // --color-light-navy as a border in dark: the sidebar / conversation-list bug.
     const leak = resolve('var(--color-light-navy)', MAPS.dark);

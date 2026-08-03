@@ -1864,7 +1864,9 @@ body.dark .billing-toggle {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  background: var(--color-dull-white);
+  /* --color-dull-white is var(--color-text) in light mode — a dark slab. A drop
+     zone is a field with a dashed edge. */
+  background: var(--field-bg);
   border: 1px dashed var(--terminal-border-color);
   border-radius: 4px;
   cursor: pointer;

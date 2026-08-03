@@ -243,34 +243,35 @@ span.button-inner-container {
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   background-image: var(--gradient-accent);
-  color: var(--color-dark-navy);
+  /* --on-fill-accent, not --color-dark-navy. The latter is a PHYSICAL name that
+     light mode remaps to #ffffff, so it happened to be right in both themes by
+     accident. --on-fill-accent is declared as the partner of the accent fill
+     and is guarded as such. */
+  color: var(--on-fill-accent);
   font-weight: 600;
 }
 
+/* The fill and ink are inherited from the base rule above. They used to be
+   re-declared in every state — :focus, :hover and :disabled all repeated the
+   same two lines — which is what defending against a state rule that strips the
+   background looks like. BaseButton no longer does that, so the repetition is
+   gone. */
 .create-agent-button:focus {
-  background-image: var(--gradient-accent);
-  color: var(--color-dark-navy);
-  font-weight: 600;
   outline: inherit;
   border: 2px solid var(--color-primary);
 }
 
 .create-agent-button:hover:not(:disabled) {
   transform: translateY(-3px);
-  background-image: var(--gradient-accent);
-  color: var(--color-dark-navy);
-  font-weight: 600;
-  /* color: var(--color-green);
-  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.4); */
 }
 
 .create-agent-button:disabled {
-  opacity: 0.7 5;
+  /* `opacity: 0.7 5` was here — not a valid <number>, so the declaration was
+     dropped and BaseButton's 0.5 governed anyway. Removed rather than
+     "corrected" to 0.75, which would have been a silent appearance change on a
+     line nobody meant to alter. */
   cursor: not-allowed;
   transform: none;
-  background-image: var(--gradient-accent);
-  color: var(--color-dark-navy);
-  font-weight: 600;
   /* color: var(--color-green);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); */
 }

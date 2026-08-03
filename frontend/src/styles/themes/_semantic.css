@@ -270,8 +270,29 @@ body:not(.dark) {
      it accepts a gradient, so these are drop-in.
      The wash keeps a gradient but drops to a barely-there neutral tint — on
      white, an 8% pink wash is visible as a stain; 3% neutral reads as paper. */
-  --gradient-brand: var(--color-primary);
-  --gradient-accent: var(--color-secondary);
+  /* A --gradient-* TOKEN MUST ALWAYS BE A VALID <image>.
+
+     These were `var(--color-primary)` / `var(--color-secondary)` — plain
+     COLOURS. `background-image` accepts an <image>, not a <color>, so every
+     `background-image: var(--gradient-brand)` became an INVALID declaration and
+     was silently DROPPED. The element lost its fill completely while keeping
+     the ink that was chosen to sit on that fill.
+
+     Measured: the Agent Forge "Create Agent" button rendered #ffffff text on
+     the #fcfcfc panel — 1.03:1, invisible. Seven declarations across four files
+     were affected (button.generate in main.css, _buttons.css and _light.css,
+     plus .create-agent-button x4).
+
+     CSS reports nothing for this: the token resolves, the syntax parses, and
+     the rule is discarded at computed-value time. The `background` SHORTHAND
+     accepts a colour, which is why the 21 `background: var(--gradient-*)` uses
+     kept working and hid the problem.
+
+     Light mode still avoids the neon two-hue ramp — these are single-hue and
+     read as near-flat — but they are images, so the contract holds. White ink
+     on the lighter stop measures 5.91:1 (brand) and 5.40:1 (accent). */
+  --gradient-brand: linear-gradient(135deg, #b02d6c, #9a2760);
+  --gradient-accent: linear-gradient(135deg, #09718a, #075d71);
 
   /* Light canvas: the dot goes DARKER, and needs a much higher alpha than the
      dark themes to reach the same perceived weight. 0.025 effective is what it

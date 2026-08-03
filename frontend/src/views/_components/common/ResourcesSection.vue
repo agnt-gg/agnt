@@ -960,14 +960,14 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   padding: 8px 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  background: var(--color-dull-white);
+  /* --color-dull-white is a PHYSICAL name that the light theme remaps to
+     var(--color-text) = #4a4a60, so this field painted dark ink as its own
+     surface. --field-bg is the themed well and needs no per-theme patch — which
+     is why the `body.dark` rule that used to sit here is gone. */
+  background: var(--field-bg);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.85em;
-}
-
-body.dark .admin-response-input {
-  background: rgba(0, 0, 0, 10%);
 }
 
 .admin-response-input:focus {
@@ -982,14 +982,10 @@ body.dark .admin-response-input {
   padding: 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  background: var(--color-dull-white);
+  background: var(--field-bg);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;
-}
-
-body.dark .form-input {
-  background: rgba(0, 0, 0, 10%);
 }
 
 .form-input:focus {
@@ -1003,16 +999,12 @@ body.dark .form-input {
   padding: 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  background: var(--color-dull-white);
+  background: var(--field-bg);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;
   resize: vertical;
   min-height: 120px;
-}
-
-body.dark .feedback-textarea {
-  background: rgba(0, 0, 0, 10%);
 }
 
 .feedback-textarea:focus {
@@ -1070,7 +1062,9 @@ body.dark .feedback-textarea {
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
+  /* 5% WHITE is a lift on a dark canvas and invisible on a light one.
+     --surface-hover inverts. */
+  background: var(--surface-hover);
 }
 
 .load-more-btn {
@@ -1090,7 +1084,8 @@ body.dark .feedback-textarea {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  background: var(--color-dull-white);
+  /* A drop zone is a field with a dashed edge; same token. */
+  background: var(--field-bg);
   border: 1px dashed var(--terminal-border-color);
   border-radius: 4px;
   cursor: pointer;

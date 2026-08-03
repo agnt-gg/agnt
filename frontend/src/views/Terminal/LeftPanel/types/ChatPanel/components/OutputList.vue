@@ -1413,7 +1413,11 @@ div#saved-outputs {
   justify-content: flex-end;
   align-items: center;
   padding: 16px 0;
-  background: var(--color-dull-white);
+  /* No fill: this header sits ON the sidebar panel and is separated by the
+     border below. It was var(--color-dull-white), which the light theme remaps
+     to var(--color-text) = #4a4a60, so the conversation-list header painted a
+     dark band across the top of the sidebar in light mode. */
+  background: transparent;
   border-bottom: 1px solid var(--terminal-border-color);
   width: calc(100%);
 }

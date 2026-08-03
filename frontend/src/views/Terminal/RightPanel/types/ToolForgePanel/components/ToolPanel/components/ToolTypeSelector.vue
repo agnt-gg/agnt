@@ -82,8 +82,18 @@ export default {
 .type-btn {
   flex: 0;
   padding: 6px 16px 4px;
-  background: var(--color-dull-white, #fff);
-  border: 1px solid var(--terminal-border-color, var(--terminal-border-color));
+  /* TRANSPARENT: a segmented control sits ON its panel, it is not a surface of
+     its own. This was var(--color-dull-white, #fff) — a PHYSICAL name that the
+     light theme remaps to var(--color-text), i.e. #4a4a60. So in light mode the
+     button painted a dark slab and set --text-primary on top of it: measured
+     #4a4a60 on #4a4a60, exactly 1.00:1. The fallback #fff never applied, because
+     the token is defined; a fallback only fires when a token is MISSING, not
+     when it resolves to something unsuitable.
+
+     Transparent needs no per-theme patch, which is why the two body.dark rules
+     below could be deleted. */
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   color: var(--text-primary);
   font-size: 13px;
@@ -98,7 +108,9 @@ export default {
 }
 
 .type-btn:hover {
-  background: var(--color-lighter-0, #f8f9fa);
+  /* --surface-hover inverts (ink-alpha in light, white-alpha in dark); the old
+     #f8f9fa literal needed a dark-mode patch to avoid a bright flash. */
+  background: var(--surface-hover);
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
@@ -113,22 +125,15 @@ export default {
   font-size: 14px;
 }
 
-/* Dark mode adjustments */
-body.dark .type-btn {
-  background: var(--color-darker-0);
-  border-color: var(--terminal-border-color);
-  color: var(--color-text);
-}
+/* The three `body.dark .type-btn*` rules that used to live here are gone.
 
-body.dark .type-btn:hover {
-  background: var(--color-darker-1);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
+   They existed to patch physical tokens back per theme, which is the pattern
+   that hides bugs: the rules nobody remembers to patch keep the light-mode
+   value forever. The base rules above are now themed, so there is nothing left
+   to correct.
 
-body.dark .type-btn.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: white;
-}
+   The last one also set `color: white` on --color-primary, which is NEON GREEN
+   in dark — measured 1.53:1. .type-btn.active uses --on-fill-accent, the
+   declared partner of that fill, which is dark in dark mode and light in light
+   mode. */
 </style>

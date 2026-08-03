@@ -57,14 +57,21 @@ export default {
   padding-top: 8px;
 }
 
+/* background-COLOR, not the `background` shorthand.
+
+   The shorthand resets background-image, so a hover state written that way
+   DESTROYS any fill a consumer set with `background-image` — while leaving the
+   ink that was chosen for that fill. background-color paints UNDERNEATH an
+   image, so this tint shows on a plain button and is simply covered on a filled
+   one. Same intent, no collateral. */
 .base-button:hover {
-  background: rgba(var(--primary-rgb), 0.1);
+  background-color: rgba(var(--primary-rgb), 0.1);
   box-shadow: var(--glow-accent);
 }
 
 .base-button:focus {
   box-shadow: var(--glow-accent-strong);
-  background: rgba(var(--primary-rgb), 0.15);
+  background-color: rgba(var(--primary-rgb), 0.15);
   outline: none;
 }
 
@@ -118,10 +125,26 @@ export default {
   width: 100%;
 }
 
+/* A DISABLED BUTTON IS DIMMED, NOT STRIPPED.
+
+   This used to set `background: transparent`, which reset background-image and
+   removed a consumer's fill while its on-fill ink survived — white text on the
+   bare panel. A fill and the ink chosen for it are a PAIR; no state may remove
+   one without the other. `opacity` dims the whole button, so the pair survives.
+
+   BUT OPACITY IS NOT FREE: it composites the entire element with the page, so
+   ink and fill BOTH move toward the canvas and their mutual contrast collapses.
+   White-on-teal measured 6.46:1 declared and only 2.30:1 as rendered at 0.5,
+   because white ink over a white page barely moves while the fill washes out
+   fast. Light mode is the worst case; dark measured 3.83:1 at the same value.
+
+   0.65 is the measured floor that keeps the label readable in light mode
+   (3.07:1) while still reading as clearly inactive. WCAG 1.4.3 exempts
+   inactive controls from the 4.5:1 bar, but "exempt" is not "illegible" — the
+   original report on this button was that its label could not be seen. */
 .base-button.is-disabled {
-  opacity: 0.5;
+  opacity: 0.65;
   cursor: not-allowed;
-  background: transparent;
   box-shadow: none;
 }
 </style>

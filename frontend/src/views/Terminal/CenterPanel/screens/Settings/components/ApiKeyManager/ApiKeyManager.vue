@@ -219,8 +219,12 @@ input {
   padding: 8px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background-color: var(--color-dull-white);
-  color: var(--color-dark-navy);
+  /* Both of these were PHYSICAL names that the light theme remaps against
+     their own meaning: --color-dull-white becomes var(--color-text) (#4a4a60)
+     and --color-dark-navy becomes #ffffff. The field therefore painted dark ink
+     as its surface and white ink as its text. */
+  background-color: var(--field-bg);
+  color: var(--text-primary);
 }
 
 input:disabled {

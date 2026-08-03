@@ -383,7 +383,9 @@ body.dark .version-card {
   display: flex;
   gap: 12px;
   padding: 12px;
-  background: var(--color-dull-white);
+  /* An alpha overlay composites on whatever panel this lands on, in either
+     theme. --color-dull-white resolved to dark ink in light mode. */
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   margin-bottom: 8px;

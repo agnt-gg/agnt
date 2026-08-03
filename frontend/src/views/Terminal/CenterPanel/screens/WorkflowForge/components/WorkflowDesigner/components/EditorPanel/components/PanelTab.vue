@@ -1532,7 +1532,9 @@ export default {
   color: var(--text-primary);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background-color: var(--color-dull-white);
+  /* --color-dull-white resolves to var(--color-text) in light mode, so this
+     select painted dark ink as its surface under --text-primary. */
+  background-color: var(--field-bg);
 }
 
 .form-group select option {
