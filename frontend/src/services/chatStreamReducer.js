@@ -234,4 +234,26 @@ export function hydrateMessage(raw = {}) {
   };
 }
 
-export default { HANDLED_STREAM_EVENTS, createAssistantMessage, applyStreamEvent, hydrateMessage };
+/**
+ * Convert server conversation_logs messages into UI message shapes.
+ *
+ * Shared by chatUnified's workspace hydration and the main chat's
+ * stream-death reconciliation — one conversion, or the two surfaces
+ * silently drift on tool-call / content-part handling.
+ */
+export function serverMessagesToUi(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+    .map((m, i) => hydrateMessage({
+      id: m.id || `srv-${i}-${Date.now().toString(36)}`,
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : (m.content == null ? '' : String(m.content)),
+      toolCalls: m.toolCalls || m.tool_calls || [],
+      contentParts: m.contentParts || null,
+      reasoning: m.reasoning || '',
+      timestamp: m.timestamp || Date.now(),
+    }));
+}
+
+export default { HANDLED_STREAM_EVENTS, createAssistantMessage, applyStreamEvent, hydrateMessage, serverMessagesToUi };

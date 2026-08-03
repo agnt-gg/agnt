@@ -3,7 +3,8 @@ import { API_CONFIG } from '@/tt.config.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
-import { reattachRun, cancelRun } from '@/services/chatService.js';
+import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
+import { serverMessagesToUi } from '@/services/chatStreamReducer.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 
@@ -1636,6 +1637,12 @@ export default {
         let buffer = '';
         // Track the current conversation ID (may change on conversation_started event)
         let activeConvId = capturedConvId;
+        // Did the server actually FINISH this turn? A stream that ends without
+        // 'done'/'error' died in transport (backend restart, socket drop,
+        // renderer reload race) — the run itself is usually still alive or
+        // already completed server-side, so that case gets recovery, not a
+        // silent mid-word truncation.
+        let sawTerminal = false;
 
         // Process stream — returns a promise that resolves when the stream ends
         // so callers can await sequential streams (e.g. multi-agent mentions)
@@ -1655,6 +1662,13 @@ export default {
                 }
                 commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
                 commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
+                // Reader exhausted WITHOUT a terminal event = transport death,
+                // not turn completion. (User Stop also lands here via
+                // reader.cancel(), but Stop aborts the controller first — the
+                // signal check keeps deliberate stops out of recovery.)
+                if (!sawTerminal && !abortController.signal.aborted) {
+                  await dispatch('recoverInterruptedStream', { conversationId: activeConvId });
+                }
                 resolveStream();
                 break;
               }
@@ -1668,6 +1682,7 @@ export default {
                   const eventLine = line.substring(7);
                   const dataLine = eventLine.substring(eventLine.indexOf('\n') + 6);
                   const eventName = eventLine.split('\n')[0].trim();
+                  if (eventName === 'done' || eventName === 'error') sawTerminal = true;
 
                   try {
                     const data = JSON.parse(dataLine);
@@ -1736,6 +1751,11 @@ export default {
               if (errConv._activeStreams === 0) {
                 commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
               }
+            }
+            // A thrown read (network reset, backend restart) is the same
+            // transport death as a premature done — recover, don't truncate.
+            if (error.name !== 'AbortError' && !abortController.signal.aborted) {
+              await dispatch('recoverInterruptedStream', { conversationId: activeConvId });
             }
             resolveStream();
           }
@@ -1873,6 +1893,20 @@ export default {
             if (!live) {
               live = true;
               commit('SCOPED_SET_STREAMING', { conversationId, value: true });
+              // Post-reload fork prevention: if the user is staring at a BLANK
+              // temp conversation (nothing typed yet), surface the resumed run
+              // there instead of leaving it invisible in a background slot —
+              // an invisible resume is what makes users re-ask the question in
+              // a fresh thread, forking the conversation server-side.
+              const activeId = state.activeConversationId;
+              if (
+                activeId &&
+                activeId !== conversationId &&
+                String(activeId).startsWith('temp-') &&
+                !(state.conversations[activeId]?.messages || []).some((m) => m.role === 'user')
+              ) {
+                commit('SET_ACTIVE_CONVERSATION', conversationId);
+              }
             }
             state.streamEventCallbacks.forEach((callback) => {
               try {
@@ -1894,6 +1928,82 @@ export default {
         commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId, controller: null });
         markRunEnded(conversationId);
       }
+    },
+
+    /**
+     * Recover a turn whose SSE transport died without a terminal event.
+     *
+     * The backend deliberately keeps runs alive when their socket closes
+     * (see activeRuns.js) and holds the completed transcript in
+     * conversation_logs — so a dead stream is NEVER a reason to show a
+     * truncated reply. Order of preference:
+     *
+     *   1. Reattach: the run is still generating — replay + continue live.
+     *      Two attempts, because the most common death (backend restart)
+     *      needs a moment before the new instance accepts connections.
+     *   2. Reconcile: the run finished while we were deaf — replace the
+     *      local transcript with the server's completed one, then autosave
+     *      so the truncated version is never persisted as truth.
+     *   3. Announce: nothing recoverable — say so in the transcript instead
+     *      of dying silently mid-word.
+     *
+     * @returns {Promise<boolean>} true when the turn was recovered.
+     */
+    async recoverInterruptedStream({ commit, state, dispatch }, { conversationId }) {
+      if (!conversationId || String(conversationId).startsWith('temp-')) return false;
+
+      const conv = state.conversations[conversationId];
+      // Another concurrent stream (multi-agent mentions) still owns this
+      // conversation — its own end-of-stream handling will run; a second
+      // recovery would race it.
+      if (conv && (conv._activeStreams || 0) > 0) return false;
+
+      console.warn(`[Chat] Stream for ${conversationId} ended without a terminal event — attempting recovery`);
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const resumed = await dispatch('reattachConversation', conversationId);
+          if (resumed) {
+            console.log(`[Chat] Recovered ${conversationId} via live reattach`);
+            return true;
+          }
+        } catch { /* fall through to the next attempt / reconcile */ }
+        // Backend restarts take a beat before the fresh instance listens.
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+      }
+
+      // No live run — the turn may have COMPLETED while the tab was deaf.
+      // conversation_logs is only written at turn end, so a transcript at
+      // least as long as ours is the completed truth; a shorter one is a
+      // previous turn and must never clobber local content.
+      try {
+        const remote = await fetchConversation(conversationId);
+        const remoteMessages = serverMessagesToUi(remote?.messages);
+        const localMeaningful = (state.conversations[conversationId]?.messages || [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant').length;
+        if (remoteMessages.length > 0 && remoteMessages.length >= localMeaningful) {
+          commit('SCOPED_SET_MESSAGES', { conversationId, messages: remoteMessages });
+          markRunEnded(conversationId);
+          dispatch('autosaveConversation', { debounce: false, conversationId });
+          console.log(`[Chat] Recovered ${conversationId} from the server transcript (${remoteMessages.length} messages)`);
+          return true;
+        }
+      } catch (e) {
+        console.warn('[Chat] Server-transcript reconcile failed:', e?.message || e);
+      }
+
+      markRunEnded(conversationId);
+      commit('SCOPED_ADD_MESSAGE', {
+        conversationId,
+        message: {
+          id: `msg-${Date.now()}-interrupted`,
+          role: 'assistant',
+          content: '⚠️ Connection to the backend was lost mid-response and the turn could not be recovered automatically. The reply above may be incomplete — it may finish on its own; reloading may restore it.',
+          timestamp: Date.now(),
+          metadata: ['Error'],
+        },
+      });
+      return false;
     },
 
     /**
