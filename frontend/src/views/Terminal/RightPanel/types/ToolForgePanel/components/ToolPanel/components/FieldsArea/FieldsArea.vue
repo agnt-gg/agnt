@@ -356,7 +356,7 @@ template-fields {
 
 .card-header {
   padding: 16px 20px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
@@ -454,7 +454,7 @@ template-fields {
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   position: relative;

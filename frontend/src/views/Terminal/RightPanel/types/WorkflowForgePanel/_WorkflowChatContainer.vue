@@ -618,7 +618,7 @@ export default {
 .chat-input-container {
   padding: 16px 0 0 2px;
   border-top: 1px solid rgba(127, 129, 147, 0.1);
-  background: var(--field-bg);
+  background: var(--color-darker-0);
 }
 
 .workflow-editor-panel.fullscreen .chat-input-container {
@@ -641,7 +641,7 @@ export default {
   padding: 10px 16px;
   border: 1px solid rgba(127, 129, 147, 0.2);
   border-radius: 24px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-light-green);
   font-size: 0.9em;
   transition: all 0.2s ease;

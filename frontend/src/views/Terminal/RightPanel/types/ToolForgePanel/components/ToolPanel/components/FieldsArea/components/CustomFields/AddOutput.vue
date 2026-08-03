@@ -225,7 +225,7 @@ export default {
 
 .card-header {
   padding: 16px 20px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
@@ -261,7 +261,7 @@ export default {
 
 .output-field-item {
   padding: 16px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   position: relative;
@@ -340,7 +340,7 @@ export default {
   flex-direction: column;
   gap: 16px;
   padding: 20px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border: 2px solid var(--color-primary);
   border-radius: 8px;
   position: relative;

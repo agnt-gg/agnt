@@ -1534,7 +1534,7 @@ export default {
   border-radius: 8px;
   /* --color-dull-white resolves to var(--color-text) in light mode, so this
      select painted dark ink as its surface under --text-primary. */
-  background-color: var(--field-bg);
+  background-color: var(--color-darker-0);
 }
 
 .form-group select option {

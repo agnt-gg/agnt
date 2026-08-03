@@ -126,7 +126,7 @@ export default {
 .header-bar {
   /* border: 1px solid var(--terminal-border-color); */
   /* border-radius: 0 8px 0 0; */
-  /* background: var(--terminal-darken-color); */
+  /* background: var(--color-darker-0); */
   /* padding: 16px; */
   flex-shrink: 0;
   position: relative;
@@ -193,7 +193,7 @@ export default {
 .progress-bar {
   width: 100%;
   height: fit-content;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 0px;
   overflow: hidden;
@@ -248,7 +248,7 @@ body.dark.cyberpunk .mini-stats {
 
 /* Collapse/Expand Controls */
 .collapse-toggle {
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   /* border-radius: 4px; */
   color: var(--color-primary);
@@ -284,7 +284,7 @@ body.dark.cyberpunk .mini-stats {
   height: 22px;
   width: 100%;
   /* flex: 1; */
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 0px;
   overflow: hidden;

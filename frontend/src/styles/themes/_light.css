@@ -206,11 +206,8 @@ body:not(.dark) .separator {
    `color: inherit` from _buttons.css at (0,0,1) — same result for unstyled
    buttons, but components can override. See the note there. */
 
-body:not(.dark) button.generate {
-  background-image: var(--gradient-brand);
-  color: var(--on-fill-accent);
-  font-weight: 600;
-}
+/* `body:not(.dark) button.generate` is gone: the button takes the standard
+   --color-primary outline from _buttons.css, which is themed already. */
 
 body:not(.dark) .cancel,
 body:not(.dark) .generate.holofx-bg.cancel {
@@ -263,7 +260,7 @@ body:not(.dark) main-area {
 /* ═══════════════════ FORM ELEMENTS ═══════════════════ */
 
 /* The light field-chrome block that used to live here is gone. Its values moved
-   to --field-bg / --field-border in _semantic.css, consumed by the base element
+   to --color-darker-0 / --terminal-border-color in _semantic.css, consumed by the base element
    rule in _forms.css.
 
    Why it had to move: `body:not(.dark) input[type='text']` is specificity

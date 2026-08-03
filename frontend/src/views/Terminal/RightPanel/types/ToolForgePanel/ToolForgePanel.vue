@@ -5,7 +5,7 @@
       <FieldsArea ref="toolFields" :formData="formData" @form-updated="onFormUpdated" />
     </div>
     <div class="bottom-actions">
-      <button id="generate" class="generate" @click="handleGenerateClick"><img src="@/assets/icons/create-light.svg" alt="" />Run Tool</button>
+      <button id="generate" class="generate" @click="handleGenerateClick"><i class="fas fa-play"></i>Run Tool</button>
     </div>
   </div>
   <SimpleModal ref="modal" />
@@ -177,33 +177,18 @@ export default {
   pointer-events: none;
 }
 
+/* Layout only. This scoped rule is (0,2,0) and beat the global
+   `button.generate` at (0,1,1), so it made Run Tool a solid GREEN button here
+   while the identical button in ToolPanel.vue rendered as a gradient — the same
+   control with two different looks depending on which panel drew it. The colour
+   treatment now comes from _buttons.css like every other primary button. */
 .generate {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   padding: 12px 24px;
-  background: var(--color-green);
-  color: var(--color-dark-navy);
-  border: none;
-  border-radius: 8px;
   font-size: 16px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.generate:hover {
-  /* background: rgba(var(--green-rgb), 0.8); */
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .generate:active {
   transform: translateY(0);
-}
-
-.generate img {
-  width: 20px;
-  height: 20px;
 }
 </style>

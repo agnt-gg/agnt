@@ -1168,7 +1168,7 @@ h4.section-title {
   padding: 8px 12px;
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 20px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-size: 0.9em;
 }
@@ -1412,7 +1412,7 @@ h4.section-title {
 }
 
 .goal-input-section {
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   padding: 16px;
@@ -1430,7 +1430,7 @@ h4.section-title {
   padding: 16px;
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;

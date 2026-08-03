@@ -172,21 +172,25 @@ body {
      at ΔL* ≈ 8.5 against its own canvas. */
   --canvas-grid-dot: rgba(255, 255, 255, 0.075);
 
-  /* ── FORM FIELD CHROME ──────────────────────────────────────────────────
-     The fill and border of a DEFAULT, standalone field. These used to be set by
-     `body.dark input[type='text']` / `body:not(.dark) input[...]` — specificity
-     (0,2,1), which outranks a scoped component class at (0,2,0). So a component
-     that composed an input inside its own decorated shell and asked for
-     `background: transparent; border: none` was simply ignored, and rendered a
-     lighter inner box with a second border. Measured on FileTreePanel's search
-     bar: shell rgba(100,100,140,0.05) vs input #ffffff, plus a 1px border
-     inside a 1px border, in BOTH themes.
+  /* NO --field-* TOKENS HERE, DELIBERATELY.
 
-     Living on the base element rule instead means a component class always
-     wins, so "this input is bare, the shell owns the chrome" works. */
-  --field-bg: var(--color-darker-0);
-  --field-border: var(--terminal-border-color);
-  --field-border-focus: var(--color-primary);
+     A field's chrome is NOT a special case, and this app already had tokens for
+     it before I invented a parallel set:
+
+         surface -> var(--color-darker-0)
+         border  -> var(--terminal-border-color)
+         focus   -> var(--color-primary)
+
+     --color-darker-0 is the app's existing "quietest recessed fill" step, and it
+     is an ALPHA in both themes — rgba(0,0,0,0.1) in dark, rgba(100,100,140,0.025)
+     in light — so it composites correctly on a white panel, on the canvas and on
+     a tinted card alike. It is already what the rest of the app reaches for,
+     which is exactly why a parallel --field-* set was the wrong answer.
+
+     The real fix for the original bug was never a new token: it was moving the
+     declarations OFF `body:not(.dark) input[type='text']` (specificity (0,2,1),
+     which outranks a scoped component class at (0,2,0)) and onto the :where()
+     base rule in _forms.css. That part stands. */
   --gradient-wash: linear-gradient(180deg, rgba(var(--primary-rgb), 0.08), rgba(var(--primary-rgb), 0.03));
 
   --border-subtle: var(--terminal-border-color);
@@ -299,27 +303,10 @@ body:not(.dark) {
      used to be — 4/255 per channel, which is why it read as no grid at all. */
   --canvas-grid-dot: rgba(100, 100, 140, 0.165);
 
-  /* A FIELD IS A WELL, NOT A CARD.
-
-     This pointed at --surface-raised, i.e. the RAISED surface token used for a
-     RECESSED control. Measured: dark insets its fields (ΔL* -0.68 below the
-     panel), light lifted them (+1.04 above the canvas, and dead flush with a
-     white panel). The metaphor was inverted between the themes.
-
-     On a small input the border hides it. On a textarea the fill is most of the
-     control, so it rendered as a bright white slab.
-
-     An ALPHA token, not a hex, so it composites correctly on a white panel, on
-     the canvas, and on a tinted card alike — same reason dark uses one. 5% lands
-     ΔL* -2.63 under a white panel: unmistakably a well, still quiet.
-
-     The previous note here warned that a transparent field "reads as DISABLED".
-     That was a field with NO fill of its own; this one has a definite fill and
-     --border-strong at 3.5:1. There is no :disabled styling anywhere in the
-     stylesheets to collide with, and text on the field still measures 8.06:1. */
-  --field-bg: var(--color-darker-1);
-  --field-border: var(--border-strong);
-  --field-border-focus: var(--color-primary);
+  /* Fields use --color-darker-0 / --terminal-border-color in BOTH themes
+     — see the note in the block above. --color-darker-0 is an alpha, so
+     light mode needs no override: 5% black over a white panel is #f2f2f2, a
+     quiet well, and text on it measures 7.6:1. */
 
   /* 3.5%/1.2% was so faint it read as "the token failed to resolve" rather
      than as a surface. 5.5%/2% is still quiet enough to be paper, but the

@@ -5,7 +5,7 @@
       <FieldsArea ref="toolFields" :formData="formData" @form-updated="onFormUpdated" />
     </top-section>
     <bottom-menu>
-      <button id="generate" class="generate" @click="handleGenerateClick"><img src="@/assets/icons/create-light.svg" alt="" />Run Tool</button>
+      <button id="generate" class="generate" @click="handleGenerateClick"><i class="fas fa-play"></i>Run Tool</button>
     </bottom-menu>
   </editor-panel>
   <SimpleModal ref="modal" />

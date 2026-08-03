@@ -223,7 +223,7 @@ input {
      their own meaning: --color-dull-white becomes var(--color-text) (#4a4a60)
      and --color-dark-navy becomes #ffffff. The field therefore painted dark ink
      as its surface and white ink as its text. */
-  background-color: var(--field-bg);
+  background-color: var(--color-darker-0);
   color: var(--text-primary);
 }
 

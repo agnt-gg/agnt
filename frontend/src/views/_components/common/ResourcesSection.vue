@@ -962,9 +962,9 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   border-radius: 4px;
   /* --color-dull-white is a PHYSICAL name that the light theme remaps to
      var(--color-text) = #4a4a60, so this field painted dark ink as its own
-     surface. --field-bg is the themed well and needs no per-theme patch — which
+     surface. --color-darker-0 is the themed well and needs no per-theme patch — which
      is why the `body.dark` rule that used to sit here is gone. */
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.85em;
@@ -982,7 +982,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   padding: 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;
@@ -999,7 +999,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   padding: 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;
@@ -1085,7 +1085,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   gap: 8px;
   padding: 12px;
   /* A drop zone is a field with a dashed edge; same token. */
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   border: 1px dashed var(--terminal-border-color);
   border-radius: 4px;
   cursor: pointer;

@@ -109,16 +109,12 @@ body.dark a.router-link-active .svg-icon path {
   fill: url(#SVG-Gradient-Dark);
 }
 
-body.dark button.generate {
-  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
-  color: var(--color-dark-navy);
-  font-weight: 600;
-}
+/* The two `body.dark button.generate` rules that used to live here are gone.
 
-body.dark button.generate img {
-  filter: invert(1);
-  opacity: 0.85;
-}
+   The button now uses the standard --color-primary outline from _buttons.css,
+   which is already themed, so there is nothing to patch. The second rule
+   inverted the icon because it was a fixed light-on-dark SVG; the icon is now a
+   font glyph that inherits `color`, so it follows the theme for free. */
 
 body.dark main-area {
   background: var(--color-black-navy);
@@ -328,7 +324,7 @@ body.dark #editor-panel {
   background: transparent;
 }
 
-/* Field chrome moved to --field-bg / --field-border in _semantic.css: this
+/* Field chrome moved to --color-darker-0 / --terminal-border-color in _semantic.css: this
    block was (0,2,1) and outranked every component's own field styling. The
    values are unchanged — the dark tokens ARE var(--color-darker-0) and
    var(--terminal-border-color), which is what these rules resolved to. */

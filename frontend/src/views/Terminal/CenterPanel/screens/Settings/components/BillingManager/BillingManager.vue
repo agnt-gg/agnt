@@ -1866,7 +1866,7 @@ body.dark .billing-toggle {
   padding: 12px;
   /* --color-dull-white is var(--color-text) in light mode — a dark slab. A drop
      zone is a field with a dashed edge. */
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   border: 1px dashed var(--terminal-border-color);
   border-radius: 4px;
   cursor: pointer;

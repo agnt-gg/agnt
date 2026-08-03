@@ -234,7 +234,7 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
       'An inline rgba(0,0,0,a) surface. That is the DARK theme\'s own value for\n'
       + '--color-darker-N, so it looks correct in dark and renders a grey slab in\n'
       + 'light. Use the token: 0.1 -> --color-darker-0, 0.2 -> --color-darker-1,\n'
-      + '0.4 -> --color-darker-2, 0.8 -> --color-darker-3. A field is --field-bg.\n'
+      + '0.4 -> --color-darker-2, 0.8 -> --color-darker-3. A field is --color-darker-0.\n'
       + 'A full-bleed or *-overlay scrim is exempt and detected automatically.\n'
     ).toBe('clean');
   });

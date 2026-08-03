@@ -12,9 +12,9 @@ label,
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--field-border);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background-color: var(--field-bg);
+  background-color: var(--color-darker-0);
 }
 
 body.dark select {
@@ -71,9 +71,9 @@ body.dark select {
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--field-border);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background-color: var(--field-bg);
+  background-color: var(--color-darker-0);
 }
 
 :where(input[type='file']) {
@@ -82,7 +82,7 @@ body.dark select {
   font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  background-color: var(--field-bg);
+  background-color: var(--color-darker-0);
   cursor: pointer;
 }
 
@@ -105,9 +105,9 @@ input:-webkit-autofill:focus {
   font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--text-primary);
-  border: 1px solid var(--field-border);
+  border: 1px solid var(--terminal-border-color);
   line-height: 150%;
-  background-color: var(--field-bg);
+  background-color: var(--color-darker-0);
   border-radius: 8px;
   resize: vertical;
 }
@@ -133,13 +133,13 @@ input:-webkit-autofill:focus {
 /* This set an OPAQUE background (--color-ultra-dark-navy, which is #ffffff in
    light mode) at specificity (0,1,1), so it beat the :where() defaults above and
    a <select> inside a .form-group rendered white while the input next to it
-   rendered the tinted --field-bg. Same field, two different fills.
+   rendered the tinted --color-darker-0. Same field, two different fills.
 
    It now consumes the same tokens as every other field, so they match. */
 .form-group select {
   color: var(--text-primary);
-  background-color: var(--field-bg);
-  border-color: var(--field-border);
+  background-color: var(--color-darker-0);
+  border-color: var(--terminal-border-color);
 }
 
 /* Focus RECOLOURS the existing border. It must not use the `border` shorthand
@@ -162,7 +162,7 @@ input:-webkit-autofill:focus {
   select:focus
 ) {
   outline: none;
-  border-color: var(--field-border-focus);
+  border-color: var(--color-primary);
 }
 
 input::placeholder,
@@ -175,7 +175,7 @@ textarea::placeholder {
    setting background-color: var(--color-black-navy). It silently beat the real
    rule above by being later at equal specificity, so the field chrome written
    at the top of this file was never what rendered. Both now come from
-   --field-bg / --field-border in one place. */
+   --color-darker-0 / --terminal-border-color in one place. */
 
 .form-group select option {
   background-color: var(--color-ultra-dark-navy) !important;

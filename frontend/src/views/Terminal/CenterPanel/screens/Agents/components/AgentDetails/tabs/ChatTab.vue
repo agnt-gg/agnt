@@ -489,7 +489,7 @@ h3.section-title {
   padding: 8px 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 20px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-light-green);
   font-size: 0.9em;
 }

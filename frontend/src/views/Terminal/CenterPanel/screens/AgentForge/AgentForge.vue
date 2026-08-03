@@ -995,7 +995,7 @@ export default {
 
 .card-header {
   padding: 16px 20px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
@@ -1285,7 +1285,7 @@ export default {
   flex-direction: column;
   gap: 14px;
   padding: 16px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border-radius: 10px;
   border: 1px solid var(--terminal-border-color);
   min-height: 0;
@@ -1398,7 +1398,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   gap: 24px;
-  background: var(--terminal-darken-color);
+  background: var(--color-darker-0);
   border-radius: 10px;
   margin: 4px;
 }

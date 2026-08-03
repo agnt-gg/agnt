@@ -182,7 +182,7 @@ describe('theme tokens: every fill ships with its on-fill companion', () => {
     const REQUIRED = [
       '--surface-canvas', '--surface-raised', '--surface-sunken',
       '--text-primary', '--text-secondary', '--text-tertiary', '--text-quaternary',
-      '--fill-accent', '--on-fill-accent', '--field-bg', '--field-border', '--field-border-focus',
+      '--fill-accent', '--on-fill-accent',
       '--canvas-grid-dot', '--gradient-wash', '--border-subtle', '--border-strong',
       '--shadow-xs', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-overlay',
       '--scrim', '--focus-ring',
@@ -227,17 +227,21 @@ describe('theme tokens: every fill ships with its on-fill companion', () => {
 /* ─────────── check 2b: a form field is a well, not a card ─────────── */
 describe('theme tokens: form fields are inset in every theme', () => {
   /**
-   * --field-bg once pointed at --surface-raised in light mode: the RAISED
-   * surface token, used for a RECESSED control. Dark inset its fields (ΔL* -0.68
-   * below the panel) while light lifted them (+1.04 above the canvas, and dead
-   * flush with a white panel) — the metaphor was inverted between themes.
+   * A FIELD IS A RECESSED WELL, NOT A RAISED CARD.
    *
-   * On a small input the border hides that. On a textarea the fill IS most of
-   * the control, so it rendered as a bright white slab.
+   * Fields take --color-darker-0, which is rgba(0,0,0,0.05) declared once
+   * in _core.css. Being an ALPHA it composites correctly on any panel in either
+   * theme, with no per-theme value to keep in sync.
+   *
+   * The bug this pins: the field surface once pointed at --surface-raised in
+   * light mode — the RAISED token used for a RECESSED control. Dark inset its
+   * fields (ΔL* -0.68 below the panel) while light lifted them (+1.04 above the
+   * canvas, dead flush with a white panel). On a small input the border hides
+   * it; on a textarea the fill IS the control, so it rendered as a white slab.
    *
    * Pinning the VALUE would be brittle. Pinning the RELATIONSHIP is what
-   * actually matters: whatever a theme picks, a field must composite DARKER
-   * than the surface it sits on, in every theme.
+   * matters: a field must composite DARKER than the surface it sits on, in
+   * every theme.
    */
   const readTheme = (f) => stripComments(fs.readFileSync(path.join(THEMES, f), 'utf8'));
   const VARS = stripComments(fs.readFileSync(path.join(SRC, 'styles', 'base', '_variables.css'), 'utf8'));
@@ -252,15 +256,21 @@ describe('theme tokens: form fields are inset in every theme', () => {
   };
 
   const semanticCss = readTheme('_semantic.css');
+  /* _core.css declares the --terminal-* tokens, including --color-darker-0
+     (the field surface). Without it in the map those resolve to null and every
+     assertion below silently compares undefined. */
+  const coreCss = readTheme('_core.css');
   const MAPS = {
     light: {
       ...blockOf(VARS, ':root'),
+      ...blockOf(coreCss, ':root'),
       ...blockOf(semanticCss, ':root,\nbody'),
       ...blockOf(readTheme('_light.css'), 'body:not(.dark):not(.rose)'),
       ...blockOf(semanticCss, 'body:not(.dark)'),
     },
     dark: {
       ...blockOf(VARS, ':root'),
+      ...blockOf(coreCss, ':root'),
       ...blockOf(semanticCss, ':root,\nbody'),
       ...blockOf(readTheme('_dark.css'), 'body.dark'),
       ...blockOf(semanticCss, 'body.dark'),
@@ -298,17 +308,17 @@ describe('theme tokens: form fields are inset in every theme', () => {
   const over = (fg, bg) => (fg.a >= 0.999 ? fg.rgb : fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a)));
 
   for (const theme of ['light', 'dark']) {
-    it(`${theme}: --field-bg composites DARKER than --surface-raised`, () => {
+    it(`${theme}: --color-darker-0 composites DARKER than --surface-raised`, () => {
       const map = MAPS[theme];
       const raised = resolve('var(--surface-raised)', map);
-      const field = resolve('var(--field-bg)', map);
+      const field = resolve('var(--color-darker-0)', map);
       expect(raised, `${theme}: --surface-raised did not resolve`).toBeTruthy();
-      expect(field, `${theme}: --field-bg did not resolve`).toBeTruthy();
+      expect(field, `${theme}: --color-darker-0 did not resolve`).toBeTruthy();
 
       expect(
         lum(over(field, raised.rgb)),
-        `${theme}: --field-bg is the same as, or lighter than, --surface-raised.\n`
-        + 'A text field is a recessed well, not a raised card. Pointing --field-bg at\n'
+        `${theme}: --color-darker-0 is the same as, or lighter than, --surface-raised.\n`
+        + 'A text field is a recessed well, not a raised card. Pointing --color-darker-0 at\n'
         + '--surface-raised makes it flush with the panel it sits on, so a large\n'
         + 'control like a textarea renders as a bright slab.'
       ).toBeLessThan(lum(raised.rgb));
@@ -316,7 +326,7 @@ describe('theme tokens: form fields are inset in every theme', () => {
 
     it(`${theme}: text on a field still clears AA`, () => {
       const map = MAPS[theme];
-      const field = over(resolve('var(--field-bg)', map), resolve('var(--surface-raised)', map).rgb);
+      const field = over(resolve('var(--color-darker-0)', map), resolve('var(--surface-raised)', map).rgb);
       const text = resolve('var(--text-primary)', map);
       expect(text, `${theme}: --text-primary did not resolve`).toBeTruthy();
       expect(ratio(over(text, field), field)).toBeGreaterThanOrEqual(4.5);
@@ -324,8 +334,8 @@ describe('theme tokens: form fields are inset in every theme', () => {
   }
 
   it('resolves real values rather than silently comparing nulls (anti-vacuity)', () => {
-    expect(resolve('var(--field-bg)', MAPS.light)).toBeTruthy();
-    expect(resolve('var(--field-bg)', MAPS.dark)).toBeTruthy();
+    expect(resolve('var(--color-darker-0)', MAPS.light)).toBeTruthy();
+    expect(resolve('var(--color-darker-0)', MAPS.dark)).toBeTruthy();
     // Negative control: a field that IS the raised surface must not be darker.
     const raised = resolve('var(--surface-raised)', MAPS.light);
     expect(lum(over(raised, raised.rgb))).toBe(lum(raised.rgb));

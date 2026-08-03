@@ -1225,7 +1225,7 @@ export default {
    deliberately bare (transparent, no border), so putting the ring here is what
    gives exactly ONE border instead of a ring nested inside the shell's edge. */
 .search-bar:focus-within {
-  border-color: var(--field-border-focus);
+  border-color: var(--color-primary);
 }
 
 .search-icon {

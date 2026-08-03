@@ -55,6 +55,17 @@ button.close i {
   color: var(--color-med-navy);
 }
 
+/* THE STANDARD PRIMARY BUTTON.
+
+   This is the same treatment BaseButton gives `.base-button.primary`: a
+   transparent field with a --color-primary edge and label, tinted on hover.
+   `button.generate` used to be a filled gradient with no border, which made
+   "Run Tool" the only button in the app that looked like that — and the theme
+   sheets then needed a per-theme patch each to keep it legible.
+
+   Kept from the old rule: the flex layout, full width and 48px height. The 8px
+   radius went too — .base-button sets none, so every other primary button in the
+   app is square and this was the only rounded one. */
 button.generate {
   display: flex;
   flex-direction: row;
@@ -66,23 +77,27 @@ button.generate {
   width: 100%;
   width: -webkit-fill-available;
   height: 48px;
-  /* background: var(--color-primary); */
-  background-image: var(--gradient-brand);
-  border: none;
-  color: var(--on-fill-accent);
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
   font-family: var(--font-family-primary);
   font-size: var(--font-size-md);
   letter-spacing: 1px;
   cursor: pointer;
-  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+/* background-COLOR, so the tint can never destroy a fill a consumer set with
+   background-image. Matches BaseButton's hover/focus exactly. */
+button.generate:hover {
+  background-color: rgba(var(--primary-rgb), 0.1);
+  box-shadow: var(--glow-accent);
 }
 
 button.generate:focus {
-  outline-color: var(--color-navy);
-}
-
-.generate:focus {
-  border: none !important;
+  outline: none;
+  background-color: rgba(var(--primary-rgb), 0.15);
+  box-shadow: var(--glow-accent-strong);
 }
 
 button.delete-field-button {

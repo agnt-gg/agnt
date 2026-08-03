@@ -153,7 +153,7 @@ export default defineComponent({
   padding: 16px;
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  background: var(--field-bg);
+  background: var(--color-darker-0);
   color: var(--color-light-green);
   font-family: inherit;
   font-size: 0.95em;

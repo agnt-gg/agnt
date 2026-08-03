@@ -200,7 +200,7 @@ span.button-inner-container {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  /* background: var(--terminal-darken-color);
+  /* background: var(--color-darker-0);
   border-radius: 10px;
   margin: 4px; */
 }
@@ -234,47 +234,21 @@ span.button-inner-container {
   font-size: 1.1em;
 }
 
-.create-agent-button {
-  width: 100%;
-  height: 48px;
-  font-size: 1em;
-  font-weight: 700;
-  border-radius: 10px;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background-image: var(--gradient-accent);
-  /* --on-fill-accent, not --color-dark-navy. The latter is a PHYSICAL name that
-     light mode remaps to #ffffff, so it happened to be right in both themes by
-     accident. --on-fill-accent is declared as the partner of the accent fill
-     and is guarded as such. */
-  color: var(--on-fill-accent);
-  font-weight: 600;
-}
+/* NO STYLING. This is the stock `<BaseButton variant="primary" full-width>`,
+   exactly like .create-workflow-button in WorkflowsPanel and
+   .create-agent-button in AgentsPanel.
 
-/* The fill and ink are inherited from the base rule above. They used to be
-   re-declared in every state — :focus, :hover and :disabled all repeated the
-   same two lines — which is what defending against a state rule that strips the
-   background looks like. BaseButton no longer does that, so the repetition is
-   gone. */
-.create-agent-button:focus {
-  outline: inherit;
-  border: 2px solid var(--color-primary);
-}
+   Everything this rule used to declare is already provided by BaseButton:
+   .base-button gives the flex layout, gap, primary border and label colour;
+   .full-width gives width:100%; :hover, :focus and .is-disabled give the
+   states. What was left on top — a gradient fill, on-fill ink, a drop shadow, a
+   10px radius, a translateY lift and a duplicate focus border — is what made
+   this the odd button out.
 
-.create-agent-button:hover:not(:disabled) {
-  transform: translateY(-3px);
-}
-
-.create-agent-button:disabled {
-  /* `opacity: 0.7 5` was here — not a valid <number>, so the declaration was
-     dropped and BaseButton's 0.5 governed anyway. Removed rather than
-     "corrected" to 0.75, which would have been a silent appearance change on a
-     line nobody meant to alter. */
-  cursor: not-allowed;
-  transform: none;
-  /* color: var(--color-green);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); */
-}
+   The states went too: :focus re-declared a border BaseButton already draws,
+   :hover added a lift no other panel CTA has, and :disabled set a cursor
+   .is-disabled already sets. It also carried `opacity: 0.7 5`, not a valid
+   <number>, so it was being dropped and BaseButton's opacity governed anyway. */
 
 /* Responsive Design */
 @media (max-width: 768px) {
