@@ -240,6 +240,7 @@
         v-if="isProviderSelectorOpen"
         :isOpen="isProviderSelectorOpen"
         :channel-key="channelKey"
+        :conversation-id="conversationId"
         :style="providerSelectorStyle"
         @close="closeProviderSelector"
       />
@@ -315,6 +316,13 @@ export default {
     // config rather than the global Vuex state. The orchestrator passes
     // 'orchestrator:default' so its config doesn't leak into sidebar chats.
     channelKey: {
+      type: String,
+      default: '',
+    },
+    // When set, the provider popover runs in conversation-scoped mode: picks
+    // create a per-conversation AI override instead of changing the global
+    // default. The orchestrator chat passes its active conversation id.
+    conversationId: {
       type: String,
       default: '',
     },

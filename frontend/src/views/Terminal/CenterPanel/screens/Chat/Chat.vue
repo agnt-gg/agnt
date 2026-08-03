@@ -4,6 +4,7 @@
     ref="baseScreenRef"
     screenId="ChatScreen"
     channel-key="orchestrator:default"
+    :conversation-id="activeConversationIdForSelector"
     :useTutorialHook="useTutorial"
     :terminalLines="terminalLines"
     :disableInputInitially="!hasConnectedAIProvider"
@@ -514,6 +515,12 @@ export default {
         console.log(`[Auto-Switch] Skipping auto-switch - other providers connected: ${connectedAIProviders.join(', ')}`);
       }
     };
+
+    // Active conversation id for the provider popover — scoped mode needs a
+    // key even before the first message, so fall back to the local temp id.
+    const activeConversationIdForSelector = computed(
+      () => store.state.chat.activeConversationId || currentConversationId.value || '',
+    );
 
     const hasConnectedAIProvider = computed(() => {
       // Check if a provider is selected AND connected
@@ -2688,6 +2695,7 @@ export default {
       isMonitoringCollapsed,
       toggleMonitoringPanel,
       hasConnectedAIProvider,
+      activeConversationIdForSelector,
       imageCache,
       dataCache,
       bulkLoading,

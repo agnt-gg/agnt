@@ -891,7 +891,10 @@ async function universalChatHandler(req, res, context = {}) {
   // default, or selecting a provider for one workspace/tab would silently
   // change the account-wide default for every other surface.
   const workspaceHasAiOverride = !!(workspaceState && workspaceState.ai && workspaceState.ai.provider);
-  if (persistDefault && !workspaceHasAiOverride) {
+  // FormData turns (file uploads) transmit persistDefault as the STRING
+  // 'false', which is truthy — normalize both encodings before the guard.
+  const persistDefaultNormalized = !(persistDefault === false || persistDefault === 'false');
+  if (persistDefaultNormalized && !workspaceHasAiOverride) {
     UserModel.updateUserSettings(userId, {
       selectedProvider: resolvedProvider,
       selectedModel: model,

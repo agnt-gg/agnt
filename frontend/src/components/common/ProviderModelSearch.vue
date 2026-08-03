@@ -74,6 +74,14 @@ export default {
       type: String,
       default: 'Search providers and models…',
     },
+    // When false, a pick does NOT write the global Vuex selection — the
+    // parent receives the 'selected' emit and applies it to its own scope
+    // (e.g. a per-conversation override). Default true preserves the legacy
+    // behavior for every existing caller.
+    applyGlobally: {
+      type: Boolean,
+      default: true,
+    },
   },
   emits: ['selected'],
   setup(props, { emit }) {
@@ -175,10 +183,12 @@ export default {
       if (!result) return;
       close();
       query.value = '';
-      // setProvider auto-picks the first model for that provider; setModel
-      // immediately overrides it with the user's chosen pair.
-      await store.dispatch('aiProvider/setProvider', result.provider);
-      await store.dispatch('aiProvider/setModel', result.model);
+      if (props.applyGlobally) {
+        // setProvider auto-picks the first model for that provider; setModel
+        // immediately overrides it with the user's chosen pair.
+        await store.dispatch('aiProvider/setProvider', result.provider);
+        await store.dispatch('aiProvider/setModel', result.model);
+      }
       emit('selected', result);
     };    // Models for a provider are only fetched when that provider is first
     // selected. To make search cover every provider, kick off background
