@@ -258,30 +258,65 @@ describe('speechOut — cancellation (the barge-in path)', () => {
 
 describe('speechOut — provider engine and fallback', () => {
   /**
-   * jsdom has no URL.createObjectURL. Stub it for the tests that genuinely
-   * exercise the provider path — and note that the ABSENCE of it is itself
-   * covered below, because a runtime without object URLs must fall back rather
-   * than go silent.
+   * Object-URL support is AMBIENT STATE, so these tests set it explicitly
+   * rather than inheriting whatever the runtime happens to provide.
+   *
+   * This helper originally only STUBBED the function, on the assumption that
+   * jsdom does not implement it. jsdom does (measured: hasOwnProperty true,
+   * typeof function). So the sibling test below — "falls back when the runtime
+   * has no object URLs" — was not testing absence at all; it inherited a real
+   * implementation, took the provider path, and hung on a jsdom <audio> that
+   * never fires `onended`. It passed or failed depending on what else ran in
+   * the same worker, which makes it not a test.
+   *
+   * `withObjectUrl(present, fn)` forces the world into the state the test
+   * claims to be describing, and restores exactly what was there before.
    */
-  function withObjectUrl(fn) {
-    const had = Object.prototype.hasOwnProperty.call(URL, 'createObjectURL');
+  function withObjectUrl(present, fn) {
     const prevCreate = URL.createObjectURL;
     const prevRevoke = URL.revokeObjectURL;
-    URL.createObjectURL = () => 'blob:fake';
-    URL.revokeObjectURL = () => {};
+
+    // Absence is expressed by ASSIGNING undefined, not by `delete`. jsdom
+    // defines these as non-configurable, so `delete` is a silent no-op — which
+    // meant the "no object URLs" case below was never actually created, and
+    // that test was passing for a reason nobody had verified. The anti-vacuity
+    // test directly beneath this is what caught it.
+    URL.createObjectURL = present ? () => 'blob:fake' : undefined;
+    URL.revokeObjectURL = present ? () => {} : undefined;
+
     return Promise.resolve(fn()).finally(() => {
-      if (had) {
-        URL.createObjectURL = prevCreate;
-        URL.revokeObjectURL = prevRevoke;
-      } else {
-        delete URL.createObjectURL;
-        delete URL.revokeObjectURL;
-      }
+      URL.createObjectURL = prevCreate;
+      URL.revokeObjectURL = prevRevoke;
     });
   }
 
+  it('the helper actually controls object-URL support (anti-vacuity)', async () => {
+    // Without this, a future runtime change could make BOTH branches below
+    // exercise the same path and neither test would notice.
+    //
+    // Note what is NOT asserted: that the runtime provides createObjectURL at
+    // all. Whether jsdom defines it varies between an isolated run and a full
+    // suite run, and an earlier version of this test asserted `typeof ===
+    // 'function'` after restore — which made the guard itself order-dependent,
+    // the exact defect it was written to prevent. What matters is that the
+    // helper RESTORES whatever was there, so assert against the captured
+    // original rather than against an assumed ambient value.
+    const original = URL.createObjectURL;
+
+    await withObjectUrl(true, () => {
+      expect(typeof URL.createObjectURL).toBe('function');
+      expect(URL.createObjectURL(null)).toBe('blob:fake');
+    });
+    expect(URL.createObjectURL).toBe(original);
+
+    await withObjectUrl(false, () => {
+      expect(URL.createObjectURL).toBeUndefined();
+    });
+    expect(URL.createObjectURL).toBe(original);
+  });
+
   it('uses the provider when configured', async () => {
-    await withObjectUrl(async () => {
+    await withObjectUrl(true, async () => {
       const played = [];
       const { out } = build(
         { engine: 'provider' },
@@ -310,19 +345,25 @@ describe('speechOut — provider engine and fallback', () => {
     // REGRESSION: this threw into the playback promise chain. Because `chain`
     // IS the queue, one rejection skipped every later .then and the assistant
     // went permanently mute for the session with no visible error.
-    const { out, synth } = build(
-      { engine: 'provider' },
-      {
-        fetch: async () => ({
-          ok: true,
-          headers: { get: () => 'audio/mpeg' },
-          blob: async () => new Blob(['audio']),
-        }),
-      }
-    );
-    out.speak('Must still be heard.');
-    await drain(synth);
-    expect(synth.spoken).toEqual(['Must still be heard.']);
+    //
+    // The absence of object-URL support is FORCED here. Relying on jsdom to
+    // lack it was wrong — jsdom provides it — so this test used to inherit a
+    // real implementation and pass or fail on run order.
+    await withObjectUrl(false, async () => {
+      const { out, synth } = build(
+        { engine: 'provider' },
+        {
+          fetch: async () => ({
+            ok: true,
+            headers: { get: () => 'audio/mpeg' },
+            blob: async () => new Blob(['audio']),
+          }),
+        }
+      );
+      out.speak('Must still be heard.');
+      await drain(synth);
+      expect(synth.spoken).toEqual(['Must still be heard.']);
+    });
   });
 
   it('a synthesiser that THROWS does not mute the rest of the session', async () => {
