@@ -765,25 +765,31 @@ export default {
  * visible surface, so if the button looks the same whether or not the mic is
  * open, the only way to find out is to talk to a machine that may not be
  * listening. Colour follows the conversation state.
+ *
+ * These use the --status-*-text tokens rather than the raw --color-green/blue
+ * hues: the raw hues are tuned for a dark canvas and drop to ~1.9:1 on the
+ * light theme, while the status tokens are re-darkened per theme to clear AA.
+ * No fallback values — a stale literal silently ships the wrong brand colour
+ * if a token is ever renamed, which is worse than failing loudly.
  */
 .chat-voice-btn {
   position: relative;
 }
 
 .chat-voice-btn.voice-on {
-  color: var(--color-blue, #4a9eff);
+  color: var(--status-blue-text);
 }
 
 .chat-voice-btn.voice-listening {
-  color: var(--color-green, #46d17d);
+  color: var(--status-green-text);
 }
 
 .chat-voice-btn.voice-thinking {
-  color: var(--color-yellow, #e6c34a);
+  color: var(--status-amber-text);
 }
 
 .chat-voice-btn.voice-speaking {
-  color: var(--color-blue, #4a9eff);
+  color: var(--status-blue-text);
 }
 
 /* Mic level, so "is it hearing me?" is answerable at a glance. */
@@ -797,6 +803,12 @@ export default {
   transition: transform 80ms linear;
 }
 
+/*
+ * A recessed band above the composer. `--surface-sunken` is the app's token for
+ * exactly this (wells, tracks, code) and flips per theme; the inline
+ * rgba(0,0,0,0.35) it replaced is the DARK theme's own value, which rendered a
+ * black bar with dark text on the light theme.
+ */
 .voice-status-strip {
   display: flex;
   align-items: center;
@@ -804,10 +816,10 @@ export default {
   padding: 6px 10px;
   margin: 0 8px 6px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--color-darker-3, #2a2a2a);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
   font-size: 12px;
-  color: var(--color-lighter-2, #b8b8b8);
+  color: var(--text-secondary);
   min-height: 28px;
 }
 
@@ -815,26 +827,26 @@ export default {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--color-lighter-3, #888);
+  background: var(--text-quaternary);
   flex: 0 0 auto;
 }
 
 .voice-status-strip.voice-listening .voice-dot {
-  background: var(--color-green, #46d17d);
+  background: var(--status-green-text);
   animation: voice-pulse 1.4s ease-in-out infinite;
 }
 
 .voice-status-strip.voice-reopen .voice-dot {
-  background: var(--color-green, #46d17d);
+  background: var(--status-green-text);
 }
 
 .voice-status-strip.voice-thinking .voice-dot {
-  background: var(--color-yellow, #e6c34a);
+  background: var(--status-amber-text);
   animation: voice-pulse 0.9s ease-in-out infinite;
 }
 
 .voice-status-strip.voice-speaking .voice-dot {
-  background: var(--color-blue, #4a9eff);
+  background: var(--status-blue-text);
   animation: voice-pulse 0.7s ease-in-out infinite;
 }
 
@@ -855,8 +867,8 @@ export default {
 .voice-end-btn {
   flex: 0 0 auto;
   background: transparent;
-  border: 1px solid var(--color-darker-3, #2a2a2a);
-  color: var(--color-lighter-2, #b8b8b8);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 11px;
@@ -864,8 +876,8 @@ export default {
 }
 
 .voice-end-btn:hover {
-  color: var(--color-lighter-1, #e8e8e8);
-  border-color: var(--color-lighter-3, #888);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 @media (prefers-reduced-motion: reduce) {
