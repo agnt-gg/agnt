@@ -392,6 +392,11 @@ export default {
     // so reloading restores the chips and the orchestrator system prompt injection.
     activeSkillByConv: {}, // { conversationId: skillObj }
     activeGoalByConv: {},  // { conversationId: goalObj }
+    // Per-conversation AI override — the { provider, model } this conversation
+    // pinned for itself. Wins over the caller-passed global selection at send
+    // time; persisted alongside skill/goal bindings in conversation_settings
+    // so it survives reloads and follows the conversation across devices.
+    aiByConv: {}, // { conversationId: { provider, model } }
     // /goal create flow flag: when true, the next submitted message creates a
     // new goal (POST /api/goals) and auto-attaches it instead of being chatted.
     goalCreateMode: false,
@@ -1189,6 +1194,22 @@ export default {
     },
 
     /**
+     * Set/clear a conversation's AI override. The override is atomic — a
+     * provider without a model (or vice versa) is meaningless at send time,
+     * so anything less than both fields clears the entry.
+     */
+    SET_CONV_AI(state, { conversationId, ai }) {
+      if (!conversationId) return;
+      if (ai && ai.provider && ai.model) {
+        state.aiByConv = { ...state.aiByConv, [conversationId]: { provider: ai.provider, model: ai.model } };
+      } else {
+        const next = { ...state.aiByConv };
+        delete next[conversationId];
+        state.aiByConv = next;
+      }
+    },
+
+    /**
      * On MIGRATE_CONVERSATION_ID we also need to move skill/goal bindings to
      * the new id so the chips don't disappear when the temp- id flips to a
      * server-assigned UUID at the start of streaming.
@@ -1208,6 +1229,13 @@ export default {
         delete next[oldId];
         next[newId] = goal;
         state.activeGoalByConv = next;
+      }
+      if (state.aiByConv[oldId]) {
+        const ai = state.aiByConv[oldId];
+        const next = { ...state.aiByConv };
+        delete next[oldId];
+        next[newId] = ai;
+        state.aiByConv = next;
       }
     },
   },
@@ -1303,6 +1331,10 @@ export default {
       state.activeConversationId ? state.activeSkillByConv[state.activeConversationId] || null : null,
     currentActiveGoal: (state) =>
       state.activeConversationId ? state.activeGoalByConv[state.activeConversationId] || null : null,
+    aiForConversation: (state) => (conversationId) =>
+      conversationId ? state.aiByConv[conversationId] || null : null,
+    currentConversationAi: (state) =>
+      state.activeConversationId ? state.aiByConv[state.activeConversationId] || null : null,
   },
   actions: {
     receiveNewMessage({ commit }, messageData) {
@@ -1400,6 +1432,15 @@ export default {
       // Read messages from the conversation slot — includes tool call context
       const conv = state.conversations[convId];
 
+      // Per-conversation AI override wins over the caller-passed (global)
+      // selection — floor dispatches and goal auto-fires pass the global pair,
+      // so resolving HERE covers every caller. When the override wins, the
+      // turn must NOT be written back as the account-wide default.
+      const convAi = state.aiByConv[convId] || null;
+      const hasConvAiOverride = !!(convAi && convAi.provider && convAi.model);
+      const effectiveProvider = hasConvAiOverride ? convAi.provider : provider;
+      const effectiveModel = hasConvAiOverride ? convAi.model : model;
+
       // Resolve the responding speaker BEFORE rendering history — the shared
       // transcript is rendered from that speaker's point of view (their own
       // turns as 'assistant', everyone else attributed as 'user').
@@ -1407,7 +1448,7 @@ export default {
       const historyViewer = resolvedAgentId && resolvedAgentId !== 'agent-chat'
         ? { id: resolvedAgentId, name: mentionedAgent?.name || conv.agentName || null }
         : null;
-      const chatHistory = buildChatHistory(conv.messages, provider, historyViewer, {
+      const chatHistory = buildChatHistory(conv.messages, effectiveProvider, historyViewer, {
         // In the agent's own dedicated conversation, unattributed legacy
         // assistant turns are the agent's (it is the only responder there).
         assumeOwnAssistant: !!historyViewer && resolvedAgentId === conv.agentId,
@@ -1478,8 +1519,12 @@ export default {
           if (conv.conversationId && !conv.conversationId.startsWith('temp-')) {
             formData.append('conversationId', conv.conversationId);
           }
-          formData.append('provider', provider);
-          formData.append('model', model);
+          formData.append('provider', effectiveProvider);
+          formData.append('model', effectiveModel);
+          if (hasConvAiOverride) {
+            // Turn-only provider — the backend normalizes the string 'false'.
+            formData.append('persistDefault', 'false');
+          }
           if (normalizedReasoningValue !== 'default') {
             formData.append('reasoningValue', normalizedReasoningValue);
           }
@@ -1540,8 +1585,9 @@ export default {
             message: userInput,
             history: deduped,
             conversationId: conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
-            provider: provider,
-            model: model,
+            provider: effectiveProvider,
+            model: effectiveModel,
+            persistDefault: hasConvAiOverride ? false : undefined,
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
             agentId: resolvedAgentId || undefined,
@@ -1634,6 +1680,12 @@ export default {
                         if (oldId !== data.conversationId) {
                           commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
                           commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
+                          // An AI override picked before the first message was
+                          // keyed on the temp id and couldn't be persisted —
+                          // persist it now under the server-assigned id.
+                          if (state.aiByConv[data.conversationId]) {
+                            dispatch('persistConversationAi', { conversationId: data.conversationId });
+                          }
                           activeConvId = data.conversationId;
                         }
                       } else {
@@ -3042,6 +3094,49 @@ export default {
     },
 
     /**
+     * Set this conversation's AI override ({ provider, model }). Mirrors
+     * attachSkill/attachGoal: Vuex first, then persist to
+     * conversation_settings for non-temp ids. Temp ids are persisted after
+     * MIGRATE_CONTEXT_BINDINGS assigns the server UUID (see the
+     * conversation_started handler in startStreamingConversation).
+     */
+    async setConversationAi({ commit, state, dispatch }, { conversationId, provider, model }) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId) return;
+      const ai = provider && model ? { provider, model } : null;
+      commit('SET_CONV_AI', { conversationId: convId, ai });
+      if (convId.startsWith('temp-')) return;
+      await dispatch('persistConversationAi', { conversationId: convId });
+    },
+
+    /** Clear the override — the conversation follows the global default again. */
+    async clearConversationAi({ dispatch }, { conversationId } = {}) {
+      await dispatch('setConversationAi', { conversationId, provider: null, model: null });
+    },
+
+    /**
+     * Write the conversation's current override state (or its absence) to the
+     * backend. Kept separate so the temp→UUID migration path can reuse it.
+     */
+    async persistConversationAi({ state }, { conversationId }) {
+      if (!conversationId || conversationId.startsWith('temp-')) return;
+      const ai = state.aiByConv[conversationId] || null;
+      try {
+        const token = localStorage.getItem('token');
+        await fetch(`${API_CONFIG.BASE_URL}/conversations/${conversationId}/settings`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ provider: ai?.provider || null, model: ai?.model || null }),
+        });
+      } catch (e) {
+        console.warn('[Chat] Failed to persist conversation AI override:', e);
+      }
+    },
+
+    /**
      * Restore skill/goal bindings for a conversation from the backend.
      * Called when a saved conversation is opened so the chips reappear.
      */
@@ -3088,6 +3183,12 @@ export default {
             } catch (e) { /* ignore */ }
           }
           if (goal) commit('SET_ACTIVE_GOAL', { conversationId, goal });
+        }
+
+        // AI override — atomic pair; a partial row (legacy or manual edit)
+        // is treated as unset rather than half-applied.
+        if (data.provider && data.model) {
+          commit('SET_CONV_AI', { conversationId, ai: { provider: data.provider, model: data.model } });
         }
       } catch (e) {
         console.warn('[Chat] Failed to load conversation context:', e);

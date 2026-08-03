@@ -20,8 +20,17 @@
           </div>
         </div>
 
+        <!-- Conversation-scoped mode: override status + reset -->
+        <div v-if="scopedAi" class="conv-override-row">
+          <span class="conv-override-pill"><i class="fas fa-thumbtack"></i> This chat only</span>
+          <button class="conv-override-reset" @click="resetConversationAi">Reset to default</button>
+        </div>
+        <div v-else-if="conversationId" class="conv-scope-hint">
+          Choices here apply to this conversation only
+        </div>
+
         <!-- Quick search across all providers + models -->
-        <ProviderModelSearch class="chat-provider-search" />
+        <ProviderModelSearch class="chat-provider-search" :apply-globally="!conversationId" @selected="handleSearchSelected" />
 
         <!-- Provider Selector -->
         <div class="selector-group">
@@ -153,6 +162,15 @@ export default {
       type: String,
       default: '',
     },
+    // When set, the selector operates in CONVERSATION-SCOPED mode: picks
+    // write a per-conversation AI override (chat/aiByConv + backend
+    // conversation_settings) and never touch the global Vuex selection or
+    // the channel config. Display falls back to the global selection while
+    // no override exists.
+    conversationId: {
+      type: String,
+      default: '',
+    },
   },
   emits: ['close'],
   setup(props, { emit }) {
@@ -170,8 +188,15 @@ export default {
     const connectedProviders = computed(() => store.state.appAuth.connectedApps);
     const connectedProvidersLower = computed(() => connectedProviders.value.map((p) => p.toLowerCase()));
 
-    const selectedProvider = computed(() => store.state.aiProvider.selectedProvider);
-    const selectedModel = computed(() => store.state.aiProvider.selectedModel);
+    // Conversation-scoped override (atomic { provider, model } or null).
+    const scopedAi = computed(() =>
+      props.conversationId ? store.state.chat?.aiByConv?.[props.conversationId] || null : null,
+    );
+
+    const selectedProvider = computed(() => scopedAi.value?.provider || store.state.aiProvider.selectedProvider);
+    const selectedModel = computed(() =>
+      scopedAi.value ? scopedAi.value.model : store.state.aiProvider.selectedModel,
+    );
 
     // Get display name for the selected provider (handles custom providers showing UUID)
     const selectedProviderDisplayName = computed(() => {
@@ -186,8 +211,11 @@ export default {
       // For built-in providers, apply display name mapping
       return PROVIDER_DISPLAY_NAMES[selectedProvider.value] || selectedProvider.value;
     });
-    const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
-    const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
+    // Keyed on the EFFECTIVE provider (scoped override wins) — the global
+    // getter reads state.selectedProvider and would list the wrong provider's
+    // models while a conversation override is active.
+    const filteredModels = computed(() => store.state.aiProvider.allModels[selectedProvider.value] || []);
+    const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[selectedProvider.value] || false);
     const selectedReasoningControl = computed(() => {
       if (!selectedProvider.value || !selectedModel.value) return null;
       return (
@@ -287,22 +315,72 @@ export default {
     // Handle provider selection. Always update Vuex (so any code reading the
     // global selection still works) AND persist to the per-channel config so
     // this chat remembers the choice next time it's opened.
-    const handleProviderSelected = (option) => {
+    const handleProviderSelected = async (option) => {
       if (option.disabled) return;
+      if (props.conversationId) {
+        // Conversation-scoped: pin { provider, first-available-model } to this
+        // conversation. Global Vuex and channel config stay untouched.
+        const providerId = option.value;
+        let models = store.state.aiProvider.allModels[providerId] || [];
+        if (models.length === 0) {
+          const action = PROVIDER_FETCH_ACTIONS[providerId];
+          const isCustom = customProviders.value.some((p) => p.id === providerId);
+          try {
+            if (action) await store.dispatch(action);
+            else if (isCustom) await store.dispatch('aiProvider/fetchCustomProviderModels', providerId);
+          } catch (error) {
+            console.error(`Failed to fetch ${providerId} models:`, error);
+          }
+          models = store.state.aiProvider.allModels[providerId] || [];
+        }
+        store.dispatch('chat/setConversationAi', {
+          conversationId: props.conversationId,
+          provider: providerId,
+          model: models[0] || null,
+        });
+        return;
+      }
       store.dispatch('aiProvider/setProvider', option.value);
       if (props.channelKey) setChannelProvider(props.channelKey, option.value);
     };
 
     const handleModelSelected = (option) => {
       if (option.disabled) return;
+      if (props.conversationId) {
+        store.dispatch('chat/setConversationAi', {
+          conversationId: props.conversationId,
+          provider: selectedProvider.value,
+          model: option.value,
+        });
+        return;
+      }
       store.dispatch('aiProvider/setModel', option.value);
       if (props.channelKey) setChannelModel(props.channelKey, option.value);
+    };
+
+    // Quick-search pick in scoped mode — the search component skipped the
+    // global dispatches (applyGlobally=false) and hands us the pair here.
+    const handleSearchSelected = (result) => {
+      if (!props.conversationId || !result) return;
+      store.dispatch('chat/setConversationAi', {
+        conversationId: props.conversationId,
+        provider: result.provider,
+        model: result.model,
+      });
+    };
+
+    const resetConversationAi = () => {
+      if (!props.conversationId) return;
+      store.dispatch('chat/clearConversationAi', { conversationId: props.conversationId });
     };
 
     // Restore the channel's saved provider/model into Vuex so the rest of the
     // chat (request payload, model badges, reasoning controls) reflects this
     // chat's choice rather than whatever the previous chat left in Vuex.
     const restoreChannelConfig = () => {
+      // Conversation-scoped mode never smears its selection into global Vuex —
+      // the scoped computeds already display the right pair.
+      if (props.conversationId) return;
       if (!props.channelKey) return;
       const cfg = getChannelConfig(props.channelKey);
       if (!cfg) return;
@@ -562,6 +640,9 @@ export default {
       isProviderConnected,
       handleProviderSelected,
       handleModelSelected,
+      handleSearchSelected,
+      resetConversationAi,
+      scopedAi,
       closeDropdown,
       isDialogOpen,
       editingProvider,
@@ -582,6 +663,55 @@ export default {
 .chat-provider-selector {
   position: fixed;
   z-index: 10000;
+}
+
+/* Conversation-scoped override indicator */
+.conv-override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.conv-override-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-blue, #4a9eff);
+  background: color-mix(in srgb, var(--color-blue, #4a9eff) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-blue, #4a9eff) 35%, transparent);
+  white-space: nowrap;
+}
+
+.conv-override-pill i {
+  font-size: 9px;
+}
+
+.conv-override-reset {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--color-lighter-3, #999);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.conv-override-reset:hover {
+  color: var(--color-lightest, #fff);
+}
+
+.conv-scope-hint {
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--color-lighter-3, #888);
+  font-style: italic;
 }
 
 /* When the parent positions the root precisely (e.g. UnifiedChatContainer

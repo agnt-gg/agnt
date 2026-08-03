@@ -499,6 +499,24 @@ function createTables() {
 
       db.run(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
 
+      // Migration: per-conversation AI override (provider + model). NULL means
+      // "inherit" — the conversation follows the global default. Lives here
+      // rather than a new table because conversation_settings already models
+      // exactly this: lazily-created per-conversation bindings.
+      const conversationAiColumns = [
+        { table: 'conversation_settings', name: 'provider', type: 'TEXT' },
+        { table: 'conversation_settings', name: 'model', type: 'TEXT' },
+      ];
+      conversationAiColumns.forEach((col) => {
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to ${col.table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to ${col.table} table`);
+          }
+        });
+      });
+
       // Persist Codex CLI thread IDs so conversations can resume after restarts
       db.run(
         `CREATE TABLE IF NOT EXISTS codex_threads (
