@@ -7,7 +7,7 @@ import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } 
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
-import { hydrateMessage } from '@/services/chatStreamReducer.js';
+import { serverMessagesToUi } from '@/services/chatStreamReducer.js';
 // The key only — workspaceStorage.js is deliberately import-free and
 // side-effect-free, so reading workspace state here never boots the
 // useWorkspaces singleton (which MINTS a workspace on import). Two writers to
@@ -84,22 +84,6 @@ function writeWorkspaceChannelConversation(channelKey, conversationId) {
   } catch (e) {
     console.warn('[chatUnified] failed to persist workspace conversation id:', e?.message || e);
   }
-}
-
-/** Convert server conversation_logs messages into UI message shapes. */
-function serverMessagesToUi(messages) {
-  if (!Array.isArray(messages)) return [];
-  return messages
-    .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
-    .map((m, i) => hydrateMessage({
-      id: m.id || `srv-${i}-${Date.now().toString(36)}`,
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : (m.content == null ? '' : String(m.content)),
-      toolCalls: m.toolCalls || m.tool_calls || [],
-      contentParts: m.contentParts || null,
-      reasoning: m.reasoning || '',
-      timestamp: m.timestamp || Date.now(),
-    }));
 }
 
 const STORAGE_KEY = 'unifiedChatConversations';
