@@ -4583,6 +4583,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
                   license: match.license,
                   compatibility: match.compatibility,
                   'allowed-tools': match.allowed_tools,
+                  metadata: match.metadata || null,
                 },
               };
               source = 'database';
@@ -4613,6 +4614,29 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Include compatibility notes if present
         if (skillContent.frontmatter?.compatibility) {
           result.compatibility = skillContent.frontmatter.compatibility;
+        }
+
+        // Surface inter-skill relations (metadata.relations) as activation hints.
+        // Hints only — never auto-activation; the model stays in the loop.
+        try {
+          const { extractRelations, buildActivationRelationsPayload } = await import('../../utils/skillRelations.js');
+          const relations = extractRelations(skillContent.frontmatter?.metadata);
+          let supersededBy = [];
+          if (source === 'filesystem') {
+            try {
+              const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
+              supersededBy = SkillDiscoveryService.getSupersededBy(skill_name);
+            } catch { /* discovery unavailable */ }
+          }
+          const relationsPayload = buildActivationRelationsPayload({
+            relations,
+            supersededBy,
+            activatedSkills: context.activatedSkills,
+          });
+          if (relationsPayload) Object.assign(result, relationsPayload);
+        } catch (e) {
+          // Relations are best-effort enrichment — never fail activation over them
+          console.warn('[activate_skill] Relations enrichment failed:', e.message);
         }
 
         // Include resource listing (not content - model reads on demand)

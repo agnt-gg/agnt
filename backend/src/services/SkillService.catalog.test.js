@@ -94,6 +94,57 @@ describe('buildSkillCatalog (compact format)', () => {
     expect(buildSkillCatalog([])).toBe('');
     expect(buildSkillCatalog(null)).toBe('');
   });
+
+  it('annotates depends-on relations with a [needs: ...] suffix', () => {
+    const catalog = buildSkillCatalog([
+      {
+        name: 'hyperframes-cli',
+        description: 'Run the HyperFrames CLI loop.',
+        metadata: { relations: { 'depends-on': ['hyperframes-core'] } },
+      },
+      { name: 'plain-skill', description: 'No relations here.' },
+    ]);
+    expect(catalog).toContain('- hyperframes-cli: Run the HyperFrames CLI loop. [needs: hyperframes-core]');
+    expect(catalog).toContain('- plain-skill: No relations here.');
+    expect(catalog).not.toContain('plain-skill: No relations here. [needs:');
+  });
+
+  it('omits skills superseded by a successor present in the catalog', () => {
+    const catalog = buildSkillCatalog([
+      { name: 'old-render', description: 'Legacy renderer.' },
+      {
+        name: 'new-render',
+        description: 'Better renderer.',
+        metadata: { relations: { supersedes: ['old-render'] } },
+      },
+    ]);
+    expect(catalog).toContain('- new-render:');
+    expect(catalog).not.toContain('- old-render:');
+  });
+
+  it('keeps a superseded skill when its successor is absent', () => {
+    const catalog = buildSkillCatalog([
+      { name: 'old-render', description: 'Legacy renderer.' },
+      {
+        name: 'unrelated',
+        description: 'Something else.',
+        metadata: { relations: { supersedes: ['skill-not-in-catalog'] } },
+      },
+    ]);
+    expect(catalog).toContain('- old-render:');
+    expect(catalog).toContain('- unrelated:');
+  });
+
+  it('reads relations from DB-shape JSON-string metadata', () => {
+    const catalog = buildSkillCatalog([
+      {
+        name: 'db-skill',
+        description: 'From the database.',
+        metadata: JSON.stringify({ relations: { 'depends-on': ['core-skill'] } }),
+      },
+    ]);
+    expect(catalog).toContain('[needs: core-skill]');
+  });
 });
 
 describe('buildSkillActivationInstructions', () => {

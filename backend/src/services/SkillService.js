@@ -3,6 +3,7 @@ import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { parseSkillMd, serializeSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
 import { skillCatalogGist } from '../utils/skillCatalogGist.js';
+import { extractRelations, filterSupersededEntries } from '../utils/skillRelations.js';
 
 /**
  * PRD-057: Programmatic skill import from SKILL.md text.
@@ -81,13 +82,26 @@ class SkillService {
    * One line per skill: "- name: gist". Full descriptions cost >13k tokens
    * at ~100 skills; the gist keeps just enough trigger signal
    * (activate_skill returns the full playbook).
-   * @param {Array<{name: string, description: string, source?: string}>} skills
+   *
+   * Relationship-aware (metadata.relations):
+   * - Skills superseded by another skill PRESENT in the catalog are omitted
+   *   (token saving; steers the model to the successor).
+   * - depends-on relations surface as a "[needs: ...]" suffix so the model
+   *   activates prerequisites in one shot.
+   * @param {Array<{name: string, description: string, source?: string, metadata?: object|string}>} skills
    */
   static buildSkillCatalog(skills) {
     if (!skills || skills.length === 0) return '';
 
-    const entries = skills
-      .map((s) => `- ${s.name}: ${skillCatalogGist(s.description)}`)
+    const { entries: visible } = filterSupersededEntries(skills);
+    if (visible.length === 0) return '';
+
+    const entries = visible
+      .map((s) => {
+        const { dependsOn } = extractRelations(s.metadata);
+        const needs = dependsOn.length > 0 ? ` [needs: ${dependsOn.join(', ')}]` : '';
+        return `- ${s.name}: ${skillCatalogGist(s.description)}${needs}`;
+      })
       .join('\n');
 
     return `<available-skills>\n${entries}\n</available-skills>`;

@@ -2,6 +2,7 @@
  * Skill validation and parsing utilities for the Agent Skills standard (agentskills.io)
  */
 import yaml from 'js-yaml';
+import { validateRelationsMetadata } from './skillRelations.js';
 
 /**
  * Validate a skill name against the Agent Skills specification.
@@ -98,6 +99,11 @@ export function parseSkillMd(content) {
     result.errors.push('Missing required "description" field in frontmatter');
   } else if (result.frontmatter.description.length > 1024) {
     result.warnings.push('Description exceeds 1024 character recommendation');
+  }
+
+  // Warn-only validation of metadata.relations / metadata.provenance blocks
+  if (result.frontmatter.metadata) {
+    result.warnings.push(...validateRelationsMetadata(result.frontmatter.metadata));
   }
 
   return result;

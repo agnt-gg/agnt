@@ -109,7 +109,7 @@ async function loadSkillsCatalogSection(context) {
       for (const s of dbSkills) {
         const key = s.slug || s.name;
         if (!seenNames.has(key)) {
-          catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
+          catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database', metadata: s.metadata || null });
           seenNames.add(key);
         }
       }
