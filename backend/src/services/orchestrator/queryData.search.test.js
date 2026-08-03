@@ -141,3 +141,43 @@ describe('cap() safety net: found matches are never zeroed out', () => {
     expect(JSON.stringify(r).length).toBeLessThanOrEqual(15_000);
   });
 });
+
+describe('not-found refs explain themselves (2026-08-03 "expiring ref" incident)', () => {
+  // A real, well-formed ref whose backing bytes are gone must be
+  // distinguishable from a typo'd id — the model's correct next move differs
+  // (re-run the producing tool vs fix the id).
+  it('a real-looking data- ref that is missing gets the "no longer resident" hint', async () => {
+    const raw = await queryData.execute(
+      { operation: 'search', dataId: 'data-toolu_abc123-1785769786358-0', query: 'x' },
+      null,
+      { preservedContent: {}, dataRefSummaries: {} }
+    );
+    const r = JSON.parse(raw);
+    expect(r.success).toBe(false);
+    expect(r.error).toContain('not found');
+    expect(r.hint).toContain('no longer resident');
+    expect(r.hint).toContain('Re-run');
+  });
+
+  it('a malformed id gets the format hint instead', async () => {
+    const raw = await queryData.execute(
+      { operation: 'search', dataId: 'totally-wrong-id', query: 'x' },
+      null,
+      { preservedContent: {}, dataRefSummaries: {} }
+    );
+    const r = JSON.parse(raw);
+    expect(r.success).toBe(false);
+    expect(r.hint).toContain('operation="list"');
+  });
+
+  it('a missing ref still lists surviving refs so the model can recover', async () => {
+    const raw = await queryData.execute(
+      { operation: 'search', dataId: 'data-gone-1-0', query: 'x' },
+      null,
+      { preservedContent: { 'data-alive-2-0': 'hello world' }, dataRefSummaries: {} }
+    );
+    const r = JSON.parse(raw);
+    expect(r.success).toBe(false);
+    expect(r.available_refs).toEqual(['data-alive-2-0']);
+  });
+});

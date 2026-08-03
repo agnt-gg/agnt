@@ -1299,6 +1299,20 @@ async function universalChatHandler(req, res, context = {}) {
     if (priorContext.activatedSkills) {
       conversationContext.activatedSkills = new Set(priorContext.activatedSkills);
     }
+    // Offloaded tool-result bytes (the query_data backing store). The end-of-
+    // turn conversationManager.store() spreads the whole context into the Map,
+    // so these were ALWAYS carried across turns — but this restore block never
+    // copied them back, so every DATA_REF died the moment its turn ended even
+    // though the bytes were sitting in memory. The placeholder text survives
+    // in message history forever; the data it points at must survive with it.
+    // Shallow-spread: the big strings are shared by reference (no duplication),
+    // and new refs added this turn mutate only the fresh object.
+    if (priorContext.preservedContent && typeof priorContext.preservedContent === 'object') {
+      conversationContext.preservedContent = { ...priorContext.preservedContent };
+    }
+    if (priorContext.dataRefSummaries && typeof priorContext.dataRefSummaries === 'object') {
+      conversationContext.dataRefSummaries = { ...priorContext.dataRefSummaries };
+    }
   }
 
   // Token usage accumulator — tracks real LLM token consumption across all rounds

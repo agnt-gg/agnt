@@ -313,26 +313,62 @@ describe('wiring contract', () => {
     );
   });
 
+  // The restore block runs from the priorContext lookup to the token
+  // accumulator declaration that immediately follows it. Sliced by these
+  // markers, not a fixed char count — a fixed 4000 silently truncated the
+  // block as it grew, letting later keys escape the allow-list check below.
+  function restoreBlock() {
+    const start = ORCH.indexOf('const priorContext = conversationManager.get(conversationId)');
+    const end = ORCH.indexOf('const tokenAccumulator', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return ORCH.slice(start, end);
+  }
+
   it('both sources feed the SAME restore block', () => {
     // One restore path is what keeps the two sources from drifting. If the DB
     // branch grew its own restore code, only one of them would receive the
     // next frozen key someone adds.
-    const idx = ORCH.indexOf('const priorContext = conversationManager.get(conversationId)');
-    const block = ORCH.slice(idx, idx + 4000);
-    expect(block.match(/if \(priorContext\) \{/g)).toHaveLength(1);
+    expect(restoreBlock().match(/if \(priorContext\) \{/g)).toHaveLength(1);
   });
 
-  it('every key the restore block reads is on the persisted allow-list', () => {
+  it('every key the restore block reads is persisted or explicitly memory-only', () => {
     // The failure mode this catches: someone adds a sixth frozen section to
     // the restore block and it silently stops surviving restarts.
-    const idx = ORCH.indexOf('const priorContext = conversationManager.get(conversationId)');
-    const block = ORCH.slice(idx, idx + 4000);
-    const referenced = new Set([...block.matchAll(/priorContext\.(_?[A-Za-z][A-Za-z0-9_]*)/g)].map((m) => m[1]));
+    //
+    // MEMORY-ONLY EXEMPTIONS: offloaded tool-result blobs (query_data backing
+    // store) can be megabytes — far over MAX_STATE_BYTES — and are not
+    // prompt-prefix state. They survive turn-to-turn via ConversationManager's
+    // Map only; a restart loses them and query_data's not-found hint says so.
+    const MEMORY_ONLY_RESTORE_KEYS = new Set(['preservedContent', 'dataRefSummaries']);
+    const referenced = new Set([...restoreBlock().matchAll(/priorContext\.(_?[A-Za-z][A-Za-z0-9_]*)/g)].map((m) => m[1]));
     expect(referenced.size).toBeGreaterThan(5); // anti-vacuity
     const persisted = new Set(PERSISTED_STATE_KEYS.map((k) => k.key));
     for (const key of referenced) {
-      expect(persisted.has(key), `restore reads "${key}" but it is never persisted`).toBe(true);
+      expect(
+        persisted.has(key) || MEMORY_ONLY_RESTORE_KEYS.has(key),
+        `restore reads "${key}" but it is never persisted and not an explicit memory-only key`
+      ).toBe(true);
     }
+  });
+
+  it('offloaded data refs survive across turns (restore copies the query_data backing store)', () => {
+    // PRODUCTION INCIDENT (2026-08-03, conversation 84b1bd15): every DATA_REF
+    // died at end-of-turn. conversationManager.store() spreads the whole
+    // context into the Map, so preservedContent WAS carried over — but the
+    // restore block never copied it back into the fresh context, whose
+    // preservedContent starts as {}. query_data then reported the ref
+    // "not found" one turn after it was minted.
+    //
+    // Pins the exact guard + assignment shape (not mere presence) so a dead
+    // `if (false && ...)` branch cannot satisfy this test.
+    const block = restoreBlock();
+    expect(block).toMatch(
+      /if \(priorContext\.preservedContent && typeof priorContext\.preservedContent === 'object'\) \{\s*\r?\n\s*conversationContext\.preservedContent = \{ \.\.\.priorContext\.preservedContent \};/
+    );
+    expect(block).toMatch(
+      /if \(priorContext\.dataRefSummaries && typeof priorContext\.dataRefSummaries === 'object'\) \{\s*\r?\n\s*conversationContext\.dataRefSummaries = \{ \.\.\.priorContext\.dataRefSummaries \};/
+    );
   });
 
   it('state is persisted after the turn is stored in memory', () => {

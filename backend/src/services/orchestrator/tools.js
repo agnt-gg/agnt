@@ -1309,6 +1309,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           success: false,
           error: `Data reference "${dataId}" not found.`,
           available_refs: available.length > 0 ? available : 'No offloaded data in this conversation.',
+          // Refs live in the in-memory conversation store; a backend restart
+          // discards them even though the {{DATA_REF}} placeholder survives in
+          // history. Distinguish that from a typo so the model re-runs the
+          // producing tool instead of retrying variations of the same id.
+          hint: /^data-/.test(dataId)
+            ? 'This looks like a real offload ref whose backing data is no longer resident (most likely a backend restart since it was created). Re-run the tool that produced it to regenerate the data.'
+            : 'dataId should look like "data-<callId>-<timestamp>-<n>". Use operation="list" to see valid refs.',
         });
       }
 
