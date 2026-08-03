@@ -1,10 +1,15 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import vueJsx from '@vitejs/plugin-vue-jsx';
 import path from 'path';
 import fs from 'fs-extra';
 import { preserveHashedAssets } from './build/assetRetention.js';
+import { verifyDeps } from './build/verifyDeps.js';
+
+// Fail here, loudly and self-namingly, if a concurrent npm run pruned the
+// shared node_modules — instead of dying mid-build on a transitive package
+// name that appears in no package.json. See build/verifyDeps.js for history.
+verifyDeps(fileURLToPath(new URL('.', import.meta.url)));
 
 // Custom plugin to copy directories
 const copyDirectoryPlugin = (directories) => ({
@@ -27,7 +32,6 @@ export default defineConfig({
         },
       },
     }),
-    vueJsx(),
     copyDirectoryPlugin({
       'src/assets/icons': 'assets/icons'
     }),

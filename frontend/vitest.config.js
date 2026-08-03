@@ -3,6 +3,11 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import jsdom from 'jsdom'
 import { onUnhandledError } from '../tests/setup/unhandledErrorFilter.mjs'
+import { verifyDeps } from './build/verifyDeps.js'
+
+// Same guard as vite.config.js: refuse to start on a node_modules that has
+// drifted from the lockfile, with an error that names the real cause.
+verifyDeps(__dirname)
 
 export default defineConfig({
   plugins: [vue()],
