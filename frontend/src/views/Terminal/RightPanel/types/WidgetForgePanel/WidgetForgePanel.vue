@@ -311,7 +311,6 @@ export default {
   flex-direction: column;
   height: 100%;
   gap: 0;
-  background: var(--color-background-soft);
   color: var(--color-text);
   min-height: 0;
 }

@@ -47,7 +47,6 @@ body {
   --terminal-bg: var(--surface-canvas);
   --terminal-section-bg: var(--surface-sunken);
   --terminal-background-color: var(--surface-canvas);
-  --color-background-soft: var(--surface-sunken);
   --color-background-primary: var(--surface-canvas);
   --color-bg: var(--surface-canvas);
   --color-bg-secondary: var(--surface-sunken);

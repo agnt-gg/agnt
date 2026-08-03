@@ -570,7 +570,6 @@ export default {
   flex-direction: column;
   gap: 16px;
   height: 100%;
-  background: var(--color-background-soft);
   color: var(--color-text);
   min-height: 0;
 }
