@@ -41,6 +41,19 @@
 
       <input v-if="showAttachments" ref="fileInputRef" type="file" multiple :accept="attachAccept" @change="onFileSelect" style="display: none" />
 
+      <!--
+        Always-visible controls, in BOTH layouts.
+
+        `extra-buttons` below lives inside the non-compact branch and
+        `overflow-items` inside the compact one, so a control placed in either
+        is invisible in the other half of the app. That is not a hypothetical:
+        hands-free voice shipped in `extra-buttons`, `compact` defaults to true
+        for every sidebar host, and the feature reached nobody.
+
+        Anything a user must be able to reach in any layout belongs here.
+      -->
+      <slot name="primary-buttons" :is-streaming="isStreaming" />
+
       <!-- Inline (non-compact) layout: every button shown in a row -->
       <template v-if="!compact">
         <Tooltip v-if="showAttachments && !isStreaming" text="Attach files" width="auto">

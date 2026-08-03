@@ -76,6 +76,24 @@
             </button>
           </div>
 
+          <!--
+            Voice status. Hands-free mode has no other visible surface, so
+            without this the user cannot tell whether it is hearing them,
+            thinking, or broken — and a mode you cannot read is one you cannot
+            trust enough to talk to.
+          -->
+          <div v-if="voiceActive" class="voice-status-strip" :class="'voice-' + voiceState">
+            <span class="voice-dot"></span>
+            <span class="voice-status-text">
+              <template v-if="voiceError">{{ voiceError }}</template>
+              <template v-else-if="voiceState === 'listening' || voiceState === 'reopen'">{{ voicePartial || 'Listening…' }}</template>
+              <template v-else-if="voiceState === 'thinking'">Thinking…</template>
+              <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
+              <template v-else>Voice ready</template>
+            </span>
+            <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
+          </div>
+
           <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
             <!-- File preview chips -->
@@ -144,6 +162,27 @@
                 :class="{ 'is-listening': isListening }"
               >
                 <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
+              </button>
+            </Tooltip>
+            <!--
+              Hands-free voice. Deliberately NOT hidden while streaming: the
+              whole point is that you can talk over a reply and redirect it,
+              so hiding the control mid-turn would remove the one thing that
+              distinguishes this from the push-to-talk mic beside it.
+            -->
+            <Tooltip
+              :text="voiceActive ? 'End voice conversation' : 'Talk to Annie (hands-free)'"
+              width="auto"
+            >
+              <button
+                @click="toggleVoice"
+                class="chat-voice-button"
+                :class="['voice-' + voiceState, { 'voice-on': voiceActive }]"
+                type="button"
+                :aria-pressed="voiceActive ? 'true' : 'false'"
+                aria-label="Toggle hands-free voice conversation"
+              >
+                <i :class="voiceActive ? 'fas fa-headset' : 'far fa-comment-dots'"></i>
               </button>
             </Tooltip>
             <template v-if="!isStreaming">
@@ -241,6 +280,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
+import { useVoiceSession } from '@/composables/useVoiceSession';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 
@@ -580,6 +620,46 @@ export default {
       scrollToBottom();
       focusInput();
     };
+
+    // ---- hands-free voice conversation ---------------------------------
+    //
+    // Declared after triggerSubmit/isStreaming because it closes over both.
+    //
+    // No onSteer handler on purpose: this screen ALREADY turns a submit during
+    // a live turn into a mid-run steer (that is what the "Steer pending" chip
+    // above is). Routing voice through the same triggerSubmit means an
+    // interruption becomes a steer through the exact path the keyboard uses,
+    // rather than a second, parallel implementation that can drift from it.
+    const voice = useVoiceSession({
+      onCommit: ({ text }) => {
+        currentUserInput.value = text;
+        triggerSubmit();
+      },
+      getAgents: () => {
+        const list = store.getters['agents/allAgents'];
+        return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
+      },
+    });
+
+    // Bridge the assistant stream into the voice pipeline. Watching the store's
+    // rendered message rather than tapping SSE keeps one decoder for every
+    // surface — a second subscriber is a second place for the protocol to rot.
+    watch(
+      () => {
+        if (!voice.isActive.value) return null;
+        const list = store.state.chat.messages || [];
+        const last = list[list.length - 1];
+        return last && last.role === 'assistant' ? last.content || '' : null;
+      },
+      (content) => {
+        if (content === null) return;
+        voice.handleStreamEvent('content_delta', { accumulated: content });
+      }
+    );
+
+    watch(isStreaming, (streaming, was) => {
+      if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
+    });
 
     const handlePanelAction = async (action, payload) => {
       if (action === 'close-panel') {
@@ -1422,6 +1502,13 @@ export default {
       isListening,
       isSupported,
       toggleListening,
+      // Hands-free voice conversation
+      voiceActive: voice.isActive,
+      voiceState: voice.state,
+      voiceLevel: voice.level,
+      voiceError: voice.error,
+      voicePartial: voice.partialTranscript,
+      toggleVoice: voice.toggle,
       // Streaming
       isStreaming,
       pendingSteer,
@@ -2251,6 +2338,124 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 .input-disabled-notice i {
   flex-shrink: 0;
   font-size: 0.9em;
+}
+
+/* ---- hands-free voice ------------------------------------------------ */
+
+/*
+ * The button is a STATE indicator, not just a control: voice has no other
+ * visible surface, so if it looks identical whether or not the mic is open,
+ * the only way to find out is to talk to a machine that may not be listening.
+ *
+ * Colours come from --status-*-text rather than the raw --color-* hues, which
+ * are tuned for a dark canvas and fall to ~1.9:1 on the light theme.
+ */
+.chat-voice-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 1rem;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.chat-voice-button:hover {
+  color: var(--text-primary);
+}
+
+.chat-voice-button.voice-on {
+  color: var(--status-blue-text);
+}
+
+.chat-voice-button.voice-listening {
+  color: var(--status-green-text);
+}
+
+.chat-voice-button.voice-thinking {
+  color: var(--status-amber-text);
+}
+
+.chat-voice-button.voice-speaking {
+  color: var(--status-blue-text);
+}
+
+.voice-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-height: 28px;
+}
+
+.voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-quaternary);
+  flex: 0 0 auto;
+}
+
+.voice-status-strip.voice-listening .voice-dot,
+.voice-status-strip.voice-reopen .voice-dot {
+  background: var(--status-green-text);
+}
+
+.voice-status-strip.voice-listening .voice-dot {
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+
+.voice-status-strip.voice-thinking .voice-dot {
+  background: var(--status-amber-text);
+  animation: voice-pulse 0.9s ease-in-out infinite;
+}
+
+.voice-status-strip.voice-speaking .voice-dot {
+  background: var(--status-blue-text);
+  animation: voice-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* The partial transcript can be long; it must never push the composer around. */
+.voice-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-end-btn {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.voice-end-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-status-strip .voice-dot { animation: none; }
 }
 
 /* Mid-turn steer indicator — mirrors the chip in UnifiedChatContainer.vue

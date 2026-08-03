@@ -94,7 +94,13 @@
         @remove-file="onRemoveFile"
         @toggle-voice="toggleListening"
       >
-        <template v-if="!compactInput" #extra-buttons="{ isStreaming: streaming }">
+        <!--
+          Voice goes in `primary-buttons`, which ChatInputBar renders in BOTH
+          layouts. It must NOT go in `extra-buttons`: that slot only exists in
+          the non-compact branch, and `compactInput` defaults to true for every
+          host — which is exactly how this shipped invisible.
+        -->
+        <template #primary-buttons>
           <Tooltip
             :text="voiceActive ? 'End voice conversation' : 'Start a voice conversation (hands-free)'"
             width="auto"
@@ -115,17 +121,19 @@
               ></span>
             </button>
           </Tooltip>
-          <Tooltip v-if="!streaming" text="AI Provider Settings" width="auto">
+        </template>
+        <template #extra-buttons="{ isStreaming: streaming }">
+          <Tooltip v-if="!compactInput && !streaming" text="AI Provider Settings" width="auto">
             <button ref="providerBtnRef" @click="toggleProviderSelector" class="chat-icon-btn chat-provider-btn" type="button">
               <i class="fas fa-robot"></i>
             </button>
           </Tooltip>
-          <Tooltip v-if="!streaming" text="Tool Settings" width="auto">
+          <Tooltip v-if="!compactInput && !streaming" text="Tool Settings" width="auto">
             <button @click="toggleToolSelector" class="chat-icon-btn chat-tools-btn" type="button">
               <i class="fas fa-wrench"></i>
             </button>
           </Tooltip>
-          <Tooltip v-if="!streaming && showClearAction" text="Clear chat" width="auto">
+          <Tooltip v-if="!compactInput && !streaming && showClearAction" text="Clear chat" width="auto">
             <button @click="onClearChat" class="chat-icon-btn chat-clear-btn" type="button">
               <i class="fas fa-trash"></i>
             </button>
