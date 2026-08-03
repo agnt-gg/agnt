@@ -94,6 +94,21 @@ describe('getNetworkName', () => {
     expect(probe.calls).toBe(after);
   });
 
+  it('keeps serving the known name while a refresh is in flight', async () => {
+    await primeNetworkName();
+
+    // TTL lapses mid-session. The panel polls every 3s while a code is live,
+    // so returning null here would blank the SSID out of the Wi-Fi line for a
+    // cycle and put back the exact flicker this work removed.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 61_000;
+    try {
+      expect(getNetworkName()).toBe('Example Network 5G');
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it('keeps the known name when a later probe fails', async () => {
     await primeNetworkName();
     expect(getNetworkName()).toBe('Example Network 5G');
