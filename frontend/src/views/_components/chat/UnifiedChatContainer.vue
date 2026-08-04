@@ -12,7 +12,7 @@
       <span>Drop files to attach</span>
     </div>
     <div class="chat-messages-area">
-      <div class="chat-messages" ref="chatMessagesRef">
+      <div class="chat-messages" ref="chatMessagesRef" @scroll.passive="scheduleScrollCapture">
         <div v-if="formattedMessages.length === 0" class="empty-state">
           <slot name="empty-state">
             <i :class="emptyIcon"></i>
@@ -184,6 +184,7 @@
 
 <script>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
+import { useChatScrollRestore } from '@/composables/useChatScrollRestore.js';
 import { useStore } from 'vuex';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
@@ -369,6 +370,22 @@ export default {
     // Handed to ChatScrollControls so it can attach listeners to the right
     // element without us plumbing the ref through component props.
     const getMessagesEl = () => chatMessagesRef.value;
+
+    // Reading position, keyed by the same channelKey that already keys this
+    // composer's draft and provider selection. No message window here — panel
+    // chats render the whole transcript — so the anchor alone reproduces the
+    // position. Shares one storage module and one settle loop with the main
+    // chat so both surfaces cannot drift apart.
+    const {
+      isRestoring: isRestoringScroll,
+      scheduleCapture: scheduleScrollCapture,
+      flushCapture: flushScrollCapture,
+      restore: restoreScroll,
+      teardown: teardownScrollRestore,
+    } = useChatScrollRestore({
+      getEl: () => chatMessagesRef.value,
+      getKey: () => props.channelKey,
+    });
 
     // Keyboard scroll for the messages pane. PageUp/PageDown route to the
     // chat (the textarea is ~150px tall so paging it is useless). Home/End
@@ -701,22 +718,38 @@ export default {
       }
     };
 
+    const flushScrollCaptureOnHide = () => {
+      if (document.visibilityState === 'hidden') flushScrollCapture();
+    };
+
     onMounted(() => {
       initialize();
       focusInput();
-      scrollToBottom();
+      // Restore rather than jump to the bottom. With no saved position this
+      // lands on the bottom anyway, so the common case is unchanged.
+      restoreScroll();
       window.addEventListener('keydown', handleKeyboardScroll);
       window.addEventListener('agnt:workspace-sync-ready', onWorkspaceSyncReady);
+      document.addEventListener('visibilitychange', flushScrollCaptureOnHide);
     });
 
     onBeforeUnmount(() => {
+      // Most hosts :key this container by channelKey, so a channel switch is an
+      // unmount. Bank the position here or it is lost on every panel switch.
+      flushScrollCapture();
+      teardownScrollRestore();
       window.removeEventListener('keydown', handleKeyboardScroll);
       window.removeEventListener('agnt:workspace-sync-ready', onWorkspaceSyncReady);
+      document.removeEventListener('visibilitychange', flushScrollCaptureOnHide);
     });
 
-    watch(() => props.channelKey, () => {
+    // ...and the hosts that swap the prop in place instead of remounting get
+    // the same treatment. `prev` is read before any await so the DOM measured
+    // is still the outgoing channel's (watchers flush before re-render).
+    watch(() => props.channelKey, (next, prev) => {
+      if (prev && prev !== next) flushScrollCapture(prev);
       initialize();
-      setTimeout(scrollToBottom, 100);
+      restoreScroll(next);
     });
 
     // Sticky-bottom only when the user is already near the bottom — same
@@ -728,6 +761,10 @@ export default {
       () => {
         const el = chatMessagesRef.value;
         if (!el) return;
+        // Stand down while a restore is settling — an unsettled transcript
+        // reads as "near the bottom" and would override the position the
+        // user is being returned to.
+        if (isRestoringScroll.value) return;
         const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
         if (isNearBottom) scrollToBottom();
       },
@@ -736,6 +773,7 @@ export default {
 
     return {
       chatMessagesRef,
+      scheduleScrollCapture,
       inputBarRef,
       confirmModalRef,
       providerBtnRef,

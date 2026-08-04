@@ -7,6 +7,7 @@ import { reattachRun, cancelRun, fetchConversation } from '@/services/chatServic
 import { serverMessagesToUi } from '@/services/chatStreamReducer.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
+import { renameScrollPosition } from '@/services/chatScrollPositions.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -1180,6 +1181,11 @@ export default {
         next[newId] = ai;
         state.aiByConv = next;
       }
+      // The reading position lives in localStorage rather than Vuex, but it is
+      // keyed by the same conversation identity, so it has to follow the same
+      // rename. Left behind under `temp-*` it is unreachable forever and just
+      // occupies an LRU slot that a reachable position could have used.
+      renameScrollPosition(oldId, newId);
     },
   },
   getters: {

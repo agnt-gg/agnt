@@ -1,5 +1,10 @@
 <template>
-  <div class="message-wrapper" :class="[message.role, { compact, editing: isEditing, steered: !!message.steered }]" ref="messageRef">
+  <div
+    class="message-wrapper"
+    :class="[message.role, { compact, editing: isEditing, steered: !!message.steered }]"
+    :data-message-id="message.id"
+    ref="messageRef"
+  >
     <div
       v-if="message.role === 'assistant' && showAvatar && emojiAvatar"
       class="message-avatar emoji-avatar"
@@ -478,6 +483,16 @@ const loadThreeJs = async () => {
   return { THREE: _THREE, THREE_ADDONS: _THREE_ADDONS, OrbitControls: _OrbitControls };
 };
 
+/**
+ * The root .message-wrapper carries `data-message-id`. It is the anchor that
+ * per-conversation scroll restore measures against (services/scrollAnchor.js),
+ * which is why it must sit on the OUTERMOST element — the measured top has to
+ * be where the user sees the message start.
+ *
+ * That also means this component MUST keep a single root node. A leading
+ * comment or a second sibling in <template> turns it into a fragment, and Vue
+ * silently stops applying fallthrough attributes to the wrapper.
+ */
 export default {
   name: 'MessageItem',
   components: {
