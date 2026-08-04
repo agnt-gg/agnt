@@ -2277,7 +2277,6 @@ body.dark .create-output-btn {
 
 /* ===== Archived section ===== */
 .archived-section {
-  margin-top: 12px;
   opacity: 0.75;
 }
 
