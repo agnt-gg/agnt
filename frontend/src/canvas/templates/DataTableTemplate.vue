@@ -97,7 +97,7 @@ export default {
 
 .dt-table td {
   padding: 4px 8px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   border-bottom: 1px solid rgba(255,255,255,0.02);
 }
 

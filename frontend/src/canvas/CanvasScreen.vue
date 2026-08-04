@@ -1266,15 +1266,22 @@ export default {
   overflow: hidden;
 }
 
-/* Outer gutter for dashboard content — screens AND both widget canvases.
+/* Outer gutter for dashboard content — the mode-conditional BASELINE.
  *
- * No background: 0. The canvas is the surface, so it runs edge to edge; any
- * inset would just be dead app-coloured space.
+ * No background: 0. A section screen is the surface, so it runs edge to
+ * edge; any inset would just be dead app-coloured space.
  *
  * Custom background: 4px. The canvas becomes a WINDOW — .cv-dashboard goes
  * transparent and the widget frames become the glass — so the wallpaper needs
  * a margin to actually be visible. Without it the widgets tile flush to every
  * edge and cover the image completely.
+ *
+ * The two WIDGET SURFACES are not baseline children: custom pages
+ * (.widget-canvas) and the workspace (.ws-root) keep the 4px gutter in BOTH
+ * modes — frames floating on a canvas want breathing room regardless of the
+ * wallpaper. Each declares its own edges in its own file with body-anchored
+ * selectors that deterministically outrank these (see WidgetCanvas.vue and
+ * Workspace.vue), so this rule stays a contract, not an exception list.
  *
  * This rule used to read `:not(.widget-canvas)`, exempting the canvas from
  * the custom-bg gutter. That was correct while gridToPixel added an outer
@@ -1306,7 +1313,7 @@ export default {
 .cv-ctx-item {
   padding: 5px 12px;
   font-size: 11px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   cursor: pointer;
   letter-spacing: 0.5px;
 }
@@ -1372,7 +1379,7 @@ export default {
 
 .cv-modal-msg {
   font-size: 13px;
-  color: var(--color-light-0, #99a);
+  color: var(--color-text);
   margin: 0 0 4px;
   line-height: 1.4;
 }
@@ -1402,7 +1409,7 @@ export default {
 }
 
 .cv-modal-cancel:hover {
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   border-color: var(--color-duller-navy);
 }
 
@@ -1453,7 +1460,7 @@ export default {
 }
 
 .cv-icon-btn:hover {
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   border-color: rgba(255, 255, 255, 0.1);
 }
 

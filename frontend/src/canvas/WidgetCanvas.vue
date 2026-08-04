@@ -258,6 +258,19 @@ export default {
   background: transparent;
 }
 
+/* Custom pages keep the 4px gutter in BOTH background modes. Like the
+ * workspace root, this is a widget surface — frames floating on a canvas —
+ * so it keeps the breathing gutter even with no custom background, where
+ * .cv-dashboard's shared rule would give it 0. Same dual-selector pattern as
+ * `body .ws-root` in Workspace.vue: `body .widget-canvas` (0,2,1) outranks
+ * the base gutter (0,2,0) and `body.custom-bg .widget-canvas` (0,3,1)
+ * outranks the custom-background one (0,3,0) — deterministic, no !important,
+ * immune to bundle order. */
+body .widget-canvas,
+body.custom-bg .widget-canvas {
+  margin: 4px;
+}
+
 /* ── Grid overlay ── */
 .grid-overlay {
   position: absolute;

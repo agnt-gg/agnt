@@ -166,7 +166,7 @@ export default {
 
 .ct-bar-value {
   font-size: 10px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   width: 40px;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
@@ -198,7 +198,7 @@ export default {
 
 .ct-progress-value {
   font-size: 10px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -244,7 +244,7 @@ export default {
 
 .ct-list-value {
   font-size: 11px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 </style>

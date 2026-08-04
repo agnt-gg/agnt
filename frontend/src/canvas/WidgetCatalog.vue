@@ -254,7 +254,7 @@ export default {
   flex: 1;
   background: none;
   border: none;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-size: var(--font-size-sm, 13px);
   font-family: inherit;
   outline: none;
@@ -288,7 +288,7 @@ export default {
 }
 
 .wc-tab:hover {
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
 }
 
 .wc-tab.active {

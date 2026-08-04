@@ -361,7 +361,7 @@ export default {
   padding: 8px 8px;
   background: var(--color-dark-0);
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-light-0);
+  color: var(--color-text);
   font-weight: var(--font-weight);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -425,7 +425,6 @@ export default {
   padding: 5px 8px 6px;
   background: var(--color-dark-0);
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-light-0);
   cursor: pointer;
   transition: color 0.2s, text-shadow 0.2s, background 0.2s;
   text-align: center;

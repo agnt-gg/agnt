@@ -212,7 +212,7 @@ export default {
 }
 
 .ps-page:hover {
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -270,7 +270,7 @@ export default {
 .ctx-item {
   padding: 6px 14px;
   font-size: var(--font-size-xs, 11px);
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   cursor: pointer;
   letter-spacing: 0.5px;
   transition: all 0.1s;

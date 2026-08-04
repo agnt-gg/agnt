@@ -1741,15 +1741,24 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(read('Workspace.vue')).toContain("provide('isInsideWidgetCanvas', true)");
   });
 
-  it('sits FLUSH against the toolbar above it in both background modes', () => {
-    // The tab bar is drawn to hang off the top edge (border-top: none, radius
-    // 0 0 16px 16px), so any top gutter visibly detaches it. The child owns
-    // that one edge; the parent rule stays a contract.
+  it('owns all four edges: 4px gutter always, FLUSH against the toolbar above, in both background modes', () => {
+    // Sides/bottom: the workspace is a widget surface, so it keeps the 4px
+    // gutter even with no custom background (the baseline would give it 0).
+    // Top: the tab bar is drawn to hang off the top edge (border-top: none,
+    // radius 0 0 16px 16px), so any top gutter visibly detaches it. The
+    // child owns these edges; the parent rule stays a contract.
     const body = read('Workspace.vue').replace(/\/\*[\s\S]*?\*\//g, '');
 
     const rule = body.match(/body \.ws-root,\s*body\.custom-bg \.ws-root\s*\{([^}]*)\}/);
-    expect(rule, 'the flush-top rule must name BOTH selectors — a bare .ws-root only ties the base gutter (0,2,0) and loses the custom-background one (0,3,0)').not.toBeNull();
+    expect(rule, 'the edge rule must name BOTH selectors — a bare .ws-root only ties the base gutter (0,2,0) and loses the custom-background one (0,3,0)').not.toBeNull();
+    expect(rule[1]).toMatch(/margin:\s*4px\s*;/);
     expect(rule[1]).toMatch(/margin-top:\s*0\s*;/);
+    // Declaration order is load-bearing: the shorthand AFTER the longhand
+    // would silently clobber the flush top back to 4px.
+    expect(
+      rule[1].indexOf('margin: 4px'),
+      'the margin shorthand must precede the margin-top longhand'
+    ).toBeLessThan(rule[1].indexOf('margin-top: 0'));
     expect(rule[1], 'specificity is sufficient, so no !important').not.toContain('!important');
 
     // It must NOT come back as a page-keyed override on the parent — that is
@@ -1767,15 +1776,18 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(gutter).not.toBeNull();
     expect(gutter[1], 'the shared gutter stays 4px on ALL FOUR sides').toMatch(/margin:\s*4px\s*;/);
   });
-  it('takes the dashboard gutter from ONE rule that is conditional on the background', () => {
+  it('takes the dashboard gutter from a mode-conditional baseline, and widget surfaces pin their own 4px', () => {
     // The gutter rule used to read `:not(.widget-canvas)`, exempting the
     // canvas from the custom-background 4px margin. That was correct while
     // gridToPixel added an outer GRID_GAP inset — the canvas supplied its
     // own gutter. The uniform-4px pass removed that inset and the exemption
     // outlived its reason, so widgets tiled flush to every edge and covered
-    // the wallpaper completely. One rule, every child, both modes:
-    //   no background -> 0   (the canvas IS the surface: edge to edge)
+    // the wallpaper completely. The baseline, every child, both modes:
+    //   no background -> 0   (a section screen IS the surface: edge to edge)
     //   custom background -> 4px (the canvas is a WINDOW: the image shows)
+    // On top of that, the two WIDGET SURFACES (custom-page canvas and
+    // workspace) keep the 4px in BOTH modes — declared in their own files
+    // with body-anchored selectors, not as exceptions here.
     const fs2 = require('node:fs');
     const path2 = require('node:path');
     const canvasDir = path2.join(__dirname, '../../../../../canvas');
@@ -1799,6 +1811,17 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(wc).not.toContain('cv-full-bleed');
     expect(ws, 'the workspace root must not carry an exemption class').toContain('class="ws-root"');
     expect(ws).not.toContain('cv-full-bleed');
+
+    // The custom-page canvas keeps its gutter in BOTH modes, with the same
+    // dual-selector shape as the workspace: `body .widget-canvas` (0,2,1)
+    // beats the base gutter (0,2,0) and the .custom-bg variant (0,3,1) beats
+    // (0,3,0). A bare `.widget-canvas` would only TIE the base rule and its
+    // outcome would depend on bundle order.
+    const wcBody = wc.replace(/\/\*[\s\S]*?\*\//g, '');
+    const wcRule = wcBody.match(/body \.widget-canvas,\s*body\.custom-bg \.widget-canvas\s*\{([^}]*)\}/);
+    expect(wcRule, 'WidgetCanvas must pin its own always-on gutter with both body-anchored selectors').not.toBeNull();
+    expect(wcRule[1]).toMatch(/margin:\s*4px\s*;/);
+    expect(wcRule[1], 'specificity is sufficient, so no !important').not.toContain('!important');
   });
   it('never hardcodes its width, and lets the wallpaper through', () => {
     const ws = read('Workspace.vue');

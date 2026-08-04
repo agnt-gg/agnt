@@ -486,8 +486,18 @@ export default {
   margin: 0;
 }
 
-/* Buttons */
-.chat-icon-btn {
+/*
+ * Buttons.
+ *
+ * Each rule has TWO selectors on purpose: the plain one styles this
+ * component's own buttons (attach, overflow), and the :deep variant reaches
+ * buttons a host passes through the primary/extra slots. Scoped CSS does not
+ * apply to slotted content — slot elements carry the HOST's scope id, not
+ * ours — so without the :deep half every slotted control (voice, provider,
+ * tools, clear) rendered as a bare unstyled glyph next to our own circles.
+ */
+.chat-icon-btn,
+.chat-input-row :deep(.chat-icon-btn) {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -504,11 +514,13 @@ export default {
     transform 0.2s;
   flex-shrink: 0;
 }
-.chat-icon-btn:hover:not(:disabled) {
+.chat-icon-btn:hover:not(:disabled),
+.chat-input-row :deep(.chat-icon-btn:hover:not(:disabled)) {
   background: var(--color-darker-0);
   color: var(--color-primary, var(--color-green));
 }
-.chat-icon-btn:disabled {
+.chat-icon-btn:disabled,
+.chat-input-row :deep(.chat-icon-btn:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -635,9 +647,5 @@ export default {
   text-align: left;
 }
 
-/* Inherited slot buttons should match the icon-btn aesthetic — consumers passing
-   their own buttons via #extra-buttons can also use the chat-icon-btn class. */
-.chat-input-row :deep(.chat-icon-btn) {
-  flex-shrink: 0;
-}
+
 </style>

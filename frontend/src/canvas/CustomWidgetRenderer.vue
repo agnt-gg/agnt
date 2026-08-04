@@ -323,7 +323,7 @@ export default {
 .cwr-markdown {
   padding: 12px;
   font-size: 13px;
-  color: var(--color-light-0, #c8c8d4);
+  color: var(--color-text);
   line-height: 1.6;
   overflow-y: auto;
   height: 100%;
@@ -338,7 +338,7 @@ export default {
   border-radius: 3px;
   font-size: 12px;
 }
-.cwr-markdown strong { color: var(--color-light-0, #eee); }
+.cwr-markdown strong { color: var(--color-text); }
 
 .cwr-fallback {
   display: flex;

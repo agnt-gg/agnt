@@ -58,14 +58,14 @@ export default {
 
 .mn-content {
   font-size: 12px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   line-height: 1.6;
 }
 
 .mn-content :deep(h1) { font-size: 16px; color: var(--color-green); margin: 8px 0 4px; }
 .mn-content :deep(h2) { font-size: 14px; color: var(--color-green); margin: 6px 0 3px; }
 .mn-content :deep(h3) { font-size: 12px; color: var(--color-green); margin: 4px 0 2px; }
-.mn-content :deep(strong) { color: var(--color-light-0, #dde); }
+.mn-content :deep(strong) { color: var(--color-text); }
 .mn-content :deep(code) {
   background: rgba(255,255,255,0.05);
   padding: 1px 4px;

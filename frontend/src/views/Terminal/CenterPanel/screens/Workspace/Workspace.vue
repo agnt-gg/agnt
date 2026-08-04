@@ -1271,22 +1271,31 @@ export default {
   position: relative;
 }
 
-/* Flush against the toolbar above, in BOTH background modes.
+/* The workspace owns all four of its edges, in BOTH background modes.
  *
- * The tab bar is drawn to hang off the top edge — `border-top: none` and a
- * `0 0 16px 16px` radius — so any top gutter visibly detaches it. The
- * dashboard's gutter rule is about the canvas's OUTER FRAME; this one edge
- * belongs to the child, so the child declares it. That keeps the parent rule a
- * contract instead of re-growing the page-keyed special case it replaced, and
- * "only the workspace page" is structural — `.ws-root` exists nowhere else.
+ * Sides + bottom: 4px ALWAYS. The workspace is a widget surface — frames
+ * floating on a canvas — so it keeps the breathing gutter even with no
+ * custom background, where the dashboard's shared rule would give it 0.
+ *
+ * Top: 0 ALWAYS. The tab bar is drawn to hang off the top edge —
+ * `border-top: none` and a `0 0 16px 16px` radius — so any top gutter
+ * visibly detaches it from the toolbar above.
+ *
+ * These edges belong to the child, so the child declares them. That keeps
+ * the parent rule a mode-conditional contract instead of re-growing the
+ * page-keyed special case it replaced, and "only the workspace page" is
+ * structural — `.ws-root` exists nowhere else.
  *
  * Both selectors are needed to outrank the gutter deterministically without
  * !important: scoped, `.cv-dashboard > *` resolves to (0,2,0) and its
  * `.custom-bg` variant to (0,3,0), so `body .ws-root` (0,2,1) wins the first
  * and `body.custom-bg .ws-root` (0,3,1) wins the second. A bare `.ws-root`
- * (0,2,0) would only TIE the base rule and lose the custom-background one. */
+ * (0,2,0) would only TIE the base rule and lose the custom-background one.
+ * Declaration order matters: the shorthand must come first, or it would
+ * clobber the margin-top longhand. */
 body .ws-root,
 body.custom-bg .ws-root {
+  margin: 4px;
   margin-top: 0;
 }
 

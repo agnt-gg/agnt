@@ -295,6 +295,19 @@ describe('the voice button looks like the control it sits beside', () => {
     expect(on).toBeLessThan(speaking);
   });
 
+  it('ChatInputBar pierces the circle into SLOTTED buttons (the panel-chat bug)', () => {
+    // Scoped CSS does not reach slot content — slotted elements carry the
+    // host's scope id — so a plain `.chat-icon-btn` rule styles only
+    // ChatInputBar's own buttons. Voice (and provider/tools/clear) arrive via
+    // slots, and without the :deep variant they rendered as bare glyphs next
+    // to the composer's own circles on every panel chat.
+    const bar = fs.readFileSync(path.join(HERE, 'ChatInputBar.vue'), 'utf8');
+    const deep = ruleFor(bar, '.chat-icon-btn,\n.chat-input-row :deep(.chat-icon-btn)');
+    expect(deep, ':deep circle rule exists').toBeTruthy();
+    expect(declared(deep, 'border-radius')).toBe('50%');
+    expect(declared(deep, 'width')).toBe('36px');
+  });
+
   it('the shared composer inherits the circle and only adds the tint', () => {
     const src = fs.readFileSync(UNIFIED, 'utf8');
     // It must NOT redeclare the shape — .chat-icon-btn owns that.

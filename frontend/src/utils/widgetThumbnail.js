@@ -122,12 +122,12 @@ function buildRenderedMarkdown(sourceCode) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}${captureBgCSS}<style>
     html,body{scrollbar-width:none;-ms-overflow-style:none;}
     html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}
-    body{padding:12px;font-size:13px;color:var(--color-light-0,#c8c8d4);line-height:1.6;font-family:inherit;}
+    body{padding:12px;font-size:13px;color:var(--color-text);line-height:1.6;font-family:inherit;}
     h1{font-size:18px;color:var(--color-green);margin-bottom:8px;}
     h2{font-size:15px;color:var(--color-green);margin-bottom:6px;}
     h3{font-size:13px;color:var(--color-green);margin-bottom:4px;}
     code{background:rgba(255,255,255,0.05);padding:1px 4px;border-radius:3px;font-size:12px;}
-    strong{color:var(--color-light-0,#eee);}
+    strong{color:var(--color-text);}
   </style></head><body>${rendered}</body></html>`;
 }
 

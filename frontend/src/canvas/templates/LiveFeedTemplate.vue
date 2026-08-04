@@ -114,7 +114,7 @@ export default {
 
 .lf-text {
   font-size: 11px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   line-height: 1.3;
 }
 
