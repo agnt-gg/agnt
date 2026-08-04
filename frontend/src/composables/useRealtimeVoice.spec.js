@@ -305,6 +305,164 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
   });
 });
 
+describe('useRealtimeVoice — an interrupt stops ALL of the speech', () => {
+  /**
+   * REPORTED: "if I interrupt then the old speech still comes back".
+   *
+   * Barge-in is server-side, and the server truncates the audio it is
+   * currently playing — that is all it knows about. Everything else waiting to
+   * be spoken lives on the client: sentences already queued, and an
+   * orchestrator run still streaming more. The cancelled response's
+   * `response.done` then drained the queue and the old answer resumed, which
+   * is precisely what the user interrupted to stop.
+   */
+  const interrupt = () => JSON.stringify({ type: 'input_audio_buffer.speech_started' });
+  const asides = () => sent.filter((e) => e.type === 'response.create' && e.response);
+
+  /**
+   * Drive three streamed sentences and stop just short of the interrupt.
+   * Shared by the interrupt test and its control below, so both are provably
+   * looking at the same situation.
+   */
+  async function streamThreeSentences() {
+    let emitFn;
+    const s = harness({
+      onRunAgnt: (instruction, emit) =>
+        new Promise((resolve) => {
+          emitFn = emit;
+          emit('First sentence.');
+          resolve('');
+        }),
+    });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    emitFn('Second sentence.');
+    emitFn('Third sentence.');
+    await vi.advanceTimersByTimeAsync(10);
+    return { s, emitFn };
+  }
+
+  it('THE BUG: queued sentences are dropped, not resumed after the cancel', async () => {
+    const { s } = await streamThreeSentences();
+
+    // Some sentences WILL already have been spoken — that is the streaming
+    // design working. The property under test is that the count stops growing
+    // once the user takes the floor.
+    const spokenBeforeInterrupt = asides().length;
+
+    s._handleMessage(interrupt());
+    // The server cancels the in-flight response and reports it done. THIS is
+    // the frame that used to resume the old answer.
+    s._handleMessage(turnDoneFrame(false));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(asides(), 'a queued sentence was spoken after the interrupt').toHaveLength(
+      spokenBeforeInterrupt
+    );
+  });
+
+  it('CONTROL: without the interrupt, that same queue does drain', async () => {
+    // Without this, the test above would pass on an empty queue and prove
+    // nothing at all.
+    const { s } = await streamThreeSentences();
+    const spokenBefore = asides().length;
+
+    s._handleMessage(turnDoneFrame(false));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(asides().length, 'nothing was pending, so the interrupt test is vacuous').toBeGreaterThan(
+      spokenBefore
+    );
+  });
+
+  it('a run still streaming when interrupted says nothing more', async () => {
+    let emitFn;
+    const s = harness({
+      onRunAgnt: (instruction, emit) =>
+        new Promise((resolve) => {
+          emitFn = emit;
+          emit('First sentence.');
+          // deliberately never resolves during the interrupt
+          setTimeout(() => resolve(''), 5000);
+        }),
+    });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    s._handleMessage(interrupt());
+    await vi.advanceTimersByTimeAsync(10);
+
+    const before = sent.length;
+    emitFn('This must never be spoken.');
+    s._handleMessage(turnDoneFrame(false));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(asides()).toHaveLength(0);
+    expect(sent.length, 'frames were emitted after the interrupt').toBe(before);
+  });
+
+  it('a run interrupted BEFORE it answered still answers — but silently', async () => {
+    // The session blocks for ever on an unanswered call, so it must be
+    // answered. It must NOT be spoken: the user moved on.
+    let finish;
+    const s = harness({
+      onRunAgnt: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    s._handleMessage(interrupt());
+    await vi.advanceTimersByTimeAsync(10);
+
+    finish('the answer nobody is waiting for any more');
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(answersFor('call_1'), 'the call was left unanswered — the session hangs').toHaveLength(1);
+    expect(asides(), 'the abandoned answer was spoken').toHaveLength(0);
+    expect(sent.some((e) => e.type === 'response.create' && !e.response)).toBe(false);
+  });
+
+  it('the interrupted turn is not recorded as an off-script turn', async () => {
+    const onUserSaid = vi.fn();
+    const onAssistantSaid = vi.fn();
+    const s = harness({ onUserSaid, onAssistantSaid, onRunAgnt: async () => 'x' });
+
+    s._handleMessage(
+      JSON.stringify({
+        type: 'conversation.item.input_audio_transcription.completed',
+        transcript: 'what is the build status',
+      })
+    );
+    s._handleMessage(
+      JSON.stringify({ type: 'response.output_audio_transcript.done', transcript: 'The build is' })
+    );
+    s._handleMessage(interrupt());
+    s._handleMessage(turnDoneFrame(false));
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(onUserSaid).not.toHaveBeenCalled();
+    expect(onAssistantSaid).not.toHaveBeenCalled();
+  });
+
+  it('speech works normally again after an interrupt', async () => {
+    const s = harness({ onRunAgnt: async () => 'the fresh answer' });
+
+    s._handleMessage(interrupt());
+    await vi.advanceTimersByTimeAsync(10);
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(expectAnswered('call_1')).toBe('the fresh answer');
+  });
+});
+
 describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () => {
   /**
    * The user reported watching a voice conversation happen with nothing

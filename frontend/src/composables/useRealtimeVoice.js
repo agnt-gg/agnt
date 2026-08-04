@@ -152,6 +152,18 @@ export function useRealtimeVoice(options = {}) {
    * begins.
    */
   const speakQueue = [];
+  /**
+   * Bumped every time the user takes the floor — barge-in, or stopping the
+   * session. Everything downstream of a spoken turn captures it and goes quiet
+   * when it changes.
+   *
+   * WHY A COUNTER AND NOT JUST A FLAG: an interrupt has to invalidate work that
+   * is ALREADY IN FLIGHT (a queued sentence, an orchestrator run mid-stream)
+   * without those callers knowing anything about interrupts. Capturing the
+   * epoch at the start and comparing on every continuation is the whole
+   * mechanism.
+   */
+  let speechEpoch = 0;
   /** A response is in flight; nothing new may be created until it completes. */
   let responseActive = false;
   /**
@@ -203,15 +215,26 @@ export function useRealtimeVoice(options = {}) {
   async function handleRunAgnt(action, gen) {
     if (!action.callId) return;
 
-    /** Answer the pending call. Exactly once, on every path — see the header. */
+    const epoch = speechEpoch;
+
+    /**
+     * Answer the pending call. Exactly once, on every path — see the header.
+     *
+     * `speak: false` answers WITHOUT asking the model to say anything. That
+     * combination exists for exactly one situation: the user interrupted while
+     * this run was still working. The call must still be answered or the
+     * session blocks on it for ever, but speaking the result now would be
+     * reciting an answer to a question the user has already moved on from.
+     */
     let answered = false;
-    const answerCall = (text) => {
+    const answerCall = (text, { speak = true } = {}) => {
       if (answered) return;
       answered = true;
+      send(buildFunctionOutput(action.callId, text));
+      if (!speak) return;
       narrating = true;
       responseActive = true;
       pendingNarrations += 1;
-      send(buildFunctionOutput(action.callId, text));
       send(buildResponseCreate());
       state.value = RealtimeState.SPEAKING;
     };
@@ -230,7 +253,9 @@ export function useRealtimeVoice(options = {}) {
      * start immediately instead of after the whole turn.
      */
     const emit = (text) => {
-      if (gen !== generation) return;
+      // Stale epoch = the user has taken the floor since this run started.
+      // Keep consuming the stream (the chat still wants it) but say nothing.
+      if (gen !== generation || epoch !== speechEpoch) return;
       const clean = String(text || '').trim();
       if (!clean) return;
       if (!answered) {
@@ -263,6 +288,13 @@ export function useRealtimeVoice(options = {}) {
     runFinished = true;
     if (gen !== generation) return; // session was stopped while AGNT worked
 
+    // Interrupted mid-run: answer so the session is not blocked, but do not
+    // speak — the user asked for something else while this was working.
+    if (epoch !== speechEpoch) {
+      answerCall('The user interrupted; this was not read out.', { speak: false });
+      return;
+    }
+
     // Nothing streamed — an empty answer, an error, or a timeout. The call has
     // to be answered anyway or the session blocks on it for ever.
     if (!answered) answerCall(result || 'AGNT returned nothing.');
@@ -285,7 +317,27 @@ export function useRealtimeVoice(options = {}) {
           break;
 
         case BridgeAction.USER_INTERRUPTED:
-          // The server truncates its own unplayed audio; we only reflect state.
+          /**
+           * INTERRUPT MEANS STOP TALKING — ALL OF IT.
+           *
+           * The server truncates the audio it is currently playing, and that
+           * is all it knows about. Everything else waiting to be spoken lives
+           * HERE: sentences already queued, and an orchestrator run still
+           * streaming more. Left alone, the cancelled response's `response.done`
+           * drains the queue and the old answer calmly resumes — which is
+           * exactly what the user was interrupting to stop.
+           *
+           * So the epoch moves and the local pipeline is emptied. Anything
+           * still in flight compares its captured epoch and goes quiet.
+           */
+          speechEpoch += 1;
+          speakQueue.length = 0;
+          pendingNarrations = 0;
+          narrating = false;
+          responseActive = false;
+          // The interrupted turn is already in the chat; its buffered
+          // transcript must not be recorded as an off-script turn.
+          clearTurnBuffers();
           assistantPartial.value = '';
           if (state.value === RealtimeState.SPEAKING) state.value = RealtimeState.LISTENING;
           break;
@@ -468,6 +520,7 @@ export function useRealtimeVoice(options = {}) {
     assistantPartial.value = '';
     clearTurnBuffers();
     speakQueue.length = 0;
+    speechEpoch += 1;
     responseActive = false;
     narrating = false;
     runFinished = true;
