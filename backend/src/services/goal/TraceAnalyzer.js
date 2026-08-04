@@ -175,7 +175,9 @@ Feedback: ${evaluation.feedback || 'No feedback'}
    - Based on the patterns above, generate a reusable SKILL.md candidate
    - Include: strategy overview, step-by-step approach, tool usage guidance, anti-patterns, recovery strategies
    - Set shouldGenerate to true only if patterns are strong and transferable
-   - Set confidence (0.0-1.0) based on evidence strength`
+   - Set confidence (0.0-1.0) based on evidence strength
+   - Set rationale: one or two sentences on WHERE the pattern came from in this trace, WHEN it generalizes, and WHEN it would fail
+   - Set relatedSkills based on skills/capabilities that co-occurred in the trace: composesWith (complementary skills used alongside), dependsOn (skills this one requires to function), supersedes (skills this one replaces outright). Use kebab-case skill slugs; leave arrays empty if unsure — never guess`
       : `6. SKILL CANDIDATE
    - Set shouldGenerate to false (score too low for skill generation)`;
 
@@ -249,7 +251,13 @@ OUTPUT FORMAT (respond with valid JSON only, no markdown fences):
     "description": "One-line description",
     "allowedTools": ["tool1", "tool2"],
     "instructions": "Full markdown content for a SKILL.md file including strategy, steps, anti-patterns, and recovery.",
-    "estimatedEffectiveness": 0.78
+    "estimatedEffectiveness": 0.78,
+    "rationale": "Extracted from the retry-then-fallback sequence in tasks 2-4; generalizes to any rate-limited API workflow; fails when the API has no idempotent retry semantics.",
+    "relatedSkills": {
+      "composesWith": ["skill-slug-1"],
+      "dependsOn": [],
+      "supersedes": []
+    }
   }
 }`;
 
@@ -328,6 +336,15 @@ OUTPUT FORMAT (respond with valid JSON only, no markdown fences):
         if (!sc.name || !sc.instructions || !sc.category) {
           console.log('[TraceAnalyzer] Skill candidate missing required fields, disabling');
           analysis.skillCandidate.shouldGenerate = false;
+        }
+        // Normalize provenance/relations fields (optional — absence is fine)
+        if (typeof sc.rationale !== 'string') sc.rationale = null;
+        if (sc.relatedSkills && typeof sc.relatedSkills === 'object' && !Array.isArray(sc.relatedSkills)) {
+          for (const key of ['composesWith', 'dependsOn', 'supersedes']) {
+            if (!Array.isArray(sc.relatedSkills[key])) sc.relatedSkills[key] = [];
+          }
+        } else {
+          sc.relatedSkills = null;
         }
       }
 

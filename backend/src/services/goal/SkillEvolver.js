@@ -11,6 +11,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
 import generateUUID from '../../utils/generateUUID.js';
+import { buildForgeProvenance, relationsFromCandidate } from '../../utils/skillRelations.js';
 
 /**
  * SkillEvolver — A/B testing engine for skill evolution.
@@ -61,6 +62,11 @@ class SkillEvolver {
     // Create draft skill in DB
     const skillId = generateUUID();
     const { toKebabCase } = await import('../../utils/skillValidation.js');
+
+    // Extraction provenance + relations (SkillSmith-style rationale conditioning)
+    const provenance = buildForgeProvenance(candidate, sourceGoalId);
+    const relations = relationsFromCandidate(candidate);
+
     await SkillModel.createOrUpdate(skillId, {
       name: candidate.name,
       slug: toKebabCase(candidate.name),
@@ -70,6 +76,8 @@ class SkillEvolver {
       icon: 'fas fa-flask',
       allowedTools: candidate.allowedTools || [],
       metadata: {
+        provenance,
+        ...(relations ? { relations } : {}),
         skillforge: {
           status: 'draft',
           currentVersion: 1,
@@ -128,6 +136,8 @@ class SkillEvolver {
     if (abResult.delta > this.MIN_DELTA) {
       // KEEP
       const metadata = {
+        provenance,
+        ...(relations ? { relations } : {}),
         skillforge: {
           status: abResult.treatmentSes >= this.GOLD_STANDARD_THRESHOLD ? 'gold_standard' : 'validated',
           currentVersion: 1,
@@ -278,8 +288,22 @@ class SkillEvolver {
       const sourceGoals = sfMeta.sourceGoals || [];
       if (!sourceGoals.includes(sourceGoalId)) sourceGoals.push(sourceGoalId);
 
+      // Provenance: keep original extraction, append this refinement to history (skill lineage)
+      const priorProvenance = existingMeta.provenance || null;
+      const refinementEntry = buildForgeProvenance(candidate, sourceGoalId);
+      refinementEntry.version = nextVersion;
+      const provenance = priorProvenance
+        ? { ...priorProvenance, history: [...(priorProvenance.history || []), refinementEntry] }
+        : { ...refinementEntry, history: [] };
+
+      // Relations: new candidate relations override; otherwise keep existing
+      const newRelations = relationsFromCandidate(candidate);
+      const relations = newRelations || existingMeta.relations || null;
+
       const metadata = {
         ...existingMeta,
+        provenance,
+        ...(relations ? { relations } : {}),
         skillforge: {
           ...sfMeta,
           status: treatmentSes >= this.GOLD_STANDARD_THRESHOLD ? 'gold_standard' : 'validated',

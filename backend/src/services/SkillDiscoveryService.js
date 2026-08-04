@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { parseSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
+import { buildSupersededByIndex } from '../utils/skillRelations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -297,7 +298,19 @@ class SkillDiscoveryService {
         scope: skill.scope,
         client: skill.client,
         trusted: skill.trusted,
+        metadata: skill.frontmatter?.metadata || null,
       }));
+  }
+
+  /**
+   * Skills (by name) that declare they supersede the given skill.
+   * O(n) over the in-memory map — cheap at catalog scale (~100 skills).
+   * @param {string} name
+   * @returns {string[]}
+   */
+  getSupersededBy(name) {
+    const index = buildSupersededByIndex(this.skills.values());
+    return index.get(name) || [];
   }
 
   /**
