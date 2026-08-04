@@ -200,9 +200,10 @@ describe("sortOutputs — the 'attention' (Unread) order", () => {
   });
 
   it('does not let a client bump reorder the unread partition', () => {
-    // A manual "Mark as Unread" writes nothing server-side, so "waiting
-    // since" is updated_at alone — otherwise the item would sink to the
-    // bottom of the rail in the list and sit at the top of the rail proper.
+    // "Waiting since" is updated_at alone inside this partition. A manual
+    // "Mark as Unread" moves updated_at server-side, so it needs no bump to
+    // hold its place — and letting bumps in here would let a client-side
+    // timestamp disagree with the count badge about the same rows.
     const outputs = [unread('marked', t('02:00')), unread('recent', t('10:00'))];
     const sorted = sortOutputs(outputs, { sortKey: 'attention', bumps: { marked: ms('23:00') } });
     expect(ids(sorted)).toEqual(['marked', 'recent']);
@@ -240,6 +241,71 @@ describe("sortOutputs — the 'attention' (Unread) order", () => {
     const snapshot = ids(outputs);
     sortOutputs(outputs, { sortKey: 'attention' });
     expect(ids(outputs)).toEqual(snapshot);
+  });
+});
+
+describe('mark-as-unread lifecycle — the conversation keeps the place it was given', () => {
+  // Row SHAPES as the store and server now write them (the write itself is
+  // covered in contentOutputs.attention.spec.js and
+  // ContentOutputModel.attention.test.js). What is asserted here is the
+  // consequence Nathan actually sees: where the row lands in the list.
+  //
+  // Marking unread sets updated_at = now, watermark one second behind.
+  const queuedUnread = { id: 'queued', updated_at: t('20:00'), last_read_at: t('19:59') };
+  // Then opening it stamps the watermark up to that same activity.
+  const queuedRead = { id: 'queued', updated_at: t('20:00'), last_read_at: t('20:00') };
+
+  // How the OLD implementation wrote the same two steps: the watermark moved
+  // but updated_at never did, so the row kept its original date.
+  const STALE = t('01:00');
+  const legacyUnread = { id: 'queued', updated_at: STALE, last_read_at: t('00:59') };
+  const legacyRead = { id: 'queued', updated_at: STALE, last_read_at: STALE };
+
+  const neighbours = [
+    { id: 'other-a', updated_at: t('12:00'), last_read_at: t('12:00') },
+    { id: 'other-b', updated_at: t('15:00'), last_read_at: t('15:00') },
+  ];
+
+  // A conversation that went unread on its own (a background agent changed
+  // it) rather than by a click: watermark older than the change.
+  const unreadAt = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: t('00:01') });
+
+  it('sorts to the top by Date once queued, and STAYS there when read', () => {
+    const queued = sortOutputs([...neighbours, queuedUnread], { sortKey: 'updated_at' });
+    expect(ids(queued)[0]).toBe('queued');
+
+    const opened = sortOutputs([...neighbours, queuedRead], { sortKey: 'updated_at' });
+    expect(ids(opened)[0]).toBe('queued');
+  });
+
+  it('sits at the top of the Unread sort in both states', () => {
+    // Unread: it is the only unread row, so it leads outright.
+    expect(ids(sortOutputs([...neighbours, queuedUnread], { sortKey: 'attention' }))[0]).toBe('queued');
+    // Read: it is the most recently active, so it leads the read partition.
+    expect(ids(sortOutputs([...neighbours, queuedRead], { sortKey: 'attention' }))[0]).toBe('queued');
+  });
+
+  it('is the LAST unread row while it waits — zero seconds is the shortest wait', () => {
+    // A deliberate consequence of dating it "now", not an accident: the
+    // partition is longest-waiting-first, and this one has waited no time at
+    // all. It still outranks every read conversation, and reading it moves it
+    // to the head of the read partition — the very next row down.
+    const waiting = [unreadAt('old-unread', t('02:00')), queuedUnread];
+    expect(ids(sortOutputs(waiting, { sortKey: 'attention' }))).toEqual(['old-unread', 'queued']);
+  });
+
+  it('THE BUG: the old write let it fall back to its original position', () => {
+    // Regression control. Under the previous shape the row was unread at the
+    // top of the list, and the click that read it dropped it to the bottom —
+    // out from under the cursor that had just reached it.
+    const legacyQueued = sortOutputs([...neighbours, legacyUnread], { sortKey: 'updated_at' });
+    expect(ids(legacyQueued)[0]).not.toBe('queued');
+
+    const legacyOpened = sortOutputs([...neighbours, legacyRead], { sortKey: 'attention' });
+    expect(ids(legacyOpened).at(-1)).toBe('queued');
+
+    // The same two steps under the current shape keep it where it was put.
+    expect(ids(sortOutputs([...neighbours, queuedRead], { sortKey: 'attention' }))[0]).toBe('queued');
   });
 });
 

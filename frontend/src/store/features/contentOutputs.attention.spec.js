@@ -119,33 +119,69 @@ describe('markRead / markUnread', () => {
     expect(JSON.parse(opts.body)).toEqual({ read: true });
   });
 
-  it('markUnread writes a watermark just before the change — NOT null', async () => {
+  it('markUnread moves updated_at to NOW and sets the watermark one second behind', async () => {
     const store = makeStore();
-    seed(store, [row({ id: 'out-1', updated_at: '2026-08-04 11:00:00' })]);
+    // A conversation whose last activity was ages ago — the case that
+    // misbehaved: it showed as unread but sorted by this stale date, then
+    // dropped back to it the moment it was read.
+    seed(store, [row({ id: 'out-1', updated_at: '2025-01-02 03:04:05' })]);
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
 
+    const before = Date.now();
     await store.dispatch('contentOutputs/markUnread', 'out-1');
+    const after = Date.now();
 
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
-    // Null would mean "no watermark", which is explicitly NOT unread — the dot
-    // would appear and then vanish on the next refetch. It mirrors the
-    // server's own write: one second before updated_at.
-    const stored = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1').last_read_at;
-    expect(stored).not.toBeNull();
-    expect(stored.getTime()).toBe(Date.parse('2026-08-04T11:00:00Z') - 1000);
+
+    const stored = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1');
+    // Queueing a conversation IS activity: its last activity is now, which is
+    // what holds its position in the list once it is read.
+    expect(stored.updated_at.getTime()).toBeGreaterThanOrEqual(before);
+    expect(stored.updated_at.getTime()).toBeLessThanOrEqual(after);
+    // Watermark exactly one second behind, mirroring the server's write.
+    // NOT null: null means "no watermark was ever recorded", which is
+    // explicitly NOT unread — the dot would appear, then vanish on the next
+    // refetch when server truth arrived.
+    expect(stored.last_read_at).not.toBeNull();
+    expect(stored.updated_at.getTime() - stored.last_read_at.getTime()).toBe(1000);
 
     const [url, opts] = global.fetch.mock.calls[0];
     expect(url).toContain('/content-outputs/out-1/read');
     expect(JSON.parse(opts.body)).toEqual({ read: false });
   });
 
-  it('markUnread survives a row with no usable updated_at', async () => {
+  it('markUnread does not depend on the row carrying a usable date', async () => {
+    // The pair comes from the clock, not from the row, so a row with a broken
+    // or absent updated_at still gets a coherent unread state.
     const store = makeStore();
     seed(store, [row({ id: 'out-1', updated_at: null })]);
+
     await store.dispatch('contentOutputs/markUnread', 'out-1');
-    const stored = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1').last_read_at;
-    expect(stored).toBeInstanceOf(Date);
-    expect(Number.isFinite(stored.getTime())).toBe(true);
+
+    const stored = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1');
+    expect(stored.updated_at).toBeInstanceOf(Date);
+    expect(Number.isFinite(stored.updated_at.getTime())).toBe(true);
+    expect(stored.updated_at.getTime() - stored.last_read_at.getTime()).toBe(1000);
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+  });
+
+  it('a failed markUnread reverts BOTH fields, not just the watermark', async () => {
+    // Reverting the watermark alone would leave the row carrying a date the
+    // server never recorded — it would sit at the top of the list claiming
+    // activity that did not happen.
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', updated_at: '2025-01-02 03:04:05' })]);
+    const original = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1');
+    const originalUpdated = original.updated_at.getTime();
+    const originalRead = original.last_read_at.getTime();
+
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    await expect(store.dispatch('contentOutputs/markUnread', 'out-1')).rejects.toThrow();
+
+    const reverted = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1');
+    expect(reverted.updated_at.getTime()).toBe(originalUpdated);
+    expect(reverted.last_read_at.getTime()).toBe(originalRead);
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
   });
 
   it('optimistic markRead is clock-skew-proof: clears the dot even when updated_at is in the client\'s future', async () => {
@@ -439,7 +475,34 @@ describe('attention writes vs stale snapshots', () => {
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
   });
 
-  it('only attention fields are withheld from a stale snapshot — the rest applies', async () => {
+  it('a stale snapshot cannot restore the OLD updated_at and silently un-mark it', async () => {
+    // The race this fix opens, and closes. markUnread moves updated_at as
+    // well as the watermark. If a stale snapshot were allowed to restore the
+    // old updated_at while the new watermark stayed, the row would satisfy
+    // updated_at < last_read_at — which derives as READ. The user's click
+    // would quietly undo itself a moment after they made it.
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', updated_at: '2025-01-02 03:04:05' })]);
+    const { release } = deferredFetch();
+
+    const patch = store.dispatch('contentOutputs/markUnread', 'out-1');
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'out-1', updated_at: '2025-01-02 03:04:05' }),
+      snapshotStartedAt: Date.now(),
+    });
+
+    const merged = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1');
+    expect(merged.updated_at.getTime()).toBeGreaterThan(Date.parse('2025-01-02T03:04:05Z'));
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+
+    release();
+    await patch;
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+  });
+
+  it('only attention-owned fields are withheld from a stale snapshot — the rest applies', async () => {
     const store = makeStore();
     seed(store, [row({ id: 'out-1', title: 'Old' })]);
     const { release } = deferredFetch();

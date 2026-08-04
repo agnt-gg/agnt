@@ -210,6 +210,11 @@ class RunService {
    * Sets or clears the read watermark (last_read_at). Unread is derived
    * client-side as updated_at > last_read_at, so this is the only write the
    * "mark read / mark unread" flows ever need.
+   *
+   * Marking UNREAD also moves updated_at — see ContentOutputModel.setReadState.
+   * That makes the response/broadcast row genuinely worth carrying: two
+   * columns changed, and every other tab needs both to sort the conversation
+   * where its owner just put it.
    */
   async setContentOutputReadState(req, res) {
     try {
@@ -226,15 +231,21 @@ class RunService {
         return res.status(404).json({ error: 'Content output not found' });
       }
 
-      // Let the user's other devices/tabs refresh their unread state.
+      // Carry the changed row so the user's other devices/tabs merge it in
+      // place. Without `output` the client falls back to refetching the ENTIRE
+      // list, and this endpoint fires on every conversation OPEN — that
+      // fallback would put a full-history fetch behind every click.
+      const output = await ContentOutputModel.findMetaById(id);
+
       broadcastToUser(userId, RealtimeEvents.CONTENT_UPDATED, {
         id,
         userId,
         readState: read,
+        output,
         timestamp: new Date().toISOString(),
       });
 
-      res.json({ success: true, id, read });
+      res.json({ success: true, id, read, output });
     } catch (error) {
       console.error('Error setting content output read state:', error);
       res.status(500).json({ error: 'Failed to set read state' });
