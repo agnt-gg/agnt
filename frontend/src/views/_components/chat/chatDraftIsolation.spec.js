@@ -152,12 +152,30 @@ describe('main chat screen — source guards', () => {
     expect(src).toMatch(/setDraft\(draftKey\.value, v\), \{ flush: 'sync' \}/);
   });
 
-  it('loads the incoming draft on conversation switch', () => {
-    expect(src).toMatch(/watch\(draftKey, \(next\) => \{[\s\S]{0,300}getDraft\(next\)/);
+  it('reacts to the MUTATION, not the derived key', () => {
+    // A watch on draftKey cannot tell "user switched conversations" from "the
+    // backend just assigned this conversation its real id mid-first-send"
+    // (MIGRATE_CONVERSATION_ID) — and treating the latter as a switch killed
+    // the voice session the moment the first message was sent.
+    expect(src).toMatch(/store\.subscribe\(/);
+    expect(src).toMatch(/chat\/SET_ACTIVE_CONVERSATION/);
+    expect(src).toMatch(/chat\/MIGRATE_CONVERSATION_ID/);
+    expect(src).not.toMatch(/watch\(draftKey, \(\) => \{/);
   });
 
-  it('ends a live voice session on conversation switch', () => {
-    expect(src).toMatch(/watch\(draftKey, \(\) => \{\s*\n\s*if \(voice\.isActive\.value\) voice\.stop\(\);/);
+  it('a genuine switch loads the incoming draft and ends a live voice session', () => {
+    const at = src.indexOf('chat/SET_ACTIVE_CONVERSATION');
+    const branch = src.slice(at, at + 500);
+    expect(branch).toMatch(/getDraft\(draftKey\.value\)/);
+    expect(branch).toMatch(/if \(voice\.isActive\.value\) voice\.stop\(\);/);
+  });
+
+  it('REGRESSION: id assignment on first send keeps the session and carries the draft', () => {
+    const at = src.indexOf('chat/MIGRATE_CONVERSATION_ID');
+    const branch = src.slice(at, src.indexOf('return;', at));
+    expect(branch).not.toContain('voice.stop');
+    expect(branch).toMatch(/setDraft\(newId/);
+    expect(branch).toMatch(/clearDraft\(oldId\)/);
   });
 });
 

@@ -270,7 +270,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
-import { getDraft, setDraft } from '@/services/chatDrafts';
+import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 
@@ -409,11 +409,36 @@ export default {
     );
     const currentUserInput = ref(getDraft(draftKey.value));
     watch(currentUserInput, (v) => setDraft(draftKey.value, v), { flush: 'sync' });
-    watch(draftKey, (next) => {
-      // Typing already persisted the outgoing draft (sync flush above), so a
-      // switch is just loading the incoming conversation's draft.
-      currentUserInput.value = getDraft(next);
+
+    /**
+     * React to the MUTATION, not to the derived key.
+     *
+     * REGRESSION THIS PREVENTS: `activeConversationId` changes for two
+     * entirely different reasons — the user navigating to another conversation
+     * (SET_ACTIVE_CONVERSATION), and the backend assigning the real id to the
+     * conversation the user is ALREADY IN mid-first-send
+     * (MIGRATE_CONVERSATION_ID). A watch on the key cannot tell them apart,
+     * so it treated the id assignment as a switch and killed the live voice
+     * session the moment the first message was sent. Same conversation, new
+     * name — nothing should reset.
+     */
+    const unsubscribeDraftSync = store.subscribe((mutation) => {
+      if (mutation.type === 'chat/MIGRATE_CONVERSATION_ID') {
+        // Identity assignment: carry anything typed over to the new key.
+        const { oldId, newId } = mutation.payload || {};
+        if (currentUserInput.value.trim()) setDraft(newId, currentUserInput.value);
+        if (oldId) clearDraft(oldId);
+        return;
+      }
+      if (mutation.type === 'chat/SET_ACTIVE_CONVERSATION') {
+        // A genuine switch. Typing already persisted the outgoing draft (sync
+        // flush above); load the incoming one and end any live voice session
+        // — the mic belongs to the conversation it was opened in.
+        currentUserInput.value = getDraft(draftKey.value);
+        if (voice.isActive.value) voice.stop();
+      }
     });
+    onUnmounted(unsubscribeDraftSync);
     const isInputDisabled = ref(disableInputInitially.value);
     const showPrompt = ref(true);
     const selectedFiles = ref([]);
@@ -674,13 +699,6 @@ export default {
       if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
     });
 
-    // A conversation switch ends any live voice session. The mic belongs to
-    // the conversation it was opened in — a session that outlives its
-    // conversation keeps committing into whichever chat is now on screen,
-    // which is cross-talk, not continuity.
-    watch(draftKey, () => {
-      if (voice.isActive.value) voice.stop();
-    });
 
     const handlePanelAction = async (action, payload) => {
       if (action === 'close-panel') {
