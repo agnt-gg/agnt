@@ -117,17 +117,24 @@ describe('hydrateWorkspaceChannel — provider block transcripts', () => {
 
     const msgs = state.conversations[CH].messages;
     expect(msgs.some((m) => String(m.content).includes('[object Object]'))).toBe(false);
-    expect(msgs.map((m) => m.content)).toContain('Let me look at the current layout first.');
-    expect(msgs.map((m) => m.content)).toContain('Done \u2014 chat slimmed to 3 columns. \ud83d\udeeb');
+    // One answer, so both sentences live in the SAME bubble.
+    const answer = msgs.at(-1);
+    expect(answer.content).toContain('Let me look at the current layout first.');
+    expect(answer.content).toContain('Done \u2014 chat slimmed to 3 columns. \ud83d\udeeb');
   });
 
-  it('drops the tool-result rows so the count matches what the user actually said', async () => {
+  it('restores the turn the way it streamed: one question, one answer', async () => {
     seedLocal([]);
     fetchConversation.mockResolvedValue({ conversationId: CONV, messages: TOOL_TURN });
 
     await hydrate();
-    // 6 provider rows, 2 of them pure tool plumbing.
-    expect(state.conversations[CH].messages).toHaveLength(4);
+    // 6 provider rows: 2 pure tool plumbing, and the 3 assistant rows are one
+    // answer split by tool round-trips. The user asked once and got one reply.
+    const msgs = state.conversations[CH].messages;
+    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(msgs.at(-1).contentParts.map((p) => p.type)).toEqual([
+      'text', 'tool_call', 'tool_call', 'tool_call', 'text',
+    ]);
   });
 
   it('carries each tool result back onto the call that requested it', async () => {

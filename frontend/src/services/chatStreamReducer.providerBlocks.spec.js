@@ -81,16 +81,19 @@ describe('the [object Object] regression', () => {
   });
 
   it('recovers the exact words the provider stored', () => {
-    const ui = serverMessagesToUi(REAL_TRANSCRIPT);
-    const text = ui.map((m) => m.content);
-    expect(text).toContain('Let me look at the current layout first.');
-    expect(text).toContain('Done — chat slimmed to 3 columns, Flight Sim stretched to 9×8. 🛫');
+    // Both sentences belong to ONE answer, so they arrive in one bubble —
+    // separately addressable text parts, not separate messages.
+    const turn = serverMessagesToUi(REAL_TRANSCRIPT).at(-1);
+    const said = turn.contentParts.filter((p) => p.type === 'text').map((p) => p.text);
+    expect(said).toContain('Let me look at the current layout first.');
+    expect(said).toContain('Done — chat slimmed to 3 columns, Flight Sim stretched to 9×8. 🛫');
   });
 
   it('drops the synthetic tool-result turns instead of rendering empty user bubbles', () => {
     const ui = serverMessagesToUi(REAL_TRANSCRIPT);
-    // 12 provider rows, 2 of which are pure tool plumbing.
-    expect(ui).toHaveLength(10);
+    // 12 provider rows: 2 are pure tool plumbing, and the last 3 assistant rows
+    // are one answer split by tool round-trips. 12 - 2 - 2 = 8 bubbles.
+    expect(ui).toHaveLength(8);
     expect(ui.every((m) => m.content || m.toolCalls.length > 0)).toBe(true);
   });
 
@@ -109,11 +112,86 @@ describe('the [object Object] regression', () => {
 
   it('keeps the interleave order so a tool card lands where the model put it', () => {
     const ui = serverMessagesToUi(REAL_TRANSCRIPT);
-    const withTool = ui.find((m) => m.toolCalls.some((tc) => tc.id === 'toolu_01'));
-    expect(withTool.contentParts.map((p) => p.type)).toEqual(['text', 'tool_call']);
+    const turn = ui[ui.length - 1];
+    expect(turn.contentParts.map((p) => p.type)).toEqual([
+      'text', 'tool_call', 'tool_call', 'tool_call', 'text',
+    ]);
+    expect(turn.contentParts.filter((p) => p.type === 'tool_call').map((p) => p.toolCallId))
+      .toEqual(['toolu_01', 'toolu_02', 'toolu_03']);
+  });
+});
 
-    const twoCalls = ui.find((m) => m.toolCalls.length === 2);
-    expect(twoCalls.contentParts.map((p) => p.type)).toEqual(['tool_call', 'tool_call']);
+// ---------------------------------------------------------------------------
+// A PROVIDER ROW IS NOT A MESSAGE.
+//
+// The first fix recovered the words but still emitted one bubble per provider
+// row, so a tool-using answer came back SHATTERED: the prose in one bubble, the
+// tool cards alone in a second, the conclusion in a third. Whether an answer is
+// one message or three is not cosmetic — it is whether the reloaded transcript
+// is the same conversation the user had.
+// ---------------------------------------------------------------------------
+describe('one answer is one message', () => {
+  it('folds the rows of a tool-using answer back into a single turn', () => {
+    const ui = serverMessagesToUi(REAL_TRANSCRIPT);
+    const assistants = ui.filter((m) => m.role === 'assistant');
+    const split = ui.filter((m, i) => m.role === 'assistant' && ui[i - 1]?.role === 'assistant');
+
+    expect(split).toEqual([]);
+    expect(assistants).toHaveLength(4); // one per thing the user actually asked
+  });
+
+  it('never leaves a bubble that is nothing but orphaned tool cards', () => {
+    const ui = serverMessagesToUi(REAL_TRANSCRIPT);
+    expect(ui.filter((m) => !m.content && m.toolCalls.length > 0)).toEqual([]);
+  });
+
+  it('keeps every word from every row of the folded turn', () => {
+    const turn = serverMessagesToUi(REAL_TRANSCRIPT).at(-1);
+    expect(turn.content).toContain('Let me look at the current layout first.');
+    expect(turn.content).toContain('Done — chat slimmed to 3 columns');
+    expect(turn.toolCalls.map((tc) => tc.id)).toEqual(['toolu_01', 'toolu_02', 'toolu_03']);
+  });
+
+  it('carries the thinking from every row of the turn', () => {
+    const turn = serverMessagesToUi(REAL_TRANSCRIPT).at(-1);
+    expect(turn.reasoning).toContain('I should read the layout before moving anything.');
+  });
+
+  it('closes the turn on a real user message, so answers never bleed together', () => {
+    const ui = serverMessagesToUi([
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'x', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'ok' }] },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'a genuinely new question' },
+      { role: 'assistant', content: 'second answer' },
+    ]);
+    expect(ui.map((m) => m.role)).toEqual(['assistant', 'user', 'assistant']);
+    expect(ui[0].content).toBe('first answer');
+    expect(ui[0].toolCalls).toHaveLength(1);
+    expect(ui[2].content).toBe('second answer');
+    expect(ui[2].toolCalls).toEqual([]);
+  });
+
+  it('folds a turn whose tool ran BEFORE it said anything', () => {
+    const ui = serverMessagesToUi([
+      { role: 'user', content: 'do the thing' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'b1', name: 'run', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'done' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Finished.' }] },
+    ]);
+    expect(ui).toHaveLength(2);
+    expect(ui[1].contentParts.map((p) => p.type)).toEqual(['tool_call', 'text']);
+    expect(ui[1].content).toBe('Finished.');
+  });
+
+  it('does not mutate a caller-owned contentParts array while folding', () => {
+    const parts = [{ type: 'text', text: 'mine' }];
+    const ui = serverMessagesToUi([
+      { role: 'assistant', content: 'mine', contentParts: parts },
+      { role: 'assistant', content: 'appended' },
+    ]);
+    expect(parts).toEqual([{ type: 'text', text: 'mine' }]);
+    expect(ui[0].content).toBe('mine\n\nappended');
   });
 });
 
