@@ -251,6 +251,51 @@ export default {
       });
     },
 
+    /**
+     * Clear many conversations at once — the rail's "mark all read" button.
+     *
+     * ONE request, not one per row: the user pressed one button, and N
+     * parallel PATCHes can half-apply and leave the rail in a state no single
+     * refetch explains. Optimism is applied only to rows already in local
+     * state, but every requested id is still sent — same contract as
+     * _patchAttention. On failure every optimistic flip is rolled back.
+     */
+    async markAllRead({ commit, state }, outputIds) {
+      const ids = (outputIds || []).filter(Boolean);
+      if (ids.length === 0) return { cleared: 0 };
+
+      const revert = [];
+      for (const id of ids) {
+        const row = state.outputs.find((o) => o.id === id);
+        if (!row) continue;
+        revert.push({ id, updates: { last_read_at: row.last_read_at } });
+        // Watermark = the row's own updated_at, not the client clock — see
+        // markRead for why this is skew-proof.
+        commit('PATCH_OUTPUT', { id, updates: { last_read_at: row.updated_at || new Date() } });
+      }
+
+      const token = localStorage.getItem('token');
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/read-all`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ ids }),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return await response.json();
+      } catch (error) {
+        revert.forEach((r) => commit('PATCH_OUTPUT', r));
+        console.error('Error marking conversations read:', error);
+        throw error;
+      }
+    },
+
     setArchived({ dispatch }, { outputId, archived }) {
       return dispatch('_patchAttention', {
         outputId,

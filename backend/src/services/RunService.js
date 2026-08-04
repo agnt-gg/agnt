@@ -227,6 +227,42 @@ class RunService {
   }
 
   /**
+   * PATCH /content-outputs/read-all  { ids?: string[] }
+   * Clears the unread state of many conversations in one write — the
+   * "mark everything in the Needs-you rail as read" button.
+   *
+   * `ids` scopes the clear to exactly what the user was looking at; omitting
+   * it clears every unread conversation they own. An empty array is honoured
+   * as "nothing", never widened to "everything".
+   */
+  async markAllContentOutputsRead(req, res) {
+    try {
+      const userId = req.user.userId;
+      const ids = req.body?.ids;
+
+      if (ids !== undefined && (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))) {
+        return res.status(400).json({ error: 'Body ids must be an array of strings when provided' });
+      }
+
+      const result = await ContentOutputModel.markAllRead(userId, ids === undefined ? null : ids);
+
+      // No 404: clearing an already-clear rail is a success, not an error.
+      broadcastToUser(userId, RealtimeEvents.CONTENT_UPDATED, {
+        userId,
+        readState: true,
+        ids: ids === undefined ? null : ids,
+        cleared: result.changes,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({ success: true, cleared: result.changes });
+    } catch (error) {
+      console.error('Error marking content outputs read:', error);
+      res.status(500).json({ error: 'Failed to mark conversations read' });
+    }
+  }
+
+  /**
    * PATCH /content-outputs/:id/archive  { archived: boolean }
    * Archives the conversation out of the main sidebar list (or restores it).
    * updated_at is intentionally untouched so unarchiving restores position.

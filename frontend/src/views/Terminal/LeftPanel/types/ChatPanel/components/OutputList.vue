@@ -35,10 +35,18 @@
         </div>
         <div id="saved-outputs" class="saved-items">
           <div class="sort-controls">
-            <button @click="sortBy('updated_at')" class="sort-button" :class="{ active: sortKey === 'updated_at' }">
-              <span>Date</span>
-              <i :class="getSortIcon('updated_at')"></i>
-            </button>
+            <div class="sort-modes">
+              <Tooltip text="Unread first, longest waiting on top" width="auto">
+                <button @click="sortBy('attention')" class="sort-button" :class="{ active: sortKey === 'attention' }">
+                  <i class="fas fa-bell"></i>
+                  <span>Needs you</span>
+                </button>
+              </Tooltip>
+              <button @click="sortBy('updated_at')" class="sort-button" :class="{ active: sortKey === 'updated_at' }">
+                <span>Date</span>
+                <i :class="getSortIcon('updated_at')"></i>
+              </button>
+            </div>
             <Tooltip text="New Chat" width="auto">
               <button @click="handleNewChat" class="new-chat-btn">
                 <i class="fas fa-plus"></i>
@@ -54,6 +62,11 @@
               <i class="fas fa-bell"></i>
               <span class="triage-title">Needs you</span>
               <span class="triage-count">{{ needsYou.length }}</span>
+              <Tooltip text="Mark all as read" width="auto">
+                <button class="triage-clear-btn" @click.stop="markAllNeedsYouRead" aria-label="Mark all as read">
+                  <i class="fas fa-check-double"></i>
+                </button>
+              </Tooltip>
             </div>
             <div
               v-for="output in needsYou"
@@ -372,8 +385,39 @@ export default {
     const playSound = inject('playSound', () => {});
     const simpleModal = ref(null);
     const searchQuery = ref('');
-    const sortKey = ref('updated_at');
-    const sortOrder = ref('desc');
+
+    // Sort preference. Persisted because "how my conversation list is
+    // ordered" is a preference, not session state — re-picking it on every
+    // reload is the kind of small tax that makes people stop using a control.
+    //
+    // The default is 'attention' (unread first, longest waiting on top): it
+    // is the ordering the Needs-you rail already imposes on itself, so panel
+    // and rail agree out of the box. 'updated_at' is pure recency.
+    const SORT_PREF_KEY = 'chatPanel.sortPreference';
+    const SORT_KEYS = ['attention', 'updated_at', 'content'];
+
+    function loadSortPreference() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SORT_PREF_KEY) || 'null');
+        if (saved && SORT_KEYS.includes(saved.key)) {
+          return { key: saved.key, order: saved.order === 'asc' ? 'asc' : 'desc' };
+        }
+      } catch {
+        // A corrupt preference must never take the sidebar down with it.
+      }
+      return { key: 'attention', order: 'desc' };
+    }
+
+    const savedSort = loadSortPreference();
+    const sortKey = ref(savedSort.key);
+    const sortOrder = ref(savedSort.order);
+    watch([sortKey, sortOrder], ([key, order]) => {
+      try {
+        localStorage.setItem(SORT_PREF_KEY, JSON.stringify({ key, order }));
+      } catch {
+        // Private mode / quota: losing the preference is survivable.
+      }
+    });
     const activeMenu = ref(null);
     const menuPosition = ref({});
     const menuButtonRefs = ref({});
@@ -552,9 +596,36 @@ export default {
     // excluded: one is being looked at, the other announces itself.
     const needsYou = computed(() => {
       const activeSavedId = store.state.chat.savedOutputId;
-      return (store.getters['contentOutputs/triageRail'] || [])
+      const rail = (store.getters['contentOutputs/triageRail'] || [])
         .filter((o) => o.id !== activeSavedId && !streamingOutputIds.value.has(o.id));
+
+      // The rail arrives longest-waiting-first, which is the 'attention'
+      // order. When the user explicitly picks Date, the rail obeys it too:
+      // the sort control governs the whole panel, not just the groups below
+      // it. A control that visibly skips one section is a broken control.
+      if (sortKey.value !== 'updated_at') return rail;
+      return sortOutputs(rail, {
+        sortKey: 'updated_at',
+        sortOrder: sortOrder.value,
+        bumps: bumpTimestamps.value,
+      });
     });
+
+    // Clear the whole rail in one write. Scoped to the ids actually on
+    // screen: the rail already excludes the conversation being viewed and
+    // anything still streaming, and "read" should mean exactly what the user
+    // could see when they pressed the button.
+    async function markAllNeedsYouRead() {
+      const ids = needsYou.value.map((o) => o.id);
+      if (ids.length === 0) return;
+      playSound('typewriterKeyPress');
+      try {
+        await store.dispatch('contentOutputs/markAllRead', ids);
+      } catch {
+        // The action already rolled the optimistic flip back; the dots
+        // reappearing IS the error message.
+      }
+    }
 
     // Unread rollup for a group header: unread count across the group AND
     // all its descendants, so a collapsed parent still shows what's waiting.
@@ -971,11 +1042,19 @@ export default {
     }
 
     function sortBy(key) {
+      // 'attention' has no direction — see outputSort.js. Clicking it while
+      // active is a no-op rather than a silent flip to a meaningless order.
+      if (key === 'attention') {
+        sortKey.value = 'attention';
+        return;
+      }
       if (sortKey.value === key) {
         sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
       } else {
+        // Newest-first on first pick: an unprompted oldest-first date sort is
+        // never what "sort by date" means in a conversation list.
         sortKey.value = key;
-        sortOrder.value = 'asc';
+        sortOrder.value = 'desc';
       }
     }
 
@@ -1459,6 +1538,7 @@ export default {
       isOutputUnread,
       unreadOutputIds,
       toggleUnread,
+      markAllNeedsYouRead,
       // Attention: triage rail + archive
       needsYou,
       formatAgeLabel,
@@ -1632,6 +1712,15 @@ div#saved-outputs {
   /* margin-bottom: 16px; */
 }
 
+/* The two sort modes travel together on the left; New Chat keeps the right
+   edge, which is what .sort-controls' space-between was always for. */
+.sort-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .sort-button {
   display: flex;
   align-items: center;
@@ -1652,8 +1741,13 @@ div#saved-outputs {
 }
 
 .sort-button.active {
-  border-color: var(--terminal-border-color);
-  color: var(--color-text-muted);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.sort-button.active i {
+  opacity: 1;
 }
 
 .sort-button i {
@@ -2097,6 +2191,31 @@ body.dark .create-output-btn {
 }
 
 .triage-header i {
+  font-size: 11px;
+}
+
+.triage-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.triage-clear-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.12);
+}
+
+.triage-clear-btn i {
   font-size: 11px;
 }
 
