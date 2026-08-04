@@ -101,9 +101,12 @@ export function buildInstructions({ assistantName = 'Annie', surface = 'chat' } 
     '  "never mind", small talk, follow-ups, and anything you think is trivial or obvious.',
     `  ${assistantName} answers all of it, in her own words. You do not get to decide what is worth`,
     '  her attention.',
-    '- Pass what the user said THROUGH AS THEY SAID IT. Do not reword, shorten, interpret, correct',
-    '  or summarise it. Add context from earlier in the conversation only when the request depends',
-    '  on it and would otherwise be meaningless on its own.',
+    '- The user_message field is a TRANSCRIPT, not a request you write. Put their words in it and',
+    '  nothing else — no preamble, no "The user said", no "please respond to them", no third person,',
+    "  no explanation. It is shown on screen as the user's own message, so anything you add appears",
+    '  to them as words they never said.',
+    '- Do not reword, shorten, interpret, correct or summarise it. Add context from earlier in the',
+    '  conversation only when the request depends on it and would otherwise be meaningless alone.',
     '- NEVER answer from your own knowledge. NEVER guess. NEVER apologise, explain, greet, stall or',
     '  chat. NEVER say you are unable to do something — send it to run_agnt and let her answer.',
     '',
@@ -133,9 +136,29 @@ export function buildInstructions({ assistantName = 'Annie', surface = 'chat' } 
  * move and it would be wrong: the tool list would have to be kept in sync
  * forever, every schema change would break voice silently, the realtime model
  * would need per-tool judgement it has no context for, and the session payload
- * would be enormous. One opaque instruction port keeps the orchestrator as the
- * only thing that has to understand AGNT's capabilities — which it already
- * does, better than any mirror could.
+ * would be enormous. One opaque port keeps the orchestrator as the only thing
+ * that has to understand AGNT's capabilities — which it already does, better
+ * than any mirror could.
+ *
+ * THE PARAMETER IS A QUOTE, NOT AN INSTRUCTION
+ * --------------------------------------------
+ * This field was called `instruction` and described as "the user's request as a
+ * complete, self-contained instruction — include any context from the
+ * conversation". That is a commission, and the model did the job it was given:
+ * it wrote instructions. A user who said "hey, what all can you do?" had this
+ * arrive in their chat:
+ *
+ *     The user said: "Hey, what all can you do?". Please respond to the user
+ *     with your capabilities.
+ *
+ * Not a paraphrase — a FRAMING, with the real words quoted inside it. The
+ * schema asked for authorship, so no amount of "do not reword" in the system
+ * prompt was going to stop it; the field name and its description are the
+ * closest thing to the model's hands.
+ *
+ * So the field is now named and described as a verbatim quote. What the user
+ * said is what lands in the chat, because it is their message, not the voice
+ * layer's summary of it.
  */
 export function buildTools() {
   return [
@@ -143,20 +166,24 @@ export function buildTools() {
       type: 'function',
       name: 'run_agnt',
       description:
-        'Send an instruction to AGNT, which has the user\'s tools, agents, files, workspace and memory. ' +
-        'Use this for EVERY request that needs knowledge or work of any kind — questions, research, code, ' +
-        'file operations, running agents, anything. Returns what AGNT did or found, for you to speak aloud.',
+        "Deliver what the user just said to AGNT, which has the user's tools, agents, files, " +
+        'workspace and memory. Use this for EVERY request of any kind — questions, research, code, ' +
+        'file operations, running agents, anything. Returns what AGNT did or found, for you to read aloud.',
       parameters: {
         type: 'object',
         properties: {
-          instruction: {
+          user_message: {
             type: 'string',
             description:
-              "The user's request as a complete, self-contained instruction. Include any context from " +
-              'the conversation the request depends on, because AGNT does not hear the audio.',
+              'EXACTLY what the user said, word for word, as if you were transcribing them. ' +
+              'This is their message and it is shown to them on screen verbatim, so it must contain ' +
+              'ONLY their words. Never write about the user in the third person, never add a preamble ' +
+              'such as "The user said", never append a request such as "please respond", never explain ' +
+              'or rephrase. If they said "hey, what all can you do?" then this field is exactly: ' +
+              'hey, what all can you do?',
           },
         },
-        required: ['instruction'],
+        required: ['user_message'],
       },
     },
   ];

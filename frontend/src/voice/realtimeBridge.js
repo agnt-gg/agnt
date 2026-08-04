@@ -128,10 +128,23 @@ export function interpretEvent(event) {
           continue;
         }
 
+        /**
+         * The wire field is `user_message` — named and described as a verbatim
+         * quote, because calling it `instruction` invited the model to AUTHOR
+         * one ('The user said: "...". Please respond...' appearing in the chat
+         * as the user's own message). See realtimeVoiceService.buildTools.
+         *
+         * `instruction` is still read as a fallback: the tool schema is
+         * server-authored and sent at connect time, so a browser holding a
+         * bundle from before this change would otherwise find nothing and
+         * report every turn as unreadable.
+         */
+        const spoken = typeof args.user_message === 'string' ? args.user_message : args.instruction;
+
         actions.push({
           type: BridgeAction.RUN_AGNT,
           callId: item.call_id,
-          instruction: typeof args.instruction === 'string' ? args.instruction.trim() : '',
+          instruction: typeof spoken === 'string' ? spoken.trim() : '',
           parseError,
         });
       }

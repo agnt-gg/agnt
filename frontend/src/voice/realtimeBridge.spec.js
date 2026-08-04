@@ -19,19 +19,41 @@ describe('interpretEvent — the tool call that makes AGNT the brain', () => {
           type: 'function_call',
           name: AGNT_TOOL_NAME,
           call_id: 'call_abc',
-          arguments: JSON.stringify({ instruction: 'open the auth file' }),
+          arguments: JSON.stringify({ user_message: 'open the auth file' }),
           ...overrides,
         },
       ],
     },
   });
 
-  it('turns a run_agnt call into a RUN_AGNT action carrying the instruction', () => {
+  it('turns a run_agnt call into a RUN_AGNT action carrying the user\u2019s words', () => {
     const a = first(functionCall());
     expect(a.type).toBe(BridgeAction.RUN_AGNT);
     expect(a.callId).toBe('call_abc');
     expect(a.instruction).toBe('open the auth file');
     expect(a.parseError).toBeNull();
+  });
+
+  it('reads the verbatim field, `user_message`', () => {
+    // Named as a quote rather than `instruction`, which invited the model to
+    // author one. See realtimeVoiceService.buildTools.
+    const a = first(functionCall({ arguments: JSON.stringify({ user_message: 'hey, what all can you do?' }) }));
+    expect(a.instruction).toBe('hey, what all can you do?');
+  });
+
+  it('still reads a legacy `instruction` field, for a stale browser bundle', () => {
+    // The tool schema is server-authored and sent at connect time, so a page
+    // loaded before the rename would otherwise find nothing and report every
+    // turn as unreadable.
+    const a = first(functionCall({ arguments: JSON.stringify({ instruction: 'from an older bundle' }) }));
+    expect(a.instruction).toBe('from an older bundle');
+  });
+
+  it('prefers user_message when both are present', () => {
+    const a = first(
+      functionCall({ arguments: JSON.stringify({ user_message: 'the real words', instruction: 'a rewrite' }) })
+    );
+    expect(a.instruction).toBe('the real words');
   });
 
   it('survives malformed argument JSON rather than throwing', () => {

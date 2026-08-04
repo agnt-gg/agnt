@@ -30,7 +30,7 @@ const toolCallFrame = (overrides = {}) =>
           type: 'function_call',
           name: AGNT_TOOL_NAME,
           call_id: 'call_1',
-          arguments: JSON.stringify({ instruction: 'check the build' }),
+          arguments: JSON.stringify({ user_message: 'check the build' }),
           ...overrides,
         },
       ],
@@ -48,7 +48,7 @@ const turnDoneFrame = (hadToolCall) =>
     type: 'response.done',
     response: {
       output: hadToolCall
-        ? [{ type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c1', arguments: '{"instruction":"go"}' }]
+        ? [{ type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c1', arguments: '{"user_message":"go"}' }]
         : [],
     },
   });
@@ -152,7 +152,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     const onRunAgnt = vi.fn();
     const s = harness({ onRunAgnt });
 
-    s._handleMessage(toolCallFrame({ arguments: JSON.stringify({ instruction: '   ' }) }));
+    s._handleMessage(toolCallFrame({ arguments: JSON.stringify({ user_message: '   ' }) }));
     await vi.advanceTimersByTimeAsync(10);
 
     expect(onRunAgnt).not.toHaveBeenCalled();
@@ -163,7 +163,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     const onRunAgnt = vi.fn();
     const s = harness({ onRunAgnt });
 
-    s._handleMessage(toolCallFrame({ arguments: '{"instruction": broken' }));
+    s._handleMessage(toolCallFrame({ arguments: '{"user_message": broken' }));
     await vi.advanceTimersByTimeAsync(10);
 
     expect(onRunAgnt).not.toHaveBeenCalled();
@@ -479,7 +479,7 @@ describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () 
       type: 'response.done',
       response: {
         output: hadToolCall
-          ? [{ type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c1', arguments: '{"instruction":"go"}' }]
+          ? [{ type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c1', arguments: '{"user_message":"go"}' }]
           : [],
       },
     });

@@ -62,8 +62,19 @@ describe('buildInstructions — the model is a mouth, not a second assistant', (
   });
 
   it('passes the user\u2019s words through unedited', () => {
-    expect(text()).toMatch(/THROUGH AS THEY SAID IT/);
     expect(text()).toMatch(/Do not reword, shorten, interpret/i);
+  });
+
+  it('forbids FRAMING the message, not just rewording it', () => {
+    // Rewording was already forbidden and the model complied — it wrapped the
+    // words instead, which the old rule did not cover. What reaches the chat
+    // is the user's own message, so anything added appears to them as words
+    // they never said.
+    expect(text()).toMatch(/user_message field is a TRANSCRIPT, not a request you write/i);
+    expect(text()).toMatch(/no "The user said"/);
+    expect(text()).toMatch(/no "please respond to them"/i);
+    expect(text()).toMatch(/no third person/i);
+    expect(text()).toMatch(/words they never said/i);
   });
 
   it('SPEAKS HER ANSWER VERBATIM — screen and voice must not diverge', () => {
@@ -101,11 +112,48 @@ describe('buildTools — exactly one door into AGNT', () => {
     expect(tools[0].type).toBe('function');
   });
 
-  it('takes a self-contained instruction, because AGNT does not hear the audio', () => {
+  it('THE PARAMETER IS A QUOTE, NOT A COMMISSION', () => {
+    /**
+     * REGRESSION. The field was called `instruction` and described as "the
+     * user's request as a complete, self-contained instruction — include any
+     * context from the conversation". That is a commission, and the model did
+     * the job it was given. A user who said "hey, what all can you do?" saw
+     * this arrive in their chat as their own message:
+     *
+     *   The user said: "Hey, what all can you do?". Please respond to the
+     *   user with your capabilities.
+     *
+     * The field name and its description are the closest thing to the model's
+     * hands — no amount of "do not reword" elsewhere outranks a parameter that
+     * asks to be written.
+     */
     const params = buildTools()[0].parameters;
-    expect(params.required).toEqual(['instruction']);
-    expect(params.properties.instruction.type).toBe('string');
-    expect(params.properties.instruction.description).toMatch(/self-contained/i);
+    expect(params.required).toEqual(['user_message']);
+    expect(params.properties.user_message.type).toBe('string');
+
+    const desc = params.properties.user_message.description;
+    expect(desc).toMatch(/EXACTLY what the user said, word for word/i);
+    expect(desc).toMatch(/transcribing/i);
+    // The exact failure, named in the description so the model cannot read
+    // past it.
+    expect(desc).toMatch(/never add a preamble/i);
+    expect(desc).toMatch(/The user said/);
+    expect(desc).toMatch(/please respond/i);
+    expect(desc).toMatch(/third person/i);
+  });
+
+  it('no longer offers a field that invites authorship', () => {
+    const params = buildTools()[0].parameters;
+    expect(params.properties.instruction).toBeUndefined();
+    expect(JSON.stringify(params)).not.toMatch(/self-contained instruction/i);
+  });
+
+  it('the tool DELIVERS what was said rather than sending an instruction', () => {
+    // The tool description is read alongside the parameter; "send an
+    // instruction to AGNT" pulled in the same wrong direction.
+    const desc = buildTools()[0].description;
+    expect(desc).toMatch(/Deliver what the user just said/i);
+    expect(desc).not.toMatch(/send an instruction/i);
   });
 
   it('the description pushes the model to use it for everything', () => {
@@ -115,7 +163,7 @@ describe('buildTools — exactly one door into AGNT', () => {
   it('is valid JSON-serialisable schema (it is sent as a JSON string)', () => {
     expect(() => JSON.stringify(buildTools())).not.toThrow();
     const round = JSON.parse(JSON.stringify(buildTools()));
-    expect(round[0].parameters.properties.instruction).toBeDefined();
+    expect(round[0].parameters.properties.user_message).toBeDefined();
   });
 });
 
