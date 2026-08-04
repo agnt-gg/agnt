@@ -11,10 +11,17 @@
  *      always beat the good local copy on exactly the turns that broke.
  *
  * Length was standing in for fidelity, and it is not a proxy for fidelity.
+ *
+ * NOTE: this path is now the FALLBACK. A conversation with a saved transcript
+ * is restored from that instead (see chatUnified.durablePersistence.spec.js);
+ * the provider log is only rebuilt from when nothing was ever saved, which is
+ * what `loadTranscriptByConversationId → null` means in every test here.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const fetchConversation = vi.fn();
+const loadTranscriptByConversationId = vi.fn(async () => null);
+const saveTranscript = vi.fn(async () => ({ ok: true, outputId: 'out-1' }));
 
 vi.mock('@/services/chatService.js', () => ({
   streamChat: vi.fn(),
@@ -30,6 +37,11 @@ vi.mock('@/services/chatChannelConfig.js', () => ({
 vi.mock('@/composables/useRealtimeSync.js', () => ({
   emitSteer: vi.fn(),
   emitClearSteer: vi.fn(),
+}));
+vi.mock('@/services/conversationTranscript.js', () => ({
+  loadTranscriptByConversationId: (...args) => loadTranscriptByConversationId(...args),
+  saveTranscript: (...args) => saveTranscript(...args),
+  deriveTitle: () => 'T',
 }));
 
 const CH = 'workspace:ws-1';
@@ -105,7 +117,9 @@ const seedLocal = (messages) => {
   };
 };
 
-const hydrate = () => chatUnified.actions.hydrateWorkspaceChannel({ commit, state }, { channelKey: CH });
+const dispatch = vi.fn();
+const hydrate = () =>
+  chatUnified.actions.hydrateWorkspaceChannel({ commit, state, dispatch }, { channelKey: CH });
 
 describe('hydrateWorkspaceChannel — provider block transcripts', () => {
   it('restores a tool-using turn as words, never as [object Object]', async () => {

@@ -8,6 +8,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { claimPairingCodeAt } from './mobileLitePairing.js';
+import { serializeTranscript, parseTranscript } from './conversationTranscript.js';
 
 const authHeaders = () => {
   const token = localStorage.getItem('token');
@@ -131,23 +132,13 @@ export async function loadConversation(outputId) {
   if (!res.ok) throw new Error(`loadConversation: ${res.status}`);
   // RunService returns the SQLite row as-is (snake_case columns).
   const data = await res.json();
-  const raw = data.content ?? data.output?.content ?? null;
-  let parsed = {};
-  if (typeof raw === 'string') {
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      parsed = {};
-    }
-  } else if (raw && typeof raw === 'object') {
-    parsed = raw;
-  }
+  const parsed = parseTranscript(data.content ?? data.output?.content ?? null);
   return {
     outputId: data.id || outputId,
     title: parsed.title || data.title || 'Conversation',
     conversationId:
       parsed.conversationId || data.conversation_id || data.conversationId || null,
-    messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+    messages: parsed.messages,
   };
 }
 
@@ -162,28 +153,7 @@ export async function saveConversation({
 }) {
   const body = {
     id: outputId || undefined,
-    content: JSON.stringify({
-      conversationId,
-      title,
-      agentId: null,
-      agentName: null,
-      isAgentChat: false,
-      messages: (messages || []).map((msg) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        timestamp: msg.timestamp,
-        metadata: msg.metadata || [],
-        toolCalls: msg.toolCalls || [],
-        // contentParts carries the text/tool ORDER. Dropping it on save meant a
-        // reloaded chat re-rendered every tool card after all the prose, so a
-        // multi-tool answer read in an order the model never produced.
-        contentParts: msg.contentParts || [],
-        reasoning: msg.reasoning || '',
-      })),
-      createdAt: messages[0]?.timestamp || Date.now(),
-      updatedAt: Date.now(),
-    }),
+    content: serializeTranscript({ conversationId, title, messages }),
     contentType: 'conversation',
     conversationId,
     isShareable: false,

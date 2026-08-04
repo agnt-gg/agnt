@@ -130,6 +130,37 @@ class RunService {
       res.status(500).json({ error: 'Error retrieving content outputs' });
     }
   }
+  /**
+   * Find the saved transcript for a conversation.
+   *
+   * ContentOutputModel.findByConversationId existed but no route reached it,
+   * so a client that knew its conversationId had no way to ask for the
+   * transcript it had saved. Only the workspace/unified chats need this: the
+   * main chat opens conversations from the sidebar list and already holds the
+   * output id. They persisted to localStorage instead and rebuilt themselves
+   * from the raw provider log, which is not a UI transcript and cost two
+   * user-visible rendering bugs before this route existed.
+   *
+   * 404 (not 500) when nothing is saved yet: "this conversation has no saved
+   * transcript" is a normal answer, and the caller falls back to the log.
+   */
+  async getContentOutputByConversation(req, res) {
+    try {
+      const { conversationId } = req.params;
+      const userId = req.user.userId || req.user.id;
+      if (!conversationId) {
+        return res.status(400).json({ error: 'conversationId is required' });
+      }
+      const output = await ContentOutputModel.findByConversationId(conversationId, userId);
+      if (!output) {
+        return res.status(404).json({ error: 'No saved transcript for this conversation' });
+      }
+      res.json(output);
+    } catch (error) {
+      console.error('Error retrieving content output by conversation:', error);
+      res.status(500).json({ error: 'Error retrieving content output' });
+    }
+  }
   async getContentOutputsByTool(req, res) {
     try {
       const { toolId } = req.params;

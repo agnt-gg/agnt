@@ -5,6 +5,7 @@ import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
+import { serializeTranscript } from '@/services/conversationTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
@@ -2189,37 +2190,23 @@ export default {
             : agentPrefix + 'Untitled Conversation';
         }
 
-        // Persist {{IMAGE_REF:id}} tokens AS-IS — do NOT inline base64 here.
-        // Generated images are already written to disk server-side at
-        // generation time (ImageStorage), and MessageItem resolves refs to
-        // /api/images/:id (immutable, browser-cached) when the in-memory
-        // cache misses. Inlining made image-heavy blobs ~6x larger (measured:
-        // 85% of a typical 5.5MB conversation was duplicated base64) and
-        // slowed every autosave, load, and JSON.parse round-trip.
-        const conversationData = {
+        // Serialized by conversationTranscript, which is the ONE definition of
+        // this payload — shared with the unified chats and the phone client so
+        // the three copies of it cannot drift apart again.
+        //
+        // Note it persists {{IMAGE_REF:id}} tokens AS-IS rather than inlining
+        // base64: generated images are already on disk server-side
+        // (ImageStorage) and MessageItem resolves refs to /api/images/:id.
+        // Inlining made image-heavy blobs ~6x larger (measured: 85% of a
+        // typical 5.5MB conversation was duplicated base64) and slowed every
+        // autosave, load, and JSON.parse round-trip.
+        const serializedConversation = serializeTranscript({
           conversationId: currentConvId,
           title: conversationTitle,
+          messages,
           agentId: agentId || null,
           agentName: agentName || null,
-          isAgentChat: !!agentId,
-          messages: messages.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            timestamp: msg.timestamp,
-            metadata: msg.metadata || [],
-            toolCalls: msg.toolCalls || [],
-            contentParts: msg.contentParts || [],
-            reasoning: msg.reasoning || undefined,
-            reasoning_content: msg.reasoning_content || undefined,
-            files: msg.files || [],
-            agentId: msg.agentId || undefined,
-            agentName: msg.agentName || undefined,
-            agentIcon: msg.agentIcon || undefined,
-          })),
-          createdAt: messages[0]?.timestamp || Date.now(),
-          updatedAt: Date.now(),
-        };
+        });
 
         // `viewing` — this save is for the conversation the user is LOOKING
         // AT, so the server stamps the read watermark atomically with the
@@ -2244,7 +2231,7 @@ export default {
           },
           body: JSON.stringify({
             id: savedOutputId,
-            content: JSON.stringify(conversationData),
+            content: serializedConversation,
             contentType: 'conversation',
             conversationId: currentConvId,
             isShareable: false,
