@@ -83,11 +83,20 @@ export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', 
   // buries the oldest waiting conversation, which is the exact failure this
   // whole feature exists to prevent.
   //
-  // Bumps apply only to the read partition. A manual "Mark as Unread" writes
-  // nothing server-side, so inside the unread partition the honest measure of
-  // "how long has this been waiting" is updated_at alone — the same measure
-  // triageRail() uses, so the Unread count/clear-all set and the top of the
-  // list agree on the order of the same rows.
+  // Bumps apply only to the read partition. Inside the unread partition the
+  // measure is updated_at alone — the same one triageRail() uses, so the
+  // Unread count/clear-all set and the top of the list agree on the order of
+  // the same rows.
+  //
+  // A manual "Mark as Unread" MOVES updated_at server-side (queueing a
+  // conversation is activity — see ContentOutputModel.setReadState), so it
+  // needs no client-side bump to hold its place. It also lands at "now",
+  // which puts a freshly queued conversation at the BOTTOM of the unread
+  // partition — correct under "longest waiting on top", since it has waited
+  // zero seconds. That position is deliberate and it is what fixes the
+  // reported jump: reading it moves it to the TOP of the read partition,
+  // which is the very next row, instead of dropping it back to wherever its
+  // original date happened to fall.
   if (sortKey === 'attention') {
     return [...list].sort((a, b) => {
       const aUnread = isUnread(a);

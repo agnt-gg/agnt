@@ -426,10 +426,10 @@ export default {
     const unreadOutputIds = computed(() => store.getters['contentOutputs/unreadOutputIdSet'] || new Set());
 
     // Client-side activity timestamps, written on three events: a save, a run
-    // completing, and a manual "Mark as Unread". The first two also move
-    // `updated_at` server-side, so the bump is really about latency — the item
-    // rises now rather than after the refetch. The third has no server-side
-    // write at all, so the bump is the ONLY record that anything happened.
+    // completing, and a manual "Mark as Unread". All three now move
+    // `updated_at` server-side, so the bump is purely about latency — the
+    // item rises now rather than after the round-trip, and the two values
+    // agree once it lands.
     //
     // The sort takes max(updated_at, bump) — see outputSort.js. Reading an item
     // clears the unread flag but deliberately does NOT touch this map, so the

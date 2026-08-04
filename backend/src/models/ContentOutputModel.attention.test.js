@@ -4,10 +4,13 @@
  * Unread is DERIVED (updated_at > last_read_at, or last_read_at NULL), never
  * stored — so the invariants that matter here are the write-shape ones:
  *
- *   1. setReadState/setArchived must NOT touch updated_at. Reading is not a
- *      change; bumping updated_at on read would immediately un-read the read,
- *      and bumping it on archive would teleport the conversation to the top
- *      of the recency sort when unarchived.
+ *   1. setReadState(true)/setArchived must NOT touch updated_at. Reading is
+ *      not a change; bumping updated_at on read would immediately un-read the
+ *      read, and bumping it on archive would teleport the conversation to the
+ *      top of the recency sort when unarchived.
+ *      setReadState(FALSE) is the one deliberate exception — marking a
+ *      conversation unread IS activity, so it moves updated_at with the
+ *      watermark. See the "mark-as-unread is activity" block at the bottom.
  *   2. Both writes are ownership-scoped (WHERE user_id) and report
  *      changes: 0 for a foreign or missing row so the route can 404.
  *   3. The list endpoint's column set includes both new columns — the
@@ -48,6 +51,21 @@ function getRow(id) {
     db.get('SELECT * FROM content_outputs WHERE id = ?', [id], (err, row) => {
       if (err) reject(err);
       else resolve(row);
+    });
+  });
+}
+
+/**
+ * Backdate a row directly. These columns are second-resolution, so proving a
+ * write MOVED updated_at otherwise means sleeping 1.1s per assertion; starting
+ * from an unambiguously old value makes the same claim instantly and more
+ * strictly.
+ */
+function setUpdatedAt(id, value) {
+  return new Promise((resolve, reject) => {
+    db.run('UPDATE content_outputs SET updated_at = ? WHERE id = ?', [value, id], (err) => {
+      if (err) reject(err);
+      else resolve();
     });
   });
 }
@@ -401,6 +419,89 @@ describe('viewing saves stamp the watermark atomically', () => {
       VIEWED, USER, null, null, '{"messages":["agent"]}', false, 'conversation', 'conv-viewed', 'Viewed'
     );
     expect(isUnreadRow(await getRow(VIEWED))).toBe(true);
+  });
+});
+
+/**
+ * MARK-AS-UNREAD IS ACTIVITY.
+ *
+ * Marking a conversation unread moves updated_at to now, because queueing it
+ * for later is something the user just did to it. Writing only the watermark
+ * left the row sorted by its ORIGINAL date: it claimed "unread" while sitting
+ * wherever last month's activity put it, and the instant the user clicked it
+ * the flag cleared and the row dropped back down — out from under the cursor
+ * that had just reached it. Position and state now come from one fact.
+ */
+describe('mark-as-unread moves the conversation to now', () => {
+  const QUEUED = 'out-attention-queued';
+  const CONTROL = 'out-attention-control';
+  const ANCIENT = '2025-01-02 03:04:05';
+
+  beforeAll(async () => {
+    for (const [id, conv] of [[QUEUED, 'conv-queued'], [CONTROL, 'conv-control']]) {
+      await ContentOutputModel.createOrUpdate(
+        id, USER, null, null, '{}', false, 'conversation', conv, 'Queued test'
+      );
+      await ContentOutputModel.setReadState(id, USER, true);
+    }
+  });
+
+  it('moves updated_at forward off a stale date', async () => {
+    await setUpdatedAt(QUEUED, ANCIENT);
+    expect((await getRow(QUEUED)).updated_at).toBe(ANCIENT);
+
+    await ContentOutputModel.setReadState(QUEUED, USER, false);
+
+    // THE REPORTED BUG: this used to stay at ANCIENT.
+    expect((await getRow(QUEUED)).updated_at > ANCIENT).toBe(true);
+  });
+
+  it('leaves the watermark exactly one second behind, so it derives as unread', async () => {
+    await setUpdatedAt(QUEUED, ANCIENT);
+    await ContentOutputModel.setReadState(QUEUED, USER, false);
+
+    const after = await getRow(QUEUED);
+    const gapMs = Date.parse(`${after.updated_at}Z`) - Date.parse(`${after.last_read_at}Z`);
+    // Exactly one second, never zero. Both values come from one statement, and
+    // SQLite evaluates CURRENT_TIMESTAMP once per statement — writing both as
+    // a plain CURRENT_TIMESTAMP would tie at this resolution, making
+    // `updated_at > last_read_at` false and Mark as Unread a silent no-op.
+    expect(gapMs).toBe(1000);
+    expect(isUnreadRow(after)).toBe(true);
+  });
+
+  it('outranks a more recently active conversation — and STAYS there once read', async () => {
+    // Nathan's exact complaint, end to end. CONTROL is more recently active
+    // than the stale QUEUED, so ordering by updated_at is a real claim here,
+    // and both dates are fixed so nothing can tie at second resolution.
+    await setUpdatedAt(CONTROL, '2026-01-01 00:00:00');
+    await setUpdatedAt(QUEUED, ANCIENT);
+
+    await ContentOutputModel.setReadState(QUEUED, USER, false);
+    const control = await getRow(CONTROL);
+    expect((await getRow(QUEUED)).updated_at > control.updated_at).toBe(true);
+
+    // Reading it must not send it back down the list.
+    const queuedAt = (await getRow(QUEUED)).updated_at;
+    await ContentOutputModel.setReadState(QUEUED, USER, true);
+    const afterRead = await getRow(QUEUED);
+    expect(afterRead.updated_at).toBe(queuedAt);
+    expect(afterRead.updated_at > control.updated_at).toBe(true);
+    expect(isUnreadRow(afterRead)).toBe(false);
+  });
+
+  it('marking READ still never moves updated_at — the exception is one-directional', async () => {
+    // Bumping on read would re-derive the row as unread the moment it was
+    // read, which is the oscillation this whole area was fixed for.
+    await setUpdatedAt(QUEUED, ANCIENT);
+    await ContentOutputModel.setReadState(QUEUED, USER, true);
+    expect((await getRow(QUEUED)).updated_at).toBe(ANCIENT);
+  });
+
+  it('a foreign user cannot move it', async () => {
+    await setUpdatedAt(QUEUED, ANCIENT);
+    expect((await ContentOutputModel.setReadState(QUEUED, OTHER_USER, false)).changes).toBe(0);
+    expect((await getRow(QUEUED)).updated_at).toBe(ANCIENT);
   });
 });
 

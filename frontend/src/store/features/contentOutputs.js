@@ -2,30 +2,49 @@ import { API_CONFIG } from '@/tt.config.js';
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-import { toServerDate, parseServerTime } from '@/utils/serverTime.js';
+import { toServerDate } from '@/utils/serverTime.js';
 import { unreadIdSet, triageRail } from '@/utils/conversationAttention.js';
 
 /**
- * Should an incoming snapshot's attention fields (last_read_at, archived_at)
- * be ignored in favour of what this client already has?
+ * Fields an attention write owns, and which a stale snapshot may therefore
+ * not overwrite. See snapshotIsStaleForAttention.
+ *
+ * `updated_at` is in this list because marking a conversation unread MOVES it
+ * (the row's last activity becomes the moment the user queued it). Withholding
+ * only the watermark would be worse than withholding nothing: a stale snapshot
+ * would restore the OLD updated_at while keeping the NEW last_read_at, leaving
+ * updated_at < last_read_at — which derives as READ. The user's click would
+ * undo itself.
+ */
+const ATTENTION_OWNED_FIELDS = ['last_read_at', 'archived_at', 'updated_at'];
+
+/**
+ * Should an incoming snapshot's attention-owned fields be ignored in favour of
+ * what this client already has?
  *
  * THE RACE THIS CLOSES: the user clicks "Mark as Unread"; a list snapshot
  * whose data was read BEFORE that PATCH committed arrives AFTER the
  * optimistic flip, and silently un-marks it. With saves broadcasting row
  * metadata every few seconds during streaming, that race was near-certain —
- * it is why marked conversations would not STAY in the Needs-you rail.
+ * it is why marked conversations would not STAY unread.
  *
  * A snapshot is stale for a row iff an attention write was in flight when the
  * snapshot was taken, or settled after it was taken. Snapshots carry the time
  * they were STARTED (fetchStartedAt / snapshotStartedAt); writes bracket
- * themselves with ATTENTION_WRITE_STARTED / _SETTLED. Only the two attention
- * fields are ever withheld — titles, timestamps, group moves from the same
- * snapshot still apply.
+ * themselves with ATTENTION_WRITE_STARTED / _SETTLED. Only the fields above
+ * are ever withheld, and only inside that window — titles and group moves
+ * from the same snapshot still apply.
  */
 function snapshotIsStaleForAttention(state, id, snapshotStartedAt) {
   if ((state.attentionInFlight[id] || 0) > 0) return true;
   const settledAt = state.attentionSettledAt[id];
   return !!settledAt && snapshotStartedAt <= settledAt;
+}
+
+/** Copy the attention-owned fields from `local` onto `row`, in place. */
+function keepLocalAttention(row, local) {
+  for (const field of ATTENTION_OWNED_FIELDS) row[field] = local[field];
+  return row;
 }
 
 function convertRowDates(output) {
@@ -77,8 +96,7 @@ export default {
         const row = convertRowDates(output);
         const local = localById.get(row.id);
         if (local && snapshotIsStaleForAttention(state, row.id, fetchStartedAt)) {
-          row.last_read_at = local.last_read_at;
-          row.archived_at = local.archived_at;
+          keepLocalAttention(row, local);
         }
         return row;
       });
@@ -125,8 +143,7 @@ export default {
       }
       const local = state.outputs[idx];
       if (snapshotIsStaleForAttention(state, row.id, snapshotStartedAt)) {
-        row.last_read_at = local.last_read_at;
-        row.archived_at = local.archived_at;
+        keepLocalAttention(row, local);
       }
       // Merge over local: meta payloads carry no content column, and any
       // fields this client alone knows about must survive.
@@ -371,20 +388,29 @@ export default {
       // exactly how a manual mark-unread of the active chat was being wiped
       // within seconds.
       commit('SET_MANUAL_UNREAD', { id: outputId, on: true });
-      // A watermark one second before the row's own updated_at — "read up to
-      // just before the last change" — mirroring what the server writes.
+      // Mirrors the server's write exactly (ContentOutputModel.setReadState):
+      // the conversation's last activity becomes NOW, because queueing it for
+      // later IS activity, with the watermark one second behind so it derives
+      // as unread.
       //
-      // NOT null: null means "no watermark was ever recorded", the state of
-      // every conversation predating the column, and it is explicitly NOT
-      // unread. Writing null here would optimistically show the dot and then
-      // have it vanish on the next refetch when server truth arrived.
-      const row = state.outputs.find((o) => o.id === outputId);
-      const updatedAt = parseServerTime(row?.updated_at);
+      // Moving updated_at is what keeps the row where the user just put it.
+      // Writing only the watermark left it sorted by its original date, so
+      // reading it dropped it back down the list — out from under the cursor
+      // that had just reached it.
+      //
+      // The watermark is NOT null: null means "no watermark was ever
+      // recorded", the state of every conversation predating the column, and
+      // that is explicitly NOT unread. Writing null here would show the dot
+      // and then have it vanish on the next refetch when server truth landed.
+      const now = Date.now();
       return dispatch('_patchAttention', {
         outputId,
         path: 'read',
         body: { read: false },
-        updates: { last_read_at: new Date((updatedAt || Date.now()) - 1000) },
+        updates: {
+          updated_at: new Date(now),
+          last_read_at: new Date(now - 1000),
+        },
       });
     },
 
