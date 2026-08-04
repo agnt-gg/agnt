@@ -129,6 +129,41 @@ export function formatAge(value, now = Date.now()) {
 }
 
 /**
+ * The subset of unread ids that should make NOISE (the sidebar chime).
+ *
+ * Unread ≠ notifiable. Two kinds of unread must stay silent:
+ *
+ *   - STREAMING conversations: a running agent autosaves every few seconds,
+ *     and each save legitimately re-derives the row as unread. Chiming on
+ *     those turns a long agent run into a metronome — the reported
+ *     "notification sound ringing over and over". The pulsing indicator
+ *     already communicates "working"; the chime's job is "FINISHED changing,
+ *     and you haven't seen the result". When the stream ends the id leaves
+ *     streamingIds, enters this set, and rings exactly once.
+ *
+ *   - The ACTIVE conversation: the user is looking at it; nothing about it
+ *     is news to them. (Its unread flag can still be legitimately set — a
+ *     manual "Mark as Unread" — but their own click must not ring.)
+ *
+ * Pure function so the exact chime contract is testable without mounting
+ * the sidebar.
+ *
+ * @param {Set<string>} unreadIds derived unread set (unreadIdSet)
+ * @param {{ streamingIds?: Set<string>, activeIds?: Iterable<string> }} context
+ * @returns {Set<string>} new set — the ids a NEW appearance of which warrants a chime
+ */
+export function notifiableUnreadIds(unreadIds, { streamingIds, activeIds } = {}) {
+  const active = new Set(activeIds || []);
+  const result = new Set();
+  for (const id of unreadIds || []) {
+    if (streamingIds && streamingIds.has(id)) continue;
+    if (active.has(id)) continue;
+    result.add(id);
+  }
+  return result;
+}
+
+/**
  * Count unread outputs inside a set of group ids (a group plus its
  * descendants) — the rollup badge on a collapsed group header.
  *

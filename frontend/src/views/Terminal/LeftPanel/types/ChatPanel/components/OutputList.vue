@@ -370,7 +370,7 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { sortOutputs } from './outputSort.js';
-import { formatAge, groupUnreadCount } from '@/utils/conversationAttention.js';
+import { formatAge, groupUnreadCount, notifiableUnreadIds } from '@/utils/conversationAttention.js';
 
 export default {
   name: 'OutputList',
@@ -460,24 +460,42 @@ export default {
     // item keeps its position instead of resorting under the cursor. The map
     // resets on reload, where DB `updated_at` order takes over on its own.
     const bumpTimestamps = ref({});
-    // Set by toggleUnread before a manual 3-dot "Mark as Unread" so the
-    // watcher below doesn't chime at the user's own click.
-    const suppressUnreadSoundFor = ref(null);
+    // Position bumps: any NEW unread id gets a bump so the item rises
+    // immediately. This deliberately includes streaming/active rows — it is
+    // about list position, not noise.
     watch(unreadOutputIds, (newSet, oldSet) => {
       if (!newSet || newSet.size === 0) return;
       const next = { ...bumpTimestamps.value };
       let changed = false;
-      let autoUnread = false;
       newSet.forEach((id) => {
         if (!oldSet || !oldSet.has(id)) {
           next[id] = Date.now();
           changed = true;
-          if (id !== suppressUnreadSoundFor.value) autoUnread = true;
         }
       });
       if (changed) bumpTimestamps.value = next;
+    });
+
+    // The CHIME derives from a stricter set than the dot: unread minus
+    // streaming minus the active conversation — see notifiableUnreadIds for
+    // why each exclusion exists (a streaming conversation re-derives unread
+    // on every ~5s autosave; ringing on those turned long agent runs into a
+    // metronome). Ringing on ENTRY into this set gives exactly one chime per
+    // thing that finished changing while the user was elsewhere.
+    const suppressUnreadSoundFor = ref(null); // the user's own "Mark as Unread" click
+    const notifiableIds = computed(() =>
+      notifiableUnreadIds(unreadOutputIds.value, {
+        streamingIds: streamingOutputIds.value,
+        activeIds: [store.state.chat.savedOutputId, activeOutputId.value].filter(Boolean),
+      })
+    );
+    watch(notifiableIds, (newSet, oldSet) => {
+      let ring = false;
+      newSet.forEach((id) => {
+        if ((!oldSet || !oldSet.has(id)) && id !== suppressUnreadSoundFor.value) ring = true;
+      });
       suppressUnreadSoundFor.value = null;
-      if (autoUnread) playSound('chatUnread');
+      if (ring) playSound('chatUnread');
     });
 
     // Get outputs from store. `outputs` is the FULL list (needed by
@@ -1444,24 +1462,23 @@ export default {
     }
 
     // A conversation was saved — which also covers "a run finished", because
-    // completion triggers an autosave. Record the bump locally so the item
-    // rises immediately instead of waiting for the refetch round-trip; the
-    // refreshed `updated_at` then carries the same position on its own.
+    // completion triggers an autosave. Only the position bump lives here now:
+    //
+    //   - Data freshness is event-carried — the save response and the
+    //     realtime broadcast both deliver the changed row's metadata and the
+    //     store merges it in place. The full-list refetch this handler used
+    //     to fire (on EVERY autosave, so every ~5s per streaming
+    //     conversation) was a fetch storm that starved conversation loads.
+    //
+    //   - The read watermark for the conversation being viewed is stamped BY
+    //     the save itself (viewing: true — see chat.js / ContentOutputModel).
+    //     The markRead this handler used to dispatch was the second half of a
+    //     save-then-stamp pair whose gap flashed the dot and rang the chime
+    //     every time a snapshot landed inside it.
     function handleConversationSaved(event) {
       const savedId = event?.detail?.id;
       if (savedId) {
         bumpTimestamps.value = { ...bumpTimestamps.value, [savedId]: Date.now() };
-      }
-      // A save on the conversation the user is CURRENTLY viewing must not
-      // leave it server-unread (they're looking at the change). Re-stamp the
-      // watermark BEFORE refetching, otherwise the refetched row could carry
-      // updated_at > last_read_at for a beat and flash the dot.
-      if (savedId && savedId === store.state.chat.savedOutputId) {
-        store.dispatch('contentOutputs/markRead', savedId)
-          .catch(() => {})
-          .finally(() => store.dispatch('contentOutputs/refreshOutputs'));
-      } else {
-        store.dispatch('contentOutputs/refreshOutputs');
       }
     }
 

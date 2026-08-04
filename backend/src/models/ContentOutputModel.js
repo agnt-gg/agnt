@@ -1,17 +1,38 @@
 import db from './database/index.js';
 
+// The metadata column set every list/meta read shares. ONE definition: the
+// sidebar list, the save response, and the realtime broadcast must all carry
+// the same shape, or the row a client patches in place diverges from the row
+// a full fetch would have given it. Excludes the large content column.
+const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, created_at, updated_at';
+
 class ContentOutputModel {
-  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null) {
+  /**
+   * @param {{ viewing?: boolean }} [opts]
+   *   viewing: the user is LOOKING AT this conversation right now (the saving
+   *   client says so). The save then stamps the read watermark in the same
+   *   statement as the change it writes.
+   *
+   *   This closes a race at its source rather than around it: a save bumps
+   *   updated_at, which makes the row derived-unread until a follow-up
+   *   markRead PATCH lands. During streaming a conversation autosaves every
+   *   ~5s, so that window recurred forever, and any list snapshot taken
+   *   inside it showed the conversation the user was READING as "needs you"
+   *   — a flicker in the rail and a notification chime, every few seconds.
+   *   Two writes with a gap can always be observed between them; one write
+   *   has no between.
+   */
+  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { viewing = false } = {}) {
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
       //
-      // THE last_read_at CLAUSE. Unread is derived as "updated_at is later
-      // than last_read_at", which needs a watermark to compare against; rows
-      // predating the column have none. Rather than a one-shot mass backfill
-      // (see database/index.js for why that is a trap on this table), each
-      // row acquires a watermark the first time it is written, pinned one
-      // second BEFORE its pre-save updated_at.
+      // THE last_read_at CLAUSE, non-viewing arm. Unread is derived as
+      // "updated_at is later than last_read_at", which needs a watermark to
+      // compare against; rows predating the column have none. Rather than a
+      // one-shot mass backfill (see database/index.js for why that is a trap
+      // on this table), each row acquires a watermark the first time it is
+      // written, pinned one second BEFORE its pre-save updated_at.
       //
       // One second before, and not equal to: SQLite timestamps are
       // second-resolution, so pinning to the pre-save value would tie with
@@ -20,15 +41,16 @@ class ContentOutputModel {
       // to a legacy conversation would go unreported.
       //
       // COALESCE, so this is a no-op for any row that already has a
-      // watermark: a save must never mark a conversation read.
+      // watermark: a background save must never mark a conversation read.
       //
       // Keep prose OUT of the SQL below. A stray backtick in a comment inside
       // a template literal silently truncates the statement, and the driver
       // fails by aborting the process rather than raising — an unreadable
       // crash a long way from the typo. Verified the hard way.
+      const viewingFlag = viewing ? 1 : 0;
       db.run(
-        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, last_read_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
@@ -38,14 +60,34 @@ class ContentOutputModel {
            content_type = excluded.content_type,
            conversation_id = excluded.conversation_id,
            title = excluded.title,
-           last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
+           last_read_at = CASE WHEN ?
+             THEN CURRENT_TIMESTAMP
+             ELSE COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second'))
+           END,
            updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title],
+        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, viewingFlag, viewingFlag],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });
         }
       );
+    });
+  }
+
+  /**
+   * One row's list metadata — everything the sidebar needs, WITHOUT the
+   * content column (average ~0.5MB, max ~28MB on a real install). This is
+   * what a save hands back to its caller and broadcasts to other tabs, so a
+   * single changed conversation costs one small row, not a refetch of the
+   * user's entire history. That refetch-the-world-per-save pattern is what
+   * starved conversation loads while agents were streaming.
+   */
+  static findMetaById(id) {
+    return new Promise((resolve, reject) => {
+      db.get(`SELECT ${LIST_COLUMNS} FROM content_outputs WHERE id = ?`, [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      });
     });
   }
   static findOne(id) {
@@ -59,8 +101,7 @@ class ContentOutputModel {
   static findAllByUserId(userId, limit = null, offset = null, groupId = undefined) {
     return new Promise((resolve, reject) => {
       // Use a single query with COUNT() window function to avoid two round-trips
-      // Exclude the large 'content' column - the list view only needs metadata
-      const listColumns = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, created_at, updated_at';
+      const listColumns = LIST_COLUMNS;
       let where = 'user_id = ?';
       const params = [userId];
 

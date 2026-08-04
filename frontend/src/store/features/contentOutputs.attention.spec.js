@@ -24,6 +24,17 @@ function seed(store, outputs) {
   store.commit('contentOutputs/SET_OUTPUTS', { outputs, totalCount: outputs.length });
 }
 
+/** A fetch mock whose resolution the test controls — for in-flight races. */
+function deferredFetch() {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  global.fetch = vi.fn().mockImplementation(async () => {
+    await gate;
+    return { ok: true, json: async () => ({}) };
+  });
+  return { release };
+}
+
 function row(overrides = {}) {
   return {
     id: 'out-1',
@@ -283,5 +294,211 @@ describe('setArchived', () => {
     ).rejects.toThrow();
     // Reverted to unarchived.
     expect(store.getters['contentOutputs/visibleOutputs'].map((o) => o.id)).toEqual(['out-1']);
+  });
+});
+
+/**
+ * Event-carried row metadata — the payload a save response / realtime
+ * broadcast delivers so ONE changed row merges in place. The old behaviour
+ * (full-list refetch on every save event, i.e. every ~5s per streaming
+ * conversation) was a fetch storm that starved actual conversation loads.
+ */
+describe('UPSERT_OUTPUT_META', () => {
+  it('adds an unknown row at the top, with date boundary conversion', () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'existing' })]);
+
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'fresh', updated_at: '2026-08-04 11:45:00' }),
+    });
+
+    const outputs = store.getters['contentOutputs/outputs'];
+    expect(outputs.map((o) => o.id)).toEqual(['fresh', 'existing']);
+    expect(outputs[0].updated_at).toBeInstanceOf(Date);
+    // Naive SQLite strings are UTC — conversion must not read them as local.
+    expect(outputs[0].updated_at.getTime()).toBe(Date.parse('2026-08-04T11:45:00Z'));
+    expect(store.getters['contentOutputs/totalCount']).toBe(2);
+  });
+
+  it('merges into an existing row; fields ABSENT from the payload survive', () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', group_id: 'g1' })]);
+
+    // A payload that genuinely lacks keys (no group_id, no content) — spread
+    // semantics must preserve the local values, not null them.
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: {
+        id: 'out-1',
+        title: 'Renamed',
+        updated_at: '2026-08-04 11:50:00',
+        last_read_at: '2026-08-04 11:50:00',
+        archived_at: null,
+        created_at: '2026-08-04 10:00:00',
+      },
+    });
+
+    const [merged] = store.getters['contentOutputs/outputs'];
+    expect(merged.title).toBe('Renamed');
+    expect(merged.group_id).toBe('g1');
+    expect(merged.updated_at.getTime()).toBe(Date.parse('2026-08-04T11:50:00Z'));
+    expect(store.getters['contentOutputs/totalCount']).toBe(1);
+  });
+
+  it('a group move carried by the payload DOES apply — present beats absent', () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', group_id: 'g1' })]);
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'out-1', group_id: 'g2' }),
+    });
+    expect(store.getters['contentOutputs/outputs'][0].group_id).toBe('g2');
+  });
+
+  it('a viewing-save meta keeps the active conversation read', () => {
+    // The server stamps last_read_at atomically with a viewing save; the
+    // merged row must therefore never present as unread — this is the
+    // flicker-free path for the conversation being looked at.
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1' })]);
+
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'out-1', updated_at: '2026-08-04 11:55:00', last_read_at: '2026-08-04 11:55:00' }),
+    });
+
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
+  });
+});
+
+/**
+ * The stale-snapshot guard. A snapshot (full fetch or meta payload) whose
+ * data predates an attention write must not revert that write — this is the
+ * race that made manually-marked conversations vanish from the Needs-you
+ * rail moments after being marked.
+ */
+describe('attention writes vs stale snapshots', () => {
+  it('a meta upsert cannot revert a mark-unread that is still in flight', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1' })]);
+    const { release } = deferredFetch();
+
+    const patch = store.dispatch('contentOutputs/markUnread', 'out-1');
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+
+    // A save broadcast generated BEFORE the PATCH committed arrives now,
+    // still carrying the old "read" watermark.
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'out-1' }),
+      snapshotStartedAt: Date.now(),
+    });
+
+    // THE BUG: this used to flip the row back to read — the dot appeared and
+    // vanished, and the conversation would not stay in the rail.
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+
+    release();
+    await patch;
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+  });
+
+  it('a full fetch snapshot started before the write settles cannot revert it either', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1' })]);
+    const { release } = deferredFetch();
+
+    const snapshotStartedAt = Date.now();
+    const patch = store.dispatch('contentOutputs/markUnread', 'out-1');
+    release();
+    await patch;
+
+    // Snapshot taken before the PATCH settled, delivered after.
+    store.commit('contentOutputs/SET_OUTPUTS', {
+      outputs: [row({ id: 'out-1' })],
+      totalCount: 1,
+      fetchStartedAt: snapshotStartedAt,
+    });
+
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+  });
+
+  it('a snapshot started AFTER the write settles is server truth and applies', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1' })]);
+    const { release } = deferredFetch();
+
+    const patch = store.dispatch('contentOutputs/markUnread', 'out-1');
+    release();
+    await patch;
+
+    // e.g. the user marked it read on ANOTHER device after this write.
+    store.commit('contentOutputs/SET_OUTPUTS', {
+      outputs: [row({ id: 'out-1', last_read_at: '2026-08-04 11:59:00' })],
+      totalCount: 1,
+      // Comfortably after the settle — same-millisecond ties must not flake.
+      fetchStartedAt: Date.now() + 50,
+    });
+
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
+  });
+
+  it('only attention fields are withheld from a stale snapshot — the rest applies', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', title: 'Old' })]);
+    const { release } = deferredFetch();
+
+    const patch = store.dispatch('contentOutputs/markUnread', 'out-1');
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'out-1', title: 'New title', updated_at: '2026-08-04 11:58:00' }),
+      snapshotStartedAt: Date.now(),
+    });
+
+    const [merged] = store.getters['contentOutputs/outputs'];
+    expect(merged.title).toBe('New title');
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+
+    release();
+    await patch;
+  });
+});
+
+/**
+ * Manual "Mark as Unread" is INTENT with a lifetime: it survives anything
+ * except the user actually re-opening the conversation. The autosave layer
+ * consults this to decide viewing:true/false — without it, the ~5s autosaves
+ * of the open conversation cleared a manual mark within seconds.
+ */
+describe('manuallyUnread intent', () => {
+  it('markUnread records intent; markRead clears it', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1' })]);
+
+    await store.dispatch('contentOutputs/markUnread', 'out-1');
+    expect(store.getters['contentOutputs/isManuallyUnread']('out-1')).toBe(true);
+
+    await store.dispatch('contentOutputs/markRead', 'out-1');
+    expect(store.getters['contentOutputs/isManuallyUnread']('out-1')).toBe(false);
+  });
+
+  it('the rail clear-all also clears intent', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'a' }), row({ id: 'b' })]);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ cleared: 2 }) });
+
+    await store.dispatch('contentOutputs/markUnread', 'a');
+    await store.dispatch('contentOutputs/markUnread', 'b');
+    await store.dispatch('contentOutputs/markAllRead', ['a', 'b']);
+
+    expect(store.getters['contentOutputs/isManuallyUnread']('a')).toBe(false);
+    expect(store.getters['contentOutputs/isManuallyUnread']('b')).toBe(false);
+  });
+
+  it('a failed markUnread still records intent locally and rethrows', async () => {
+    // The optimistic flip reverts, but intent is the user's statement — the
+    // next successful write will honour it. (Design choice: losing the
+    // watermark write must not silently lose the user's intent too.)
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1' })]);
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+
+    await expect(store.dispatch('contentOutputs/markUnread', 'out-1')).rejects.toThrow();
+    expect(store.getters['contentOutputs/isManuallyUnread']('out-1')).toBe(true);
   });
 });

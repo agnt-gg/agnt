@@ -56,7 +56,11 @@ class RunService {
   }
   async saveOrUpdateContentOutput(req, res) {
     try {
-      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title } = req.body;
+      // `viewing` — the client attests the user is currently looking at this
+      // conversation, so the save stamps the read watermark atomically with
+      // the change. See ContentOutputModel.createOrUpdate for why this must
+      // be one write, not a save followed by a markRead PATCH.
+      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, viewing } = req.body;
       const userId = req.user.userId;
 
       // Check if the output already exists
@@ -83,21 +87,32 @@ class RunService {
         isShareable,
         contentType || 'html',
         conversationId || null,
-        title || null
+        title || null,
+        { viewing: viewing === true }
       );
 
-      // Broadcast real-time update to user's connected clients (all tabs)
+      // The row's list metadata (no content column) rides on BOTH the
+      // response and the broadcast. Event-carried state: clients patch this
+      // one row in place instead of refetching the whole list. Before this, a
+      // streaming conversation's ~5s autosaves each triggered full-list
+      // refetches in every tab — with a long history that is a constant
+      // refetch storm, and it is what made OTHER conversations slow to open
+      // while agents were running.
+      const output = await ContentOutputModel.findMetaById(outputId);
+
       broadcastToUser(userId, isNewOutput ? RealtimeEvents.CONTENT_CREATED : RealtimeEvents.CONTENT_UPDATED, {
         id: outputId,
         title: title,
         contentType: contentType || 'html',
         userId: userId,
+        output,
         timestamp: new Date().toISOString(),
       });
 
       res.json({
         message: isNewOutput ? 'New content output created' : 'Content output updated',
         id: outputId,
+        output,
       });
     } catch (error) {
       console.error('Error saving/updating content output:', error);

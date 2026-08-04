@@ -1847,6 +1847,7 @@ export default {
           updatedAt: Date.now(),
         };
 
+        const saveStartedAt = Date.now();
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/save`, {
           method: 'POST',
           headers: {
@@ -1859,6 +1860,10 @@ export default {
             conversationId: currentConversationId.value,
             isShareable: false,
             title: conversationTitle, // Add title for preview
+            // A manual save of the open conversation is by definition a
+            // "viewing" save — the watermark is stamped atomically with the
+            // write (see ContentOutputModel.createOrUpdate).
+            viewing: true,
           }),
         });
 
@@ -1869,7 +1874,15 @@ export default {
         const result = await response.json();
         terminalLines.value.push(`Conversation saved successfully (ID: ${result.id})`);
 
-        // Dispatch event to notify OutputList to refresh
+        // Merge the returned row metadata — the sidebar updates without a
+        // list refetch. The conversation-saved event now only drives the
+        // position bump in OutputList.
+        if (result.output) {
+          store.dispatch('contentOutputs/applyOutputMeta', {
+            output: result.output,
+            snapshotStartedAt: saveStartedAt,
+          });
+        }
         window.dispatchEvent(new CustomEvent('conversation-saved', { detail: { id: result.id } }));
 
         return result.id;

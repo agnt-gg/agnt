@@ -2202,6 +2202,21 @@ export default {
           updatedAt: Date.now(),
         };
 
+        // `viewing` — this save is for the conversation the user is LOOKING
+        // AT, so the server stamps the read watermark atomically with the
+        // write. One write has no unread window between change and stamp;
+        // the old save-then-markRead pair recreated that window on every ~5s
+        // stream autosave, and any list snapshot inside it rang the unread
+        // chime for the very conversation being read.
+        //
+        // A manual "Mark as Unread" overrides viewing: that is the user
+        // saying "queue this for later", and it must survive autosaves until
+        // they actually re-open the conversation.
+        const viewing =
+          convId === state.activeConversationId &&
+          !(savedOutputId && rootState.contentOutputs?.manuallyUnread?.[savedOutputId]);
+        const saveStartedAt = Date.now();
+
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/save`, {
           method: 'POST',
           headers: {
@@ -2215,6 +2230,7 @@ export default {
             conversationId: currentConvId,
             isShareable: false,
             title: conversationTitle,
+            viewing,
           }),
         });
 
@@ -2223,6 +2239,18 @@ export default {
         }
 
         const result = await response.json();
+
+        // The response carries the row's authoritative list metadata — merge
+        // that ONE row instead of refetching the whole sidebar list (which is
+        // what the conversation-saved event used to trigger, twice, on every
+        // autosave). The realtime broadcast does the same for other tabs.
+        if (result.output) {
+          dispatch(
+            'contentOutputs/applyOutputMeta',
+            { output: result.output, snapshotStartedAt: saveStartedAt },
+            { root: true }
+          );
+        }
 
         if (conv) {
           commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: result.id });
