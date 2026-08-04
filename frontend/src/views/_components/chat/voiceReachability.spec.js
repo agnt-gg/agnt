@@ -301,9 +301,36 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     const at = src.indexOf('const runAgntForVoice');
     const body = src.slice(at, at + 2600);
     expect(body).toMatch(/runAgntForVoice = \(instruction, emit\)/);
-    expect(body).toMatch(/chunker\.push\(raw\)/);
+    expect(body).toMatch(/chunker\.push\(/);
     expect(body).toMatch(/chunker\.flush\(\)/);
     expect(body).toMatch(/emit\(chunk\)/);
+  });
+
+  it('SPEAKS ONLY THE OPENING REGISTER, not the whole written answer', () => {
+    /**
+     * Listening is ~150wpm, linear and unskimmable; the same text is a fast
+     * skim on screen. Reading the full answer aloud forces the detail through
+     * the channel worst at carrying it — a 600-word answer becomes four
+     * minutes of audio the listener cannot skip through.
+     *
+     * So only the answer's opening paragraph is spoken. It stays a literal
+     * prefix of the written answer, so the two cannot contradict.
+     */
+    expect(src).toMatch(/import\s*\{\s*spokenRegister\s*\}\s*from\s*'@\/voice\/voiceReplyPolicy'/);
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 2800);
+    expect(body).toMatch(/chunker\.push\(spokenRegister\(raw\)\)/);
+  });
+
+  it('marks the turn as spoken BEFORE submitting it', () => {
+    // The store consumes the arm on the very next send, so it has to be armed
+    // first; arming after triggerSubmit would mark the turn AFTER the one it
+    // belongs to.
+    expect(src).toMatch(/import\s*\{\s*armVoiceTurn\s*\}\s*from\s*'@\/services\/voiceTurn'/);
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 2800);
+    expect(body).toMatch(/armVoiceTurn\(instruction\)/);
+    expect(body.indexOf('armVoiceTurn(instruction)')).toBeLessThan(body.indexOf('triggerSubmit()'));
   });
 
   it('reuses the tested chunker rather than re-deriving sentences or stripping', () => {

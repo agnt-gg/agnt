@@ -1,86 +1,79 @@
 /**
- * voiceReplyPolicy — how the assistant should TALK, as opposed to write.
+ * voiceReplyPolicy — which part of the answer is the SPOKEN one.
  *
- * THE FAILURE THIS PREVENTS
- * ------------------------
- * The single loudest "this is a machine" signal is not the voice quality. It is
- * length. A written answer that is excellent — six paragraphs, a table, a code
- * block, a numbered list — becomes intolerable when spoken, because the reader
- * can skim and the listener cannot. Ninety seconds of unskippable audio with
- * the answer buried at the end is worse than no voice at all.
+ * The prompt side of this lives in the backend
+ * (system-prompts/voiceRegister.js): on a voice turn the assistant is asked to
+ * open with the finding in as few sentences as it takes, then leave a blank
+ * line, then write the detail for the screen. This module is the reader of
+ * that convention.
  *
- * So voice mode is not "the same answer, read out". It is a different rendering
- * of the same work: a short spoken summary, with the full artifact still in the
- * transcript where it can be read, scrolled and copied. The chat is the
- * document; the voice is the conversation about it.
+ * WHY A BLANK LINE AND NOT A MARKER
+ * ---------------------------------
+ * The spoken register is the answer's opening paragraph — not a tagged block,
+ * not a separate field. Nothing has to be stripped before the chat renders, no
+ * marker can leak into the transcript, and the spoken text is a literal PREFIX
+ * of the written text. That last property is the valuable one: "the voice and
+ * the screen must never contradict" then holds by construction instead of by
+ * good behaviour.
  *
- * WHY A PROMPT ADDENDUM AND NOT POST-PROCESSING
- * ---------------------------------------------
- * Truncating a long answer after generation produces a stump: the model spends
- * its opening sentences on preamble and the summary never arrives. Telling the
- * model up front that it is speaking changes the SHAPE of what it writes, so
- * the first sentence carries the answer. Post-processing (sentenceChunker)
- * still strips what cannot be read aloud, but that is a safety net, not the
- * mechanism.
+ * STREAMING SAFETY
+ * ----------------
+ * This is called repeatedly on a growing string. Before the blank line arrives
+ * the whole answer looks like the opening paragraph, and the result grows with
+ * it; the moment the blank line lands the result STOPS growing and is fixed
+ * forever after. Feeding that into sentenceChunker means the voice speaks the
+ * lead as it streams and then falls silent for the detail, with no
+ * coordination between the two.
  */
-
-export const DEFAULT_VOICE_POLICY = Object.freeze({
-  /** Target length for a spoken reply, in sentences. */
-  maxSentences: 3,
-  /** Hard word ceiling; past this, listeners tune out. */
-  maxWords: 60,
-  /** Announce long-running tool work instead of going silent. */
-  narrateTools: true,
-});
 
 /**
- * The system-prompt addendum for a voice turn.
- * Appended to the existing prompt, never replacing it — the agent's identity,
- * tools and workspace context are all still in force.
+ * The part of an answer that should be spoken: everything up to the first
+ * blank line.
+ *
+ * A single-paragraph answer is returned whole — which is correct, because an
+ * answer with no detail section is one that was short enough to say.
+ *
+ * @param {string} text  the assistant's answer, possibly still streaming
+ * @returns {string}
  */
-export function buildVoicePromptAddendum(policy = {}) {
-  const p = { ...DEFAULT_VOICE_POLICY, ...policy };
+export function spokenRegister(text) {
+  const raw = String(text || '');
+  if (!raw) return '';
 
-  return [
-    '## VOICE MODE',
-    '',
-    'This turn is being SPOKEN ALOUD as well as written. The user is listening, not reading.',
-    '',
-    `- Lead with the answer. Aim for ${p.maxSentences} sentences or fewer, under ${p.maxWords} words.`,
-    '- Do not read code, tables, file paths, URLs or long numbers aloud. Produce them normally — they render in the chat — and refer to them in one short phrase ("I put the diff in the chat").',
-    '- No preamble, no restating the question, no "certainly", no summary of what you are about to say.',
-    '- Use plain spoken sentences. No markdown headings, bullet lists or numbered lists in the spoken part.',
-    '- If the answer genuinely needs length, say the one-sentence version aloud and put the detail in the chat.',
-    '- If you need something from the user, ask ONE short question and stop.',
-    p.narrateTools
-      ? '- Before a slow tool call, say what you are doing in a few words, then work quietly. Do not narrate every step.'
-      : '',
-    '',
-    'The user can interrupt you at any time. If they do, they have only heard the words spoken so far — treat anything after that as unsaid.',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  // \n\s*\n rather than a literal \n\n: a "blank" line commonly carries
+  // trailing spaces, and treating that as ordinary text would hand the entire
+  // answer to the voice — the exact failure this exists to prevent.
+  const boundary = raw.search(/\n[ \t]*\n/);
+  return boundary === -1 ? raw : raw.slice(0, boundary);
 }
 
 /**
- * Would this reply be painful to listen to?
- * Used to nudge the UI ("summarised for voice") and to flag prompt drift in
- * tests, not to alter the text — rewriting a reply after the fact reads worse
- * than a long one.
+ * Has the spoken register been fully received? Once true, `spokenRegister`
+ * will never return anything longer for this answer.
+ */
+export function spokenRegisterComplete(text) {
+  return /\n[ \t]*\n/.test(String(text || ''));
+}
+
+export const DEFAULT_VOICE_POLICY = Object.freeze({
+  /** Spoken registers longer than this suggest the convention was ignored. */
+  maxWords: 60,
+});
+
+/**
+ * Diagnostic only: is this spoken register long enough to be worth flagging?
+ *
+ * Deliberately NOT enforced. Truncating a reply after the fact produces a
+ * sentence that stops mid-thought, which is worse than one that runs long; the
+ * length belongs to whoever wrote the answer, and the prompt is where that is
+ * asked for.
  */
 export function assessSpokenLength(text, policy = {}) {
   const p = { ...DEFAULT_VOICE_POLICY, ...policy };
   const clean = String(text || '').trim();
-  if (!clean) return { words: 0, sentences: 0, tooLong: false };
-
+  if (!clean) return { words: 0, tooLong: false };
   const words = clean.split(/\s+/).filter(Boolean).length;
-  const sentences = (clean.match(/[.!?]+(\s|$)/g) || []).length || (words ? 1 : 0);
-
-  return {
-    words,
-    sentences,
-    tooLong: words > p.maxWords || sentences > p.maxSentences,
-  };
+  return { words, tooLong: words > p.maxWords };
 }
 
-export default { buildVoicePromptAddendum, assessSpokenLength, DEFAULT_VOICE_POLICY };
+export default { spokenRegister, spokenRegisterComplete, assessSpokenLength, DEFAULT_VOICE_POLICY };

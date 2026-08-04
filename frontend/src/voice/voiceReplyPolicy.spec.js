@@ -1,76 +1,95 @@
 import { describe, it, expect } from 'vitest';
-import { buildVoicePromptAddendum, assessSpokenLength, DEFAULT_VOICE_POLICY } from './voiceReplyPolicy.js';
+import {
+  spokenRegister,
+  spokenRegisterComplete,
+  assessSpokenLength,
+  DEFAULT_VOICE_POLICY,
+} from './voiceReplyPolicy.js';
 
-describe('buildVoicePromptAddendum', () => {
-  it('tells the model it is being spoken aloud', () => {
-    const p = buildVoicePromptAddendum();
-    expect(p).toMatch(/SPOKEN ALOUD/i);
-    expect(p).toMatch(/listening, not reading/i);
+describe('spokenRegister — the opening paragraph is what gets spoken', () => {
+  it('takes everything up to the first blank line', () => {
+    const answer = 'Three tests were failing, same root cause. Fixed.\n\n## What was wrong\nThe endpointer never saw a transcript.';
+    expect(spokenRegister(answer)).toBe('Three tests were failing, same root cause. Fixed.');
   });
 
-  it('states the length budget numerically', () => {
-    const p = buildVoicePromptAddendum({ maxSentences: 2, maxWords: 40 });
-    expect(p).toContain('2 sentences');
-    expect(p).toContain('40 words');
+  it('is a literal PREFIX of the written answer — they cannot contradict', () => {
+    const answer = 'Yes, it merged this morning.\n\nCommit abc123, on main.';
+    expect(answer.startsWith(spokenRegister(answer))).toBe(true);
   });
 
-  it('forbids reading code and tables aloud but keeps them in the chat', () => {
-    const p = buildVoicePromptAddendum();
-    expect(p).toMatch(/do not read code/i);
-    expect(p).toMatch(/render in the chat/i);
+  it('a single-paragraph answer is spoken whole', () => {
+    // Nothing to leave on screen means it was short enough to say.
+    expect(spokenRegister('Yes, already merged.')).toBe('Yes, already merged.');
   });
 
-  it('warns that only the spoken prefix was heard on an interruption', () => {
-    const p = buildVoicePromptAddendum();
-    expect(p).toMatch(/interrupt/i);
-    expect(p).toMatch(/only heard the words spoken so far/i);
+  it('treats a whitespace-only line as blank', () => {
+    // A "blank" line very often carries trailing spaces. Missing that would
+    // hand the ENTIRE answer to the voice — the exact failure this prevents.
+    const answer = 'The lead sentence.\n   \nThe detail nobody should hear.';
+    expect(spokenRegister(answer)).toBe('The lead sentence.');
+    expect(spokenRegister('Lead.\n\t\nDetail.')).toBe('Lead.');
   });
 
-  it('can disable tool narration', () => {
-    expect(buildVoicePromptAddendum({ narrateTools: true })).toMatch(/before a slow tool call/i);
-    expect(buildVoicePromptAddendum({ narrateTools: false })).not.toMatch(/before a slow tool call/i);
+  it('keeps a multi-line opening paragraph intact', () => {
+    const answer = 'First line of the lead.\nStill the lead.\n\nDetail.';
+    expect(spokenRegister(answer)).toBe('First line of the lead.\nStill the lead.');
   });
 
-  it('is a non-empty string with defaults', () => {
-    const p = buildVoicePromptAddendum();
-    expect(typeof p).toBe('string');
-    expect(p.length).toBeGreaterThan(100);
+  it('is safe on empty and non-string input', () => {
+    expect(spokenRegister('')).toBe('');
+    expect(spokenRegister(null)).toBe('');
+    expect(spokenRegister(undefined)).toBe('');
   });
 });
 
-describe('assessSpokenLength', () => {
-  it('is zero for empty input', () => {
-    expect(assessSpokenLength('')).toEqual({ words: 0, sentences: 0, tooLong: false });
-    expect(assessSpokenLength(null).words).toBe(0);
+describe('spokenRegister — streaming behaviour', () => {
+  /**
+   * Called repeatedly on a growing string. Before the blank line arrives the
+   * whole answer looks like the lead and the result grows with it; the moment
+   * the blank line lands the result is fixed forever. That is what makes the
+   * voice speak the lead as it streams and then fall silent for the detail,
+   * with no coordination between the two.
+   */
+  it('grows while the lead is still arriving', () => {
+    expect(spokenRegister('Three tests')).toBe('Three tests');
+    expect(spokenRegister('Three tests were failing')).toBe('Three tests were failing');
   });
 
-  it('accepts a short spoken reply', () => {
-    const r = assessSpokenLength('The build is green. Three tests were added.');
-    expect(r.tooLong).toBe(false);
-    expect(r.sentences).toBe(2);
+  it('STOPS growing once the blank line lands', () => {
+    const lead = 'Three tests were failing. Fixed.';
+    const withDetail = `${lead}\n\nHere is the whole diff and every file I touched.`;
+    const more = `${withDetail} And more detail still.`;
+    expect(spokenRegister(withDetail)).toBe(lead);
+    expect(spokenRegister(more)).toBe(lead);
   });
 
-  it('flags a reply that is too long to listen to', () => {
-    const long = Array.from({ length: 30 }, () => 'word word word').join(' ') + '.';
+  it('reports when the register is final', () => {
+    expect(spokenRegisterComplete('still streaming the lead')).toBe(false);
+    expect(spokenRegisterComplete('lead.\n\ndetail')).toBe(true);
+    expect(spokenRegisterComplete('lead.\n  \ndetail')).toBe(true);
+  });
+});
+
+describe('assessSpokenLength — diagnostic, never enforced', () => {
+  it('counts words', () => {
+    expect(assessSpokenLength('one two three').words).toBe(3);
+  });
+
+  it('flags a spoken register that ran long', () => {
+    const long = Array.from({ length: 80 }, () => 'word').join(' ');
     expect(assessSpokenLength(long).tooLong).toBe(true);
   });
 
-  it('flags too many sentences even when short', () => {
-    const many = 'One. Two. Three. Four. Five.';
-    expect(assessSpokenLength(many, { maxSentences: 3 }).tooLong).toBe(true);
+  it('accepts a short one', () => {
+    expect(assessSpokenLength('Yes, already merged.').tooLong).toBe(false);
   });
 
-  it('counts an unterminated sentence as one', () => {
-    expect(assessSpokenLength('no terminator here').sentences).toBe(1);
+  it('is zero for empty input', () => {
+    expect(assessSpokenLength('')).toEqual({ words: 0, tooLong: false });
+    expect(assessSpokenLength(null).words).toBe(0);
   });
 
-  it('honours policy overrides', () => {
-    const text = 'One. Two. Three. Four.';
-    expect(assessSpokenLength(text, { maxSentences: 10, maxWords: 100 }).tooLong).toBe(false);
-  });
-
-  it('uses sane defaults', () => {
-    expect(DEFAULT_VOICE_POLICY.maxSentences).toBeGreaterThan(0);
+  it('has a sane default budget', () => {
     expect(DEFAULT_VOICE_POLICY.maxWords).toBeGreaterThan(10);
   });
 });

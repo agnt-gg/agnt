@@ -27,6 +27,11 @@ export const PAGE_CONTEXT_FIELDS = Object.freeze([
   'goalId', 'goalContext',
   'codeId', 'codeContext',
   'workspaceState',
+  // Not a surface, but the same shape of fact: something about HOW this turn
+  // is being consumed that the prompt builder needs. `voiceMode` says the
+  // answer will be spoken as well as shown, which changes how it should be
+  // written (see system-prompts/voiceRegister.js).
+  'voiceMode',
 ]);
 
 /**

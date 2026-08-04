@@ -6,6 +6,7 @@ import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
 
@@ -1459,10 +1460,17 @@ export default {
           });
         }
 
+        // Will this answer be SPOKEN as well as shown? Consumed here, once,
+        // so the backend can ask for a spoken opening register
+        // (system-prompts/voiceRegister.js). A typed turn during a live voice
+        // session is not spoken and must not be marked — see voiceTurn.js.
+        const isVoiceTurn = consumeVoiceTurn(userInput);
+
         // Use FormData if files are present, otherwise use JSON
         if (files && files.length > 0) {
           const formData = new FormData();
           formData.append('message', userInput);
+          if (isVoiceTurn) formData.append('voiceMode', 'true');
           formData.append('history', JSON.stringify(deduped));
           if (conv.conversationId && !conv.conversationId.startsWith('temp-')) {
             formData.append('conversationId', conv.conversationId);
@@ -1547,6 +1555,7 @@ export default {
             goalId: resolvedGoalId || undefined,
             // undefined → field omitted by JSON.stringify; array (incl. []) → preserved
             enabledTools: Array.isArray(channelToolsForJson) ? channelToolsForJson : undefined,
+            voiceMode: isVoiceTurn || undefined,
           });
         }
 

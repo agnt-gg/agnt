@@ -273,6 +273,8 @@ import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
 import { useRealtimeVoice } from '@/composables/useRealtimeVoice';
 import { createSentenceChunker } from '@/voice/sentenceChunker';
+import { spokenRegister } from '@/voice/voiceReplyPolicy';
+import { armVoiceTurn } from '@/services/voiceTurn';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
@@ -769,6 +771,18 @@ export default {
      * hands over each sentence the moment it is complete, and the first one
      * starts the voice.
      *
+     * TWO REGISTERS, NOT A SUMMARY
+     * ----------------------------
+     * Only the answer's OPENING PARAGRAPH is spoken; everything after the first
+     * blank line is for the eye. The turn is marked as spoken before it is
+     * submitted, and the backend asks for the answer in that shape
+     * (system-prompts/voiceRegister.js), so the split is authored rather than
+     * derived — the writer knows the shape of the answer before writing it,
+     * which no downstream summariser reading a stream ever can.
+     *
+     * The spoken text stays a literal PREFIX of the written text, so the voice
+     * and the screen cannot contradict each other.
+     *
      * WHY THE CHUNKER RATHER THAN THE RAW TEXT
      * ----------------------------------------
      * The model speaks what it is given VERBATIM, which is what keeps the
@@ -807,12 +821,17 @@ export default {
           }
         };
 
+        // Arm BEFORE submitting: the store consumes this on the very next
+        // send, matched by text, so only this turn is marked as spoken.
+        armVoiceTurn(instruction);
         currentUserInput.value = instruction;
         triggerSubmit();
 
         const stopContent = watch(streamingAnswer, (raw) => {
           if (conversationEpoch.value !== epochAtStart) return;
-          speak(chunker.push(raw));
+          // Only the spoken register. Once the blank line arrives this stops
+          // growing, so the chunker naturally falls silent for the detail.
+          speak(chunker.push(spokenRegister(raw)));
         });
 
         const stopStream = watch(isStreaming, (streaming, was) => {

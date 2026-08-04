@@ -9,6 +9,7 @@ import {
 import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
+import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
@@ -845,7 +846,7 @@ const unifiedConfig = {
       { id: 'agent', label: 'Agent override', tokens: estimateTokens(agentOverride || ''), frozen: true },
     ];
 
-    return buildUnifiedSystemPrompt(context, {
+    const prompt = await buildUnifiedSystemPrompt(context, {
       skillsCatalogSection,
       memorySection,
       customInstructionsSection,
@@ -854,6 +855,26 @@ const unifiedConfig = {
       asyncToolsEnabled,
       residentElementIds: loadFrozenPromptGates(context, asyncToolsEnabled),
     });
+
+    /**
+     * Voice turns get one extra section, appended AFTER the assembled prompt.
+     *
+     * Appending rather than threading it through buildUnifiedSystemPrompt is
+     * deliberate on two counts. It keeps the section machinery untouched, and
+     * it puts the only per-turn-varying text at the very tail, leaving the
+     * entire stable prefix ahead of it byte-identical between a spoken turn
+     * and a typed one.
+     */
+    if (!context.voiceMode) return prompt;
+
+    const voiceSection = buildVoiceRegisterSection();
+    context._promptSections.push({
+      id: 'voice',
+      label: 'Voice register',
+      tokens: estimateTokens(voiceSection),
+      frozen: false,
+    });
+    return `${prompt}\n\n${voiceSection}`;
   },
   maxToolRounds: 100,
   responseType: 'stream',

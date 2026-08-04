@@ -790,6 +790,10 @@ async function universalChatHandler(req, res, context = {}) {
     // canvas tools address their writes to it, so a widget asked for in one
     // workspace cannot land in another when the user switches tabs mid-turn.
     workspaceState,
+    // This turn will be SPOKEN as well as shown, so the answer is asked for in
+    // two registers — a short opening paragraph for the voice, the detail after
+    // a blank line for the screen (system-prompts/voiceRegister.js).
+    voiceMode,
     // When false, use this turn's provider/model but do NOT persist them as the
     // account-wide default. Sent by per-workspace-provider turns so that using a
     // tab with its own provider never rewrites the user's global default.
