@@ -132,6 +132,18 @@ describe('turnGate — the reopen window', () => {
     expect(fx(r)).toContain(Effect.STOP_CAPTURE);
   });
 
+  it('abort clears the speech flag — a stale flag re-endpoints pure silence', () => {
+    const g = createTurnGate();
+    g.send({ type: 'start', now: 0 });
+    g.send({ type: 'speech_start', now: 10 });
+    expect(g.sawSpeech).toBe(true);
+    g.send({ type: 'abort', now: 100 });
+    expect(g.sawSpeech).toBe(false);
+    // And therefore silence after the abort is NOT a committable turn.
+    const r = g.send({ type: 'endpoint', now: 900 });
+    expect(r.state).toBe(VoiceState.LISTENING);
+  });
+
   it('clears the speech flag when a new turn begins', () => {
     const g = createTurnGate();
     g.send({ type: 'start', now: 0 });

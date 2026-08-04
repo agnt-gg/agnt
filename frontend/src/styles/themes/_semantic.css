@@ -76,8 +76,8 @@ body {
      --on-fill-x, defined on the adjacent line, in the same theme block. If you
      paint a background with --fill-x, the text on it MUST be --on-fill-x.
 
-     Why this exists: --color-primary is dark pink (#c43278) in light mode but
-     NEON GREEN (#19ef83) in dark. `color:#fff; background:var(--color-primary)`
+     Why this exists: --color-primary is NEON GREEN (#19ef83) in every theme
+     (the one brand green), and other themes could still choose a light hue. `color:#fff; background:var(--color-primary)`
      therefore measured 5.15:1 in light and 1.53:1 in dark — the same rule,
      legible in one theme and unreadable in the other, across 24 buttons.
 

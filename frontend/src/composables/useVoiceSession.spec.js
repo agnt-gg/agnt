@@ -36,11 +36,29 @@ const fakeCapture = {
 };
 
 const spoken = [];
+/**
+ * Controllable drain. Default resolves immediately (most tests don't care
+ * about playback duration); a test that DOES care calls holdPlayback() and
+ * releases it explicitly — that is how the drain regression is driven.
+ */
+let playbackGate = null;
+function holdPlayback() {
+  let release;
+  const p = new Promise((r) => {
+    release = r;
+  });
+  playbackGate = p;
+  return () => {
+    playbackGate = null;
+    release();
+  };
+}
 const fakeSpeech = {
   speak: vi.fn((t) => {
     if (t) spoken.push(t);
     return Promise.resolve();
   }),
+  whenIdle: vi.fn(() => playbackGate || Promise.resolve()),
   cancel: vi.fn(() => ({ spoken: 'The build is green.', discarded: 'rest', partial: '' })),
   // NOTE: `spoken` collects everything ever uttered across the test, it is not
   // a mirror of queue state. reset() must NOT clear it, or an assertion that
@@ -100,6 +118,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   for (const k of Object.keys(captureHandlers)) delete captureHandlers[k];
   spoken.length = 0;
+  playbackGate = null; // a test that failed before release() must not leak its held gate
   fakeCapture.silenceMs = 0;
   fakeCapture.isSpeaking = false;
   transcriptToReturn = 'open the auth file';
@@ -258,6 +277,37 @@ describe('useVoiceSession — speaking the reply', () => {
     s.handleStreamEvent('done', {});
     await advance(10);
     expect(fakeCapture.setDucked).toHaveBeenCalledWith(false);
+  });
+
+  it('REGRESSION: the reply keeps playing after the stream ends', async () => {
+    /**
+     * `done` used speak('') as a queue drain, but the empty-text guard
+     * returns without touching the queue — so reply_end fired the instant the
+     * stream finished and the next turn's reset() cancelled every chunk still
+     * playing. Long replies went silent mid-sentence, every time. The drain
+     * must wait for ACTUAL playback: while audio is in flight, no reply_end,
+     * no reset, still SPEAKING.
+     */
+    const s = useVoiceSession({ onCommit: vi.fn() });
+    await s.start();
+    await toThinking(s);
+
+    const release = holdPlayback(); // audio is mid-sentence
+    s.handleStreamEvent('content_delta', { accumulated: 'A long reply that is still being spoken.' });
+    await advance(10);
+    expect(s.state.value).toBe('speaking');
+
+    fakeSpeech.reset.mockClear();
+    s.handleStreamEvent('done', {});
+    await advance(50);
+
+    // Stream is over, audio is not: the session must NOT reopen the mic yet.
+    expect(s.state.value).toBe('speaking');
+    expect(fakeSpeech.reset).not.toHaveBeenCalled();
+
+    release(); // playback finishes
+    await advance(20);
+    expect(s.state.value).toBe(VoiceState.LISTENING);
   });
 
   it('returns to listening after the reply — continuous conversation', async () => {
@@ -513,6 +563,63 @@ describe('useVoiceSession — stop phrases and wake routing', () => {
     await advance(700);
 
     expect(onCommit.mock.calls[0][0].text).toBe('run the tests');
+  });
+});
+
+describe('useVoiceSession — a dead session sends nothing, anywhere', () => {
+  it('REGRESSION: stop() during in-flight transcription swallows the commit', async () => {
+    /**
+     * THE CROSS-CHAT LEAK. COMMIT_TURN awaits the transcription fetch
+     * (300–1500ms). Switching conversations inside that window stops the
+     * session — but the commit still ran when the fetch resolved, and
+     * onCommit sends through the composer, WHICH NOW POINTS AT A DIFFERENT
+     * CONVERSATION. The user watched audio from one chat get delivered to
+     * another. A commit is only valid for the session that started it.
+     */
+    let resolveFetch;
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise((r) => {
+          resolveFetch = r;
+        })
+    );
+
+    const onCommit = vi.fn();
+    const s = useVoiceSession({ onCommit });
+    await s.start();
+
+    fire('speech_start', {});
+    fakeCapture.silenceMs = 700;
+    await advance(60); // endpoint → reopen
+    await advance(700); // reopen expires → COMMIT_TURN, awaiting the fetch
+
+    s.stop(); // the user switched chats
+
+    resolveFetch({ ok: true, json: async () => ({ success: true, transcript: 'audio from the old chat' }) });
+    await advance(50);
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(s.state.value).toBe(VoiceState.IDLE);
+  });
+
+  it("REGRESSION: whisper's silence annotation never becomes a message", async () => {
+    // Whisper returns the literal token [BLANK_AUDIO] for silence — it does
+    // not return an empty string — and unfiltered it was committed and sent.
+    transcriptToReturn = '[BLANK_AUDIO]';
+    const onCommit = vi.fn();
+    const s = useVoiceSession({ onCommit });
+    await s.start();
+
+    fire('speech_start', {});
+    fakeCapture.silenceMs = 700;
+    await advance(60);
+    await advance(700);
+
+    expect(onCommit).not.toHaveBeenCalled();
+    // And the session must not strand on "Thinking…" for a request that will
+    // never exist — it returns to listening on its own.
+    await advance(50);
+    expect(s.state.value).toBe(VoiceState.LISTENING);
   });
 });
 

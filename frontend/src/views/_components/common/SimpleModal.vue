@@ -176,11 +176,12 @@ button {
   color: var(--color-med-navy);
 }
 
-input:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
+/* No scoped focus outline. The global rule in _forms.css recolours the
+   field's existing border on focus; a scoped `outline: 2px solid` on top of
+   that drew border + offset outline = the "double border on focus" bug.
+   (The global rule's `outline: none` is inside :where() at zero specificity
+   precisely so components CAN override it — which is why this scoped rule
+   won and had to be deleted rather than out-specified.) */
 textarea {
   max-height: 240px;
 }

@@ -75,7 +75,11 @@ body:not(.dark):not(.rose) {
      The darkening from the previous values is a few percent of lightness —
      imperceptible as palette identity, decisive as contrast — and it raises
      canvas contrast as a side effect. */
-  --color-green: #0d7a45; /* 5.20:1 canvas, 4.6:1 on its own 20% tint */
+  /* NO green override. There is exactly ONE green in this product: the root
+     neon #19ef83 (--color-green in _variables.css). It is the brand color and
+     stays identical in every theme — deliberately exempt from the AA
+     darkening applied to the other hues below (Nathan's call, 2026-08-04:
+     "we should ONLY have ONE green"). */
   --color-blue: #09718a; /* 5.40:1 canvas, 4.6:1 on tint */
   --color-red: #b63131; /* 5.82:1 canvas, 4.6:1 on tint */
   --color-orange: #995600; /* 5.48:1 canvas, 4.6:1 on tint */
@@ -91,9 +95,10 @@ body:not(.dark):not(.rose) {
      construction. #c43278 is an imperceptible darkening that passes both
      directions: 4.55:1 as text, 5.15:1 for a white label on it. */
   --color-pink: #b02d6c; /* 5.91:1 canvas, 4.6:1 on tint */
-  --color-primary: #b02d6c; /* tracks pink; white label on it is now 5.9:1 */
+  --color-primary: var(--color-green); /* the ONE brand green — root neon
+     #19ef83, same as dark/cyberpunk. */
   --color-secondary: #09718a; /* tracks blue */
-  --svg-gradient-start: #b02d6c;
+  --svg-gradient-start: var(--color-green); /* tracks primary, as in dark */
   --svg-gradient-end: #09718a;
   --color-light-green: var(--color-text);
 
@@ -152,13 +157,12 @@ body:not(.dark):not(.rose) {
      --orange-rgb and --violet-rgb are deliberately NOT overridden here: the
      base palette's bright values are already correct for a tint, which is why
      orange and violet never looked muddy. */
-  --green-rgb: 21, 200, 112; /* #15c870 */
   --blue-rgb: 14, 165, 200; /* #0ea5c8 */
   --pink-rgb: 208, 53, 128; /* #d03580 */
   --red-rgb: 220, 60, 60; /* #dc3c3c */
   --yellow-rgb: 255, 199, 0; /* #ffc700 */
   --indigo-rgb: 125, 61, 229; /* #7d3de5 */
-  --primary-rgb: 208, 53, 128; /* #d03580 */
+  --primary-rgb: var(--green-rgb); /* tracks the one green (root 25,239,131) */
 
   /* --user-message-bg removed — see the note in _variables.css. */
 

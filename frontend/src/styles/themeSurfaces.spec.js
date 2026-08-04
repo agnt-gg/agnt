@@ -298,10 +298,22 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
      */
     const KNOWN_DARK_DEBT = new Set(['pink', 'violet', 'indigo']);
 
+    /**
+     * BRAND EXEMPTION, not debt: green. Nathan's call (2026-08-04): there is
+     * exactly ONE green in the product — the root neon #19ef83 — identical in
+     * every theme, including light, where it measures ~1.4:1 on its own tint.
+     * That is a deliberate brand-identity trade against AA, so unlike the
+     * dark debt above there is no promise to come back. Anti-rot below still
+     * verifies the failure is real so this line cannot silently exempt a
+     * value that has started passing.
+     */
+    const BRAND_EXEMPT_LIGHT = new Set(['green']);
+
     const bad = [];
     for (const theme of ['light', 'dark']) {
       for (const h of HUES) {
         if (theme === 'dark' && KNOWN_DARK_DEBT.has(h)) continue;
+        if (theme === 'light' && BRAND_EXEMPT_LIGHT.has(h)) continue;
         const text = resolve(`var(--color-${h})`, MAPS[theme]);
         const trip = MAPS[theme][`--${h}-rgb`];
         if (!text || !trip) continue;
@@ -320,6 +332,25 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
       + 'as `background: rgba(var(--<hue>-rgb), .15); color: var(--color-<hue>)`, so\n'
       + 'the tint is the surface that matters, not the canvas.\n'
     ).toBe('clean');
+  });
+
+  it('the light brand exemption is still real: neon green actually fails AA there (anti-rot)', () => {
+    // If green ever stops failing (e.g. someone reintroduces a darkened light
+    // green — which would violate the ONE-green rule anyway), this fires and
+    // the exemption above must be deleted.
+    const text = resolve('var(--color-green)', MAPS.light);
+    const trip = MAPS.light['--green-rgb'];
+    const rgb = trip.split(',').map((x) => parseFloat(x));
+    const tint = over({ rgb, a: 0.2 }, CANVAS.light);
+    expect(
+      ratio(over(text, tint), tint),
+      'Light-mode green now clears AA on its own tint, so the BRAND_EXEMPT_LIGHT\n'
+      + 'entry is vacuous — remove it so the guard starts enforcing green again.'
+    ).toBeLessThan(4.5);
+    // And the ONE-green rule itself: light must NOT redefine the green tokens.
+    const light = read(path.join(THEMES, '_light.css'));
+    expect(light, '_light.css must not redefine --color-green (ONE green: root neon #19ef83)').not.toMatch(/--color-green\s*:/);
+    expect(light, '_light.css must not redefine --green-rgb (ONE green: root triplet)').not.toMatch(/--green-rgb\s*:/);
   });
 
   it('the known dark debt is still real, and still exactly three (anti-rot)', () => {

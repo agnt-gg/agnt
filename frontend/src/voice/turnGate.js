@@ -188,8 +188,12 @@ export function createTurnGate(config = {}) {
       }
 
       case 'abort': {
-        // Cancel whatever is in flight but stay in the session.
+        // Cancel whatever is in flight but stay in the session. This starts a
+        // NEW turn, so the speech flag resets with it — leaving it latched let
+        // the OLD turn's speech re-endpoint the ensuing silence immediately,
+        // and the machine looped listening→reopen→commit(empty)→abort forever.
         transcript = '';
+        sawSpeech = false;
         turnId += 1;
         if (!cfg.continuous) return transition(VoiceState.IDLE, [Effect.CANCEL_PLAYBACK, Effect.CANCEL_REQUEST, Effect.SESSION_END]);
         if (cfg.wakeWord) return transition(VoiceState.WAKE_WAIT, [Effect.CANCEL_PLAYBACK, Effect.CANCEL_REQUEST, Effect.ARM_WAKE]);

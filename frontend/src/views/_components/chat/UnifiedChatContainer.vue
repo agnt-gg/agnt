@@ -800,9 +800,10 @@ export default {
  * CORRECTION: an earlier version of this comment claimed the raw --color-*
  * hues "drop to ~1.9:1 on the light theme" and used --status-*-text instead.
  * That was wrong, and measurement is what settled it: _light.css overrides
- * every brand hue (--color-green #0d7a45, --color-blue #09718a,
- * --color-yellow #9a6200) with ratios documented at 5.20:1 on canvas and
- * 4.6:1 ON ITS OWN 20% TINT. The claim was true of the BASE values in
+ * the brand hues (--color-blue #09718a, --color-yellow #9a6200, …) with
+ * ratios documented at ~5:1 on canvas and 4.6:1 ON ITS OWN 20% TINT. (Green
+ * is the exception since 2026-08-04: the neon #19ef83 is the ONE brand green
+ * in every theme, deliberately exempt from the AA darkening.) The claim was true of the BASE values in
  * _variables.css and false of the ones that actually render. The hues are
  * also what every neighbouring button uses for its accent, so they are both
  * correct and consistent. The 0.2 alpha is that documented tint level.

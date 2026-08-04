@@ -346,10 +346,27 @@ export function createSpeechOut(config = {}, deps = {}) {
     setState(OutputState.IDLE);
   }
 
+  /**
+   * Resolves once everything queued SO FAR has finished playing (or been
+   * cancelled). Resolves immediately when nothing is queued.
+   *
+   * THE BUG THIS REPLACES: the session used `speak('')` as a drain — "queue an
+   * empty chunk, its turn comes when everything before it is done." But the
+   * empty-text guard in speak() returns WITHOUT touching the chain, so the
+   * caller's .then ran instantly, `reply_end` fired the moment the stream
+   * ended, and the new turn's reset() cancelled every chunk still playing.
+   * The assistant went silent mid-sentence on every reply longer than one
+   * chunk. A drain must be its own primitive, not a special case of speak.
+   */
+  function whenIdle() {
+    return chain.then(() => undefined);
+  }
+
   return {
     speak,
     cancel,
     reset,
+    whenIdle,
     spokenPrefix,
     on,
     get state() {

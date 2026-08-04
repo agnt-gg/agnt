@@ -30,6 +30,7 @@ import { shouldEndpoint } from '../voice/semanticEndpointer.js';
 import { createSentenceChunker } from '../voice/sentenceChunker.js';
 import { createSpeechOut, isWebSpeechAvailable } from '../voice/speechOut.js';
 import { detectWake, isStopPhrase, stripWakePhrase } from '../voice/wakePhrase.js';
+import { sanitizeTranscript } from '../voice/asrArtifacts.js';
 import { API_CONFIG } from '../../user.config.js';
 
 /** How often the gate is ticked. Bounds reopen/barge-in resolution. */
@@ -145,11 +146,23 @@ export function useVoiceSession(options = {}) {
           await pendingSegment;
           break;
 
-        case Effect.COMMIT_TURN:
+        case Effect.COMMIT_TURN: {
           // Never commit ahead of the transcript for the segment just closed.
+          const turnAtCommit = gate.turnId;
           await pendingSegment;
+          /**
+           * THE CROSS-CHAT LEAK. Transcription takes 300–1500ms, and this
+           * await holds the commit open for all of it. Stop the session in
+           * that window — switching conversations does exactly that — and the
+           * commit still ran when the fetch resolved, sending the dead
+           * session's audio through a composer that now points at a DIFFERENT
+           * conversation. A commit is only valid for the session and turn
+           * that started it.
+           */
+          if (gate.state === VoiceState.IDLE || gate.turnId !== turnAtCommit) break;
           commit();
           break;
+        }
 
         case Effect.CANCEL_PLAYBACK:
           cancelPlayback();
@@ -205,8 +218,16 @@ export function useVoiceSession(options = {}) {
         body: form,
       });
       const data = await res.json();
-      const text = (data?.transcript || '').trim();
+      // Whisper annotates silence rather than returning nothing —
+      // [BLANK_AUDIO], (coughs), a bare hallucinated "you." — and unfiltered
+      // those commit as real messages the assistant then answers.
+      const text = sanitizeTranscript(data?.transcript);
       if (!text) return;
+
+      // The session may have been stopped while the fetch was in flight;
+      // writing `carried` back after stop() cleared it re-arms the very
+      // commit the stop was meant to kill.
+      if (gate.state === VoiceState.IDLE) return;
 
       carried = carried ? `${carried} ${text}` : text;
       partialTranscript.value = carried;
@@ -224,7 +245,17 @@ export function useVoiceSession(options = {}) {
     const text = (gate.transcript || carried).trim();
     carried = '';
     partialTranscript.value = '';
-    if (!text) return;
+    if (!text) {
+      // Nothing usable was said (silence, or the transcript sanitised to
+      // nothing). The gate already moved to THINKING for this commit, and no
+      // request will ever arrive to move it on — without this it sits on
+      // "Thinking…" until the user happens to speak. Return to listening,
+      // off the effect stack.
+      queueMicrotask(() => {
+        if (gate.state === VoiceState.THINKING) send({ type: 'abort' });
+      });
+      return;
+    }
 
     // A whole-utterance stop ends the session and is never sent to the model.
     // "stop the docker container" is not a stop phrase; see wakePhrase.js.
@@ -291,9 +322,12 @@ export function useVoiceSession(options = {}) {
       case 'final_content': {
         if (gate.turnId !== streamTurn) return;
         for (const c of chunker.flush()) speech.speak(c);
-        // Wait for the queue to drain before reopening the mic, otherwise the
-        // tail of the reply is treated as the start of the next question.
-        void speech.speak('').then(() => {
+        // Wait for playback to actually finish before reopening the mic.
+        // REGRESSION: this used `speak('')` as the drain, but the empty-text
+        // guard returns without touching the queue — so reply_end fired the
+        // instant the stream ended and the new turn's reset() cancelled every
+        // chunk still playing. The reply went silent mid-sentence, every time.
+        void speech.whenIdle().then(() => {
           if (gate.turnId !== streamTurn) return;
           capture.setDucked(false);
           send({ type: 'reply_end' });

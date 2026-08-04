@@ -540,6 +540,51 @@ describe('speechOut — provider engine and fallback', () => {
   });
 });
 
+describe('speechOut — whenIdle (the drain primitive)', () => {
+  it('resolves immediately when nothing is queued', async () => {
+    const { out } = build();
+    let settled = false;
+    out.whenIdle().then(() => {
+      settled = true;
+    });
+    await tick();
+    expect(settled).toBe(true);
+  });
+
+  it('REGRESSION: does not resolve while chunks are still playing', async () => {
+    // speak('') was used as a drain, but its empty-text guard never touches
+    // the chain — the "drain" resolved instantly and the caller cancelled
+    // audio that was still in flight. whenIdle must track REAL playback.
+    const { out, synth } = build();
+    out.speak('First sentence still in flight.');
+    out.speak('Second sentence queued behind it.');
+    await tick();
+
+    let settled = false;
+    out.whenIdle().then(() => {
+      settled = true;
+    });
+    await tick(8);
+    expect(settled).toBe(false); // both chunks unfinished
+
+    synth.finishOne();
+    await tick(8);
+    expect(settled).toBe(false); // one still unfinished
+
+    await drain(synth);
+    expect(settled).toBe(true);
+  });
+
+  it('resolves after a cancel — cancelled audio is finished audio', async () => {
+    const { out } = build();
+    out.speak('About to be interrupted.');
+    await tick();
+    const p = out.whenIdle();
+    out.cancel();
+    await expect(p).resolves.toBeUndefined();
+  });
+});
+
 describe('speechOut — session housekeeping', () => {
   it('reset clears the heard-so-far record', async () => {
     const { out, synth, clock } = build();

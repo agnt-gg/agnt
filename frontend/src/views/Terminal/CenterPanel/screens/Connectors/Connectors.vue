@@ -2640,20 +2640,10 @@ export default {
 
 .connectors-section {
   background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  padding: 0;
+  border: none;
+  padding: 24px;
   transition: all 0.3s ease;
   border-radius: 16px;
-}
-
-body.dark .connectors-section {
-  border: 1px solid var(--terminal-border-color);
-}
-
-.connectors-section.full-width,
-body.dark .connectors-section.full-width {
-  background: transparent;
-  border: none;
 }
 
 .add-provider-form {
