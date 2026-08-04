@@ -176,6 +176,73 @@ describe('recoverInterruptedStream', () => {
     expect(msgs[4].content).toMatch(/lost mid-response/);
   });
 
+  // The reconcile path reads the RAW PROVIDER transcript, where a tool-using
+  // turn stores content as a block array. Recovering a tool-heavy turn used to
+  // replace a good local reply with "[object Object]" — a recovery that
+  // destroyed the thing it was recovering.
+  it('recovers a tool-using turn as words, not as coerced objects', async () => {
+    vi.useFakeTimers();
+    state.conversations[CONV].messages = [
+      { id: 'u1', role: 'user', content: 'move the windows' },
+      { id: 'a1', role: 'assistant', content: 'Let me look' },
+    ];
+    fetchConversation.mockResolvedValue({
+      conversationId: CONV,
+      messages: [
+        { role: 'user', content: 'move the windows' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'read layout first' },
+            { type: 'text', text: 'Let me look at the current layout first.' },
+            { type: 'tool_use', id: 'toolu_01', name: 'get_canvas_state', input: {} },
+          ],
+        },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_01', content: 'ok' }] },
+        { role: 'assistant', content: [{ type: 'text', text: 'Done \u2014 chat slimmed to 3 columns.' }] },
+      ],
+    });
+
+    const c = ctx({ reattachResult: false });
+    const p = chat.actions.recoverInterruptedStream(c, { conversationId: CONV });
+    await vi.runAllTimersAsync();
+    expect(await p).toBe(true);
+
+    const msgs = state.conversations[CONV].messages;
+    // The tool-result turn is plumbing, not a user bubble.
+    expect(msgs).toHaveLength(3);
+    expect(msgs.some((m) => String(m.content).includes('[object Object]'))).toBe(false);
+    expect(msgs[1].content).toBe('Let me look at the current layout first.');
+    expect(msgs[1].toolCalls[0]).toMatchObject({ name: 'get_canvas_state', result: 'ok' });
+    expect(msgs[2].content).toBe('Done \u2014 chat slimmed to 3 columns.');
+  });
+
+  it('refuses a remote transcript with MORE rows but less to say', async () => {
+    vi.useFakeTimers();
+    state.conversations[CONV].messages = [
+      { id: 'u1', role: 'user', content: 'move the windows' },
+      { id: 'a1', role: 'assistant', content: 'Done \u2014 chat slimmed to 3 columns, sim stretched to 9x8.' },
+    ];
+    // Three rows beats two on length; it says nothing. Whatever conversion
+    // produced this, adopting it would be a downgrade.
+    fetchConversation.mockResolvedValue({
+      conversationId: CONV,
+      messages: [
+        { role: 'user', content: '[object Object]' },
+        { role: 'assistant', content: '[object Object],[object Object]' },
+        { role: 'assistant', content: '[object Object]' },
+      ],
+    });
+
+    const c = ctx({ reattachResult: false });
+    const p = chat.actions.recoverInterruptedStream(c, { conversationId: CONV });
+    await vi.runAllTimersAsync();
+    expect(await p).toBe(false);
+
+    const msgs = state.conversations[CONV].messages;
+    expect(msgs[1].content).toBe('Done \u2014 chat slimmed to 3 columns, sim stretched to 9x8.');
+  });
+
   it('announces instead of dying silently when nothing is recoverable', async () => {
     vi.useFakeTimers();
     fetchConversation.mockResolvedValue(null);

@@ -4,7 +4,7 @@ import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
-import { serverMessagesToUi } from '@/services/chatStreamReducer.js';
+import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
@@ -1920,15 +1920,19 @@ export default {
       }
 
       // No live run — the turn may have COMPLETED while the tab was deaf.
-      // conversation_logs is only written at turn end, so a transcript at
-      // least as long as ours is the completed truth; a shorter one is a
-      // previous turn and must never clobber local content.
+      // conversation_logs is only written at turn end, so a transcript that
+      // says at least as much as ours is the completed truth; one that says
+      // less is a previous turn and must never clobber local content.
+      // Measured by SUBSTANCE, not row count: the provider log adds two rows
+      // per tool round-trip, so length would hand the win to a transcript that
+      // had more rows and less content.
       try {
         const remote = await fetchConversation(conversationId);
         const remoteMessages = serverMessagesToUi(remote?.messages);
-        const localMeaningful = (state.conversations[conversationId]?.messages || [])
-          .filter((m) => m.role === 'user' || m.role === 'assistant').length;
-        if (remoteMessages.length > 0 && remoteMessages.length >= localMeaningful) {
+        const localMessages = (state.conversations[conversationId]?.messages || [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant');
+        if (remoteMessages.length > 0
+          && transcriptSubstance(remoteMessages) >= transcriptSubstance(localMessages)) {
           commit('SCOPED_SET_MESSAGES', { conversationId, messages: remoteMessages });
           markRunEnded(conversationId);
           dispatch('autosaveConversation', { debounce: false, conversationId });
