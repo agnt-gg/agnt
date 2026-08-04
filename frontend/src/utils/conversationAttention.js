@@ -7,7 +7,8 @@
  * content_outputs:
  *
  *     unread  :=  archived_at IS NULL
- *                 AND (last_read_at IS NULL OR updated_at > last_read_at)
+ *                 AND last_read_at IS NOT NULL
+ *                 AND updated_at > last_read_at
  *
  * `updated_at` moves on every save (a finished run autosaves, a background
  * agent turn autosaves, a rename saves). `last_read_at` moves only when the
@@ -16,6 +17,33 @@
  * with no event bookkeeping, survives reloads, and is identical on every
  * device — the previous localStorage implementation was per-device and a
  * conversation read on the desktop stayed "unread" on the phone forever.
+ *
+ * WHY A NULL WATERMARK IS *NOT* UNREAD
+ * ------------------------------------
+ * This clause used to read `last_read_at IS NULL OR updated_at > last_read_at`,
+ * i.e. "no watermark" was treated as "needs your attention". That is a
+ * category error, and it emptied the feature of meaning the moment it shipped:
+ * every conversation predating the column had no watermark, so 1624 of 1649
+ * conversations — the entire history — appeared in the "Needs you" rail at
+ * once. A triage queue containing everything is not a queue.
+ *
+ * The migration tried to paper over this by backfilling `last_read_at =
+ * updated_at` on the run that added the column. That is a one-shot,
+ * fire-and-forget UPDATE across ~780MB of conversation content whose ONLY
+ * failure mode is "the entire feature inverts, silently, forever". It did not
+ * run. Correctness must not depend on a single unverified write.
+ *
+ * So NULL now means exactly what it says: no read watermark has ever been
+ * recorded, therefore there is no evidence of anything unseen, therefore the
+ * conversation is quiet. Unread requires POSITIVE evidence — a watermark that
+ * a later change has overtaken. Rows acquire a watermark lazily the first
+ * time they are opened or saved (see ContentOutputModel.createOrUpdate), so
+ * the population converges with no migration and no mass rewrite.
+ *
+ * A manual "Mark as Unread" therefore cannot be expressed as NULL. It writes a
+ * watermark one second BEFORE `updated_at` — "I have read up to just before
+ * the last change" — which is both literally true and derives unread through
+ * the same single predicate as everything else. One rule, no special cases.
  *
  * Archived conversations are never unread: archiving IS the statement
  * "I'm done with this".
@@ -36,10 +64,13 @@ export function isUnread(output) {
   if (!output) return false;
   if (output.archived_at) return false;
 
-  const lastRead = parseServerTime(output.last_read_at);
-  if (lastRead === 0) return true; // never read (or manually marked unread)
+  // No watermark recorded => no evidence of anything unseen => not unread.
+  // Checked on the RAW value, not the parsed one: parseServerTime collapses
+  // both "absent" and "the epoch" to 0, and the epoch is a real instant.
+  const raw = output.last_read_at;
+  if (raw === null || raw === undefined || raw === '') return false;
 
-  return parseServerTime(output.updated_at) > lastRead;
+  return parseServerTime(output.updated_at) > parseServerTime(raw);
 }
 
 /**

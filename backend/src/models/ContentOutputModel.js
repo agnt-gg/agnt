@@ -5,6 +5,27 @@ class ContentOutputModel {
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
+      //
+      // THE last_read_at CLAUSE. Unread is derived as "updated_at is later
+      // than last_read_at", which needs a watermark to compare against; rows
+      // predating the column have none. Rather than a one-shot mass backfill
+      // (see database/index.js for why that is a trap on this table), each
+      // row acquires a watermark the first time it is written, pinned one
+      // second BEFORE its pre-save updated_at.
+      //
+      // One second before, and not equal to: SQLite timestamps are
+      // second-resolution, so pinning to the pre-save value would tie with
+      // the new CURRENT_TIMESTAMP whenever two saves land in the same second
+      // and the comparison would be false — the very first background change
+      // to a legacy conversation would go unreported.
+      //
+      // COALESCE, so this is a no-op for any row that already has a
+      // watermark: a save must never mark a conversation read.
+      //
+      // Keep prose OUT of the SQL below. A stray backtick in a comment inside
+      // a template literal silently truncates the statement, and the driver
+      // fails by aborting the process rather than raising — an unreadable
+      // crash a long way from the typo. Verified the hard way.
       db.run(
         `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -17,6 +38,7 @@ class ContentOutputModel {
            content_type = excluded.content_type,
            conversation_id = excluded.conversation_id,
            title = excluded.title,
+           last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
            updated_at = CURRENT_TIMESTAMP`,
         [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title],
         function (err) {
@@ -98,10 +120,15 @@ class ContentOutputModel {
       });
     });
   }
+  // NOTE for the three writers below (rename, move, bulk move): each bumps
+  // updated_at, and each is something the USER just did. Without carrying the
+  // watermark forward, renaming your own conversation would light its own
+  // "needs you" dot. They stamp last_read_at in the same statement so the
+  // derived-unread relation stays false across an action you performed.
   static updateTitle(id, userId, title) {
     return new Promise((resolve, reject) => {
       db.run(
-        'UPDATE content_outputs SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+        'UPDATE content_outputs SET title = ?, updated_at = CURRENT_TIMESTAMP, last_read_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
         [title, id, userId],
         function (err) {
           if (err) reject(err);
@@ -113,7 +140,7 @@ class ContentOutputModel {
   static moveToGroup(id, userId, groupId) {
     return new Promise((resolve, reject) => {
       db.run(
-        'UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+        'UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP, last_read_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
         [groupId || null, id, userId],
         function (err) {
           if (err) reject(err);
@@ -127,7 +154,7 @@ class ContentOutputModel {
     return new Promise((resolve, reject) => {
       const placeholders = ids.map(() => '?').join(',');
       db.run(
-        `UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders}) AND user_id = ?`,
+        `UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP, last_read_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders}) AND user_id = ?`,
         [groupId || null, ...ids, userId],
         function (err) {
           if (err) reject(err);
@@ -138,8 +165,17 @@ class ContentOutputModel {
   }
 
   /**
-   * Set the read watermark. `read = true` stamps last_read_at = now;
-   * `read = false` clears it (manual "Mark as Unread").
+   * Set the read watermark.
+   *
+   * `read = true`  -> last_read_at = now.
+   * `read = false` -> last_read_at = one second before updated_at, i.e. "I
+   *                   have read up to just before the last change".
+   *
+   * Mark-as-unread deliberately does NOT write NULL. NULL means "no watermark
+   * was ever recorded", which is the state of every conversation predating
+   * this column, and conflating the two is what put a user's entire history
+   * into the triage rail. Writing a real watermark keeps unread derivable
+   * from ONE predicate with no special cases.
    *
    * Deliberately does NOT touch updated_at — reading a conversation is not a
    * change to it, and unread is derived as updated_at > last_read_at, so
@@ -147,8 +183,9 @@ class ContentOutputModel {
    */
   static setReadState(id, userId, read) {
     return new Promise((resolve, reject) => {
+      const watermark = read ? 'CURRENT_TIMESTAMP' : "datetime(updated_at, '-1 second')";
       db.run(
-        `UPDATE content_outputs SET last_read_at = ${read ? 'CURRENT_TIMESTAMP' : 'NULL'} WHERE id = ? AND user_id = ?`,
+        `UPDATE content_outputs SET last_read_at = ${watermark} WHERE id = ? AND user_id = ?`,
         [id, userId],
         function (err) {
           if (err) reject(err);
@@ -183,7 +220,8 @@ class ContentOutputModel {
         `UPDATE content_outputs SET last_read_at = CURRENT_TIMESTAMP
          WHERE user_id = ?
            AND archived_at IS NULL
-           AND (last_read_at IS NULL OR updated_at > last_read_at)${scopeClause}`,
+           AND last_read_at IS NOT NULL
+           AND updated_at > last_read_at${scopeClause}`,
         scoped ? [userId, ...ids] : [userId],
         function (err) {
           if (err) reject(err);
