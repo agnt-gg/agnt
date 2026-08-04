@@ -17,6 +17,7 @@ SkillDiscoveryRoutes.get('/', authenticateToken, async (req, res) => {
       lastScan: SkillDiscoveryService.lastScanTime,
       scanLocations: SkillDiscoveryService.getScanLocations(),
       total: catalog.length,
+      parseFailures: SkillDiscoveryService.getParseFailures(),
     });
   } catch (error) {
     console.error('Error fetching discovered skills:', error);
@@ -40,6 +41,7 @@ SkillDiscoveryRoutes.post('/rescan', authenticateToken, async (req, res) => {
       skills: catalog,
       lastScan: SkillDiscoveryService.lastScanTime,
       total: catalog.length,
+      parseFailures: SkillDiscoveryService.getParseFailures(),
     });
   } catch (error) {
     console.error('Error rescanning skills:', error);

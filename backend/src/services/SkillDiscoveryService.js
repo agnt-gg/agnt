@@ -53,6 +53,14 @@ class SkillDiscoveryService {
     this.isScanning = false;
     this.lastScanTime = null;
     this.initialized = false;
+    /**
+     * Skills found on disk that could NOT be loaded, rebuilt on every scan.
+     * A parse failure used to be console-only, so a broken skill vanished from
+     * the catalog with nothing surfacing anywhere — which is exactly how one
+     * sat broken for months. Exposed via getParseFailures() and the discovery API.
+     * @type {Array<{name: string, path: string, errors: string[], skipped: boolean, at: string}>}
+     */
+    this.parseFailures = [];
   }
 
   /**
@@ -159,6 +167,8 @@ class SkillDiscoveryService {
     try {
       const discovered = new Map();
       let totalDirsScanned = 0;
+      // Rebuilt from scratch by _parseSkillDirectory during this scan
+      this.parseFailures = [];
 
       // Scan in ascending priority order so higher-priority overwrites lower
       const sortedLocations = [...this.scanLocations].sort((a, b) => a.priority - b.priority);
@@ -251,6 +261,7 @@ class SkillDiscoveryService {
 
       if (parsed.errors.length > 0) {
         console.warn(`[SkillDiscovery] Errors parsing ${skillMdPath}:`, parsed.errors);
+        this._recordParseFailure(dirPath, skillMdPath, parsed.errors, !parsed.frontmatter.description);
         if (!parsed.frontmatter.description) {
           return null;
         }
@@ -281,8 +292,32 @@ class SkillDiscoveryService {
       };
     } catch (error) {
       console.error(`[SkillDiscovery] Failed to parse ${skillMdPath}:`, error.message);
+      this._recordParseFailure(dirPath, skillMdPath, [error.message], true);
       return null;
     }
+  }
+
+  /**
+   * Record a skill that failed to load so it is visible instead of silent.
+   * @param {boolean} skipped true when the skill was dropped from the catalog
+   *        entirely (vs. loaded with degraded metadata).
+   */
+  _recordParseFailure(dirPath, skillMdPath, errors, skipped) {
+    this.parseFailures.push({
+      name: path.basename(dirPath),
+      path: skillMdPath,
+      errors,
+      skipped,
+      at: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Skills found on disk that failed to load during the last scan.
+   * @returns {Array<{name: string, path: string, errors: string[], skipped: boolean, at: string}>}
+   */
+  getParseFailures() {
+    return [...this.parseFailures];
   }
 
   /**

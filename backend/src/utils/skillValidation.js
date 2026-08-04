@@ -50,6 +50,14 @@ export function parseSkillMd(content) {
     return result;
   }
 
+  // Strip a UTF-8 BOM (U+FEFF) before anything looks at the text. Windows
+  // editors add one silently, and it defeats the ^--- frontmatter anchor below
+  // — a perfectly valid skill then falls through to the loose-format parser,
+  // where it acquires a garbage name derived from its H1 and a bogus
+  // "missing description" error. Every caller (discovery, import, plugin
+  // loader) funnels through here, so this one line covers them all.
+  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+
   // Parse YAML frontmatter (between --- delimiters)
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!fmMatch) {
