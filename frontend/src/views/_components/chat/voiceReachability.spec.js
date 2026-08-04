@@ -259,20 +259,17 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     // runAgntForVoice must actually submit through the composer, not fabricate
     // an answer or call some parallel API.
     const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 900);
+    const body = src.slice(at, at + 2600);
     expect(body).toMatch(/currentUserInput\.value = instruction/);
     expect(body).toMatch(/triggerSubmit\(\)/);
     expect(body).toMatch(/resolve\(/);
   });
 
-  it('resolves on the stream ending, and stops watching first', () => {
-    // A watcher left alive fires on every later turn and resolves stale
-    // promises — the model would then speak an answer to a different question.
+  it('completes on the stream ending, not on a timer', () => {
     const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 900);
+    const body = src.slice(at, at + 2600);
     expect(body).toMatch(/watch\(isStreaming/);
-    expect(body).toMatch(/unwatch\(\)/);
-    expect(body.indexOf('unwatch()')).toBeLessThan(body.indexOf('resolve('));
+    expect(body).not.toMatch(/setTimeout/);
   });
 
   it('falls back to the cascade when natural voice is unavailable', () => {
@@ -296,23 +293,80 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     expect(src).toMatch(/voiceNatural/);
   });
 
-  it('hands the model a SPEAKABLE version of her answer, not raw markdown', () => {
-    // The model is told to speak the result verbatim, which is what keeps the
-    // screen and the voice in agreement. That is only survivable if the text
-    // is speakable — raw answers carry fenced code, tables and URLs, which
-    // read aloud are minutes of punctuation names.
-    expect(src).toMatch(/import\s*\{\s*stripUnspeakable\s*\}\s*from\s*'@\/voice\/sentenceChunker'/);
+  it('SPEAKS AS IT STREAMS — sentence by sentence, not after the whole turn', () => {
+    // Waiting for the falling edge of isStreaming before speaking a word means
+    // silence for as long as the turn takes. The answer arrives progressively,
+    // so it is emitted progressively.
+    expect(src).toMatch(/import\s*\{\s*createSentenceChunker\s*\}\s*from\s*'@\/voice\/sentenceChunker'/);
     const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 1600);
-    expect(body).toMatch(/stripUnspeakable\(raw\)/);
-    expect(body).toMatch(/resolve\(\s*speakable/);
+    const body = src.slice(at, at + 2600);
+    expect(body).toMatch(/runAgntForVoice = \(instruction, emit\)/);
+    expect(body).toMatch(/chunker\.push\(raw\)/);
+    expect(body).toMatch(/chunker\.flush\(\)/);
+    expect(body).toMatch(/emit\(chunk\)/);
   });
 
-  it('reuses the tested stripper rather than defining a second notion of speakable', () => {
-    // Two definitions of "speakable" would drift, and the voice would start
-    // reading things the chunker knows not to.
+  it('reuses the tested chunker rather than re-deriving sentences or stripping', () => {
+    // sentenceChunker owns both "where does a sentence end" (it will not split
+    // v2.17.2) and "what must never be read aloud". A second definition of
+    // either would drift from it.
     expect(src).not.toMatch(/function stripUnspeakable/);
     expect(src).not.toMatch(/replace\(\/```/);
+    expect(src).not.toMatch(/split\(\/\[\.\!\?\]/);
+  });
+
+  it('tears BOTH watchers down before resolving', () => {
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 2600);
+    expect(body).toMatch(/stopContent\(\);\s*\n\s*stopStream\(\);/);
+    expect(body.indexOf('stopStream();')).toBeLessThan(body.indexOf('resolve(spokeSomething'));
+  });
+});
+
+describe('the voice is locked to its conversation, like every other chat state', () => {
+  /**
+   * Reported: switching chats carried the voice over, or it started up on a
+   * message in the newly-opened chat. Three mechanisms, one root cause — the
+   * realtime session was added after the conversation-switch guard and never
+   * inherited a conversation identity:
+   *
+   *   1. the switch handler stopped only the cascade engine
+   *   2. runAgntForVoice calls triggerSubmit(), which sends to whatever
+   *      conversation is active AT THAT MOMENT
+   *   3. its isStreaming watcher mirrors the ACTIVE conversation, so it
+   *      resolved off a different chat's reply
+   */
+  let src;
+  beforeEach(() => {
+    src = fs.readFileSync(BASE_SCREEN, 'utf8');
+  });
+
+  it('a conversation switch stops BOTH engines, not just the cascade', () => {
+    expect(src).toMatch(/stopAllVoiceSessions = \(\) => \{[\s\S]{0,200}realtime\.stop\(\)/);
+    expect(src).toMatch(/stopAllVoiceSessions = \(\) => \{[\s\S]{0,200}voice\.stop\(\)/);
+    const at = src.indexOf('chat/SET_ACTIVE_CONVERSATION');
+    expect(src.slice(at, at + 1200)).toMatch(/stopAllVoiceSessions\(\)/);
+  });
+
+  it('the stop hook is assigned, not referenced — the engines are in TDZ there', () => {
+    // The subscriber is registered ~300 lines before the engines exist; a
+    // mutation during setup would otherwise throw on their temporal dead zone.
+    expect(src).toMatch(/let stopAllVoiceSessions = \(\) => \{\};/);
+    expect(src.indexOf('let stopAllVoiceSessions')).toBeLessThan(
+      src.indexOf('chat/SET_ACTIVE_CONVERSATION')
+    );
+    expect(src.indexOf('stopAllVoiceSessions = () => {\n      if (voice')).toBeGreaterThan(
+      src.indexOf('const realtime = useRealtimeVoice')
+    );
+  });
+
+  it('an in-flight run is bound to the conversation it started in', () => {
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 2600);
+    expect(body).toMatch(/const convAtStart = draftKey\.value/);
+    // BOTH watchers must check it: the content watcher (or it speaks another
+    // chat's reply) and the completion watcher (or it resolves off one).
+    expect(body.match(/draftKey\.value !== convAtStart/g) || []).toHaveLength(2);
   });
 });
 

@@ -165,9 +165,18 @@ describe('main chat screen — source guards', () => {
 
   it('a genuine switch loads the incoming draft and ends a live voice session', () => {
     const at = src.indexOf('chat/SET_ACTIVE_CONVERSATION');
-    const branch = src.slice(at, at + 500);
+    const branch = src.slice(at, at + 1200);
     expect(branch).toMatch(/getDraft\(draftKey\.value\)/);
-    expect(branch).toMatch(/if \(voice\.isActive\.value\) voice\.stop\(\);/);
+    // Stopping moved behind stopAllVoiceSessions once a second engine existed:
+    // the branch is registered before either engine is declared, so naming
+    // them directly there is a temporal-dead-zone throw. Assert the contract
+    // (both engines stop) rather than the shape of one call site.
+    expect(branch).toMatch(/stopAllVoiceSessions\(\)/);
+    // lastIndexOf, not indexOf: the first match is the no-op DECLARATION
+    // (`let stopAllVoiceSessions = () => {};`), which of course stops nothing.
+    const hook = src.slice(src.lastIndexOf('stopAllVoiceSessions = () => {'));
+    expect(hook.slice(0, 220)).toMatch(/voice\.stop\(\)/);
+    expect(hook.slice(0, 220)).toMatch(/realtime\.stop\(\)/);
   });
 
   it('REGRESSION: id assignment on first send keeps the session and carries the draft', () => {

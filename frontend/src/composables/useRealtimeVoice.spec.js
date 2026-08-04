@@ -42,6 +42,17 @@ function harness(options = {}) {
   return useRealtimeVoice({ ...options, sendFrame: (e) => sent.push(e) });
 }
 
+/** A response.done frame, with or without a tool call. */
+const turnDoneFrame = (hadToolCall) =>
+  JSON.stringify({
+    type: 'response.done',
+    response: {
+      output: hadToolCall
+        ? [{ type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c1', arguments: '{"instruction":"go"}' }]
+        : [],
+    },
+  });
+
 /** The function_call_output frames emitted for a given call id. */
 const answersFor = (callId) =>
   sent.filter((e) => e.type === 'conversation.item.create' && e.item?.call_id === callId);
@@ -79,7 +90,8 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
 
-    expect(onRunAgnt).toHaveBeenCalledWith('check the build');
+    // (instruction, emit) — emit is what lets the host stream sentences.
+    expect(onRunAgnt).toHaveBeenCalledWith('check the build', expect.any(Function));
     expect(expectAnswered('call_1')).toBe('the build is green');
   });
 
@@ -186,6 +198,113 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
   });
 });
 
+describe('useRealtimeVoice — speaks as the answer arrives, not after it lands', () => {
+  /**
+   * Waiting for the whole turn before speaking a word means silence for as
+   * long as the turn takes — a minute on a tool-heavy run. The answer streams,
+   * so it is spoken as it streams.
+   */
+  const asides = () => sent.filter((e) => e.type === 'response.create' && e.response);
+
+  it('THE FIRST SENTENCE answers the call, before the run has finished', async () => {
+    let finish;
+    const s = harness({
+      onRunAgnt: (instruction, emit) =>
+        new Promise((resolve) => {
+          emit('The build is green.');
+          finish = () => resolve('');
+        }),
+    });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    // Answered while the orchestrator is still working — that is what starts
+    // the voice immediately instead of after the turn.
+    expect(expectAnswered('call_1')).toBe('The build is green.');
+    finish();
+    await vi.advanceTimersByTimeAsync(10);
+  });
+
+  it('later sentences are spoken ONE AT A TIME, not fired all at once', async () => {
+    // The session allows one active response; a second create while the first
+    // is still speaking is an error.
+    let emitFn;
+    const s = harness({
+      onRunAgnt: (instruction, emit) =>
+        new Promise((resolve) => {
+          emitFn = emit;
+          emit('First sentence.');
+          resolve('');
+        }),
+    });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    emitFn('Second sentence.');
+    emitFn('Third sentence.');
+    await vi.advanceTimersByTimeAsync(10);
+
+    // The first response is still active, so exactly one aside has gone out.
+    expect(asides()).toHaveLength(1);
+    expect(asides()[0].response.instructions).toContain('Second sentence.');
+
+    // That response completes -> the next one is released.
+    s._handleMessage(turnDoneFrame(false));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(asides()).toHaveLength(2);
+    expect(asides()[1].response.instructions).toContain('Third sentence.');
+  });
+
+  it('a run that streams NOTHING is still answered (deadlock guard holds)', async () => {
+    const s = harness({ onRunAgnt: async () => '' });
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    expect(expectAnswered('call_1')).toBeTruthy();
+  });
+
+  it('a host that ignores `emit` entirely still works', async () => {
+    // The old contract returned the whole answer; that path must not break.
+    const s = harness({ onRunAgnt: async () => 'the whole answer at once' });
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    expect(expectAnswered('call_1')).toBe('the whole answer at once');
+  });
+
+  it('empty or whitespace emits are ignored rather than spoken', async () => {
+    const s = harness({
+      onRunAgnt: async (instruction, emit) => {
+        emit('   ');
+        emit('');
+        emit('Real sentence.');
+        return '';
+      },
+    });
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    expect(expectAnswered('call_1')).toBe('Real sentence.');
+  });
+
+  it('emits after the session stops are dropped', async () => {
+    let emitFn;
+    const s = harness({
+      onRunAgnt: (instruction, emit) =>
+        new Promise(() => {
+          emitFn = emit;
+        }),
+    });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(1);
+    s.stop();
+
+    emitFn('should never be spoken');
+    await vi.advanceTimersByTimeAsync(10);
+    expect(answersFor('call_1')).toHaveLength(0);
+  });
+});
+
 describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () => {
   /**
    * The user reported watching a voice conversation happen with nothing
@@ -253,6 +372,39 @@ describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () 
 
     expect(onUserSaid).toHaveBeenCalledWith('hello');
     expect(onAssistantSaid).toHaveBeenCalledWith('Hi there.');
+  });
+
+  it('REGRESSION: a multi-sentence narration is not recorded as off-script', async () => {
+    // The answer now streams across several responses. Clearing the narration
+    // flag on the first one would make sentences two onward look like turns
+    // the model invented, and they would be written to the chat a second time.
+    const onAssistantSaid = vi.fn();
+    let emitFn;
+    const s = harness({
+      onAssistantSaid,
+      onRunAgnt: (instruction, emit) =>
+        new Promise((resolve) => {
+          emitFn = emit;
+          emit('First sentence.');
+          resolve('');
+        }),
+    });
+
+    s._handleMessage(turnDone(true)); // delegated
+    await vi.advanceTimersByTimeAsync(10);
+    emitFn('Second sentence.');
+
+    // Sentence one finishes speaking...
+    s._handleMessage(assistantSpeech('First sentence.'));
+    s._handleMessage(turnDone(false));
+    await vi.advanceTimersByTimeAsync(10);
+
+    // ...and sentence two.
+    s._handleMessage(assistantSpeech('Second sentence.'));
+    s._handleMessage(turnDone(false));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onAssistantSaid).not.toHaveBeenCalled();
   });
 
   it('records an off-script turn only ONCE', async () => {

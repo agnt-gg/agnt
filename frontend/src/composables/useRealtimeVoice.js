@@ -44,6 +44,7 @@ import {
   interpretEvent,
   buildFunctionOutput,
   buildResponseCreate,
+  buildSpokenAside,
   BridgeAction,
 } from '../voice/realtimeBridge.js';
 import { API_CONFIG } from '../../user.config.js';
@@ -129,12 +130,59 @@ export function useRealtimeVoice(options = {}) {
    */
   let pendingUserText = '';
   let pendingAssistantText = '';
-  /** The next response will narrate a tool result already written to the chat. */
-  let awaitingToolResultSpeech = false;
+
+  /**
+   * SPEAKING THE ANSWER AS IT ARRIVES, NOT AFTER IT LANDS.
+   *
+   * Waiting for the orchestrator to finish before speaking a single word means
+   * the user hears nothing for as long as the turn takes — seconds on a plain
+   * answer, a minute on a tool-heavy one. That silence is the difference
+   * between a conversation and a form submission, and it is avoidable: the
+   * answer arrives sentence by sentence, so it can be spoken sentence by
+   * sentence.
+   *
+   * The first sentence ANSWERS the pending function call, which unblocks the
+   * session and starts the voice immediately. Every later sentence is a
+   * separate spoken item.
+   *
+   * SEQUENCING IS NOT OPTIONAL: the session allows one active response at a
+   * time, so a second response.create while the first is still speaking is an
+   * error. Chunks therefore queue and drain on response.done — which is also
+   * exactly the pacing a person uses, one sentence finishing before the next
+   * begins.
+   */
+  const speakQueue = [];
+  /** A response is in flight; nothing new may be created until it completes. */
+  let responseActive = false;
+  /**
+   * We are mid-answer: everything being spoken came from the orchestrator and
+   * is already in the chat. Distinguishes narration (do not record) from a
+   * turn the model answered by itself (record, see below).
+   */
+  let narrating = false;
+  /** The orchestrator run has returned; only queued chunks remain. */
+  let runFinished = true;
+  /**
+   * Narration responses created but not yet finished speaking.
+   *
+   * An empty queue does NOT mean narration is over — it means the last sentence
+   * has been SENT. Clearing `narrating` on queue-empty ended it one response
+   * early, so the final sentence looked off-script and was written to the chat
+   * a second time. Count what is in flight, not what is waiting.
+   */
+  let pendingNarrations = 0;
 
   function clearTurnBuffers() {
     pendingUserText = '';
     pendingAssistantText = '';
+  }
+
+  /** Send the next queued sentence, if the session is free to speak. */
+  function drainSpeakQueue() {
+    if (responseActive || speakQueue.length === 0) return;
+    responseActive = true;
+    pendingNarrations += 1;
+    send(buildSpokenAside(speakQueue.shift()));
   }
 
   function send(event) {
@@ -155,23 +203,48 @@ export function useRealtimeVoice(options = {}) {
   async function handleRunAgnt(action, gen) {
     if (!action.callId) return;
 
-    if (action.parseError || !action.instruction) {
-      send(
-        buildFunctionOutput(
-          action.callId,
-          'I could not read that request. Ask the user to rephrase it.'
-        )
-      );
+    /** Answer the pending call. Exactly once, on every path — see the header. */
+    let answered = false;
+    const answerCall = (text) => {
+      if (answered) return;
+      answered = true;
+      narrating = true;
+      responseActive = true;
+      pendingNarrations += 1;
+      send(buildFunctionOutput(action.callId, text));
       send(buildResponseCreate());
+      state.value = RealtimeState.SPEAKING;
+    };
+
+    if (action.parseError || !action.instruction) {
+      answerCall('I could not read that request. Ask the user to rephrase it.');
       return;
     }
 
     state.value = RealtimeState.WORKING;
+    runFinished = false;
+
+    /**
+     * Called by the host for each speakable sentence as the orchestrator
+     * streams. The FIRST one answers the call — that is what makes the voice
+     * start immediately instead of after the whole turn.
+     */
+    const emit = (text) => {
+      if (gen !== generation) return;
+      const clean = String(text || '').trim();
+      if (!clean) return;
+      if (!answered) {
+        answerCall(clean);
+        return;
+      }
+      speakQueue.push(clean);
+      drainSpeakQueue();
+    };
 
     let result;
     try {
       result = await Promise.race([
-        onRunAgnt(action.instruction),
+        onRunAgnt(action.instruction, emit),
         new Promise((resolve) =>
           setTimeout(
             () =>
@@ -187,11 +260,12 @@ export function useRealtimeVoice(options = {}) {
       result = `AGNT hit an error: ${err?.message || 'unknown failure'}. Tell the user plainly.`;
     }
 
+    runFinished = true;
     if (gen !== generation) return; // session was stopped while AGNT worked
 
-    send(buildFunctionOutput(action.callId, result || 'AGNT returned nothing.'));
-    send(buildResponseCreate());
-    state.value = RealtimeState.SPEAKING;
+    // Nothing streamed — an empty answer, an error, or a timeout. The call has
+    // to be answered anyway or the session blocks on it for ever.
+    if (!answered) answerCall(result || 'AGNT returned nothing.');
   }
 
   // ---- event pump --------------------------------------------------------
@@ -232,16 +306,25 @@ export function useRealtimeVoice(options = {}) {
           break;
 
         case BridgeAction.TURN_COMPLETE:
+          // Whatever was speaking has finished; the session can speak again.
+          responseActive = false;
+
           if (action.hadToolCall) {
             // The run_agnt path writes this turn, and whatever the model said
-            // alongside the call is filler ("let me look"). Drop both, and
-            // expect the NEXT response to narrate the result.
-            awaitingToolResultSpeech = true;
-          } else if (awaitingToolResultSpeech) {
-            // This is that narration. AGNT's full answer — with its code,
-            // tables and links — is already in the chat; the spoken paraphrase
-            // would only duplicate it, worse.
-            awaitingToolResultSpeech = false;
+            // alongside the call is filler. Drop both; what follows is
+            // narration of the orchestrator's answer.
+            narrating = true;
+          } else if (narrating) {
+            // A narration chunk. Her full answer is already in the chat
+            // verbatim; echoing the spoken copy would duplicate it.
+            //
+            // Narration spans MANY responses now that the answer streams
+            // sentence by sentence, so this stays true until the run has
+            // returned, the queue is empty, AND everything sent has finished
+            // speaking. Clearing it early makes the remaining sentences look
+            // off-script and records them a second time.
+            pendingNarrations = Math.max(0, pendingNarrations - 1);
+            if (runFinished && speakQueue.length === 0 && pendingNarrations === 0) narrating = false;
           } else if (pendingUserText || pendingAssistantText) {
             // Off-script: the model answered without delegating, which its
             // instructions forbid. Record it rather than let the exchange
@@ -250,7 +333,9 @@ export function useRealtimeVoice(options = {}) {
             if (pendingUserText) onUserSaid(pendingUserText);
             if (pendingAssistantText) onAssistantSaid(pendingAssistantText);
           }
+
           clearTurnBuffers();
+          drainSpeakQueue();
           break;
 
         case BridgeAction.RUN_AGNT:
@@ -382,7 +467,11 @@ export function useRealtimeVoice(options = {}) {
     audioEl = null;
     assistantPartial.value = '';
     clearTurnBuffers();
-    awaitingToolResultSpeech = false;
+    speakQueue.length = 0;
+    responseActive = false;
+    narrating = false;
+    runFinished = true;
+    pendingNarrations = 0;
     state.value = RealtimeState.IDLE;
   }
 

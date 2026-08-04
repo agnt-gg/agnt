@@ -272,7 +272,7 @@ import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
 import { useRealtimeVoice } from '@/composables/useRealtimeVoice';
-import { stripUnspeakable } from '@/voice/sentenceChunker';
+import { createSentenceChunker } from '@/voice/sentenceChunker';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
@@ -414,6 +414,18 @@ export default {
     watch(currentUserInput, (v) => setDraft(draftKey.value, v), { flush: 'sync' });
 
     /**
+     * End every live voice session. Assigned once both engines exist, further
+     * down this setup.
+     *
+     * Indirection rather than referencing them directly: the subscriber below
+     * is registered here but the engines are declared ~300 lines later, so a
+     * mutation arriving during setup would hit their temporal dead zone and
+     * throw. A no-op default means "nothing to stop yet", which is exactly
+     * true before they exist.
+     */
+    let stopAllVoiceSessions = () => {};
+
+    /**
      * React to the MUTATION, not to the derived key.
      *
      * REGRESSION THIS PREVENTS: `activeConversationId` changes for two
@@ -437,8 +449,14 @@ export default {
         // A genuine switch. Typing already persisted the outgoing draft (sync
         // flush above); load the incoming one and end any live voice session
         // — the mic belongs to the conversation it was opened in.
+        //
+        // BOTH engines, not just the cascade. The realtime session was added
+        // later and did not inherit this, so it survived the switch: its mic
+        // stayed hot, its in-flight run delivered into the NEW chat, and its
+        // isStreaming watcher resolved off the new conversation's reply. Three
+        // symptoms, one cause — no conversation identity.
         currentUserInput.value = getDraft(draftKey.value);
-        if (voice.isActive.value) voice.stop();
+        stopAllVoiceSessions();
       }
     });
     onUnmounted(unsubscribeDraftSync);
@@ -713,48 +731,83 @@ export default {
     // orchestrator stays the brain. The turn lands in the chat like any other,
     // with the full tool surface, and the model speaks the result.
 
+    /** The assistant text currently streaming, or '' when there is none. */
+    const streamingAnswer = () => {
+      const list = store.state.chat.messages || [];
+      const last = list[list.length - 1];
+      return last && last.role === 'assistant' ? last.content || '' : '';
+    };
+
     /**
-     * Run an instruction through the orchestrator and resolve with the words it
-     * said, so the realtime model can read them aloud.
+     * Run an instruction through the orchestrator, speaking her answer SENTENCE
+     * BY SENTENCE as it arrives.
      *
-     * Resolves on the FALLING EDGE of isStreaming rather than on a timer,
-     * because a tool-heavy turn has no predictable duration. The unwatch is
-     * called before resolving — a watcher left alive here would fire on every
-     * later turn and resolve stale promises.
+     * WHY NOT WAIT FOR THE WHOLE TURN
+     * -------------------------------
+     * The first version resolved on the falling edge of isStreaming, so nothing
+     * was spoken until the entire turn had finished — seconds on a plain
+     * answer, a minute on a tool-heavy one. The user just hears silence, which
+     * is the difference between a conversation and a form submission. The
+     * answer arrives progressively, so it can be spoken progressively: `emit`
+     * hands over each sentence the moment it is complete, and the first one
+     * starts the voice.
      *
-     * WHY THE ANSWER IS STRIPPED BEFORE IT IS HANDED OVER
-     * ---------------------------------------------------
-     * The model is told to speak this text VERBATIM, which is what keeps the
-     * screen and the voice in agreement. That instruction is only survivable
-     * if what we hand it is actually speakable: Annie's answers routinely
-     * contain fenced code, tables, URLs and file paths, and read aloud those
-     * are minutes of punctuation names.
+     * WHY THE CHUNKER RATHER THAN THE RAW TEXT
+     * ----------------------------------------
+     * The model speaks what it is given VERBATIM, which is what keeps the
+     * screen and the voice in agreement — and that is only survivable if the
+     * text is speakable. sentenceChunker is the tested definition of both
+     * "where does a sentence end" (it will not split `v2.17.2` or `index.js`)
+     * and "what must never be read aloud" (fenced code and tables become "I
+     * have put the code in the chat"). Reusing it rather than re-deriving
+     * either rule is what stops the two definitions drifting apart.
      *
-     * So the split is: the CHAT gets the full answer, and the VOICE gets the
-     * same answer with the unspeakable parts replaced by the short spoken notes
-     * stripUnspeakable already produces ("I have put the code in the chat").
-     * Same words wherever words exist — the only difference is that the voice
-     * refers to the artifacts instead of reciting them.
-     *
-     * Reusing sentenceChunker's stripper rather than writing a second one
-     * matters: it is the tested definition of "speakable" in this codebase,
-     * and two definitions would drift.
+     * BOUND TO ITS CONVERSATION
+     * -------------------------
+     * The conversation is captured at the start and every callback checks it.
+     * `triggerSubmit` and `isStreaming` both act on whatever conversation is
+     * active RIGHT NOW, so without this a switch mid-run would deliver the
+     * instruction into the new chat and then speak that chat's reply.
      */
-    const runAgntForVoice = (instruction) =>
+    const runAgntForVoice = (instruction, emit) =>
       new Promise((resolve) => {
+        const convAtStart = draftKey.value;
+        const chunker = createSentenceChunker();
+        let spokeSomething = false;
+
+        const speak = (chunks) => {
+          for (const chunk of chunks) {
+            if (!chunk.trim()) continue;
+            spokeSomething = true;
+            emit(chunk);
+          }
+        };
+
         currentUserInput.value = instruction;
         triggerSubmit();
 
-        const unwatch = watch(isStreaming, (streaming, was) => {
+        const stopContent = watch(streamingAnswer, (raw) => {
+          if (draftKey.value !== convAtStart) return;
+          speak(chunker.push(raw));
+        });
+
+        const stopStream = watch(isStreaming, (streaming, was) => {
           if (!(was && !streaming)) return;
-          unwatch();
-          const list = store.state.chat.messages || [];
-          const last = list[list.length - 1];
-          const raw = last && last.role === 'assistant' ? last.content || '' : '';
-          const speakable = stripUnspeakable(raw);
-          resolve(
-            speakable || 'I have put the answer in the chat.'
-          );
+          // Both watchers are torn down BEFORE resolving: one left alive fires
+          // on every later turn and resolves stale promises, which would have
+          // the model speak an answer to a different question.
+          stopContent();
+          stopStream();
+
+          if (draftKey.value !== convAtStart) {
+            resolve(''); // switched away; the session is being stopped anyway
+            return;
+          }
+
+          speak(chunker.flush());
+          // The return value only answers the call when NOTHING streamed —
+          // otherwise the first emitted sentence already did.
+          resolve(spokeSomething ? '' : 'I have put the answer in the chat.');
         });
       });
 
@@ -767,6 +820,14 @@ export default {
       // ENTIRELY on its own, which its instructions forbid; see the buffering
       // comment in useRealtimeVoice.js for why that safety net exists.
     });
+
+    // Both engines exist now, so the conversation-switch handler above can
+    // reach them. See stopAllVoiceSessions for why this is assigned rather
+    // than referenced directly.
+    stopAllVoiceSessions = () => {
+      if (voice.isActive.value) voice.stop();
+      if (realtime.isActive.value) realtime.stop();
+    };
 
     /**
      * One button, best available engine.
