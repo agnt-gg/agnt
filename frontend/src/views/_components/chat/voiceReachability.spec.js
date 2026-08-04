@@ -37,6 +37,7 @@ import UnifiedChatContainer from './UnifiedChatContainer.vue';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, '../../..');
 const BASE_SCREEN = path.join(SRC, 'views/Terminal/CenterPanel/BaseScreen.vue');
+const UNIFIED = path.join(HERE, 'UnifiedChatContainer.vue');
 
 vi.mock('@/services/chatChannelConfig.js', () => ({ getChannelConfig: () => null }));
 
@@ -215,6 +216,94 @@ describe('one voice system, not two', () => {
     // so `:show-voice-input="false"` keeps its meaning.
     const wrapper = mountChat({ showVoiceInput: false });
     expect(wrapper.find('.chat-voice-btn').exists()).toBe(false);
+  });
+});
+
+describe('the voice button looks like the control it sits beside', () => {
+  /**
+   * The first version styled itself after the old dictation mic — a bare glyph
+   * — while every other button in that composer is a 36px circle. It read as a
+   * different KIND of thing, which is a real defect: a control's appearance is
+   * how a user knows what it is.
+   *
+   * These compare the voice button's declarations against its actual
+   * neighbours rather than against hardcoded values, so the row can be
+   * restyled wholesale and this still means "matches its siblings".
+   */
+  const ruleFor = (src, selector) => {
+    const at = src.indexOf(`\n${selector} {`);
+    if (at === -1) return null;
+    return src.slice(at, src.indexOf('}', at));
+  };
+
+  const declared = (block, prop) => {
+    const m = block && block.match(new RegExp(`(?:^|\\n)\\s*${prop}:\\s*([^;]+);`));
+    return m ? m[1].trim() : null;
+  };
+
+  // The properties that make these buttons read as one family.
+  const SHAPE = ['width', 'height', 'border-radius', 'background', 'color', 'margin-left', 'flex-shrink'];
+
+  it('the main chat voice button matches its neighbours exactly when idle', () => {
+    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    const voice = ruleFor(src, '.chat-voice-button');
+    const attach = ruleFor(src, '.chat-attach-button');
+
+    expect(voice).toBeTruthy();
+    expect(attach).toBeTruthy();
+    for (const prop of SHAPE) {
+      expect(declared(attach, prop), `sibling declares ${prop}`).toBeTruthy();
+      expect(declared(voice, prop), `voice button ${prop}`).toBe(declared(attach, prop));
+    }
+  });
+
+  it('it is a circle, not a bare glyph (the regression, stated plainly)', () => {
+    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    const voice = ruleFor(src, '.chat-voice-button');
+    expect(declared(voice, 'border-radius')).toBe('50%');
+    expect(declared(voice, 'background')).not.toBe('none');
+  });
+
+  it('hover behaves like its neighbours', () => {
+    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    const voice = ruleFor(src, '.chat-voice-button:hover:not(:disabled)');
+    const attach = ruleFor(src, '.chat-attach-button:hover:not(:disabled)');
+    expect(voice).toBeTruthy();
+    expect(declared(voice, 'background')).toBe(declared(attach, 'background'));
+    expect(declared(voice, 'transform')).toBe(declared(attach, 'transform'));
+  });
+
+  it('active states tint the circle rather than removing it', () => {
+    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    for (const state of ['voice-on', 'voice-listening,\n.chat-voice-button.voice-reopen', 'voice-thinking', 'voice-speaking']) {
+      const block = ruleFor(src, `.chat-voice-button.${state}`);
+      expect(block, state).toBeTruthy();
+      expect(declared(block, 'background'), `${state} background`).toMatch(/^rgba\(var\(--\w+-rgb\), 0\.2\)$/);
+      expect(declared(block, 'color'), `${state} color`).toMatch(/^var\(--color-\w+\)$/);
+    }
+  });
+
+  it('the generic active rule precedes the specific states (equal specificity)', () => {
+    // `.voice-on` and `.voice-<state>` are both 0-2-0, so source order decides.
+    // If .voice-on moved below them it would override every specific colour.
+    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    const on = src.indexOf('.chat-voice-button.voice-on {');
+    const listening = src.indexOf('.chat-voice-button.voice-listening');
+    const speaking = src.indexOf('.chat-voice-button.voice-speaking');
+    expect(on).toBeGreaterThan(-1);
+    expect(on).toBeLessThan(listening);
+    expect(on).toBeLessThan(speaking);
+  });
+
+  it('the shared composer inherits the circle and only adds the tint', () => {
+    const src = fs.readFileSync(UNIFIED, 'utf8');
+    // It must NOT redeclare the shape — .chat-icon-btn owns that.
+    const base = ruleFor(src, '.chat-voice-btn');
+    expect(declared(base, 'width')).toBeNull();
+    expect(declared(base, 'border-radius')).toBeNull();
+    // ...and its active states tint like the main chat's.
+    const listening = ruleFor(src, '.chat-voice-btn.voice-listening,\n.chat-voice-btn.voice-reopen');
+    expect(declared(listening, 'background')).toBe('rgba(var(--green-rgb), 0.2)');
   });
 });
 

@@ -2314,44 +2314,70 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 /* ---- hands-free voice ------------------------------------------------ */
 
 /*
- * The button is a STATE indicator, not just a control: voice has no other
- * visible surface, so if it looks identical whether or not the mic is open,
- * the only way to find out is to talk to a machine that may not be listening.
+ * Idle state is byte-identical to .chat-attach-button / .chat-provider-button /
+ * .chat-tools-button. It sits in that row, so it is that control: a 36px
+ * circle, not a bare glyph. The first version styled itself after the old
+ * dictation mic, which was already the odd one out in this composer.
  *
- * Colours come from --status-*-text rather than the raw --color-* hues, which
- * are tuned for a dark canvas and fall to ~1.9:1 on the light theme.
+ * ACTIVE states keep the circle and tint it. Voice has no other persistent
+ * surface, so if the button looks identical whether or not the mic is open,
+ * the only way to find out is to talk to a machine that may not be listening —
+ * but that signal has to be spoken in the panel's own visual language.
+ *
+ * Colours are the brand hues, matching the neighbours' hover accents. Every
+ * theme overrides them (light: --color-green #0d7a45, documented at 5.20:1 on
+ * canvas and 4.6:1 ON ITS OWN 20% TINT — exactly this use), so the tinted
+ * circle is legible everywhere. The 0.2 alpha is that documented tint level,
+ * not a guess.
  */
 .chat-voice-button {
-  background: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   border: none;
+  background: var(--color-darker-2);
+  color: var(--color-light-med-navy);
   cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: 1rem;
-  padding: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s ease;
+  transition: all 0.2s;
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
-.chat-voice-button:hover {
-  color: var(--text-primary);
+.chat-voice-button:hover:not(:disabled) {
+  background: var(--color-darker-0);
+  color: var(--color-green);
+  transform: scale(1.05);
 }
 
+/*
+ * ORDER IS LOAD-BEARING. The template binds both `voice-<state>` and
+ * `voice-on`, so these selectors have equal specificity and source order
+ * decides. `.voice-on` is the generic active fallback (it is the only rule
+ * that covers wake_wait) and MUST come first so the specific states below can
+ * override it.
+ */
 .chat-voice-button.voice-on {
-  color: var(--status-blue-text);
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
 }
 
-.chat-voice-button.voice-listening {
-  color: var(--status-green-text);
+.chat-voice-button.voice-listening,
+.chat-voice-button.voice-reopen {
+  background: rgba(var(--green-rgb), 0.2);
+  color: var(--color-green);
 }
 
 .chat-voice-button.voice-thinking {
-  color: var(--status-amber-text);
+  background: rgba(var(--yellow-rgb), 0.2);
+  color: var(--color-yellow);
 }
 
 .chat-voice-button.voice-speaking {
-  color: var(--status-blue-text);
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
 }
 
 .voice-status-strip {

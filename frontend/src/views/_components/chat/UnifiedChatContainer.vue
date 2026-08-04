@@ -794,30 +794,50 @@ export default {
  * open, the only way to find out is to talk to a machine that may not be
  * listening. Colour follows the conversation state.
  *
- * These use the --status-*-text tokens rather than the raw --color-green/blue
- * hues: the raw hues are tuned for a dark canvas and drop to ~1.9:1 on the
- * light theme, while the status tokens are re-darkened per theme to clear AA.
+ * The circle itself comes from .chat-icon-btn, so this button already matches
+ * its neighbours; these rules only add the ACTIVE tint.
+ *
+ * CORRECTION: an earlier version of this comment claimed the raw --color-*
+ * hues "drop to ~1.9:1 on the light theme" and used --status-*-text instead.
+ * That was wrong, and measurement is what settled it: _light.css overrides
+ * every brand hue (--color-green #0d7a45, --color-blue #09718a,
+ * --color-yellow #9a6200) with ratios documented at 5.20:1 on canvas and
+ * 4.6:1 ON ITS OWN 20% TINT. The claim was true of the BASE values in
+ * _variables.css and false of the ones that actually render. The hues are
+ * also what every neighbouring button uses for its accent, so they are both
+ * correct and consistent. The 0.2 alpha is that documented tint level.
+ *
  * No fallback values — a stale literal silently ships the wrong brand colour
  * if a token is ever renamed, which is worse than failing loudly.
+ *
+ * ORDER IS LOAD-BEARING: the template binds `voice-<state>` and `voice-on`
+ * together, so these have equal specificity and source order decides.
+ * `.voice-on` is the generic fallback (the only rule covering wake_wait) and
+ * must precede the specific states.
  */
 .chat-voice-btn {
   position: relative;
 }
 
 .chat-voice-btn.voice-on {
-  color: var(--status-blue-text);
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
 }
 
-.chat-voice-btn.voice-listening {
-  color: var(--status-green-text);
+.chat-voice-btn.voice-listening,
+.chat-voice-btn.voice-reopen {
+  background: rgba(var(--green-rgb), 0.2);
+  color: var(--color-green);
 }
 
 .chat-voice-btn.voice-thinking {
-  color: var(--status-amber-text);
+  background: rgba(var(--yellow-rgb), 0.2);
+  color: var(--color-yellow);
 }
 
 .chat-voice-btn.voice-speaking {
-  color: var(--status-blue-text);
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
 }
 
 /* Mic level, so "is it hearing me?" is answerable at a glance. */
