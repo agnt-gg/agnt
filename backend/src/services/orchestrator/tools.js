@@ -17,6 +17,7 @@ import { getCodeToolSchemas, executeCodeFunction } from './codeTools.js';
 import { getToolForgeToolSchemas, executeToolForgeTool } from './toolForgeTools.js';
 import { getWidgetToolSchemas, executeWidgetTool } from './widgetTools.js';
 import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js';
+import { getAppearanceToolSchemas, executeAppearanceTool } from './appearanceTools.js';
 import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
@@ -4991,6 +4992,7 @@ function injectAsyncParams(schema) {
   const toolForgeToolSchemas = getToolForgeToolSchemas();
   const widgetToolSchemas = getWidgetToolSchemas();
   const tutorialToolSchemas = getTutorialToolSchemas();
+  const appearanceToolSchemas = getAppearanceToolSchemas();
   const canvasToolSchemas = getCanvasToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
@@ -5031,6 +5033,7 @@ function injectAsyncParams(schema) {
     ...toolForgeToolSchemas,
     ...widgetToolSchemas,
     ...tutorialToolSchemas,
+    ...appearanceToolSchemas,
     ...canvasToolSchemas,
     ...registryToolSchemas,
     ...pluginToolSchemas,
@@ -5250,6 +5253,13 @@ async function executeToolInner(toolName, args, authToken, context) {
     if (tutorialToolNames.has(toolName)) {
       console.log(`Executing tutorial tool: ${toolName}`);
       const result = await executeTutorialTool(toolName, resolvedArgs, authToken, context);
+      return JSON.stringify(result);
+    }
+
+    const appearanceToolNames = new Set(getAppearanceToolSchemas().map(s => s.function.name));
+    if (appearanceToolNames.has(toolName)) {
+      console.log(`Executing appearance tool: ${toolName}`);
+      const result = await executeAppearanceTool(toolName, resolvedArgs, authToken, context);
       return JSON.stringify(result);
     }
 

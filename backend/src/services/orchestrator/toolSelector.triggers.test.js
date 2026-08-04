@@ -30,6 +30,7 @@ const PLURAL_PROBES = {
   email: [['email', 'emails']],
   memory: [['memory', 'memories'], ['trace', 'traces']],
   tutorial: [['tour', 'tours'], ['tutorial', 'tutorials']],
+  appearance: [['background', 'backgrounds'], ['wallpaper', 'wallpapers']],
   canvas: [['widget', 'widgets'], ['window', 'windows'], ['tab', 'tabs'], ['pane', 'panes']],
   mcp: [['mcp', 'mcps']],
 };

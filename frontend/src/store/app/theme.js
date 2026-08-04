@@ -92,6 +92,13 @@ export default {
     currentBackgroundUrl: null,
     currentBackgroundType: null, // 'video' | 'image' | null
 
+    // EPHEMERAL background overlay, set from a chat turn via the
+    // `appearance:background` frontend event. Purely in-memory — never written
+    // to IndexedDB or localStorage — so the background the user configured in
+    // Settings is untouched and comes back on reload or on clear. Takes
+    // precedence over currentBackgroundUrl while set.
+    ephemeralBackground: null, // { url, type, fileName } | null
+
     // Default background image for all themes
     defaultBackgroundImage: '/images/backgrounds/bg7.jpg',
 
@@ -255,6 +262,13 @@ export default {
       state.currentBackgroundUrl = url || null;
       state.currentBackgroundType = url ? type : null;
       if (previous && previous !== url) revokeSoon(previous);
+    },
+
+    // Set/clear the in-memory overlay. Deliberately revokes nothing: these are
+    // /api/local-file URLs, not object URLs, and the persisted blob URL
+    // underneath must survive so clearing restores it with no reload.
+    SET_EPHEMERAL_BACKGROUND(state, payload) {
+      state.ephemeralBackground = payload && payload.url ? { ...payload } : null;
     },
   },
   actions: {
@@ -444,6 +458,15 @@ export default {
 
       dispatch('applyCurrentThemeBackground');
     },
+    // Ephemeral overlay — see SET_EPHEMERAL_BACKGROUND. A falsy `url` clears it.
+    setEphemeralBackground({ commit, dispatch }, { url, type, fileName } = {}) {
+      commit('SET_EPHEMERAL_BACKGROUND', url ? { url, type: type || 'image', fileName: fileName || null } : null);
+      dispatch('applyCurrentThemeBackground');
+    },
+    clearEphemeralBackground({ commit, dispatch }) {
+      commit('SET_EPHEMERAL_BACKGROUND', null);
+      dispatch('applyCurrentThemeBackground');
+    },
     async removeCustomBackgroundImage({ commit, state, dispatch }, theme) {
       try {
         await mediaStorage.removeItem(mediaKeyFor(theme));
@@ -492,7 +515,12 @@ export default {
       // Clean up any legacy body-level backgrounds
       removeLegacyBackgroundMedia();
 
-      if (state.useCustomBackground) {
+      // An ephemeral overlay activates the background layer even when the
+      // user's own toggle is off — otherwise setting a background from chat
+      // would store a URL that nothing renders.
+      const backgroundActive = state.useCustomBackground || !!state.ephemeralBackground;
+
+      if (backgroundActive) {
         // Set on body.style so it overrides theme CSS declarations on body selectors
         document.body.style.setProperty('--color-background', 'transparent');
         document.body.classList.add('custom-bg');
@@ -541,10 +569,18 @@ export default {
     bgBlur: (state) => state.bgBlur,
     // Custom background image getters
     hasCustomBackground: (state) => state.hasCustomBackground,
-    currentThemeBackgroundImage: (state) => state.currentBackgroundUrl,
-    currentBackgroundType: (state) => state.currentBackgroundType,
-    isCurrentBackgroundVideo: (state) => state.currentBackgroundType === 'video',
+    currentThemeBackgroundImage: (state) => (
+      (state.ephemeralBackground && state.ephemeralBackground.url) || state.currentBackgroundUrl
+    ),
+    currentBackgroundType: (state) => (
+      state.ephemeralBackground ? state.ephemeralBackground.type : state.currentBackgroundType
+    ),
+    isCurrentBackgroundVideo: (state, getters) => getters.currentBackgroundType === 'video',
     useCustomBackground: (state) => state.useCustomBackground,
+    ephemeralBackground: (state) => state.ephemeralBackground,
+    // Whether #bg-layer should render at all: the user's own setting OR a
+    // chat-set ephemeral overlay.
+    backgroundLayerActive: (state) => state.useCustomBackground || !!state.ephemeralBackground,
     // Promo banner getter
     isPromoBannerClosed: (state) => state.isPromoBannerClosed,
     // Rate limit banner getters
