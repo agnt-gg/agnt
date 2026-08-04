@@ -3,6 +3,7 @@ import { API_CONFIG } from '@/tt.config.js';
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 import { toServerDate } from '@/utils/serverTime.js';
+import { unreadIdSet, triageRail } from '@/utils/conversationAttention.js';
 
 export default {
   namespaced: true,
@@ -22,6 +23,8 @@ export default {
         ...output,
         created_at: toServerDate(output.created_at),
         updated_at: toServerDate(output.updated_at),
+        last_read_at: toServerDate(output.last_read_at),
+        archived_at: toServerDate(output.archived_at),
       }));
 
       if (append) {
@@ -47,6 +50,8 @@ export default {
         ...output,
         created_at: toServerDate(output.created_at),
         updated_at: toServerDate(output.updated_at),
+        last_read_at: toServerDate(output.last_read_at),
+        archived_at: toServerDate(output.archived_at),
       });
     },
     /**
@@ -66,6 +71,13 @@ export default {
   },
   getters: {
     outputs: (state) => state.outputs,
+    // Derived attention state — see utils/conversationAttention.js for the
+    // model. Server columns are the single source of truth; there is no
+    // client-side unread bookkeeping to drift out of sync.
+    unreadOutputIdSet: (state) => unreadIdSet(state.outputs),
+    triageRail: (state) => triageRail(state.outputs),
+    visibleOutputs: (state) => state.outputs.filter((o) => !o.archived_at),
+    archivedOutputs: (state) => state.outputs.filter((o) => !!o.archived_at),
     totalCount: (state) => state.totalCount,
     isFetching: (state) => state.isFetching,
     hasLoadedAll: (state) => state.hasLoadedAll,
@@ -174,6 +186,78 @@ export default {
         console.error('Error deleting output:', error);
         throw error;
       }
+    },
+
+    /**
+     * Shared shape for the two attention PATCHes: optimistic local flip,
+     * fire the request, revert the exact fields on failure. The optimistic
+     * timestamps use the client clock — close enough for a derived boolean,
+     * and the next refetch replaces them with server truth.
+     */
+    async _patchAttention({ commit, state }, { outputId, path, body, updates }) {
+      // The output may not be in local state yet (e.g. a direct
+      // /chat?content-id=… open before the sidebar list has fetched). The
+      // server PATCH must still go out — only the optimistic flip is skipped.
+      const original = state.outputs.find((o) => o.id === outputId);
+      const revert = original
+        ? Object.fromEntries(Object.keys(updates).map((k) => [k, original[k]]))
+        : null;
+
+      if (original) commit('PATCH_OUTPUT', { id: outputId, updates });
+
+      const token = localStorage.getItem('token');
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${outputId}/${path}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+      } catch (error) {
+        if (revert) commit('PATCH_OUTPUT', { id: outputId, updates: revert });
+        console.error(`Error patching ${path} on output ${outputId}:`, error);
+        throw error;
+      }
+    },
+
+    markRead({ dispatch, state }, outputId) {
+      // Optimistic watermark = the row's own updated_at, NOT the client
+      // clock. "Read" means "seen everything up to the last change", and
+      // updated_at IS the last change — so this is exact and immune to
+      // client/server clock skew (a skewed client clock behind the server's
+      // updated_at would otherwise leave a phantom unread dot until the
+      // next refetch). The server stamps its own CURRENT_TIMESTAMP as truth.
+      const row = state.outputs.find((o) => o.id === outputId);
+      return dispatch('_patchAttention', {
+        outputId,
+        path: 'read',
+        body: { read: true },
+        updates: { last_read_at: row?.updated_at || new Date() },
+      });
+    },
+
+    markUnread({ dispatch }, outputId) {
+      return dispatch('_patchAttention', {
+        outputId,
+        path: 'read',
+        body: { read: false },
+        updates: { last_read_at: null },
+      });
+    },
+
+    setArchived({ dispatch }, { outputId, archived }) {
+      return dispatch('_patchAttention', {
+        outputId,
+        path: 'archive',
+        body: { archived },
+        updates: { archived_at: archived ? new Date() : null },
+      });
     },
 
     invalidateCache({ commit }) {

@@ -277,6 +277,8 @@ function createTables() {
         title TEXT,
         is_shareable INTEGER DEFAULT 0,
         group_id TEXT,
+        last_read_at DATETIME,
+        archived_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
@@ -1731,6 +1733,39 @@ function runMigrations() {
           console.error('Error adding group_id column to content_outputs:', err);
         } else if (!err) {
           console.log('✓ Added group_id column to content_outputs table');
+        }
+      });
+
+      // Migration: Add last_read_at column to content_outputs for server-side
+      // cross-device unread tracking (2026-08-04). Unread is DERIVED, not
+      // stored: a conversation is unread iff updated_at > last_read_at (or
+      // last_read_at is NULL). On the run that adds the column, backfill
+      // last_read_at = updated_at so no existing conversation flips to
+      // "unread" retroactively — only changes made AFTER this migration count.
+      db.run(`ALTER TABLE content_outputs ADD COLUMN last_read_at DATETIME`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding last_read_at column to content_outputs:', err);
+        } else if (!err) {
+          db.run(`UPDATE content_outputs SET last_read_at = updated_at`, (backfillErr) => {
+            if (backfillErr) {
+              console.error('Error backfilling last_read_at on content_outputs:', backfillErr);
+            } else {
+              console.log('✓ Added last_read_at column to content_outputs table (backfilled)');
+            }
+          });
+        }
+      });
+
+      // Migration: Add archived_at column to content_outputs for the
+      // conversation done/archive lifecycle (2026-08-04). NULL = live;
+      // non-NULL = archived out of the main sidebar list (still searchable,
+      // never counts as unread). Deliberately does not touch updated_at so
+      // unarchiving restores the conversation's original sort position.
+      db.run(`ALTER TABLE content_outputs ADD COLUMN archived_at DATETIME`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding archived_at column to content_outputs:', err);
+        } else if (!err) {
+          console.log('✓ Added archived_at column to content_outputs table');
         }
       });
 

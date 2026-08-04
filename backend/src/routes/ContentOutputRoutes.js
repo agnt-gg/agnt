@@ -12,6 +12,8 @@ ContentOutputRoutes.post('/save', authenticateToken, RunService.saveOrUpdateCont
 ContentOutputRoutes.get('/:id', authenticateToken, RunService.getContentOutput);
 ContentOutputRoutes.put('/:id', authenticateToken, RunService.saveOrUpdateContentOutput);
 ContentOutputRoutes.patch('/:id/rename', authenticateToken, RunService.renameContentOutput);
+ContentOutputRoutes.patch('/:id/read', authenticateToken, RunService.setContentOutputReadState);
+ContentOutputRoutes.patch('/:id/archive', authenticateToken, RunService.setContentOutputArchived);
 ContentOutputRoutes.delete('/:id', authenticateToken, RunService.deleteContentOutput);
 
 // Additional routes specific to content outputs

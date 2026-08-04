@@ -190,6 +190,76 @@ class RunService {
     }
   }
 
+  /**
+   * PATCH /content-outputs/:id/read  { read: boolean }
+   * Sets or clears the read watermark (last_read_at). Unread is derived
+   * client-side as updated_at > last_read_at, so this is the only write the
+   * "mark read / mark unread" flows ever need.
+   */
+  async setContentOutputReadState(req, res) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.userId;
+      const read = req.body?.read;
+
+      if (typeof read !== 'boolean') {
+        return res.status(400).json({ error: 'Body must include { read: boolean }' });
+      }
+
+      const result = await ContentOutputModel.setReadState(id, userId, read);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: 'Content output not found' });
+      }
+
+      // Let the user's other devices/tabs refresh their unread state.
+      broadcastToUser(userId, RealtimeEvents.CONTENT_UPDATED, {
+        id,
+        userId,
+        readState: read,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({ success: true, id, read });
+    } catch (error) {
+      console.error('Error setting content output read state:', error);
+      res.status(500).json({ error: 'Failed to set read state' });
+    }
+  }
+
+  /**
+   * PATCH /content-outputs/:id/archive  { archived: boolean }
+   * Archives the conversation out of the main sidebar list (or restores it).
+   * updated_at is intentionally untouched so unarchiving restores position.
+   */
+  async setContentOutputArchived(req, res) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.userId;
+      const archived = req.body?.archived;
+
+      if (typeof archived !== 'boolean') {
+        return res.status(400).json({ error: 'Body must include { archived: boolean }' });
+      }
+
+      const result = await ContentOutputModel.setArchived(id, userId, archived);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: 'Content output not found' });
+      }
+
+      broadcastToUser(userId, RealtimeEvents.CONTENT_UPDATED, {
+        id,
+        userId,
+        archived,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({ success: true, id, archived });
+    } catch (error) {
+      console.error('Error setting content output archived state:', error);
+      res.status(500).json({ error: 'Failed to set archived state' });
+    }
+  }
+
   // Execution Methods
   async getExecutions(req, res) {
     try {
