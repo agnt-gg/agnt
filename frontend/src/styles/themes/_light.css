@@ -54,53 +54,37 @@ body:not(.dark):not(.rose) {
      lightest neutral that still clears 4.5:1 there is #6f6f7c at 4.56:1;
      #70707d already fails at 4.49:1. Anything quieter than this must be
      expressed with size, weight and whitespace, not less contrast. */
-  --color-text-dull: #6f6f7c; /* 4.83:1 canvas, 4.56:1 on sunken — the floor */  /* Accent colors — re-derived for a light substrate rather than nudged.
-     Each is the original hue darkened until it clears 4.5:1 on the canvas,
-     so status text is legible without changing the palette's identity.
-     Ratios below are the ORIGINAL measurements against the previous #f1f0f5
-     canvas; the canvas is now #fcfcfc, which raises every one of them by
-     ~0.5 (lighter background = more contrast against dark text). They are
-     kept as the recorded floor — all still pass AA. */
-  /* ── THESE ARE TEXT COLOURS ──────────────────────────────────────────────
-     ...and ONLY text colours. The matching --<hue>-rgb triplets below carry the
-     HUE, which is a different job — see the note there.
+  --color-text-dull: #6f6f7c; /* 4.83:1 canvas, 4.56:1 on sunken — the floor */
 
-     Each clears 4.5:1 against its own 20% TINT, not merely against the canvas.
-     A status colour is overwhelmingly used as a label ON its matching badge, so
-     the canvas is the wrong reference surface: `.plan-badge` sets
-     `background: rgba(var(--yellow-rgb), 0.15); color: var(--color-yellow)`.
-     Measured against the canvas these all passed; measured against their own
-     badge several sat at 3.8-4.4:1.
+  /* ── BRAND HUES: NOT OVERRIDDEN HERE ─────────────────────────────────────
+     ONE palette. Green, blue, pink, yellow, red, orange, indigo and violet are
+     the SAME values in light mode as in dark — the root definitions in
+     _variables.css (green #19ef83, blue #12e0ff, pink #e53d8f, yellow #ffd700,
+     red #fe4e4e, orange #ff9500, indigo #7d3de5, violet #d13de5) — and so are
+     their --<hue>-rgb triplets.
 
-     The darkening from the previous values is a few percent of lightness —
-     imperceptible as palette identity, decisive as contrast — and it raises
-     canvas contrast as a side effect. */
-  /* NO green override. There is exactly ONE green in this product: the root
-     neon #19ef83 (--color-green in _variables.css). It is the brand color and
-     stays identical in every theme — deliberately exempt from the AA
-     darkening applied to the other hues below (Nathan's call, 2026-08-04:
-     "we should ONLY have ONE green"). */
-  --color-blue: #09718a; /* 5.40:1 canvas, 4.6:1 on tint */
-  --color-red: #b63131; /* 5.82:1 canvas, 4.6:1 on tint */
-  --color-orange: #995600; /* 5.48:1 canvas, 4.6:1 on tint */
-  --color-yellow: #9a6200; /* was #806c00, which is hue 51deg — olive, not
-     amber. It read as "dead army green" rather than a warning, so the warning
-     signal was carried by position alone. #9a6200 is hue 38deg (true amber) at
-     4.97:1 on the canvas and 5.10:1 on white; because contrast is symmetric,
-     the same value also gives a 5.10:1 white label when used as a fill. */
-  --color-indigo: #6d35c8; /* 6.84:1 canvas, 5.6:1 on tint — already passing */
-  --color-violet: #9b2eb0; /* 5.88:1 canvas, 4.6:1 on tint */
-  /* Brand pink is used BOTH as a fill (white label on it) and as text/links.
-     #d03580 was 4.11:1 as text — i.e. every pink label failed AA by
-     construction. #c43278 is an imperceptible darkening that passes both
-     directions: 4.55:1 as text, 5.15:1 for a white label on it. */
-  --color-pink: #b02d6c; /* 5.91:1 canvas, 4.6:1 on tint */
-  --color-primary: var(--color-green); /* the ONE brand green — root neon
-     #19ef83, same as dark/cyberpunk. */
-  --color-secondary: #09718a; /* tracks blue */
-  --svg-gradient-start: var(--color-green); /* tracks primary, as in dark */
-  --svg-gradient-end: #09718a;
-  --color-light-green: var(--color-text);
+     This file used to darken every one of them so they'd clear 4.5:1 as TEXT
+     on a white canvas. That produced a second, muddier palette that only
+     existed in light mode (#09718a teal-blue, #b02d6c maroon-pink, #9a6200
+     bronze-yellow, #0d7a45 forest-green). Nathan's call, 2026-08-04: the brand
+     palette is one palette, identical in every theme. Contrast on the light
+     canvas is a deliberate, accepted trade — do NOT reintroduce per-theme hue
+     values here. Guarded by themeSurfaces.spec.js.
+
+     Themes that legitimately have their OWN palette (ember, hacker, midnight,
+     nord, rose) still declare hues; they are different palettes by design, not
+     readability-adjusted copies of this one. */
+  /* Brand PINK — #e53d8f, the same pink every other theme uses, and the same
+     value :root already defaults --color-primary to. Declared explicitly
+     rather than inherited so reading this file answers "what is light's
+     primary?" without a trip to _variables.css, the way _dark.css declares
+     its green. */
+  --color-primary: var(--color-pink);
+  --color-secondary: var(--color-blue);
+  /* Logo ramp stays green -> blue, identical to dark. It is the ACCENT ramp,
+     not the brand one, so it does not follow primary. */
+  --svg-gradient-start: var(--color-green);
+  --svg-gradient-end: var(--color-blue);
 
   /* Popup/dropdown backgrounds - MUST be light for light mode */
   --color-popup: rgba(255, 255, 255, 0.98);
@@ -133,36 +117,12 @@ body:not(.dark):not(.rose) {
   --terminal-box-shadow: none;
   --terminal-muted-color: #6d6d78; /* a11y: 2.41:1 -> 4.51:1 */
 
-  /* ── THESE ARE HUES, NOT TEXT COLOURS ────────────────────────────────────
-     A triplet exists to be composited: `rgba(var(--yellow-rgb), 0.15)`. Of the
-     1,575 uses of that idiom in this app, 1,451 are a background TINT, a border
-     EDGE or a GLOW. Exactly ONE is a text colour.
-
-     They were previously set equal to the --color-<hue> values above, on the
-     reasoning that a tint should be "mixed from the right hue". But those
-     values had been DARKENED to pass AA as text, and compositing a dark
-     desaturated brown over white gives mud, not a tint:
-
-         rgba(154, 98, 0, 0.15)  over white -> #f0e7d9  saturation  43%
-         rgba(255, 199, 0, 0.15) over white -> #fff7d9  saturation 100%
-
-     The first is beige. The second is pale gold. Same alpha, same hue angle —
-     the difference is entirely the chroma of the source. That is why the gold
-     and yellow chrome read as bronze and mud in light mode.
-
-     So the triplet carries the HUE at full chroma and the token above carries
-     the readable text colour. One job each. The values are the pre-darkening
-     hues this file already recorded in its own "was #xxxxxx" comments.
-
-     --orange-rgb and --violet-rgb are deliberately NOT overridden here: the
-     base palette's bright values are already correct for a tint, which is why
-     orange and violet never looked muddy. */
-  --blue-rgb: 14, 165, 200; /* #0ea5c8 */
-  --pink-rgb: 208, 53, 128; /* #d03580 */
-  --red-rgb: 220, 60, 60; /* #dc3c3c */
-  --yellow-rgb: 255, 199, 0; /* #ffc700 */
-  --indigo-rgb: 125, 61, 229; /* #7d3de5 */
-  --primary-rgb: var(--green-rgb); /* tracks the one green (root 25,239,131) */
+  /* No --<hue>-rgb overrides either — same one-palette rule as above. The root
+     triplets are already full-chroma hues, which is exactly what a tint wants:
+     `rgba(var(--yellow-rgb), 0.15)` over white must read as pale gold, not
+     beige. (The old bronze #ffc700-style overrides here existed only to undo
+     the darkened text values that are now gone.) */
+  --primary-rgb: var(--pink-rgb); /* tracks --color-primary: brand pink */
 
   /* --user-message-bg removed — see the note in _variables.css. */
 

@@ -1173,7 +1173,9 @@ export default {
 }
 .swatch-light {
   background: #fcfcfc;
-  border-color: #d03580;
+  /* Light shares the ONE brand palette with dark; its primary is brand pink.
+     #e53d8f is that pink — NOT the retired light-only #d03580. */
+  border-color: #e53d8f;
 }
 .swatch-rose {
   background: #faf4f4;

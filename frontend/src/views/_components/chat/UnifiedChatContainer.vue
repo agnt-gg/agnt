@@ -797,16 +797,16 @@ export default {
  * The circle itself comes from .chat-icon-btn, so this button already matches
  * its neighbours; these rules only add the ACTIVE tint.
  *
- * CORRECTION: an earlier version of this comment claimed the raw --color-*
- * hues "drop to ~1.9:1 on the light theme" and used --status-*-text instead.
- * That was wrong, and measurement is what settled it: _light.css overrides
- * the brand hues (--color-blue #09718a, --color-yellow #9a6200, …) with
- * ratios documented at ~5:1 on canvas and 4.6:1 ON ITS OWN 20% TINT. (Green
- * is the exception since 2026-08-04: the neon #19ef83 is the ONE brand green
- * in every theme, deliberately exempt from the AA darkening.) The claim was true of the BASE values in
- * _variables.css and false of the ones that actually render. The hues are
- * also what every neighbouring button uses for its accent, so they are both
- * correct and consistent. The 0.2 alpha is that documented tint level.
+ * These are the BRAND hues, deliberately. Since 2026-08-04 there is ONE
+ * palette: light mode no longer re-derives darker hues for a white canvas, so
+ * --color-green/-blue/-pink resolve to the same neon values in every theme
+ * and the accepted trade is contrast on the light page. They are also what
+ * every neighbouring button uses for its accent, so this stays consistent by
+ * construction. The 0.2 alpha is the documented tint level.
+ *
+ * (Historical: an earlier comment here claimed these "drop to ~1.9:1 on the
+ * light theme" and reached for --status-*-text instead. That was measuring
+ * the base values against light's since-deleted darkened overrides.)
  *
  * No fallback values — a stale literal silently ships the wrong brand colour
  * if a token is ever renamed, which is worse than failing loudly.

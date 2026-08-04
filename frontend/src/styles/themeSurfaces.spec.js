@@ -299,21 +299,18 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
     const KNOWN_DARK_DEBT = new Set(['pink', 'violet', 'indigo']);
 
     /**
-     * BRAND EXEMPTION, not debt: green. Nathan's call (2026-08-04): there is
-     * exactly ONE green in the product — the root neon #19ef83 — identical in
-     * every theme, including light, where it measures ~1.4:1 on its own tint.
-     * That is a deliberate brand-identity trade against AA, so unlike the
-     * dark debt above there is no promise to come back. Anti-rot below still
-     * verifies the failure is real so this line cannot silently exempt a
-     * value that has started passing.
+     * LIGHT IS EXEMPT WHOLESALE, and that is a product decision rather than
+     * debt. Nathan's call (2026-08-04): there is ONE brand palette and it is
+     * identical in light and dark — light no longer darkens any hue to pass
+     * AA as text on white. Measuring the same values twice would just report
+     * the neon palette failing on a white canvas, which is the accepted
+     * trade. The invariant that replaced it is stricter and structural:
+     * _light.css must declare NO brand hue at all (test below).
      */
-    const BRAND_EXEMPT_LIGHT = new Set(['green']);
-
     const bad = [];
-    for (const theme of ['light', 'dark']) {
+    for (const theme of ['dark']) {
       for (const h of HUES) {
-        if (theme === 'dark' && KNOWN_DARK_DEBT.has(h)) continue;
-        if (theme === 'light' && BRAND_EXEMPT_LIGHT.has(h)) continue;
+        if (KNOWN_DARK_DEBT.has(h)) continue;
         const text = resolve(`var(--color-${h})`, MAPS[theme]);
         const trip = MAPS[theme][`--${h}-rgb`];
         if (!text || !trip) continue;
@@ -334,23 +331,70 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
     ).toBe('clean');
   });
 
-  it('the light brand exemption is still real: neon green actually fails AA there (anti-rot)', () => {
-    // If green ever stops failing (e.g. someone reintroduces a darkened light
-    // green — which would violate the ONE-green rule anyway), this fires and
-    // the exemption above must be deleted.
-    const text = resolve('var(--color-green)', MAPS.light);
-    const trip = MAPS.light['--green-rgb'];
-    const rgb = trip.split(',').map((x) => parseFloat(x));
-    const tint = over({ rgb, a: 0.2 }, CANVAS.light);
-    expect(
-      ratio(over(text, tint), tint),
-      'Light-mode green now clears AA on its own tint, so the BRAND_EXEMPT_LIGHT\n'
-      + 'entry is vacuous — remove it so the guard starts enforcing green again.'
-    ).toBeLessThan(4.5);
-    // And the ONE-green rule itself: light must NOT redefine the green tokens.
+  /**
+   * ONE PALETTE. This is the guard that replaced the per-hue light exemptions.
+   *
+   * _light.css used to re-derive every brand hue for a white substrate
+   * (green #0d7a45, blue #09718a, pink #b02d6c, yellow #9a6200, red #b63131,
+   * orange #995600, indigo #6d35c8, violet #9b2eb0) plus muted --<hue>-rgb
+   * triplets. Each one was individually defensible as a contrast fix, and
+   * together they were a SECOND PALETTE that existed only in light mode —
+   * teal instead of cyan, maroon instead of pink, bronze instead of gold.
+   *
+   * Nathan's call, 2026-08-04: the brand palette is one palette, identical in
+   * every theme. Light-canvas contrast is an accepted trade.
+   *
+   * Light/dark are the SAME brand skin. Themes with their own identity
+   * (ember, hacker, midnight, nord, rose) are deliberately not covered here —
+   * a different palette is their whole point.
+   */
+  it('light mode does not redefine any brand hue: ONE palette, shared with dark', () => {
+    const HUES = ['green', 'blue', 'pink', 'yellow', 'red', 'orange', 'indigo', 'violet'];
     const light = read(path.join(THEMES, '_light.css'));
-    expect(light, '_light.css must not redefine --color-green (ONE green: root neon #19ef83)').not.toMatch(/--color-green\s*:/);
-    expect(light, '_light.css must not redefine --green-rgb (ONE green: root triplet)').not.toMatch(/--green-rgb\s*:/);
+
+    const redefined = [];
+    for (const h of HUES) {
+      for (const token of [`--color-${h}`, `--${h}-rgb`]) {
+        const m = light.match(new RegExp(`${token}\\s*:\\s*([^;]+);`));
+        if (m) redefined.push(`${token}: ${m[1].trim()}`);
+      }
+    }
+    expect(
+      redefined.join('\n') || 'clean',
+      'ONE PALETTE: _light.css must not declare brand hues or their rgb triplets.\n'
+      + 'The root values in _variables.css are the palette in EVERY theme — light\n'
+      + 'included. Darkening a hue for contrast on white creates a second palette\n'
+      + 'that only exists in light mode, which is exactly the bug this guards.\n'
+      + 'If a specific label is unreadable, fix that component (or use a semantic\n'
+      + 'text token), not the brand colour.\n'
+    ).toBe('clean');
+
+    // And the resolved values must actually match dark, not merely be absent
+    // (an alias chain could still reintroduce a divergence).
+    const drift = [];
+    for (const h of HUES) {
+      for (const token of [`--color-${h}`, `--${h}-rgb`]) {
+        const l = resolve(`var(${token})`, MAPS.light);
+        const d = resolve(`var(${token})`, MAPS.dark);
+        if (!l || !d) continue;
+        if (JSON.stringify(l) !== JSON.stringify(d)) drift.push(`${token}: light ${JSON.stringify(l)} vs dark ${JSON.stringify(d)}`);
+      }
+    }
+    expect(drift.join('\n') || 'clean', 'A brand hue resolves differently in light than in dark.').toBe('clean');
+
+    // Gradients are built FROM those hues, so they must not diverge either.
+    // _light.css/_semantic.css used to ship hardcoded single-hue ramps
+    // (#b02d6c -> #9a2760) mixed from the deleted light-only palette.
+    const semantic = read(path.join(THEMES, '_semantic.css'));
+    const lightBlock = (semantic.match(/body:not\(\.dark\)\s*\{([^{}]*)\}/) || [, ''])[1];
+    for (const g of ['--gradient-brand', '--gradient-accent']) {
+      const m = lightBlock.match(new RegExp(`${g}\\s*:\\s*([^;]+);`));
+      expect(
+        m && m[1].trim(),
+        `${g} is redefined for light mode. Light and dark share one brand gradient,\n`
+        + 'built from tokens in the :root block so it follows whatever palette resolves.'
+      ).toBeFalsy();
+    }
   });
 
   it('the known dark debt is still real, and still exactly three (anti-rot)', () => {

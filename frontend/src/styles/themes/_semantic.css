@@ -76,10 +76,11 @@ body {
      --on-fill-x, defined on the adjacent line, in the same theme block. If you
      paint a background with --fill-x, the text on it MUST be --on-fill-x.
 
-     Why this exists: --color-primary is NEON GREEN (#19ef83) in every theme
-     (the one brand green), and other themes could still choose a light hue. `color:#fff; background:var(--color-primary)`
-     therefore measured 5.15:1 in light and 1.53:1 in dark — the same rule,
-     legible in one theme and unreadable in the other, across 24 buttons.
+     Why this exists: --color-primary is BRAND PINK (#e53d8f) in light and
+     NEON GREEN (#19ef83) in dark, and other themes pick their own.
+     `color:#fff; background:var(--color-primary)` therefore measured 3.89:1
+     on the pink and 1.53:1 on the green — the same rule, differently wrong in
+     each theme, across 24 buttons.
 
      Hardcoding the label colour cannot work, because the correct label colour
      is a function of the theme. Pairing makes contrast a property of the token
@@ -233,29 +234,39 @@ body:not(.dark) {
   --text-tertiary: var(--color-text-secondary); /* #6b6b80   5.07:1 */
   --text-quaternary: var(--color-text-dull); /* #6d6d78   4.98:1 — AA floor */
 
-  /* Light-mode accents are already darkened to clear 4.5:1 on a white page,
-     which means they are mid-dark — so WHITE is the readable label on every
-     one of them. That is the opposite of the dark themes, where the accents
-     are neon and the readable label is ink. Exactly the inversion that made
-     hardcoding the label colour impossible. */
-  --fill-accent: var(--color-primary);
-  --on-fill-accent: #ffffff; /* #ffffff on #c43278 = 5.15:1 */
-  --fill-info: var(--color-secondary);
-  --on-fill-info: #ffffff; /* #ffffff on #0a7892 = 5.10:1 */
-  --fill-success: var(--color-green);
-  --on-fill-success: #ffffff; /* #ffffff on #0d7e47 = 5.13:1 */
-  --fill-danger: var(--color-red);
-  --on-fill-danger: #ffffff; /* #ffffff on #ca3737 = 5.11:1 */
-  --fill-warning: var(--color-yellow);
-  --on-fill-warning: #ffffff; /* #ffffff on #806c00 = 5.17:1 */
-  --fill-brand: var(--color-pink);
-  --on-fill-brand: #ffffff; /* #ffffff on #c43278 = 5.15:1 */
-  --fill-violet: var(--color-violet);
-  --on-fill-violet: #ffffff; /* #ffffff on #ae34c6 = 5.11:1 */
-  --fill-indigo: var(--color-indigo);
-  --on-fill-indigo: #ffffff; /* #ffffff on #6d35c8 = 7.02:1 */
+  /* Same pairs as :root, by value, and DECLARED here rather than inherited:
+     the light block pins its own token set so a stray `}` cannot silently drop
+     them into the next selector (see themeTokens.spec.js).
 
-  --text-on-fill: #ffffff;
+     These used to be #ffffff, because light mode darkened every accent and a
+     mid-dark fill wants a white label. The palette is now shared with dark
+     (see _light.css), so the fills ARE the neon brand hues and the readable
+     label is INK. Leaving the white copy would have put #ffffff on #19ef83 —
+     1.36:1 — on every success fill in light mode.
+
+     Rose inherits these too and IMPROVES: on its own muted palette ink beats
+     white nearly everywhere — accent 4.67 vs 4.30, info 5.44 vs 3.69, success
+     5.71 vs 3.51, warning 6.75 vs 2.97; violet/indigo a wash (4.45 vs 4.51).
+     So no body.rose override is needed either. */
+  --fill-accent: var(--color-primary);
+  --on-fill-accent: var(--color-black-navy); /* #070710 on #e53d8f =  5.15:1
+     (white would be 3.89:1 — ink wins on the pink too, same as on the neon) */
+  --fill-info: var(--color-secondary);
+  --on-fill-info: var(--color-black-navy); /* #070710 on #12e0ff = 12.54:1 */
+  --fill-success: var(--color-green);
+  --on-fill-success: var(--color-black-navy); /* #070710 on #19ef83 = 13.10:1 */
+  --fill-danger: var(--color-red);
+  --on-fill-danger: var(--color-black-navy); /* #070710 on #fe4e4e =  6.13:1 */
+  --fill-warning: var(--color-yellow);
+  --on-fill-warning: var(--color-black-navy); /* #070710 on #ffd700 = 14.30:1 */
+  --fill-brand: var(--color-pink);
+  --on-fill-brand: var(--color-black-navy); /* #070710 on #e53d8f =  5.15:1 */
+  --fill-violet: var(--color-violet);
+  --on-fill-violet: var(--color-black-navy); /* #070710 on #d13de5 =  5.26:1 */
+  --fill-indigo: var(--color-indigo);
+  --on-fill-indigo: #ffffff; /* #ffffff on #7d3de5 =  5.72:1 */
+
+  --text-on-fill: var(--color-black-navy);
 
   /* ── ENTERPRISE LIGHT: no neon halos ─────────────────────────────────────
      Every glow degrades to real elevation. A coloured bloom needs a dark
@@ -274,29 +285,22 @@ body:not(.dark) {
      it accepts a gradient, so these are drop-in.
      The wash keeps a gradient but drops to a barely-there neutral tint — on
      white, an 8% pink wash is visible as a stain; 3% neutral reads as paper. */
-  /* A --gradient-* TOKEN MUST ALWAYS BE A VALID <image>.
+  /* NO gradient overrides: light uses the SAME brand gradients as dark, from
+     :root — `135deg, secondary -> primary` and `135deg, green -> blue`, built
+     from tokens so they follow whatever palette the theme resolves.
 
-     These were `var(--color-primary)` / `var(--color-secondary)` — plain
-     COLOURS. `background-image` accepts an <image>, not a <color>, so every
-     `background-image: var(--gradient-brand)` became an INVALID declaration and
-     was silently DROPPED. The element lost its fill completely while keeping
-     the ink that was chosen to sit on that fill.
+     What used to be here was a pair of hardcoded single-hue ramps
+     (#b02d6c/#9a2760 and #09718a/#075d71) mixed from the deleted light-only
+     palette — a second brand gradient that existed on one theme.
 
-     Measured: the Agent Forge "Create Agent" button rendered #ffffff text on
-     the #fcfcfc panel — 1.03:1, invisible. Seven declarations across four files
-     were affected (button.generate in main.css, _buttons.css and _light.css,
-     plus .create-agent-button x4).
-
-     CSS reports nothing for this: the token resolves, the syntax parses, and
-     the rule is discarded at computed-value time. The `background` SHORTHAND
-     accepts a colour, which is why the 21 `background: var(--gradient-*)` uses
-     kept working and hid the problem.
-
-     Light mode still avoids the neon two-hue ramp — these are single-hue and
-     read as near-flat — but they are images, so the contract holds. White ink
-     on the lighter stop measures 5.91:1 (brand) and 5.40:1 (accent). */
-  --gradient-brand: linear-gradient(135deg, #b02d6c, #9a2760);
-  --gradient-accent: linear-gradient(135deg, #09718a, #075d71);
+     Historical note worth keeping: a --gradient-* token MUST always be a valid
+     <image>. These were once plain COLOURS (`var(--color-primary)`), and
+     `background-image` accepts an <image>, not a <color>, so every
+     `background-image: var(--gradient-brand)` was silently DROPPED at
+     computed-value time — the Agent Forge "Create Agent" button rendered
+     #ffffff on the #fcfcfc panel, 1.03:1. The `background` shorthand DOES
+     accept a colour, which is why 21 other call sites kept working and hid it.
+     Guarded by themeSurfaces.spec.js. */
 
   /* Light canvas: the dot goes DARKER, and needs a much higher alpha than the
      dark themes to reach the same perceived weight. 0.025 effective is what it

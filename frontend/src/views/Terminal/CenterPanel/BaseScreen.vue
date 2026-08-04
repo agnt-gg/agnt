@@ -2342,11 +2342,10 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
  * the only way to find out is to talk to a machine that may not be listening —
  * but that signal has to be spoken in the panel's own visual language.
  *
- * Colours are the brand hues, matching the neighbours' hover accents. Light
- * mode overrides most of them (e.g. --color-blue #09718a, documented at
- * ~5:1 on canvas and 4.6:1 ON ITS OWN 20% TINT — exactly this use). Green is
- * the exception since 2026-08-04: the neon #19ef83 is the ONE brand green in
- * every theme. The 0.2 alpha is that documented tint level,
+ * Colours are the brand hues, matching the neighbours' hover accents. Since
+ * 2026-08-04 there is ONE palette — light mode no longer re-derives darker
+ * hues, so these resolve identically in every theme. The 0.2 alpha is the
+ * documented tint level,
  * not a guess.
  */
 .chat-voice-button {
