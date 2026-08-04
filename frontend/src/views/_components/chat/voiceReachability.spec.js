@@ -295,6 +295,25 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     expect(src).toContain('voice-engine-badge');
     expect(src).toMatch(/voiceNatural/);
   });
+
+  it('hands the model a SPEAKABLE version of her answer, not raw markdown', () => {
+    // The model is told to speak the result verbatim, which is what keeps the
+    // screen and the voice in agreement. That is only survivable if the text
+    // is speakable — raw answers carry fenced code, tables and URLs, which
+    // read aloud are minutes of punctuation names.
+    expect(src).toMatch(/import\s*\{\s*stripUnspeakable\s*\}\s*from\s*'@\/voice\/sentenceChunker'/);
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 1600);
+    expect(body).toMatch(/stripUnspeakable\(raw\)/);
+    expect(body).toMatch(/resolve\(\s*speakable/);
+  });
+
+  it('reuses the tested stripper rather than defining a second notion of speakable', () => {
+    // Two definitions of "speakable" would drift, and the voice would start
+    // reading things the chunker knows not to.
+    expect(src).not.toMatch(/function stripUnspeakable/);
+    expect(src).not.toMatch(/replace\(\/```/);
+  });
 });
 
 describe('one voice system, not two', () => {

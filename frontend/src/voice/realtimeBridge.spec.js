@@ -64,19 +64,76 @@ describe('interpretEvent — the tool call that makes AGNT the brain', () => {
         ],
       },
     });
-    expect(actions).toHaveLength(2);
-    expect(actions.map((a) => a.callId)).toEqual(['a', 'b']);
+    // Both calls, then the turn marker. EVERY call must be present: a dropped
+    // one is never answered, and the session blocks on it for ever.
+    const runs = actions.filter((a) => a.type === BridgeAction.RUN_AGNT);
+    expect(runs.map((a) => a.callId)).toEqual(['a', 'b']);
+    expect(actions.at(-1)).toEqual({ type: BridgeAction.TURN_COMPLETE, hadToolCall: true });
   });
 
-  it('ignores a plain spoken response with no tool call', () => {
-    expect(
-      interpretEvent({ type: 'response.done', response: { output: [{ type: 'message' }] } })
-    ).toEqual([]);
+  it('a plain spoken response yields only the turn marker, no tool action', () => {
+    const actions = interpretEvent({
+      type: 'response.done',
+      response: { output: [{ type: 'message' }] },
+    });
+    expect(actions).toEqual([{ type: BridgeAction.TURN_COMPLETE, hadToolCall: false }]);
   });
 
   it('tolerates a response with no output array at all', () => {
-    expect(interpretEvent({ type: 'response.done', response: {} })).toEqual([]);
-    expect(interpretEvent({ type: 'response.done' })).toEqual([]);
+    expect(interpretEvent({ type: 'response.done', response: {} })).toEqual([
+      { type: BridgeAction.TURN_COMPLETE, hadToolCall: false },
+    ]);
+    expect(interpretEvent({ type: 'response.done' })).toEqual([
+      { type: BridgeAction.TURN_COMPLETE, hadToolCall: false },
+    ]);
+  });
+});
+
+describe('interpretEvent — TURN_COMPLETE tells the runtime what to record', () => {
+  /**
+   * The runtime cannot know whether a turn is already in the chat until it
+   * knows whether the turn delegated. A delegated turn is written by the
+   * run_agnt path; a turn the model answered alone exists only as audio. So
+   * every response ends with a marker carrying that one fact.
+   */
+  it('marks a delegated turn', () => {
+    const actions = interpretEvent({
+      type: 'response.done',
+      response: {
+        output: [
+          { type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c', arguments: '{"instruction":"x"}' },
+        ],
+      },
+    });
+    expect(actions.at(-1)).toEqual({ type: BridgeAction.TURN_COMPLETE, hadToolCall: true });
+  });
+
+  it('marks a turn the model answered by itself', () => {
+    const actions = interpretEvent({ type: 'response.done', response: { output: [] } });
+    expect(actions.at(-1)).toEqual({ type: BridgeAction.TURN_COMPLETE, hadToolCall: false });
+  });
+
+  it('comes LAST, so the runtime sees the tool calls before it decides', () => {
+    const actions = interpretEvent({
+      type: 'response.done',
+      response: {
+        output: [
+          { type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c', arguments: '{"instruction":"x"}' },
+        ],
+      },
+    });
+    expect(actions[0].type).toBe(BridgeAction.RUN_AGNT);
+    expect(actions.at(-1).type).toBe(BridgeAction.TURN_COMPLETE);
+  });
+
+  it('an unknown tool still counts as a delegated turn', () => {
+    // It tried to delegate; the chat write is handled by the error path. What
+    // matters here is that we do not ALSO record its transcript.
+    const actions = interpretEvent({
+      type: 'response.done',
+      response: { output: [{ type: 'function_call', name: 'nope', call_id: 'c', arguments: '{}' }] },
+    });
+    expect(actions.at(-1)).toEqual({ type: BridgeAction.TURN_COMPLETE, hadToolCall: true });
   });
 });
 

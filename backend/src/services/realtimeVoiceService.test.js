@@ -25,41 +25,71 @@ afterEach(() => {
   globalThis.fetch = origFetch;
 });
 
-describe('buildInstructions — the model must not answer by itself', () => {
+describe('buildInstructions — the model is a mouth, not a second assistant', () => {
   /**
-   * This is the single load-bearing property of the whole design. A realtime
-   * model left unconstrained will answer "what is in my repo?" with a
-   * confident invention, because nothing tells it that it cannot see the repo.
+   * THE LOAD-BEARING PROPERTY OF THE WHOLE DESIGN.
+   *
+   * The user hears one voice and reads one transcript, and they must be the
+   * same person saying the same words. That only holds if this model has no
+   * identity and no discretion: Annie (the orchestrator) answers everything,
+   * and this model reads her answer aloud.
+   *
+   * The first version said "You are Annie" and allowed it to handle
+   * "conversational glue" itself. Those turns never reached the orchestrator,
+   * so they never reached the chat either — the user watched a conversation
+   * happen and leave no trace.
    */
   const text = () => buildInstructions();
 
-  it('forbids answering from its own knowledge, explicitly', () => {
+  it('tells it that it is NOT the assistant', () => {
+    expect(text()).toMatch(/You are NOT Annie/);
+    expect(text()).toMatch(/You are not an assistant at all/i);
+    expect(text()).toMatch(/no voice of your own/i);
+  });
+
+  it('sends EVERY utterance to the orchestrator, with no easy-case carve-out', () => {
+    // The carve-out is the bug. A model allowed to answer "trivial" things
+    // decides for itself what is trivial, and it cannot see what it cannot see.
+    expect(text()).toMatch(/EVERY single thing the user says goes to run_agnt/i);
+    expect(text()).toMatch(/including "hello"/i);
+    expect(text()).toMatch(/You do not get to decide what is worth/i);
+  });
+
+  it('forbids answering, guessing, greeting or stalling on its own', () => {
     expect(text()).toMatch(/NEVER answer from your own knowledge/i);
-    expect(text()).toMatch(/no knowledge of your own/i);
-  });
-
-  it('names the tool it must route everything through', () => {
-    expect(text()).toContain('run_agnt');
-  });
-
-  it('forbids claiming inability instead of delegating', () => {
+    expect(text()).toMatch(/NEVER apologise, explain, greet, stall or/i);
     expect(text()).toMatch(/NEVER say you are unable/i);
   });
 
-  it('tells it to acknowledge and then go quiet during long work', () => {
-    // Thirty seconds of silence reads as a dropped call; narrating invented
-    // progress is worse. Short ack, then stop.
-    expect(text()).toMatch(/STOP TALKING until the result arrives/i);
-    expect(text()).toMatch(/Do not fill the silence/i);
+  it('passes the user\u2019s words through unedited', () => {
+    expect(text()).toMatch(/THROUGH AS THEY SAID IT/);
+    expect(text()).toMatch(/Do not reword, shorten, interpret/i);
   });
 
-  it('keeps spoken output speakable — no markdown, no code read aloud', () => {
-    expect(text()).toMatch(/Never read code/i);
-    expect(text()).toMatch(/No markdown/i);
+  it('SPEAKS HER ANSWER VERBATIM — screen and voice must not diverge', () => {
+    expect(text()).toMatch(/SPEAK THAT TEXT EXACTLY AS GIVEN, word for word/i);
+    expect(text()).toMatch(/Do NOT summarise it, reword it/i);
+    expect(text()).toMatch(/the screen and the voice disagree/i);
+  });
+
+  it('keeps the DELIVERY natural while the WORDS stay hers', () => {
+    // Naturalness is the entire reason for speech-to-speech; it just must not
+    // extend to editing what is said.
+    expect(text()).toMatch(/Read it naturally/i);
+    expect(text()).toMatch(/The\s+delivery is yours; the words are hers/i);
+  });
+
+  it('stays silent while she works rather than inventing a holding phrase', () => {
+    // A filler line would be this model's voice, not hers. The UI already
+    // shows that work is happening.
+    expect(text()).toMatch(/Say NOTHING while you wait/i);
+    expect(text()).toMatch(/do not invent a holding phrase/i);
   });
 
   it('uses the assistant name it is given', () => {
-    expect(buildInstructions({ assistantName: 'Scout' })).toContain('Scout');
+    const t = buildInstructions({ assistantName: 'Scout' });
+    expect(t).toContain('Scout');
+    expect(t).toMatch(/You are NOT Scout/);
   });
 });
 

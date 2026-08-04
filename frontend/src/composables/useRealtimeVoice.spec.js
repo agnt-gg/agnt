@@ -17,6 +17,7 @@ vi.mock('../../user.config.js', () => ({
 const { useRealtimeVoice, RealtimeState } = await import('./useRealtimeVoice.js');
 const { AGNT_TOOL_NAME } = await import('../voice/realtimeBridge.js');
 
+
 /** Every frame the composable emits, in order. */
 let sent = [];
 
@@ -185,31 +186,96 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
   });
 });
 
-describe('useRealtimeVoice — transcripts reach the chat', () => {
-  it('reports the user turn', async () => {
+describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () => {
+  /**
+   * The user reported watching a voice conversation happen with nothing
+   * appearing in the chat. Two rules have to hold together:
+   *   - a delegated turn is written ONCE, by the run_agnt path
+   *   - a turn the model somehow answered alone is still written, not lost
+   */
+  const userSpeech = (text) =>
+    JSON.stringify({ type: 'conversation.item.input_audio_transcription.completed', transcript: text });
+  const assistantSpeech = (text) =>
+    JSON.stringify({ type: 'response.output_audio_transcript.done', transcript: text });
+  const turnDone = (hadToolCall) =>
+    JSON.stringify({
+      type: 'response.done',
+      response: {
+        output: hadToolCall
+          ? [{ type: 'function_call', name: AGNT_TOOL_NAME, call_id: 'c1', arguments: '{"instruction":"go"}' }]
+          : [],
+      },
+    });
+
+  it('a DELEGATED turn is not echoed — run_agnt already wrote it', async () => {
     const onUserSaid = vi.fn();
-    const s = harness({ onUserSaid });
-    s._handleMessage(
-      JSON.stringify({
-        type: 'conversation.item.input_audio_transcription.completed',
-        transcript: 'what is the build status',
-      })
-    );
-    expect(onUserSaid).toHaveBeenCalledWith('what is the build status');
+    const onAssistantSaid = vi.fn();
+    const s = harness({ onUserSaid, onAssistantSaid, onRunAgnt: async () => 'the build is green' });
+
+    s._handleMessage(userSpeech('what is the build status'));
+    s._handleMessage(assistantSpeech('let me look'));
+    s._handleMessage(turnDone(true));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onUserSaid).not.toHaveBeenCalled();
+    expect(onAssistantSaid).not.toHaveBeenCalled();
   });
 
-  it('reports the assistant turn and clears the partial', async () => {
+  it('the narration of her answer is not echoed either — it is already verbatim in the chat', async () => {
     const onAssistantSaid = vi.fn();
-    const s = harness({ onAssistantSaid });
+    const s = harness({ onAssistantSaid, onRunAgnt: async () => 'the build is green' });
+
+    // Turn 1: delegates.
+    s._handleMessage(userSpeech('what is the build status'));
+    s._handleMessage(turnDone(true));
+    await vi.advanceTimersByTimeAsync(10);
+
+    // Turn 2: speaks the result that run_agnt already put in the chat.
+    s._handleMessage(assistantSpeech('the build is green'));
+    s._handleMessage(turnDone(false));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onAssistantSaid).not.toHaveBeenCalled();
+  });
+
+  it('REGRESSION: an OFF-SCRIPT turn is recorded rather than vanishing', async () => {
+    // The instructions forbid answering alone, but if the model does it anyway
+    // the exchange must not disappear: a visible wrong turn can be corrected,
+    // an invisible one cannot.
+    const onUserSaid = vi.fn();
+    const onAssistantSaid = vi.fn();
+    const s = harness({ onUserSaid, onAssistantSaid });
+
+    s._handleMessage(userSpeech('hello'));
+    s._handleMessage(assistantSpeech('Hi there.'));
+    s._handleMessage(turnDone(false));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onUserSaid).toHaveBeenCalledWith('hello');
+    expect(onAssistantSaid).toHaveBeenCalledWith('Hi there.');
+  });
+
+  it('records an off-script turn only ONCE', async () => {
+    const onUserSaid = vi.fn();
+    const s = harness({ onUserSaid });
+
+    s._handleMessage(userSpeech('hello'));
+    s._handleMessage(assistantSpeech('Hi.'));
+    s._handleMessage(turnDone(false));
+    s._handleMessage(turnDone(false)); // a second marker must not re-record
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onUserSaid).toHaveBeenCalledTimes(1);
+  });
+
+  it('streams the assistant partial for the live status strip', async () => {
+    const s = harness({});
 
     s._handleMessage(JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'All ' }));
     s._handleMessage(JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'good.' }));
     expect(s.assistantPartial.value).toBe('All good.');
 
-    s._handleMessage(
-      JSON.stringify({ type: 'response.output_audio_transcript.done', transcript: 'All good.' })
-    );
-    expect(onAssistantSaid).toHaveBeenCalledWith('All good.');
+    s._handleMessage(assistantSpeech('All good.'));
     expect(s.assistantPartial.value).toBe('');
   });
 

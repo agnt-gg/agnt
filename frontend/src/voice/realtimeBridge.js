@@ -47,6 +47,13 @@ export const BridgeAction = Object.freeze({
   ERROR: 'error',
   /** The session is live and configured. */
   READY: 'ready',
+  /**
+   * A model response finished. `hadToolCall` says whether it delegated to
+   * AGNT, which is what lets the runtime decide whether this turn is ALREADY
+   * recorded in the chat (the run_agnt path writes it) or whether it happened
+   * purely in audio and would otherwise leave no trace at all.
+   */
+  TURN_COMPLETE: 'turn_complete',
 });
 
 /** The only tool the session declares. Kept in sync with realtimeVoiceService. */
@@ -91,9 +98,11 @@ export function interpretEvent(event) {
     case 'response.done': {
       const actions = [];
       const outputs = Array.isArray(event.response?.output) ? event.response.output : [];
+      let hadToolCall = false;
 
       for (const item of outputs) {
         if (item?.type !== 'function_call') continue;
+        hadToolCall = true;
 
         // Arguments arrive as a JSON *string*. A model can emit malformed JSON
         // under load, and throwing here would kill the session for what should
@@ -127,6 +136,9 @@ export function interpretEvent(event) {
         });
       }
 
+      // Always last, so the runtime sees the turn's tool calls before it
+      // decides what to record.
+      actions.push({ type: BridgeAction.TURN_COMPLETE, hadToolCall });
       return actions;
     }
 

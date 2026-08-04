@@ -272,6 +272,7 @@ import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
 import { useRealtimeVoice } from '@/composables/useRealtimeVoice';
+import { stripUnspeakable } from '@/voice/sentenceChunker';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
@@ -713,13 +714,31 @@ export default {
     // with the full tool surface, and the model speaks the result.
 
     /**
-     * Run an instruction through the orchestrator and resolve with what it
-     * said, so the realtime model can speak it.
+     * Run an instruction through the orchestrator and resolve with the words it
+     * said, so the realtime model can read them aloud.
      *
      * Resolves on the FALLING EDGE of isStreaming rather than on a timer,
      * because a tool-heavy turn has no predictable duration. The unwatch is
      * called before resolving — a watcher left alive here would fire on every
      * later turn and resolve stale promises.
+     *
+     * WHY THE ANSWER IS STRIPPED BEFORE IT IS HANDED OVER
+     * ---------------------------------------------------
+     * The model is told to speak this text VERBATIM, which is what keeps the
+     * screen and the voice in agreement. That instruction is only survivable
+     * if what we hand it is actually speakable: Annie's answers routinely
+     * contain fenced code, tables, URLs and file paths, and read aloud those
+     * are minutes of punctuation names.
+     *
+     * So the split is: the CHAT gets the full answer, and the VOICE gets the
+     * same answer with the unspeakable parts replaced by the short spoken notes
+     * stripUnspeakable already produces ("I have put the code in the chat").
+     * Same words wherever words exist — the only difference is that the voice
+     * refers to the artifacts instead of reciting them.
+     *
+     * Reusing sentenceChunker's stripper rather than writing a second one
+     * matters: it is the tested definition of "speakable" in this codebase,
+     * and two definitions would drift.
      */
     const runAgntForVoice = (instruction) =>
       new Promise((resolve) => {
@@ -731,18 +750,22 @@ export default {
           unwatch();
           const list = store.state.chat.messages || [];
           const last = list[list.length - 1];
-          const text = last && last.role === 'assistant' ? last.content || '' : '';
-          resolve(text || 'AGNT finished but produced no spoken text; the detail is in the chat.');
+          const raw = last && last.role === 'assistant' ? last.content || '' : '';
+          const speakable = stripUnspeakable(raw);
+          resolve(
+            speakable || 'I have put the answer in the chat.'
+          );
         });
       });
 
     const realtime = useRealtimeVoice({
       surface: 'chat',
       onRunAgnt: runAgntForVoice,
-      // The realtime model's own transcripts are NOT written into the chat:
-      // runAgntForVoice already puts the real turn there through the normal
-      // send path, and duplicating the spoken paraphrase alongside it would
-      // show the user every exchange twice.
+      // Transcripts of turns that went through run_agnt are NOT written to the
+      // chat here — runAgntForVoice already put both sides there via the normal
+      // send path. The composable only records a turn the model answered
+      // ENTIRELY on its own, which its instructions forbid; see the buffering
+      // comment in useRealtimeVoice.js for why that safety net exists.
     });
 
     /**

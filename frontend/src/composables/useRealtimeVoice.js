@@ -102,6 +102,41 @@ export function useRealtimeVoice(options = {}) {
   /** Bumped on stop(); async continuations check it before touching anything. */
   let generation = 0;
 
+  /**
+   * THE SAFETY NET FOR TURNS THAT NEVER REACHED THE ORCHESTRATOR.
+   *
+   * By design every utterance goes through run_agnt, and that path writes both
+   * sides to the chat itself — so echoing transcripts here would show every
+   * exchange twice.
+   *
+   * The first version concluded from that it should record NOTHING. It was
+   * wrong, because the session ALSO permitted the model to handle "greetings
+   * and acknowledgements" itself. Those turns went through no orchestrator and
+   * no chat: the user watched a conversation happen and leave no trace — gone
+   * on reload, and absent from the history, so a later typed message had no
+   * idea what had just been said aloud.
+   *
+   * The instructions now forbid answering anything at all (see
+   * realtimeVoiceService.buildInstructions), which closes that hole at the
+   * source. This buffer is the belt to that braces: if the model goes
+   * off-script and answers by itself anyway, the turn is recorded rather than
+   * vanishing. Transcripts are held until the response completes, because only
+   * then do we know whether it delegated:
+   *
+   *   delegated            -> the run_agnt path writes it; drop the buffer
+   *   speaking her answer  -> already in the chat verbatim; drop it
+   *   neither              -> off-script turn; record it so it is not lost
+   */
+  let pendingUserText = '';
+  let pendingAssistantText = '';
+  /** The next response will narrate a tool result already written to the chat. */
+  let awaitingToolResultSpeech = false;
+
+  function clearTurnBuffers() {
+    pendingUserText = '';
+    pendingAssistantText = '';
+  }
+
   function send(event) {
     if (sendFrame) {
       sendFrame(event);
@@ -182,7 +217,7 @@ export function useRealtimeVoice(options = {}) {
           break;
 
         case BridgeAction.USER_SAID:
-          onUserSaid(action.text);
+          pendingUserText = action.text;
           break;
 
         case BridgeAction.ASSISTANT_PARTIAL:
@@ -191,9 +226,31 @@ export function useRealtimeVoice(options = {}) {
           break;
 
         case BridgeAction.ASSISTANT_SAID:
-          onAssistantSaid(action.text);
+          pendingAssistantText = action.text;
           assistantPartial.value = '';
           if (state.value === RealtimeState.SPEAKING) state.value = RealtimeState.LISTENING;
+          break;
+
+        case BridgeAction.TURN_COMPLETE:
+          if (action.hadToolCall) {
+            // The run_agnt path writes this turn, and whatever the model said
+            // alongside the call is filler ("let me look"). Drop both, and
+            // expect the NEXT response to narrate the result.
+            awaitingToolResultSpeech = true;
+          } else if (awaitingToolResultSpeech) {
+            // This is that narration. AGNT's full answer — with its code,
+            // tables and links — is already in the chat; the spoken paraphrase
+            // would only duplicate it, worse.
+            awaitingToolResultSpeech = false;
+          } else if (pendingUserText || pendingAssistantText) {
+            // Off-script: the model answered without delegating, which its
+            // instructions forbid. Record it rather than let the exchange
+            // disappear — a visible wrong turn can be corrected, an invisible
+            // one cannot.
+            if (pendingUserText) onUserSaid(pendingUserText);
+            if (pendingAssistantText) onAssistantSaid(pendingAssistantText);
+          }
+          clearTurnBuffers();
           break;
 
         case BridgeAction.RUN_AGNT:
@@ -324,6 +381,8 @@ export function useRealtimeVoice(options = {}) {
     micStream = null;
     audioEl = null;
     assistantPartial.value = '';
+    clearTurnBuffers();
+    awaitingToolResultSpeech = false;
     state.value = RealtimeState.IDLE;
   }
 
