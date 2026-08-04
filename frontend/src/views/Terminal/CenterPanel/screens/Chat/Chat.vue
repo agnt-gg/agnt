@@ -90,7 +90,7 @@
 
         <!-- Conversation Canvas -->
         <div class="conversation-canvas-wrapper">
-          <div class="conversation-canvas" ref="conversationSpace">
+          <div class="conversation-canvas" ref="conversationSpace" @scroll.passive="scheduleScrollCapture">
             <!-- Loading state masks the heavy MessageItem mount cost during
                  conversation cold-open / switch. Without it the user sees a
                  blank canvas followed by content slowly resolving. The
@@ -120,7 +120,7 @@
               <TransitionGroup :name="bulkLoading || suppressMessageTransition ? '' : 'message'" tag="div" class="message-flow">
                 <template v-for="message in windowedMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
-                  <div v-if="message.kind === 'skill-pill'" class="inline-pill-row">
+                  <div v-if="message.kind === 'skill-pill'" class="inline-pill-row" :data-message-id="message.id">
                     <div class="inline-context-pill" :class="{ 'is-detached': message.detached, 'is-skill': true }">
                       <i :class="message.skill?.icon || 'fas fa-puzzle-piece'"></i>
                       <span class="pill-label">
@@ -144,7 +144,7 @@
                   </div>
 
                   <!-- Inline goal widget: right-aligned to match user bubbles. -->
-                  <div v-else-if="message.kind === 'goal-widget'" class="inline-pill-row">
+                  <div v-else-if="message.kind === 'goal-widget'" class="inline-pill-row" :data-message-id="message.id">
                     <div class="inline-goal-widget-wrap">
                       <GoalProgressWidget
                         :goalId="message.goalId"
@@ -166,7 +166,7 @@
 
                   <!-- Inline goal trace event: small append-only card so the
                        LLM and the user both see goal progress in chat. -->
-                  <div v-else-if="message.kind === 'goal-event'" class="inline-pill-row">
+                  <div v-else-if="message.kind === 'goal-event'" class="inline-pill-row" :data-message-id="message.id">
                     <div class="goal-event-card" :class="`goal-event-${message.eventKind}`">
                       <div class="goal-event-head">
                         <i :class="goalEventIcon(message.eventKind)"></i>
@@ -231,7 +231,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch, inject } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated, nextTick, computed, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
@@ -260,6 +260,7 @@ import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvide
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
+import { useChatScrollRestore } from '@/composables/useChatScrollRestore.js';
 
 export default {
   name: 'ChatScreen',
@@ -373,6 +374,28 @@ export default {
       if (el) el.scrollTop = prevTop + (el.scrollHeight - prevHeight);
       suppressMessageTransition.value = false;
     };
+
+    // ---- Scroll restore ----------------------------------------------------
+    // Reading position is per-conversation state, like the composer draft and
+    // the provider selection. It used to be discarded on every switch — worse,
+    // opening a saved conversation explicitly scrolled to the TOP, so a long
+    // chat reopened at its first message. This restores where the user left
+    // off, including how many messages they had expanded, because a position
+    // measured against 130 mounted messages cannot be reproduced against 30.
+    const {
+      isRestoring: isRestoringScroll,
+      scheduleCapture: scheduleScrollCapture,
+      flushCapture: flushScrollCapture,
+      restore: restoreScroll,
+      teardown: teardownScrollRestore,
+    } = useChatScrollRestore({
+      getEl: () => conversationSpace.value,
+      getKey: () => store.state.chat.activeConversationId,
+      getWindow: () => visibleWindow.value,
+      setWindow: (n) => {
+        visibleWindow.value = Math.max(MESSAGE_WINDOW_INITIAL, n);
+      },
+    });
 
     const isProcessing = ref(false);
     let localMessageIdCounter = 0;
@@ -1778,19 +1801,10 @@ export default {
       }
     };
 
-    const scrollToTop = () => {
-      // Scroll the base screen to top
-      if (baseScreenRef.value && baseScreenRef.value.$el) {
-        const scrollContainer = baseScreenRef.value.$el.querySelector('.screen-content');
-        if (scrollContainer) {
-          scrollContainer.scrollTop = 0;
-        }
-      }
-      // Also scroll conversation space to top
-      if (conversationSpace.value) {
-        conversationSpace.value.scrollTop = 0;
-      }
-    };
+    // (scrollToTop removed: every caller opened a conversation, and opening a
+    //  200-message conversation at message 1 was the bug. Opens now go through
+    //  restoreScroll. The user-facing "scroll to top" control lives in
+    //  ChatScrollControls and is unaffected.)
 
     const clearInput = () => baseScreenRef.value?.clearInput();
     const focusInput = () => baseScreenRef.value?.focusInput();
@@ -1907,8 +1921,8 @@ export default {
           store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
           currentConversationId.value = convId;
           terminalLines.value.push(`Switched to conversation (${conv.messages.length} messages)`);
-          await nextTick();
-          scrollToTop();
+          // Scroll position is restored by the activeConversationId watcher,
+          // which owns every switch. Nothing to do here.
           return;
         }
       }
@@ -1980,12 +1994,17 @@ export default {
           metadata: ['Error'],
         });
       } finally {
-        // Drop the spinner and scroll the new conversation to top once the
-        // messages have rendered. `finally` guarantees the flag clears even
-        // if the fetch or JSON parse threw.
+        // Drop the spinner and restore the conversation's reading position
+        // once the messages have rendered. `finally` guarantees the flag
+        // clears even if the fetch or JSON parse threw.
+        //
+        // The activeConversationId watcher already fired a restore when the
+        // slot was committed, but at that moment `bulkLoading` was still true
+        // so the canvas held a spinner and no anchors were measurable. This
+        // call supersedes it — restore() cancels any in-flight settle loop —
+        // and is the one that runs against the real transcript.
         bulkLoading.value = false;
-        await nextTick();
-        scrollToTop();
+        await restoreScroll(store.state.chat.activeConversationId);
       }
     };
 
@@ -2136,6 +2155,10 @@ export default {
       }, 30000);
       window.addEventListener('trigger-new-chat', clearConversation);
       window.addEventListener('keydown', handleChatKeyboardScroll);
+      // A reload or app quit gives us no unmount hook, so the last debounced
+      // capture would be lost. visibilitychange fires on both, and on tab
+      // switch — cheap enough to just flush every time.
+      document.addEventListener('visibilitychange', flushScrollCaptureOnHide);
 
       await nextTick();
       if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
@@ -2292,11 +2315,68 @@ export default {
       window.dispatchEvent(new CustomEvent('chat-cleared'));
     };
 
+    const flushScrollCaptureOnHide = () => {
+      if (document.visibilityState === 'hidden') flushScrollCapture();
+    };
+
+    // Navigating away from Chat does not unmount it — KeepAlive detaches the
+    // subtree, and a detached element's scrollTop is reset to 0 by the
+    // browser. So the position has to be banked on the way out and re-applied
+    // on the way back in, exactly as if it were a conversation switch.
+    onDeactivated(() => flushScrollCapture());
+    onActivated(() => restoreScroll());
+
     onUnmounted(() => {
+      // Bank the reading position before we lose the DOM. This is the last
+      // chance: the debounced capture from the user's final scroll may still
+      // be pending.
+      flushScrollCapture();
+      teardownScrollRestore();
+
       // Unregister stream event callback when component unmounts
       store.dispatch('chat/unregisterStreamEventCallback', handleStreamEvent);
       window.removeEventListener('trigger-new-chat', clearConversation);
       window.removeEventListener('keydown', handleChatKeyboardScroll);
+      document.removeEventListener('visibilitychange', flushScrollCaptureOnHide);
+      unsubscribeScrollSync();
+    });
+
+    // Conversation switches: bank the outgoing position, restore the incoming
+    // one. This is the single owner of switch-time scroll behaviour — every
+    // path that changes conversation (sidebar click, /new-chat, clear, loading
+    // a saved output) commits SET_ACTIVE_CONVERSATION, so none of them has to
+    // think about scrolling.
+    //
+    // WHY THE MUTATION AND NOT A watch ON THE ID
+    // `activeConversationId` changes for two entirely different reasons: the
+    // user navigating to another conversation (SET_ACTIVE_CONVERSATION), and
+    // the backend assigning the real id to the conversation the user is
+    // ALREADY IN, mid-first-send (MIGRATE_CONVERSATION_ID mutates the field
+    // directly). A watch cannot tell them apart, so it would treat the id
+    // assignment as a switch: re-file the position under the dead temp id and
+    // start a settle loop that suppresses the autoscroll following the very
+    // response being streamed. Same conversation, new name — nothing resets.
+    // This is the same trap documented on BaseScreen's draft sync.
+    //
+    // The subscriber runs synchronously after the commit and before Vue
+    // re-renders, so the DOM measured here is still the OUTGOING
+    // conversation's — which is exactly what we need to bank.
+    let scrollKeyOnScreen = store.state.chat.activeConversationId || null;
+    const unsubscribeScrollSync = store.subscribe((mutation) => {
+      if (mutation.type === 'chat/MIGRATE_CONVERSATION_ID') {
+        // Identity assignment. The stored position is carried across by
+        // MIGRATE_CONTEXT_BINDINGS; all we do is follow the new name.
+        const { newId } = mutation.payload || {};
+        if (newId) scrollKeyOnScreen = newId;
+        return;
+      }
+      if (mutation.type !== 'chat/SET_ACTIVE_CONVERSATION') return;
+
+      const newId = store.state.chat.activeConversationId;
+      if (newId === scrollKeyOnScreen) return;
+      if (scrollKeyOnScreen) flushScrollCapture(scrollKeyOnScreen);
+      scrollKeyOnScreen = newId;
+      if (newId) restoreScroll(newId);
     });
 
     // MathJax typesetting is handled per-message in MessageItem.vue (after streaming completes).
@@ -2307,11 +2387,11 @@ export default {
       () => route.query['content-id'],
       async (newContentId, oldContentId) => {
         if (newContentId && newContentId !== oldContentId) {
-          scrollToTop();
+          // No pre-emptive scroll: the canvas shows a spinner for the whole
+          // fetch, so there is nothing to flash. loadSavedOutput restores the
+          // conversation's own position once the transcript has rendered.
           terminalLines.value = ['Loading saved output...'];
           await loadSavedOutput(newContentId);
-          await nextTick();
-          scrollToTop();
         }
       },
     );
@@ -2632,6 +2712,11 @@ export default {
       displayMessages,
       () => {
         if (!conversationSpace.value) return;
+        // Stand down while a restore is settling. Early in the loop the
+        // transcript is short and scrollTop is still 0, which reads as
+        // "near the bottom" — acting on that would yank the user to the end
+        // of a conversation they asked to reopen in the middle.
+        if (isRestoringScroll.value) return;
 
         const el = conversationSpace.value;
         const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
@@ -2647,6 +2732,7 @@ export default {
       ...tutorialWithCallback,
       baseScreenRef,
       conversationSpace,
+      scheduleScrollCapture,
       terminalLines,
       displayMessages,
       isProcessing,
