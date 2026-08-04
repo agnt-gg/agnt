@@ -49,7 +49,10 @@
  * like everything else.
  */
 
-import authManager from './auth/AuthManager.js';
+import {
+  resolveOpenAiVoiceCredential,
+  isBorrowedCredential,
+} from './auth/openAiVoiceCredential.js';
 
 /** Speech-to-speech model. GA interface — no beta header. */
 export const REALTIME_MODEL = 'gpt-realtime-2.1';
@@ -234,13 +237,11 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
     return { ok: false, status: 400, reason: 'missing-sdp' };
   }
 
-  let apiKey = null;
-  try {
-    apiKey = await authManager.getValidAccessToken(userId, 'openai');
-  } catch {
-    apiKey = null;
-  }
-  if (!apiKey) return { ok: false, status: 200, reason: 'no-credentials' };
+  // Any way of signing in with OpenAI works: a platform API key, or the
+  // ChatGPT/Codex OAuth token. The resolver is shared with the status endpoint
+  // so what we OFFER and what we can DO can never disagree.
+  const credential = await resolveOpenAiVoiceCredential(userId);
+  if (!credential) return { ok: false, status: 200, reason: 'no-credentials' };
 
   const form = new FormData();
   form.set('sdp', sdp);
@@ -250,7 +251,10 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
   try {
     res = await fetch('https://api.openai.com/v1/realtime/calls', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: {
+        Authorization: `Bearer ${credential.token}`,
+        ...(credential.accountId ? { 'chatgpt-account-id': credential.accountId } : {}),
+      },
       body: form,
     });
   } catch (err) {
@@ -264,6 +268,21 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
     } catch {
       detail = '';
     }
+
+    // A ChatGPT plan that is not entitled to Realtime is, from the user's side,
+    // the same situation as having no credential: nothing they did is wrong and
+    // nothing they can change fixes it. Report it as such so the client drops
+    // to the cascade pipeline instead of showing an error for a feature they
+    // never asked for. A PLATFORM key rejected the same way is a real problem
+    // and is surfaced — that distinction is the entire point of tracking which
+    // kind of credential we used.
+    if ((res.status === 401 || res.status === 403) && isBorrowedCredential(credential.source)) {
+      console.warn(
+        `[speech] ChatGPT sign-in is not entitled to realtime (${res.status}); falling back to cascade.`,
+      );
+      return { ok: false, status: 200, reason: 'no-credentials' };
+    }
+
     // Never echo the key or the request headers back — only the provider's own
     // message, truncated.
     return { ok: false, status: res.status, reason: `provider-${res.status}`, detail };

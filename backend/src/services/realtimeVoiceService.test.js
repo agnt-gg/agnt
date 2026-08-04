@@ -5,6 +5,18 @@ vi.mock('./auth/AuthManager.js', () => ({
   default: { getValidAccessToken: (...a) => getValidAccessToken(...a) },
 }));
 
+// CodexAuthManager reads ~/.codex/auth.json from the REAL home directory, so
+// leaving it unmocked would make "this user has no credential" depend on
+// whether the machine running the suite happens to be signed in to ChatGPT.
+const ensureValidToken = vi.fn();
+const getChatGptAccountId = vi.fn();
+vi.mock('./auth/CodexAuthManager.js', () => ({
+  default: {
+    ensureValidToken: (...a) => ensureValidToken(...a),
+    getChatGptAccountId: (...a) => getChatGptAccountId(...a),
+  },
+}));
+
 const {
   createRealtimeCall,
   buildSessionConfig,
@@ -19,6 +31,10 @@ const origFetch = globalThis.fetch;
 
 beforeEach(() => {
   getValidAccessToken.mockReset();
+  ensureValidToken.mockReset();
+  getChatGptAccountId.mockReset();
+  ensureValidToken.mockResolvedValue(null);
+  getChatGptAccountId.mockReturnValue(null);
   globalThis.fetch = vi.fn();
 });
 afterEach(() => {
@@ -266,5 +282,102 @@ describe('createRealtimeCall', () => {
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
     expect(r.ok).toBe(false);
     expect(r.reason).toBe('network');
+  });
+});
+
+describe('voice works however the user signed in with OpenAI', () => {
+  /**
+   * Voice used to require a platform API key and nothing else. A user signed in
+   * with ChatGPT or Codex — the same OAuth flow, the same ~/.codex/auth.json —
+   * silently got the cascade pipeline instead, even though OpenAI accepts that
+   * token for Realtime (measured: POST /v1/realtime/calls -> 201).
+   */
+  const ok = () => globalThis.fetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'answer' });
+
+  it('opens the session with the ChatGPT/Codex token when there is no platform key', async () => {
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ok();
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+
+    expect(r.ok).toBe(true);
+    const [, opts] = globalThis.fetch.mock.calls[0];
+    expect(opts.headers.Authorization).toBe('Bearer eyJ.oauth.token');
+  });
+
+  it('identifies the ChatGPT account so the right subscription is billed', async () => {
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    getChatGptAccountId.mockReturnValue('acct_abc');
+    ok();
+
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(globalThis.fetch.mock.calls[0][1].headers['chatgpt-account-id']).toBe('acct_abc');
+  });
+
+  it('sends no account header for a platform key', async () => {
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ok();
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(globalThis.fetch.mock.calls[0][1].headers).not.toHaveProperty('chatgpt-account-id');
+  });
+
+  it('a platform key still wins over the ChatGPT token', async () => {
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ok();
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(globalThis.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer sk-test');
+  });
+});
+
+describe('a ChatGPT plan that is not entitled to realtime degrades quietly', () => {
+  /**
+   * Only `prolite` was verified against the live API. If some other plan is not
+   * entitled, the user did nothing wrong and can change nothing — that is the
+   * same situation as having no credential, so it produces the same NORMAL
+   * result and the client falls back to the cascade. A PLATFORM key rejected
+   * the same way IS the user's business and is surfaced. Tracking which kind of
+   * credential was used exists precisely to tell those two apart.
+   */
+  beforeEach(() => {
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+  });
+
+  it.each([401, 403])('a %i on the borrowed token reads as no-credentials', async (status) => {
+    globalThis.fetch.mockResolvedValue({ ok: false, status, text: async () => 'insufficient permissions' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('no-credentials');
+    expect(r.status).toBe(200); // a normal state, not an error the client should show
+  });
+
+  it.each([401, 403])('a %i on a PLATFORM key is surfaced, not swallowed', async (status) => {
+    getValidAccessToken.mockResolvedValue('sk-revoked');
+    globalThis.fetch.mockResolvedValue({ ok: false, status, text: async () => 'invalid api key' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe(`provider-${status}`);
+    expect(r.status).toBe(status);
+  });
+
+  it('a non-auth failure on the borrowed token is still a real failure', async () => {
+    // Rate limits and outages are transient and diagnosable. Hiding them as
+    // "no credentials" would turn a temporary problem into a phantom one.
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 429, text: async () => 'slow down' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe('provider-429');
+  });
+
+  it('never leaks the borrowed token in the failure it reports', async () => {
+    ensureValidToken.mockResolvedValue('eyJ.super-secret-oauth.token');
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(JSON.stringify(r)).not.toContain('super-secret-oauth');
   });
 });
