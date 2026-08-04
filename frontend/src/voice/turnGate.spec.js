@@ -319,6 +319,19 @@ describe('turnGate — continuous vs one-shot', () => {
 });
 
 describe('turnGate — idle timeout', () => {
+  it('BY DEFAULT a session never closes itself', () => {
+    // Was 45s. Thinking quietly for that long silently killed the session —
+    // you look up to say the thing and the mic is gone. An explicitly-opened
+    // session stays open until the user closes it.
+    expect(DEFAULT_GATE_CONFIG.idleTimeoutMs).toBe(0);
+
+    const g = createTurnGate();
+    g.send({ type: 'start', now: 0 });
+    const r = g.send({ type: 'tick', now: 10 * 60 * 1000 }); // ten minutes silent
+    expect(r.state).toBe(VoiceState.LISTENING);
+  });
+
+
   it('closes an abandoned hands-free session', () => {
     const g = createTurnGate({ idleTimeoutMs: 5000 });
     g.send({ type: 'start', now: 0 });

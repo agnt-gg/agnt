@@ -81,8 +81,23 @@ export const DEFAULT_GATE_CONFIG = Object.freeze({
   /** Require this much speech before treating it as a real barge-in rather
    *  than a cough or a door. */
   bargeInMinSpeechMs: 120,
-  /** Hands-free session ends after this long with no speech at all. 0 = never. */
-  idleTimeoutMs: 45000,
+  /**
+   * End the session after this long with no speech at all. 0 = never.
+   *
+   * DEFAULT IS 0 — an explicitly-opened session stays open until the user
+   * closes it. It was 45s, which meant thinking quietly for three quarters of
+   * a minute silently killed the session: you look up to say the thing you
+   * were working out and the mic is gone. "It stopped listening" is the exact
+   * failure this whole design exists to avoid, and a timeout that fires while
+   * the user is still present is that failure with a timer attached.
+   *
+   * The safeguard against a forgotten hot mic is VISIBILITY, not a timer: the
+   * button is tinted, the status strip reads "Listening…", and End is one
+   * click. A wake-word session is the case that genuinely wants auto-sleep
+   * (nobody opened it deliberately, so nobody knows to close it) — that config
+   * should set this explicitly.
+   */
+  idleTimeoutMs: 0,
   /** When true, a completed reply returns to LISTENING (continuous
    *  conversation). When false, one exchange per wake — the Hermes model. */
   continuous: true,
