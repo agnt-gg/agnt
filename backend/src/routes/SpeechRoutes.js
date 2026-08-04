@@ -7,6 +7,7 @@ import { whisperService } from '../services/whisperService.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
 import { synthesize, listEngines, availableEngines, MAX_TTS_CHARS } from '../services/ttsService.js';
 import { createRealtimeCall, REALTIME_VOICES, DEFAULT_VOICE, REALTIME_MODEL } from '../services/realtimeVoiceService.js';
+import { hasOpenAiVoiceCredential } from '../services/auth/openAiVoiceCredential.js';
 
 const router = express.Router();
 
@@ -250,13 +251,19 @@ router.post(
  * GET /api/speech/realtime/status
  * Whether speech-to-speech is usable for THIS user, so the client can offer it
  * (or not) without attempting a connection.
+ *
+ * This asks the SAME function the SDP exchange asks. It used to ask a different
+ * one — whether the OpenAI TTS engine had a platform key — which meant a user
+ * signed in with ChatGPT/Codex was told voice was unavailable while the call
+ * would in fact have succeeded. A capability probe that can disagree with the
+ * capability is worse than no probe at all: it hides working features.
  */
 router.get('/realtime/status', requireAuthHeader, async (req, res) => {
   try {
-    const engines = await availableEngines(req.user?.id);
+    const available = await hasOpenAiVoiceCredential(req.user?.id);
     res.json({
       success: true,
-      available: engines.includes('openai'),
+      available,
       model: REALTIME_MODEL,
       voices: REALTIME_VOICES,
       defaultVoice: DEFAULT_VOICE,
