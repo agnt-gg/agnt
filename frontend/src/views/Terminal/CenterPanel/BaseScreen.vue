@@ -153,17 +153,6 @@
                 <i class="fas fa-wrench"></i>
               </button>
             </Tooltip>
-            <Tooltip :text="isListening ? 'Stop recording' : 'Start voice input'" width="auto">
-              <button
-                v-if="isSupported && !isStreaming"
-                @click="toggleListening"
-                :disabled="isInputDisabled"
-                class="chat-mic-button"
-                :class="{ 'is-listening': isListening }"
-              >
-                <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
-              </button>
-            </Tooltip>
             <!--
               Hands-free voice. Deliberately NOT hidden while streaming: the
               whole point is that you can talk over a reply and redirect it,
@@ -280,7 +269,6 @@ import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
-import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 import { useVoiceSession } from '@/composables/useVoiceSession';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
@@ -405,7 +393,6 @@ export default {
     const isPanelOpen = ref(false);
 
     // --- Speech Recognition ---
-    const { isListening, isSupported, transcript, error: speechError, toggleListening } = useSpeechRecognition();
 
     // --- Input State ---
     const currentUserInput = ref('');
@@ -1365,22 +1352,6 @@ export default {
 
     watch(currentUserInput, autoResizeTextarea);
 
-    // Watch for speech recognition transcript changes
-    watch(transcript, (newTranscript) => {
-      if (newTranscript) {
-        currentUserInput.value = newTranscript;
-        autoResizeTextarea();
-      }
-    });
-
-    // Watch for speech recognition errors
-    watch(speechError, (newError) => {
-      if (newError) {
-        // Only log actual errors (network errors are handled silently in the composable)
-        console.warn('Speech recognition:', newError);
-        // You could show a toast notification here if you have a notification system
-      }
-    });
 
     // Watch store state changes to make them reactive immediately
     watch(
@@ -1506,10 +1477,6 @@ export default {
       toggleRightPanelCollapsed,
       leftPanelCollapsed,
       rightPanelCollapsed,
-      // Speech Recognition
-      isListening,
-      isSupported,
-      toggleListening,
       // Hands-free voice conversation
       voiceActive: voice.isActive,
       voiceState: voice.state,
@@ -1835,38 +1802,9 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   align-self: flex-end;
 }
 
-.chat-mic-button {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-darker-2);
-  color: var(--color-dull-white);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  margin-left: 8px;
-  flex-shrink: 0;
-}
 
-.chat-mic-button:hover:not(:disabled) {
-  background: var(--color-darker-0);
-  color: var(--color-primary);
-}
 
-.chat-mic-button.is-listening {
-  background: var(--color-red);
-  color: var(--color-dull-white);
-  animation: pulse 1.5s ease-in-out infinite;
-}
 
-.chat-mic-button:disabled {
-  background: var(--color-darker-1);
-  cursor: not-allowed;
-  transform: none;
-}
 
 @keyframes pulse {
   0%,
@@ -2161,7 +2099,6 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   }
 
   /* Reduce button sizes slightly */
-  .chat-mic-button,
   .chat-send-button,
   .chat-attach-button,
   .chat-provider-button,

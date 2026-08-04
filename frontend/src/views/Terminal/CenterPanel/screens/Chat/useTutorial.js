@@ -75,7 +75,7 @@ export function useTutorial(emitFunction) {
       enforceStep: false,
     },
     {
-      target: '.chat-mic-button',
+      target: '.chat-voice-button',
       position: 'top',
       title: '🎙️ Voice Input',
       content: "Prefer talking over typing? Click here to use voice input. I'll transcribe your speech into a message for you!",

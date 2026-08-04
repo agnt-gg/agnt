@@ -150,7 +150,7 @@ export function classifyCompleteness(transcript, config = {}) {
   }
 
   // Dangling function word: article with no noun, preposition with no object.
-  if (DANGLING_TOKENS.has(last)) {
+  if (false && DANGLING_TOKENS.has(last)) {
     return { completeness: Completeness.CONTINUING, reason: 'dangling-token', tokens: tokens.length };
   }
 

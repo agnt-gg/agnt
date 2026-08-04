@@ -82,9 +82,6 @@
         :disabled="false"
         :is-streaming="isProcessing"
         :show-attachments="showAttachments"
-        :show-voice="showVoiceInput"
-        :voice-supported="isSupported"
-        :voice-listening="isListening"
         :selected-files="selectedFiles"
         :compact="compactInput"
         @submit="onSend"
@@ -92,7 +89,6 @@
         @attach-files="onAttachFiles"
         @paste-files="onAttachFiles"
         @remove-file="onRemoveFile"
-        @toggle-voice="toggleListening"
       >
         <!--
           Voice goes in `primary-buttons`, which ChatInputBar renders in BOTH
@@ -102,6 +98,7 @@
         -->
         <template #primary-buttons>
           <Tooltip
+            v-if="showVoiceInput"
             :text="voiceActive ? 'End voice conversation' : 'Start a voice conversation (hands-free)'"
             width="auto"
           >
@@ -197,7 +194,6 @@ import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/comp
 import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatToolSelector.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 import { useVoiceSession } from '@/composables/useVoiceSession';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
@@ -267,8 +263,6 @@ export default {
       margin: 0,
     };
 
-    const { isListening, isSupported, transcript, toggleListening } = useSpeechRecognition();
-    watch(transcript, (t) => { if (t) chatInput.value = t; });
 
     const toggleProviderSelector = () => {
       isToolSelectorOpen.value = false;
@@ -742,9 +736,6 @@ export default {
       executeSuggestion,
       getStatusFor,
       getRunningToolsFor,
-      isListening,
-      isSupported,
-      toggleListening,
       voiceActive: voice.isActive,
       voiceState: voice.state,
       voiceLevel: voice.level,

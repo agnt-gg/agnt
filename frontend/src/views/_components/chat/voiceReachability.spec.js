@@ -189,11 +189,40 @@ describe('voice is reachable in the MAIN chat screen', () => {
   });
 });
 
+describe('one voice system, not two', () => {
+  /**
+   * 2026-08-04: the legacy push-to-talk dictation mic was REPLACED by the
+   * voice session. The old button was a strict subset of the new one — speech
+   * in, nothing out, user as the endpointer — and keeping both meant two
+   * adjacent microphone controls with subtly different behaviour. These
+   * guards pin the replacement so the old control cannot quietly return on
+   * one surface and not the other.
+   */
+  it('the main chat screen no longer renders the legacy dictation mic', () => {
+    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    expect(src).not.toContain('chat-mic-button');
+    expect(src).not.toContain('useSpeechRecognition');
+  });
+
+  it('the shared composer no longer renders the legacy dictation mic', () => {
+    const wrapper = mountChat();
+    expect(wrapper.find('.chat-mic-btn').exists()).toBe(false);
+    expect(wrapper.find('.chat-voice-btn').exists()).toBe(true);
+  });
+
+  it('a host can still opt out of voice entirely', () => {
+    // showVoiceInput used to gate the old mic; it now gates the new button,
+    // so `:show-voice-input="false"` keeps its meaning.
+    const wrapper = mountChat({ showVoiceInput: false });
+    expect(wrapper.find('.chat-voice-btn').exists()).toBe(false);
+  });
+});
+
 describe('anti-vacuity: these guards can actually fail', () => {
   it('the BaseScreen file it reads is real and substantial', () => {
     const src = fs.readFileSync(BASE_SCREEN, 'utf8');
     expect(src.length).toBeGreaterThan(50000);
-    expect(src).toContain('chat-mic-button'); // the pre-existing control
+    expect(src).toContain('chat-voice-button'); // the control this file guards
   });
 
   it('a mounted chat renders a composer at all', () => {

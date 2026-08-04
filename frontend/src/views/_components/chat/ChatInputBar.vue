@@ -62,24 +62,11 @@
           </button>
         </Tooltip>
         <slot name="extra-buttons" :is-streaming="isStreaming" />
-        <Tooltip v-if="showVoice && voiceSupported && !isStreaming" :text="voiceListening ? 'Stop recording' : 'Start voice input'" width="auto">
-          <button @click="$emit('toggle-voice')" :disabled="disabled" class="chat-icon-btn chat-mic-btn" :class="{ 'is-listening': voiceListening }">
-            <i :class="voiceListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
-          </button>
-        </Tooltip>
       </template>
 
-      <!-- Compact (sidebar) layout: secondary buttons collapse into "..." menu.
-           When voice is actively listening, surface a dedicated Stop-recording
-           button in the row instead of hiding it inside the overflow menu —
-           the user needs to be able to stop dictating without clicking through. -->
+      <!-- Compact (sidebar) layout: secondary buttons collapse into "..." menu. -->
       <template v-else>
-        <Tooltip v-if="showVoice && voiceSupported && voiceListening && !isStreaming" text="Stop recording" width="auto">
-          <button @click="$emit('toggle-voice')" :disabled="disabled" class="chat-icon-btn chat-mic-btn is-listening" type="button">
-            <i class="fas fa-stop"></i>
-          </button>
-        </Tooltip>
-        <div v-else-if="hasOverflowItems && !isStreaming" class="chat-overflow-wrap" v-click-outside="closeOverflow">
+        <div v-if="hasOverflowItems && !isStreaming" class="chat-overflow-wrap" v-click-outside="closeOverflow">
           <Tooltip text="More" width="auto">
             <button
               @click.stop="overflowOpen = !overflowOpen"
@@ -157,9 +144,6 @@ export default {
       type: String,
       default: '.pdf,.docx,.txt,.csv,.md,.json,.js,.py,.html,.css,.jpg,.jpeg,.png,.gif,.webp',
     },
-    showVoice: { type: Boolean, default: true },
-    voiceSupported: { type: Boolean, default: false },
-    voiceListening: { type: Boolean, default: false },
     selectedFiles: { type: Array, default: () => [] },
     mentionedAgents: { type: Array, default: () => [] },
     showHighlightBackdrop: { type: Boolean, default: false },
@@ -176,7 +160,6 @@ export default {
     'paste-files',
     'remove-file',
     'remove-mention',
-    'toggle-voice',
     'textarea-input',
     'textarea-keydown',
     'textarea-scroll',
@@ -531,12 +514,9 @@ export default {
 }
 
 .chat-attach-btn,
-.chat-mic-btn,
 .chat-overflow-btn {
   /* base inherited */
 }
-
-.chat-mic-btn.is-listening,
 .chat-overflow-item.is-listening {
   background: var(--color-red);
   color: var(--on-fill-danger);
