@@ -29,6 +29,8 @@ const savedEnv = {};
 const USER = 'user-attention-1';
 const OTHER_USER = 'user-attention-2';
 const OUT = 'out-attention-1';
+const BULK_A = 'out-attention-bulk-a';
+const BULK_B = 'out-attention-bulk-b';
 
 function getRow(id) {
   return new Promise((resolve, reject) => {
@@ -148,6 +150,67 @@ describe('content_outputs attention columns', () => {
   it('missing rows report changes 0 (route 404 path)', async () => {
     expect((await ContentOutputModel.setReadState('no-such-id', USER, true)).changes).toBe(0);
     expect((await ContentOutputModel.setArchived('no-such-id', USER, true)).changes).toBe(0);
+  });
+
+  it('markAllRead clears every unread row the user owns, in one statement', async () => {
+    await ContentOutputModel.createOrUpdate(BULK_A, USER, null, null, '{}', false, 'conversation', 'conv-bulk-a', 'Bulk A');
+    await ContentOutputModel.createOrUpdate(BULK_B, USER, null, null, '{}', false, 'conversation', 'conv-bulk-b', 'Bulk B');
+    await ContentOutputModel.setReadState(OUT, USER, false);
+
+    const result = await ContentOutputModel.markAllRead(USER);
+    expect(result.changes).toBe(3);
+
+    for (const id of [OUT, BULK_A, BULK_B]) {
+      const row = await getRow(id);
+      expect(row.last_read_at).not.toBeNull();
+      expect(row.updated_at <= row.last_read_at).toBe(true);
+    }
+  });
+
+  it('markAllRead reports 0 when nothing is unread (clearing a clear rail is not an error)', async () => {
+    expect((await ContentOutputModel.markAllRead(USER)).changes).toBe(0);
+  });
+
+  it('markAllRead scoped to ids touches only those rows', async () => {
+    await ContentOutputModel.setReadState(BULK_A, USER, false);
+    await ContentOutputModel.setReadState(BULK_B, USER, false);
+
+    const result = await ContentOutputModel.markAllRead(USER, [BULK_A]);
+    expect(result.changes).toBe(1);
+    expect((await getRow(BULK_A)).last_read_at).not.toBeNull();
+    expect((await getRow(BULK_B)).last_read_at).toBeNull();
+  });
+
+  it('markAllRead with an EMPTY id list is a no-op, never a mass update', async () => {
+    // [] means "these zero conversations". Widening it to "everything" would
+    // turn a scoping bug in any caller into silent data loss of unread state.
+    const result = await ContentOutputModel.markAllRead(USER, []);
+    expect(result.changes).toBe(0);
+    expect((await getRow(BULK_B)).last_read_at).toBeNull();
+  });
+
+  it('markAllRead is ownership-scoped and skips archived rows', async () => {
+    expect((await ContentOutputModel.markAllRead(OTHER_USER)).changes).toBe(0);
+    expect((await getRow(BULK_B)).last_read_at).toBeNull();
+
+    await ContentOutputModel.setArchived(BULK_B, USER, true);
+    // Archived is never unread, so there is nothing left to clear.
+    expect((await ContentOutputModel.markAllRead(USER)).changes).toBe(0);
+    expect((await getRow(BULK_B)).last_read_at).toBeNull();
+    await ContentOutputModel.setArchived(BULK_B, USER, false);
+  });
+
+  it('markAllRead does not touch updated_at', async () => {
+    const before = await getRow(BULK_B);
+    // SQLite CURRENT_TIMESTAMP is second-resolution: without this wait an
+    // accidental `updated_at = CURRENT_TIMESTAMP` writes the SAME string and
+    // the assertion passes vacuously. Verified — the negative control for
+    // that mutation was green until this line existed.
+    await new Promise((r) => setTimeout(r, 1100));
+    await ContentOutputModel.markAllRead(USER, [BULK_B]);
+    const after = await getRow(BULK_B);
+    expect(after.updated_at).toBe(before.updated_at);
+    expect(after.last_read_at).not.toBeNull();
   });
 
   it('a save (createOrUpdate) bumps updated_at but preserves the attention columns', async () => {

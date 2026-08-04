@@ -44,6 +44,7 @@
  * every comparison against them false and produce an unstable order.
  */
 import { parseServerTime } from '@/utils/serverTime.js';
+import { isUnread } from '@/utils/conversationAttention.js';
 
 export function activityTime(output, bumps = {}) {
   if (!output) return 0;
@@ -67,6 +68,30 @@ export function activityTime(output, bumps = {}) {
  * @param {Function} previewOf   (output) => string, used for the 'content' sort
  */
 export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', bumps = {}, previewOf } = {}) {
+  // 'attention' is a SEMANTIC order, not a directional one: unread first,
+  // longest-waiting at the top, then everything else by recency. It is the
+  // triage rail's invariant applied to the whole list, which is the only
+  // reason the rail can be a view of the list rather than a special case.
+  //
+  // sortOrder is deliberately ignored here — "needs you, backwards" is not a
+  // thing a user wants, and offering it would only produce an ordering that
+  // buries the oldest waiting conversation, which is the exact failure this
+  // whole feature exists to prevent.
+  //
+  // Bumps apply only to the read partition. A manual "Mark as Unread" writes
+  // nothing server-side, so inside the unread partition the honest measure of
+  // "how long has this been waiting" is updated_at alone — the same measure
+  // triageRail() uses, so rail and list agree on the order of the same rows.
+  if (sortKey === 'attention') {
+    return [...list].sort((a, b) => {
+      const aUnread = isUnread(a);
+      const bUnread = isUnread(b);
+      if (aUnread !== bUnread) return aUnread ? -1 : 1;
+      if (aUnread) return activityTime(a) - activityTime(b);
+      return activityTime(b, bumps) - activityTime(a, bumps);
+    });
+  }
+
   const dir = sortOrder === 'asc' ? 1 : -1;
   const isTimeSort = sortKey === 'updated_at' || sortKey === 'created_at';
 

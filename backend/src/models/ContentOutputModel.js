@@ -159,6 +159,41 @@ class ContentOutputModel {
   }
 
   /**
+   * Stamp the read watermark on every unread conversation at once, optionally
+   * restricted to `ids`. "Clear the Needs-you rail" is ONE user intent, so it
+   * is one statement — not N round trips that can half-apply.
+   *
+   * The WHERE clause is the same predicate the client derives unread from
+   * (frontend/src/utils/conversationAttention.js): archived rows are never
+   * unread, and already-read rows are skipped, so `changes` is an honest
+   * count of what was actually cleared. updated_at is untouched for the same
+   * reason setReadState leaves it alone.
+   *
+   * `ids = null` means "every unread conversation this user owns". An EMPTY
+   * array means "these zero conversations" and must never be widened into
+   * that — a caller sending [] gets a no-op, not a mass update.
+   */
+  static markAllRead(userId, ids = null) {
+    if (Array.isArray(ids) && ids.length === 0) return Promise.resolve({ changes: 0 });
+
+    return new Promise((resolve, reject) => {
+      const scoped = Array.isArray(ids);
+      const scopeClause = scoped ? ` AND id IN (${ids.map(() => '?').join(',')})` : '';
+      db.run(
+        `UPDATE content_outputs SET last_read_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?
+           AND archived_at IS NULL
+           AND (last_read_at IS NULL OR updated_at > last_read_at)${scopeClause}`,
+        scoped ? [userId, ...ids] : [userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
+  /**
    * Archive / unarchive. Does NOT touch updated_at so unarchiving restores
    * the conversation's original position in the recency-sorted sidebar.
    */

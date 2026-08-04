@@ -146,6 +146,84 @@ describe('markRead / markUnread', () => {
   });
 });
 
+describe('markAllRead — the rail\'s clear-all button', () => {
+  it('clears every requested id in ONE request, optimistically', async () => {
+    const store = makeStore();
+    seed(store, [
+      row({ id: 'a', last_read_at: null }),
+      row({ id: 'b', last_read_at: '2026-08-04 10:30:00' }),
+      row({ id: 'untouched', last_read_at: null }),
+    ]);
+    expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['a', 'b', 'untouched']));
+
+    let release;
+    global.fetch = vi.fn(() => new Promise((r) => { release = () => r({ ok: true, json: async () => ({ cleared: 2 }) }); }));
+
+    const promise = store.dispatch('contentOutputs/markAllRead', ['a', 'b']);
+    // Optimistic: both dots gone before the server answers. The id that was
+    // not passed keeps its dot — "all" means all of what was on screen.
+    expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['untouched']));
+
+    release();
+    await promise;
+
+    // ONE call, not one per id.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, opts] = global.fetch.mock.calls[0];
+    expect(url).toContain('/content-outputs/read-all');
+    expect(opts.method).toBe('PATCH');
+    expect(JSON.parse(opts.body)).toEqual({ ids: ['a', 'b'] });
+  });
+
+  it('is clock-skew-proof for the same reason markRead is', async () => {
+    const store = makeStore();
+    const future = new Date(Date.now() + 6 * HOUR).toISOString().replace('T', ' ').slice(0, 19);
+    seed(store, [row({ id: 'a', updated_at: future, last_read_at: null })]);
+
+    await store.dispatch('contentOutputs/markAllRead', ['a']);
+
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('a')).toBe(false);
+  });
+
+  it('a failed request rolls back EVERY optimistic flip and rethrows', async () => {
+    const store = makeStore();
+    seed(store, [
+      row({ id: 'a', last_read_at: null }),
+      row({ id: 'b', last_read_at: '2026-08-04 10:30:00' }),
+    ]);
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+
+    await expect(store.dispatch('contentOutputs/markAllRead', ['a', 'b'])).rejects.toThrow();
+
+    // Both dots are back, and 'b' kept its ORIGINAL stale watermark rather
+    // than being reverted to null — a partial rollback is still a bug.
+    expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['a', 'b']));
+    expect(store.getters['contentOutputs/outputs'].find((o) => o.id === 'b').last_read_at)
+      .toEqual(new Date('2026-08-04T10:30:00Z'));
+  });
+
+  it('an empty list is a no-op that never reaches the network', async () => {
+    // The route widens a missing `ids` to "everything"; an empty array must
+    // therefore never be sent as one.
+    const store = makeStore();
+    seed(store, [row({ id: 'a', last_read_at: null })]);
+
+    await store.dispatch('contentOutputs/markAllRead', []);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('a')).toBe(true);
+  });
+
+  it('ids missing from local state are still sent to the server', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'a', last_read_at: null })]);
+
+    await store.dispatch('contentOutputs/markAllRead', ['a', 'not-fetched-yet']);
+
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({ ids: ['a', 'not-fetched-yet'] });
+  });
+});
+
 describe('setArchived', () => {
   it('archives optimistically, silencing any unread state, and PATCHes', async () => {
     const store = makeStore();

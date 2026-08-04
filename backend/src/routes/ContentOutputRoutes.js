@@ -9,6 +9,9 @@ const ContentOutputRoutes = express.Router();
 ContentOutputRoutes.get('/health', RunService.healthCheck);
 ContentOutputRoutes.get('/', authenticateToken, RunService.getAllContentOutputs);
 ContentOutputRoutes.post('/save', authenticateToken, RunService.saveOrUpdateContentOutput);
+// Bulk read-clear. Declared above the /:id routes so a literal path can never
+// be swallowed by a parameter segment as this file grows.
+ContentOutputRoutes.patch('/read-all', authenticateToken, RunService.markAllContentOutputsRead);
 ContentOutputRoutes.get('/:id', authenticateToken, RunService.getContentOutput);
 ContentOutputRoutes.put('/:id', authenticateToken, RunService.saveOrUpdateContentOutput);
 ContentOutputRoutes.patch('/:id/rename', authenticateToken, RunService.renameContentOutput);

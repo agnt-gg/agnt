@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { activityTime, sortOutputs } from './outputSort.js';
+import { triageRail } from '@/utils/conversationAttention.js';
 
 const t = (hhmm) => `2026-07-26T${hhmm}:00.000Z`;
 const ms = (hhmm) => Date.parse(t(hhmm));
@@ -159,6 +160,71 @@ describe('sortOutputs — sort controls', () => {
   });
 });
 
+describe("sortOutputs — the 'attention' (Needs you) order", () => {
+  // Rows carry the columns unread is DERIVED from; there is no unread flag.
+  const unread = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: null });
+  const read = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: t('23:59') });
+
+  it('puts unread above read no matter how stale the unread item is', () => {
+    const outputs = [read('fresh', t('12:00')), unread('ancient', t('01:00'))];
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['ancient', 'fresh']);
+  });
+
+  it('orders the unread partition longest-waiting first', () => {
+    // This is the invariant the whole feature exists for: the longer
+    // something has waited, the higher it sits. A recency order here would
+    // rebuild the burial bug the rail was built to fix.
+    const outputs = [unread('newer', t('11:00')), unread('oldest', t('02:00')), unread('mid', t('09:00'))];
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['oldest', 'mid', 'newer']);
+  });
+
+  it('orders the read partition most-recent first', () => {
+    const outputs = [read('old', t('02:00')), read('new', t('11:00'))];
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['new', 'old']);
+  });
+
+  it('agrees with triageRail on the order of the same unread rows', () => {
+    // Rail and list are two views of one ordering. If they disagree, the
+    // same conversation appears in two different places in the same panel.
+    const outputs = [unread('b', t('09:00')), unread('a', t('03:00')), unread('c', t('10:00'))];
+    const railOrder = ids(triageRail(outputs));
+    const listOrder = ids(sortOutputs(outputs, { sortKey: 'attention' }));
+    expect(listOrder).toEqual(railOrder);
+  });
+
+  it('does not let a client bump reorder the unread partition', () => {
+    // A manual "Mark as Unread" writes nothing server-side, so "waiting
+    // since" is updated_at alone — otherwise the item would sink to the
+    // bottom of the rail in the list and sit at the top of the rail proper.
+    const outputs = [unread('marked', t('02:00')), unread('recent', t('10:00'))];
+    const sorted = sortOutputs(outputs, { sortKey: 'attention', bumps: { marked: ms('23:00') } });
+    expect(ids(sorted)).toEqual(['marked', 'recent']);
+  });
+
+  it('treats archived rows as read — archiving IS "done with this"', () => {
+    const outputs = [
+      { id: 'archived-unread', updated_at: t('01:00'), last_read_at: null, archived_at: t('01:30') },
+      { id: 'live-unread', updated_at: t('10:00'), last_read_at: null },
+    ];
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))[0]).toBe('live-unread');
+  });
+
+  it('ignores sortOrder: there is no useful reverse of "needs you"', () => {
+    const outputs = [read('fresh', t('12:00')), unread('ancient', t('01:00'))];
+    const desc = ids(sortOutputs(outputs, { sortKey: 'attention', sortOrder: 'desc' }));
+    const asc = ids(sortOutputs(outputs, { sortKey: 'attention', sortOrder: 'asc' }));
+    expect(asc).toEqual(desc);
+    expect(asc[0]).toBe('ancient');
+  });
+
+  it('does not mutate the input array', () => {
+    const outputs = [read('a', t('01:00')), unread('b', t('02:00'))];
+    const snapshot = ids(outputs);
+    sortOutputs(outputs, { sortKey: 'attention' });
+    expect(ids(outputs)).toEqual(snapshot);
+  });
+});
+
 describe('negative control — the comparator this replaced', () => {
   // The exact pre-fix logic. Kept so the regression cannot silently return:
   // if this ever starts passing the scenario above, the tier is back.
@@ -204,6 +270,25 @@ describe('template — the unread dot renders in every list', () => {
   it('drives the flat list through the shared sort helper', () => {
     expect(source).toContain("from './outputSort.js'");
     expect(source).toContain('sortOutputs(');
+  });
+
+  it('offers both sort modes and defaults to the attention order', () => {
+    expect(source).toContain("sortBy('attention')");
+    expect(source).toContain("sortBy('updated_at')");
+    // The default lives in loadSortPreference's fallback.
+    expect(source).toMatch(/return \{ key: 'attention', order: 'desc' \}/);
+  });
+
+  it('exposes a one-click clear for the whole rail', () => {
+    // The rail is a queue; a queue with no drain is a guilt generator.
+    expect(source).toContain('markAllNeedsYouRead');
+    expect(source).toContain("contentOutputs/markAllRead");
+  });
+
+  it('lets the Date sort reach the rail too', () => {
+    // A sort control that visibly skips a section of the list it controls is
+    // a broken control; the rail must re-sort when Date is picked.
+    expect(source).toMatch(/if \(sortKey\.value !== 'updated_at'\) return rail;/);
   });
 });
 
