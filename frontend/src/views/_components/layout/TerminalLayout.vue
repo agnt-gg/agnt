@@ -159,8 +159,12 @@ export default {
     const currentBackgroundType = computed(() => store.getters['theme/currentBackgroundType']);
     const defaultBackgroundImage = computed(() => store.state.theme.defaultBackgroundImage);
 
+    // True when either the user's own setting or a chat-set ephemeral overlay
+    // wants a background layer.
+    const backgroundLayerActive = computed(() => store.getters['theme/backgroundLayerActive']);
+
     const bgSrc = computed(() => {
-      if (!useCustomBackground.value) return null;
+      if (!backgroundLayerActive.value) return null;
       return currentThemeBackgroundImage.value || defaultBackgroundImage.value;
     });
 
@@ -171,7 +175,21 @@ export default {
       return currentThemeBackgroundImage.value ? currentBackgroundType.value || 'image' : 'image';
     });
 
-    const hasBgLayer = computed(() => useCustomBackground.value && !!bgSrc.value);
+    const hasBgLayer = computed(() => backgroundLayerActive.value && !!bgSrc.value);
+
+    // Ephemeral background set from a chat turn. chatUnified.js re-dispatches
+    // the `appearance:background` frontend event here as a window event because
+    // the background is global-scope, not chat-channel-scope.
+    const onAppearanceBackground = (event) => {
+      const detail = (event && event.detail) || {};
+      store.dispatch('theme/setEphemeralBackground', {
+        url: detail.url,
+        type: detail.kind,
+        fileName: detail.fileName,
+      });
+    };
+    onMounted(() => window.addEventListener('agnt:appearance-background', onAppearanceBackground));
+    onUnmounted(() => window.removeEventListener('agnt:appearance-background', onAppearanceBackground));
 
     // --- Mobile Detection ---
     const isMobile = ref(false);

@@ -1253,6 +1253,16 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
           console.error('[chatUnified] dispatching tutorial event failed:', e);
         }
       }
+      // Appearance events are global-scope for the same reason: the background
+      // belongs to the window, not to the chat channel that asked for it.
+      // TerminalLayout.vue owns #bg-layer and listens for this.
+      if (data.eventType === 'appearance:background') {
+        try {
+          window.dispatchEvent(new CustomEvent('agnt:appearance-background', { detail: data.eventData || {} }));
+        } catch (e) {
+          console.error('[chatUnified] dispatching appearance event failed:', e);
+        }
+      }
       if (typeof onFrontendEvent === 'function') {
         try { onFrontendEvent(data.eventType, data.eventData); } catch (e) {
           console.error('[chatUnified] onFrontendEvent threw:', e);

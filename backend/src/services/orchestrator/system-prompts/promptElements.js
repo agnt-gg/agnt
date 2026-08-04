@@ -94,6 +94,7 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   'memory',
   'tutorial',
   'canvas',
+  'appearance',
 ];
 
 /**

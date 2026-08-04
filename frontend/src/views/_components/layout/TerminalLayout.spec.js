@@ -6,6 +6,8 @@ import TerminalLayout from './TerminalLayout.vue';
 // TerminalLayout resolves its background layer from the theme module. Mounting
 // without a store leaves useStore() undefined and every render throws on
 // `store.getters`. This mirrors the real theme module's read surface.
+const setEphemeralBackground = vi.fn();
+
 const createThemeStore = (theme = {}) =>
   createStore({
     modules: {
@@ -16,12 +18,22 @@ const createThemeStore = (theme = {}) =>
           useCustomBackground: false,
           currentThemeBackgroundImage: null,
           currentBackgroundType: 'image',
+          ephemeralBackground: null,
           ...theme,
         },
         getters: {
           useCustomBackground: (s) => s.useCustomBackground,
-          currentThemeBackgroundImage: (s) => s.currentThemeBackgroundImage,
-          currentBackgroundType: (s) => s.currentBackgroundType,
+          // Mirrors the real module: the ephemeral overlay wins while set.
+          currentThemeBackgroundImage: (s) => (
+            (s.ephemeralBackground && s.ephemeralBackground.url) || s.currentThemeBackgroundImage
+          ),
+          currentBackgroundType: (s) => (
+            s.ephemeralBackground ? s.ephemeralBackground.type : s.currentBackgroundType
+          ),
+          backgroundLayerActive: (s) => s.useCustomBackground || !!s.ephemeralBackground,
+        },
+        actions: {
+          setEphemeralBackground,
         },
       },
     },
@@ -377,6 +389,80 @@ describe('TerminalLayout', () => {
       wrapper = createWrapper();
 
       expect(addEventListenerSpy).toHaveBeenCalledWith('sounds-settings-changed', expect.any(Function));
+    });
+  });
+
+  // The background layer is the only reason this component reads the theme
+  // module at all, and it is now driven by two independent sources: the user's
+  // persisted setting and an ephemeral overlay set from a chat turn.
+  describe('Background layer', () => {
+    it('renders nothing when neither the user setting nor an overlay is active', () => {
+      wrapper = createWrapper();
+      expect(wrapper.find('#bg-layer').exists()).toBe(false);
+    });
+
+    it('renders the user background when their own setting is on', () => {
+      wrapper = createWrapper({}, { useCustomBackground: true, currentThemeBackgroundImage: '/blob/user.png' });
+      expect(wrapper.find('#bg-layer').exists()).toBe(true);
+      expect(wrapper.find('#bg-layer img').attributes('src')).toBe('/blob/user.png');
+    });
+
+    it('renders an ephemeral overlay even when the user setting is OFF', () => {
+      // Regression guard: gating the layer on useCustomBackground alone meant a
+      // chat-set background stored a URL that nothing ever rendered.
+      wrapper = createWrapper({}, {
+        useCustomBackground: false,
+        ephemeralBackground: { url: '/api/local-file/C:/x/annie.png', type: 'image' },
+      });
+      expect(wrapper.find('#bg-layer').exists()).toBe(true);
+      expect(wrapper.find('#bg-layer img').attributes('src')).toBe('/api/local-file/C:/x/annie.png');
+    });
+
+    it('overlay takes precedence over the user background', () => {
+      wrapper = createWrapper({}, {
+        useCustomBackground: true,
+        currentThemeBackgroundImage: '/blob/user.png',
+        ephemeralBackground: { url: '/api/local-file/C:/x/annie.png', type: 'image' },
+      });
+      expect(wrapper.find('#bg-layer img').attributes('src')).toBe('/api/local-file/C:/x/annie.png');
+    });
+
+    it('renders a <video> when the overlay is a video', () => {
+      wrapper = createWrapper({}, {
+        ephemeralBackground: { url: '/api/local-file/C:/x/loop.mp4', type: 'video' },
+      });
+      expect(wrapper.find('#bg-layer video').exists()).toBe(true);
+      expect(wrapper.find('#bg-layer img').exists()).toBe(false);
+    });
+
+    it('applies the overlay when the global appearance event fires', async () => {
+      setEphemeralBackground.mockClear();
+      wrapper = createWrapper();
+
+      window.dispatchEvent(new CustomEvent('agnt:appearance-background', {
+        detail: { url: '/api/local-file/C:/x/annie.png', kind: 'image', fileName: 'annie.png' },
+      }));
+      await wrapper.vm.$nextTick();
+
+      expect(setEphemeralBackground).toHaveBeenCalledTimes(1);
+      expect(setEphemeralBackground.mock.calls[0][1]).toEqual({
+        url: '/api/local-file/C:/x/annie.png',
+        type: 'image',
+        fileName: 'annie.png',
+      });
+    });
+
+    it('stops listening after unmount', async () => {
+      setEphemeralBackground.mockClear();
+      wrapper = createWrapper();
+      wrapper.unmount();
+      wrapper = null;
+
+      window.dispatchEvent(new CustomEvent('agnt:appearance-background', {
+        detail: { url: '/api/local-file/C:/x/annie.png', kind: 'image' },
+      }));
+
+      expect(setEphemeralBackground).not.toHaveBeenCalled();
     });
   });
 

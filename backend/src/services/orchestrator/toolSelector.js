@@ -212,6 +212,14 @@ export const TOOL_GROUPS = {
     'end_guided_tour',
     'scan_page_elements',
   ],
+  // Live, EPHEMERAL control of the app's own chrome. Deliberately NOT in
+  // UNIVERSAL_TOOLS: two schemas on every turn of every surface is a permanent
+  // token cost for a capability that is only ever wanted when the user says the
+  // word. Keyword-gated, and loadable on demand via discover_tools.
+  appearance: [
+    'set_background_image',
+    'clear_background_image',
+  ],
   canvas: [
     'get_canvas_state',
     'inspect_canvas_widget',
@@ -286,6 +294,7 @@ export const GROUP_TRIGGERS = {
   email: /\b(emails?|e-mails?|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
   memory: /\b(remember|memor(?:y|ies)|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|histor(?:y|ies)|traces?|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
   tutorial: /\b(tours?|tutorials?|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
+  appearance: /\b(backgrounds?|wallpapers?|bg\s*images?|desktop\s*images?)\b/i,
   canvas: /\b(canvas|workspaces?|widgets?|windows?|panes?|tabs?|open\s+(?:the\s+)?(?:traces|goals|dashboard|memory|artifacts)|looking\s+at|on\s+(?:my|the)\s+screen)\b/i,
   mcp: /\b(mcp|mcps|model\s*context\s*protocols?)\b/i,
 };
@@ -307,6 +316,7 @@ export const GROUP_DESCRIPTIONS = {
   email: 'Send emails via SMTP',
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
+  appearance: "Set or clear the app's background image/video live (ephemeral overlay — never overwrites the user's saved theme background)",
   canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
   mcp: 'Tools exposed by your configured MCP servers (mcp__<server>__<tool>)',
 };
@@ -364,6 +374,7 @@ export const GROUP_GUIDANCE = {
   email: [],
   memory: [],
   tutorial: ['IMPORTANT_GUIDELINES'],
+  appearance: [],
 };
 
 /**
