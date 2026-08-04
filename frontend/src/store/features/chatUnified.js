@@ -7,7 +7,7 @@ import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } 
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
-import { serverMessagesToUi } from '@/services/chatStreamReducer.js';
+import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 // The key only — workspaceStorage.js is deliberately import-free and
 // side-effect-free, so reading workspace state here never boots the
 // useWorkspaces singleton (which MINTS a workspace on import). Two writers to
@@ -681,9 +681,21 @@ export default {
       if (!remote) return { ok: false, reason: 'not_found' };
 
       const remoteMessages = serverMessagesToUi(remote.messages);
-      // Keep the longer transcript (local may have unsent/partial UI state).
-      if (remoteMessages.length <= localCount && localCount > 0) {
-        return { ok: true, reason: 'local_newer_or_equal', localCount, remoteCount: remoteMessages.length };
+      // Adopt the transcript that SAYS MORE, never the one with more ROWS. The
+      // provider log carries two extra rows per tool round-trip, so row count
+      // is not a fidelity signal — it is exactly how a transcript that had lost
+      // its text used to win this race and overwrite good local history.
+      const localSubstance = transcriptSubstance(local.messages);
+      const remoteSubstance = transcriptSubstance(remoteMessages);
+      if (localCount > 0 && remoteSubstance <= localSubstance) {
+        return {
+          ok: true,
+          reason: 'local_newer_or_equal',
+          localCount,
+          remoteCount: remoteMessages.length,
+          localSubstance,
+          remoteSubstance,
+        };
       }
       if (remoteMessages.length === 0) {
         return { ok: true, reason: 'remote_empty' };
