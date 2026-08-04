@@ -8,6 +8,11 @@ import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
+import {
+  saveTranscript,
+  loadTranscriptByConversationId,
+  deriveTitle,
+} from '@/services/conversationTranscript.js';
 // The key only — workspaceStorage.js is deliberately import-free and
 // side-effect-free, so reading workspace state here never boots the
 // useWorkspaces singleton (which MINTS a workspace on import). Two writers to
@@ -107,6 +112,9 @@ const blankConversation = () => ({
   conversationId: null,
   lastUpdate: Date.now(),
   suggestions: [],
+  // The content_outputs row this channel's transcript is saved to. Held so
+  // every save UPDATES one row instead of creating a new one per turn.
+  savedOutputId: null,
 });
 
 const loadPersisted = () => {
@@ -480,6 +488,11 @@ export default {
       state.conversations[channelKey].conversationId = conversationId;
       persistConversations(state.conversations);
     },
+    SET_SAVED_OUTPUT_ID(state, { channelKey, outputId }) {
+      ensureChannel(state, channelKey);
+      state.conversations[channelKey].savedOutputId = outputId;
+      persistConversations(state.conversations);
+    },
     SET_SUGGESTIONS(state, { channelKey, suggestions }) {
       ensureChannel(state, channelKey);
       state.conversations[channelKey].suggestions = suggestions || [];
@@ -656,17 +669,18 @@ export default {
      * stored on the workspace (synced via /api/workspaces) or already on the
      * local channel. No-op for non-workspace channels and when offline.
      */
-    async hydrateWorkspaceChannel({ commit, state }, { channelKey } = {}) {
-      if (!channelKey || !channelKey.startsWith('workspace:')) return { ok: false, reason: 'not_workspace' };
+    async hydrateWorkspaceChannel({ commit, state, dispatch }, { channelKey } = {}) {
+      if (!channelKey) return { ok: false, reason: 'no_channel' };
       if (state.streamingChannels[channelKey]) return { ok: false, reason: 'streaming' };
 
+      const isWorkspace = channelKey.startsWith('workspace:');
       const local = state.conversations[channelKey] || blankConversation();
       const localCount = Array.isArray(local.messages) ? local.messages.length : 0;
       // Prefer the id already on this channel, then the id synced via workspaces.
-      let conversationId = local.conversationId || readWorkspaceChannelConversation(channelKey);
+      let conversationId = local.conversationId || (isWorkspace ? readWorkspaceChannelConversation(channelKey) : null);
       // Publish any local id so other devices can discover this thread even
       // before the next chat turn (backfill for pre-sync conversations).
-      if (local.conversationId) {
+      if (isWorkspace && local.conversationId) {
         writeWorkspaceChannelConversation(channelKey, local.conversationId);
       }
       if (!conversationId) return { ok: false, reason: 'no_conversation_id' };
@@ -675,7 +689,36 @@ export default {
       if (local.conversationId !== conversationId) {
         commit('SET_CONVERSATION_ID', { channelKey, conversationId });
       }
-      writeWorkspaceChannelConversation(channelKey, conversationId);
+      if (isWorkspace) writeWorkspaceChannelConversation(channelKey, conversationId);
+
+      // ── The saved transcript is the system of record ──────────────────────
+      // What we render is what we saved, byte for byte, exactly like the main
+      // chat. The provider-log path below is a FALLBACK for conversations that
+      // predate durable saving; reconstructing a UI transcript from the wire
+      // format is lossy by construction and cost two shipped bugs.
+      const saved = await loadTranscriptByConversationId(conversationId);
+      if (saved) {
+        if (saved.outputId && local.savedOutputId !== saved.outputId) {
+          commit('SET_SAVED_OUTPUT_ID', { channelKey, outputId: saved.outputId });
+        }
+        const localSubstance = transcriptSubstance(local.messages);
+        const savedSubstance = transcriptSubstance(saved.messages);
+        if (localCount > 0 && savedSubstance <= localSubstance) {
+          return { ok: true, reason: 'local_newer_or_equal', source: 'transcript', localSubstance, savedSubstance };
+        }
+        commit('SET_CONVERSATION', {
+          channelKey,
+          conversation: {
+            messages: saved.messages,
+            conversationId,
+            savedOutputId: saved.outputId || null,
+            lastUpdate: saved.updatedAt ? Date.parse(saved.updatedAt) || Date.now() : Date.now(),
+            suggestions: local.suggestions || [],
+          },
+        });
+        if (isWorkspace) writeWorkspaceChannelConversation(channelKey, conversationId);
+        return { ok: true, reason: 'hydrated', source: 'transcript', count: saved.messages.length };
+      }
 
       const remote = await fetchConversation(conversationId);
       if (!remote) return { ok: false, reason: 'not_found' };
@@ -706,12 +749,51 @@ export default {
         conversation: {
           messages: remoteMessages,
           conversationId: remote.conversationId || conversationId,
+          savedOutputId: local.savedOutputId || null,
           lastUpdate: remote.updatedAt ? Date.parse(remote.updatedAt) || Date.now() : Date.now(),
           suggestions: local.suggestions || [],
         },
       });
-      writeWorkspaceChannelConversation(channelKey, remote.conversationId || conversationId);
-      return { ok: true, reason: 'hydrated', count: remoteMessages.length };
+      if (isWorkspace) writeWorkspaceChannelConversation(channelKey, remote.conversationId || conversationId);
+      // Reconstructed from the log — save it properly so this conversation is
+      // never rebuilt from the wire format again.
+      dispatch('saveChannelTranscript', { channelKey });
+      return { ok: true, reason: 'hydrated', source: 'provider_log', count: remoteMessages.length };
+    },
+
+    /**
+     * Persist this channel's transcript to the server.
+     *
+     * localStorage is a paint cache, not storage: it is per-origin, per-device,
+     * silently evictable under quota, and it cannot survive a reinstall. A chat
+     * the user can lose by clearing site data is not saved. This writes the
+     * rendered transcript to content_outputs — the same table, same shape, and
+     * now the same serializer as the main chat.
+     */
+    async saveChannelTranscript({ commit, state }, { channelKey, viewing = false } = {}) {
+      const conv = channelKey ? state.conversations[channelKey] : null;
+      if (!conv?.conversationId) return { ok: false, reason: 'no_conversation_id' };
+
+      // Only real turns are worth a row: a channel showing nothing but its
+      // welcome message has no conversation to lose.
+      const meaningful = (conv.messages || []).filter(
+        (m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.toolCalls?.length),
+      );
+      if (!meaningful.length) return { ok: false, reason: 'empty' };
+
+      const result = await saveTranscript({
+        outputId: conv.savedOutputId,
+        conversationId: conv.conversationId,
+        title: deriveTitle(conv.messages),
+        messages: conv.messages,
+        viewing,
+      });
+      // Record the row id so the next save updates it instead of inserting a
+      // second row for the same conversation.
+      if (result.ok && result.outputId && result.outputId !== conv.savedOutputId) {
+        commit('SET_SAVED_OUTPUT_ID', { channelKey, outputId: result.outputId });
+      }
+      return result;
     },
 
     clearConversation({ commit }, { channelKey, welcomeMessage = null }) {
@@ -863,6 +945,15 @@ export default {
         // The turn is over for this tab. Note that an AbortError lands here too:
         // the local reader stopped, so this tab has nothing left to resume.
         markRunEnded(state.conversations[channelKey]?.conversationId);
+
+        // Durably save what we just rendered. End of turn is the right seam:
+        // the conversationId exists by now (the server names it during the
+        // stream), the transcript is complete, and it runs once per turn
+        // instead of once per token. Errors land here too — an interrupted
+        // answer is still the user's conversation and must survive a restart.
+        // Deliberately not awaited: persistence must never delay the UI
+        // settling, and saveTranscript reports its own failures.
+        dispatch('saveChannelTranscript', { channelKey, viewing: true });
 
         // If a mid-turn steer never drained (turn ended on a final response
         // with no more tool rounds, so the between-rounds seam never fired),
