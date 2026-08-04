@@ -295,7 +295,7 @@ select {
   padding: 7px 0px 5px 4px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
-  background-color: var(--color-ultra-light-navy);
+  background-color: var(--color-darker-0);
   color: var(--text-primary);
   font-family: var(--font-family-primary);
   font-size: 16px;
@@ -312,7 +312,7 @@ body.dark select option {
 }
 
 body.dark select {
-  background-color: var(--color-ultra-dark-navy);
+  background-color: var(--color-darker-0);
   border: 1px solid var(--color-dull-navy);
   font-weight: 300;
 }

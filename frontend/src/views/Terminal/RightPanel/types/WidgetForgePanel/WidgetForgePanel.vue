@@ -518,7 +518,7 @@ export default {
 
 .field input {
   padding: 6px 10px;
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-text);

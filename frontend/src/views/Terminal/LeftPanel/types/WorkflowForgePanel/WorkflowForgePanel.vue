@@ -462,7 +462,7 @@ export default {
   padding: 8px 12px;
   border: 1px solid rgba(18, 224, 255, 0.2);
   border-radius: 6px;
-  background: rgba(18, 224, 255, 0.05);
+  background: var(--color-darker-0);
   color: var(--color-light-green);
   font-family: var(--font-family-primary);
 }

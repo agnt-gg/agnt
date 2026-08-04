@@ -350,7 +350,7 @@ export default {
 }
 
 :deep(body.dark) .search-input-wrapper {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--color-darker-0);
 }
 
 :deep(body.dark) .search-results {

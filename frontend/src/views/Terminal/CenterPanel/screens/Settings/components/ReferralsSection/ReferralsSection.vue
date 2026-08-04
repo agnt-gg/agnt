@@ -1250,7 +1250,7 @@ export default {
 .referral-input {
   flex: 1;
   padding: 12px 16px;
-  background: rgba(127, 129, 147, 0.1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   color: var(--color-text);
@@ -1868,7 +1868,7 @@ export default {
 .referral-code-input {
   flex: 1;
   padding: 12px 16px;
-  background: rgba(127, 129, 147, 0.1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   color: var(--color-text);

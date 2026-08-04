@@ -212,7 +212,7 @@ body[data-page='agent-details'].dark.cyberpunk {
 }
 
 body.dark.cyberpunk #sidebar .search-input {
-  background: rgba(0, 0, 0, 0.2) !important;
+  background: var(--color-darker-0) !important;
 }
 
 /* body.dark.cyberpunk .window-controls {

@@ -371,7 +371,7 @@ input[type='number'] {
   font-size: 16px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background-color: var(--color-ultra-light-navy);
+  background-color: var(--color-darker-0);
   color: var(--text-primary);
 }
 

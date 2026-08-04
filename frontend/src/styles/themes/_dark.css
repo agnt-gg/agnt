@@ -337,7 +337,7 @@ body.dark select {
 body.dark input[type='time'] {
   font-weight: 300;
   color: var(--color-dull-white);
-  background-color: var(--color-dull-navy);
+  background-color: var(--color-darker-0);
   border-color: var(--color-dull-navy);
 }
 
@@ -401,11 +401,12 @@ body.dark .form-group select {
   border-color: var(--terminal-border-color);
 }
 
-body.dark input:-webkit-autofill,
-body.dark input:-webkit-autofill:focus {
-  /* transition: background-color 0s 600000s, color 0s 600000s !important; */
-  background-color: var(--color-ultra-dark-navy);
-}
+/* The autofill override that used to sit here was INERT: Chrome paints the
+   autofill highlight from the UA sheet with !important, so a plain
+   `background-color` never reached it — and the transition trick that DOES work
+   was commented out directly above it. _forms.css keeps that trick live and
+   unscoped, so this block only ever contributed an opaque field fill to the
+   guard's report. Deleted rather than re-tinted: there was nothing to tint. */
 
 /* Focus now recolours the border from the base rule in _forms.css, so a
    component that removed its border stays borderless when focused. */

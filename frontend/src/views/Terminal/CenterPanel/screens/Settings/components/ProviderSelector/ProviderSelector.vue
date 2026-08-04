@@ -1034,7 +1034,7 @@ export default {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  background: var(--terminal-background-color, transparent);
+  background: var(--color-darker-0);
   color: var(--color-text, inherit);
   border: 1px solid var(--terminal-border-color);
   border-radius: 5px;
@@ -1220,7 +1220,7 @@ export default {
 .tool-output-cap-input {
   width: 140px;
   padding: 8px 10px;
-  background: var(--terminal-background-color, transparent);
+  background: var(--color-darker-0);
   color: var(--color-text, inherit);
   border: 1px solid var(--terminal-border-color);
   border-radius: 5px;

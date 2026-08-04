@@ -338,7 +338,7 @@ export default {
   flex: 1;
   min-width: 0;
   padding: 1px 4px;
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid rgba(var(--primary-rgb), 0.4);
   border-radius: 2px;
   color: var(--color-text);

@@ -18,7 +18,7 @@ label,
 }
 
 body.dark select {
-  background-color: var(--color-ultra-dark-navy);
+  background-color: var(--color-darker-0);
   border-color: var(--color-dull-navy);
   /* colour intentionally omitted — `select` above already takes
      --text-primary at (0,0,1), which is themed. Repeating it here at (0,1,2)
@@ -199,6 +199,6 @@ textarea::placeholder {
 input[type='time'] {
   font-weight: 300;
   color: var(--color-dull-white);
-  background-color: var(--color-dull-navy);
+  background-color: var(--color-darker-0);
   border-color: var(--color-dull-navy);
 }

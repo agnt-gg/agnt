@@ -235,7 +235,7 @@ export default {
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-label { font-size: 0.8em; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
 .field-input {
-  background: var(--color-darker-2); border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-0); border: 1px solid var(--terminal-border-color);
   color: var(--color-text); padding: 8px 12px; border-radius: 6px; font-family: var(--font-family-mono);
 }
 

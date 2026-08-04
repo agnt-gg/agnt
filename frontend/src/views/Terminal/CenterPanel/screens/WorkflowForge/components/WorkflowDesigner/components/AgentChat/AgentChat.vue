@@ -329,7 +329,7 @@ body.dark .chat-input {
   border-top-color: var(--color-dull-navy);
 }
 body.dark .chat-input input {
-  background-color: var(--color-bg-dark-navy);
+  background-color: var(--color-darker-0);
   border-color: var(--color-dull-navy);
   color: var(--color-white);
 }

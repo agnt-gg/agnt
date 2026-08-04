@@ -245,7 +245,7 @@ export default {
 .cron-row { display: flex; flex-direction: column; gap: 6px; }
 .cron-label { font-size: 0.85em; color: var(--color-text-muted); }
 .cron-input, .tz-input {
-  background: var(--color-darker-2); border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-0); border: 1px solid var(--terminal-border-color);
   color: var(--color-text); padding: 8px 12px; border-radius: 6px; font-family: var(--font-family-mono);
 }
 

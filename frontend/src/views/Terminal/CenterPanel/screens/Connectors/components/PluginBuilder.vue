@@ -517,7 +517,7 @@ export default {
   padding: 16px;
   border: 2px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;
@@ -841,7 +841,7 @@ export default {
   padding: 10px 14px;
   border: 2px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.9em;

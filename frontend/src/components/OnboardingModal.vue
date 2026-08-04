@@ -1023,7 +1023,7 @@ export default {
   padding: 12px 16px;
   font-size: 1.1em;
   font-family: var(--font-family-primary);
-  background: var(--color-dark-navy);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   color: var(--color-text);

@@ -3521,7 +3521,7 @@ export default {
 }
 .share-input input {
   flex: 1;
-  background: var(--color-darkest);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 10px 12px;
@@ -3603,7 +3603,7 @@ export default {
   color: var(--color-light-med-navy);
 }
 .share-form-field input {
-  background: var(--color-darkest);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 12px 14px;

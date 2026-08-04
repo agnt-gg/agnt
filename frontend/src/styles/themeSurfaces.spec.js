@@ -189,6 +189,116 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
   });
 
   /**
+   * A TEXT FIELD'S FILL IS TRANSLUCENT, AND NO HEAVIER THAN --color-darker-0.
+   *
+   * WHY (2026-08-04, reported by Nathan)
+   * ────────────────────────────────────
+   * ProviderSelector painted its textarea and number input with
+   * `var(--terminal-background-color)` — which is --surface-canvas, an OPAQUE
+   * colour. On the canvas that is invisible; inside a raised card it punches a
+   * canvas-coloured hole; in light mode it is #ffffff on #ffffff. Every field
+   * next to it, which took the :where() default in _forms.css, rendered the
+   * tinted --color-darker-0. Same panel, two different fills.
+   *
+   * The invariant is about ALPHA, not lightness. A field does not know what it
+   * is sitting on — canvas, card, modal, tinted row — so its fill has to
+   * COMPOSITE. That is the one property an opaque colour cannot have, and it is
+   * why "it looks fine in dark" keeps being true right up until the field moves.
+   * A ΔL*-against-canvas check would have passed --surface-canvas with a
+   * perfect score, which is exactly how this survived the 2026-08-02 sweep.
+   *
+   * Ceiling = the theme's own --color-darker-0 alpha (0.1 dark, 0.025 light).
+   * A literal rgba() therefore cannot satisfy both themes at once — which is
+   * the point: the only value that passes everywhere is the token itself.
+   */
+  it('no text field is filled with an opaque colour, or heavier than --color-darker-0', () => {
+    /* A pseudo-element is decoration drawn NEAR a field (a range track, a
+       switch thumb), never the field's own fill. */
+    const PSEUDO_EL = /::/;
+    /* Controls whose "background" IS the widget, not a text surface. */
+    const NON_TEXT_INPUT = /\[type=['"]?(checkbox|radio|range|file|color|button|submit|reset|image)['"]?\]/i;
+    /* `option` renders in a NATIVE POPUP that composites against the OS, not
+       the page: a translucent fill there shows the desktop through it. Opaque
+       is required, and is the one documented exception. */
+    const NATIVE_POPUP = /\boption\b/i;
+    /* Named for a status, not for a field: `.task-card.status-needs-input`. */
+    const NOT_A_FIELD = /\bstatus-|-status\b/i;
+
+    /** The SUBJECT of a selector is its last compound — `input:checked + .slider`
+     *  paints the slider, not the input. */
+    const subjectOf = (sel) => sel.trim().split(/[\s>+~]+/).pop() || '';
+
+    const isField = (sel) => {
+      const subject = subjectOf(sel);
+      if (PSEUDO_EL.test(subject) || NATIVE_POPUP.test(subject) || NOT_A_FIELD.test(subject)) return false;
+      if (NON_TEXT_INPUT.test(subject)) return false;
+      if (/(^|[.#:[])?\b(input|textarea|select)\b/.test(subject.replace(/[.#][A-Za-z0-9_-]*/g, ''))) return true;
+      // Convention in this codebase: the field itself is named `*-input` /
+      // `*-textarea`. A wrapper is `-container` / `-wrapper` / `-group` / `-row`,
+      // so requiring the class to END in the field word excludes them for free.
+      return /[.#][A-Za-z0-9_-]*-(input|textarea)(?![A-Za-z0-9_-])/.test(subject);
+    };
+
+    const ceiling = {
+      light: resolve('var(--color-darker-0)', MAPS.light)?.a,
+      dark: resolve('var(--color-darker-0)', MAPS.dark)?.a,
+    };
+    expect(ceiling.light, '--color-darker-0 must resolve in light').toBeGreaterThan(0);
+    expect(ceiling.dark, '--color-darker-0 must resolve in dark').toBeGreaterThan(0);
+
+    const bad = [];
+    let judged = 0;
+    for (const file of FILES) {
+      const css = blank(styleText(file));
+      for (const rule of rulesOf(css)) {
+        if (!rule.sel.split(',').some(isField)) continue;
+        for (const m of rule.body.matchAll(/(?:^|[;{])\s*background(?:-color)?\s*:\s*([^;}]+)/gi)) {
+          const raw = m[1].replace(/!important/i, '').trim();
+          if (/^(transparent|none|inherit|unset|initial|0 0)\b/i.test(raw)) continue;
+          if (/gradient|url\(/i.test(raw)) continue;
+          for (const theme of themesFor(rule.sel)) {
+            const col = resolve(raw, MAPS[theme]);
+            if (!col) continue; // component-local var: not ours to judge
+            judged += 1;
+            if (col.a <= ceiling[theme] + 1e-6) continue;
+            bad.push(
+              `${rel(file)}  [${theme}]  ${rule.sel.replace(/\s+/g, ' ').slice(0, 58)}`
+              + `  {background: ${raw}}  ->  alpha ${col.a} > ${ceiling[theme]}`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(judged, 'anti-vacuity: this guard must actually be looking at fields').toBeGreaterThan(30);
+    expect(
+      bad.join('\n') || 'clean',
+      'A text field is painted with an opaque or too-heavy fill.\n'
+      + 'A field does not know what surface it sits on, so its fill must COMPOSITE:\n'
+      + 'use `background: var(--color-darker-0)` or `transparent`, never a surface\n'
+      + 'token (--terminal-background-color, --color-popup, --color-dark-navy) and\n'
+      + 'never a literal rgba() — a literal alpha cannot be correct in light AND\n'
+      + 'dark at once. _forms.css already supplies --color-darker-0 as the\n'
+      + 'zero-specificity default, so in most cases the right fix is to DELETE the\n'
+      + 'declaration. `select option` is exempt: it renders in a native popup.\n'
+    ).toBe('clean');
+  });
+
+  it('the field-fill guard rejects the exact bug it was written for (negative control)', () => {
+    // The reported value: an opaque canvas colour.
+    expect(resolve('var(--terminal-background-color)', MAPS.dark).a).toBe(1);
+    expect(resolve('var(--terminal-background-color)', MAPS.light).a).toBe(1);
+    // The sanctioned one composites, and differs per theme -- which is why no
+    // literal rgba() can stand in for it.
+    expect(resolve('var(--color-darker-0)', MAPS.dark).a).toBeLessThan(1);
+    expect(resolve('var(--color-darker-0)', MAPS.light).a)
+      .not.toBe(resolve('var(--color-darker-0)', MAPS.dark).a);
+    // --color-dark-0 is the same weight under a different name, so it passes.
+    expect(resolve('var(--color-dark-0)', MAPS.dark).a)
+      .toBeLessThanOrEqual(resolve('var(--color-darker-0)', MAPS.dark).a);
+  });
+
+  /**
    * A NEUTRAL border must not land on the far side of mid-lightness from its
    * own canvas. In a dark theme that means no light-grey hairlines.
    */

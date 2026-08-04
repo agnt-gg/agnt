@@ -503,7 +503,7 @@ input[type='email'] {
   padding: 8px 14px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
-  background: var(--color-darker-2);
+  background: var(--color-darker-0);
   color: var(--color-text);
   text-align: center;
   transition: all 0.2s ease;
@@ -525,7 +525,7 @@ input[type='email']:focus {
 }
 
 body.dark input[type='email'] {
-  background: var(--color-darker-2);
+  background: var(--color-darker-0);
   border-color: var(--terminal-border-color);
 }
 
@@ -780,7 +780,7 @@ body.dark .google-auth:hover {
   padding: 12px 14px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
-  background: var(--color-darker-2);
+  background: var(--color-darker-0);
   color: var(--color-text);
   text-align: center;
   letter-spacing: 10px;
@@ -799,7 +799,7 @@ body.dark .google-auth:hover {
 }
 
 body.dark .code-input {
-  background: var(--color-darker-2);
+  background: var(--color-darker-0);
   border-color: var(--terminal-border-color);
 }
 

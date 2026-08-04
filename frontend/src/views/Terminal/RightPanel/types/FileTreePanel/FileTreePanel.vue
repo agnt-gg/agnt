@@ -1179,7 +1179,7 @@ export default {
 .item-name-input {
   flex: 1;
   padding: 5px 8px;
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-text);
@@ -1502,7 +1502,7 @@ export default {
 .settings-input {
   width: 100%;
   padding: 8px 10px;
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-text);
