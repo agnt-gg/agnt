@@ -38,7 +38,7 @@ class ContentOutputModel {
     return new Promise((resolve, reject) => {
       // Use a single query with COUNT() window function to avoid two round-trips
       // Exclude the large 'content' column - the list view only needs metadata
-      const listColumns = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, created_at, updated_at';
+      const listColumns = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, created_at, updated_at';
       let where = 'user_id = ?';
       const params = [userId];
 
@@ -129,6 +129,44 @@ class ContentOutputModel {
       db.run(
         `UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders}) AND user_id = ?`,
         [groupId || null, ...ids, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
+  /**
+   * Set the read watermark. `read = true` stamps last_read_at = now;
+   * `read = false` clears it (manual "Mark as Unread").
+   *
+   * Deliberately does NOT touch updated_at — reading a conversation is not a
+   * change to it, and unread is derived as updated_at > last_read_at, so
+   * bumping updated_at here would immediately un-read the read.
+   */
+  static setReadState(id, userId, read) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE content_outputs SET last_read_at = ${read ? 'CURRENT_TIMESTAMP' : 'NULL'} WHERE id = ? AND user_id = ?`,
+        [id, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
+  /**
+   * Archive / unarchive. Does NOT touch updated_at so unarchiving restores
+   * the conversation's original position in the recency-sorted sidebar.
+   */
+  static setArchived(id, userId, archived) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE content_outputs SET archived_at = ${archived ? 'CURRENT_TIMESTAMP' : 'NULL'} WHERE id = ? AND user_id = ?`,
+        [id, userId],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes });

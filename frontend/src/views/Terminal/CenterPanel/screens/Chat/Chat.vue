@@ -1895,6 +1895,11 @@ export default {
       // the only real cost is Vue re-rendering MessageItems for the new keys,
       // which Vue's diff handles inline. Skip the spinner entirely — showing
       // and hiding it around an instant swap adds latency, not clarity.
+      // Opening a conversation stamps its server-side read watermark — the
+      // sidebar's unread dot (and every other device's) derives from it.
+      // Fire-and-forget: a failed PATCH must never block the open.
+      store.dispatch('contentOutputs/markRead', contentId).catch(() => {});
+
       const conversations = store.state.chat.conversations;
       for (const [convId, conv] of Object.entries(conversations)) {
         if (conv.savedOutputId === contentId) {

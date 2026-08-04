@@ -6,7 +6,7 @@
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-file-alt"></i>
-          {{ outputs.length }}
+          {{ visibleOutputs.length }}
         </span>
       </div>
     </div>
@@ -47,6 +47,36 @@
             </Tooltip>
           </div>
 
+          <!-- Needs You triage rail: unread conversations, oldest first.
+               Pinned above everything so nothing unread can get buried. -->
+          <div v-if="needsYou.length > 0" class="triage-rail">
+            <div class="triage-header">
+              <i class="fas fa-bell"></i>
+              <span class="triage-title">Needs you</span>
+              <span class="triage-count">{{ needsYou.length }}</span>
+            </div>
+            <div
+              v-for="output in needsYou"
+              :key="'triage-' + output.id"
+              class="output-item triage-item"
+            >
+              <div class="output-content" @click="handleOutputClick(output.id, $event)">
+                <div class="output-preview">
+                  <span class="unread-dot"></span>
+                  {{ getPreviewText(output.content, output) }}
+                </div>
+                <div class="triage-age" v-tooltip="'Waiting since ' + formatDate(output.updated_at || output.created_at)">
+                  {{ formatAgeLabel(output.updated_at) }}
+                </div>
+              </div>
+              <div class="output-actions">
+                <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
+                  <i class="fas fa-ellipsis-v"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Groups Section -->
           <div class="groups-section">
             <!-- New Group Button -->
@@ -75,8 +105,11 @@
                     <span class="group-name">{{ node.name }}</span>
                     <i :class="expandedGroups.has(node.id) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="group-chevron"></i>
                   </div>
+                <div class="group-header-right">
+                  <span v-if="getGroupUnreadBadge(node.id) > 0" class="group-unread-badge" v-tooltip="'Unread conversations'">{{ getGroupUnreadBadge(node.id) }}</span>
                   <span class="group-count">{{ searchQuery ? getGroupOutputs(node.id).length : getTotalConversationCount(node.id) }}</span>
                 </div>
+              </div>
                 <div v-if="expandedGroups.has(node.id)" class="group-items">
                   <div v-if="getGroupOutputs(node.id).length === 0 && !node.hasChildren" class="group-empty">
                     <span>No conversations</span>
@@ -168,7 +201,7 @@
 
             <!-- Flat list when no groups exist -->
             <div v-if="groups.length === 0" class="output-list-items">
-              <div v-if="outputs.length === 0" class="no-outputs">
+              <div v-if="visibleOutputs.length === 0" class="no-outputs">
                 <p>No saved outputs yet. Start a chat to create one.</p>
               </div>
               <div
@@ -189,6 +222,37 @@
                   <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
                     <i class="fas fa-ellipsis-v"></i>
                   </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Archived section (collapsed by default). Archived means done:
+                 out of the working set, never unread, still searchable. -->
+            <div v-if="archivedList.length > 0" class="group-section archived-section">
+              <div class="group-header archived-header" @click="toggleGroup('__archived__')">
+                <div class="group-header-left">
+                  <i class="fas fa-archive ungrouped-icon"></i>
+                  <span class="group-name">Archived</span>
+                  <i :class="expandedGroups.has('__archived__') ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="group-chevron"></i>
+                </div>
+                <span class="group-count">{{ archivedList.length }}</span>
+              </div>
+              <div v-if="expandedGroups.has('__archived__')" class="group-items">
+                <div
+                  v-for="output in archivedList"
+                  :key="output.id"
+                  class="output-item archived-item"
+                  :class="{ selected: isSelected(output.id), active: isActive(output.id) }"
+                >
+                  <div class="output-content" @click="handleOutputClick(output.id, $event)">
+                    <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                    <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
+                  </div>
+                  <div class="output-actions">
+                    <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
+                      <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -216,6 +280,10 @@
               >
                 <i class="fas fa-envelope"></i>
                 <span>Mark as Unread</span>
+              </button>
+              <button @click="toggleArchived(activeMenu)" class="menu-item">
+                <i class="fas fa-archive"></i>
+                <span>{{ getOutputById(activeMenu)?.archived_at ? 'Unarchive' : 'Archive' }}</span>
               </button>
               <!-- Move to group submenu -->
               <button class="menu-item" @click.stop="showMoveSubmenu = !showMoveSubmenu">
@@ -289,6 +357,7 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { sortOutputs } from './outputSort.js';
+import { formatAge, groupUnreadCount } from '@/utils/conversationAttention.js';
 
 export default {
   name: 'OutputList',
@@ -329,11 +398,12 @@ export default {
     // Streaming output IDs from the chat store
     const streamingOutputIds = computed(() => store.getters['chat/streamingOutputIds'] || new Set());
 
-    // Unread output IDs — savedOutputIds that changed (stream ended or
-    // an assistant message arrived) while the user was viewing something
-    // else. Rendered as a static green dot on the item; cleared when the
-    // user opens that conversation.
-    const unreadOutputIds = computed(() => store.getters['chat/unreadOutputIds'] || new Set());
+    // Unread output IDs — DERIVED server-side state (updated_at >
+    // last_read_at on content_outputs; see utils/conversationAttention.js).
+    // Cross-device: reading a conversation on any device clears the dot
+    // everywhere on the next refetch. Rendered as a static green dot;
+    // cleared by the markRead PATCH when the conversation is opened.
+    const unreadOutputIds = computed(() => store.getters['contentOutputs/unreadOutputIdSet'] || new Set());
 
     // Client-side activity timestamps, written on three events: a save, a run
     // completing, and a manual "Mark as Unread". The first two also move
@@ -366,8 +436,13 @@ export default {
       if (autoUnread) playSound('chatUnread');
     });
 
-    // Get outputs from store
+    // Get outputs from store. `outputs` is the FULL list (needed by
+    // getOutputById so context menus keep working in the Archived section);
+    // `visibleOutputs` excludes archived and is what every main list,
+    // count, and unread derivation renders from.
     const outputs = computed(() => store.getters['contentOutputs/outputs']);
+    const visibleOutputs = computed(() => store.getters['contentOutputs/visibleOutputs']);
+    const archivedOutputs = computed(() => store.getters['contentOutputs/archivedOutputs']);
     const totalCount = computed(() => store.getters['contentOutputs/totalCount']);
     const hasMore = computed(() => store.getters['contentOutputs/hasMore']);
     const hasLoadedAll = computed(() => store.getters['contentOutputs/hasLoadedAll']);
@@ -457,7 +532,35 @@ export default {
       });
     }
 
-    const sortedOutputs = computed(() => filterAndSort(outputs.value));
+    const sortedOutputs = computed(() => filterAndSort(visibleOutputs.value));
+
+    // Minute tick so the triage rail's age labels stay honest while the
+    // panel sits open. One shared ref — not one timer per row.
+    const ageTick = ref(Date.now());
+    let ageTimer = null;
+
+    function formatAgeLabel(date) {
+      return formatAge(date, ageTick.value);
+    }
+
+    // "Needs you" triage rail: every unread conversation, OLDEST first, with
+    // an age label. Pinned above the groups so an unread conversation can
+    // never scroll out of sight or get buried by newer traffic — the exact
+    // failure mode of a recency-sorted sidebar with passive dots. Items
+    // leave the rail only by being opened, marked read, or archived.
+    // The currently-viewed and currently-streaming conversations are
+    // excluded: one is being looked at, the other announces itself.
+    const needsYou = computed(() => {
+      const activeSavedId = store.state.chat.savedOutputId;
+      return (store.getters['contentOutputs/triageRail'] || [])
+        .filter((o) => o.id !== activeSavedId && !streamingOutputIds.value.has(o.id));
+    });
+
+    // Unread rollup for a group header: unread count across the group AND
+    // all its descendants, so a collapsed parent still shows what's waiting.
+    function getGroupUnreadBadge(groupId) {
+      return groupUnreadCount(visibleOutputs.value, getDescendantIds(groupId));
+    }
 
     // Collect all descendant group IDs (including self)
     function getDescendantIds(groupId) {
@@ -478,10 +581,10 @@ export default {
       return ids;
     }
 
-    // Total conversation count including all descendants
+    // Total conversation count including all descendants (archived excluded)
     function getTotalConversationCount(groupId) {
       const ids = getDescendantIds(groupId);
-      return outputs.value.filter((o) => ids.has(o.group_id)).length;
+      return visibleOutputs.value.filter((o) => ids.has(o.group_id)).length;
     }
 
     // Get outputs belonging to a specific group
@@ -489,9 +592,9 @@ export default {
     function getGroupOutputs(groupId) {
       if (searchQuery.value) {
         const ids = getDescendantIds(groupId);
-        return filterAndSort(outputs.value.filter((o) => ids.has(o.group_id)));
+        return filterAndSort(visibleOutputs.value.filter((o) => ids.has(o.group_id)));
       }
-      return filterAndSort(outputs.value.filter((o) => o.group_id === groupId));
+      return filterAndSort(visibleOutputs.value.filter((o) => o.group_id === groupId));
     }
 
     // Ungrouped display limit
@@ -499,8 +602,12 @@ export default {
 
     // All ungrouped outputs (full list)
     const allUngroupedOutputs = computed(() => {
-      return filterAndSort(outputs.value.filter((o) => !o.group_id));
+      return filterAndSort(visibleOutputs.value.filter((o) => !o.group_id));
     });
+
+    // Archived section (collapsed by default, bottom of the sidebar).
+    // Search still reaches into it — archived means done, not deleted.
+    const archivedList = computed(() => filterAndSort(archivedOutputs.value));
 
     // Displayed ungrouped outputs (capped by limit when groups exist)
     const ungroupedOutputs = computed(() => {
@@ -981,11 +1088,34 @@ export default {
       if (!outputId) return;
       activeMenu.value = null;
       if (unreadOutputIds.value.has(outputId)) {
-        store.commit('chat/CLEAR_OUTPUT_UNREAD', outputId);
+        store.dispatch('contentOutputs/markRead', outputId).catch(() => {});
       } else {
         suppressUnreadSoundFor.value = outputId;
-        store.commit('chat/MARK_OUTPUT_UNREAD', outputId);
+        store.dispatch('contentOutputs/markUnread', outputId).catch(() => {});
       }
+    }
+
+    // Archive / unarchive from the context menu. Optimistic in the store;
+    // the item moves between the main list and the Archived section
+    // immediately. Archiving also silences any unread state — archive IS
+    // "I'm done with this".
+    function toggleArchived(outputId) {
+      if (!outputId) return;
+      activeMenu.value = null;
+      const output = getOutputById(outputId);
+      if (!output) return;
+      playSound('buttonClick');
+      store.dispatch('contentOutputs/setArchived', {
+        outputId,
+        archived: !output.archived_at,
+      }).catch(async () => {
+        await simpleModal.value.showModal({
+          title: 'Error',
+          message: `Failed to ${output.archived_at ? 'unarchive' : 'archive'} conversation`,
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      });
     }
 
     // Batch delete selected outputs
@@ -1243,7 +1373,17 @@ export default {
       if (savedId) {
         bumpTimestamps.value = { ...bumpTimestamps.value, [savedId]: Date.now() };
       }
-      store.dispatch('contentOutputs/refreshOutputs');
+      // A save on the conversation the user is CURRENTLY viewing must not
+      // leave it server-unread (they're looking at the change). Re-stamp the
+      // watermark BEFORE refetching, otherwise the refetched row could carry
+      // updated_at > last_read_at for a beat and flash the dot.
+      if (savedId && savedId === store.state.chat.savedOutputId) {
+        store.dispatch('contentOutputs/markRead', savedId)
+          .catch(() => {})
+          .finally(() => store.dispatch('contentOutputs/refreshOutputs'));
+      } else {
+        store.dispatch('contentOutputs/refreshOutputs');
+      }
     }
 
     // Handle chat cleared event
@@ -1261,6 +1401,7 @@ export default {
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('conversation-saved', handleConversationSaved);
       window.addEventListener('chat-cleared', handleChatCleared);
+      ageTimer = setInterval(() => { ageTick.value = Date.now(); }, 60000);
     });
 
     onBeforeUnmount(() => {
@@ -1268,6 +1409,7 @@ export default {
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('conversation-saved', handleConversationSaved);
       window.removeEventListener('chat-cleared', handleChatCleared);
+      if (ageTimer) clearInterval(ageTimer);
     });
 
     return {
@@ -1317,6 +1459,13 @@ export default {
       isOutputUnread,
       unreadOutputIds,
       toggleUnread,
+      // Attention: triage rail + archive
+      needsYou,
+      formatAgeLabel,
+      getGroupUnreadBadge,
+      archivedList,
+      toggleArchived,
+      visibleOutputs,
       // Groups
       groups,
       groupTree,
@@ -1921,6 +2070,87 @@ body.dark .create-output-btn {
 @keyframes pulse-streaming {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+/* ===== Needs You triage rail ===== */
+.triage-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 8px;
+  border: 1px solid rgba(var(--primary-rgb), 0.35);
+  border-radius: 8px;
+  background: rgba(var(--primary-rgb), 0.05);
+}
+
+.triage-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-primary);
+}
+
+.triage-header i {
+  font-size: 11px;
+}
+
+.triage-count {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: var(--color-darker-2, #111);
+  font-weight: 700;
+}
+
+.triage-item .output-preview {
+  display: flex;
+  align-items: center;
+}
+
+.triage-age {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* ===== Group unread rollup badge ===== */
+.group-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-unread-badge {
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: var(--color-green);
+  color: var(--color-darker-2, #111);
+}
+
+/* ===== Archived section ===== */
+.archived-section {
+  margin-top: 12px;
+  opacity: 0.75;
+}
+
+.archived-section:hover {
+  opacity: 1;
+}
+
+.archived-item .output-preview {
+  color: var(--color-text-muted);
 }
 
 /* Selected item styling (for batch operations) */
