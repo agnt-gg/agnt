@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>p2</title></head><body>
+<script>
+const lum=c=>{const v=c.map(x=>{x/=255;return x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
+const ratio=(a,b)=>{const l1=lum(a),l2=lum(b);return +(((Math.max(l1,l2)+.05)/(Math.min(l1,l2)+.05)).toFixed(2))};
+const parse=s=>{const p=(String(s).match(/[\d.]+/g)||[0,0,0]).map(Number);return p.length>3?p:[p[0],p[1],p[2],1]};
+const over=(fg,bg)=>{const a=fg[3];return [0,1,2].map(i=>Math.round(fg[i]*a+bg[i]*(1-a)))};
+
+(async () => {
+  const out = {};
+  const f = document.createElement('iframe');
+  f.style.cssText = 'width:1360px;height:1100px;border:0;position:absolute;left:-99999px';
+  f.src = './shelf.html?type=agent&variant=full&theme=dark';
+  document.body.appendChild(f);
+  await new Promise(r => (f.onload = r));
+  await new Promise(r => setTimeout(r, 400));
+  const d = f.contentDocument, w = f.contentWindow;
+  const QA = s => [...d.querySelectorAll(s)];
+  const cs = e => w.getComputedStyle(e);
+
+  // CLAIM: meta rows don't align across a row
+  const cards = QA('.ms-card');
+  const rowTop = Math.round(cards[0].getBoundingClientRect().top);
+  const sameRow = cards.filter(c => Math.round(c.getBoundingClientRect().top) === rowTop);
+  out.metaBottomOffsets = sameRow.map(c => {
+    const cr = c.getBoundingClientRect();
+    const m = c.querySelector('.ms-card-meta').getBoundingClientRect();
+    return Math.round(cr.bottom - m.bottom);
+  });
+  out.cardHeights = sameRow.map(c => Math.round(c.getBoundingClientRect().height));
+
+  // CLAIM: icon tile doesn't align with the title text below it
+  out.iconVsTitleLeft = sameRow.map(c => {
+    const i = c.querySelector('.ms-card-icon').getBoundingClientRect();
+    const t = c.querySelector('.ms-card-title').getBoundingClientRect();
+    return Math.round(i.left - t.left);
+  });
+
+  // CLAIM: art bleeds past the card's rounded corners
+  out.cardOverflow = cs(cards[0]).overflow;
+  out.cardRadius = cs(cards[0]).borderRadius;
+  out.artOverflow = cs(cards[0].querySelector('.ms-card-art')).overflow;
+  out.artWithinCard = sameRow.map(c => {
+    const cr = c.getBoundingClientRect(), a = c.querySelector('.ms-card-art').getBoundingClientRect();
+    return Math.round(a.right - cr.right); // >0 means the art sticks out
+  });
+
+  // CLAIM: the FREE pill is low contrast on the artwork
+  // Sample the ACTUAL painted backdrop under each price tag by compositing the
+  // tag's own scrim over the art gradient's mid colour.
+  out.freeTags = QA('.ms-tag.price.free').slice(0, 6).map(t => {
+    const scrim = parse(cs(t).backgroundColor);
+    const art = t.closest('.ms-card-art');
+    // worst case backdrop for a green label is the brightest stop of the gradient
+    const probes = ['rgb(120,200,150)', 'rgb(30,90,60)']; // light + dark extremes of a green-family art band
+    const fg = parse(cs(t).color);
+    return probes.map(p => {
+      const backdrop = over(scrim, parse(p));
+      return ratio([fg[0], fg[1], fg[2]], backdrop);
+    });
+  });
+  out.priceScrim = QA('.ms-tag.price').length ? cs(QA('.ms-tag.price')[0]).backgroundColor : null;
+  out.otherTagScrim = QA('.ms-tag:not(.price):not(.new):not(.rank):not(.hot)').length
+    ? cs(QA('.ms-tag:not(.price):not(.rank):not(.hot):not(.new)')[0]).backgroundColor : 'none-rendered';
+
+  document.title = 'P2' + JSON.stringify(out);
+})();
+</script></body></html>

@@ -21,6 +21,7 @@
           :countLabel="activeView === 'skills' ? 'skills' : 'evolved skills'"
           searchPlaceholder="Search skills..."
           :searchQuery="searchQuery"
+          :searchScope="shelfHasFocus ? 'Marketplace' : ''"
           :sortOrder="sortOrder"
           :currentLayout="'grid'"
           :layoutOptions="[]"
@@ -98,12 +99,30 @@
             </div>
           </div>
 
+          <!-- The marketplace has no `skill` asset_type yet (the server's set is
+               agent|workflow|tool|plugin), so today this renders the Create card
+               and nothing else — which is already an improvement on a screen that
+               had no marketplace path at all. The day skills are publishable it
+               fills itself with no change here. -->
+          <MarketplaceShelf
+            v-else-if="ownsNothing"
+            asset-type="skill"
+            variant="full"
+            :query="searchQuery"
+            create-label="Create Skill"
+            @create="openCreateModal"
+            @browse="emit('screen-change', 'MarketplaceScreen')"
+            @installed="() => store.dispatch('skills/fetchSkills')"
+            @clear-search="searchQuery = ''"
+            @availability="(v) => (shelfAvailable = v)"
+          />
+
           <div v-else class="empty-state-container">
             <div class="empty-state">
               <i class="fas fa-brain"></i>
-              <p>No skills found</p>
+              <p>No skills match &ldquo;{{ searchQuery }}&rdquo;</p>
               <div class="empty-state-buttons">
-                <button class="create-button" @click="openCreateModal"><i class="fas fa-plus"></i> Create Skill</button>
+                <button class="create-button" @click="searchQuery = ''"><i class="fas fa-undo"></i> Clear search</button>
               </div>
             </div>
           </div>
@@ -440,6 +459,7 @@ import { ref, computed, onMounted, watch, reactive } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -570,6 +590,12 @@ const sortByName = (list, key = 'name') => {
   });
   return sorted;
 };
+
+/* Shelf wiring. `ownsNothing` reads the RAW list so a search that matches
+   nothing is answered with a reset, not a storefront. */
+const shelfAvailable = ref(false);
+const ownsNothing = computed(() => allSkills.value.length === 0);
+const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && activeView.value === 'skills');
 
 const filteredSkills = computed(() => {
   let result = allSkills.value;

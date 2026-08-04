@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>p</title></head><body>
+<script>
+const out = [];
+(async () => {
+  for (const theme of ['dark', 'light', 'rose', 'nord']) {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'width:1360px;height:1000px;border:0;position:absolute;left:-99999px';
+    f.src = './shelf.html?type=agent&variant=full&theme=' + theme;
+    document.body.appendChild(f);
+    await new Promise((r) => (f.onload = r));
+    await new Promise((r) => setTimeout(r, 300));
+    const d = f.contentDocument, w = f.contentWindow;
+    const cs = (sel) => { const e = d.querySelector(sel); return e ? w.getComputedStyle(e) : null; };
+    const tok = (n) => {
+      // resolve like the browser: round-trip through a real element
+      const p = d.createElement('div');
+      p.style.backgroundColor = w.getComputedStyle(d.body).getPropertyValue(n).trim();
+      d.body.appendChild(p);
+      const v = w.getComputedStyle(p).backgroundColor; p.remove(); return v;
+    };
+    const rec = { theme };
+    rec.bodyBg = w.getComputedStyle(d.body).backgroundColor;
+    rec.tok_color_text = tok('--color-text');
+    rec.tok_black_navy = tok('--color-black-navy');
+    rec.tok_navy = tok('--color-navy');
+    rec.tok_on_fill_warning = tok('--on-fill-warning');
+    rec.tok_fill_warning = tok('--fill-warning');
+    rec.tok_on_fill_danger = tok('--on-fill-danger');
+    rec.tok_on_fill_info = tok('--on-fill-info');
+    for (const s of ['.ms-title', '.ms-sub', '.ms-all', '.ms-card-title', '.ms-card-desc']) {
+      const c = cs(s); if (c) rec[s] = c.color + ' @' + c.opacity + ' bg=' + c.backgroundColor;
+    }
+    for (const s of ['.ms-tag.rank', '.ms-tag.hot', '.ms-tag.new']) {
+      const c = cs(s); if (c) rec[s] = c.color + ' on ' + c.backgroundColor;
+    }
+    // what is the nearest opaque ancestor of .ms-sub, really?
+    const sub = d.querySelector('.ms-sub');
+    if (sub) {
+      const chain = [];
+      let n = sub.parentElement;
+      while (n) { chain.push(n.className || n.tagName); n = n.parentElement; }
+      rec.subAncestry = chain.join(' < ');
+      let m = sub.parentElement, found = null;
+      while (m && !found) {
+        const bc = w.getComputedStyle(m).backgroundColor;
+        const a = (bc.match(/[\d.]+/g) || []).map(Number);
+        if (a.length < 4 || a[3] > 0.95) found = (m.className || m.tagName) + ' -> ' + bc;
+        m = m.parentElement;
+      }
+      rec.subNearestOpaque = found;
+    }
+    out.push(rec);
+    f.remove();
+  }
+  document.title = 'PROBE' + JSON.stringify(out);
+})();
+</script></body></html>

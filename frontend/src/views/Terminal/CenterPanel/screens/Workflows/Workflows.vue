@@ -33,6 +33,7 @@
           countLabel="workflows"
           searchPlaceholder="Search workflows..."
           :searchQuery="searchQuery"
+          :searchScope="shelfHasFocus ? 'Marketplace' : ''"
           :currentLayout="currentLayout"
           :layoutOptions="['grid', 'table']"
           :showCollapseToggle="true"
@@ -113,9 +114,24 @@
 
             <!-- Category Cards View -->
             <div v-else-if="currentLayout === 'grid'" class="category-cards-container">
-              <!-- Empty State - Only show for non-marketplace tabs when no workflows exist -->
+              <!-- Nothing owned yet: the empty state IS the storefront. -->
+              <MarketplaceShelf
+                v-if="activeTab !== 'marketplace' && ownsNothing"
+                asset-type="workflow"
+                variant="full"
+                :query="searchQuery"
+                create-label="Create Workflow"
+                @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"
+                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @installed="onShelfInstalled"
+                @clear-search="handleSearch('')"
+                @availability="(v) => (shelfAvailable = v)"
+              />
+
+              <!-- Owned, but nothing matched this search: their items are the
+                   subject, so this stays a reset rather than a pitch. -->
               <div
-                v-if="
+                v-else-if="
                   activeTab !== 'marketplace' &&
                   (Object.keys(workflowsByCategory).length === 0 || Object.values(workflowsByCategory).every((arr) => arr.length === 0))
                 "
@@ -123,12 +139,9 @@
               >
                 <div class="empty-state">
                   <i class="fas fa-cogs"></i>
-                  <p>No workflows found</p>
+                  <p>No workflows match &ldquo;{{ searchQuery }}&rdquo;</p>
                   <div class="empty-state-buttons">
-                    <button class="create-button" @click="handlePanelAction('navigate', 'WorkflowForgeScreen')">
-                      <i class="fas fa-plus"></i> Create Workflow
-                    </button>
-                    <button class="marketplace-button" @click="selectTab('marketplace')"><i class="fas fa-store"></i> View Marketplace</button>
+                    <button class="create-button" @click="handleSearch('')"><i class="fas fa-undo"></i> Clear search</button>
                   </div>
                 </div>
               </div>
@@ -277,6 +290,15 @@
                   </div>
                 </article>
               </div>
+
+              <!-- Second run: the user's own work leads, the shelf steps aside. -->
+              <MarketplaceShelf
+                v-if="activeTab !== 'marketplace' && !ownsNothing"
+                asset-type="workflow"
+                variant="strip"
+                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @installed="onShelfInstalled"
+              />
             </div>
           </main>
         </div>
@@ -302,10 +324,11 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar },
+  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -317,6 +340,15 @@ export default {
     const selectedWorkflowId = ref(null);
     const activeTab = ref('all');
     const searchQuery = ref('');
+
+    /* Shelf wiring. `ownsNothing` reads the RAW list, not the tab/search
+       filtered one: someone with 5 workflows searching "zzz" has an empty grid
+       but is not an empty-state user. */
+    const shelfAvailable = ref(false);
+    const ownsNothing = computed(() => (store.getters['workflows/allWorkflows'] || []).length === 0);
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && activeTab.value !== 'marketplace');
+    // fetchWorkflows takes { activeOnly } only — no force flag exists here.
+    const onShelfInstalled = () => store.dispatch('workflows/fetchWorkflows');
     const currentLayout = ref('grid');
     const hideEmptyCategories = ref(true);
     const sortOrder = ref('az');
@@ -1239,6 +1271,10 @@ export default {
       onCategorySelected,
       onAllSelected,
       allWorkflows,
+      shelfAvailable,
+      ownsNothing,
+      shelfHasFocus,
+      onShelfInstalled,
       workflowsFilteredByTab,
       getToolsWithNames,
       hasToolsOrUptime,

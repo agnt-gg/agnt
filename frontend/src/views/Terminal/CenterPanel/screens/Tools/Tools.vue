@@ -31,6 +31,7 @@
           countLabel="tools"
           searchPlaceholder="Search tools..."
           :searchQuery="searchQuery"
+          :searchScope="shelfHasFocus ? 'Marketplace' : ''"
           :currentLayout="currentLayout"
           :layoutOptions="['grid', 'table']"
           :showCollapseToggle="true"
@@ -101,16 +102,27 @@
 
             <!-- Category Cards View -->
             <div v-else class="category-cards-container">
-              <!-- Empty State - Only show for custom tab when no custom tools exist -->
-              <div v-if="activeTab === 'custom' && Object.keys(toolsByCategory).length === 0" class="empty-state-container">
+              <!-- Nothing owned yet: the empty state IS the storefront. -->
+              <MarketplaceShelf
+                v-if="activeTab === 'custom' && ownsNothing"
+                asset-type="tool"
+                variant="full"
+                :query="searchQuery"
+                create-label="Create Tool"
+                @create="handlePanelAction('navigate', 'ToolForgeScreen')"
+                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @installed="onShelfInstalled"
+                @clear-search="handleSearch('')"
+                @availability="(v) => (shelfAvailable = v)"
+              />
+
+              <!-- Owned, but nothing matched this search. -->
+              <div v-else-if="activeTab === 'custom' && Object.keys(toolsByCategory).length === 0" class="empty-state-container">
                 <div class="empty-state">
                   <i class="fas fa-wrench"></i>
-                  <p>No custom tools found</p>
+                  <p>No tools match &ldquo;{{ searchQuery }}&rdquo;</p>
                   <div class="empty-state-buttons">
-                    <button class="create-button" @click="handlePanelAction('navigate', 'ToolForgeScreen')">
-                      <i class="fas fa-plus"></i> Create Tool
-                    </button>
-                    <button class="marketplace-button" @click="selectTab('marketplace')"><i class="fas fa-store"></i> View Marketplace</button>
+                    <button class="create-button" @click="handleSearch('')"><i class="fas fa-undo"></i> Clear search</button>
                   </div>
                 </div>
               </div>
@@ -272,6 +284,15 @@
                   </div>
                 </article>
               </div>
+
+              <!-- Second run: the user's own work leads, the shelf steps aside. -->
+              <MarketplaceShelf
+                v-if="activeTab === 'custom' && !ownsNothing"
+                asset-type="tool"
+                variant="strip"
+                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @installed="onShelfInstalled"
+              />
             </div>
           </main>
         </div>
@@ -295,6 +316,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { useToolsTutorial } from './useToolsTutorial.js';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
@@ -308,7 +330,7 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar },
+  components: { BaseScreen, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf },
   emits: ['screen-change'],
   setup(props, { emit }) {
     // Initialize tutorial
@@ -320,6 +342,12 @@ export default {
     const selectedTool = ref(null);
     const activeTab = ref('all');
     const searchQuery = ref('');
+
+    /* Shelf wiring. Reads the RAW custom-tool list, not the searched one. */
+    const shelfAvailable = ref(false);
+    const ownsNothing = computed(() => (store.getters['tools/customTools'] || []).length === 0);
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && activeTab.value === 'custom');
+    const onShelfInstalled = () => store.dispatch('tools/fetchTools');
     const selectedCategory = ref(null);
     const selectedMainCategory = ref(null);
     const openMainCategories = ref({});
@@ -956,6 +984,10 @@ export default {
       panelProps,
       // Search functionality
       searchQuery,
+      shelfAvailable,
+      ownsNothing,
+      shelfHasFocus,
+      onShelfInstalled,
       sortOrder,
       // Category functionality
       toolsByCategory,

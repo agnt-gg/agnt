@@ -18,6 +18,7 @@
           countLabel="widgets"
           searchPlaceholder="Search widgets..."
           :searchQuery="searchQuery"
+          :searchScope="shelfHasFocus ? 'Marketplace' : ''"
           :currentLayout="currentLayout"
           :layoutOptions="['grid', 'list']"
           :showCollapseToggle="false"
@@ -56,8 +57,31 @@
         <!-- Widget grid -->
         <div class="wm-content" @click="onContentClick">
           <main class="wm-main-content">
+            <!--
+              This screen is never globally empty — the built-in widgets always
+              exist — so the only genuine empty state is the Custom tab before
+              the user has made anything. That is the only place the shelf
+              belongs, and it sits above both layouts so grid and list cannot
+              drift apart the way their two copies of the empty state did.
+
+              The marketplace has no `widget` asset_type yet, so today this is
+              the Create card alone; it fills itself when widgets are publishable.
+            -->
+            <MarketplaceShelf
+              v-if="ownsNothing"
+              asset-type="widget"
+              variant="full"
+              :query="searchQuery"
+              create-label="New Widget"
+              @create="createNewWidget"
+              @browse="$emit('screen-change', 'MarketplaceScreen')"
+              @installed="onShelfInstalled"
+              @clear-search="searchQuery = ''"
+              @availability="(v) => (shelfAvailable = v)"
+            />
+
             <!-- Grid View -->
-            <div v-if="currentLayout === 'grid'" class="wm-grid">
+            <div v-else-if="currentLayout === 'grid'" class="wm-grid">
               <div
                 v-for="widget in filteredWidgets"
                 :key="widget.id"
@@ -252,10 +276,11 @@ import { API_CONFIG } from '@/tt.config.js';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 
 export default {
   name: 'WidgetManagerScreen',
-  components: { BaseScreen, Tooltip, ScreenToolbar },
+  components: { BaseScreen, Tooltip, ScreenToolbar, MarketplaceShelf },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -337,6 +362,14 @@ export default {
 
       return [...custom, ...builtIn];
     });
+
+    /* Shelf wiring. Scoped to the Custom tab and to the RAW custom count: the
+       built-ins mean `allWidgets` is never empty, and a search that matches
+       nothing is answered with a reset rather than a storefront. */
+    const shelfAvailable = ref(false);
+    const ownsNothing = computed(() => activeCategory.value === 'custom' && customDefinitions.value.length === 0);
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value);
+    const onShelfInstalled = () => store.dispatch('widgetDefinitions/fetchDefinitions');
 
     const categoryTabs = computed(() => {
       // Built-in categories only (no 'custom') — derived from non-custom widgets
@@ -636,6 +669,10 @@ export default {
 
     return {
       searchQuery,
+      shelfAvailable,
+      ownsNothing,
+      shelfHasFocus,
+      onShelfInstalled,
       sortOrder,
       activeCategory,
       showImportModal,

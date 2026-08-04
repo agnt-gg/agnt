@@ -502,7 +502,8 @@ export default {
   gap: 6px;
   font-size: 0.8em;
   color: var(--color-text);
-  opacity: 0.75;
+  /* SECONDARY-INK RULE: 0.75 measured 4.29:1 in light, under AA. */
+  opacity: 0.82;
   flex-wrap: wrap;
 }
 
