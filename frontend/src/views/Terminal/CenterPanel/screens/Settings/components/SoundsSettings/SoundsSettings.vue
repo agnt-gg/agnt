@@ -460,7 +460,9 @@ button.test-button {
   margin: 8px 0 0 0;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.7;
+  /* SECONDARY-INK RULE: 0.7 measured 3.84:1 on the light theme's white card,
+     under AA. See styles/secondaryInkContrast.spec.js. */
+  opacity: 0.82;
 }
 
 .event-controls {

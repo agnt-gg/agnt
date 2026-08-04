@@ -21,6 +21,21 @@ export default {
     lastPublishedFetched: null,
     selectedItem: null, // Renamed from selectedWorkflow
     selectedWorkflow: null, // Backward compatibility
+
+    /* ── MarketplaceShelf slice ──────────────────────────────────────────
+       Deliberately SEPARATE from marketplaceItems. `fetchMarketplaceItems`
+       sends the global `filters` to the server, so whatever the Marketplace
+       screen was last filtered to decides what marketplaceItems contains — if
+       the shelf read that, browsing to "tools only" and then opening Agents
+       would show an empty shelf for no reason the user can see.
+
+       The shelf therefore keeps its own unfiltered copy of the catalogue and
+       its own status, and NEVER writes to `filters`. One fetch serves all five
+       screens; scoping and search happen locally in the component. */
+    shelfItems: [],
+    shelfStatus: 'idle', // idle | loading | ready | error
+    lastShelfFetched: null,
+
     filters: {
       assetType: 'all', // NEW: 'all', 'workflow', 'agent', 'tool'
       category: null,
@@ -34,6 +49,14 @@ export default {
     error: null,
   },
   mutations: {
+    SET_SHELF_ITEMS(state, items) {
+      state.shelfItems = Array.isArray(items) ? items : [];
+      state.lastShelfFetched = Date.now();
+    },
+    SET_SHELF_STATUS(state, status) {
+      state.shelfStatus = status;
+    },
+
     SET_MARKETPLACE_ITEMS(state, items) {
       state.marketplaceItems = items;
       // Update filtered views for backward compatibility
@@ -118,6 +141,42 @@ export default {
     },
   },
   actions: {
+    /**
+     * Fetch the whole catalogue for MarketplaceShelf.
+     *
+     * Sends NO filter params on purpose — see the `shelfItems` note in state.
+     * Cached for SHELF_TTL_MS so five screens mounting a shelf cost one
+     * request, and a failure leaves `shelfItems` untouched-but-empty with
+     * status 'error' so the component can degrade to the plain Create path
+     * rather than render a broken grid.
+     */
+    async fetchShelfItems({ commit, state }, { force = false } = {}) {
+      const SHELF_TTL_MS = 5 * 60 * 1000;
+      const fresh = state.lastShelfFetched && Date.now() - state.lastShelfFetched < SHELF_TTL_MS;
+      if (!force && fresh && state.shelfStatus === 'ready') return state.shelfItems;
+      if (state.shelfStatus === 'loading') return state.shelfItems;
+
+      commit('SET_SHELF_STATUS', 'loading');
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.REMOTE_URL}/marketplace/items`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`Marketplace responded ${response.status}`);
+        const data = await response.json();
+        commit('SET_SHELF_ITEMS', data.items || []);
+        commit('SET_SHELF_STATUS', 'ready');
+        return state.shelfItems;
+      } catch (error) {
+        // Not surfaced as a global error: an unreachable marketplace must not
+        // put an error banner on the Agents screen. The shelf just hides.
+        console.warn('[marketplace] shelf fetch failed:', error.message);
+        commit('SET_SHELF_ITEMS', []);
+        commit('SET_SHELF_STATUS', 'error');
+        return [];
+      }
+    },
+
     // NEW: Generic fetch for all item types
     async fetchMarketplaceItems({ commit, state }) {
       commit('SET_LOADING', true);
@@ -1045,6 +1104,11 @@ export default {
     },
   },
   getters: {
+    shelfItems: (state) => state.shelfItems,
+    shelfStatus: (state) => state.shelfStatus,
+    /** Unfiltered catalogue narrowed to one asset type. */
+    shelfItemsByType: (state) => (assetType) => state.shelfItems.filter((i) => i.asset_type === assetType),
+
     // NEW: Generic filtered items
     filteredMarketplaceItems: (state) => {
       return state.marketplaceItems;

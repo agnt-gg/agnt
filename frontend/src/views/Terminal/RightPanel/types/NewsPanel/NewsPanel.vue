@@ -514,7 +514,9 @@ body.dark .feature-item {
   gap: 6px;
   padding: 6px 12px;
   background: var(--color-green);
-  color: var(--color-black-navy);
+  /* --on-fill-accent, not --color-black-navy: six themes alias that name to their
+     own canvas, so it is near-WHITE in light/rose. See _semantic.css. */
+  color: var(--on-fill-success);
   border: none;
   border-radius: 6px;
   font-size: 0.8em;

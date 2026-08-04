@@ -575,6 +575,19 @@ import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { useMarketplaceTutorial } from './useMarketplaceTutorial.js';
+// One definition of what a marketplace card looks like, shared with
+// MarketplaceShelf. See composables/useMarketplaceCard.js for why.
+import {
+  assetIcon,
+  assetTypeLabel,
+  artStyle,
+  iconStyle,
+  isNew,
+  daysSince,
+  buildTrendingIds,
+  buildCategoryRankMap,
+  formatCount,
+} from '@/composables/useMarketplaceCard';
 
 export default {
   name: 'MarketplaceScreen',
@@ -934,48 +947,12 @@ export default {
       { value: 'price-high', label: 'Price: high → low' },
     ];
 
-    // ── date helpers (Infinity when an item carries no usable date, so it
-    //    simply never qualifies as new/trending rather than producing NaN) ──
-    const DAY_MS = 86400000;
-    const itemDate = (i) => i.published_at || i.created_at || i.updated_at || null;
-    const daysSince = (i) => {
-      const d = itemDate(i);
-      if (!d) return Infinity;
-      const t = new Date(d).getTime();
-      return Number.isFinite(t) ? (Date.now() - t) / DAY_MS : Infinity;
-    };
-    const isNew = (i) => daysSince(i) <= 30;
-    const trendScore = (i) => (i.downloads || 0) / Math.max(daysSince(i), 7);
-
-    // Top ~15% by install-velocity, and only when the pool is big enough for
-    // "trending" to carry any information at all.
-    const trendingIds = computed(() => {
-      const pool = filteredWorkflows.value.filter((i) => Number.isFinite(daysSince(i)) && (i.downloads || 0) > 0);
-      if (pool.length < 6) return new Set();
-      const ranked = [...pool].sort((a, b) => trendScore(b) - trendScore(a));
-      return new Set(ranked.slice(0, Math.max(1, Math.ceil(ranked.length * 0.15))).map((i) => i.id));
-    });
+    // Badge rules live in useMarketplaceCard so this screen and MarketplaceShelf
+    // cannot disagree about what "New" or "#1 in" means.
+    const trendingIds = computed(() => buildTrendingIds(filteredWorkflows.value));
     const isTrending = (i) => trendingIds.value.has(i.id);
 
-    // "#1 in <Category>" — suppressed for categories too small for a ranking
-    // to mean anything, and for items with zero installs.
-    const categoryRankMap = computed(() => {
-      const byCat = {};
-      for (const i of filteredWorkflows.value) {
-        const c = i.category;
-        if (!c) continue;
-        if (!byCat[c]) byCat[c] = [];
-        byCat[c].push(i);
-      }
-      const map = {};
-      for (const key of Object.keys(byCat)) {
-        const list = byCat[key];
-        if (list.length < 3) continue;
-        const top = [...list].sort((a, b) => (b.downloads || 0) - (a.downloads || 0))[0];
-        if (top && (top.downloads || 0) > 0) map[top.id] = 1;
-      }
-      return map;
-    });
+    const categoryRankMap = computed(() => buildCategoryRankMap(filteredWorkflows.value));
     const rankBadge = (i) => categoryRankMap.value[i.id] || null;
 
     const pulseStats = computed(() => {
@@ -1222,35 +1199,9 @@ export default {
       if (chipRailEl.value) chipRailEl.value.scrollBy({ left: 280, behavior: 'smooth' });
     };
 
-    // ── deterministic per-item art ────────────────────────────────────────
-    // NOTE: this gradient is dark in EVERY theme, so anything painted on top
-    // of it must use literal white — never a theme token (which flips to dark
-    // ink in light/rose). See the art-ink rule in the style block.
-    const TYPE_HUE = { workflow: 192, agent: 150, tool: 45, plugin: 268 };
-    const hueFor = (item) => {
-      const base = TYPE_HUE[item.asset_type || 'workflow'] || 192;
-      const seed = String(item.id || item.title || '')
-        .split('')
-        .reduce((a, c) => a + c.charCodeAt(0), 0);
-      return (base + ((seed * 13) % 38)) % 360;
-    };
-    const artStyle = (item) => {
-      const h1 = hueFor(item);
-      const h2 = (h1 + 46) % 360;
-      return {
-        backgroundImage:
-          `radial-gradient(120% 130% at 12% 8%, hsl(${h1} 62% 52% / .95), transparent 62%),` +
-          `radial-gradient(120% 120% at 92% 96%, hsl(${h2} 62% 44% / .9), transparent 58%),` +
-          `linear-gradient(135deg, hsl(${h1} 38% 22%), hsl(${h2} 42% 13%))`,
-      };
-    };
-    const iconStyle = (item) => {
-      const h1 = hueFor(item);
-      return {
-        backgroundImage: `linear-gradient(140deg, hsl(${h1} 72% 58%), hsl(${(h1 + 40) % 360} 66% 42%))`,
-        color: '#0a0a14',
-      };
-    };    // Re-measure the rail whenever its contents or width can have changed.
+    // Deterministic per-item art now lives in useMarketplaceCard (imported
+    // above) so the shelf renders byte-identical cards.
+    // Re-measure the rail whenever its contents or width can have changed.
     watch([availableCategories, selectedCategory, activeTab, currentLayout], () => nextTick(syncRail));
 
     // NOTE: tab counts were trialled here and removed — the badges pushed the
@@ -1266,48 +1217,11 @@ export default {
       nextTick(() => scrollToBottom());
     };
 
-    const formatNumber = (num) => {
-      if (num >= 1000000) {
-        return (num / 1000000).toFixed(1) + 'M';
-      }
-      if (num >= 1000) {
-        return (num / 1000).toFixed(1) + 'K';
-      }
-      return num.toString();
-    };
-
-    const getAssetIcon = (asset) => {
-      // Determine asset type from asset_type field or infer from context
-      const assetType = asset.asset_type || 'workflow';
-
-      switch (assetType) {
-        case 'agent':
-          return 'fas fa-robot';
-        case 'tool':
-          return 'fas fa-wrench';
-        case 'plugin':
-          return 'fas fa-puzzle-piece';
-        case 'workflow':
-        default:
-          return 'fas fa-project-diagram';
-      }
-    };
-
-    const getAssetTypeLabel = (asset) => {
-      const assetType = asset.asset_type || 'workflow';
-
-      switch (assetType) {
-        case 'agent':
-          return 'Agent';
-        case 'tool':
-          return 'Tool';
-        case 'plugin':
-          return 'Plugin';
-        case 'workflow':
-        default:
-          return 'Workflow';
-      }
-    };
+    // Kept as local aliases so the template reads the same; the definitions are
+    // shared with MarketplaceShelf.
+    const formatNumber = formatCount;
+    const getAssetIcon = assetIcon;
+    const getAssetTypeLabel = assetTypeLabel;
 
     const isInstalled = (item) => {
       // Check both id and marketplace_item_id to handle different data structures
@@ -2566,7 +2480,9 @@ body.dark .view-btn:not(:last-child) {
   padding: 5px 12px;
   border-radius: var(--border-radius-full);
   background: var(--color-primary);
-  color: var(--color-black-navy);
+  /* --on-fill-accent, not --color-black-navy: six themes alias that name to their
+     own canvas, so it is near-WHITE in light/rose. See _semantic.css. */
+  color: var(--on-fill-accent);
 }
 .mk-eyebrow.alt { background: var(--color-secondary); }
 .mk-hero-badge {
@@ -2652,7 +2568,9 @@ body.dark .view-btn:not(:last-child) {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   background: var(--color-primary);
-  color: var(--color-black-navy);
+  /* --on-fill-accent, not --color-black-navy: six themes alias that name to their
+     own canvas, so it is near-WHITE in light/rose. See _semantic.css. */
+  color: var(--on-fill-accent);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 .mk-hero-cta:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(var(--primary-rgb), 0.4); }
@@ -2711,13 +2629,23 @@ body.dark .view-btn:not(:last-child) {
 /* SECONDARY-INK RULE (long-form text only):
    --color-text-muted measures 3.1-4.4:1 against a raised card in the ember,
    nord, midnight and hacker palettes — under AA at 12px. Deriving from each
-   theme's own --color-text at 72% keeps the palette correct while measuring
-   >=4.8:1 in all eight themes. Used only where there are no emphasised child
-   elements, since opacity cannot be reset by a descendant. */
+   theme's own --color-text keeps the palette correct while staying legible.
+   Used only where there are no emphasised child elements, since opacity
+   cannot be reset by a descendant.
+
+   ALPHA IS 0.82, AND THAT NUMBER IS LOAD-BEARING.
+   This rule previously said 0.72 / ">=4.8:1 in all eight themes". That was
+   true when it was written and silently became false: the light theme later
+   moved --color-navy from #131322 to #ffffff, which brightened the raised card
+   under this ink and dropped the real measurement to 4.00:1 — below AA 4.5.
+   Measured against the live theme files, across all eight palettes on BOTH the
+   card and the page fill, 0.77 is the floor and light is the binding surface;
+   0.82 measures 5.16:1 worst-case and leaves headroom for future palette work.
+   secondaryInkContrast.spec.js now pins this, so it cannot rot again. */
 .mk-collection-desc {
   font-size: var(--font-size-xs);
   color: var(--color-text);
-  opacity: 0.72;
+  opacity: 0.82;
   line-height: 1.45;
   margin-top: 2px;
 }
@@ -2747,7 +2675,9 @@ body.dark .view-btn:not(:last-child) {
 }
 .mk-collection:hover .mk-collection-cta {
   background: var(--color-primary);
-  color: var(--color-black-navy);
+  /* --on-fill-accent, not --color-black-navy: six themes alias that name to their
+     own canvas, so it is near-WHITE in light/rose. See _semantic.css. */
+  color: var(--on-fill-accent);
   border-color: var(--color-primary);
 }
 
@@ -2961,7 +2891,12 @@ body.dark .view-btn:not(:last-child) {
 .mk-tag.new { background: rgba(18, 224, 255, 0.9); border-color: transparent; color: #06131a; }
 .mk-tag.rank { background: rgba(255, 215, 0, 0.92); border-color: transparent; color: #2a2000; }
 .mk-tag.price { margin-left: auto; font-family: var(--font-family-mono); font-size: 10.5px; letter-spacing: 0.02em; }
-.mk-tag.price.free { color: var(--color-green); border-color: rgba(25, 239, 131, 0.35); }
+/* The FREE label is the one tag painted in an accent rather than --text-on-scrim,
+   and it sits on a generated gradient whose hue varies per item. Composited
+   against the brightest stop the tool hue can produce (hsl(59 62% 52%)), the
+   shared 0.55 scrim left it at 4.23:1 — under AA. 0.72 measures 7.08:1 at the
+   worst hue of all four asset types. Kept identical in MarketplaceShelf.vue. */
+.mk-tag.price.free { color: var(--color-green); background: rgba(7, 7, 16, 0.72); border-color: rgba(25, 239, 131, 0.35); }
 
 .mk-card-icon {
   position: absolute;
@@ -3035,7 +2970,7 @@ body.dark .view-btn:not(:last-child) {
   font-size: var(--font-size-xs);
   /* see SECONDARY-INK RULE above */
   color: var(--color-text);
-  opacity: 0.72;
+  opacity: 0.82;
   line-height: 1.55;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -3097,7 +3032,9 @@ body.dark .view-btn:not(:last-child) {
 }
 .mk-card:hover .mk-inst:not(:disabled) {
   background: var(--color-primary);
-  color: var(--color-black-navy);
+  /* --on-fill-accent, not --color-black-navy: six themes alias that name to their
+     own canvas, so it is near-WHITE in light/rose. See _semantic.css. */
+  color: var(--on-fill-accent);
   border-color: var(--color-primary);
   box-shadow: 0 6px 18px rgba(var(--primary-rgb), 0.3);
 }
@@ -3197,7 +3134,9 @@ body.dark .view-btn:not(:last-child) {
   border-radius: var(--border-radius-full);
   cursor: pointer;
   background: var(--color-primary);
-  color: var(--color-black-navy);
+  /* --on-fill-accent, not --color-black-navy: six themes alias that name to their
+     own canvas, so it is near-WHITE in light/rose. See _semantic.css. */
+  color: var(--on-fill-accent);
   font-family: var(--font-family-primary);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
@@ -3272,9 +3211,10 @@ body.dark .view-btn:not(:last-child) {
   flex-wrap: wrap;
   font-size: var(--font-size-xs);
   /* SECONDARY-INK RULE: derived from the theme's own ink so it clears AA on
-     every surface (--color-text-muted lands ~3.1-4.4:1 in ember/nord/midnight) */
+     every surface (--color-text-muted lands ~3.1-4.4:1 in ember/nord/midnight).
+     0.68 did NOT clear it — 3.64:1 light, 4.42:1 nord. 0.82 is the house alpha. */
   color: var(--color-text);
-  opacity: 0.68;
+  opacity: 0.82;
 }
 .mk-prof-sub span {
   display: inline-flex;
@@ -3331,7 +3271,7 @@ body.dark .view-btn:not(:last-child) {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-text);
-  opacity: 0.68;
+  opacity: 0.82; /* was 0.68 -> 3.64:1 in light; see SECONDARY-INK RULE */
 }
 
 .mk-prof-rel {

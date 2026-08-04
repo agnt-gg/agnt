@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>MarketplaceShelf harness</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700&family=Fira+Code&display=swap" rel="stylesheet" />
+    <style>
+      /* !important because the app's main.css also styles body; without an
+         OPAQUE surface here the contrast probe walks past every ancestor and
+         falls back to transparent-black, which reported 1.98:1 for text that
+         actually measures 5.2:1. The harness must paint what the app paints. */
+      body { margin: 0; padding: 24px; background: var(--color-background) !important; font-family: var(--font-family-primary); }
+      /* max-width:1400px was WIDER than the 1360px test viewport, so the harness
+         itself contributed 40px of document overflow and masked whether the
+         component was containing its own rail. The harness must not be a variable. */
+      #app { max-width: 100%; margin: 0 auto; }
+    </style>
+  </head>
+  <body class="dark">
+    <div id="app"></div>
+    <script type="module" src="./shelf.js"></script>
+  </body>
+</html>

@@ -5,13 +5,23 @@
       <span class="wm-count">{{ count }} {{ countLabel }}</span>
     </div>
     <div class="wm-header-right">
-      <input
-        type="text"
-        class="wm-search-input"
-        :placeholder="searchPlaceholder"
-        :value="searchQuery"
-        @input="$emit('update:searchQuery', $event.target.value)"
-      />
+      <!--
+        When the screen has nothing of its own, this input filters an empty set
+        and is inert chrome. Rather than add a SECOND search box for the
+        marketplace shelf, the shelf borrows this one — `searchScope` makes the
+        change of meaning visible instead of magic, so the user is never typing
+        into a box whose target silently moved.
+      -->
+      <div class="wm-search-wrap" :class="{ scoped: !!searchScope }">
+        <input
+          type="text"
+          class="wm-search-input"
+          :placeholder="searchScope ? `Search the marketplace for ${countLabel}…` : searchPlaceholder"
+          :value="searchQuery"
+          @input="$emit('update:searchQuery', $event.target.value)"
+        />
+        <span v-if="searchScope" class="wm-search-scope"><i class="fas fa-store"></i>{{ searchScope }}</span>
+      </div>
       <Tooltip v-if="showCollapseToggle" :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
         <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="$emit('toggleCollapseAll')">
           <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
@@ -55,6 +65,8 @@ export default {
     countLabel: { type: String, default: 'items' },
     searchPlaceholder: { type: String, default: 'Search...' },
     searchQuery: { type: String, default: '' },
+    /** Non-empty when another surface (the marketplace shelf) has borrowed this input. */
+    searchScope: { type: String, default: '' },
     currentLayout: { type: String, default: 'grid' },
     layoutOptions: { type: Array, default: () => ['grid', 'table'] },
     showCollapseToggle: { type: Boolean, default: true },
@@ -126,6 +138,39 @@ export default {
 
 .wm-header-right .wm-btn {
   align-self: stretch;
+}
+
+.wm-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.wm-search-wrap.scoped .wm-search-input {
+  /* room for the chip, which is absolutely positioned so the input keeps its
+     own hit area and focus ring */
+  padding-right: 122px;
+  width: 320px;
+  border-color: rgba(var(--blue-rgb), 0.4);
+}
+
+.wm-search-scope {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(var(--blue-rgb), 0.12);
+  border: 1px solid rgba(var(--blue-rgb), 0.35);
+  color: var(--color-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .wm-search-input {

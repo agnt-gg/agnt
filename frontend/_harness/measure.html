@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>m</title></head><body>
+<script>
+const CASES = [
+  ['agent/full/dark',   'type=agent&variant=full&theme=dark'],
+  ['agent/full/light',  'type=agent&variant=full&theme=light'],
+  ['agent/full/rose',   'type=agent&variant=full&theme=rose'],
+  ['agent/full/nord',   'type=agent&variant=full&theme=nord'],
+  ['agent/full/ember',  'type=agent&variant=full&theme=ember'],
+  ['workflow/full/dark','type=workflow&variant=full&theme=dark'],
+  ['tool/full/light',   'type=tool&variant=full&theme=light'],
+  ['agent/search',      'type=agent&variant=full&theme=dark&q=data'],
+  ['agent/nomatch',     'type=agent&variant=full&theme=dark&q=kubernetes'],
+  ['agent/strip/dark',  'type=agent&variant=strip&theme=dark'],
+  ['agent/strip/light', 'type=agent&variant=strip&theme=light'],
+  ['skill/degraded',    'type=skill&variant=full&theme=dark'],
+  ['agent/error',       'type=agent&variant=full&theme=dark&status=error'],
+];
+
+const lum=c=>{const v=c.map(x=>{x/=255;return x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
+const ratio=(a,b)=>{const l1=lum(a),l2=lum(b);return +(((Math.max(l1,l2)+.05)/(Math.min(l1,l2)+.05)).toFixed(2))};
+const parse=s=>{const p=(String(s).match(/[\d.]+/g)||[0,0,0]).map(Number);return p.length>3?p:[p[0],p[1],p[2],1]};
+const over=(fg,bg)=>{const a=fg[3];return [0,1,2].map(i=>Math.round(fg[i]*a+bg[i]*(1-a)))};
+
+const out = [];
+let errs = [];
+window.onerror = (e) => errs.push(String(e));
+
+(async () => {
+  for (const [name, qs] of CASES) {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'width:1360px;height:1200px;border:0;position:absolute;left:-99999px';
+    f.src = './shelf.html?' + qs;
+    document.body.appendChild(f);
+    await new Promise((r) => (f.onload = r));
+    await new Promise((r) => setTimeout(r, 350));
+    const d = f.contentDocument, w = f.contentWindow;
+    const Q = (s) => d.querySelector(s), QA = (s) => [...d.querySelectorAll(s)];
+
+    const cards = QA('.ms-card').map((c) => c.getBoundingClientRect());
+    const rows = QA('.ms-row');
+    const grid = Q('.ms-grid');
+    const de = d.documentElement;
+
+    // contrast on the elements that carry text, against their real painted parent
+    const bgOf = (el) => {
+      let n = el;
+      while (n && n !== d.documentElement) {
+        const c = parse(w.getComputedStyle(n).backgroundColor);
+        if (c[3] > 0.95) return [c[0], c[1], c[2]];
+        n = n.parentElement;
+      }
+      const c = parse(w.getComputedStyle(d.body).backgroundColor);
+      return [c[0], c[1], c[2]];
+    };
+    const probe = (sel) => {
+      const el = Q(sel); if (!el) return null;
+      const cs = w.getComputedStyle(el);
+      const col = parse(cs.color), op = parseFloat(cs.opacity);
+      // If the element paints its OWN opaque fill (a filled chip, a solid
+      // button), that fill is the surface its label sits on. Measuring such an
+      // element against its parent reported 1.07:1 for ink-on-neon, which is
+      // 13:1 in reality.
+      const own = parse(cs.backgroundColor);
+      const bg = own[3] > 0.95 ? [own[0], own[1], own[2]] : bgOf(el.parentElement || el);
+      const r = ratio(over([col[0], col[1], col[2], col[3] * (isNaN(op) ? 1 : op)], bg), bg);
+      return Number.isFinite(r) ? r : 'NaN:' + sel;
+    };
+
+    const texts = ['.ms-start-txt h2', '.ms-start-txt p', '.ms-title', '.ms-sub', '.ms-all',
+                   '.ms-chip', '.ms-chip.on', '.ms-chip:not(.on)', '.ms-start-cta', '.ms-empty-cta',
+                   '.ms-card-title', '.ms-card-by', '.ms-card-desc', '.ms-card-meta',
+                   '.ms-inst', '.ms-row-txt h4', '.ms-row-txt p', '.ms-empty h3', '.ms-empty p'];
+    const contrast = {};
+    for (const t of texts) { const v = probe(t); if (v !== null) contrast[t] = v; }
+
+    // badge labels sit on an accent fill -> must use the paired on-fill token
+    const badges = {};
+    for (const b of ['.ms-tag.new', '.ms-tag.rank', '.ms-tag.hot']) {
+      const el = Q(b); if (!el) continue;
+      const cs = w.getComputedStyle(el);
+      const bgc = parse(cs.backgroundColor);
+      badges[b] = ratio(over(parse(cs.color), [bgc[0], bgc[1], bgc[2]]), [bgc[0], bgc[1], bgc[2]]);
+    }
+
+    const tops = [...new Set(cards.map((c) => Math.round(c.top)))];
+    const firstRow = cards.filter((c) => Math.round(c.top) === tops[0]);
+    const gridRect = grid ? grid.getBoundingClientRect() : null;
+
+    out.push({
+      name,
+      cards: cards.length,
+      rows: rows.length,
+      hasStart: !!Q('.ms-start'),
+      hasHead: !!Q('.ms-head'),
+      availability: (Q('#harness-availability') || {}).textContent,
+      rowsOfCards: tops.length,
+      raggedGapPx: gridRect && firstRow.length ? Math.round(gridRect.right - Math.max(...firstRow.map((c) => c.right))) : 0,
+      hOverflowPx: de.scrollWidth - de.clientWidth,
+      // Name the culprit instead of guessing: widest element crossing the viewport edge.
+      overflowCulprits: (() => {
+        const lim = de.clientWidth;
+        return [...d.querySelectorAll('*')]
+          .map((e) => ({ e, r: e.getBoundingClientRect() }))
+          .filter((x) => Math.round(x.r.right) > lim + 1)
+          .slice(0, 5)
+          .map((x) => (x.e.className || x.e.tagName) + ' right=' + Math.round(x.r.right) + ' w=' + Math.round(x.r.width));
+      })(),
+      anyClipped: QA('.ms-card-title,.ms-row-txt h4,.ms-row-txt p').filter((e) => e.scrollWidth > e.clientWidth + 1).length,
+      worstContrast: Object.keys(contrast).length ? Math.min(...Object.values(contrast).filter((v) => typeof v === 'number')) : null,
+      contrast,
+      badges,
+      fakeZero: /\b0\.0\b/.test(d.body.innerText),
+      unratedCount: QA('.ms-m-unrated').length,
+      emptyBoxIcons: QA('i[class*="fa-"]').filter((i) => w.getComputedStyle(i, ':before').content === 'none').length,
+    });
+    f.remove();
+  }
+  document.title = 'MEAS' + JSON.stringify({ out, errs });
+})();
+</script></body></html>

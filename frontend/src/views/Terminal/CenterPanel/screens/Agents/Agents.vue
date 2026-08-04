@@ -26,6 +26,7 @@
           countLabel="agents"
           searchPlaceholder="Search agents..."
           :searchQuery="searchQuery"
+          :searchScope="shelfHasFocus ? 'Marketplace' : ''"
           :currentLayout="currentLayout"
           :layoutOptions="['grid', 'table']"
           :showCollapseToggle="true"
@@ -104,16 +105,32 @@
 
             <!-- Category Cards View -->
             <div v-else-if="currentLayout === 'grid'" class="category-cards-container">
-              <!-- Empty State - Only show for non-marketplace tabs when no agents exist -->
-              <div v-if="agentTab !== 'marketplace' && filteredAgentsGrid.length === 0" class="empty-state-container">
+              <!-- Nothing owned yet: the empty state IS the storefront. Create
+                   stays first-class on top; real, type-scoped inventory sits
+                   underneath. Degrades to Create alone if the catalogue is
+                   unreachable — see MarketplaceShelf. -->
+              <MarketplaceShelf
+                v-if="agentTab !== 'marketplace' && ownsNothing"
+                asset-type="agent"
+                variant="full"
+                :query="searchQuery"
+                create-label="Create Agent"
+                @create="handlePanelAction('navigate', 'AgentForgeScreen')"
+                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @installed="onShelfInstalled"
+                @clear-search="handleSearch('')"
+                @availability="(v) => (shelfAvailable = v)"
+              />
+
+              <!-- Owned, but this search matched none of them. Their own items
+                   are the subject here, so this stays a plain reset — not a
+                   marketplace pitch. -->
+              <div v-else-if="agentTab !== 'marketplace' && filteredAgentsGrid.length === 0" class="empty-state-container">
                 <div class="empty-state">
                   <i class="fas fa-robot"></i>
-                  <p>No agents found</p>
+                  <p>No agents match &ldquo;{{ searchQuery }}&rdquo;</p>
                   <div class="empty-state-buttons">
-                    <button class="create-button" @click="handlePanelAction('navigate', 'AgentForgeScreen')">
-                      <i class="fas fa-plus"></i> Create Agent
-                    </button>
-                    <button class="marketplace-button" @click="onAgentTabSelect('marketplace')"><i class="fas fa-store"></i> View Marketplace</button>
+                    <button class="create-button" @click="handleSearch('')"><i class="fas fa-undo"></i> Clear search</button>
                   </div>
                 </div>
               </div>
@@ -276,6 +293,16 @@
                   </div>
                 </article>
               </div>
+
+              <!-- Second run: the user's own work leads, the shelf steps aside
+                   into a compact, dismissible rail. -->
+              <MarketplaceShelf
+                v-if="agentTab !== 'marketplace' && !ownsNothing"
+                asset-type="agent"
+                variant="strip"
+                @browse="handlePanelAction('navigate', 'MarketplaceScreen')"
+                @installed="onShelfInstalled"
+              />
             </div>
           </main>
         </div>
@@ -327,6 +354,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import { useAgentsTutorial } from './useAgentsTutorial.js';
 
 export default {
@@ -338,6 +366,7 @@ export default {
     AgentList,
     Tooltip,
     ScreenToolbar,
+    MarketplaceShelf,
     AgentDetails,
     SvgIcon,
     SimpleModal,
@@ -356,6 +385,20 @@ export default {
     const criticalDataReady = computed(() => store.getters.criticalDataReady);
     const selectedAgent = ref(null);
     const searchQuery = ref('');
+
+    /* Shelf wiring.
+       `ownsNothing` deliberately reads the RAW list, not the filtered one: a
+       user with 5 agents who searches "zzz" has an empty grid but is not an
+       empty-state user, and answering their search with a storefront would be
+       a non-sequitur. */
+    const shelfAvailable = ref(false);
+    const ownsNothing = computed(() => agents.value.length === 0);
+    // Only claim the search box while the shelf is the thing it can actually drive.
+    const shelfHasFocus = computed(() => ownsNothing.value && shelfAvailable.value && agentTab.value !== 'marketplace');
+    const onShelfInstalled = async () => {
+      await store.dispatch('agents/fetchAgents', { force: true });
+      await loadAgents(true);
+    };
     const currentLayout = ref('grid');
     const selectedCategory = ref(null);
     const selectedMainCategory = ref(null);
@@ -1794,6 +1837,10 @@ export default {
       criticalDataReady,
       selectedAgent,
       handlePanelAction,
+      shelfAvailable,
+      ownsNothing,
+      shelfHasFocus,
+      onShelfInstalled,
       onContentClick,
       selectAgent,
       formatUptime,

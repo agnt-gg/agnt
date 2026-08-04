@@ -142,3 +142,8 @@ backend/remote-access.json
 # Desktop connection choice (Electron userData in packaged builds, but the
 # resolver accepts a cwd-relative path in dev too).
 connection.json
+
+# MarketplaceShelf verification harness: the source is committed (it is how the
+# component gets checked in a real browser), its build output and captures are not.
+frontend/_harness/dist/
+frontend/_harness/shots/
