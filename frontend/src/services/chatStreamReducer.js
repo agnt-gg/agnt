@@ -368,20 +368,61 @@ export function hydrateMessage(raw = {}) {
 }
 
 /**
+ * A PROVIDER ROW IS NOT A MESSAGE
+ * -------------------------------
+ * Live, one answer is ONE message: text and tool cards interleave inside a
+ * single bubble via contentParts. The provider transcript stores that same
+ * answer as a CHAIN of rows — assistant(text + tool_use), user(tool_result),
+ * assistant(tool_use), user(tool_result), assistant(text) — because every
+ * tool round-trip has to re-enter the model as a new turn.
+ *
+ * Mapping one row to one bubble therefore shattered every tool-using answer on
+ * reload: three bubbles for the turn above, the middle one with no words at
+ * all, just orphaned tool cards. The rule is that an assistant TURN runs until
+ * the next thing the USER actually said, so the rows are folded back together
+ * here.
+ *
+ * Fold at the read seam, not at the write: full_history must stay the exact
+ * provider transcript (it is replayed back to the model on the next turn, and
+ * a doctored one would break tool_use/tool_result pairing).
+ */
+function mergeAssistantTurn(target, next) {
+  if (next.text) target.content = target.content ? `${target.content}\n\n${next.text}` : next.text;
+  if (next.reasoning) {
+    target.reasoning = target.reasoning ? `${target.reasoning}\n${next.reasoning}` : next.reasoning;
+  }
+
+  for (const part of next.contentParts) {
+    const last = target.contentParts[target.contentParts.length - 1];
+    // Prose split across two provider rows is one passage, not two paragraphs
+    // of one part and one of another — keep it in a single text part so the
+    // markdown pipeline sees whole fences and lists.
+    if (part.type === 'text' && last && last.type === 'text') last.text += `\n\n${part.text}`;
+    else target.contentParts.push(part);
+  }
+
+  for (const tc of next.toolCalls) {
+    if (!target.toolCalls.some((x) => x.id === tc.id)) target.toolCalls.push(tc);
+  }
+}
+
+/**
  * Convert server conversation_logs messages into UI message shapes.
  *
  * Shared by chatUnified's workspace hydration and the main chat's
  * stream-death reconciliation — one conversion, or the two surfaces
  * silently drift on tool-call / content-part handling.
  *
- * Two provider-transcript facts are handled here and nowhere else:
+ * Three provider-transcript facts are handled here and nowhere else:
  *   1. A tool's OUTPUT comes back on a synthetic `user` turn carrying only
  *      tool_result blocks. That is protocol bookkeeping, not something the user
  *      said — it is joined onto the tool card that asked for it and then
  *      dropped, so it never renders as an empty user bubble.
- *   2. Because of (1), the provider transcript has MORE rows than the UI one
- *      for the same conversation. Callers must therefore never compare the two
- *      by length — see transcriptSubstance().
+ *   2. One assistant turn spans every row up to the next REAL user message —
+ *      see mergeAssistantTurn() above.
+ *   3. Because of (1) and (2), the provider transcript has MORE rows than the
+ *      UI one for the same conversation. Callers must therefore never compare
+ *      the two by length — see transcriptSubstance().
  */
 export function serverMessagesToUi(messages) {
   if (!Array.isArray(messages)) return [];
@@ -389,6 +430,7 @@ export function serverMessagesToUi(messages) {
   const out = [];
   const callsById = new Map();
   const stamp = Date.now().toString(36);
+  let openTurn = null;
 
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
@@ -404,11 +446,31 @@ export function serverMessagesToUi(messages) {
     }
 
     // Nothing but tool plumbing — the results above were its entire payload.
+    // It carries no utterance, so it must NOT close the open assistant turn.
     if (flat.toolResults.length > 0 && !flat.text && flat.toolCalls.length === 0) continue;
 
-    const msg = hydrateMessage({ ...m, id: m.id || `srv-${i}-${stamp}` });
-    for (const tc of msg.toolCalls) callsById.set(tc.id, tc);
-    out.push(msg);
+    if (m.role === 'user') {
+      openTurn = null;
+      out.push(hydrateMessage({ ...m, id: m.id || `srv-${i}-${stamp}` }));
+      continue;
+    }
+
+    // An assistant row with neither words nor tool calls has nothing to show.
+    if (!flat.text && flat.toolCalls.length === 0) continue;
+
+    if (openTurn) {
+      mergeAssistantTurn(openTurn, flat);
+    } else {
+      openTurn = hydrateMessage({ ...m, id: m.id || `srv-${i}-${stamp}` });
+      // Own every array and part this turn will grow into: hydrateMessage may
+      // hand back the CALLER's contentParts when the message already had them,
+      // and merging appends to (and rewrites the text of) these objects.
+      openTurn.contentParts = openTurn.contentParts.map((p) => ({ ...p }));
+      openTurn.toolCalls = [...openTurn.toolCalls];
+      out.push(openTurn);
+    }
+
+    for (const tc of openTurn.toolCalls) callsById.set(tc.id, tc);
   }
 
   return out;

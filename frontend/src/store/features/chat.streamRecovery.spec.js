@@ -209,12 +209,13 @@ describe('recoverInterruptedStream', () => {
     expect(await p).toBe(true);
 
     const msgs = state.conversations[CONV].messages;
-    // The tool-result turn is plumbing, not a user bubble.
-    expect(msgs).toHaveLength(3);
+    // The tool-result turn is plumbing, not a user bubble — and the two
+    // assistant rows around it are ONE answer, recovered as one bubble.
+    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(msgs.some((m) => String(m.content).includes('[object Object]'))).toBe(false);
-    expect(msgs[1].content).toBe('Let me look at the current layout first.');
+    expect(msgs[1].content).toBe('Let me look at the current layout first.\n\nDone \u2014 chat slimmed to 3 columns.');
     expect(msgs[1].toolCalls[0]).toMatchObject({ name: 'get_canvas_state', result: 'ok' });
-    expect(msgs[2].content).toBe('Done \u2014 chat slimmed to 3 columns.');
+    expect(msgs[1].contentParts.map((p) => p.type)).toEqual(['text', 'tool_call', 'text']);
   });
 
   it('refuses a remote transcript with MORE rows but less to say', async () => {
