@@ -270,6 +270,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
+import { getDraft, setDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 
@@ -395,7 +396,24 @@ export default {
     // --- Speech Recognition ---
 
     // --- Input State ---
-    const currentUserInput = ref('');
+    // ---- per-conversation draft -----------------------------------------
+    //
+    // The input is not incidental component state: it is the draft of a
+    // message TO THIS CONVERSATION, so it is keyed by the conversation id and
+    // survives switches and reloads instead of following the user from one
+    // chat into the next. The write-through watcher is sync-flushed to close
+    // the race where a switch lands between a keystroke and a batched watcher
+    // run — which would file the old conversation's draft under the new id.
+    const draftKey = computed(
+      () => store.state.chat?.activeConversationId || `screen:${props.screenId || 'chat'}`
+    );
+    const currentUserInput = ref(getDraft(draftKey.value));
+    watch(currentUserInput, (v) => setDraft(draftKey.value, v), { flush: 'sync' });
+    watch(draftKey, (next) => {
+      // Typing already persisted the outgoing draft (sync flush above), so a
+      // switch is just loading the incoming conversation's draft.
+      currentUserInput.value = getDraft(next);
+    });
     const isInputDisabled = ref(disableInputInitially.value);
     const showPrompt = ref(true);
     const selectedFiles = ref([]);
@@ -654,6 +672,14 @@ export default {
 
     watch(isStreaming, (streaming, was) => {
       if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
+    });
+
+    // A conversation switch ends any live voice session. The mic belongs to
+    // the conversation it was opened in — a session that outlives its
+    // conversation keeps committing into whichever chat is now on screen,
+    // which is cross-talk, not continuity.
+    watch(draftKey, () => {
+      if (voice.isActive.value) voice.stop();
     });
 
     const handlePanelAction = async (action, payload) => {

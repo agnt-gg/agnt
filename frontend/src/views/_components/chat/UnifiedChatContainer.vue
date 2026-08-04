@@ -195,6 +195,7 @@ import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/componen
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
+import { getDraft, setDraft } from '@/services/chatDrafts';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
 export default {
@@ -240,7 +241,23 @@ export default {
     const inputBarRef = ref(null);
     const confirmModalRef = ref(null);
     const providerBtnRef = ref(null);
-    const chatInput = ref('');
+    // Per-conversation draft. channelKey is this composer's stable
+    // conversation identity (the provider selection keys off the same
+    // conversation state), so the draft is keyed by it and survives panel
+    // switches and reloads instead of leaking between chats. The write-through
+    // is sync-flushed: a batched watcher can run after the channel has already
+    // swapped and file the outgoing draft under the incoming key.
+    const chatInput = ref(getDraft(props.channelKey));
+    watch(chatInput, (v) => setDraft(props.channelKey, v), { flush: 'sync' });
+    watch(
+      () => props.channelKey,
+      (next) => {
+        // Most hosts :key the container by channelKey and remount on switch;
+        // this covers any host that swaps the prop in place. Typing already
+        // persisted the outgoing draft (sync flush above).
+        chatInput.value = getDraft(next);
+      }
+    );
     const selectedFiles = ref([]);
     const isDragOver = ref(false);
     let dragLeaveTimer = null;
@@ -539,6 +556,18 @@ export default {
         voice.handleStreamEvent('done', {});
       }
     });
+
+    // A channel switch ends any live voice session. The mic belongs to the
+    // conversation it was opened in — a session that outlives its channel
+    // keeps committing into whichever chat is now on screen, which is
+    // cross-talk, not continuity. (Hosts that :key the container get this
+    // free via unmount; this covers in-place prop swaps.)
+    watch(
+      () => props.channelKey,
+      () => {
+        if (voice.isActive.value) voice.stop();
+      }
+    );
 
     const onCancelSteer = () => {
       store.dispatch('chatUnified/cancelSteer', { channelKey: props.channelKey });
