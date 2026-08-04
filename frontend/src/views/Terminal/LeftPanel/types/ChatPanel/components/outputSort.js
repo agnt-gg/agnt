@@ -69,11 +69,16 @@ export function activityTime(output, bumps = {}) {
  */
 export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', bumps = {}, previewOf } = {}) {
   // 'attention' is a SEMANTIC order, not a directional one: unread first,
-  // longest-waiting at the top, then everything else by recency. It is the
-  // triage rail's invariant applied to the whole list, which is the only
-  // reason the rail can be a view of the list rather than a special case.
+  // longest-waiting at the top, then everything else by recency. Surfaced in
+  // the UI as the "Unread" sort mode.
   //
-  // sortOrder is deliberately ignored here — "needs you, backwards" is not a
+  // This order is what lets the panel have no separate unread section. There
+  // was once a pinned "Needs you" card above the groups holding exactly the
+  // rows this comparator already lifts to the top — the same conversation
+  // rendered twice, a few pixels apart. The sort makes the card redundant, so
+  // the card is gone and this is the single place the ordering lives.
+  //
+  // sortOrder is deliberately ignored here — "unread, backwards" is not a
   // thing a user wants, and offering it would only produce an ordering that
   // buries the oldest waiting conversation, which is the exact failure this
   // whole feature exists to prevent.
@@ -81,7 +86,8 @@ export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', 
   // Bumps apply only to the read partition. A manual "Mark as Unread" writes
   // nothing server-side, so inside the unread partition the honest measure of
   // "how long has this been waiting" is updated_at alone — the same measure
-  // triageRail() uses, so rail and list agree on the order of the same rows.
+  // triageRail() uses, so the Unread count/clear-all set and the top of the
+  // list agree on the order of the same rows.
   if (sortKey === 'attention') {
     return [...list].sort((a, b) => {
       const aUnread = isUnread(a);

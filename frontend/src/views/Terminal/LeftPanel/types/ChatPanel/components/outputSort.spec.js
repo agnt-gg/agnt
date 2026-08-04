@@ -160,7 +160,7 @@ describe('sortOutputs — sort controls', () => {
   });
 });
 
-describe("sortOutputs — the 'attention' (Needs you) order", () => {
+describe("sortOutputs — the 'attention' (Unread) order", () => {
   // Rows carry the columns unread is DERIVED from; there is no unread flag.
   //
   // Unread means a watermark exists AND a later change overtook it. A NULL
@@ -189,8 +189,10 @@ describe("sortOutputs — the 'attention' (Needs you) order", () => {
   });
 
   it('agrees with triageRail on the order of the same unread rows', () => {
-    // Rail and list are two views of one ordering. If they disagree, the
-    // same conversation appears in two different places in the same panel.
+    // triageRail() still backs the Unread count badge and the clear-all
+    // button. If the two orderings drift, the number on the badge stops
+    // describing the rows the sort actually lifts to the top, and clear-all
+    // stops clearing exactly what the user was looking at.
     const outputs = [unread('b', t('09:00')), unread('a', t('03:00')), unread('c', t('10:00'))];
     const railOrder = ids(triageRail(outputs));
     const listOrder = ids(sortOutputs(outputs, { sortKey: 'attention' }));
@@ -215,7 +217,7 @@ describe("sortOutputs — the 'attention' (Needs you) order", () => {
   });
 
   it('does not float a conversation that merely has no watermark', () => {
-    // REGRESSION GUARD for the reported bug. Sorting by "Needs you" must not
+    // REGRESSION GUARD for the reported bug. Sorting by Unread must not
     // hoist a user's entire pre-feature history above everything else.
     const outputs = [
       noWatermark('legacy-a', t('02:00')),
@@ -295,16 +297,53 @@ describe('template — the unread dot renders in every list', () => {
     expect(source).toMatch(/return \{ key: 'attention', order: 'desc' \}/);
   });
 
-  it('exposes a one-click clear for the whole rail', () => {
-    // The rail is a queue; a queue with no drain is a guilt generator.
-    expect(source).toContain('markAllNeedsYouRead');
-    expect(source).toContain("contentOutputs/markAllRead");
+  it('labels the attention mode "Unread"', () => {
+    // "Needs you" named a card that no longer exists. The mode does exactly
+    // one describable thing — unread first — so it says that.
+    expect(source).toMatch(/<span>Unread<\/span>/);
+    expect(source).not.toMatch(/>Needs you</);
   });
 
-  it('lets the Date sort reach the rail too', () => {
-    // A sort control that visibly skips a section of the list it controls is
-    // a broken control; the rail must re-sort when Date is picked.
-    expect(source).toMatch(/if \(sortKey\.value !== 'updated_at'\) return rail;/);
+  it('exposes a one-click clear for the unread set', () => {
+    // Unread is a queue; a queue with no drain is a guilt generator.
+    //
+    // Assert the CLICK WIRING, not the bare name: 'markAllUnreadRead' also
+    // appears in the function definition and the setup() return, so deleting
+    // the button entirely would leave a name-only assertion green. A negative
+    // control caught exactly that. The handler attribute exists in one place.
+    expect(source).toMatch(/@click\.stop="markAllUnreadRead"/);
+    expect(source).toContain('contentOutputs/markAllRead');
+  });
+
+  it('shows how many are waiting without a separate card', () => {
+    // The count was the one piece of information the card carried that the
+    // list itself cannot express. It moved to a badge on the button.
+    //
+    // Assert the rendered binding: the class name alone also matches the
+    // <style> rule, so it survives deleting the element it styles.
+    expect(source).toMatch(/class="sort-unread-count">\{\{ unreadConversations\.length \}\}/);
+  });
+
+  it('does NOT re-introduce a pinned duplicate of the unread rows', () => {
+    // THE REGRESSION THIS FILE NOW EXISTS TO PREVENT. A "Needs you" card
+    // above the groups rendered the same conversations the Unread sort
+    // already lifts to the top — the same row, twice, in one panel, a few
+    // pixels apart. Two copies means two click targets, two pieces of state
+    // that can disagree, and permanent vertical cost for zero new
+    // information. The list IS the queue.
+    expect(source).not.toContain('triage-rail');
+    expect(source).not.toContain('triage-item');
+    // A second v-for over an unread-only collection is the shape of the
+    // mistake, whatever it ends up being called.
+    expect(source).not.toMatch(/v-for="output in (needsYou|unreadConversations)"/);
+  });
+
+  it('has no orphaned rail machinery left behind', () => {
+    // The age labels were the rail's alone, and their 60s repaint timer with
+    // them. Dead timers are how a component quietly keeps costing.
+    expect(source).not.toContain('formatAgeLabel');
+    expect(source).not.toContain('ageTick');
+    expect(source).not.toContain('triage-age');
   });
 });
 

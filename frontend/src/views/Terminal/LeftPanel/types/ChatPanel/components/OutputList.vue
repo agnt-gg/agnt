@@ -39,7 +39,13 @@
               <Tooltip text="Unread first, longest waiting on top" width="auto">
                 <button @click="sortBy('attention')" class="sort-button" :class="{ active: sortKey === 'attention' }">
                   <i class="fas fa-bell"></i>
-                  <span>Needs you</span>
+                  <span>Unread</span>
+                  <span v-if="unreadConversations.length > 0" class="sort-unread-count">{{ unreadConversations.length }}</span>
+                </button>
+              </Tooltip>
+              <Tooltip v-if="unreadConversations.length > 0" text="Mark all as read" width="auto">
+                <button class="mark-all-read-btn" @click.stop="markAllUnreadRead" aria-label="Mark all as read">
+                  <i class="fas fa-check-double"></i>
                 </button>
               </Tooltip>
               <button @click="sortBy('updated_at')" class="sort-button" :class="{ active: sortKey === 'updated_at' }">
@@ -53,41 +59,6 @@
                 <span>New Chat</span>
               </button>
             </Tooltip>
-          </div>
-
-          <!-- Needs You triage rail: unread conversations, oldest first.
-               Pinned above everything so nothing unread can get buried. -->
-          <div v-if="needsYou.length > 0" class="triage-rail">
-            <div class="triage-header">
-              <i class="fas fa-bell"></i>
-              <span class="triage-title">Needs you</span>
-              <span class="triage-count">{{ needsYou.length }}</span>
-              <Tooltip text="Mark all as read" width="auto">
-                <button class="triage-clear-btn" @click.stop="markAllNeedsYouRead" aria-label="Mark all as read">
-                  <i class="fas fa-check-double"></i>
-                </button>
-              </Tooltip>
-            </div>
-            <div
-              v-for="output in needsYou"
-              :key="'triage-' + output.id"
-              class="output-item triage-item"
-            >
-              <div class="output-content" @click="handleOutputClick(output.id, $event)">
-                <div class="output-preview">
-                  <span class="unread-dot"></span>
-                  {{ getPreviewText(output.content, output) }}
-                </div>
-                <div class="triage-age" v-tooltip="'Waiting since ' + formatDate(output.updated_at || output.created_at)">
-                  {{ formatAgeLabel(output.updated_at) }}
-                </div>
-              </div>
-              <div class="output-actions">
-                <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
-                  <i class="fas fa-ellipsis-v"></i>
-                </button>
-              </div>
-            </div>
           </div>
 
           <!-- Groups Section -->
@@ -370,7 +341,7 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { sortOutputs } from './outputSort.js';
-import { formatAge, groupUnreadCount, notifiableUnreadIds } from '@/utils/conversationAttention.js';
+import { groupUnreadCount, notifiableUnreadIds } from '@/utils/conversationAttention.js';
 
 export default {
   name: 'OutputList',
@@ -390,9 +361,14 @@ export default {
     // ordered" is a preference, not session state — re-picking it on every
     // reload is the kind of small tax that makes people stop using a control.
     //
-    // The default is 'attention' (unread first, longest waiting on top): it
-    // is the ordering the Needs-you rail already imposes on itself, so panel
-    // and rail agree out of the box. 'updated_at' is pure recency.
+    // The default is 'attention' — the "Unread" mode: unread first, longest
+    // waiting on top. It is the default because it is the only ordering that
+    // cannot bury something waiting on you, which is why the panel needs no
+    // separate unread section. 'updated_at' is pure recency.
+    //
+    // The stored key stays 'attention' even though the button reads "Unread":
+    // renaming it would silently discard every user's saved preference for
+    // nothing but a cosmetic match.
     const SORT_PREF_KEY = 'chatPanel.sortPreference';
     const SORT_KEYS = ['attention', 'updated_at', 'content'];
 
@@ -596,45 +572,33 @@ export default {
 
     const sortedOutputs = computed(() => filterAndSort(visibleOutputs.value));
 
-    // Minute tick so the triage rail's age labels stay honest while the
-    // panel sits open. One shared ref — not one timer per row.
-    const ageTick = ref(Date.now());
-    let ageTimer = null;
-
-    function formatAgeLabel(date) {
-      return formatAge(date, ageTick.value);
-    }
-
-    // "Needs you" triage rail: every unread conversation, OLDEST first, with
-    // an age label. Pinned above the groups so an unread conversation can
-    // never scroll out of sight or get buried by newer traffic — the exact
-    // failure mode of a recency-sorted sidebar with passive dots. Items
-    // leave the rail only by being opened, marked read, or archived.
+    // Every unread conversation, longest-waiting first.
+    //
+    // This used to also render as a pinned "Needs you" card above the groups.
+    // The card was redundant: the Unread sort mode already lifts exactly
+    // these rows to the top of the list, so the card showed the same
+    // conversations a second time, a few pixels higher. Two copies of one row
+    // in one panel is worse than none — it doubles the click targets, doubles
+    // the state that can disagree, and costs vertical space permanently.
+    //
+    // What the card genuinely carried survives here: the count (now a badge
+    // on the Unread button) and the one-click clear beside it.
+    //
     // The currently-viewed and currently-streaming conversations are
-    // excluded: one is being looked at, the other announces itself.
-    const needsYou = computed(() => {
+    // excluded: one is being looked at, the other announces itself. That
+    // exclusion is why this is not simply `unreadOutputIdSet`.
+    const unreadConversations = computed(() => {
       const activeSavedId = store.state.chat.savedOutputId;
-      const rail = (store.getters['contentOutputs/triageRail'] || [])
+      return (store.getters['contentOutputs/triageRail'] || [])
         .filter((o) => o.id !== activeSavedId && !streamingOutputIds.value.has(o.id));
-
-      // The rail arrives longest-waiting-first, which is the 'attention'
-      // order. When the user explicitly picks Date, the rail obeys it too:
-      // the sort control governs the whole panel, not just the groups below
-      // it. A control that visibly skips one section is a broken control.
-      if (sortKey.value !== 'updated_at') return rail;
-      return sortOutputs(rail, {
-        sortKey: 'updated_at',
-        sortOrder: sortOrder.value,
-        bumps: bumpTimestamps.value,
-      });
     });
 
-    // Clear the whole rail in one write. Scoped to the ids actually on
-    // screen: the rail already excludes the conversation being viewed and
-    // anything still streaming, and "read" should mean exactly what the user
-    // could see when they pressed the button.
-    async function markAllNeedsYouRead() {
-      const ids = needsYou.value.map((o) => o.id);
+    // Clear every unread conversation in one write. Scoped to the ids above:
+    // "mark all read" must mean exactly what the user could see when they
+    // pressed the button, never the conversation they are reading or a run
+    // still in flight.
+    async function markAllUnreadRead() {
+      const ids = unreadConversations.value.map((o) => o.id);
       if (ids.length === 0) return;
       playSound('typewriterKeyPress');
       try {
@@ -1497,7 +1461,6 @@ export default {
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('conversation-saved', handleConversationSaved);
       window.addEventListener('chat-cleared', handleChatCleared);
-      ageTimer = setInterval(() => { ageTick.value = Date.now(); }, 60000);
     });
 
     onBeforeUnmount(() => {
@@ -1505,7 +1468,6 @@ export default {
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('conversation-saved', handleConversationSaved);
       window.removeEventListener('chat-cleared', handleChatCleared);
-      if (ageTimer) clearInterval(ageTimer);
     });
 
     return {
@@ -1555,10 +1517,9 @@ export default {
       isOutputUnread,
       unreadOutputIds,
       toggleUnread,
-      markAllNeedsYouRead,
-      // Attention: triage rail + archive
-      needsYou,
-      formatAgeLabel,
+      markAllUnreadRead,
+      // Attention: unread rollups + archive
+      unreadConversations,
       getGroupUnreadBadge,
       archivedList,
       toggleArchived,
@@ -2183,78 +2144,44 @@ body.dark .create-output-btn {
   50% { opacity: 0.3; }
 }
 
-/* ===== Needs You triage rail ===== */
-.triage-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
-  padding: 8px;
-  border: 1px solid rgba(var(--primary-rgb), 0.35);
-  border-radius: 8px;
-  background: rgba(var(--primary-rgb), 0.05);
-}
-
-.triage-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* ===== Unread count + clear-all, on the sort bar =====
+   These carry what the retired "Needs you" card contributed: how many are
+   waiting, and a way to drain them. The list itself is the card's
+   replacement — the Unread sort lifts the same rows to the top. */
+.sort-unread-count {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
   color: var(--color-primary);
+  /* The count is a count, not a sort affordance: keep it at full strength
+     even while the button is inactive and its icon is dimmed. */
+  opacity: 1;
 }
 
-.triage-header i {
-  font-size: 11px;
-}
-
-.triage-clear-btn {
+.mark-all-read-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
+  flex-shrink: 0;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.triage-clear-btn:hover {
+.mark-all-read-btn:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
   background: rgba(var(--primary-rgb), 0.12);
 }
 
-.triage-clear-btn i {
+.mark-all-read-btn i {
   font-size: 11px;
-}
-
-.triage-count {
-  margin-left: auto;
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 10px;
-  background: var(--color-primary);
-  color: var(--color-darker-2, #111);
-  font-weight: 700;
-}
-
-.triage-item .output-preview {
-  display: flex;
-  align-items: center;
-}
-
-.triage-age {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
 }
 
 /* ===== Group unread rollup badge ===== */
