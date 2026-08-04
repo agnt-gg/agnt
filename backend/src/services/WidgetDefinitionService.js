@@ -12,6 +12,72 @@ let _browserIdleTimer = null;
 let _activeCaptures = 0;
 const BROWSER_IDLE_MS = 60000;
 
+const clamp255 = (n) => Math.max(0, Math.min(255, Math.round(n)));
+
+/**
+ * Parse a CSS color string into the RGBA object CDP expects.
+ * Supports #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba() (comma or space
+ * separated), and a bare "r,g,b" triplet. Returns null for anything
+ * unparseable or fully transparent — a transparent "background" is exactly
+ * what we must NOT hand to the compositor.
+ */
+export function parseCssColorToRgba(value) {
+  if (typeof value !== 'string') return null;
+  const raw = value.trim().toLowerCase();
+  if (!raw || raw === 'transparent' || raw === 'none' || raw === 'initial' || raw === 'inherit') return null;
+
+  const hex = raw.match(/^#([0-9a-f]+)$/);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3 || h.length === 4) h = h.split('').map((c) => c + c).join('');
+    if (h.length !== 6 && h.length !== 8) return null;
+    const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+    if (a === 0) return null;
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16), a };
+  }
+
+  const fn = raw.match(/^rgba?\(([^)]+)\)$/);
+  const body = fn ? fn[1] : (/^[\d.\s,]+$/.test(raw) ? raw : null);
+  if (body == null) return null;
+
+  const nums = body.split(/[,\s/]+/).filter(Boolean).map(Number);
+  if (nums.length < 3 || nums.slice(0, 3).some((n) => !Number.isFinite(n))) return null;
+  const a = nums.length >= 4 && Number.isFinite(nums[3]) ? nums[3] : 1;
+  if (a === 0) return null;
+
+  return { r: clamp255(nums[0]), g: clamp255(nums[1]), b: clamp255(nums[2]), a: Math.max(0, Math.min(1, a)) };
+}
+
+/**
+ * Decide what color the capture composites over.
+ *
+ * WHY THIS EXISTS: widgets routinely declare `html,body{background:transparent}`
+ * so the live preview shows the app's background through the iframe. The client
+ * also injects `html,body{background-color:<theme>}` — but it lands FIRST in
+ * <head>, so the widget's own rule wins on order at equal specificity and the
+ * page really is transparent. In an iframe that's correct; in a screenshot
+ * there is nothing behind it, so Chrome paints its default WHITE and a
+ * dark-theme widget captures as washed-out grey.
+ *
+ * Setting the compositor's default background color instead of a CSS rule is
+ * the fix that cannot lose a specificity fight, and it reproduces the live
+ * preview exactly: transparent page over the app's background.
+ *
+ * Prefers the explicit color from the client; falls back to the injected CSS
+ * so any caller that only sends HTML still gets a correct capture.
+ */
+export function resolveCaptureBackground({ backgroundColor, html } = {}) {
+  const explicit = parseCssColorToRgba(backgroundColor);
+  if (explicit) return explicit;
+
+  if (typeof html === 'string') {
+    const injected = html.match(/html\s*,\s*body\s*\{\s*background-color\s*:\s*([^;}]+)[;}]/i);
+    if (injected) return parseCssColorToRgba(injected[1]);
+  }
+
+  return null;
+}
+
 async function getThumbnailBrowser() {
   // Mark this capture as in-flight and cancel any pending idle close.
   _activeCaptures += 1;
@@ -516,7 +582,7 @@ class WidgetDefinitionService {
    * Auto-dismisses alert/confirm/prompt dialogs so widgets with popups don't block.
    */
   async captureThumbnail(req, res) {
-    const { html, storageData } = req.body;
+    const { html, storageData, backgroundColor } = req.body;
     if (!html) {
       return res.status(400).json({ error: 'html is required' });
     }
@@ -528,6 +594,22 @@ class WidgetDefinitionService {
       const browser = await getThumbnailBrowser();
       page = await browser.newPage();
       await page.setViewport({ width: 1200, height: 630 });
+
+      // Composite over the app's theme background rather than Chrome's default
+      // white. See resolveCaptureBackground() — widgets that declare their own
+      // `background: transparent` (most of them) capture as a white/grey mess
+      // without this, because CSS injected into <head> loses to the widget's
+      // own rule on cascade order.
+      const captureBg = resolveCaptureBackground({ backgroundColor, html });
+      if (captureBg) {
+        try {
+          const cdp = await page.createCDPSession();
+          await cdp.send('Emulation.setDefaultBackgroundColorOverride', { color: captureBg });
+        } catch (err) {
+          // Non-fatal: worst case we're back to Chrome's default background.
+          console.warn('[widget-thumbnail] background override failed:', err?.message);
+        }
+      }
 
       // Auto-dismiss any alert/confirm/prompt dialogs
       page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));

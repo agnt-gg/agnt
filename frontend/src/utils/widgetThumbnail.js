@@ -62,24 +62,28 @@ const noScrollbarCSS =
  * When custom backgrounds are enabled, --color-background is 'transparent',
  * so we fall back to --color-background-rgb which always holds the real solid RGB values.
  */
-function buildCaptureBgCSS() {
+export function resolveCaptureBgColor() {
   const rootStyle = getComputedStyle(document.documentElement);
   const bodyStyle = getComputedStyle(document.body);
 
   // Try the direct background color first — only use it if it's not transparent
   const bg = bodyStyle.getPropertyValue('--color-background').trim() || rootStyle.getPropertyValue('--color-background').trim();
   if (bg && bg !== 'transparent' && !bg.startsWith('rgba(0') && bg !== 'initial') {
-    return `<style>html,body{background-color:${bg};}</style>`;
+    return bg;
   }
 
   // Custom BG mode: --color-background is transparent, use the RGB triplet instead
   const rgb = bodyStyle.getPropertyValue('--color-background-rgb').trim() || rootStyle.getPropertyValue('--color-background-rgb').trim();
   if (rgb) {
-    return `<style>html,body{background-color:rgb(${rgb});}</style>`;
+    return `rgb(${rgb})`;
   }
 
   // Ultimate fallback
-  return '<style>html,body{background-color:#0c0c18;}</style>';
+  return '#0c0c18';
+}
+
+function buildCaptureBgCSS() {
+  return `<style>html,body{background-color:${resolveCaptureBgColor()};}</style>`;
 }
 
 /**
@@ -168,10 +172,16 @@ export async function captureWidgetThumbnail(sourceCode, widgetType) {
       storageData[key] = localStorage.getItem(key);
     }
 
+    // Send the theme background separately from the CSS. Widgets that declare
+    // their own `html,body{background:transparent}` (correct for the live
+    // iframe, which shows the app behind it) beat the injected stylesheet on
+    // cascade order, leaving the screenshot to composite over Chrome's default
+    // white. The backend applies this color at the compositor instead, where
+    // widget CSS cannot override it.
     const response = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/capture-thumbnail`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ html, storageData }),
+      body: JSON.stringify({ html, storageData, backgroundColor: resolveCaptureBgColor() }),
     });
 
     if (!response.ok) {
