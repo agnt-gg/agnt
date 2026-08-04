@@ -197,7 +197,11 @@
             </span>
           </template>
 
-          <EmbedScope :scope="panelScopeFor(instance.instanceId)">
+          <EmbedScope
+            :scope="panelScopeFor(instance.instanceId)"
+            :instanceId="instance.instanceId"
+            :widgetId="instance.widgetId"
+          >
             <div class="ws-embed">
               <component
                 :is="componentFor(instance.widgetId)"
@@ -287,6 +291,12 @@ import { useRoute, useRouter } from 'vue-router';
 import WidgetFrame from '@/canvas/WidgetFrame.vue';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import EmbedScope from './EmbedScope.vue';
+import {
+  listSurfaces,
+  buildFederatedPageState,
+  resolveSurfaceDelivery,
+  dispatchSurfaceEvent,
+} from '@/canvas/surfaceFederation.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
@@ -635,8 +645,46 @@ export default {
     });
     watch(chatChannelKey, () => seenToolCalls.clear());
 
+    /**
+     * Which open window should receive an event for `widgetId`?
+     * The most recently focused one — the same z-order that decides which
+     * window's state the chat sees, so "what Annie reads" and "what Annie
+     * writes" can never disagree. null when no such window is open, which
+     * leaves the event unaddressed and therefore harmless.
+     */
+    const federationTargetFor = (widgetId) => {
+      const candidates = active.value.widgets.filter((w) => w.widgetId === widgetId);
+      if (candidates.length === 0) return null;
+      return candidates.reduce((best, w) => ((w.zIndex || 1) > (best.zIndex || 1) ? w : best)).instanceId;
+    };
+
     const handleFrontendEvent = (eventType, eventData) => {
-      if (!autoOpen.value || !eventType) return;
+      if (!eventType) return;
+
+      // ── DELIVERY ──
+      // Every sidebar chat container turns tool-result frontend events into a
+      // window CustomEvent its editing screen listens for; the canvas chat did
+      // not, so a canvas turn could edit a widget on the server and the open
+      // Widget Forge window would never show it.
+      //
+      // ADDRESSED, for a reason that bites TODAY: Terminal.vue wraps screens in
+      // <KeepAlive>, so a previously-visited Widget Forge is still mounted with
+      // its `chat-sse-event` listener registered (onUnmounted never fires on
+      // deactivation). With a Widget Forge window also open here, an unaddressed
+      // event is applied twice — and the stale cached form then autosaves over
+      // the good one. Stamping the target window is what stops that.
+      //
+      // Delivery is independent of auto-open: applying an edit to a window the
+      // user already has open is not "opening" anything.
+      const delivery = resolveSurfaceDelivery(eventType);
+      if (delivery) {
+        const target = federationTargetFor(delivery.widgetId);
+        const detail = delivery.wrap === 'sse' ? { eventType, eventData } : { ...(eventData || {}) };
+        dispatchSurfaceEvent(target, delivery.eventName, detail);
+      }
+
+      // ── AUTO-OPEN ── (unchanged; user-toggleable)
+      if (!autoOpen.value) return;
       if (eventType.startsWith('widget-') && eventData?.id) {
         open(eventData.id, { objectId: eventData.id, custom: true });
       } else if (eventType === 'file_written') {
@@ -644,14 +692,40 @@ export default {
       }
     };
 
-    const workspacePageState = computed(() => ({
-      workspaceState: {
-        id: active.value.id,
-        name: active.value.name,
-        openWidgets: active.value.widgets.map((w) => w.widgetId),
-        layout: 'grid',
-      },
-    }));
+    /**
+     * Windows ordered the way the model should read them: most recently
+     * focused first. That single ordering answers two questions at once —
+     * whose state survives the per-key budget, and which window "this" means.
+     */
+    const federationOrder = computed(() =>
+      [...active.value.widgets].sort((a, b) => (b.zIndex || 1) - (a.zIndex || 1)),
+    );
+
+    const workspacePageState = computed(() => {
+      // Surfaces publish themselves (see surfaceFederation.js); read them in
+      // canvas focus order so the union is deterministic.
+      const published = new Map(listSurfaces().map((s) => [s.instanceId, s]));
+      const ordered = federationOrder.value.map((w) => published.get(w.instanceId)).filter(Boolean);
+
+      const names = new Map(
+        federationOrder.value.map((w) => [w.instanceId, getWidget(w.widgetId)?.name || w.widgetId]),
+      );
+
+      const { merged, manifest } = buildFederatedPageState(ordered, names);
+
+      return {
+        // Spread FIRST so workspaceState below can never be shadowed by a
+        // surface that (wrongly) publishes a key of that name.
+        ...merged,
+        workspaceState: {
+          id: active.value.id,
+          name: active.value.name,
+          openWidgets: active.value.widgets.map((w) => w.widgetId),
+          layout: 'grid',
+          surfaces: manifest,
+        },
+      };
+    });
 
     // ── tab rename ───────────────────────────────────────────────────
     /* ── tab strip overflow ──

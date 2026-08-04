@@ -11,6 +11,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { createStore } from 'vuex';
 
 // Stable spies: the factory returns THE SAME router object on every
@@ -737,6 +738,200 @@ describe('Workspace.vue', () => {
     // Canvas has no mode classes
     expect(wrapper.find('.ws-canvas').classes()).not.toContain('is-solo');
     expect(wrapper.find('.ws-canvas').classes()).not.toContain('is-split');
+  });
+
+  // ONE chat, MANY windows. The canvas conversation used to send only widget
+  // TYPE names ('workflow-forge'), so the model could not know which workflow
+  // was on screen, and tool results never reached the open editor at all.
+  // These drive the real provides that WorkspaceChatWidget consumes.
+  describe('surface federation — what the canvas chat sees and writes', () => {
+    let federation;
+
+    beforeEach(async () => {
+      federation = await import('@/canvas/surfaceFederation.js');
+      federation.clearSurfaces();
+    });
+
+    const pageStateOf = (wrapper) => wrapper.vm.$.provides.workspacePageState.value;
+    const frontendEventOf = (wrapper) => wrapper.vm.$.provides.workspaceFrontendEvent;
+
+    const openWindow = async (wrapper, widgetId) => {
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const id = useWorkspaces().addWidget(widgetId);
+      await nextTick();
+      return id;
+    };
+
+    it('sends only the workspace envelope when no window has published', async () => {
+      const wrapper = await mountPage();
+      const state = pageStateOf(wrapper);
+      expect(state.workspaceState.surfaces).toEqual([]);
+      expect(Object.keys(state)).toEqual(['workspaceState']);
+    });
+
+    it('carries a published window\'s STATE, not just its type name', async () => {
+      const wrapper = await mountPage();
+      const id = await openWindow(wrapper, 'workflow-forge');
+      federation.publishSurfaceState(id, 'workflow-forge', {
+        workflowContext: { id: 'wf_9' },
+        workflowState: { id: 'wf_9', nodes: [{ id: 'n1' }], edges: [] },
+      });
+      await nextTick();
+
+      const state = pageStateOf(wrapper);
+      expect(state.workflowState).toEqual({ id: 'wf_9', nodes: [{ id: 'n1' }], edges: [] });
+      expect(state.workspaceState.surfaces).toContainEqual(
+        expect.objectContaining({ instanceId: id, widgetId: 'workflow-forge', bound: 'workflow wf_9', stateIncluded: true }),
+      );
+    });
+
+    it('unions DIFFERENT surfaces into one turn — the whole point', async () => {
+      const wrapper = await mountPage();
+      const wf = await openWindow(wrapper, 'workflow-forge');
+      const art = await openWindow(wrapper, 'artifacts');
+      federation.publishSurfaceState(wf, 'workflow-forge', { workflowState: { id: 'wf_9' } });
+      federation.publishSurfaceState(art, 'artifacts', { codeContext: { openFilePath: '/a.html' } });
+      await nextTick();
+
+      const state = pageStateOf(wrapper);
+      expect(state.workflowState).toEqual({ id: 'wf_9' });
+      expect(state.codeContext).toEqual({ openFilePath: '/a.html' });
+      expect(state.workspaceState.surfaces).toHaveLength(2);
+    });
+
+    it('orders the manifest by focus, so "this" resolves to the front window', async () => {
+      const wrapper = await mountPage();
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const ws = useWorkspaces();
+      const wf = ws.addWidget('workflow-forge');
+      const art = ws.addWidget('artifacts');
+      federation.publishSurfaceState(wf, 'workflow-forge', { workflowState: { id: 'wf_9' } });
+      federation.publishSurfaceState(art, 'artifacts', { codeContext: { openFilePath: '/a.html' } });
+      await nextTick();
+
+      // Artifacts was added last, so it is in front.
+      expect(pageStateOf(wrapper).workspaceState.surfaces[0]).toMatchObject({ instanceId: art, focused: true });
+
+      ws.bringToFront(wf);
+      await nextTick();
+      const manifest = pageStateOf(wrapper).workspaceState.surfaces;
+      expect(manifest[0]).toMatchObject({ instanceId: wf, focused: true });
+      expect(manifest[1]).toMatchObject({ instanceId: art, focused: false });
+      // Different keys, so BOTH still ship their state — focus only orders.
+      expect(pageStateOf(wrapper).codeContext).toBeTruthy();
+      expect(pageStateOf(wrapper).workflowState).toBeTruthy();
+    });
+
+    it('the canvas keeps ONE window per screen widget — the budget is defence in depth', async () => {
+      // Pinned because the per-key budget and addressed delivery are designed
+      // for duplicates that addWidget currently prevents. If this dedupe is
+      // ever relaxed, federation already behaves correctly (see
+      // surfaceFederation.spec) — but the reader should know which of the two
+      // is load-bearing today.
+      await mountPage();
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const ws = useWorkspaces();
+      expect(ws.addWidget('workflow-forge')).toBe(ws.addWidget('workflow-forge'));
+    });
+
+    it('a KeepAlive-cached forge SCREEN must not also apply a canvas edit', async () => {
+      // Terminal.vue wraps screens in <KeepAlive>, so onUnmounted never fires
+      // on navigation and a previously-visited Widget Forge keeps its
+      // `chat-sse-event` listener registered. With a Widget Forge window ALSO
+      // open on the canvas, an unaddressed event is applied twice — and the
+      // stale cached form then autosaves over the good one. This is the
+      // present-day defect addressing fixes; duplicates on one canvas are not.
+      const wrapper = await mountPage();
+      const id = await openWindow(wrapper, 'artifacts');
+      const { isAddressedToSurface } = federation;
+
+      const delivered = [];
+      const listener = (e) => delivered.push(e.detail);
+      window.addEventListener('code-file-written', listener);
+      frontendEventOf(wrapper)('file_written', { path: '/a.html' });
+      window.removeEventListener('code-file-written', listener);
+
+      const detail = delivered[0];
+      // The canvas window applies it; a cached standalone screen (instanceId
+      // null) does not.
+      expect(isAddressedToSurface(detail, id)).toBe(true);
+      expect(isAddressedToSurface(detail, null)).toBe(false);
+    });
+
+    it('drops a closed window from the next turn', async () => {
+      const wrapper = await mountPage();
+      const id = await openWindow(wrapper, 'artifacts');
+      federation.publishSurfaceState(id, 'artifacts', { codeContext: { openFilePath: '/a.html' } });
+      await nextTick();
+      expect(pageStateOf(wrapper).codeContext).toBeTruthy();
+
+      federation.retractSurface(id);
+      await nextTick();
+      expect(pageStateOf(wrapper).codeContext).toBeUndefined();
+      expect(pageStateOf(wrapper).workspaceState.surfaces).toEqual([]);
+    });
+
+    it('DELIVERS a tool result to the open window, addressed to it', async () => {
+      const wrapper = await mountPage();
+      const id = await openWindow(wrapper, 'artifacts');
+
+      const seen = [];
+      const listener = (e) => seen.push(e.detail);
+      window.addEventListener('code-file-written', listener);
+      frontendEventOf(wrapper)('file_written', { path: '/a.html', content: '<p>hi</p>' });
+      window.removeEventListener('code-file-written', listener);
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ path: '/a.html', [federation.SURFACE_TAG]: id });
+    });
+
+    it('leaves the event unaddressed when no such window is open', async () => {
+      const wrapper = await mountPage();
+      const seen = [];
+      const listener = (e) => seen.push(e.detail);
+      window.addEventListener('code-file-written', listener);
+      frontendEventOf(wrapper)('file_written', { path: '/a.html' });
+      window.removeEventListener('code-file-written', listener);
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).not.toHaveProperty(federation.SURFACE_TAG);
+    });
+
+    it('delivers even when auto-open is OFF — applying an edit is not opening', async () => {
+      const wrapper = await mountPage();
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      const ws = useWorkspaces();
+      const id = ws.addWidget('artifacts');
+      ws.setAutoOpen(false);
+      await nextTick();
+
+      const seen = [];
+      const listener = (e) => seen.push(e.detail);
+      window.addEventListener('code-file-written', listener);
+      frontendEventOf(wrapper)('file_written', { path: '/a.html' });
+      window.removeEventListener('code-file-written', listener);
+
+      expect(seen[0]).toMatchObject({ [federation.SURFACE_TAG]: id });
+    });
+
+    it('ignores events nothing consumes instead of broadcasting noise', async () => {
+      const wrapper = await mountPage();
+      const seen = [];
+      const listener = (e) => seen.push(e.detail);
+      window.addEventListener('chat-sse-event', listener);
+      frontendEventOf(wrapper)('conversation_started', { conversationId: 'c1' });
+      window.removeEventListener('chat-sse-event', listener);
+      expect(seen).toEqual([]);
+    });
+
+    it('gives every window its identity so screens can publish and filter', async () => {
+      const wrapper = await mountPage();
+      const id = await openWindow(wrapper, 'traces');
+      const scopes = wrapper.findAllComponents({ name: 'WorkspaceEmbedScope' });
+      const ids = scopes.map((s) => s.props('instanceId'));
+      expect(ids).toContain(id);
+      expect(scopes.map((s) => s.props('widgetId'))).toContain('traces');
+    });
   });
 
   // The reorder ITSELF is unit-tested against useWorkspaces; these drive the
@@ -1871,11 +2066,21 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(frame).toContain('<slot name="header-lead"></slot>');
   });
 
-  it('gives every window its own panel-geometry scope', () => {
+  it('gives every window its own panel-geometry scope AND its own identity', () => {
     const src = read('Workspace.vue');
-    expect(src).toContain('<EmbedScope :scope="panelScopeFor(instance.instanceId)">');
+    // Matched on the bindings rather than one formatting of the tag: the
+    // invariant is that EVERY window is wrapped in a scope carrying its own
+    // panel geometry and its own instance identity, not that the attributes
+    // fit on one line.
+    const tag = src.slice(src.indexOf('<EmbedScope'), src.indexOf('>', src.indexOf('<EmbedScope')) + 1);
+    expect(tag).toContain(':scope="panelScopeFor(instance.instanceId)"');
+    expect(tag).toContain(':instanceId="instance.instanceId"');
+    expect(tag).toContain(':widgetId="instance.widgetId"');
     const scope = read('EmbedScope.vue');
     expect(scope).toContain("provide('panelWidthScope'");
+    // Federation identity rides the same wrapper, for the same reason:
+    // provide() is per component instance and the v-for shares one setup().
+    expect(scope).toContain('provideSurfaceIdentity(props.instanceId, props.widgetId)');
   });
 });
 

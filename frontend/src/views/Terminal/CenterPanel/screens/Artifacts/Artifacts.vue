@@ -353,6 +353,7 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import { useSurfaceContribution, useSurfaceAddressing } from '@/canvas/surfaceFederation.js';
 import { Codemirror } from 'vue-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -2170,8 +2171,34 @@ export default {
       }
     };
 
+    // ── canvas chat federation ──
+    // Publish the open file and the live preview console to the workspace
+    // conversation, so the canvas chat sees exactly what the Artifacts sidebar
+    // chat sees: the file being previewed AND the errors its iframe is
+    // throwing. That console is the whole point — "why is my preview blank"
+    // is answerable only if the chat can read it.
+    //
+    // Shape mirrors useArtifactChatContext so the backend's artifact block is
+    // byte-identical whichever chat asked. Inert outside a workspace window.
+    const { accepts: acceptsSurfaceEvent } = useSurfaceAddressing();
+    useSurfaceContribution(() => ({
+      codeContext: {
+        openFilePath: activeTab.value?.path || null,
+        openFileContent: activeTab.value?.content ?? null,
+        consoleMessages: consoleMessages.value.slice(-50).map((m) => ({
+          level: m.level,
+          args: m.args,
+          meta: m.meta || null,
+        })),
+      },
+    }));
+
     // Listen for file_written events from Annie chat
     const handleFileWritten = (e) => {
+      // Two Artifacts windows can be open on one canvas; a file written for
+      // one must not push a tab into the other. Unaddressed events (the
+      // sidebar artifact chat) still reach every window, unchanged.
+      if (!acceptsSurfaceEvent(e.detail)) return;
       const { path, content } = e.detail;
       const existingTab = openTabs.value.find((t) => t.path === path);
       if (existingTab) {

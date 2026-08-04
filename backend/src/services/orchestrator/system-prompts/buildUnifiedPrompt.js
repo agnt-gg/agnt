@@ -24,6 +24,8 @@ import { getPlatformContextSection } from './platform-context.js';
 // what this file owns. See promptElements.js for why the gates may only read
 // conversation-stable inputs.
 import { buildGateInputs, resolveResidentElements } from './promptElements.js';
+// The canvas window manifest — which surfaces this turn is federating.
+import { listCanvasSurfaces } from '../pageContext.js';
 // Per-page detailed prompt content. Each module exports a function that
 // returns the rich, page-specific guidance Annie needs when working on that
 // surface (workflow node/edge format rules, tool field shapes, widget HTML
@@ -218,8 +220,55 @@ async function buildPageContextBlock(context) {
     buildGoalContextBlock(context),
   ]);
   const filled = blocks.filter(Boolean);
-  if (filled.length === 0) return '';
-  return `CURRENT PAGE CONTEXT\n${filled.join('\n\n')}`;
+  // On a canvas turn several of the blocks above are present at once. Without
+  // the window manifest in front of them the model sees a workflow graph and a
+  // file side by side with no way to know they are two windows the user can
+  // see, which one is focused, or that a second Workflow Forge exists whose
+  // state was budgeted out.
+  //
+  // The manifest is emitted on its OWN merit, not only when some other block
+  // happened to render: a window can be open and identifiable while
+  // contributing no guidance block (a superseded duplicate, a surface whose
+  // state is empty). "Two Workflow Forge windows are open" is worth saying
+  // even in the turn where neither had a graph to send.
+  const surfaces = buildCanvasSurfacesBlock(context);
+  const body = surfaces ? [surfaces, ...filled] : filled;
+  if (body.length === 0) return '';
+  return `CURRENT PAGE CONTEXT\n${body.join('\n\n')}`;
+}
+
+/**
+ * The open canvas windows, and which of them the state below belongs to.
+ *
+ * BUDGET, MADE VISIBLE. buildFederatedPageState admits at most one blob per
+ * state key, so a second window of the same kind contributes nothing to the
+ * blocks below. Listing it anyway — with `state not included` — is the
+ * difference between the model knowing it exists (and reaching for
+ * inspect_canvas_widget) and the model believing there is only one.
+ */
+function buildCanvasSurfacesBlock(context) {
+  const surfaces = listCanvasSurfaces(context);
+  if (surfaces.length === 0) return '';
+
+  const lines = surfaces.map((s) => {
+    const parts = [`- ${s.name || s.widgetId || 'window'} — widget \`${s.widgetId}\`, instanceId \`${s.instanceId}\``];
+    if (s.bound) parts.push(`bound to \`${s.bound}\``);
+    if (s.focused) parts.push('FOCUSED (the default target when the user says "this" or "it")');
+    if (s.stateIncluded === false) {
+      parts.push('state NOT included below — call inspect_canvas_widget with its instanceId to read it');
+    }
+    return parts.join(' — ');
+  });
+
+  return [
+    'OPEN CANVAS WINDOWS',
+    'This conversation is one window on a canvas the user is looking at right now. These are the others:',
+    ...lines,
+    '',
+    'The surface blocks that follow describe these windows. Edits you make through the surface tools',
+    'land live in the matching window — the user watches them happen. When a request is ambiguous',
+    'because two windows could satisfy it, prefer the FOCUSED one and say which you chose.',
+  ].join('\n');
 }
 
 async function buildWorkflowContextBlock({ workflowId, workflowContext, workflowState }) {

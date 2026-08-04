@@ -7,6 +7,7 @@ import {
   ORCHESTRATOR_RESIDENT_GROUPS,
 } from './system-prompts/promptElements.js';
 import { loadWorkspaceContextSection } from './workspaceContext.js';
+import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 
@@ -544,6 +545,15 @@ const SIDEBAR_SPECIALTY = {
 };
 
 function detectSidebarSpecialty(context) {
+  // A One Canvas turn federates MANY surfaces, so no single specialty applies.
+  // Narrowing here would be a severe regression rather than a safety net: the
+  // canvas chat is an orchestrator chat, and the first ladder rung that
+  // matched (say `workflowState`, because a Workflow Forge window is open)
+  // would strip shell, files, search and everything else off a chat the user
+  // expects to be fully capable. The canvas keeps the orchestrator's dynamic
+  // selection — which already carries every forge group resident (see
+  // ORCHESTRATOR_RESIDENT_GROUPS), so nothing is lost by declining to narrow.
+  if (isCanvasTurn(context)) return null;
   if (context.agentId === 'agent-chat') return SIDEBAR_SPECIALTY.agent;
   if (context.workflowId || context.workflowContext || context.workflowState) return SIDEBAR_SPECIALTY.workflow;
   if (context.toolId || context.toolContext || context.toolState) return SIDEBAR_SPECIALTY.tool;
@@ -909,6 +919,12 @@ export function detectChatType(req, context = {}) {
   if (path.includes('/suggestions')) return 'suggestions';
 
   const body = req.body || {};
+  // Canvas turns carry several surfaces' state at once. The ladder below is
+  // first-match-wins, so without this guard a canvas conversation with a
+  // Workflow Forge window open would be classified 'workflow' and silently
+  // drop from 100 tool rounds to 25 mid-task. `workspaceState` is sent by the
+  // canvas and by nothing else.
+  if (body.workspaceState) return 'orchestrator';
   if (body.agentId || body.agentContext || body.agentState) return 'agent';
   if (body.workflowId || body.workflowContext || body.workflowState) return 'workflow';
   if (body.toolId || body.toolContext || body.toolState) return 'tool';
