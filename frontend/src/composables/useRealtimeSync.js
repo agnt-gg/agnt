@@ -352,15 +352,41 @@ export function useRealtimeSync() {
       console.log('[Realtime] Execution failed:', data);
     });
 
-    // Content output events (saved outputs / chat history) - debounced
+    // Content output events (saved outputs / chat history).
+    //
+    // Saves broadcast the changed row's full list metadata (data.output), so
+    // the store merges that ONE row — refetching the whole list here turned
+    // every ~5s stream autosave into a full-history fetch in every tab, a
+    // permanent fetch storm that starved actual conversation loads while
+    // agents were running. The debounced full refetch survives ONLY as the
+    // fallback for events that carry no row (e.g. group moves, older
+    // backends).
+    //
+    // snapshotStartedAt: the broadcast reflects server state at commit time,
+    // moments before it arrives. The 3s back-date is deliberate slack — if an
+    // attention PATCH (mark read/unread) settled inside that window, the
+    // broadcast may predate it, so its attention fields are withheld; every
+    // other field still applies, and the next event or fetch reconciles.
+    const REALTIME_SNAPSHOT_SLACK_MS = 3000;
+    const applyContentEvent = (data) => {
+      if (data?.output) {
+        store.dispatch('contentOutputs/applyOutputMeta', {
+          output: data.output,
+          snapshotStartedAt: Date.now() - REALTIME_SNAPSHOT_SLACK_MS,
+        });
+      } else {
+        debouncedContentFetch();
+      }
+    };
+
     socket.on('content:created', (data) => {
-      console.log('[Realtime] Content output created:', data);
-      debouncedContentFetch();
+      console.log('[Realtime] Content output created:', data?.id);
+      applyContentEvent(data);
     });
 
     socket.on('content:updated', (data) => {
-      console.log('[Realtime] Content output updated:', data);
-      debouncedContentFetch();
+      console.log('[Realtime] Content output updated:', data?.id);
+      applyContentEvent(data);
       // Refresh group counts if a conversation was moved between groups
       if (data.group_id !== undefined || data.bulk) {
         store.dispatch('groups/fetchGroups', { force: true });

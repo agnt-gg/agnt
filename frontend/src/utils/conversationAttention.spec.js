@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isUnread, unreadIdSet, triageRail, formatAge, groupUnreadCount } from './conversationAttention.js';
+import { isUnread, unreadIdSet, triageRail, formatAge, groupUnreadCount, notifiableUnreadIds } from './conversationAttention.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -167,6 +167,39 @@ describe('formatAge', () => {
   it('unparseable input → empty string', () => {
     expect(formatAge(null, NOW)).toBe('');
     expect(formatAge('not a date', NOW)).toBe('');
+  });
+});
+
+describe('notifiableUnreadIds — the chime contract', () => {
+  const unread = new Set(['a', 'b', 'c']);
+
+  it('plain unread ids are notifiable', () => {
+    expect(notifiableUnreadIds(unread, {})).toEqual(new Set(['a', 'b', 'c']));
+  });
+
+  it('streaming ids are silent — a running agent autosaves every few seconds', () => {
+    // REGRESSION GUARD for "the notification sound keeps ringing over and
+    // over": each ~5s autosave of a streaming conversation legitimately
+    // re-derives it as unread, and chiming on those turned every long agent
+    // run into a metronome.
+    expect(notifiableUnreadIds(unread, { streamingIds: new Set(['a', 'c']) }))
+      .toEqual(new Set(['b']));
+  });
+
+  it('the active conversation is silent — nothing about it is news', () => {
+    expect(notifiableUnreadIds(unread, { activeIds: ['b'] })).toEqual(new Set(['a', 'c']));
+  });
+
+  it('a stream ending makes its id notifiable — one chime, at completion', () => {
+    const during = notifiableUnreadIds(unread, { streamingIds: new Set(['a']) });
+    const after = notifiableUnreadIds(unread, { streamingIds: new Set() });
+    expect(during.has('a')).toBe(false);
+    expect(after.has('a')).toBe(true);
+  });
+
+  it('empty/absent inputs never throw', () => {
+    expect(notifiableUnreadIds(null, {})).toEqual(new Set());
+    expect(notifiableUnreadIds(new Set(), undefined)).toEqual(new Set());
   });
 });
 

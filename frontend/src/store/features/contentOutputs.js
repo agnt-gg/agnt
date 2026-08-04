@@ -5,27 +5,83 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 import { toServerDate, parseServerTime } from '@/utils/serverTime.js';
 import { unreadIdSet, triageRail } from '@/utils/conversationAttention.js';
 
+/**
+ * Should an incoming snapshot's attention fields (last_read_at, archived_at)
+ * be ignored in favour of what this client already has?
+ *
+ * THE RACE THIS CLOSES: the user clicks "Mark as Unread"; a list snapshot
+ * whose data was read BEFORE that PATCH committed arrives AFTER the
+ * optimistic flip, and silently un-marks it. With saves broadcasting row
+ * metadata every few seconds during streaming, that race was near-certain —
+ * it is why marked conversations would not STAY in the Needs-you rail.
+ *
+ * A snapshot is stale for a row iff an attention write was in flight when the
+ * snapshot was taken, or settled after it was taken. Snapshots carry the time
+ * they were STARTED (fetchStartedAt / snapshotStartedAt); writes bracket
+ * themselves with ATTENTION_WRITE_STARTED / _SETTLED. Only the two attention
+ * fields are ever withheld — titles, timestamps, group moves from the same
+ * snapshot still apply.
+ */
+function snapshotIsStaleForAttention(state, id, snapshotStartedAt) {
+  if ((state.attentionInFlight[id] || 0) > 0) return true;
+  const settledAt = state.attentionSettledAt[id];
+  return !!settledAt && snapshotStartedAt <= settledAt;
+}
+
+function convertRowDates(output) {
+  return {
+    ...output,
+    created_at: toServerDate(output.created_at),
+    updated_at: toServerDate(output.updated_at),
+    last_read_at: toServerDate(output.last_read_at),
+    archived_at: toServerDate(output.archived_at),
+  };
+}
+
 export default {
   namespaced: true,
-  state: {
+  // A FACTORY, not an object literal. A plain object is shared by every store
+  // this module is ever registered into — harmless-looking until state gains
+  // long-lived bookkeeping (the attention maps below), at which point two
+  // stores silently share and corrupt it. Bit us in tests, where every
+  // createStore() in a spec file was mutating the same maps.
+  state: () => ({
     outputs: [],
     totalCount: 0,
     lastFetched: null,
     isFetching: false,
     hasLoadedAll: false,
-  },
+    // Conversations the user explicitly marked unread (3-dot menu). The
+    // watermark itself lives server-side; this set records INTENT, and it
+    // exists because intent has a different lifetime than the derived flag:
+    // a manual unread must survive autosaves of the conversation the user is
+    // still viewing (each of which would otherwise re-stamp it read) and only
+    // clears when the user actually re-opens the conversation. id -> true.
+    manuallyUnread: {},
+    // Attention-write bookkeeping for snapshotIsStaleForAttention. id -> count
+    // of in-flight PATCHes / id -> ms timestamp of the last settle.
+    attentionInFlight: {},
+    attentionSettledAt: {},
+  }),
   mutations: {
-    SET_OUTPUTS(state, { outputs, totalCount, append = false }) {
+    SET_OUTPUTS(state, { outputs, totalCount, append = false, fetchStartedAt = 0 }) {
       // Boundary conversion. Server timestamps are naive UTC strings from
       // SQLite's CURRENT_TIMESTAMP; `new Date()` would read them as local time
       // and place every row hours in the future. See utils/serverTime.js.
-      const mappedOutputs = outputs.map((output) => ({
-        ...output,
-        created_at: toServerDate(output.created_at),
-        updated_at: toServerDate(output.updated_at),
-        last_read_at: toServerDate(output.last_read_at),
-        archived_at: toServerDate(output.archived_at),
-      }));
+      //
+      // Attention fields are kept from LOCAL state for rows with an
+      // unsettled/just-settled attention write — this snapshot predates the
+      // write and would revert it. See snapshotIsStaleForAttention.
+      const localById = new Map(state.outputs.map((o) => [o.id, o]));
+      const mappedOutputs = outputs.map((output) => {
+        const row = convertRowDates(output);
+        const local = localById.get(row.id);
+        if (local && snapshotIsStaleForAttention(state, row.id, fetchStartedAt)) {
+          row.last_read_at = local.last_read_at;
+          row.archived_at = local.archived_at;
+        }
+        return row;
+      });
 
       if (append) {
         // Append new outputs, avoiding duplicates
@@ -46,13 +102,54 @@ export default {
       state.isFetching = value;
     },
     ADD_OUTPUT(state, output) {
-      state.outputs.unshift({
-        ...output,
-        created_at: toServerDate(output.created_at),
-        updated_at: toServerDate(output.updated_at),
-        last_read_at: toServerDate(output.last_read_at),
-        archived_at: toServerDate(output.archived_at),
-      });
+      state.outputs.unshift(convertRowDates(output));
+    },
+    /**
+     * Merge ONE row's authoritative list metadata — the payload a save
+     * response / realtime broadcast carries. This replaces the old behaviour
+     * of refetching the ENTIRE list on every save event: during streaming a
+     * conversation autosaves every ~5s, and with a long history those
+     * full-list refetches (two per save — socket plus window event) were a
+     * permanent fetch storm that starved actual conversation loads.
+     *
+     * Same staleness rule as SET_OUTPUTS for the attention fields.
+     */
+    UPSERT_OUTPUT_META(state, { output, snapshotStartedAt = 0 }) {
+      if (!output || !output.id) return;
+      const row = convertRowDates(output);
+      const idx = state.outputs.findIndex((o) => o.id === row.id);
+      if (idx === -1) {
+        state.outputs.unshift(row);
+        state.totalCount += 1;
+        return;
+      }
+      const local = state.outputs[idx];
+      if (snapshotIsStaleForAttention(state, row.id, snapshotStartedAt)) {
+        row.last_read_at = local.last_read_at;
+        row.archived_at = local.archived_at;
+      }
+      // Merge over local: meta payloads carry no content column, and any
+      // fields this client alone knows about must survive.
+      state.outputs[idx] = { ...local, ...row };
+    },
+    SET_MANUAL_UNREAD(state, { id, on }) {
+      if (on) state.manuallyUnread = { ...state.manuallyUnread, [id]: true };
+      else if (state.manuallyUnread[id]) {
+        const next = { ...state.manuallyUnread };
+        delete next[id];
+        state.manuallyUnread = next;
+      }
+    },
+    ATTENTION_WRITE_STARTED(state, id) {
+      state.attentionInFlight = {
+        ...state.attentionInFlight,
+        [id]: (state.attentionInFlight[id] || 0) + 1,
+      };
+    },
+    ATTENTION_WRITE_SETTLED(state, id) {
+      const count = Math.max(0, (state.attentionInFlight[id] || 0) - 1);
+      state.attentionInFlight = { ...state.attentionInFlight, [id]: count };
+      state.attentionSettledAt = { ...state.attentionSettledAt, [id]: Date.now() };
     },
     /**
      * Patch a single output in-place (e.g. after a rename) without reordering.
@@ -76,6 +173,7 @@ export default {
     // client-side unread bookkeeping to drift out of sync.
     unreadOutputIdSet: (state) => unreadIdSet(state.outputs),
     triageRail: (state) => triageRail(state.outputs),
+    isManuallyUnread: (state) => (id) => !!state.manuallyUnread[id],
     visibleOutputs: (state) => state.outputs.filter((o) => !o.archived_at),
     archivedOutputs: (state) => state.outputs.filter((o) => !!o.archived_at),
     totalCount: (state) => state.totalCount,
@@ -108,6 +206,11 @@ export default {
 
       commit('SET_FETCHING', true);
 
+      // Taken BEFORE the request leaves: everything in the response reflects
+      // server state no later than this instant, which is what the attention
+      // staleness check in SET_OUTPUTS compares against.
+      const fetchStartedAt = Date.now();
+
       try {
         // Build URL with pagination params
         const url = new URL(`${API_CONFIG.BASE_URL}/content-outputs`);
@@ -130,6 +233,7 @@ export default {
           outputs: data.outputs,
           totalCount: data.totalCount || data.outputs.length,
           append: offset > 0,
+          fetchStartedAt,
         });
 
         if (loadAll || data.outputs.length >= (data.totalCount || data.outputs.length)) {
@@ -205,6 +309,10 @@ export default {
 
       if (original) commit('PATCH_OUTPUT', { id: outputId, updates });
 
+      // Bracket the write so concurrent snapshots (full fetches, save-meta
+      // upserts) can tell they predate it — see snapshotIsStaleForAttention.
+      commit('ATTENTION_WRITE_STARTED', outputId);
+
       const token = localStorage.getItem('token');
       try {
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${outputId}/${path}`, {
@@ -223,10 +331,24 @@ export default {
         if (revert) commit('PATCH_OUTPUT', { id: outputId, updates: revert });
         console.error(`Error patching ${path} on output ${outputId}:`, error);
         throw error;
+      } finally {
+        commit('ATTENTION_WRITE_SETTLED', outputId);
       }
     },
 
-    markRead({ dispatch, state }, outputId) {
+    /**
+     * Merge one row's authoritative metadata from a save response or a
+     * realtime broadcast — the event-carried alternative to refetching the
+     * whole list.
+     */
+    applyOutputMeta({ commit }, { output, snapshotStartedAt }) {
+      commit('UPSERT_OUTPUT_META', { output, snapshotStartedAt });
+    },
+
+    markRead({ commit, dispatch, state }, outputId) {
+      // Re-opening (or explicitly clearing) a conversation ends any manual
+      // "keep this unread" intent — that is the email-client contract.
+      commit('SET_MANUAL_UNREAD', { id: outputId, on: false });
       // Optimistic watermark = the row's own updated_at, NOT the client
       // clock. "Read" means "seen everything up to the last change", and
       // updated_at IS the last change — so this is exact and immune to
@@ -242,7 +364,13 @@ export default {
       });
     },
 
-    markUnread({ dispatch, state }, outputId) {
+    markUnread({ commit, dispatch, state }, outputId) {
+      // Record INTENT first: until the user re-opens this conversation,
+      // nothing may silently clear it — in particular the viewing:true
+      // autosaves of the currently-open conversation (see chat.js), which is
+      // exactly how a manual mark-unread of the active chat was being wiped
+      // within seconds.
+      commit('SET_MANUAL_UNREAD', { id: outputId, on: true });
       // A watermark one second before the row's own updated_at — "read up to
       // just before the last change" — mirroring what the server writes.
       //
@@ -273,6 +401,11 @@ export default {
       const ids = (outputIds || []).filter(Boolean);
       if (ids.length === 0) return { cleared: 0 };
 
+      ids.forEach((id) => {
+        commit('SET_MANUAL_UNREAD', { id, on: false });
+        commit('ATTENTION_WRITE_STARTED', id);
+      });
+
       const revert = [];
       for (const id of ids) {
         const row = state.outputs.find((o) => o.id === id);
@@ -302,6 +435,8 @@ export default {
         revert.forEach((r) => commit('PATCH_OUTPUT', r));
         console.error('Error marking conversations read:', error);
         throw error;
+      } finally {
+        ids.forEach((id) => commit('ATTENTION_WRITE_SETTLED', id));
       }
     },
 

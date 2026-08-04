@@ -359,3 +359,78 @@ describe('user-initiated writes do not flag their own conversation', () => {
     expect(isUnreadRow(await getRow(ACTED))).toBe(false);
   });
 });
+
+/**
+ * viewing: true — the saving client attests the user is LOOKING AT this
+ * conversation, so the read watermark rides the same statement as the write.
+ * The old shape (save, then a separate markRead PATCH) left a window in which
+ * the row was derived-unread; with ~5s stream autosaves that window recurred
+ * forever, and every list snapshot inside it flashed the rail and rang the
+ * chime for the conversation being read.
+ */
+describe('viewing saves stamp the watermark atomically', () => {
+  const VIEWED = 'out-attention-viewed';
+
+  it('a viewing INSERT is born read', async () => {
+    await ContentOutputModel.createOrUpdate(
+      VIEWED, USER, null, null, '{}', false, 'conversation', 'conv-viewed', 'Viewed',
+      { viewing: true }
+    );
+    const row = await getRow(VIEWED);
+    expect(row.last_read_at).not.toBeNull();
+    expect(isUnreadRow(row)).toBe(false);
+  });
+
+  it('a viewing UPDATE clears derived-unread in the same write', async () => {
+    // Make it genuinely unread first.
+    await ContentOutputModel.setReadState(VIEWED, USER, false);
+    expect(isUnreadRow(await getRow(VIEWED))).toBe(true);
+
+    await ContentOutputModel.createOrUpdate(
+      VIEWED, USER, null, null, '{"messages":["seen"]}', false, 'conversation', 'conv-viewed', 'Viewed',
+      { viewing: true }
+    );
+    const row = await getRow(VIEWED);
+    expect(row.updated_at <= row.last_read_at).toBe(true);
+    expect(isUnreadRow(row)).toBe(false);
+  });
+
+  it('a background save (no viewing) still reports as unread — the flag is not sticky', async () => {
+    await new Promise((r) => setTimeout(r, 1100));
+    await ContentOutputModel.createOrUpdate(
+      VIEWED, USER, null, null, '{"messages":["agent"]}', false, 'conversation', 'conv-viewed', 'Viewed'
+    );
+    expect(isUnreadRow(await getRow(VIEWED))).toBe(true);
+  });
+});
+
+/**
+ * findMetaById feeds the save response and the realtime broadcast: one row's
+ * list metadata so clients merge in place instead of refetching the whole
+ * history per save.
+ */
+describe('findMetaById', () => {
+  it('returns the list column set, never the content blob', async () => {
+    const meta = await ContentOutputModel.findMetaById(OUT);
+    expect(meta).toBeTruthy();
+    expect(meta.id).toBe(OUT);
+    expect(meta).toHaveProperty('updated_at');
+    expect(meta).toHaveProperty('last_read_at');
+    expect(meta).toHaveProperty('archived_at');
+    expect(meta).toHaveProperty('group_id');
+    expect(meta).toHaveProperty('title');
+    // The whole point: the ~0.5MB average content column stays home.
+    expect(meta).not.toHaveProperty('content');
+  });
+
+  it('matches the shape findAllByUserId rows carry — one contract, not two', async () => {
+    const meta = await ContentOutputModel.findMetaById(OUT);
+    const { outputs } = await ContentOutputModel.findAllByUserId(USER);
+    const listed = outputs.find((o) => o.id === OUT);
+    expect(Object.keys(meta).sort()).toEqual(Object.keys(listed).sort());
+  });
+
+  it('null for a missing id', async () => {
+    expect(await ContentOutputModel.findMetaById('no-such-row')).toBeNull();
+  });
+});
