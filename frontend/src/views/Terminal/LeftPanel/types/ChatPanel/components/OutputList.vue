@@ -2,7 +2,7 @@
   <div class="output-list-container">
     <SimpleModal ref="simpleModal" />
     <div class="panel-header">
-      <h2 class="title">/ Saved Outputs</h2>
+      <h2 class="title">/ Saved Chats</h2>
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-file-alt"></i>
@@ -31,7 +31,7 @@
         </div>
 
         <div class="list-header">
-          <input v-model="searchQuery" type="text" placeholder="Search outputs..." class="search-input" />
+          <input v-model="searchQuery" type="text" placeholder="Search chats..." class="search-input" />
         </div>
         <div id="saved-outputs" class="saved-items">
           <div class="sort-controls">
@@ -90,13 +90,13 @@
                     <i :class="expandedGroups.has(node.id) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="group-chevron"></i>
                   </div>
                 <div class="group-header-right">
-                  <span v-if="getGroupUnreadBadge(node.id) > 0" class="group-unread-badge" v-tooltip="'Unread conversations'">{{ getGroupUnreadBadge(node.id) }}</span>
+                  <span v-if="getGroupUnreadBadge(node.id) > 0" class="group-unread-badge" v-tooltip="'Unread chats'">{{ getGroupUnreadBadge(node.id) }}</span>
                   <span class="group-count">{{ searchQuery ? getGroupOutputs(node.id).length : getTotalConversationCount(node.id) }}</span>
                 </div>
               </div>
                 <div v-if="expandedGroups.has(node.id)" class="group-items">
                   <div v-if="getGroupOutputs(node.id).length === 0 && !node.hasChildren" class="group-empty">
-                    <span>No conversations</span>
+                    <span>No chats</span>
                   </div>
                   <div
                     v-for="output in getGroupOutputs(node.id)"
@@ -186,7 +186,7 @@
             <!-- Flat list when no groups exist -->
             <div v-if="groups.length === 0" class="output-list-items">
               <div v-if="visibleOutputs.length === 0" class="no-outputs">
-                <p>No saved outputs yet. Start a chat to create one.</p>
+                <p>No saved chats yet. Start a chat to create one.</p>
               </div>
               <div
                 v-for="output in sortedOutputs"
@@ -919,8 +919,8 @@ export default {
     async function deleteGroup(groupId, mode = 'move') {
       groupMenu.value = null;
       const message = mode === 'delete'
-        ? 'Delete this group AND all sub-groups? Conversations will be moved to Ungrouped.'
-        : 'Delete this group? Sub-groups will be moved up and conversations will be ungrouped.';
+        ? 'Delete this group AND all sub-groups? Chats will be moved to Ungrouped.'
+        : 'Delete this group? Sub-groups will be moved up and chats will be ungrouped.';
 
       const confirmed = await simpleModal.value.showModal({
         title: 'Delete Group',
@@ -953,7 +953,7 @@ export default {
       playSound('buttonClick');
       const confirmed = await simpleModal.value?.showModal({
         title: 'Start a new chat?',
-        message: 'Your current conversation will be saved. You can pick it back up anytime from your saved chats.',
+        message: 'Your current chat will be saved. You can pick it back up anytime from your saved chats.',
         confirmText: 'New chat',
         confirmClass: 'btn-primary',
       });
@@ -1172,7 +1172,7 @@ export default {
       }).catch(async () => {
         await simpleModal.value.showModal({
           title: 'Error',
-          message: `Failed to ${output.archived_at ? 'unarchive' : 'archive'} conversation`,
+          message: `Failed to ${output.archived_at ? 'unarchive' : 'archive'} chat`,
           confirmText: 'OK',
           showCancel: false,
         });
@@ -1191,8 +1191,8 @@ export default {
 
       const count = itemsToDelete.size;
       const confirmed = await simpleModal.value.showModal({
-        title: `Delete ${count} Conversation${count > 1 ? 's' : ''}`,
-        message: `Are you sure you want to delete ${count} selected conversation${count > 1 ? 's' : ''}?`,
+        title: `Delete ${count} Chat${count > 1 ? 's' : ''}`,
+        message: `Are you sure you want to delete ${count} selected chat${count > 1 ? 's' : ''}?`,
         confirmText: 'Delete All',
         cancelText: 'Cancel',
         confirmClass: 'btn-danger',
@@ -1232,7 +1232,7 @@ export default {
         failed.forEach((o) => o && store.commit('contentOutputs/ADD_OUTPUT', o));
         await simpleModal.value.showModal({
           title: 'Error',
-          message: `Failed to delete ${failed.length} conversation${failed.length > 1 ? 's' : ''}`,
+          message: `Failed to delete ${failed.length} chat${failed.length > 1 ? 's' : ''}`,
           confirmText: 'OK',
           showCancel: false,
         });
@@ -1327,8 +1327,8 @@ export default {
       playSound('buttonClick');
 
       const confirmed = await simpleModal.value.showModal({
-        title: 'Delete Output',
-        message: 'Are you sure you want to delete this output?',
+        title: 'Delete Chat',
+        message: 'Are you sure you want to delete this chat?',
         confirmText: 'Delete',
         cancelText: 'Cancel',
         confirmClass: 'btn-danger',
@@ -1359,7 +1359,7 @@ export default {
         if (removedSnapshot) store.commit('contentOutputs/ADD_OUTPUT', removedSnapshot);
         await simpleModal.value.showModal({
           title: 'Error',
-          message: 'Failed to delete output',
+          message: 'Failed to delete chat',
           confirmText: 'OK',
           showCancel: false,
         });
@@ -1386,11 +1386,11 @@ export default {
 
       // Use SimpleModal with isPrompt for input
       const newTitle = await simpleModal.value.showModal({
-        title: 'Rename Conversation',
-        message: 'Enter a new title for this conversation:',
+        title: 'Rename Chat',
+        message: 'Enter a new title for this chat:',
         isPrompt: true,
         defaultValue: currentTitle,
-        placeholder: 'Conversation title...',
+        placeholder: 'Chat title...',
         confirmText: 'Rename',
         cancelText: 'Cancel',
         confirmClass: 'btn-primary',
@@ -1418,7 +1418,7 @@ export default {
         store.commit('contentOutputs/PATCH_OUTPUT', { id: output.id, updates: { title: originalTitle } });
         await simpleModal.value.showModal({
           title: 'Error',
-          message: 'Failed to rename conversation',
+          message: 'Failed to rename chat',
           confirmText: 'OK',
           showCancel: false,
         });
