@@ -237,6 +237,66 @@ describe('voice is reachable in the Agents chat tab', () => {
   });
 });
 
+describe('natural voice (speech-to-speech) is reachable and orchestrator-backed', () => {
+  /**
+   * The point of this engine is that it is BOTH natural AND runs AGNT. Wiring
+   * it without the run_agnt bridge would give a lovely voice attached to
+   * something that cannot do the work — the exact failure mode the design
+   * exists to avoid — so these guard the bridge, not just the import.
+   */
+  let src;
+  beforeEach(() => {
+    src = fs.readFileSync(BASE_SCREEN, 'utf8');
+  });
+
+  it('wires the realtime session into the main chat', () => {
+    expect(src).toMatch(/import\s*\{\s*useRealtimeVoice\s*\}/);
+    expect(src).toMatch(/useRealtimeVoice\s*\(/);
+  });
+
+  it('THE POINT: the model\u2019s one tool runs through the real send path', () => {
+    expect(src).toMatch(/onRunAgnt:\s*runAgntForVoice/);
+    // runAgntForVoice must actually submit through the composer, not fabricate
+    // an answer or call some parallel API.
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 900);
+    expect(body).toMatch(/currentUserInput\.value = instruction/);
+    expect(body).toMatch(/triggerSubmit\(\)/);
+    expect(body).toMatch(/resolve\(/);
+  });
+
+  it('resolves on the stream ending, and stops watching first', () => {
+    // A watcher left alive fires on every later turn and resolves stale
+    // promises — the model would then speak an answer to a different question.
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 900);
+    expect(body).toMatch(/watch\(isStreaming/);
+    expect(body).toMatch(/unwatch\(\)/);
+    expect(body.indexOf('unwatch()')).toBeLessThan(body.indexOf('resolve('));
+  });
+
+  it('falls back to the cascade when natural voice is unavailable', () => {
+    // No credit is a normal state, and an error the user cannot act on
+    // mid-sentence is worse than quietly using the engine that works.
+    const at = src.indexOf('const toggleVoice');
+    const body = src.slice(at, at + 700);
+    expect(body).toMatch(/realtime\.unavailable\.value/);
+    expect(body).toMatch(/voice\.toggle\(\)/);
+  });
+
+  it('one button drives whichever engine is running', () => {
+    const at = src.indexOf('const toggleVoice');
+    const body = src.slice(at, at + 700);
+    expect(body).toMatch(/realtime\.isActive\.value.*realtime\.stop\(\)/s);
+    expect(body).toMatch(/voice\.isActive\.value.*voice\.stop\(\)/s);
+  });
+
+  it('the status strip says which engine is live', () => {
+    expect(src).toContain('voice-engine-badge');
+    expect(src).toMatch(/voiceNatural/);
+  });
+});
+
 describe('one voice system, not two', () => {
   /**
    * 2026-08-04: the legacy push-to-talk dictation mic was REPLACED by the

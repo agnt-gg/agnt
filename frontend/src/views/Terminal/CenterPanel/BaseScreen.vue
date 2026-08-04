@@ -90,6 +90,7 @@
               <template v-else-if="voiceState === 'thinking'">Thinking…</template>
               <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
               <template v-else>Voice ready</template>
+              <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
             </span>
             <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
           </div>
@@ -270,6 +271,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useVoiceSession } from '@/composables/useVoiceSession';
+import { useRealtimeVoice } from '@/composables/useRealtimeVoice';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
@@ -698,6 +700,86 @@ export default {
     watch(isStreaming, (streaming, was) => {
       if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
     });
+
+    // ---- natural voice (speech-to-speech, orchestrator behind it) --------
+    //
+    // The cascade above loses prosody the moment speech becomes text, and no
+    // TTS can put it back. A speech-to-speech model keeps the audio end to end
+    // — but on its own it has no tools, agents, workspace or memory.
+    //
+    // So it gets exactly one tool, `run_agnt`, wired straight into THIS
+    // screen's normal send path. The model is the ears and the mouth; the
+    // orchestrator stays the brain. The turn lands in the chat like any other,
+    // with the full tool surface, and the model speaks the result.
+
+    /**
+     * Run an instruction through the orchestrator and resolve with what it
+     * said, so the realtime model can speak it.
+     *
+     * Resolves on the FALLING EDGE of isStreaming rather than on a timer,
+     * because a tool-heavy turn has no predictable duration. The unwatch is
+     * called before resolving — a watcher left alive here would fire on every
+     * later turn and resolve stale promises.
+     */
+    const runAgntForVoice = (instruction) =>
+      new Promise((resolve) => {
+        currentUserInput.value = instruction;
+        triggerSubmit();
+
+        const unwatch = watch(isStreaming, (streaming, was) => {
+          if (!(was && !streaming)) return;
+          unwatch();
+          const list = store.state.chat.messages || [];
+          const last = list[list.length - 1];
+          const text = last && last.role === 'assistant' ? last.content || '' : '';
+          resolve(text || 'AGNT finished but produced no spoken text; the detail is in the chat.');
+        });
+      });
+
+    const realtime = useRealtimeVoice({
+      surface: 'chat',
+      onRunAgnt: runAgntForVoice,
+      // The realtime model's own transcripts are NOT written into the chat:
+      // runAgntForVoice already puts the real turn there through the normal
+      // send path, and duplicating the spoken paraphrase alongside it would
+      // show the user every exchange twice.
+    });
+
+    /**
+     * One button, best available engine.
+     *
+     * Natural voice needs OpenAI credit; when it is not available the session
+     * refuses cleanly (`unavailable`) and we fall through to the cascade rather
+     * than showing an error for something the user cannot act on mid-sentence.
+     */
+    const toggleVoice = async () => {
+      if (realtime.isActive.value) return realtime.stop();
+      if (voice.isActive.value) return voice.stop();
+
+      if (realtime.isSupported) {
+        const ok = await realtime.start();
+        if (ok) return true;
+        if (!realtime.unavailable.value) return false; // a real failure, already surfaced
+      }
+      return voice.toggle();
+    };
+
+    // The two engines share one set of view bindings, so the composer does not
+    // have to know which one is running.
+    const voiceActive = computed(() => realtime.isActive.value || voice.isActive.value);
+    const voiceState = computed(() => {
+      if (!realtime.isActive.value) return voice.state.value;
+      // Map realtime's vocabulary onto the cascade's so the existing status
+      // strip and button tints keep working unchanged.
+      return { connecting: 'thinking', working: 'thinking', listening: 'listening', speaking: 'speaking' }[
+        realtime.state.value
+      ] || 'listening';
+    });
+    const voicePartial = computed(() =>
+      realtime.isActive.value ? realtime.assistantPartial.value : voice.partialTranscript.value
+    );
+    const voiceError = computed(() => (realtime.isActive.value ? realtime.error.value : voice.error.value));
+    const voiceNatural = computed(() => realtime.isActive.value);
 
 
     const handlePanelAction = async (action, payload) => {
@@ -1522,12 +1604,13 @@ export default {
       leftPanelCollapsed,
       rightPanelCollapsed,
       // Hands-free voice conversation
-      voiceActive: voice.isActive,
-      voiceState: voice.state,
+      voiceActive,
+      voiceState,
       voiceLevel: voice.level,
-      voiceError: voice.error,
-      voicePartial: voice.partialTranscript,
-      toggleVoice: voice.toggle,
+      voiceError,
+      voicePartial,
+      voiceNatural,
+      toggleVoice,
       // Streaming
       isStreaming,
       pendingSteer,
@@ -2451,6 +2534,20 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Which engine is live. Speech-to-speech and the cascade feel different enough
+   that the user should not have to guess which one they are talking to. */
+.voice-engine-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(var(--blue-rgb), 0.18);
+  color: var(--status-blue-text);
 }
 
 .voice-end-btn {

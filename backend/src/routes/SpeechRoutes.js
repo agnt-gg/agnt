@@ -6,6 +6,7 @@ import os from 'os';
 import { whisperService } from '../services/whisperService.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
 import { synthesize, listEngines, availableEngines, MAX_TTS_CHARS } from '../services/ttsService.js';
+import { createRealtimeCall, REALTIME_VOICES, DEFAULT_VOICE, REALTIME_MODEL } from '../services/realtimeVoiceService.js';
 
 const router = express.Router();
 
@@ -191,6 +192,78 @@ router.get('/voices', requireAuthHeader, async (req, res) => {
   } catch (error) {
     console.error('[speech] listing voices failed:', error.message);
     res.status(500).json({ success: false, error: 'Failed to list voices' });
+  }
+});
+
+/**
+ * POST /api/speech/realtime/call
+ * SDP exchange for a speech-to-speech voice session.
+ *
+ * The browser sends its WebRTC offer as raw SDP; we attach the server-authored
+ * session config (instructions, the run_agnt tool, voice) and forward it to
+ * OpenAI with the account key, returning their answer SDP.
+ *
+ * This is the "unified interface" rather than ephemeral client secrets, so no
+ * OpenAI credential of any kind ever reaches the browser AND the instructions
+ * that constrain the model to run_agnt cannot be edited by a modified client.
+ *
+ * Body parsing is declared ON THIS ROUTE, not globally: SDP is text/plain and a
+ * global text parser would change how every other route sees its body.
+ */
+router.post(
+  '/realtime/call',
+  requireAuthHeader,
+  express.text({ type: ['application/sdp', 'text/plain'], limit: '256kb' }),
+  async (req, res) => {
+    try {
+      const result = await createRealtimeCall({
+        sdp: typeof req.body === 'string' ? req.body : '',
+        userId: req.user?.id,
+        voice: req.query?.voice,
+        assistantName: req.query?.name,
+        surface: req.query?.surface,
+      });
+
+      if (result.ok) {
+        res.setHeader('Content-Type', 'application/sdp');
+        return res.send(result.sdp);
+      }
+
+      // "No credentials" is a normal state, not an error: the client falls back
+      // to the cascade pipeline. Anything else is a genuine failure.
+      if (result.reason === 'no-credentials') {
+        return res.json({ success: false, available: false, reason: result.reason });
+      }
+
+      console.error('[speech] realtime call failed:', result.reason, result.detail || '');
+      return res
+        .status(result.status >= 400 ? result.status : 502)
+        .json({ success: false, error: 'Realtime session failed', reason: result.reason });
+    } catch (error) {
+      console.error('[speech] realtime call threw:', error.message);
+      return res.status(502).json({ success: false, error: 'Realtime session failed' });
+    }
+  }
+);
+
+/**
+ * GET /api/speech/realtime/status
+ * Whether speech-to-speech is usable for THIS user, so the client can offer it
+ * (or not) without attempting a connection.
+ */
+router.get('/realtime/status', requireAuthHeader, async (req, res) => {
+  try {
+    const engines = await availableEngines(req.user?.id);
+    res.json({
+      success: true,
+      available: engines.includes('openai'),
+      model: REALTIME_MODEL,
+      voices: REALTIME_VOICES,
+      defaultVoice: DEFAULT_VOICE,
+    });
+  } catch (error) {
+    console.error('[speech] realtime status failed:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to read realtime status' });
   }
 });
 
