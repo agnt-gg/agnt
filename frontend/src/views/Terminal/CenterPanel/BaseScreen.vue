@@ -426,6 +426,22 @@ export default {
     let stopAllVoiceSessions = () => {};
 
     /**
+     * How many times the user has genuinely NAVIGATED to another conversation.
+     *
+     * Anything that needs to ask "am I still in the conversation I started in?"
+     * must compare THIS, never `draftKey`. `activeConversationId` also changes
+     * when the backend assigns a real id to the conversation you are already
+     * in (MIGRATE_CONVERSATION_ID, on the first send), and a comparison of
+     * ids reads that as a switch — which is precisely the bug the comment
+     * below describes, and precisely the bug I reintroduced 300 lines further
+     * down by capturing `draftKey.value` at the start of a voice run. The
+     * symptom was "AGNT returned nothing" spoken over every first message.
+     *
+     * An epoch cannot be fooled that way: only the navigation branch bumps it.
+     */
+    const conversationEpoch = ref(0);
+
+    /**
      * React to the MUTATION, not to the derived key.
      *
      * REGRESSION THIS PREVENTS: `activeConversationId` changes for two
@@ -456,6 +472,7 @@ export default {
         // isStreaming watcher resolved off the new conversation's reply. Three
         // symptoms, one cause — no conversation identity.
         currentUserInput.value = getDraft(draftKey.value);
+        conversationEpoch.value += 1;
         stopAllVoiceSessions();
       }
     });
@@ -762,16 +779,23 @@ export default {
      * have put the code in the chat"). Reusing it rather than re-deriving
      * either rule is what stops the two definitions drifting apart.
      *
-     * BOUND TO ITS CONVERSATION
-     * -------------------------
-     * The conversation is captured at the start and every callback checks it.
+     * BOUND TO ITS CONVERSATION — BY EPOCH, NOT BY ID
+     * ------------------------------------------------
      * `triggerSubmit` and `isStreaming` both act on whatever conversation is
-     * active RIGHT NOW, so without this a switch mid-run would deliver the
-     * instruction into the new chat and then speak that chat's reply.
+     * active RIGHT NOW, so a switch mid-run would deliver the instruction into
+     * the new chat and then speak that chat's reply. The run therefore checks
+     * that it is still in the conversation it began in.
+     *
+     * It checks the EPOCH, not the conversation id. Comparing ids was a real
+     * regression: on the first send the backend assigns the conversation its
+     * permanent id, `activeConversationId` changes, and an id comparison calls
+     * that a switch — so the run aborted, resolved empty, and the voice said
+     * "AGNT returned nothing" over the first message of every new chat. Only
+     * genuine navigation bumps the epoch; see conversationEpoch above.
      */
     const runAgntForVoice = (instruction, emit) =>
       new Promise((resolve) => {
-        const convAtStart = draftKey.value;
+        const epochAtStart = conversationEpoch.value;
         const chunker = createSentenceChunker();
         let spokeSomething = false;
 
@@ -787,7 +811,7 @@ export default {
         triggerSubmit();
 
         const stopContent = watch(streamingAnswer, (raw) => {
-          if (draftKey.value !== convAtStart) return;
+          if (conversationEpoch.value !== epochAtStart) return;
           speak(chunker.push(raw));
         });
 
@@ -799,7 +823,7 @@ export default {
           stopContent();
           stopStream();
 
-          if (draftKey.value !== convAtStart) {
+          if (conversationEpoch.value !== epochAtStart) {
             resolve(''); // switched away; the session is being stopped anyway
             return;
           }

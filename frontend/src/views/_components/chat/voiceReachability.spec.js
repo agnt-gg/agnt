@@ -362,11 +362,41 @@ describe('the voice is locked to its conversation, like every other chat state',
 
   it('an in-flight run is bound to the conversation it started in', () => {
     const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2600);
-    expect(body).toMatch(/const convAtStart = draftKey\.value/);
+    const body = src.slice(at, at + 2800);
+    expect(body).toMatch(/const epochAtStart = conversationEpoch\.value/);
     // BOTH watchers must check it: the content watcher (or it speaks another
     // chat's reply) and the completion watcher (or it resolves off one).
-    expect(body.match(/draftKey\.value !== convAtStart/g) || []).toHaveLength(2);
+    expect(body.match(/conversationEpoch\.value !== epochAtStart/g) || []).toHaveLength(2);
+  });
+
+  it('REGRESSION: the binding is an EPOCH, never the conversation id', () => {
+    /**
+     * Capturing `draftKey.value` (i.e. activeConversationId) looks equivalent
+     * and is not. On the first send the backend assigns the conversation its
+     * permanent id, so the id changes WITHOUT the user going anywhere — the
+     * run aborted, resolved empty, and the voice said "AGNT returned nothing"
+     * over the first message of every new conversation.
+     *
+     * This is the second time an id comparison has caused exactly this class
+     * of bug in this file (see chat/MIGRATE_CONVERSATION_ID above), hence a
+     * guard rather than a comment.
+     */
+    const at = src.indexOf('const runAgntForVoice');
+    const body = src.slice(at, at + 2800);
+    expect(body).not.toMatch(/draftKey\.value/);
+    expect(body).not.toMatch(/activeConversationId/);
+  });
+
+  it('only genuine navigation bumps the epoch — id assignment must not', () => {
+    const migrate = src.indexOf("chat/MIGRATE_CONVERSATION_ID");
+    const setActive = src.indexOf("chat/SET_ACTIVE_CONVERSATION");
+    expect(migrate).toBeGreaterThan(-1);
+    expect(setActive).toBeGreaterThan(migrate);
+
+    // The migration branch runs first and returns; it must not touch the epoch.
+    expect(src.slice(migrate, setActive)).not.toMatch(/conversationEpoch/);
+    // The navigation branch must.
+    expect(src.slice(setActive, setActive + 1200)).toMatch(/conversationEpoch\.value \+= 1/);
   });
 });
 
