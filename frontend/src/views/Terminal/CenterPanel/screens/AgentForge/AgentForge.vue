@@ -240,6 +240,7 @@
 <script>
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useStore } from 'vuex';
+import { useSurfaceContribution, useSurfaceAddressing } from '@/canvas/surfaceFederation.js';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseForm from '@/views/Terminal/_components/BaseForm.vue';
 import BaseInput from '@/views/Terminal/_components/BaseInput.vue';
@@ -702,7 +703,25 @@ export default {
       nextTick(() => baseScreenRef.value?.scrollToBottom());
     };
 
+    // ── canvas chat federation ──
+    // Inert outside a workspace window; inside one, this is what lets the
+    // canvas conversation see the agent being edited here rather than only a
+    // widget-type name. `accepts` refuses events aimed at a sibling window.
+    const { accepts: acceptsSurfaceEvent } = useSurfaceAddressing();
+    useSurfaceContribution(() => ({
+      agentContext: { id: 'agent-chat' },
+      agentState: {
+        id: 'agent-chat',
+        currentAgent: {
+          name: newAgent.value.name || '',
+          description: newAgent.value.description || '',
+          instructions: newAgent.value.instructions || '',
+        },
+      },
+    }));
+
     const handleChatSSEEvent = (event) => {
+      if (!acceptsSurfaceEvent(event.detail)) return;
       const { eventType, eventData } = event.detail;
       console.log('AgentForge: Received chat SSE event', eventType, eventData);
 

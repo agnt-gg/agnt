@@ -90,6 +90,7 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, reactive, provide } from 'vue';
 import { useStore } from 'vuex';
+import { useSurfaceContribution, useSurfaceAddressing } from '@/canvas/surfaceFederation.js';
 import { API_CONFIG } from '@/tt.config.js';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import BaseScreen from '../../BaseScreen.vue';
@@ -348,8 +349,17 @@ export default {
       }
     }
 
+    // Which canvas window am I? Null outside a workspace. Declared here, above
+    // its first use, so the guard below cannot read an uninitialised binding.
+    const { accepts: acceptsSurfaceEvent } = useSurfaceAddressing();
+
     // Handle chat SSE events for widget field updates from Annie
     const handleChatSSEEvent = (event) => {
+      // A canvas can hold two Widget Forge windows. `chat-sse-event` is a
+      // window-global broadcast, so without this check an edit meant for one
+      // window would rewrite the other's form too. Unaddressed events (every
+      // pre-existing producer, including the sidebar chat) are still accepted.
+      if (!acceptsSurfaceEvent(event.detail)) return;
       const { eventType, eventData } = event.detail || {};
       chatUpdating = true; // guard: prevent autosave (backend already saved)
       switch (eventType) {
@@ -442,6 +452,31 @@ export default {
       }
       chatUpdating = false;
     };
+
+    // ── canvas chat federation ──
+    // `form` is component-local, so only this component can say what THIS
+    // window is editing — which is precisely why surfaces publish rather than
+    // the canvas reading from a global. Mirrors useWidgetChatContext's shape
+    // so the backend widget block is identical whichever chat asked.
+    useSurfaceContribution(() => {
+      const id = store.getters['widgetDefinitions/activeDefinition']?.id || 'widget-forge';
+      return {
+        widgetContext: { id },
+        widgetState: {
+          id,
+          name: form.name || '',
+          description: form.description || '',
+          icon: form.icon || '',
+          category: form.category || '',
+          widget_type: form.widget_type || 'html',
+          source_code: form.source_code || '',
+          config: form.config || {},
+          default_size: form.default_size || { cols: 4, rows: 3 },
+          min_size: form.min_size || { cols: 2, rows: 2 },
+          useThemeStyles: form.useThemeStyles !== false,
+        },
+      };
+    });
 
     // Watch the forge reset key — fires every time "Create New Widget" is clicked (Vuex reactive, works through KeepAlive)
     watch(

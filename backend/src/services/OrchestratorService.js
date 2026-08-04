@@ -29,6 +29,7 @@ import {
   loadCalibrations,
 } from './orchestrator/calibrationStore.js';
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
+import { pickPageContext } from './orchestrator/pageContext.js';
 import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
 import log from '../utils/logger.js';
 import OpenAI from 'openai';
@@ -1155,24 +1156,14 @@ async function universalChatHandler(req, res, context = {}) {
     dataRefSummaries: {},
     llmClient: null,
     openai: null,
-    // Context-specific data
-    agentId,
-    agentContext,
-    agentState,
-    workflowId,
-    workflowContext,
-    workflowState,
-    toolId,
-    toolContext,
-    toolState,
-    widgetId,
-    widgetContext,
-    widgetState,
-    workspaceState,
-    goalId,
-    goalContext,
-    codeId,
-    codeContext,
+    // Context-specific data — EVERY page-context field, copied mechanically
+    // from one list (see pageContext.js). This used to be eighteen names
+    // written out by hand, duplicating the destructure above; the two drifted
+    // and `workspaceState` reached the handler but never the context, so every
+    // One Canvas turn lost its workspace identity. Spreading from the shared
+    // list means a new field cannot be added to one place and forgotten in the
+    // other.
+    ...pickPageContext(req.body),
     userId,
     conversationId,
     // PRD-051 identity mapping — coarse Phase 1 roles; refined in Phase 3

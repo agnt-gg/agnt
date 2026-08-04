@@ -39,6 +39,7 @@
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { useStore } from 'vuex';
+import { useSurfaceContribution } from '@/canvas/surfaceFederation.js';
 import BaseScreen from '../../BaseScreen.vue';
 import WorkflowDesignerComponent from './components/WorkflowDesigner/WorkflowDesigner.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
@@ -449,6 +450,21 @@ export default {
         loadWorkflowFromUrl();
       }
     };
+
+    // ── canvas chat federation ──
+    // Inside a workspace window this publishes what this canvas is editing to
+    // the workspace conversation, exactly as the Workflow Forge sidebar chat
+    // sends it. Outside a workspace it is inert (no injected instanceId), so
+    // the standalone screen is unchanged. The store slice is the same source
+    // useWorkflowChatContext reads, so both chats agree on what is on screen.
+    useSurfaceContribution(() => {
+      const canvasState = store.getters['canvas/canvasState'];
+      const id = workflowDesigner.value?.activeWorkflowId || canvasState?.id || route.query.id || null;
+      const state = canvasState && canvasState.id === id
+        ? canvasState
+        : { id, nodes: workflowDesigner.value?.nodes || [], edges: workflowDesigner.value?.edges || [] };
+      return { workflowContext: { id }, workflowState: state };
+    });
 
     // --- Lifecycle Hooks ---
     // Listen for workflow-updated events

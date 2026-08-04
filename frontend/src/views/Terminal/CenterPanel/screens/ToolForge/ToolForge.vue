@@ -44,6 +44,7 @@
 <script>
 import { ref, onMounted, computed } from 'vue';
 import { useStore } from 'vuex';
+import { useSurfaceContribution } from '@/canvas/surfaceFederation.js';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import ToolForgePanel from '../../../RightPanel/types/ToolForgePanel/ToolForgePanel.vue';
@@ -79,6 +80,19 @@ export default {
     const { tutorialConfig, startTutorial, onTutorialClose, initializeToolForgeTutorial } = useToolForgeTutorial();
 
     const { loadContentFromQuery } = useContentLoader();
+
+    // ── canvas chat federation ──
+    // Inert outside a workspace window. Mirrors useToolChatContext's shape,
+    // minus its `document.querySelector('#template-form')` scrape — the screen
+    // holds the tool directly, and a DOM query cannot tell two canvas windows
+    // apart anyway.
+    useSurfaceContribution(() => {
+      const id = currentTool.value?.id || 'default';
+      return {
+        toolContext: { id },
+        toolState: { id, currentTool: currentTool.value || null },
+      };
+    });
 
     const toolStatus = computed(() => {
       if (!currentTool.value) return 'Not Created';

@@ -137,6 +137,7 @@ export function registerAllWidgets() {
     minSize: { cols: 4, rows: 3 },
     description: 'Artifact browser and preview',
     isScreenWidget: true,
+    contributes: { state: ['codeContext'], events: ['file_written'] },
   });
 
   registerWidget('memory', {
@@ -192,6 +193,9 @@ export function registerAllWidgets() {
     minSize: { cols: 6, rows: 4 },
     description: 'Build workflows visually',
     isScreenWidget: true,
+    // No `events`: workflow updates arrive by socket and are addressed by
+    // workflow id, not by window. See surfaceFederation's PREFIX_ROUTES note.
+    contributes: { state: ['workflowContext', 'workflowState'], events: [] },
   });
 
   registerWidget('tool-forge', {
@@ -203,6 +207,10 @@ export function registerAllWidgets() {
     minSize: { cols: 6, rows: 4 },
     description: 'Create custom tools',
     isScreenWidget: true,
+    contributes: {
+      state: ['toolContext', 'toolState'],
+      events: ['tool-field-updated', 'tool-custom-field-added', 'tool-fields-cleared'],
+    },
   });
 
   registerWidget('agent-forge', {
@@ -214,6 +222,7 @@ export function registerAllWidgets() {
     minSize: { cols: 6, rows: 4 },
     description: 'Create custom agents',
     isScreenWidget: true,
+    contributes: { state: ['agentContext', 'agentState'], events: ['agent-created', 'agent-updated'] },
   });
 
   registerWidget('widget-manager', {
@@ -236,5 +245,12 @@ export function registerAllWidgets() {
     minSize: { cols: 6, rows: 4 },
     description: 'Create custom widgets',
     isScreenWidget: true,
+    contributes: {
+      state: ['widgetContext', 'widgetState'],
+      events: [
+        'widget-field-updated', 'widget-autosaved', 'widget-saved',
+        'widget-loaded', 'widget-stream-done', 'widget-fields-cleared',
+      ],
+    },
   });
 }
