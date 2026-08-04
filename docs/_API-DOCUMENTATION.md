@@ -5842,7 +5842,7 @@ Manage reusable agent skills — named instruction sets that can be assigned to 
       "allowed_tools": "[\"code-search\",\"file-read\"]",
       "license": "",
       "compatibility": "",
-      "metadata": "",
+      "metadata": "{\"relations\":{\"depends-on\":[\"hyperframes-core\"]},\"provenance\":{\"source-trace\":\"goal-uuid\",\"rationale\":\"...\"}}",
       "created_at": "2024-01-01T00:00:00Z",
       "updated_at": "2024-01-01T00:00:00Z"
     }
@@ -5981,6 +5981,77 @@ Instructions for the skill go here...
   "skillId": "skill-uuid"
 }
 ```
+
+### Skill relations and provenance
+
+Skills can declare how they relate to other skills, and where they came from.
+Both live inside the spec's free-form `metadata` map, so no new frontmatter
+fields are introduced and skills stay portable to other agentskills.io clients
+(which simply ignore `metadata`).
+
+In a `SKILL.md` file:
+
+```yaml
+---
+name: hyperframes-cli
+description: Use the HyperFrames CLI development loop.
+metadata:
+  relations:
+    depends-on:
+      - hyperframes-core        # activate that skill too
+    composes-with:
+      - media-use               # complementary, often used together
+    supersedes:
+      - old-render-pipeline     # prefer this skill over that one
+  provenance:
+    source-trace: 9acd74bc-34e5-4f25-bde2-1aef13965318
+    extracted: "2026-08-03"
+    rationale: Extracted from the batch-render loop; generalizes to any batch render, fails on multi-repo targets.
+    confidence: 0.82
+---
+```
+
+Over the API, `metadata` is a JSON **string** on database-backed skills
+(`/api/skills`) and a parsed **object** on filesystem-discovered skills
+(`/api/skills/discovered`). Consumers should handle both.
+
+#### Relation types
+
+| Key | Meaning |
+| --- | --- |
+| `depends-on` | This skill requires the target to function. Activating it surfaces a prompt to activate the target as well. |
+| `composes-with` | Complementary skill, frequently useful alongside this one. |
+| `supersedes` | This skill replaces the target. While both are present, the target is omitted from the skill catalog and activating it warns the caller. |
+
+Values are arrays of skill slugs (a bare string is accepted and treated as a
+single-element array). Unknown relation types and malformed slugs produce
+**warnings, never errors** — the rest of the skill still loads.
+
+#### Provenance fields
+
+| Field | Meaning |
+| --- | --- |
+| `source-trace` | Goal or execution ID the skill was extracted from. |
+| `extracted` | `YYYY-MM-DD` extraction date. |
+| `rationale` | Where the pattern came from, when it generalizes, when it fails. |
+| `confidence` | `0.0`–`1.0` judge confidence at extraction time. |
+| `history` | Appended on each SkillForge refinement: one entry per version, giving the skill a lineage. |
+
+Skills forged automatically by [SkillForge](#skillforge-routes) populate
+`provenance` from the trace analysis. Refinements append to `provenance.history`
+rather than overwriting the original extraction record.
+
+#### Effect on the skill catalog
+
+The `<available-skills>` catalog injected into agent prompts is relation-aware:
+
+- A `depends-on` relation is annotated inline — `- hyperframes-cli: … [needs: hyperframes-core]`.
+- A skill is omitted from the catalog when another skill **present in the same
+  catalog** declares that it `supersedes` it. If the successor is absent the
+  superseded skill is still listed, so a capability is never orphaned.
+
+Relations and provenance survive a full `GET /:id/export` → `POST /import`
+round-trip.
 
 ---
 
@@ -8497,25 +8568,68 @@ Skill Discovery scans the filesystem for skill definitions (e.g., a user's `~/.c
 **GET** `/`
 
 - **Authentication**: Required
-- **Description**: Get the catalog of all filesystem-discovered skills (metadata only — no full content)
+- **Description**: Get the catalog of all filesystem-discovered skills (summary only — no instructions body)
 - **Response**:
 
 ```json
 {
   "skills": [
     {
-      "name": "skill-name",
+      "name": "hyperframes-cli",
       "description": "Skill description",
-      "dirPath": "/path/to/skill/dir",
-      "source": "user|project",
-      "frontmatter": {}
+      "source": "filesystem",
+      "scope": "user",
+      "client": "agnt",
+      "trusted": true,
+      "metadata": { "relations": { "depends-on": ["hyperframes-core"] } }
     }
   ],
   "lastScan": "2024-01-01T00:00:00Z",
-  "scanLocations": ["/path/to/scan/location"],
-  "total": 42
+  "scanLocations": [
+    { "path": "/home/user/.agnt/skills", "scope": "user", "client": "agnt", "priority": 8 }
+  ],
+  "total": 42,
+  "parseFailures": []
 }
 ```
+
+- `source` is always `"filesystem"` (it distinguishes these entries from database-backed skills). The project-vs-user distinction is `scope`.
+- `metadata` is the parsed frontmatter `metadata` map, or `null`. This is where
+  [relations and provenance](#skill-relations-and-provenance) live — note that it is a parsed
+  **object** here, whereas `/api/skills` returns it as a JSON string.
+- `parseFailures` lists skills found on disk that could not be loaded — see below.
+
+#### Parse failures
+
+A `SKILL.md` that fails to parse is skipped, which used to be invisible: the
+skill simply never appeared and nothing said why. Every scan now records its
+failures and both list endpoints return them:
+
+```json
+{
+  "parseFailures": [
+    {
+      "name": "broken-skill",
+      "path": "/home/user/.agnt/skills/broken-skill/SKILL.md",
+      "errors": ["Missing required \"description\" (no ## Description section found)"],
+      "skipped": true,
+      "at": "2026-08-04T01:22:33.000Z"
+    }
+  ]
+}
+```
+
+`skipped: true` means the skill was dropped from the catalog entirely; `false`
+means it loaded with degraded metadata. The list is rebuilt on every scan, so a
+repaired skill disappears from it on the next rescan.
+
+#### Name collisions across clients
+
+The same skill name may exist in several client directories (`~/.agnt/skills`,
+`~/.claude/skills`, `~/.agents/skills`, …). Discovery keys skills by name and the
+**highest-priority copy wins** — project-level beats ancestor-level beats
+`~/.agnt/skills` beats other user-level client dirs. When editing skills on disk,
+edit every copy: an unedited higher-priority copy silently shadows the change.
 
 ### Rescan Skill Locations
 
@@ -8531,13 +8645,14 @@ Skill Discovery scans the filesystem for skill definitions (e.g., a user's `~/.c
 ```
 
 - **Description**: Trigger a fresh scan of the filesystem skill locations. If `projectRoot` is provided, also scan that project for local skills.
-- **Response**:
+- **Response**: same entry shape as `GET /`, including `parseFailures`
 
 ```json
 {
   "skills": [],
   "lastScan": "2024-01-01T00:00:00Z",
-  "total": 42
+  "total": 42,
+  "parseFailures": []
 }
 ```
 
@@ -8558,15 +8673,30 @@ Skill Discovery scans the filesystem for skill definitions (e.g., a user's `~/.c
     "description": "Skill description",
     "instructions": "Full skill instructions markdown...",
     "frontmatter": {
+      "name": "skill-name",
       "license": "MIT",
       "compatibility": "...",
-      "metadata": {},
+      "metadata": { "relations": {}, "provenance": {} },
       "allowed-tools": []
     },
-    "dirPath": "/path/to/skill/dir"
+    "dirPath": "/path/to/skill/dir",
+    "skillMdPath": "/path/to/skill/dir/SKILL.md",
+    "scope": "user",
+    "client": "agnt",
+    "priority": 8,
+    "trusted": true,
+    "validName": true,
+    "discoveredAt": "2024-01-01T00:00:00Z"
   }
 }
 ```
+
+`frontmatter.metadata` carries [relations and provenance](#skill-relations-and-provenance).
+
+> **Encoding note.** `SKILL.md` files are parsed as UTF-8 and a leading byte
+> order mark is stripped before parsing. A BOM used to defeat the frontmatter
+> delimiter, which made a valid skill fail with a misleading "missing
+> description" error.
 
 ### List Skill Resources
 
