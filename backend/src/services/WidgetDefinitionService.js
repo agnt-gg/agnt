@@ -26,7 +26,17 @@ async function getThumbnailBrowser() {
   const puppeteer = await import('puppeteer-core');  // headless: 'shell' uses Chrome's classic invisible headless mode.
   // headless: 'new' (and 'true' which maps to it in Puppeteer 24) flashes a
   // visible window on Chrome 132+ / Windows (regression seen in Chrome 150).
-  // The off-screen window-position args are belt-and-suspenders.
+  //
+  // DO NOT add --window-position/--window-size "belt-and-suspenders" args here.
+  // In shell mode there is no window to hide, and a 1x1 off-screen window
+  // stalls compositor frame production for every page AFTER the first on this
+  // persistent browser: Page.captureScreenshot waits forever for a frame,
+  // times out at protocolTimeout (60s), and the retry/fallback path is what
+  // produced the grey/blank thumbnails users saw on any widget whose styles
+  // (opacity fades, transitions) widened the race window. Verified 2026-08-04:
+  // with the args, page 2+ hangs 100% of the time; without them, 16/16 capture
+  // cases (opacity, transitions, animations, backdrop-filter, WebGL, canvas)
+  // pass in 20-70ms on a shared browser.
   _browser = await puppeteer.default.launch({
     headless: 'shell',
     executablePath: chromePath,
@@ -45,8 +55,6 @@ async function getThumbnailBrowser() {
       '--use-gl=angle',
       '--use-angle=swiftshader',
       '--enable-gpu-rasterization',
-      '--window-position=-32000,-32000',
-      '--window-size=1,1',
     ],
   });
 
