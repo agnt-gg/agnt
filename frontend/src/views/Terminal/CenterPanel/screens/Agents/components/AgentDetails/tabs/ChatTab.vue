@@ -32,6 +32,17 @@
         <QuickActions :suggestions="suggestions" :is-loading="isLoadingSuggestions" @execute="executeSuggestion" />
       </div>
       <div class="chat-input-container">
+        <div v-if="voiceActive" class="voice-status-strip" :class="'voice-' + voiceState">
+          <span class="voice-dot"></span>
+          <span class="voice-status-text">
+            <template v-if="voiceError">{{ voiceError }}</template>
+            <template v-else-if="voiceState === 'listening' || voiceState === 'reopen'">{{ voicePartial || 'Listening…' }}</template>
+            <template v-else-if="voiceState === 'thinking'">Thinking…</template>
+            <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
+            <template v-else>Voice ready</template>
+          </span>
+          <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
+        </div>
         <div class="chat-input-wrapper">
           <input
             v-model="chatInput"
@@ -41,14 +52,22 @@
             class="chat-input"
             :disabled="isProcessing || selectedAgent.status !== 'ACTIVE'"
           />
-          <Tooltip v-if="isSupported" :text="isListening ? 'Stop recording' : 'Start voice input'" width="auto">
+          <!--
+            Hands-free voice. Deliberately NOT disabled while processing:
+            talking over a reply is the point — it lands as a steer through the
+            same path the keyboard uses. Only an offline agent disables it.
+          -->
+          <Tooltip :text="voiceActive ? 'End voice conversation' : 'Talk to this agent (hands-free)'" width="auto">
             <button
-              @click="toggleListening"
-              :disabled="isProcessing || selectedAgent.status !== 'ACTIVE'"
-              class="chat-mic-button"
-              :class="{ 'is-listening': isListening }"
+              @click="toggleVoice"
+              :disabled="selectedAgent.status !== 'ACTIVE'"
+              class="chat-voice-button"
+              :class="['voice-' + voiceState, { 'voice-on': voiceActive }]"
+              type="button"
+              :aria-pressed="voiceActive ? 'true' : 'false'"
+              aria-label="Toggle hands-free voice conversation"
             >
-              <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
+              <i :class="voiceActive ? 'fas fa-headset' : 'far fa-comment-dots'"></i>
             </button>
           </Tooltip>
           <button
@@ -72,7 +91,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '../../../../Chat/components/MessageItem.vue';
 import ProcessingState from '../../../../Chat/components/ProcessingState.vue';
 import QuickActions from '../../../../Chat/components/QuickActions.vue';
-import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
+import { useVoiceSession } from '@/composables/useVoiceSession';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const initialSuggestions = [
@@ -91,9 +110,6 @@ const props = defineProps({
 const emit = defineEmits(['add-terminal-line']);
 
 const store = useStore();
-
-// Speech Recognition
-const { isListening, isSupported, transcript, toggleListening } = useSpeechRecognition();
 
 const chatInput = ref('');
 const chatMessagesRef = ref(null);
@@ -116,12 +132,60 @@ const dataCache = computed(() => store.state.chat.dataCache);
 // Processing state from store
 const isProcessing = computed(() => store.state.chat.isStreaming);
 
-// Watch for speech recognition transcript changes
-watch(transcript, (newTranscript) => {
-  if (newTranscript) {
-    chatInput.value = newTranscript;
-  }
+// ---- hands-free voice conversation ------------------------------------
+//
+// Same wiring as BaseScreen: commit types-and-sends through the existing
+// path, the reply is spoken from the store's rendered message (one stream
+// decoder for every surface), and the falling edge of isProcessing is `done`.
+// eslint-disable-next-line no-use-before-define -- onCommit runs at commit
+// time, long after setup; sendChatMessage exists by then.
+const voice = useVoiceSession({
+  onCommit: ({ text }) => {
+    chatInput.value = text;
+    sendChatMessage();
+  },
+  getAgents: () => {
+    const list = store.getters['agents/allAgents'];
+    return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
+  },
 });
+
+watch(
+  () => {
+    if (!voice.isActive.value) return null;
+    const list = chatMessages.value || [];
+    const last = list[list.length - 1];
+    // Agent replies arrive with role 'agent' here (mapped to 'assistant' only
+    // in formattedChatMessages), so match on "not the user" rather than a
+    // role literal this store does not use.
+    return last && last.role !== 'user' ? last.content || '' : null;
+  },
+  (content) => {
+    if (content === null) return;
+    voice.handleStreamEvent('content_delta', { accumulated: content });
+  }
+);
+
+watch(isProcessing, (streaming, was) => {
+  if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
+});
+
+// The mic belongs to the agent it was opened for. Switching agents swaps the
+// whole conversation under this tab — a session that survives that keeps
+// committing into whichever agent is now selected.
+watch(
+  () => props.selectedAgent?.id,
+  () => {
+    if (voice.isActive.value) voice.stop();
+  }
+);
+
+// Template aliases (script setup exposes top-level bindings, not `voice.x`).
+const voiceActive = voice.isActive;
+const voiceState = voice.state;
+const voicePartial = voice.partialTranscript;
+const voiceError = voice.error;
+const toggleVoice = voice.toggle;
 
 let localMessageIdCounter = 0;
 const generateMessageId = () => `agent-msg-${Date.now()}-${localMessageIdCounter++}`;
@@ -497,7 +561,13 @@ h3.section-title {
   outline: none;
   border-color: var(--color-green);
 }
-.chat-mic-button {
+/*
+ * Idle matches this row's own siblings (med-navy fill, like the send button
+ * beside it), not BaseScreen's — each composer's voice button speaks its own
+ * row's visual language. Active states tint the circle with the brand hues,
+ * same scheme as every other voice surface.
+ */
+.chat-voice-button {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -512,31 +582,111 @@ h3.section-title {
   flex-shrink: 0;
 }
 
-.chat-mic-button:hover:not(:disabled) {
+.chat-voice-button:hover:not(:disabled) {
   background: rgba(127, 129, 147, 0.8);
   transform: scale(1.05);
 }
 
-.chat-mic-button.is-listening {
-  background: var(--color-red);
-  color: var(--on-fill-danger);
-  animation: pulse 1.5s ease-in-out infinite;
+/* Generic active first — equal specificity, source order decides. */
+.chat-voice-button.voice-on {
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
 }
 
-.chat-mic-button:disabled {
-  background: rgba(127, 129, 147, 0.3);
+.chat-voice-button.voice-listening,
+.chat-voice-button.voice-reopen {
+  background: rgba(var(--green-rgb), 0.2);
+  color: var(--color-green);
+}
+
+.chat-voice-button.voice-thinking {
+  background: rgba(var(--yellow-rgb), 0.2);
+  color: var(--color-yellow);
+}
+
+.chat-voice-button.voice-speaking {
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
+}
+
+.chat-voice-button:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
   transform: none;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
-  }
+.voice-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-height: 28px;
+}
+
+.voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-quaternary);
+  flex: 0 0 auto;
+}
+
+.voice-status-strip.voice-listening .voice-dot,
+.voice-status-strip.voice-reopen .voice-dot {
+  background: var(--status-green-text);
+}
+
+.voice-status-strip.voice-listening .voice-dot {
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+
+.voice-status-strip.voice-thinking .voice-dot {
+  background: var(--status-amber-text);
+  animation: voice-pulse 0.9s ease-in-out infinite;
+}
+
+.voice-status-strip.voice-speaking .voice-dot {
+  background: var(--status-blue-text);
+  animation: voice-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.voice-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-end-btn {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.voice-end-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-status-strip .voice-dot { animation: none; }
 }
 
 .chat-send-button {

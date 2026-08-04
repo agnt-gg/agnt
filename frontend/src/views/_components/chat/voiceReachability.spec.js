@@ -190,6 +190,53 @@ describe('voice is reachable in the MAIN chat screen', () => {
   });
 });
 
+describe('voice is reachable in the Agents chat tab', () => {
+  /**
+   * The last live surface without voice (filed as triage/chattab-legacy-mic
+   * when the legacy mic was removed everywhere else). Same source-guard
+   * pattern as BaseScreen: the defect class is "not wired at all", and these
+   * catch exactly that.
+   */
+  const CHAT_TAB = path.join(
+    SRC,
+    'views/Terminal/CenterPanel/screens/Agents/components/AgentDetails/tabs/ChatTab.vue'
+  );
+  let src;
+  beforeEach(() => {
+    src = fs.readFileSync(CHAT_TAB, 'utf8');
+  });
+
+  it('wires the voice session and renders the button', () => {
+    expect(src).toMatch(/import\s*\{\s*useVoiceSession\s*\}/);
+    expect(src).toMatch(/useVoiceSession\s*\(/);
+    expect(src).toContain('chat-voice-button');
+    expect(src).toMatch(/@click="toggleVoice"/);
+    expect(src).toContain('voice-status-strip');
+  });
+
+  it('script setup exposes the aliases its template reads', () => {
+    for (const b of ['voiceActive', 'voiceState', 'voicePartial', 'voiceError', 'toggleVoice']) {
+      expect(src).toMatch(new RegExp(`const ${b} = voice\\.`));
+    }
+  });
+
+  it('no longer carries the legacy dictation mic', () => {
+    expect(src).not.toContain('useSpeechRecognition');
+    expect(src).not.toContain('chat-mic-button');
+  });
+
+  it('voice is not disabled mid-stream — only an offline agent disables it', () => {
+    const at = src.indexOf('class="chat-voice-button"');
+    const block = src.slice(Math.max(0, at - 400), at);
+    expect(block).toContain(':disabled="selectedAgent.status !== \'ACTIVE\'"');
+    expect(block).not.toMatch(/:disabled="[^"]*isProcessing/);
+  });
+
+  it('ends the session when the selected agent changes', () => {
+    expect(src).toMatch(/props\.selectedAgent\?\.id,\s*\n\s*\(\) => \{\s*\n\s*if \(voice\.isActive\.value\) voice\.stop\(\);/);
+  });
+});
+
 describe('one voice system, not two', () => {
   /**
    * 2026-08-04: the legacy push-to-talk dictation mic was REPLACED by the
@@ -199,10 +246,18 @@ describe('one voice system, not two', () => {
    * guards pin the replacement so the old control cannot quietly return on
    * one surface and not the other.
    */
-  it('the main chat screen no longer renders the legacy dictation mic', () => {
-    const src = fs.readFileSync(BASE_SCREEN, 'utf8');
-    expect(src).not.toContain('chat-mic-button');
-    expect(src).not.toContain('useSpeechRecognition');
+  it('no live chat surface renders the legacy dictation mic', () => {
+    // BaseScreen, the shared composer, and the Agents ChatTab are the three
+    // live composers. The remaining useSpeechRecognition imports live only in
+    // dead *ChatContainer files (imported by nothing; filed for deletion).
+    for (const f of [
+      BASE_SCREEN,
+      path.join(SRC, 'views/Terminal/CenterPanel/screens/Agents/components/AgentDetails/tabs/ChatTab.vue'),
+    ]) {
+      const s = fs.readFileSync(f, 'utf8');
+      expect(s, f).not.toContain('chat-mic-button');
+      expect(s, f).not.toContain('useSpeechRecognition');
+    }
   });
 
   it('the shared composer no longer renders the legacy dictation mic', () => {
