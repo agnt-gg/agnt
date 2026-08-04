@@ -48,11 +48,23 @@ describe('derived getters', () => {
     const store = makeStore();
     seed(store, [
       row({ id: 'read' }),
-      row({ id: 'never-read', last_read_at: null }),
       row({ id: 'stale-read', last_read_at: '2026-08-04 10:30:00' }), // read before last change
-      row({ id: 'archived', last_read_at: null, archived_at: '2026-08-04 11:00:00' }),
+      row({ id: 'archived', last_read_at: '2026-08-04 10:30:00', archived_at: '2026-08-04 11:00:00' }),
     ]);
-    expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['never-read', 'stale-read']));
+    expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['stale-read']));
+  });
+
+  it('a history of rows with no watermark stays OUT of the unread set', () => {
+    // REGRESSION GUARD for the reported bug: every conversation predating the
+    // last_read_at column had a NULL watermark, the old predicate read that
+    // as "unread", and the triage rail swallowed the entire sidebar.
+    const store = makeStore();
+    const legacy = Array.from({ length: 50 }, (_, i) =>
+      row({ id: `legacy-${i}`, last_read_at: null }));
+    seed(store, [...legacy, row({ id: 'waiting', last_read_at: '2026-08-04 10:30:00' })]);
+
+    expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['waiting']));
+    expect(store.getters['contentOutputs/triageRail'].map((o) => o.id)).toEqual(['waiting']);
   });
 
   it('visibleOutputs / archivedOutputs partition on archived_at', () => {
@@ -65,8 +77,8 @@ describe('derived getters', () => {
   it('triageRail is unread-only, oldest first', () => {
     const store = makeStore();
     seed(store, [
-      row({ id: 'new-unread', updated_at: '2026-08-04 11:00:00', last_read_at: null }),
-      row({ id: 'old-unread', updated_at: '2026-08-01 09:00:00', last_read_at: null }),
+      row({ id: 'new-unread', updated_at: '2026-08-04 11:00:00', last_read_at: '2026-08-04 10:00:00' }),
+      row({ id: 'old-unread', updated_at: '2026-08-01 09:00:00', last_read_at: '2026-08-01 08:00:00' }),
       row({ id: 'read' }),
     ]);
     expect(store.getters['contentOutputs/triageRail'].map((o) => o.id)).toEqual(['old-unread', 'new-unread']);
@@ -76,7 +88,7 @@ describe('derived getters', () => {
 describe('markRead / markUnread', () => {
   it('markRead flips local state optimistically and PATCHes { read: true }', async () => {
     const store = makeStore();
-    seed(store, [row({ id: 'out-1', last_read_at: null })]);
+    seed(store, [row({ id: 'out-1', last_read_at: '2026-08-04 10:00:00' })]);
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
 
     // Hold the fetch open to observe the optimistic window.
@@ -96,17 +108,33 @@ describe('markRead / markUnread', () => {
     expect(JSON.parse(opts.body)).toEqual({ read: true });
   });
 
-  it('markUnread nulls the watermark and PATCHes { read: false }', async () => {
+  it('markUnread writes a watermark just before the change — NOT null', async () => {
     const store = makeStore();
-    seed(store, [row({ id: 'out-1' })]);
+    seed(store, [row({ id: 'out-1', updated_at: '2026-08-04 11:00:00' })]);
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
 
     await store.dispatch('contentOutputs/markUnread', 'out-1');
 
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+    // Null would mean "no watermark", which is explicitly NOT unread — the dot
+    // would appear and then vanish on the next refetch. It mirrors the
+    // server's own write: one second before updated_at.
+    const stored = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1').last_read_at;
+    expect(stored).not.toBeNull();
+    expect(stored.getTime()).toBe(Date.parse('2026-08-04T11:00:00Z') - 1000);
+
     const [url, opts] = global.fetch.mock.calls[0];
     expect(url).toContain('/content-outputs/out-1/read');
     expect(JSON.parse(opts.body)).toEqual({ read: false });
+  });
+
+  it('markUnread survives a row with no usable updated_at', async () => {
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', updated_at: null })]);
+    await store.dispatch('contentOutputs/markUnread', 'out-1');
+    const stored = store.getters['contentOutputs/outputs'].find((o) => o.id === 'out-1').last_read_at;
+    expect(stored).toBeInstanceOf(Date);
+    expect(Number.isFinite(stored.getTime())).toBe(true);
   });
 
   it('optimistic markRead is clock-skew-proof: clears the dot even when updated_at is in the client\'s future', async () => {
@@ -116,7 +144,7 @@ describe('markRead / markUnread', () => {
     // client clock would lose to it and leave a phantom dot; stamping with
     // the row's own updated_at cannot.
     const future = new Date(Date.now() + 6 * HOUR).toISOString().replace('T', ' ').slice(0, 19);
-    seed(store, [row({ id: 'out-1', updated_at: future, last_read_at: null })]);
+    seed(store, [row({ id: 'out-1', updated_at: future, last_read_at: '2026-08-04 10:00:00' })]);
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
 
     await store.dispatch('contentOutputs/markRead', 'out-1');
@@ -126,7 +154,7 @@ describe('markRead / markUnread', () => {
 
   it('a failed PATCH reverts the optimistic flip and rethrows', async () => {
     const store = makeStore();
-    seed(store, [row({ id: 'out-1', last_read_at: null })]);
+    seed(store, [row({ id: 'out-1', last_read_at: '2026-08-04 10:00:00' })]);
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
 
     await expect(store.dispatch('contentOutputs/markRead', 'out-1')).rejects.toThrow();
@@ -150,9 +178,9 @@ describe('markAllRead — the rail\'s clear-all button', () => {
   it('clears every requested id in ONE request, optimistically', async () => {
     const store = makeStore();
     seed(store, [
-      row({ id: 'a', last_read_at: null }),
+      row({ id: 'a', last_read_at: '2026-08-04 10:00:00' }),
       row({ id: 'b', last_read_at: '2026-08-04 10:30:00' }),
-      row({ id: 'untouched', last_read_at: null }),
+      row({ id: 'untouched', last_read_at: '2026-08-04 10:00:00' }),
     ]);
     expect(store.getters['contentOutputs/unreadOutputIdSet']).toEqual(new Set(['a', 'b', 'untouched']));
 
@@ -178,7 +206,7 @@ describe('markAllRead — the rail\'s clear-all button', () => {
   it('is clock-skew-proof for the same reason markRead is', async () => {
     const store = makeStore();
     const future = new Date(Date.now() + 6 * HOUR).toISOString().replace('T', ' ').slice(0, 19);
-    seed(store, [row({ id: 'a', updated_at: future, last_read_at: null })]);
+    seed(store, [row({ id: 'a', updated_at: future, last_read_at: '2026-08-04 10:00:00' })]);
 
     await store.dispatch('contentOutputs/markAllRead', ['a']);
 
@@ -188,7 +216,7 @@ describe('markAllRead — the rail\'s clear-all button', () => {
   it('a failed request rolls back EVERY optimistic flip and rethrows', async () => {
     const store = makeStore();
     seed(store, [
-      row({ id: 'a', last_read_at: null }),
+      row({ id: 'a', last_read_at: '2026-08-04 10:00:00' }),
       row({ id: 'b', last_read_at: '2026-08-04 10:30:00' }),
     ]);
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
@@ -206,7 +234,7 @@ describe('markAllRead — the rail\'s clear-all button', () => {
     // The route widens a missing `ids` to "everything"; an empty array must
     // therefore never be sent as one.
     const store = makeStore();
-    seed(store, [row({ id: 'a', last_read_at: null })]);
+    seed(store, [row({ id: 'a', last_read_at: '2026-08-04 10:00:00' })]);
 
     await store.dispatch('contentOutputs/markAllRead', []);
 
@@ -216,7 +244,7 @@ describe('markAllRead — the rail\'s clear-all button', () => {
 
   it('ids missing from local state are still sent to the server', async () => {
     const store = makeStore();
-    seed(store, [row({ id: 'a', last_read_at: null })]);
+    seed(store, [row({ id: 'a', last_read_at: '2026-08-04 10:00:00' })]);
 
     await store.dispatch('contentOutputs/markAllRead', ['a', 'not-fetched-yet']);
 
@@ -227,7 +255,7 @@ describe('markAllRead — the rail\'s clear-all button', () => {
 describe('setArchived', () => {
   it('archives optimistically, silencing any unread state, and PATCHes', async () => {
     const store = makeStore();
-    seed(store, [row({ id: 'out-1', last_read_at: null })]);
+    seed(store, [row({ id: 'out-1', last_read_at: '2026-08-04 10:00:00' })]);
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
 
     await store.dispatch('contentOutputs/setArchived', { outputId: 'out-1', archived: true });

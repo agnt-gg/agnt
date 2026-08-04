@@ -2,7 +2,7 @@ import { API_CONFIG } from '@/tt.config.js';
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-import { toServerDate } from '@/utils/serverTime.js';
+import { toServerDate, parseServerTime } from '@/utils/serverTime.js';
 import { unreadIdSet, triageRail } from '@/utils/conversationAttention.js';
 
 export default {
@@ -242,12 +242,21 @@ export default {
       });
     },
 
-    markUnread({ dispatch }, outputId) {
+    markUnread({ dispatch, state }, outputId) {
+      // A watermark one second before the row's own updated_at — "read up to
+      // just before the last change" — mirroring what the server writes.
+      //
+      // NOT null: null means "no watermark was ever recorded", the state of
+      // every conversation predating the column, and it is explicitly NOT
+      // unread. Writing null here would optimistically show the dot and then
+      // have it vanish on the next refetch when server truth arrived.
+      const row = state.outputs.find((o) => o.id === outputId);
+      const updatedAt = parseServerTime(row?.updated_at);
       return dispatch('_patchAttention', {
         outputId,
         path: 'read',
         body: { read: false },
-        updates: { last_read_at: null },
+        updates: { last_read_at: new Date((updatedAt || Date.now()) - 1000) },
       });
     },
 

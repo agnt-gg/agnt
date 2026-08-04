@@ -1738,21 +1738,35 @@ function runMigrations() {
 
       // Migration: Add last_read_at column to content_outputs for server-side
       // cross-device unread tracking (2026-08-04). Unread is DERIVED, not
-      // stored: a conversation is unread iff updated_at > last_read_at (or
-      // last_read_at is NULL). On the run that adds the column, backfill
-      // last_read_at = updated_at so no existing conversation flips to
-      // "unread" retroactively — only changes made AFTER this migration count.
+      // stored: a conversation is unread iff it HAS a watermark and a later
+      // change has overtaken it (updated_at > last_read_at).
+      //
+      // NO BACKFILL. This migration originally ran
+      //   UPDATE content_outputs SET last_read_at = updated_at
+      // once, on the run that added the column, so that no pre-existing
+      // conversation would retroactively count as unread. That was a trap in
+      // three ways and it fired:
+      //
+      //   1. It is a single fire-and-forget write across every conversation
+      //      the user has ever had — ~780MB of `content` on a real install,
+      //      rewritten row by row. Slow, and interruptible by quitting the app.
+      //   2. It only runs in the `!err` branch, i.e. exactly once ever. There
+      //      is no second chance and nothing checks the outcome.
+      //   3. Its failure mode is not "a few rows look odd" — it is that EVERY
+      //      conversation in history becomes unread, because the old predicate
+      //      read a missing watermark as "needs your attention". Observed on a
+      //      live install: 1624 of 1649 conversations in the triage rail.
+      //
+      // Correctness now comes from the predicate instead of from a write: a
+      // NULL watermark means "no evidence of anything unseen", so legacy rows
+      // are quiet by construction, and each one acquires a real watermark the
+      // first time it is saved (ContentOutputModel.createOrUpdate) or opened.
+      // Idempotent, incremental, and it cannot half-apply.
       db.run(`ALTER TABLE content_outputs ADD COLUMN last_read_at DATETIME`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {
           console.error('Error adding last_read_at column to content_outputs:', err);
         } else if (!err) {
-          db.run(`UPDATE content_outputs SET last_read_at = updated_at`, (backfillErr) => {
-            if (backfillErr) {
-              console.error('Error backfilling last_read_at on content_outputs:', backfillErr);
-            } else {
-              console.log('✓ Added last_read_at column to content_outputs table (backfilled)');
-            }
-          });
+          console.log('✓ Added last_read_at column to content_outputs table');
         }
       });
 

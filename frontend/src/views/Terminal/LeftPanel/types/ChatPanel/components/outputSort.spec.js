@@ -162,8 +162,13 @@ describe('sortOutputs — sort controls', () => {
 
 describe("sortOutputs — the 'attention' (Needs you) order", () => {
   // Rows carry the columns unread is DERIVED from; there is no unread flag.
-  const unread = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: null });
+  //
+  // Unread means a watermark exists AND a later change overtook it. A NULL
+  // watermark is NOT unread — it means none was ever recorded, the state of
+  // every conversation predating the column. See conversationAttention.js.
+  const unread = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: t('00:01') });
   const read = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: t('23:59') });
+  const noWatermark = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: null });
 
   it('puts unread above read no matter how stale the unread item is', () => {
     const outputs = [read('fresh', t('12:00')), unread('ancient', t('01:00'))];
@@ -203,10 +208,21 @@ describe("sortOutputs — the 'attention' (Needs you) order", () => {
 
   it('treats archived rows as read — archiving IS "done with this"', () => {
     const outputs = [
-      { id: 'archived-unread', updated_at: t('01:00'), last_read_at: null, archived_at: t('01:30') },
-      { id: 'live-unread', updated_at: t('10:00'), last_read_at: null },
+      { ...unread('archived-unread', t('01:00')), archived_at: t('01:30') },
+      unread('live-unread', t('10:00')),
     ];
     expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))[0]).toBe('live-unread');
+  });
+
+  it('does not float a conversation that merely has no watermark', () => {
+    // REGRESSION GUARD for the reported bug. Sorting by "Needs you" must not
+    // hoist a user's entire pre-feature history above everything else.
+    const outputs = [
+      noWatermark('legacy-a', t('02:00')),
+      unread('waiting', t('09:00')),
+      noWatermark('legacy-b', t('01:00')),
+    ];
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))[0]).toBe('waiting');
   });
 
   it('ignores sortOrder: there is no useful reverse of "needs you"', () => {
