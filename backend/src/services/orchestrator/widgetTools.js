@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import db from '../../models/database/index.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
+import { notifyWidgetChanged } from '../../utils/widgetChangeNotifier.js';
 
 export function getWidgetToolSchemas() {
   return [
@@ -211,6 +212,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
                 );
               });
               widgetData.id = existingId;
+              notifyWidgetChanged({ widgetId: existingId, userId, action: 'updated', source: 'edit_widget_code' });
             }
           } catch (saveErr) {
             console.error('Widget auto-save failed:', saveErr.message);
@@ -327,6 +329,12 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
                 });
               }
               widgetData.id = savedWidgetId;
+              notifyWidgetChanged({
+                widgetId: savedWidgetId,
+                userId,
+                action: isExistingWidget ? 'updated' : 'created',
+                source: 'generate_widget',
+              });
             }
           } catch (saveErr) {
             console.error('Widget auto-save failed:', saveErr.message);
@@ -418,6 +426,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             await new Promise((resolve, reject) => {
               db.run(`UPDATE widget_definitions SET ${setClauses.join(', ')} WHERE id = ?`, params, (err) => (err ? reject(err) : resolve()));
             });
+            notifyWidgetChanged({ widgetId: existingId, userId, action: 'updated', source: 'update_widget_config' });
           }
 
           Object.assign(widgetState, updates);
@@ -510,6 +519,10 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
               if (err) resolve({ success: false, message: err.message });
               else {
                 if (widgetState && !widgetState.id) widgetState.id = widgetId;
+                // `this.changes` can't distinguish insert from update on an
+                // UPSERT, and the client treats both identically (re-fetch the
+                // row), so 'updated' is the honest label for either branch.
+                notifyWidgetChanged({ widgetId, userId, action: 'updated', source: 'save_widget' });
                 resolve({
                   success: true,
                   widgetId,

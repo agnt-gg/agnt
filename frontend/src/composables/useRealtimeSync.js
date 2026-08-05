@@ -271,6 +271,29 @@ export function useRealtimeSync() {
       debouncedAgentFetch();
     });
 
+    // Widget definition events.
+    //
+    // The widgetDefinitions store caches `source_code` for the life of the
+    // page (ensureDefinitionLoaded is idempotent by design), so nothing else
+    // can notice a widget that changed server-side. Without these handlers a
+    // widget edited from chat or another tab renders its old body until a
+    // full reload. CustomWidgetRenderer binds :srcdoc to the store value, so
+    // refreshing the row is all that's needed to re-render live instances.
+    socket.on('widget:created', (data) => {
+      console.log('[Realtime] Widget created:', data);
+      if (data?.id) store.dispatch('widgetDefinitions/refreshDefinition', data.id);
+    });
+
+    socket.on('widget:updated', (data) => {
+      console.log('[Realtime] Widget updated:', data);
+      if (data?.id) store.dispatch('widgetDefinitions/refreshDefinition', data.id);
+    });
+
+    socket.on('widget:deleted', (data) => {
+      console.log('[Realtime] Widget deleted:', data);
+      if (data?.id) store.commit('widgetDefinitions/REMOVE_DEFINITION', data.id);
+    });
+
     // Workflow events - use optimistic updates + debounced sync
     socket.on('workflow:created', (data) => {
       console.log('[Realtime] Workflow created:', data);

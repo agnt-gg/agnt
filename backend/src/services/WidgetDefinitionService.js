@@ -1,6 +1,7 @@
 import db from '../models/database/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getBestChromePath } from '../utils/chrome-detector.js';
+import { notifyWidgetChanged } from '../utils/widgetChangeNotifier.js';
 
 // --- Persistent Puppeteer browser for thumbnail captures ---
 // Lazy-launched on first capture, auto-closes after 60s of inactivity.
@@ -307,6 +308,8 @@ class WidgetDefinitionService {
         });
       }
 
+      notifyWidgetChanged({ widgetId: id, userId, action: 'created', source: 'api-create' });
+
       res.status(201).json({
         message: 'Widget definition created',
         id,
@@ -424,6 +427,13 @@ class WidgetDefinitionService {
         });
       }
 
+      notifyWidgetChanged({
+        widgetId,
+        userId: req.user?.id || req.user?.userId,
+        action: 'updated',
+        source: 'api-update',
+      });
+
       res.json({ message: 'Widget definition updated', id: widgetId });
     } catch (error) {
       console.error('Error updating widget definition:', error);
@@ -442,6 +452,13 @@ class WidgetDefinitionService {
         db.run('DELETE FROM widget_definitions WHERE id = ?', [widgetId], (err) =>
           err ? reject(err) : resolve(),
         );
+      });
+
+      notifyWidgetChanged({
+        widgetId,
+        userId: req.user?.id || req.user?.userId,
+        action: 'deleted',
+        source: 'api-delete',
       });
 
       res.json({ message: 'Widget definition deleted', id: widgetId });
@@ -494,6 +511,8 @@ class WidgetDefinitionService {
           (err) => (err ? reject(err) : resolve()),
         );
       });
+
+      notifyWidgetChanged({ widgetId: newId, userId, action: 'created', source: 'api-duplicate' });
 
       res.status(201).json({ message: 'Widget duplicated', id: newId });
     } catch (error) {
@@ -553,7 +572,8 @@ class WidgetDefinitionService {
         return res.status(400).json({ error: 'Invalid widget import data' });
       }
 
-      // Delegate to createWidget with the parsed data
+      // Delegate to createWidget with the parsed data — it emits the
+      // 'created' notification, so importWidget must not emit its own.
       req.body = {
         name: widget_data.name,
         description: widget_data.description,
@@ -785,6 +805,10 @@ export async function importWidgetEnvelope(envelope, userId, options = {}) {
       );
     });
   }
+
+  // Announce after BOTH writes, so a listener that re-fetches on this event
+  // always sees the fully-stamped row rather than a half-written one.
+  notifyWidgetChanged({ widgetId: id, userId, action: 'created', source: 'plugin-import' });
 
   return { id };
 }
