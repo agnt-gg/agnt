@@ -172,11 +172,12 @@ describe('main chat screen — source guards', () => {
     // them directly there is a temporal-dead-zone throw. Assert the contract
     // (both engines stop) rather than the shape of one call site.
     expect(branch).toMatch(/stopAllVoiceSessions\(\)/);
-    // lastIndexOf, not indexOf: the first match is the no-op DECLARATION
-    // (`let stopAllVoiceSessions = () => {};`), which of course stops nothing.
-    const hook = src.slice(src.lastIndexOf('stopAllVoiceSessions = () => {'));
-    expect(hook.slice(0, 220)).toMatch(/voice\.stop\(\)/);
-    expect(hook.slice(0, 220)).toMatch(/realtime\.stop\(\)/);
+    // Stopping now lives in useVoiceEngines, which owns both engines, so this
+    // asserts the hook is wired to it rather than re-listing the engines here
+    // — a list that had to be edited alongside the composable is exactly how
+    // the realtime session came to survive a conversation switch.
+    expect(src).toMatch(/stopAllVoiceSessions = stopVoice;/);
+    expect(src).toMatch(/stopVoice,\s*\n\s*\} = useVoiceEngines\(\{/);
   });
 
   it('REGRESSION: id assignment on first send keeps the session and carries the draft', () => {
@@ -189,9 +190,13 @@ describe('main chat screen — source guards', () => {
 });
 
 describe('shared composer — voice dies with its channel', () => {
-  it('the channelKey watch stops an active session (source guard)', () => {
+  it('a channel switch stops an active session (source guard)', () => {
+    // The composable stops both engines when the epoch changes; the container's
+    // job is to bump the epoch on a real channel switch.
     const src = fs.readFileSync(UNIFIED, 'utf8');
-    expect(src).toMatch(/props\.channelKey,\s*\(\) => \{\s*\n\s*if \(voice\.isActive\.value\) voice\.stop\(\);/);
+    expect(src).toMatch(/const conversationEpoch = ref\(0\)/);
+    expect(src).toMatch(/watch\(\(\) => props\.channelKey, \(\) => \{ conversationEpoch\.value \+= 1; \}\)/);
+    expect(src).toMatch(/epoch: conversationEpoch/);
   });
 });
 

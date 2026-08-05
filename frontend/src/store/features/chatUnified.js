@@ -5,6 +5,7 @@
 
 import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
@@ -936,6 +937,17 @@ export default {
       // saved-agent chat, every workflow/tool/widget/artifact chat) carries
       // its own remembered config. See chatChannelConfig.js.
       const channelPM = resolveChannelProviderModel(channelKey, rootState.aiProvider);
+
+      // Will this answer be SPOKEN as well as shown? Consumed here, once, so
+      // the backend can ask for a spoken opening register
+      // (system-prompts/voiceRegister.js). Without this the panel chats got a
+      // full written answer and read the whole thing aloud — the four-minute
+      // monologue the two-register design exists to prevent.
+      //
+      // A typed turn during a live voice session is NOT spoken and must not be
+      // marked; the arm is keyed by the message text, so only the turn the
+      // voice path armed can consume it. See services/voiceTurn.js.
+      const isVoiceTurn = consumeVoiceTurn(trimmedContent);
       // Per-workspace AI override: a workspace chat channel is keyed
       // 'workspace:<id>'. If that workspace declares its own ai provider, it
       // wins for this turn only and must NOT be persisted as the global
@@ -958,7 +970,10 @@ export default {
           // provider back to the user's account-wide default.
           persistDefault: wsAi ? false : undefined,
           conversationId: state.conversations[channelKey]?.conversationId || null,
-          pageContext,
+          // voiceMode rides the shared page-context field list, so streamChat
+          // carries it like every other per-turn fact and no transport change
+          // is needed. See backend orchestrator/pageContext.js.
+          pageContext: isVoiceTurn ? { ...pageContext, voiceMode: true } : pageContext,
           pageState,
           enabledTools: resolvedEnabledTools,
           reasoningValue: resolvedReasoningValue,

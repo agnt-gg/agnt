@@ -72,6 +72,7 @@
           <template v-else-if="voiceState === 'thinking'">Thinking…</template>
           <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
           <template v-else>Voice ready</template>
+          <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
         </span>
         <button class="voice-end-btn" type="button" @click="toggleVoice">End</button>
       </div>
@@ -195,7 +196,7 @@ import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/comp
 import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatToolSelector.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import { useVoiceSession } from '@/composables/useVoiceSession';
+import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft } from '@/services/chatDrafts';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
@@ -512,26 +513,59 @@ export default {
       focusInput();
     };
 
-    // ---- hands-free voice conversation ---------------------------------
+    // ---- voice ----------------------------------------------------------
+    //
+    // Identical to the main chat, because it is the same code: both engines,
+    // the run_agnt bridge and the two-register split live in useVoiceEngines.
+    // This container supplies only what differs on a panel surface.
     //
     // Declared here, after formattedMessages/isProcessing/onSend, because the
-    // watchers below read them immediately — wiring this block earlier is a
+    // composable's watchers read them immediately — wiring it earlier is a
     // temporal-dead-zone crash at setup, not a lint nit.
     //
-    // Deliberately SEPARATE from the push-to-talk mic. That button is a
-    // dictation aid: it fills the textarea and the user still presses send.
-    // This is a CONVERSATION — it endpoints on its own, speaks the reply, and
-    // can be interrupted. Two different interactions, so two controls;
-    // collapsing them would make the mic unpredictable for everyone already
-    // used to it.
-    const voice = useVoiceSession({
-      onCommit: ({ text }) => {
+    // Still deliberately SEPARATE from the push-to-talk mic. That button is a
+    // dictation aid: it fills the textarea and the user presses send. This is a
+    // CONVERSATION — it endpoints on its own, speaks the reply, and can be
+    // interrupted. Two interactions, two controls.
+
+    /**
+     * Genuine navigation between channels.
+     *
+     * Most hosts :key this container by channelKey and it remounts, which ends
+     * the session by unmount; this covers hosts that swap the prop in place.
+     * A counter rather than the key itself, for the same reason the main chat
+     * uses one: an identifier that can be reassigned to the same logical
+     * conversation cannot answer "am I still where I started?".
+     */
+    const conversationEpoch = ref(0);
+    watch(() => props.channelKey, () => { conversationEpoch.value += 1; });
+
+    /** The assistant text currently streaming, or '' when there is none. */
+    const streamingAnswer = () => {
+      const list = formattedMessages.value || [];
+      const last = list[list.length - 1];
+      return last && last.role === 'assistant' ? last.content || '' : '';
+    };
+
+    const {
+      voiceActive,
+      voiceState,
+      voicePartial,
+      voiceError,
+      voiceNatural,
+      voiceLevel,
+      toggleVoice,
+    } = useVoiceEngines({
+      surface: props.chatType || 'chat',
+      submit: (text) => {
         chatInput.value = text;
         onSend();
       },
-      onSteer: async ({ text }) => {
-        // A voice interruption is exactly the mid-run steer the text path
-        // already implements — reuse it rather than racing a second POST.
+      // The panel store DROPS a send while one is already streaming, so an
+      // interruption needs the explicit steer path rather than a second POST
+      // that would be silently swallowed. (The main chat converts a submit
+      // into a steer by itself and passes no steer adapter.)
+      steer: async (text) => {
         const resp = await store.dispatch('chatUnified/steerInFlight', {
           channelKey: props.channelKey,
           content: text,
@@ -541,50 +575,14 @@ export default {
           onSend();
         }
       },
+      streamingAnswer,
+      isStreaming: isProcessing,
+      epoch: conversationEpoch,
       getAgents: () => {
         const list = store.getters['agents/allAgents'];
         return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
       },
     });
-
-    /**
-     * Bridge the assistant stream into the voice pipeline.
-     *
-     * Watching the rendered message rather than tapping the SSE socket is
-     * deliberate: the store already owns stream decoding for every chat
-     * surface, and a second subscriber would be a second place for the wire
-     * protocol to drift. The accumulated content is what the chunker wants.
-     */
-    watch(
-      () => {
-        if (!voice.isActive.value) return null;
-        const list = formattedMessages.value || [];
-        const last = list[list.length - 1];
-        return last && last.role === 'assistant' ? last.content || '' : null;
-      },
-      (content) => {
-        if (content === null) return;
-        voice.handleStreamEvent('content_delta', { accumulated: content });
-      }
-    );
-
-    watch(isProcessing, (streaming, was) => {
-      if (was && !streaming && voice.isActive.value) {
-        voice.handleStreamEvent('done', {});
-      }
-    });
-
-    // A channel switch ends any live voice session. The mic belongs to the
-    // conversation it was opened in — a session that outlives its channel
-    // keeps committing into whichever chat is now on screen, which is
-    // cross-talk, not continuity. (Hosts that :key the container get this
-    // free via unmount; this covers in-place prop swaps.)
-    watch(
-      () => props.channelKey,
-      () => {
-        if (voice.isActive.value) voice.stop();
-      }
-    );
 
     const onCancelSteer = () => {
       store.dispatch('chatUnified/cancelSteer', { channelKey: props.channelKey });
@@ -803,12 +801,13 @@ export default {
       executeSuggestion,
       getStatusFor,
       getRunningToolsFor,
-      voiceActive: voice.isActive,
-      voiceState: voice.state,
-      voiceLevel: voice.level,
-      voiceError: voice.error,
-      voicePartial: voice.partialTranscript,
-      toggleVoice: voice.toggle,
+      voiceActive,
+      voiceState,
+      voiceLevel,
+      voiceError,
+      voicePartial,
+      voiceNatural,
+      toggleVoice,
       // Provider/Tool selectors
       isProviderSelectorOpen,
       isToolSelectorOpen,
@@ -949,6 +948,19 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Which engine is live — see BaseScreen for the same rule. */
+.voice-engine-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(var(--blue-rgb), 0.18);
+  color: var(--status-blue-text);
 }
 
 .voice-end-btn {

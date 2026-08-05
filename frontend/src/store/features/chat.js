@@ -2512,6 +2512,11 @@ export default {
           : (rootState.aiProvider?.reasoningValue || 'default');
         const effectiveReasoningEnabled = reasoningEnabled === true || rootState.aiProvider?.reasoningEnabled === true;
 
+        // Spoken turns ask for a two-register answer. This endpoint funnels
+        // into universalChatHandler like every other chat, so voiceMode reaches
+        // the prompt builder the same way here as it does in the main chat.
+        const isVoiceTurn = consumeVoiceTurn(userInput);
+
         const body = JSON.stringify({
           message: userInput,
           history: deduped,
@@ -2519,6 +2524,7 @@ export default {
           model: model,
           reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
           reasoningEnabled: effectiveReasoningEnabled || undefined,
+          voiceMode: isVoiceTurn || undefined,
         });
 
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agentId}/chat-stream`, {

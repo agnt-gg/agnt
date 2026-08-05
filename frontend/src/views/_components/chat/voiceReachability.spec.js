@@ -38,6 +38,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, '../../..');
 const BASE_SCREEN = path.join(SRC, 'views/Terminal/CenterPanel/BaseScreen.vue');
 const UNIFIED = path.join(HERE, 'UnifiedChatContainer.vue');
+const ENGINES = path.join(SRC, 'composables/useVoiceEngines.js');
 
 vi.mock('@/services/chatChannelConfig.js', () => ({ getChannelConfig: () => null }));
 
@@ -158,12 +159,15 @@ describe('voice is reachable in the MAIN chat screen', () => {
     src = fs.readFileSync(BASE_SCREEN, 'utf8');
   });
 
-  it('imports the voice session composable', () => {
-    expect(src).toMatch(/import\s*\{\s*useVoiceSession\s*\}\s*from\s*'@\/composables\/useVoiceSession'/);
+  it('imports the shared voice composable', () => {
+    // Both engines now live behind useVoiceEngines, so every composer reaches
+    // them the same way and none can hold a partial copy. See
+    // composables/voiceParity.spec.js for the rule that keeps that true.
+    expect(src).toMatch(/import\s*\{[^}]*useVoiceEngines[^}]*\}\s*from\s*'@\/composables\/useVoiceEngines'/);
   });
 
   it('actually calls it (an unused import reaches nobody)', () => {
-    expect(src).toMatch(/useVoiceSession\s*\(/);
+    expect(src).toMatch(/useVoiceEngines\(\{/);
   });
 
   it('renders a voice button in its composer', () => {
@@ -206,17 +210,22 @@ describe('voice is reachable in the Agents chat tab', () => {
     src = fs.readFileSync(CHAT_TAB, 'utf8');
   });
 
-  it('wires the voice session and renders the button', () => {
-    expect(src).toMatch(/import\s*\{\s*useVoiceSession\s*\}/);
-    expect(src).toMatch(/useVoiceSession\s*\(/);
+  it('wires the shared voice composable and renders the button', () => {
+    expect(src).toMatch(/import\s*\{[^}]*useVoiceEngines[^}]*\}/);
+    expect(src).toMatch(/useVoiceEngines\(\{/);
     expect(src).toContain('chat-voice-button');
     expect(src).toMatch(/@click="toggleVoice"/);
     expect(src).toContain('voice-status-strip');
   });
 
-  it('script setup exposes the aliases its template reads', () => {
+  it('script setup destructures the bindings its template reads', () => {
+    // script setup exposes top-level bindings, so these must be destructured
+    // out of the composable rather than reached through an object.
+    const at = src.indexOf('} = useVoiceEngines({');
+    expect(at).toBeGreaterThan(-1);
+    const destructure = src.slice(src.lastIndexOf('const {', at), at);
     for (const b of ['voiceActive', 'voiceState', 'voicePartial', 'voiceError', 'toggleVoice']) {
-      expect(src).toMatch(new RegExp(`const ${b} = voice\\.`));
+      expect(destructure, `missing ${b}`).toContain(b);
     }
   });
 
@@ -233,7 +242,13 @@ describe('voice is reachable in the Agents chat tab', () => {
   });
 
   it('ends the session when the selected agent changes', () => {
-    expect(src).toMatch(/props\.selectedAgent\?\.id,\s*\n\s*\(\) => \{\s*\n\s*if \(voice\.isActive\.value\) voice\.stop\(\);/);
+    // Switching agents swaps the whole conversation under this tab, so a
+    // session that survived it would keep committing into whichever agent is
+    // now selected. The composable stops on an epoch change; the tab's job is
+    // to bump the epoch when that happens.
+    expect(src).toMatch(/const conversationEpoch = ref\(0\)/);
+    expect(src).toMatch(/watch\(\(\) => props\.selectedAgent\?\.id, \(\) => \{ conversationEpoch\.value \+= 1; \}\)/);
+    expect(src).toMatch(/epoch: conversationEpoch/);
   });
 });
 
@@ -245,29 +260,39 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
    * exists to avoid — so these guard the bridge, not just the import.
    */
   let src;
+  /**
+   * These read the COMPOSABLE, not the host.
+   *
+   * The behaviour used to be inlined in BaseScreen and these guards named that
+   * file — which is precisely why the panels could ship without any of it and
+   * stay green. Asserting it where it lives means all three surfaces are
+   * covered by one set of tests, and voiceParity.spec.js separately proves
+   * that every composer actually reaches this code.
+   */
+  let engines;
   beforeEach(() => {
     src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    engines = fs.readFileSync(ENGINES, 'utf8');
   });
 
-  it('wires the realtime session into the main chat', () => {
-    expect(src).toMatch(/import\s*\{\s*useRealtimeVoice\s*\}/);
-    expect(src).toMatch(/useRealtimeVoice\s*\(/);
+  it('wires the realtime session', () => {
+    expect(engines).toMatch(/import\s*\{\s*useRealtimeVoice\s*\}/);
+    expect(engines).toMatch(/useRealtimeVoice\(\{/);
   });
 
   it('THE POINT: the model\u2019s one tool runs through the real send path', () => {
-    expect(src).toMatch(/onRunAgnt:\s*runAgntForVoice/);
-    // runAgntForVoice must actually submit through the composer, not fabricate
-    // an answer or call some parallel API.
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2600);
-    expect(body).toMatch(/currentUserInput\.value = instruction/);
-    expect(body).toMatch(/triggerSubmit\(\)/);
+    expect(engines).toMatch(/onRunAgnt:\s*runAgntForVoice/);
+    // runAgntForVoice must actually go through the host's send adapter, not
+    // fabricate an answer or call some parallel API.
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2600);
+    expect(body).toMatch(/submit\(userMessage\)/);
     expect(body).toMatch(/resolve\(/);
   });
 
   it('completes on the stream ending, not on a timer', () => {
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2600);
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2600);
     expect(body).toMatch(/watch\(isStreaming/);
     expect(body).not.toMatch(/setTimeout/);
   });
@@ -275,17 +300,17 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
   it('falls back to the cascade when natural voice is unavailable', () => {
     // No credit is a normal state, and an error the user cannot act on
     // mid-sentence is worse than quietly using the engine that works.
-    const at = src.indexOf('const toggleVoice');
-    const body = src.slice(at, at + 700);
+    const at = engines.indexOf('const toggleVoice');
+    const body = engines.slice(at, at + 700);
     expect(body).toMatch(/realtime\.unavailable\.value/);
-    expect(body).toMatch(/voice\.toggle\(\)/);
+    expect(body).toMatch(/cascade\.toggle\(\)/);
   });
 
   it('one button drives whichever engine is running', () => {
-    const at = src.indexOf('const toggleVoice');
-    const body = src.slice(at, at + 700);
+    const at = engines.indexOf('const toggleVoice');
+    const body = engines.slice(at, at + 700);
     expect(body).toMatch(/realtime\.isActive\.value.*realtime\.stop\(\)/s);
-    expect(body).toMatch(/voice\.isActive\.value.*voice\.stop\(\)/s);
+    expect(body).toMatch(/cascade\.isActive\.value.*cascade\.stop\(\)/s);
   });
 
   it('the status strip says which engine is live', () => {
@@ -297,10 +322,10 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     // Waiting for the falling edge of isStreaming before speaking a word means
     // silence for as long as the turn takes. The answer arrives progressively,
     // so it is emitted progressively.
-    expect(src).toMatch(/import\s*\{\s*createSentenceChunker\s*\}\s*from\s*'@\/voice\/sentenceChunker'/);
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2600);
-    expect(body).toMatch(/runAgntForVoice = \(instruction, emit\)/);
+    expect(engines).toMatch(/import\s*\{\s*createSentenceChunker\s*\}\s*from\s*'\.\.\/voice\/sentenceChunker\.js'/);
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2600);
+    expect(body).toMatch(/runAgntForVoice = \(userMessage, emit\)/);
     expect(body).toMatch(/chunker\.push\(/);
     expect(body).toMatch(/chunker\.flush\(\)/);
     expect(body).toMatch(/emit\(chunk\)/);
@@ -316,9 +341,9 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
      * So only the answer's opening paragraph is spoken. It stays a literal
      * prefix of the written answer, so the two cannot contradict.
      */
-    expect(src).toMatch(/import\s*\{\s*spokenRegister\s*\}\s*from\s*'@\/voice\/voiceReplyPolicy'/);
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2800);
+    expect(engines).toMatch(/import\s*\{\s*spokenRegister\s*\}\s*from\s*'\.\.\/voice\/voiceReplyPolicy\.js'/);
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2800);
     expect(body).toMatch(/chunker\.push\(spokenRegister\(raw\)\)/);
   });
 
@@ -326,25 +351,25 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     // The store consumes the arm on the very next send, so it has to be armed
     // first; arming after triggerSubmit would mark the turn AFTER the one it
     // belongs to.
-    expect(src).toMatch(/import\s*\{\s*armVoiceTurn\s*\}\s*from\s*'@\/services\/voiceTurn'/);
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2800);
-    expect(body).toMatch(/armVoiceTurn\(instruction\)/);
-    expect(body.indexOf('armVoiceTurn(instruction)')).toBeLessThan(body.indexOf('triggerSubmit()'));
+    expect(engines).toMatch(/import\s*\{\s*armVoiceTurn\s*\}\s*from\s*'\.\.\/services\/voiceTurn\.js'/);
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2800);
+    expect(body).toMatch(/armVoiceTurn\(userMessage\)/);
+    expect(body.indexOf('armVoiceTurn(userMessage)')).toBeLessThan(body.indexOf('submit(userMessage)'));
   });
 
   it('reuses the tested chunker rather than re-deriving sentences or stripping', () => {
     // sentenceChunker owns both "where does a sentence end" (it will not split
     // v2.17.2) and "what must never be read aloud". A second definition of
     // either would drift from it.
-    expect(src).not.toMatch(/function stripUnspeakable/);
-    expect(src).not.toMatch(/replace\(\/```/);
-    expect(src).not.toMatch(/split\(\/\[\.\!\?\]/);
+    expect(engines).not.toMatch(/function stripUnspeakable/);
+    expect(engines).not.toMatch(/replace\(\/```/);
+    expect(engines).not.toMatch(/split\(\/\[\.\!\?\]/);
   });
 
   it('tears BOTH watchers down before resolving', () => {
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2600);
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2600);
     expect(body).toMatch(/stopContent\(\);\s*\n\s*stopStream\(\);/);
     expect(body.indexOf('stopStream();')).toBeLessThan(body.indexOf('resolve(spokeSomething'));
   });
@@ -364,36 +389,45 @@ describe('the voice is locked to its conversation, like every other chat state',
    *      resolved off a different chat's reply
    */
   let src;
+  let engines;
   beforeEach(() => {
     src = fs.readFileSync(BASE_SCREEN, 'utf8');
+    engines = fs.readFileSync(ENGINES, 'utf8');
   });
 
   it('a conversation switch stops BOTH engines, not just the cascade', () => {
-    expect(src).toMatch(/stopAllVoiceSessions = \(\) => \{[\s\S]{0,200}realtime\.stop\(\)/);
-    expect(src).toMatch(/stopAllVoiceSessions = \(\) => \{[\s\S]{0,200}voice\.stop\(\)/);
-    const at = src.indexOf('chat/SET_ACTIVE_CONVERSATION');
-    expect(src.slice(at, at + 1200)).toMatch(/stopAllVoiceSessions\(\)/);
+    // stopVoice owns both, so the host cannot stop one and forget the other —
+    // which is exactly how the realtime session came to survive a switch.
+    const at = engines.indexOf('const stopVoice');
+    const body = engines.slice(at, at + 300);
+    expect(body).toMatch(/cascade\.stop\(\)/);
+    expect(body).toMatch(/realtime\.stop\(\)/);
+
+    expect(src).toMatch(/stopAllVoiceSessions = stopVoice;/);
+    const mutation = src.indexOf('chat/SET_ACTIVE_CONVERSATION');
+    expect(src.slice(mutation, mutation + 1200)).toMatch(/stopAllVoiceSessions\(\)/);
   });
 
-  it('the stop hook is assigned, not referenced — the engines are in TDZ there', () => {
-    // The subscriber is registered ~300 lines before the engines exist; a
-    // mutation during setup would otherwise throw on their temporal dead zone.
+  it('the stop hook is assigned, not referenced — the composable is in TDZ there', () => {
+    // The subscriber is registered ~300 lines before useVoiceEngines is
+    // called; a mutation during setup would otherwise throw on the temporal
+    // dead zone of its return values.
     expect(src).toMatch(/let stopAllVoiceSessions = \(\) => \{\};/);
     expect(src.indexOf('let stopAllVoiceSessions')).toBeLessThan(
       src.indexOf('chat/SET_ACTIVE_CONVERSATION')
     );
-    expect(src.indexOf('stopAllVoiceSessions = () => {\n      if (voice')).toBeGreaterThan(
-      src.indexOf('const realtime = useRealtimeVoice')
+    expect(src.indexOf('stopAllVoiceSessions = stopVoice;')).toBeGreaterThan(
+      src.indexOf('= useVoiceEngines({')
     );
   });
 
   it('an in-flight run is bound to the conversation it started in', () => {
-    const at = src.indexOf('const runAgntForVoice');
-    const body = src.slice(at, at + 2800);
-    expect(body).toMatch(/const epochAtStart = conversationEpoch\.value/);
+    const at = engines.indexOf('const runAgntForVoice');
+    const body = engines.slice(at, at + 2800);
+    expect(body).toMatch(/const epochAtStart = currentEpoch\(\)/);
     // BOTH watchers must check it: the content watcher (or it speaks another
     // chat's reply) and the completion watcher (or it resolves off one).
-    expect(body.match(/conversationEpoch\.value !== epochAtStart/g) || []).toHaveLength(2);
+    expect(body.match(/currentEpoch\(\) !== epochAtStart/g) || []).toHaveLength(2);
   });
 
   it('REGRESSION: the binding is an EPOCH, never the conversation id', () => {

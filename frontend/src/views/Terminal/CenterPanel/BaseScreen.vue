@@ -270,11 +270,7 @@ import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
-import { useVoiceSession } from '@/composables/useVoiceSession';
-import { useRealtimeVoice } from '@/composables/useRealtimeVoice';
-import { createSentenceChunker } from '@/voice/sentenceChunker';
-import { spokenRegister } from '@/voice/voiceReplyPolicy';
-import { armVoiceTurn } from '@/services/voiceTurn';
+import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
@@ -699,56 +695,17 @@ export default {
       focusInput();
     };
 
-    // ---- hands-free voice conversation ---------------------------------
+    // ---- voice ----------------------------------------------------------
     //
-    // Declared after triggerSubmit/isStreaming because it closes over both.
+    // Both engines, the run_agnt bridge and the two-register split live in
+    // useVoiceEngines. This screen supplies only what genuinely differs
+    // between chat surfaces: how to send, what is streaming, and when the
+    // conversation changed.
     //
-    // No onSteer handler on purpose: this screen ALREADY turns a submit during
-    // a live turn into a mid-run steer (that is what the "Steer pending" chip
-    // above is). Routing voice through the same triggerSubmit means an
-    // interruption becomes a steer through the exact path the keyboard uses,
-    // rather than a second, parallel implementation that can drift from it.
-    const voice = useVoiceSession({
-      onCommit: ({ text }) => {
-        currentUserInput.value = text;
-        triggerSubmit();
-      },
-      getAgents: () => {
-        const list = store.getters['agents/allAgents'];
-        return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
-      },
-    });
-
-    // Bridge the assistant stream into the voice pipeline. Watching the store's
-    // rendered message rather than tapping SSE keeps one decoder for every
-    // surface — a second subscriber is a second place for the protocol to rot.
-    watch(
-      () => {
-        if (!voice.isActive.value) return null;
-        const list = store.state.chat.messages || [];
-        const last = list[list.length - 1];
-        return last && last.role === 'assistant' ? last.content || '' : null;
-      },
-      (content) => {
-        if (content === null) return;
-        voice.handleStreamEvent('content_delta', { accumulated: content });
-      }
-    );
-
-    watch(isStreaming, (streaming, was) => {
-      if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
-    });
-
-    // ---- natural voice (speech-to-speech, orchestrator behind it) --------
-    //
-    // The cascade above loses prosody the moment speech becomes text, and no
-    // TTS can put it back. A speech-to-speech model keeps the audio end to end
-    // — but on its own it has no tools, agents, workspace or memory.
-    //
-    // So it gets exactly one tool, `run_agnt`, wired straight into THIS
-    // screen's normal send path. The model is the ears and the mouth; the
-    // orchestrator stays the brain. The turn lands in the chat like any other,
-    // with the full tool surface, and the model speaks the result.
+    // `submit` deliberately routes through triggerSubmit rather than calling
+    // the store directly: a submit during a live turn is ALREADY a mid-run
+    // steer on this screen (the "Steer pending" chip), so voice takes the
+    // exact path the keyboard takes instead of a parallel one that can drift.
 
     /** The assistant text currently streaming, or '' when there is none. */
     const streamingAnswer = () => {
@@ -757,156 +714,34 @@ export default {
       return last && last.role === 'assistant' ? last.content || '' : '';
     };
 
-    /**
-     * Run an instruction through the orchestrator, speaking her answer SENTENCE
-     * BY SENTENCE as it arrives.
-     *
-     * WHY NOT WAIT FOR THE WHOLE TURN
-     * -------------------------------
-     * The first version resolved on the falling edge of isStreaming, so nothing
-     * was spoken until the entire turn had finished — seconds on a plain
-     * answer, a minute on a tool-heavy one. The user just hears silence, which
-     * is the difference between a conversation and a form submission. The
-     * answer arrives progressively, so it can be spoken progressively: `emit`
-     * hands over each sentence the moment it is complete, and the first one
-     * starts the voice.
-     *
-     * TWO REGISTERS, NOT A SUMMARY
-     * ----------------------------
-     * Only the answer's OPENING PARAGRAPH is spoken; everything after the first
-     * blank line is for the eye. The turn is marked as spoken before it is
-     * submitted, and the backend asks for the answer in that shape
-     * (system-prompts/voiceRegister.js), so the split is authored rather than
-     * derived — the writer knows the shape of the answer before writing it,
-     * which no downstream summariser reading a stream ever can.
-     *
-     * The spoken text stays a literal PREFIX of the written text, so the voice
-     * and the screen cannot contradict each other.
-     *
-     * WHY THE CHUNKER RATHER THAN THE RAW TEXT
-     * ----------------------------------------
-     * The model speaks what it is given VERBATIM, which is what keeps the
-     * screen and the voice in agreement — and that is only survivable if the
-     * text is speakable. sentenceChunker is the tested definition of both
-     * "where does a sentence end" (it will not split `v2.17.2` or `index.js`)
-     * and "what must never be read aloud" (fenced code and tables become "I
-     * have put the code in the chat"). Reusing it rather than re-deriving
-     * either rule is what stops the two definitions drifting apart.
-     *
-     * BOUND TO ITS CONVERSATION — BY EPOCH, NOT BY ID
-     * ------------------------------------------------
-     * `triggerSubmit` and `isStreaming` both act on whatever conversation is
-     * active RIGHT NOW, so a switch mid-run would deliver the instruction into
-     * the new chat and then speak that chat's reply. The run therefore checks
-     * that it is still in the conversation it began in.
-     *
-     * It checks the EPOCH, not the conversation id. Comparing ids was a real
-     * regression: on the first send the backend assigns the conversation its
-     * permanent id, `activeConversationId` changes, and an id comparison calls
-     * that a switch — so the run aborted, resolved empty, and the voice said
-     * "AGNT returned nothing" over the first message of every new chat. Only
-     * genuine navigation bumps the epoch; see conversationEpoch above.
-     */
-    const runAgntForVoice = (instruction, emit) =>
-      new Promise((resolve) => {
-        const epochAtStart = conversationEpoch.value;
-        const chunker = createSentenceChunker();
-        let spokeSomething = false;
-
-        const speak = (chunks) => {
-          for (const chunk of chunks) {
-            if (!chunk.trim()) continue;
-            spokeSomething = true;
-            emit(chunk);
-          }
-        };
-
-        // Arm BEFORE submitting: the store consumes this on the very next
-        // send, matched by text, so only this turn is marked as spoken.
-        armVoiceTurn(instruction);
-        currentUserInput.value = instruction;
-        triggerSubmit();
-
-        const stopContent = watch(streamingAnswer, (raw) => {
-          if (conversationEpoch.value !== epochAtStart) return;
-          // Only the spoken register. Once the blank line arrives this stops
-          // growing, so the chunker naturally falls silent for the detail.
-          speak(chunker.push(spokenRegister(raw)));
-        });
-
-        const stopStream = watch(isStreaming, (streaming, was) => {
-          if (!(was && !streaming)) return;
-          // Both watchers are torn down BEFORE resolving: one left alive fires
-          // on every later turn and resolves stale promises, which would have
-          // the model speak an answer to a different question.
-          stopContent();
-          stopStream();
-
-          if (conversationEpoch.value !== epochAtStart) {
-            resolve(''); // switched away; the session is being stopped anyway
-            return;
-          }
-
-          speak(chunker.flush());
-          // The return value only answers the call when NOTHING streamed —
-          // otherwise the first emitted sentence already did.
-          resolve(spokeSomething ? '' : 'I have put the answer in the chat.');
-        });
-      });
-
-    const realtime = useRealtimeVoice({
+    const {
+      voiceActive,
+      voiceState,
+      voicePartial,
+      voiceError,
+      voiceNatural,
+      voiceLevel,
+      toggleVoice,
+      stopVoice,
+    } = useVoiceEngines({
       surface: 'chat',
-      onRunAgnt: runAgntForVoice,
-      // Transcripts of turns that went through run_agnt are NOT written to the
-      // chat here — runAgntForVoice already put both sides there via the normal
-      // send path. The composable only records a turn the model answered
-      // ENTIRELY on its own, which its instructions forbid; see the buffering
-      // comment in useRealtimeVoice.js for why that safety net exists.
+      submit: (text) => {
+        currentUserInput.value = text;
+        triggerSubmit();
+      },
+      streamingAnswer,
+      isStreaming,
+      epoch: conversationEpoch,
+      getAgents: () => {
+        const list = store.getters['agents/allAgents'];
+        return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
+      },
     });
 
-    // Both engines exist now, so the conversation-switch handler above can
-    // reach them. See stopAllVoiceSessions for why this is assigned rather
-    // than referenced directly.
-    stopAllVoiceSessions = () => {
-      if (voice.isActive.value) voice.stop();
-      if (realtime.isActive.value) realtime.stop();
-    };
-
-    /**
-     * One button, best available engine.
-     *
-     * Natural voice needs OpenAI credit; when it is not available the session
-     * refuses cleanly (`unavailable`) and we fall through to the cascade rather
-     * than showing an error for something the user cannot act on mid-sentence.
-     */
-    const toggleVoice = async () => {
-      if (realtime.isActive.value) return realtime.stop();
-      if (voice.isActive.value) return voice.stop();
-
-      if (realtime.isSupported) {
-        const ok = await realtime.start();
-        if (ok) return true;
-        if (!realtime.unavailable.value) return false; // a real failure, already surfaced
-      }
-      return voice.toggle();
-    };
-
-    // The two engines share one set of view bindings, so the composer does not
-    // have to know which one is running.
-    const voiceActive = computed(() => realtime.isActive.value || voice.isActive.value);
-    const voiceState = computed(() => {
-      if (!realtime.isActive.value) return voice.state.value;
-      // Map realtime's vocabulary onto the cascade's so the existing status
-      // strip and button tints keep working unchanged.
-      return { connecting: 'thinking', working: 'thinking', listening: 'listening', speaking: 'speaking' }[
-        realtime.state.value
-      ] || 'listening';
-    });
-    const voicePartial = computed(() =>
-      realtime.isActive.value ? realtime.assistantPartial.value : voice.partialTranscript.value
-    );
-    const voiceError = computed(() => (realtime.isActive.value ? realtime.error.value : voice.error.value));
-    const voiceNatural = computed(() => realtime.isActive.value);
+    // The mutation subscriber above is registered before this call runs, so it
+    // reaches the engines through an assigned hook rather than by name — see
+    // stopAllVoiceSessions.
+    stopAllVoiceSessions = stopVoice;
 
 
     const handlePanelAction = async (action, payload) => {
@@ -1733,7 +1568,7 @@ export default {
       // Hands-free voice conversation
       voiceActive,
       voiceState,
-      voiceLevel: voice.level,
+      voiceLevel,
       voiceError,
       voicePartial,
       voiceNatural,

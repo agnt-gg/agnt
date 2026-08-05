@@ -40,6 +40,7 @@
             <template v-else-if="voiceState === 'thinking'">Thinking…</template>
             <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
             <template v-else>Voice ready</template>
+            <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
           </span>
           <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
         </div>
@@ -91,7 +92,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '../../../../Chat/components/MessageItem.vue';
 import ProcessingState from '../../../../Chat/components/ProcessingState.vue';
 import QuickActions from '../../../../Chat/components/QuickActions.vue';
-import { useVoiceSession } from '@/composables/useVoiceSession';
+import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const initialSuggestions = [
@@ -132,60 +133,56 @@ const dataCache = computed(() => store.state.chat.dataCache);
 // Processing state from store
 const isProcessing = computed(() => store.state.chat.isStreaming);
 
-// ---- hands-free voice conversation ------------------------------------
+// ---- voice ------------------------------------------------------------
 //
-// Same wiring as BaseScreen: commit types-and-sends through the existing
-// path, the reply is spoken from the store's rendered message (one stream
-// decoder for every surface), and the falling edge of isProcessing is `done`.
-// eslint-disable-next-line no-use-before-define -- onCommit runs at commit
-// time, long after setup; sendChatMessage exists by then.
-const voice = useVoiceSession({
-  onCommit: ({ text }) => {
+// Identical to every other chat, because it is the same code: both engines,
+// the run_agnt bridge and the two-register split live in useVoiceEngines.
+// This tab supplies only what differs here.
+
+/**
+ * Genuine navigation. Switching agents swaps the whole conversation under this
+ * tab, so a session that survived it would keep committing into whichever
+ * agent is now selected.
+ */
+const conversationEpoch = ref(0);
+watch(() => props.selectedAgent?.id, () => { conversationEpoch.value += 1; });
+
+/**
+ * The agent's reply currently streaming, or ''.
+ *
+ * Agent replies arrive with role 'agent' here (they are mapped to 'assistant'
+ * only in formattedChatMessages), so this matches on "not the user" rather
+ * than a role literal this store never writes.
+ */
+const streamingAnswer = () => {
+  const list = chatMessages.value || [];
+  const last = list[list.length - 1];
+  return last && last.role !== 'user' ? last.content || '' : '';
+};
+
+const {
+  voiceActive,
+  voiceState,
+  voicePartial,
+  voiceError,
+  voiceNatural,
+  toggleVoice,
+} = useVoiceEngines({
+  surface: 'agent',
+  // eslint-disable-next-line no-use-before-define -- submit runs at commit
+  // time, long after setup; sendChatMessage exists by then.
+  submit: (text) => {
     chatInput.value = text;
     sendChatMessage();
   },
+  streamingAnswer,
+  isStreaming: isProcessing,
+  epoch: conversationEpoch,
   getAgents: () => {
     const list = store.getters['agents/allAgents'];
     return Array.isArray(list) ? list.map((a) => ({ id: a.id, name: a.name })) : [];
   },
 });
-
-watch(
-  () => {
-    if (!voice.isActive.value) return null;
-    const list = chatMessages.value || [];
-    const last = list[list.length - 1];
-    // Agent replies arrive with role 'agent' here (mapped to 'assistant' only
-    // in formattedChatMessages), so match on "not the user" rather than a
-    // role literal this store does not use.
-    return last && last.role !== 'user' ? last.content || '' : null;
-  },
-  (content) => {
-    if (content === null) return;
-    voice.handleStreamEvent('content_delta', { accumulated: content });
-  }
-);
-
-watch(isProcessing, (streaming, was) => {
-  if (was && !streaming && voice.isActive.value) voice.handleStreamEvent('done', {});
-});
-
-// The mic belongs to the agent it was opened for. Switching agents swaps the
-// whole conversation under this tab — a session that survives that keeps
-// committing into whichever agent is now selected.
-watch(
-  () => props.selectedAgent?.id,
-  () => {
-    if (voice.isActive.value) voice.stop();
-  }
-);
-
-// Template aliases (script setup exposes top-level bindings, not `voice.x`).
-const voiceActive = voice.isActive;
-const voiceState = voice.state;
-const voicePartial = voice.partialTranscript;
-const voiceError = voice.error;
-const toggleVoice = voice.toggle;
 
 let localMessageIdCounter = 0;
 const generateMessageId = () => `agent-msg-${Date.now()}-${localMessageIdCounter++}`;
@@ -667,6 +664,19 @@ h3.section-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Which engine is live — see BaseScreen for the same rule. */
+.voice-engine-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(var(--blue-rgb), 0.18);
+  color: var(--status-blue-text);
 }
 
 .voice-end-btn {
