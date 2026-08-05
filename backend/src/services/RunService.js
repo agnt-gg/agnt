@@ -60,7 +60,7 @@ class RunService {
       // conversation, so the save stamps the read watermark atomically with
       // the change. See ContentOutputModel.createOrUpdate for why this must
       // be one write, not a save followed by a markRead PATCH.
-      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, viewing } = req.body;
+      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, viewing, channelKey } = req.body;
       const userId = req.user.userId;
 
       // Check if the output already exists
@@ -88,7 +88,7 @@ class RunService {
         contentType || 'html',
         conversationId || null,
         title || null,
-        { viewing: viewing === true }
+        { viewing: viewing === true, channelKey: channelKey || null }
       );
 
       // The row's list metadata (no content column) rides on BOTH the
@@ -144,6 +144,35 @@ class RunService {
    * 404 (not 500) when nothing is saved yet: "this conversation has no saved
    * transcript" is a normal answer, and the caller falls back to the log.
    */
+  /**
+   * Assign a saved row to the chat channel that owns it.
+   *
+   * PATCH rather than a re-save: the only thing changing is ownership, and a
+   * re-save would ship the whole transcript back (megabytes, per row) purely
+   * to write one string. Used by the client's one-time repair sweep for rows
+   * written before channel scope existed.
+   */
+  async setContentOutputChannel(req, res) {
+    try {
+      const { id } = req.params;
+      const { channelKey } = req.body;
+      const userId = req.user.userId || req.user.id;
+
+      if (channelKey !== null && typeof channelKey !== 'string') {
+        return res.status(400).json({ error: 'channelKey must be a string or null' });
+      }
+
+      const changes = await ContentOutputModel.setChannelKey(id, userId, channelKey || null);
+      if (changes === 0) {
+        // Not found OR not theirs — indistinguishable on purpose.
+        return res.status(404).json({ error: 'Content output not found' });
+      }
+      res.json({ id, channelKey: channelKey || null });
+    } catch (error) {
+      console.error('Error setting content output channel:', error);
+      res.status(500).json({ error: 'Error setting content output channel' });
+    }
+  }
   async getContentOutputByConversation(req, res) {
     try {
       const { conversationId } = req.params;

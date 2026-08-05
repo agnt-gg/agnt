@@ -249,6 +249,22 @@ const initializeApp = async () => {
       resumeInflightRuns(store).catch((err) => {
         console.warn('[runResume] Reattach sweep failed:', err?.message || err);
       });
+
+      // One-time repair for transcripts saved before chat channels declared
+      // their ownership: without it every workspace / artifact / widget chat
+      // stays listed among the user's real conversations. Refetch the list
+      // only when something actually moved, so the sidebar corrects itself
+      // now rather than on the next restart.
+      store.dispatch('chatUnified/reclaimChannelScopes')
+        .then((r) => {
+          if (r?.scoped) {
+            console.log(`[chatScope] Reclaimed ${r.scoped}/${r.total} channel transcript(s)`);
+            store.dispatch('contentOutputs/fetchOutputs', { force: true });
+          }
+        })
+        .catch((err) => {
+          console.warn('[chatScope] Scope reclaim failed:', err?.message || err);
+        });
     }, { timeout: 2000 });
   } catch (error) {
     console.error('Failed to initialize app:', error);

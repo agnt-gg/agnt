@@ -149,6 +149,7 @@ export async function saveTranscript({
   agentId = null,
   agentName = null,
   viewing = false,
+  channelKey = null,
 } = {}) {
   if (!conversationId) return { ok: false, error: 'no_conversation_id' };
   if (!messages.length) return { ok: false, error: 'empty' };
@@ -165,6 +166,11 @@ export async function saveTranscript({
         isShareable: false,
         title,
         viewing,
+        // Which surface owns this transcript. Absent (main chat) means it is
+        // an item in the user's conversation list; present means it belongs
+        // to the workspace/artifact/widget it was typed into, and the list
+        // must not show it.
+        channelKey,
       }),
     });
     if (!res.ok) return { ok: false, error: `http_${res.status}` };
@@ -213,6 +219,37 @@ export async function loadTranscriptByConversationId(conversationId) {
   }
 }
 
+/**
+ * Tell the server that a saved row belongs to a chat channel.
+ *
+ * Repair path for transcripts written before channel scope existed, when every
+ * embedded chat's transcript landed in the main conversation list. Only the
+ * client knows which conversation belongs to which channel, so only the client
+ * can repair it.
+ *
+ * @returns {Promise<boolean>} true when the row is now scoped.
+ */
+export async function scopeTranscriptToChannel(outputId, channelKey) {
+  if (!outputId || !channelKey) return false;
+  try {
+    const res = await fetch(
+      `${API_CONFIG.BASE_URL}/content-outputs/${encodeURIComponent(outputId)}/channel`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ channelKey }),
+      },
+    );
+    // A 404 means the row is gone (deleted, or never ours). Nothing to repair,
+    // and retrying next boot would never succeed either.
+    if (res.status === 404) return true;
+    return res.ok;
+  } catch (e) {
+    console.warn('[conversationTranscript] scope failed:', e?.message || e);
+    return false;
+  }
+}
+
 export default {
   toStoredMessage,
   serializeTranscript,
@@ -220,4 +257,5 @@ export default {
   deriveTitle,
   saveTranscript,
   loadTranscriptByConversationId,
+  scopeTranscriptToChannel,
 };

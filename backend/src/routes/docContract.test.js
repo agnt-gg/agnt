@@ -247,18 +247,41 @@ describe('API documentation contract', () => {
   it('every environment variable the docs tell users to set is actually read', () => {
     const known = new Set();
 
+    // Every filesystem call here tolerates the entry disappearing between the
+    // moment it was listed and the moment it is read. This walk covers
+    // backend/src AND frontend/src, and other suites legitimately create and
+    // delete fixture files in those trees while it runs — so an ENOENT here
+    // means "something else was busy", never "the docs are wrong". Swallowing
+    // it cannot hide a real violation: a file that vanished contributed no
+    // env names either way, and the `known.size > 100` sanity check below
+    // still fails loudly if the scan silently collapses.
     const scan = (p) => {
-      const st = fs.existsSync(p) && fs.statSync(p);
-      if (!st) return;
+      let st;
+      try {
+        st = fs.statSync(p);
+      } catch {
+        return;
+      }
       if (st.isFile()) {
         if (!/\.(js|mjs|cjs|ts|vue)$/.test(p)) return;
-        const t = fs.readFileSync(p, 'utf8');
+        let t;
+        try {
+          t = fs.readFileSync(p, 'utf8');
+        } catch {
+          return;
+        }
         for (const m of t.matchAll(/process\.env\.([A-Z0-9_]+)/g)) known.add(m[1]);
         for (const m of t.matchAll(/process\.env\[['"]([A-Z0-9_]+)['"]\]/g)) known.add(m[1]);
         for (const m of t.matchAll(/import\.meta\.env\.([A-Z0-9_]+)/g)) known.add(m[1]);
         return;
       }
-      for (const e of fs.readdirSync(p)) {
+      let entries;
+      try {
+        entries = fs.readdirSync(p);
+      } catch {
+        return;
+      }
+      for (const e of entries) {
         if (e === 'node_modules' || e === 'dist' || e === '.git') continue;
         scan(path.join(p, e));
       }

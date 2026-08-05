@@ -14,6 +14,7 @@ import {
   deriveTitle,
   saveTranscript,
   loadTranscriptByConversationId,
+  scopeTranscriptToChannel,
 } from './conversationTranscript.js';
 
 /** The canvas turn, as it lives in memory after streaming. */
@@ -148,6 +149,18 @@ describe('saveTranscript', () => {
     expect(JSON.parse(global.fetch.mock.calls[0][1].body).id).toBe('out-9');
   });
 
+  it('tells the server which channel owns the transcript', async () => {
+    // Absent this, the row is indistinguishable from a main-chat conversation
+    // and the sidebar lists every workspace and widget chat.
+    await saveTranscript({ conversationId: 'c1', messages: LIVE_TURN, channelKey: 'workspace:ws-1' });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).channelKey).toBe('workspace:ws-1');
+  });
+
+  it('sends no channel for a main-chat save', async () => {
+    await saveTranscript({ conversationId: 'c1', messages: LIVE_TURN });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).channelKey).toBeNull();
+  });
+
   it('refuses to save without a conversation id, rather than orphaning a row', async () => {
     expect(await saveTranscript({ messages: LIVE_TURN })).toEqual({ ok: false, error: 'no_conversation_id' });
     expect(global.fetch).not.toHaveBeenCalled();
@@ -163,6 +176,45 @@ describe('saveTranscript', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(await saveTranscript({ conversationId: 'c1', messages: LIVE_TURN })).toMatchObject({ ok: false });
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe('scopeTranscriptToChannel', () => {
+  beforeEach(() => localStorage.setItem('token', 'tok'));
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
+
+  it('PATCHes the row with its owning channel', async () => {
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200 }));
+
+    expect(await scopeTranscriptToChannel('out-9', 'workspace:ws-1')).toBe(true);
+    const [url, init] = global.fetch.mock.calls[0];
+    expect(url).toMatch(/\/content-outputs\/out-9\/channel$/);
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body)).toEqual({ channelKey: 'workspace:ws-1' });
+  });
+
+  it('treats a missing row as repaired, so the sweep never retries it forever', async () => {
+    global.fetch = vi.fn(async () => ({ ok: false, status: 404 }));
+    expect(await scopeTranscriptToChannel('gone', 'workspace:ws-1')).toBe(true);
+  });
+
+  it('reports failure when the server errors, so the sweep retries next launch', async () => {
+    global.fetch = vi.fn(async () => ({ ok: false, status: 500 }));
+    expect(await scopeTranscriptToChannel('out-9', 'workspace:ws-1')).toBe(false);
+  });
+
+  it('reports failure when offline rather than throwing', async () => {
+    global.fetch = vi.fn(async () => { throw new Error('offline'); });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await scopeTranscriptToChannel('out-9', 'workspace:ws-1')).toBe(false);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('does nothing without both an id and a channel', async () => {
+    global.fetch = vi.fn();
+    expect(await scopeTranscriptToChannel(null, 'workspace:ws-1')).toBe(false);
+    expect(await scopeTranscriptToChannel('out-9', null)).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
