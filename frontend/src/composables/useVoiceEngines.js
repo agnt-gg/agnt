@@ -49,12 +49,13 @@
  * fooled by a rename.
  */
 
-import { computed, watch } from 'vue';
+import { computed, watch, onUnmounted, onDeactivated } from 'vue';
 import { useVoiceSession } from './useVoiceSession.js';
 import { useRealtimeVoice } from './useRealtimeVoice.js';
 import { createSentenceChunker } from '../voice/sentenceChunker.js';
 import { spokenRegister } from '../voice/voiceReplyPolicy.js';
 import { armVoiceTurn } from '../services/voiceTurn.js';
+import { claimVoiceFloor, releaseVoiceFloor } from '../voice/voiceFloor.js';
 
 /**
  * The realtime engine's states, expressed in the cascade's vocabulary so a
@@ -207,32 +208,79 @@ export function useVoiceEngines(options = {}) {
   // ---- one button, best available engine --------------------------------
 
   /**
+   * This host's claim on the app-wide voice floor, or null when it is not the
+   * one listening. See voiceFloor.js — several hosts are alive at once, so
+   * "am I the session?" is not a question this instance can answer alone.
+   */
+  let floorTicket = null;
+
+  const releaseFloor = () => {
+    if (floorTicket === null) return;
+    releaseVoiceFloor(floorTicket);
+    floorTicket = null;
+  };
+
+  /** End every live session here, and give up the floor. */
+  const stopVoice = () => {
+    if (cascade.isActive.value) cascade.stop();
+    if (realtime.isActive.value) realtime.stop();
+    releaseFloor();
+  };
+
+  /**
    * Natural voice needs OpenAI credit. When it is not available the session
    * refuses cleanly (`unavailable`) and we fall through to the cascade rather
    * than showing an error for something the user cannot act on mid-sentence.
    */
   const toggleVoice = async () => {
-    if (realtime.isActive.value) return realtime.stop();
-    if (cascade.isActive.value) return cascade.stop();
+    // Reads the engines directly rather than the `voiceActive` binding below:
+    // that computed is declared later in this setup, and depending on hoisting
+    // order for a control path is a trap the next edit would spring.
+    if (cascade.isActive.value || realtime.isActive.value) {
+      stopVoice();
+      return false;
+    }
+
+    // Claimed BEFORE any microphone is opened, so two surfaces never overlap
+    // even for the length of the realtime handshake. This ends whatever
+    // session another chat left running.
+    floorTicket = claimVoiceFloor(stopVoice);
 
     if (realtime.isSupported) {
       const ok = await realtime.start();
       if (ok) return true;
-      if (!realtime.unavailable.value) return false; // a real failure, already surfaced
+      if (!realtime.unavailable.value) {
+        releaseFloor(); // a real failure, already surfaced
+        return false;
+      }
     }
-    return cascade.toggle();
-  };
-
-  /** End every live session. Call this when the conversation changes. */
-  const stopVoice = () => {
-    if (cascade.isActive.value) cascade.stop();
-    if (realtime.isActive.value) realtime.stop();
+    const started = await cascade.toggle();
+    // Holding the floor for a session that never opened would silently mute
+    // the next chat's button, so a failed start gives it straight back.
+    if (!started) releaseFloor();
+    return started;
   };
 
   // A conversation switch ends any live session: the mic belongs to the
   // conversation it was opened in, and a session that outlives it keeps
   // committing into whichever chat is now on screen.
   if (epoch) watch(epoch, stopVoice);
+
+  /**
+   * A session must not outlive the chat you can see.
+   *
+   * Terminal.vue caches screens in <KeepAlive>, so navigating away DEACTIVATES
+   * a host instead of unmounting it: onUnmounted never runs, and the session
+   * used to keep its microphone open and keep committing into a conversation
+   * that was no longer on screen. Deactivation is the only signal that
+   * navigation happened, because the host's own `epoch` only knows about
+   * switches WITHIN itself.
+   *
+   * Both engines already stop themselves on unmount; this also releases the
+   * floor, so a torn-down host cannot leave it held for ever.
+   */
+  onDeactivated(stopVoice);
+  onUnmounted(stopVoice);
 
   // ---- one set of view bindings, whichever engine is running -------------
 

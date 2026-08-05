@@ -297,20 +297,42 @@ describe('natural voice (speech-to-speech) is reachable and orchestrator-backed'
     expect(body).not.toMatch(/setTimeout/);
   });
 
+  /**
+   * Slice a top-level arrow function's body by its STRUCTURE.
+   *
+   * These two tests used a fixed `+700` character window, which silently
+   * stopped covering the function the moment it grew a comment — and then
+   * failed for a reason that had nothing to do with the behaviour they name.
+   * A boundary the source actually has cannot drift like that.
+   */
+  const bodyOf = (decl) => {
+    const at = engines.indexOf(decl);
+    expect(at, `${decl} not found in useVoiceEngines`).toBeGreaterThan(-1);
+    const end = engines.indexOf('\n  };', at);
+    expect(end, `${decl} has no closing brace at top level`).toBeGreaterThan(at);
+    return engines.slice(at, end);
+  };
+
   it('falls back to the cascade when natural voice is unavailable', () => {
     // No credit is a normal state, and an error the user cannot act on
     // mid-sentence is worse than quietly using the engine that works.
-    const at = engines.indexOf('const toggleVoice');
-    const body = engines.slice(at, at + 700);
+    const body = bodyOf('const toggleVoice = async () => {');
     expect(body).toMatch(/realtime\.unavailable\.value/);
     expect(body).toMatch(/cascade\.toggle\(\)/);
   });
 
   it('one button drives whichever engine is running', () => {
-    const at = engines.indexOf('const toggleVoice');
-    const body = engines.slice(at, at + 700);
-    expect(body).toMatch(/realtime\.isActive\.value.*realtime\.stop\(\)/s);
-    expect(body).toMatch(/cascade\.isActive\.value.*cascade\.stop\(\)/s);
+    // Pressing the button while EITHER engine is live must end the session,
+    // not start a second one. The stopping itself lives in stopVoice, which
+    // the conversation-switch guard and the teardown hooks also call — one
+    // implementation, so the button and a navigation cannot disagree.
+    const toggle = bodyOf('const toggleVoice = async () => {');
+    expect(toggle).toMatch(/cascade\.isActive\.value.*realtime\.isActive\.value/s);
+    expect(toggle).toMatch(/stopVoice\(\)/);
+
+    const stop = bodyOf('const stopVoice = () => {');
+    expect(stop).toMatch(/cascade\.isActive\.value.*cascade\.stop\(\)/s);
+    expect(stop).toMatch(/realtime\.isActive\.value.*realtime\.stop\(\)/s);
   });
 
   it('the status strip says which engine is live', () => {

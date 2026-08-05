@@ -131,6 +131,65 @@ describe('the engines have exactly one consumer', () => {
   });
 });
 
+describe('only one surface can be listening', () => {
+  /**
+   * A host cannot answer "is another chat already listening?" about itself,
+   * and several are alive at once (KeepAlive caches screens; panel chats stay
+   * mounted behind whatever is on top). That is how one utterance ended up
+   * committed into two conversations with both answers spoken over each other.
+   *
+   * The floor is the app-wide answer. These assert the seam is actually wired,
+   * because voiceExclusivity.spec.js can only prove the behaviour of the
+   * composable as written today — it cannot notice a host that starts an
+   * engine by some other route tomorrow.
+   */
+  const src = read(ENGINES);
+
+  it('useVoiceEngines claims the floor before opening a microphone', () => {
+    expect(src).toMatch(/import\s*\{[^}]*claimVoiceFloor[^}]*\}\s*from\s*'\.\.\/voice\/voiceFloor\.js'/);
+
+    const toggle = src.indexOf('const toggleVoice = async () => {');
+    expect(toggle).toBeGreaterThan(-1);
+    const body = src.slice(toggle, src.indexOf('\n  };', toggle));
+    expect(body).toMatch(/claimVoiceFloor\(stopVoice\)/);
+
+    // Claimed BEFORE either engine starts, or two sessions overlap for the
+    // length of the handshake.
+    const claim = body.indexOf('claimVoiceFloor(');
+    for (const start of ['realtime.start()', 'cascade.toggle()']) {
+      expect(body.indexOf(start), `${start} is not started in toggleVoice`).toBeGreaterThan(-1);
+      expect(claim, `the floor is claimed after ${start}`).toBeLessThan(body.indexOf(start));
+    }
+  });
+
+  it('stopping a session gives the floor back', () => {
+    const at = src.indexOf('const stopVoice = () => {');
+    expect(at).toBeGreaterThan(-1);
+    expect(src.slice(at, src.indexOf('\n  };', at))).toMatch(/releaseFloor\(\)/);
+  });
+
+  it('a host that goes off-screen or away stops its session', () => {
+    // onUnmounted alone is not enough: <KeepAlive> DEACTIVATES a screen on
+    // navigation and never unmounts it, which is precisely how a session used
+    // to keep a microphone open in a chat the user could no longer see.
+    expect(src).toMatch(/onDeactivated\(stopVoice\)/);
+    expect(src).toMatch(/onUnmounted\(stopVoice\)/);
+  });
+
+  it('nothing else touches the floor directly', () => {
+    // Compared as resolved paths, not by suffix: `endsWith('voice/voiceFloor.js')`
+    // never matches on Windows, where the separator is a backslash — and the
+    // module would exclude itself only by accident on one platform.
+    const FLOOR = path.join(SRC, 'voice/voiceFloor.js');
+    const others = ALL_FILES.filter((f) => f !== ENGINES && f !== FLOOR && /voiceFloor/.test(read(f)));
+    expect(others.map(rel)).toEqual([]);
+  });
+
+  it('anti-vacuity: the floor module is where it is expected to be', () => {
+    expect(fs.existsSync(path.join(SRC, 'voice/voiceFloor.js'))).toBe(true);
+  });
+});
+
 describe('every send path marks a spoken turn', () => {
   /**
    * The voice arm is consumed where a message is SENT, not where voice is
