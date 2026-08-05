@@ -134,6 +134,13 @@ export default {
      */
     UPSERT_OUTPUT_META(state, { output, snapshotStartedAt = 0 }) {
       if (!output || !output.id) return;
+      // A transcript owned by an embedded chat channel (workspace, artifact,
+      // widget, workflow) is not an item in this list. The server already
+      // excludes them from the list QUERY, but every save also broadcasts its
+      // row here — so without this guard a workspace chat would insert itself
+      // into the sidebar live, on the next turn, and only disappear on
+      // refresh. Same rule on both paths or the two disagree.
+      if (output.channel_key || output.channelKey) return;
       const row = convertRowDates(output);
       const idx = state.outputs.findIndex((o) => o.id === row.id);
       if (idx === -1) {

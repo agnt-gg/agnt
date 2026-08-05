@@ -4,11 +4,15 @@ import db from './database/index.js';
 // sidebar list, the save response, and the realtime broadcast must all carry
 // the same shape, or the row a client patches in place diverges from the row
 // a full fetch would have given it. Excludes the large content column.
-const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, created_at, updated_at';
+const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, channel_key, created_at, updated_at';
 
 class ContentOutputModel {
   /**
-   * @param {{ viewing?: boolean }} [opts]
+   * @param {{ viewing?: boolean, channelKey?: string|null }} [opts]
+   *   channelKey: this row belongs to an embedded chat channel
+   *   ('workspace:<id>', 'artifact:<id>', ...) rather than to the main chat
+   *   list. Sticky once set — see the COALESCE in the conflict clause.
+   *
    *   viewing: the user is LOOKING AT this conversation right now (the saving
    *   client says so). The save then stamps the read watermark in the same
    *   statement as the change it writes.
@@ -22,7 +26,7 @@ class ContentOutputModel {
    *   Two writes with a gap can always be observed between them; one write
    *   has no between.
    */
-  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { viewing = false } = {}) {
+  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { viewing = false, channelKey = null } = {}) {
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
@@ -47,10 +51,15 @@ class ContentOutputModel {
       // a template literal silently truncates the statement, and the driver
       // fails by aborting the process rather than raising — an unreadable
       // crash a long way from the typo. Verified the hard way.
+      //
+      // THE channel_key CLAUSE. COALESCE, so scope is STICKY: a save that does
+      // not mention a channel can never silently un-scope a row and drop it
+      // back into the main chat list. There is no legitimate un-scope, and the
+      // failure mode of getting this wrong is the original bug returning.
       const viewingFlag = viewing ? 1 : 0;
       db.run(
-        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, last_read_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP)
+        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, channel_key, last_read_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
@@ -60,12 +69,13 @@ class ContentOutputModel {
            content_type = excluded.content_type,
            conversation_id = excluded.conversation_id,
            title = excluded.title,
+           channel_key = COALESCE(excluded.channel_key, content_outputs.channel_key),
            last_read_at = CASE WHEN ?
              THEN CURRENT_TIMESTAMP
              ELSE COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second'))
            END,
            updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, viewingFlag, viewingFlag],
+        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null, viewingFlag, viewingFlag],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });
@@ -102,7 +112,13 @@ class ContentOutputModel {
     return new Promise((resolve, reject) => {
       // Use a single query with COUNT() window function to avoid two round-trips
       const listColumns = LIST_COLUMNS;
-      let where = 'user_id = ?';
+      // channel_key IS NULL: the main chat list shows the user's OWN
+      // conversations, not the transcripts of chats embedded in a workspace,
+      // artifact, widget or workflow. Those are reachable from the surface
+      // they belong to (and still searchable), but they are not items in this
+      // list. Filtered in SQL so the exclusion also applies to the row COUNT
+      // and to pagination — a client-side filter would silently shrink pages.
+      let where = 'user_id = ? AND channel_key IS NULL';
       const params = [userId];
 
       // Filter by group: explicit id, or 'none' for ungrouped
@@ -300,6 +316,27 @@ class ContentOutputModel {
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
+  /**
+   * Assign (or clear) a row's owning chat channel.
+   *
+   * Deliberately does NOT touch updated_at or last_read_at: recording who owns
+   * a row is bookkeeping, not something the user did to the conversation.
+   * Bumping either would reorder the sidebar and light unread dots during the
+   * one-time repair sweep.
+   */
+  static setChannelKey(id, userId, channelKey) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE content_outputs SET channel_key = ? WHERE id = ? AND user_id = ?',
+        [channelKey || null, id, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
         }
       );
     });

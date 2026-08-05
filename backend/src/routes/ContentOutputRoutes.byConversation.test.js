@@ -18,6 +18,7 @@ import http from 'http';
 
 const findByConversationId = vi.fn();
 const findOne = vi.fn();
+const setChannelKey = vi.fn();
 
 vi.mock('./Middleware.js', () => ({
   authenticateToken: (req, _res, next) => {
@@ -33,6 +34,7 @@ vi.mock('../models/ContentOutputModel.js', () => ({
   default: {
     findByConversationId: (...a) => findByConversationId(...a),
     findOne: (...a) => findOne(...a),
+    setChannelKey: (...a) => setChannelKey(...a),
     findAllByUserId: vi.fn(async () => []),
     createOrUpdate: vi.fn(async () => {}),
     findMetaById: vi.fn(async () => ({})),
@@ -66,7 +68,15 @@ afterAll(async () => {
 beforeEach(() => {
   findByConversationId.mockReset();
   findOne.mockReset();
+  setChannelKey.mockReset();
 });
+
+const patchChannel = (id, body, user = 'u1') =>
+  fetch(`${baseUrl}/content-outputs/${id}/channel`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-test-user': user },
+    body: JSON.stringify(body),
+  });
 
 const get = (path) => fetch(`${baseUrl}${path}`, { headers: { 'x-test-user': 'u1' } });
 
@@ -116,6 +126,48 @@ describe('GET /content-outputs/by-conversation/:conversationId', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = await get('/content-outputs/by-conversation/conv-1');
     expect(res.status).toBe(500);
+    err.mockRestore();
+  });
+});
+
+/**
+ * PATCH /content-outputs/:id/channel — assign a saved row to the chat channel
+ * that owns it, so the main conversation list stops showing embedded chats.
+ * A PATCH rather than a re-save because the only thing changing is ownership;
+ * a re-save would ship the whole transcript back to write one string.
+ */
+describe('PATCH /content-outputs/:id/channel', () => {
+  it('scopes the row to the given channel', async () => {
+    setChannelKey.mockResolvedValue(1);
+
+    const res = await patchChannel('out-9', { channelKey: 'workspace:ws-1' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'out-9', channelKey: 'workspace:ws-1' });
+    expect(setChannelKey).toHaveBeenCalledWith('out-9', 'u1', 'workspace:ws-1');
+  });
+
+  it('scopes only rows the caller owns', async () => {
+    setChannelKey.mockResolvedValue(0);
+    const res = await patchChannel('out-9', { channelKey: 'workspace:ws-1' }, 'someone-else');
+
+    // Not-found and not-yours are deliberately indistinguishable.
+    expect(res.status).toBe(404);
+    expect(setChannelKey).toHaveBeenCalledWith('out-9', 'someone-else', 'workspace:ws-1');
+  });
+
+  it('rejects a non-string channel key instead of writing junk', async () => {
+    setChannelKey.mockResolvedValue(1);
+    const res = await patchChannel('out-9', { channelKey: { nope: true } });
+
+    expect(res.status).toBe(400);
+    expect(setChannelKey).not.toHaveBeenCalled();
+  });
+
+  it('reports a write failure as a 500', async () => {
+    setChannelKey.mockRejectedValue(new Error('db down'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await patchChannel('out-9', { channelKey: 'workspace:ws-1' })).status).toBe(500);
     err.mockRestore();
   });
 });

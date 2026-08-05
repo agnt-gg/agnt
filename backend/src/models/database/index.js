@@ -279,6 +279,7 @@ function createTables() {
         group_id TEXT,
         last_read_at DATETIME,
         archived_at DATETIME,
+        channel_key TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
@@ -290,6 +291,7 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_updated ON content_outputs(user_id, updated_at DESC)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_group_id ON content_outputs(group_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_channel ON content_outputs(user_id, channel_key)`);
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (
@@ -1767,6 +1769,36 @@ function runMigrations() {
           console.error('Error adding last_read_at column to content_outputs:', err);
         } else if (!err) {
           console.log('✓ Added last_read_at column to content_outputs table');
+        }
+      });
+
+      // Migration: Add channel_key column to content_outputs (2026-08-05).
+      //
+      // WHO OWNS THIS ROW. NULL means the main chat list owns it: it is one of
+      // the user's conversations and belongs in the sidebar. Non-NULL means it
+      // belongs to a chat channel embedded somewhere else in the app
+      // ('workspace:<id>', 'artifact:<id>', 'widget:<id>', ...), and the
+      // sidebar must not list it.
+      //
+      // Needed because durable transcripts for those embedded chats landed in
+      // the same table with content_type 'conversation' — and the sidebar
+      // query has NO type filter at all, it lists every row a user owns. So
+      // every workspace chat appeared in the main conversation list. Scope is
+      // not a property of the CONTENT (they are all conversations), so it
+      // could not be expressed by content_type; it is a property of who the
+      // row belongs to, which is what this column says.
+      //
+      // NO BACKFILL, and none is possible here: which rows are channel-scoped
+      // is knowledge only the client holds (it owns the channel -> conversation
+      // map). Existing rows are repaired by chatUnified's one-time
+      // reclaimChannelScopes sweep, and every save from a channel carries its
+      // channelKey from now on. A NULL column therefore degrades to exactly
+      // the old behaviour rather than to a wrong answer.
+      db.run(`ALTER TABLE content_outputs ADD COLUMN channel_key TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding channel_key column to content_outputs:', err);
+        } else if (!err) {
+          console.log('✓ Added channel_key column to content_outputs table');
         }
       });
 

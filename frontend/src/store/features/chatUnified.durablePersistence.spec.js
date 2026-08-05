@@ -24,6 +24,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const fetchConversation = vi.fn(async () => null);
 const loadTranscriptByConversationId = vi.fn(async () => null);
 const saveTranscript = vi.fn(async () => ({ ok: true, outputId: 'out-1' }));
+const scopeTranscriptToChannel = vi.fn(async () => true);
 const streamChat = vi.fn(async () => {});
 
 vi.mock('@/services/chatService.js', () => ({
@@ -48,6 +49,7 @@ vi.mock('@/services/inflightRuns.js', () => ({
 vi.mock('@/services/conversationTranscript.js', () => ({
   loadTranscriptByConversationId: (...a) => loadTranscriptByConversationId(...a),
   saveTranscript: (...a) => saveTranscript(...a),
+  scopeTranscriptToChannel: (...a) => scopeTranscriptToChannel(...a),
   deriveTitle: (messages) => messages.find((m) => m.role === 'user')?.content || 'Untitled',
 }));
 
@@ -92,6 +94,7 @@ beforeEach(async () => {
   localStorage.clear();
   loadTranscriptByConversationId.mockResolvedValue(null);
   saveTranscript.mockResolvedValue({ ok: true, outputId: 'out-1' });
+  scopeTranscriptToChannel.mockResolvedValue(true);
   fetchConversation.mockResolvedValue(null);
 
   chatUnified = (await import('./chatUnified.js')).default;
@@ -169,6 +172,70 @@ describe('the transcript is written to the server', () => {
     // An interrupted answer is still the user's conversation.
     expect(dispatch).toHaveBeenCalledWith('saveChannelTranscript', { channelKey: CH, viewing: true });
     expect(saveTranscript).toHaveBeenCalled();
+  });
+});
+
+describe('a channel transcript belongs to its channel, not to the chat list', () => {
+  it('saves the owning channel with the transcript', async () => {
+    seed(TURN);
+    await save();
+    // The main chat sidebar lists every content_outputs row the user owns and
+    // has no type filter, so a transcript that does not name its owner is
+    // shown as one of their conversations.
+    expect(saveTranscript.mock.calls[0][0].channelKey).toBe(CH);
+  });
+
+  it('names the right channel for every embedded surface', async () => {
+    for (const channelKey of ['artifact:a-1', 'widget:w-1', 'workflow:f-1', 'tool:t-1']) {
+      state.conversations[channelKey] = {
+        messages: TURN, conversationId: `c-${channelKey}`, suggestions: [], savedOutputId: null, lastUpdate: 0,
+      };
+      await chatUnified.actions.saveChannelTranscript({ commit, state }, { channelKey });
+      expect(saveTranscript.mock.calls.at(-1)[0].channelKey).toBe(channelKey);
+    }
+  });
+});
+
+describe('reclaimChannelScopes — repairing rows saved before scope existed', () => {
+  const reclaim = () => chatUnified.actions.reclaimChannelScopes({ state });
+
+  it('scopes every channel this device knows about', async () => {
+    seed(TURN, { savedOutputId: 'out-ws' });
+    state.conversations['widget:w-1'] = {
+      messages: TURN, conversationId: 'c-w', savedOutputId: 'out-widget', suggestions: [], lastUpdate: 0,
+    };
+
+    const res = await reclaim();
+
+    expect(res).toMatchObject({ ok: true, scoped: 2, total: 2 });
+    expect(scopeTranscriptToChannel).toHaveBeenCalledWith('out-ws', CH);
+    expect(scopeTranscriptToChannel).toHaveBeenCalledWith('out-widget', 'widget:w-1');
+  });
+
+  it('runs once, not on every launch', async () => {
+    seed(TURN, { savedOutputId: 'out-ws' });
+    await reclaim();
+    scopeTranscriptToChannel.mockClear();
+
+    expect(await reclaim()).toMatchObject({ reason: 'already_done' });
+    expect(scopeTranscriptToChannel).not.toHaveBeenCalled();
+  });
+
+  it('retries next launch when a row could not be reached', async () => {
+    // Offline at launch must not record a repair that never happened.
+    seed(TURN, { savedOutputId: 'out-ws' });
+    scopeTranscriptToChannel.mockResolvedValue(false);
+
+    expect(await reclaim()).toMatchObject({ scoped: 0, total: 1 });
+
+    scopeTranscriptToChannel.mockResolvedValue(true);
+    expect(await reclaim()).toMatchObject({ scoped: 1, total: 1 });
+  });
+
+  it('skips channels with nothing saved yet', async () => {
+    seed(TURN, { savedOutputId: null });
+    expect(await reclaim()).toMatchObject({ reason: 'nothing_to_scope', scoped: 0 });
+    expect(scopeTranscriptToChannel).not.toHaveBeenCalled();
   });
 });
 

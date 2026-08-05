@@ -11,6 +11,7 @@ import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamRe
 import {
   saveTranscript,
   loadTranscriptByConversationId,
+  scopeTranscriptToChannel,
   deriveTitle,
 } from '@/services/conversationTranscript.js';
 // The key only — workspaceStorage.js is deliberately import-free and
@@ -92,6 +93,10 @@ function writeWorkspaceChannelConversation(channelKey, conversationId) {
 }
 
 const STORAGE_KEY = 'unifiedChatConversations';
+// Marks the one-time repair in reclaimChannelScopes as complete for this
+// device. Per-device by design: each device knows its own channel map, and
+// scoping the same row twice is a no-op.
+const SCOPES_RECLAIMED_KEY = 'unifiedChatScopesReclaimed';
 const LEGACY_KEYS = {
   agent: 'agentChatConversations',
   workflow: 'workflowChatConversations',
@@ -787,6 +792,10 @@ export default {
         title: deriveTitle(conv.messages),
         messages: conv.messages,
         viewing,
+        // This transcript belongs to the surface it was typed into, not to the
+        // user's main conversation list. Without this the sidebar lists every
+        // workspace, artifact and widget chat alongside real conversations.
+        channelKey,
       });
       // Record the row id so the next save updates it instead of inserting a
       // second row for the same conversation.
@@ -794,6 +803,49 @@ export default {
         commit('SET_SAVED_OUTPUT_ID', { channelKey, outputId: result.outputId });
       }
       return result;
+    },
+
+    /**
+     * One-time repair: tell the server which saved rows belong to a channel.
+     *
+     * Durable transcripts shipped before channel scope existed, so every
+     * embedded chat's transcript was written as an ordinary conversation and
+     * appeared in the main chat list. Saves from now on carry their channelKey,
+     * but a row is only rewritten when that chat is USED again — a workspace
+     * the user does not reopen would sit in their sidebar forever.
+     *
+     * This has to run on the client: the channel -> conversation mapping lives
+     * here, so the server cannot tell which of its rows are channel-scoped.
+     *
+     * Idempotent, and marked done ONLY when every row was successfully
+     * scoped — a sweep that runs offline must retry on the next launch rather
+     * than record a repair that never happened.
+     */
+    async reclaimChannelScopes({ state }) {
+      let alreadyDone = false;
+      try {
+        alreadyDone = localStorage.getItem(SCOPES_RECLAIMED_KEY) === '1';
+      } catch { /* private mode: just do the work */ }
+      if (alreadyDone) return { ok: true, reason: 'already_done', scoped: 0 };
+
+      const rows = Object.entries(state.conversations)
+        .filter(([channelKey, conv]) => channelKey && conv?.savedOutputId);
+      if (!rows.length) return { ok: true, reason: 'nothing_to_scope', scoped: 0 };
+
+      let scoped = 0;
+      for (const [channelKey, conv] of rows) {
+        // Sequential on purpose: this is a background repair of at most a
+        // handful of rows, and it must not compete with the first paint.
+        // eslint-disable-next-line no-await-in-loop
+        if (await scopeTranscriptToChannel(conv.savedOutputId, channelKey)) scoped += 1;
+      }
+
+      if (scoped === rows.length) {
+        try {
+          localStorage.setItem(SCOPES_RECLAIMED_KEY, '1');
+        } catch { /* not worth failing the repair over */ }
+      }
+      return { ok: true, scoped, total: rows.length };
     },
 
     clearConversation({ commit }, { channelKey, welcomeMessage = null }) {
