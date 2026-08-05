@@ -13,6 +13,11 @@ const getChatGptAccountId = vi.fn();
 vi.mock('./auth/CodexAuthManager.js', () => ({
   default: {
     ensureValidToken: (...a) => ensureValidToken(...a),
+    // Both accessors answer from the same stub here: which of the two the
+    // resolver is right to ask is pinned in openAiVoiceCredential.test.js, and
+    // duplicating that decision in this file would only give it somewhere to
+    // drift to.
+    ensureValidOAuthToken: (...a) => ensureValidToken(...a),
     getChatGptAccountId: (...a) => getChatGptAccountId(...a),
   },
 }));

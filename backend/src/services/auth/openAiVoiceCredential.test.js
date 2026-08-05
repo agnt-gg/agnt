@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getValidAccessToken = vi.fn();
 const ensureValidToken = vi.fn();
+const ensureValidOAuthToken = vi.fn();
 const getChatGptAccountId = vi.fn();
 
 vi.mock('./AuthManager.js', () => ({
@@ -22,6 +23,7 @@ vi.mock('./AuthManager.js', () => ({
 vi.mock('./CodexAuthManager.js', () => ({
   default: {
     ensureValidToken: (...a) => ensureValidToken(...a),
+    ensureValidOAuthToken: (...a) => ensureValidOAuthToken(...a),
     getChatGptAccountId: (...a) => getChatGptAccountId(...a),
   },
 }));
@@ -37,10 +39,44 @@ const {
 beforeEach(() => {
   getValidAccessToken.mockReset();
   ensureValidToken.mockReset();
+  ensureValidOAuthToken.mockReset();
   getChatGptAccountId.mockReset();
   getValidAccessToken.mockResolvedValue(null);
   ensureValidToken.mockResolvedValue(null);
+  ensureValidOAuthToken.mockResolvedValue(null);
   getChatGptAccountId.mockReturnValue(null);
+});
+
+describe('an API key must not be able to HIDE the subscription', () => {
+  /**
+   * THE SECOND SHADOW, ONE LAYER DOWN
+   * ---------------------------------
+   * Preferring the subscription in this module achieved nothing on a machine
+   * where it mattered most, because `CodexAuthManager.ensureValidToken` lets
+   * `OPENAI_API_KEY` override the OAuth token. Asking it for "the Codex
+   * credential" returned the API key, which then deduped against the vault's
+   * copy of the same key — so a user with BOTH sign-ins got a chain of one,
+   * containing the credential that had run out of credit, and the reordering
+   * above was invisible. A fallback that the thing it falls back FROM can
+   * delete is not a fallback.
+   */
+  it('resolves the subscription even when an API key is present everywhere', async () => {
+    getValidAccessToken.mockResolvedValue('sk-exhausted');
+    // What the GENERAL accessor returns when OPENAI_API_KEY is set: the env
+    // key, not the OAuth token the user is actually signed in with.
+    ensureValidToken.mockResolvedValue('sk-exhausted');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
+
+    const chain = await resolveOpenAiVoiceCredentialChain('u1');
+    expect(chain.map((c) => c.token)).toEqual(['eyJ.oauth.token', 'sk-exhausted']);
+  });
+
+  it('never asks the question whose answer an API key can override', async () => {
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
+    await resolveOpenAiVoiceCredentialChain('u1');
+    expect(ensureValidOAuthToken).toHaveBeenCalled();
+    expect(ensureValidToken).not.toHaveBeenCalled();
+  });
 });
 
 describe('every OpenAI sign-in reaches voice', () => {
@@ -53,7 +89,7 @@ describe('every OpenAI sign-in reaches voice', () => {
   it('a ChatGPT/Codex OAuth token works when there is no platform key', async () => {
     // THE BUG THIS FIXES. This user previously got `no-credentials` and was
     // told voice did not exist, despite the token being accepted (201).
-    ensureValidToken.mockResolvedValue('eyJhbGciOi.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJhbGciOi.oauth.token');
     getChatGptAccountId.mockReturnValue('acct_123');
 
     const c = await resolveOpenAiVoiceCredential('u1');
@@ -79,7 +115,7 @@ describe('precedence', () => {
     // on a platform key is billed per token. Given both, spend the one that is
     // already spent.
     getValidAccessToken.mockResolvedValue('sk-platform');
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
 
     const c = await resolveOpenAiVoiceCredential('u1');
     expect(c.token).toBe('eyJ.oauth.token');
@@ -91,7 +127,7 @@ describe('precedence', () => {
     // the answer. A key with no credit left resolves perfectly and then 429s,
     // which stranded users who had a working subscription one branch away.
     getValidAccessToken.mockResolvedValue('sk-platform');
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
 
     const chain = await resolveOpenAiVoiceCredentialChain('u1');
     expect(chain.map((c) => c.token)).toEqual(['eyJ.oauth.token', 'sk-platform']);
@@ -106,7 +142,7 @@ describe('precedence', () => {
     // credential that just refused is a round trip spent to be told the same
     // thing again.
     getValidAccessToken.mockResolvedValue('sk-same');
-    ensureValidToken.mockResolvedValue('sk-same');
+    ensureValidOAuthToken.mockResolvedValue('sk-same');
 
     const chain = await resolveOpenAiVoiceCredentialChain('u1');
     expect(chain).toHaveLength(1);
@@ -123,7 +159,7 @@ describe('precedence', () => {
 
   it('no credential of any kind is an empty chain, not an exception', async () => {
     getValidAccessToken.mockRejectedValue(new Error('vault down'));
-    ensureValidToken.mockRejectedValue(new Error('no auth file'));
+    ensureValidOAuthToken.mockRejectedValue(new Error('no auth file'));
     await expect(resolveOpenAiVoiceCredentialChain('u1')).resolves.toEqual([]);
   });
 
@@ -131,7 +167,7 @@ describe('precedence', () => {
     // Source describes the KIND of credential (its scope), not where it was
     // found. An API key is full-scope wherever it lives, so its failures are
     // worth surfacing rather than swallowing.
-    ensureValidToken.mockResolvedValue('sk-from-codex-file');
+    ensureValidOAuthToken.mockResolvedValue('sk-from-codex-file');
     const c = await resolveOpenAiVoiceCredential('u1');
     expect(c.source).toBe(VOICE_CREDENTIAL_SOURCE.PLATFORM);
     expect(c.accountId).toBeNull();
@@ -144,25 +180,25 @@ describe('a capability probe must never throw', () => {
 
   it('a vault failure falls through to the Codex token instead of exploding', async () => {
     getValidAccessToken.mockRejectedValue(new Error('vault down'));
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
 
     const c = await resolveOpenAiVoiceCredential('u1');
     expect(c.source).toBe(VOICE_CREDENTIAL_SOURCE.CHATGPT);
   });
 
   it('a Codex refresh failure resolves to null', async () => {
-    ensureValidToken.mockRejectedValue(new Error('refresh token revoked'));
+    ensureValidOAuthToken.mockRejectedValue(new Error('refresh token revoked'));
     await expect(resolveOpenAiVoiceCredential('u1')).resolves.toBeNull();
   });
 
   it('both sides failing resolves to null', async () => {
     getValidAccessToken.mockRejectedValue(new Error('vault down'));
-    ensureValidToken.mockRejectedValue(new Error('no auth file'));
+    ensureValidOAuthToken.mockRejectedValue(new Error('no auth file'));
     await expect(resolveOpenAiVoiceCredential('u1')).resolves.toBeNull();
   });
 
   it('an unreadable account id does not cost the user their session', async () => {
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
     getChatGptAccountId.mockImplementation(() => {
       throw new Error('malformed jwt');
     });
@@ -183,7 +219,7 @@ describe('empty is absent', () => {
     ['a non-string', 12345],
   ])('a platform key that is %s falls through to Codex', async (_label, value) => {
     getValidAccessToken.mockResolvedValue(value);
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
     const c = await resolveOpenAiVoiceCredential('u1');
     expect(c.source).toBe(VOICE_CREDENTIAL_SOURCE.CHATGPT);
   });
@@ -193,7 +229,7 @@ describe('empty is absent', () => {
     ['whitespace', '   '],
     ['a non-string', {}],
   ])('a Codex token that is %s resolves to null', async (_label, value) => {
-    ensureValidToken.mockResolvedValue(value);
+    ensureValidOAuthToken.mockResolvedValue(value);
     await expect(resolveOpenAiVoiceCredential('u1')).resolves.toBeNull();
   });
 
@@ -210,7 +246,7 @@ describe('hasOpenAiVoiceCredential', () => {
     await expect(hasOpenAiVoiceCredential('u1')).resolves.toBe(true);
 
     getValidAccessToken.mockResolvedValue(null);
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ensureValidOAuthToken.mockResolvedValue('eyJ.oauth.token');
     await expect(hasOpenAiVoiceCredential('u1')).resolves.toBe(true);
   });
 

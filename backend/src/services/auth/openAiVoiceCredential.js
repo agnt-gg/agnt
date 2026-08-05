@@ -100,11 +100,16 @@ export async function resolveOpenAiVoiceCredentialChain(userId) {
     chain.push(candidate);
   };
 
-  // Tier 1 — ChatGPT / Codex OAuth. `ensureValidToken` owns JWT expiry checking
-  // and refresh-token rotation against auth.openai.com, so token lifecycle is
-  // not reimplemented here.
+  // Tier 1 — the ChatGPT / Codex subscription. `ensureValidOAuthToken` owns JWT
+  // expiry checking and refresh-token rotation against auth.openai.com, so
+  // token lifecycle is not reimplemented here.
+  //
+  // It is the OAuth-SPECIFIC accessor on purpose. `ensureValidToken` lets
+  // `OPENAI_API_KEY` override the OAuth token, which is right for Codex chat
+  // and wrong here: it would hand back the very key we are trying to have a
+  // fallback for, and the subscription would never appear in the chain at all.
   try {
-    const token = await codexAuthManager.ensureValidToken();
+    const token = await codexAuthManager.ensureValidOAuthToken();
     if (typeof token === 'string' && token.trim()) {
       const trimmed = token.trim();
       push(
