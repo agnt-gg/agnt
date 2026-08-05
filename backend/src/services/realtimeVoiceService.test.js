@@ -323,12 +323,108 @@ describe('voice works however the user signed in with OpenAI', () => {
     expect(globalThis.fetch.mock.calls[0][1].headers).not.toHaveProperty('chatgpt-account-id');
   });
 
-  it('a platform key still wins over the ChatGPT token', async () => {
+  it('spends the ChatGPT subscription before the metered key', async () => {
     getValidAccessToken.mockResolvedValue('sk-test');
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
     ok();
     await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
-    expect(globalThis.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer sk-test');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer eyJ.oauth.token');
+  });
+});
+
+describe('one dead credential does not end the session', () => {
+  /**
+   * THE OUTAGE THIS SUITE EXISTS FOR
+   * --------------------------------
+   * A user ran their OpenAI API account out of credit and voice stopped, while
+   * a ChatGPT subscription that OpenAI would have accepted sat unused. The old
+   * code resolved ONE credential and treated resolution as success — but an
+   * exhausted key resolves perfectly and only fails at the call. Whether a
+   * credential works is knowable only here, so failing over has to happen here.
+   */
+  const answers = (...responses) => {
+    globalThis.fetch.mockReset();
+    for (const r of responses) {
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: r.status < 400,
+        status: r.status,
+        text: async () => r.body ?? '',
+      });
+    }
+  };
+
+  const authHeaders = () => globalThis.fetch.mock.calls.map((c) => c[1].headers.Authorization);
+
+  it('an exhausted API key falls over to the subscription', async () => {
+    // The literal reported failure, with the preference order reversed so the
+    // key is reached at all: subscription refused, key out of credit.
+    getValidAccessToken.mockResolvedValue('sk-no-credit');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 403, body: 'not entitled' }, { status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r).toEqual({ ok: true, sdp: 'answer' });
+    expect(authHeaders()).toEqual(['Bearer eyJ.oauth.token', 'Bearer sk-no-credit']);
+  });
+
+  it.each([401, 403, 429])('walks past a %i and uses the next credential', async (status) => {
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status, body: 'nope' }, { status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.ok).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([400, 500, 503])('a %i is not a credential problem and ends the walk', async (status) => {
+    // A malformed offer and an OpenAI outage fail identically on every token.
+    // Retrying them spends round trips to reach the same answer more slowly.
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status, body: 'bad' }, { status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe(`provider-${status}`);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a network error ends the walk rather than retrying the same failure', async () => {
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    globalThis.fetch.mockReset();
+    globalThis.fetch.mockRejectedValue(new Error('ECONNRESET'));
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe('network');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('when every credential refuses, the one the user can FIX is the one reported', async () => {
+    // Telling someone their subscription is not entitled helps nobody; telling
+    // them their API key is out of credit is the sentence they can act on.
+    getValidAccessToken.mockResolvedValue('sk-no-credit');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 403, body: 'not entitled' }, { status: 429, body: 'insufficient_quota' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe('provider-429');
+    expect(r.detail).toContain('insufficient_quota');
+  });
+
+  it('sends the SDP offer intact on the second attempt, not an emptied body', async () => {
+    // The request body is built once and reused across the walk. If it were
+    // consumable, the failover would succeed at the protocol level and hand
+    // OpenAI an empty offer — a failure that no status code would reveal.
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 401, body: 'nope' }, { status: 200, body: 'answer' });
+
+    await createRealtimeCall({ sdp: 'the-real-offer', userId: 'u1' });
+    const second = globalThis.fetch.mock.calls[1][1].body;
+    expect(second.get('sdp')).toBe('the-real-offer');
+    expect(second.get('session')).toBeTruthy();
   });
 });
 
@@ -364,13 +460,25 @@ describe('a ChatGPT plan that is not entitled to realtime degrades quietly', () 
     expect(r.status).toBe(status);
   });
 
-  it('a non-auth failure on the borrowed token is still a real failure', async () => {
-    // Rate limits and outages are transient and diagnosable. Hiding them as
-    // "no credentials" would turn a temporary problem into a phantom one.
+  it('a rate-limited subscription and nothing else reads as no-credentials', async () => {
+    // There is no platform key here, so a 429 on the borrowed token leaves the
+    // user with nothing to act on — same situation as no credential, same
+    // quiet fallback. When a key DOES exist the walk reaches it, and its own
+    // 429 is surfaced; see the failover suite.
     globalThis.fetch.mockResolvedValue({ ok: false, status: 429, text: async () => 'slow down' });
 
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
-    expect(r.reason).toBe('provider-429');
+    expect(r.reason).toBe('no-credentials');
+    expect(r.status).toBe(200);
+  });
+
+  it('an outage on the borrowed token is still a real failure', async () => {
+    // Outages are transient and diagnosable. Hiding them as "no credentials"
+    // would turn a temporary problem into a phantom one.
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 503, text: async () => 'upstream down' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe('provider-503');
   });
 
   it('never leaks the borrowed token in the failure it reports', async () => {

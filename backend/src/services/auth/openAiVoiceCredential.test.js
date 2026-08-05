@@ -27,6 +27,7 @@ vi.mock('./CodexAuthManager.js', () => ({
 }));
 
 const {
+  resolveOpenAiVoiceCredentialChain,
   resolveOpenAiVoiceCredential,
   hasOpenAiVoiceCredential,
   isBorrowedCredential,
@@ -73,15 +74,57 @@ describe('every OpenAI sign-in reaches voice', () => {
 });
 
 describe('precedence', () => {
-  it('a platform key wins, and the Codex file is not even read', async () => {
-    // A user who configured a platform key has said which account should be
-    // billed. Nothing may quietly override that.
+  it('the ChatGPT subscription is preferred over a metered platform key', async () => {
+    // A Realtime minute on a subscription is already paid for; the same minute
+    // on a platform key is billed per token. Given both, spend the one that is
+    // already spent.
     getValidAccessToken.mockResolvedValue('sk-platform');
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
 
     const c = await resolveOpenAiVoiceCredential('u1');
-    expect(c.token).toBe('sk-platform');
-    expect(ensureValidToken).not.toHaveBeenCalled();
+    expect(c.token).toBe('eyJ.oauth.token');
+    expect(c.source).toBe(VOICE_CREDENTIAL_SOURCE.CHATGPT);
+  });
+
+  it('offers BOTH credentials, best first, so the caller can fail over', async () => {
+    // The bug this replaced: one credential was resolved eagerly and treated as
+    // the answer. A key with no credit left resolves perfectly and then 429s,
+    // which stranded users who had a working subscription one branch away.
+    getValidAccessToken.mockResolvedValue('sk-platform');
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+
+    const chain = await resolveOpenAiVoiceCredentialChain('u1');
+    expect(chain.map((c) => c.token)).toEqual(['eyJ.oauth.token', 'sk-platform']);
+    expect(chain.map((c) => c.source)).toEqual([
+      VOICE_CREDENTIAL_SOURCE.CHATGPT,
+      VOICE_CREDENTIAL_SOURCE.PLATFORM,
+    ]);
+  });
+
+  it('does not offer the same token twice', async () => {
+    // An install-global `sk-` key can surface from BOTH stores. Retrying a
+    // credential that just refused is a round trip spent to be told the same
+    // thing again.
+    getValidAccessToken.mockResolvedValue('sk-same');
+    ensureValidToken.mockResolvedValue('sk-same');
+
+    const chain = await resolveOpenAiVoiceCredentialChain('u1');
+    expect(chain).toHaveLength(1);
+  });
+
+  it('a chain of one is what a user with only a platform key gets', async () => {
+    getValidAccessToken.mockResolvedValue('sk-platform');
+
+    const chain = await resolveOpenAiVoiceCredentialChain('u1');
+    expect(chain).toEqual([
+      { token: 'sk-platform', source: VOICE_CREDENTIAL_SOURCE.PLATFORM, accountId: null },
+    ]);
+  });
+
+  it('no credential of any kind is an empty chain, not an exception', async () => {
+    getValidAccessToken.mockRejectedValue(new Error('vault down'));
+    ensureValidToken.mockRejectedValue(new Error('no auth file'));
+    await expect(resolveOpenAiVoiceCredentialChain('u1')).resolves.toEqual([]);
   });
 
   it('an sk- key found in the Codex auth file is reported as a PLATFORM credential', async () => {
