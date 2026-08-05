@@ -67,6 +67,62 @@ import {
  */
 const CREDENTIAL_FAILURE_STATUSES = new Set([401, 403, 429]);
 
+/**
+ * The ways one credential can be spent on a Realtime session, best first.
+ *
+ * WHY A ChatGPT TOKEN HAS TWO
+ * ---------------------------
+ * A subscription token is accepted by BOTH of these (measured, 201 + a real SDP
+ * answer from each). They are not equally safe to depend on:
+ *
+ *   chatgpt.com/backend-api/codex/realtime/calls  — the ChatGPT product's own
+ *     endpoint, the one this credential belongs to. Rejects `sk-` keys (401).
+ *   api.openai.com/v1/realtime/calls              — the public platform API.
+ *
+ * Every OTHER platform surface refuses this token on scope: /v1/models 403,
+ * /v1/chat/completions, /v1/responses and both /v1/audio routes 401. Realtime
+ * is the single exception, and a lone exception is the thing most likely to be
+ * closed. If it is, a user whose voice rides it silently falls through to their
+ * metered API key — which is exactly the outage this whole path was fixed for.
+ * So the subscription asks its own product first and keeps the platform route
+ * as the backstop, rather than depending on the anomaly.
+ *
+ * The two speak different dialects: the Codex backend takes JSON with an `sdp`
+ * string, the platform takes multipart. Each attempt therefore builds its own
+ * body — and builds it fresh, so no attempt can hand the next one a spent one.
+ */
+function realtimeAttemptsFor(credential, { sdp, session }) {
+  const auth = {
+    Authorization: `Bearer ${credential.token}`,
+    ...(credential.accountId ? { 'chatgpt-account-id': credential.accountId } : {}),
+  };
+
+  const platform = {
+    name: 'api.openai.com',
+    url: 'https://api.openai.com/v1/realtime/calls',
+    build: () => {
+      const form = new FormData();
+      form.set('sdp', sdp);
+      form.set('session', JSON.stringify(session));
+      return { headers: auth, body: form };
+    },
+  };
+
+  if (!isBorrowedCredential(credential.source)) return [platform];
+
+  return [
+    {
+      name: 'chatgpt.com/backend-api/codex',
+      url: 'https://chatgpt.com/backend-api/codex/realtime/calls',
+      build: () => ({
+        headers: { ...auth, 'Content-Type': 'application/json', originator: 'codex_cli_rs' },
+        body: JSON.stringify({ sdp, session }),
+      }),
+    },
+    platform,
+  ];
+}
+
 /** Speech-to-speech model. GA interface — no beta header. */
 export const REALTIME_MODEL = 'gpt-realtime-2.1';
 
@@ -264,9 +320,7 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
   const chain = await resolveOpenAiVoiceCredentialChain(userId);
   if (chain.length === 0) return { ok: false, status: 200, reason: 'no-credentials' };
 
-  const form = new FormData();
-  form.set('sdp', sdp);
-  form.set('session', JSON.stringify(buildSessionConfig({ voice, assistantName, surface })));
+  const session = buildSessionConfig({ voice, assistantName, surface });
 
   // The best error to show is the last one from a credential the user can
   // actually act on. A borrowed ChatGPT token being refused is not actionable —
@@ -274,50 +328,48 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
   let surfaceable = null;
 
   for (const credential of chain) {
-    let res;
-    try {
-      res = await fetch('https://api.openai.com/v1/realtime/calls', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${credential.token}`,
-          ...(credential.accountId ? { 'chatgpt-account-id': credential.accountId } : {}),
-        },
-        body: form,
-      });
-    } catch (err) {
-      // The network is not a property of the credential; the next one would
-      // fail the same way.
-      return { ok: false, status: 502, reason: 'network', detail: err?.message };
-    }
+    for (const attempt of realtimeAttemptsFor(credential, { sdp, session })) {
+      let res;
+      try {
+        const { headers, body } = attempt.build();
+        res = await fetch(attempt.url, { method: 'POST', headers, body });
+      } catch (err) {
+        // The network is not a property of the credential; the next one would
+        // fail the same way.
+        return { ok: false, status: 502, reason: 'network', detail: err?.message };
+      }
 
-    if (res.ok) return { ok: true, sdp: await res.text() };
+      if (res.ok) return { ok: true, sdp: await res.text() };
 
-    let detail = '';
-    try {
-      detail = (await res.text()).slice(0, 400);
-    } catch {
-      detail = '';
-    }
+      let detail = '';
+      try {
+        detail = (await res.text()).slice(0, 400);
+      } catch {
+        detail = '';
+      }
 
-    if (!CREDENTIAL_FAILURE_STATUSES.has(res.status)) {
-      // Not a credential problem. Never echo the key or the request headers
-      // back — only the provider's own message, truncated.
-      return { ok: false, status: res.status, reason: `provider-${res.status}`, detail };
-    }
+      if (!CREDENTIAL_FAILURE_STATUSES.has(res.status)) {
+        // Not a credential problem — a malformed offer or an outage fails the
+        // same way everywhere, so neither another endpoint nor another token
+        // would help. Never echo the key or the request headers back; only the
+        // provider's own message, truncated.
+        return { ok: false, status: res.status, reason: `provider-${res.status}`, detail };
+      }
 
-    // A ChatGPT plan that is not entitled to Realtime is, from the user's side,
-    // the same situation as having no credential: nothing they did is wrong and
-    // nothing they can change fixes it. A PLATFORM key rejected the same way is
-    // a real problem — a revoked key, or one out of credit — and is surfaced.
-    // That distinction is the entire point of tracking which kind of credential
-    // we used.
-    if (isBorrowedCredential(credential.source)) {
-      console.warn(
-        `[speech] ChatGPT sign-in cannot open realtime (${res.status}); trying the next credential.`,
-      );
-    } else {
-      console.warn(`[speech] OpenAI API key rejected for realtime (${res.status}).`);
-      surfaceable = { ok: false, status: res.status, reason: `provider-${res.status}`, detail };
+      // A ChatGPT plan that is not entitled to Realtime is, from the user's
+      // side, the same situation as having no credential: nothing they did is
+      // wrong and nothing they can change fixes it. A PLATFORM key rejected the
+      // same way is a real problem — a revoked key, or one out of credit — and
+      // is surfaced. That distinction is the entire point of tracking which kind
+      // of credential we used.
+      if (isBorrowedCredential(credential.source)) {
+        console.warn(
+          `[speech] ChatGPT sign-in refused by ${attempt.name} (${res.status}); trying the next route.`,
+        );
+      } else {
+        console.warn(`[speech] OpenAI API key rejected for realtime (${res.status}).`);
+        surfaceable = { ok: false, status: res.status, reason: `provider-${res.status}`, detail };
+      }
     }
   }
 
