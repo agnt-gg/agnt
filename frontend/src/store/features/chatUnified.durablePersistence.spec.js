@@ -170,7 +170,7 @@ describe('the transcript is written to the server', () => {
     );
 
     // An interrupted answer is still the user's conversation.
-    expect(dispatch).toHaveBeenCalledWith('saveChannelTranscript', { channelKey: CH, viewing: true });
+    expect(dispatch).toHaveBeenCalledWith('saveChannelTranscript', { channelKey: CH });
     expect(saveTranscript).toHaveBeenCalled();
   });
 });

@@ -56,11 +56,9 @@ class RunService {
   }
   async saveOrUpdateContentOutput(req, res) {
     try {
-      // `viewing` — the client attests the user is currently looking at this
-      // conversation, so the save stamps the read watermark atomically with
-      // the change. See ContentOutputModel.createOrUpdate for why this must
-      // be one write, not a save followed by a markRead PATCH.
-      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, viewing, channelKey } = req.body;
+      // Saves never mark read — the read watermark moves only via the
+      // explicit read PATCH (the email model). See ContentOutputModel.
+      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey } = req.body;
       const userId = req.user.userId;
 
       // Check if the output already exists
@@ -88,7 +86,7 @@ class RunService {
         contentType || 'html',
         conversationId || null,
         title || null,
-        { viewing: viewing === true, channelKey: channelKey || null }
+        { channelKey: channelKey || null }
       );
 
       // The row's list metadata (no content column) rides on BOTH the

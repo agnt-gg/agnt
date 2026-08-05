@@ -70,13 +70,6 @@ export default {
     lastFetched: null,
     isFetching: false,
     hasLoadedAll: false,
-    // Conversations the user explicitly marked unread (3-dot menu). The
-    // watermark itself lives server-side; this set records INTENT, and it
-    // exists because intent has a different lifetime than the derived flag:
-    // a manual unread must survive autosaves of the conversation the user is
-    // still viewing (each of which would otherwise re-stamp it read) and only
-    // clears when the user actually re-opens the conversation. id -> true.
-    manuallyUnread: {},
     // Attention-write bookkeeping for snapshotIsStaleForAttention. id -> count
     // of in-flight PATCHes / id -> ms timestamp of the last settle.
     attentionInFlight: {},
@@ -156,14 +149,6 @@ export default {
       // fields this client alone knows about must survive.
       state.outputs[idx] = { ...local, ...row };
     },
-    SET_MANUAL_UNREAD(state, { id, on }) {
-      if (on) state.manuallyUnread = { ...state.manuallyUnread, [id]: true };
-      else if (state.manuallyUnread[id]) {
-        const next = { ...state.manuallyUnread };
-        delete next[id];
-        state.manuallyUnread = next;
-      }
-    },
     ATTENTION_WRITE_STARTED(state, id) {
       state.attentionInFlight = {
         ...state.attentionInFlight,
@@ -197,7 +182,6 @@ export default {
     // client-side unread bookkeeping to drift out of sync.
     unreadOutputIdSet: (state) => unreadIdSet(state.outputs),
     triageRail: (state) => triageRail(state.outputs),
-    isManuallyUnread: (state) => (id) => !!state.manuallyUnread[id],
     visibleOutputs: (state) => state.outputs.filter((o) => !o.archived_at),
     archivedOutputs: (state) => state.outputs.filter((o) => !!o.archived_at),
     totalCount: (state) => state.totalCount,
@@ -369,10 +353,7 @@ export default {
       commit('UPSERT_OUTPUT_META', { output, snapshotStartedAt });
     },
 
-    markRead({ commit, dispatch, state }, outputId) {
-      // Re-opening (or explicitly clearing) a conversation ends any manual
-      // "keep this unread" intent — that is the email-client contract.
-      commit('SET_MANUAL_UNREAD', { id: outputId, on: false });
+    markRead({ dispatch, state }, outputId) {
       // Optimistic watermark = the row's own updated_at, NOT the client
       // clock. "Read" means "seen everything up to the last change", and
       // updated_at IS the last change — so this is exact and immune to
@@ -388,13 +369,11 @@ export default {
       });
     },
 
-    markUnread({ commit, dispatch, state }, outputId) {
-      // Record INTENT first: until the user re-opens this conversation,
-      // nothing may silently clear it — in particular the viewing:true
-      // autosaves of the currently-open conversation (see chat.js), which is
-      // exactly how a manual mark-unread of the active chat was being wiped
-      // within seconds.
-      commit('SET_MANUAL_UNREAD', { id: outputId, on: true });
+    markUnread({ dispatch, state }, outputId) {
+      // Nothing can silently clear this: saves never touch the watermark
+      // (the email model — see ContentOutputModel.createOrUpdate), so a
+      // manual mark-unread survives every autosave until the user actually
+      // re-opens the conversation.
       // Mirrors the server's write exactly (ContentOutputModel.setReadState):
       // the conversation's last activity becomes NOW, because queueing it for
       // later IS activity, with the watermark one second behind so it derives
@@ -435,7 +414,6 @@ export default {
       if (ids.length === 0) return { cleared: 0 };
 
       ids.forEach((id) => {
-        commit('SET_MANUAL_UNREAD', { id, on: false });
         commit('ATTENTION_WRITE_STARTED', id);
       });
 

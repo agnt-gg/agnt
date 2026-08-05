@@ -148,7 +148,6 @@ export async function saveTranscript({
   messages = [],
   agentId = null,
   agentName = null,
-  viewing = false,
   channelKey = null,
 } = {}) {
   if (!conversationId) return { ok: false, error: 'no_conversation_id' };
@@ -165,7 +164,6 @@ export async function saveTranscript({
         conversationId,
         isShareable: false,
         title,
-        viewing,
         // Which surface owns this transcript. Absent (main chat) means it is
         // an item in the user's conversation list; present means it belongs
         // to the workspace/artifact/widget it was typed into, and the list

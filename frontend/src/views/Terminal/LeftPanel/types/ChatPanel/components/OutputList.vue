@@ -412,8 +412,14 @@ export default {
     const selectedOutputIds = ref(new Set());
     const lastSelectedId = ref(null);
 
-    // Active/current conversation (the one being viewed)
-    const activeOutputId = ref(null);
+    // Active/current conversation — DERIVED from the chat store, which
+    // mirrors the active conversation's saved output id. One source of
+    // truth: the row highlights the moment a new chat's first autosave
+    // lands (SCOPED_SET_SAVED_OUTPUT_ID → mirror), with no click needed,
+    // and clears when a fresh chat starts. The local ref this replaces was
+    // only ever written by clicking a row, so a brand-new conversation
+    // never highlighted until manually clicked.
+    const activeOutputId = computed(() => store.state.chat.savedOutputId);
 
     // Streaming output IDs from the chat store
     const streamingOutputIds = computed(() => store.getters['chat/streamingOutputIds'] || new Set());
@@ -453,16 +459,17 @@ export default {
     });
 
     // The CHIME derives from a stricter set than the dot: unread minus
-    // streaming minus the active conversation — see notifiableUnreadIds for
-    // why each exclusion exists (a streaming conversation re-derives unread
-    // on every ~5s autosave; ringing on those turned long agent runs into a
-    // metronome). Ringing on ENTRY into this set gives exactly one chime per
-    // thing that finished changing while the user was elsewhere.
+    // streaming — see notifiableUnreadIds for why (a streaming conversation
+    // re-derives unread on every ~5s autosave; ringing on those turned long
+    // agent runs into a metronome). The ACTIVE conversation is NOT excluded:
+    // the chime is an oven timer, and a run finishing rings once even for
+    // the selected chat — selection says nothing about whether the user is
+    // actually looking. Ringing on ENTRY into this set gives exactly one
+    // chime per thing that finished changing.
     const suppressUnreadSoundFor = ref(null); // the user's own "Mark as Unread" click
     const notifiableIds = computed(() =>
       notifiableUnreadIds(unreadOutputIds.value, {
         streamingIds: streamingOutputIds.value,
-        activeIds: [store.state.chat.savedOutputId, activeOutputId.value].filter(Boolean),
       })
     );
     watch(notifiableIds, (newSet, oldSet) => {
@@ -1047,7 +1054,6 @@ export default {
 
     function navigateToOutput(outputId) {
       playSound('buttonClick');
-      activeOutputId.value = outputId; // Highlight the current conversation
       try {
         router.push(`/chat?content-id=${outputId}`);
       } catch (error) {
@@ -1130,10 +1136,9 @@ export default {
 
     // Check if output has an unread change. Only suppressed while
     // streaming (the pulsing indicator already tells them). We DON'T
-    // suppress on active — a manual "Mark as Unread" from the 3-dot
-    // menu should show the dot immediately, even on the chat the user
-    // is currently viewing; SET_ACTIVE_CONVERSATION will clear it the
-    // next time they open the item.
+    // suppress on active — a finished run or a manual "Mark as Unread"
+    // shows the dot even on the currently-selected chat, and only
+    // clicking into the conversation clears it (the email model).
     function isOutputUnread(outputId) {
       if (!unreadOutputIds.value.has(outputId)) return false;
       if (isOutputStreaming(outputId)) return false;
@@ -1142,9 +1147,8 @@ export default {
 
     // Manual toggle from the 3-dot menu. Marking an item unread while
     // it's the currently-active conversation is intentionally allowed —
-    // the dot is hidden by isOutputUnread's isActive guard until the
-    // user navigates away, then reappears; SET_ACTIVE_CONVERSATION
-    // clears it again the next time they open the item.
+    // the dot shows immediately and stays until the user clicks back
+    // into the conversation.
     function toggleUnread(outputId) {
       if (!outputId) return;
       activeMenu.value = null;
@@ -1212,7 +1216,6 @@ export default {
         .filter(Boolean);
       idsArray.forEach((id) => store.commit('contentOutputs/REMOVE_OUTPUT', id));
       clearSelection();
-      activeOutputId.value = null;
       if (wasViewingDeleted) {
         router.push('/chat');
         window.dispatchEvent(new CustomEvent('trigger-new-chat'));
@@ -1349,7 +1352,6 @@ export default {
       const removedSnapshot = outputs.value.find((o) => o.id === outputId);
       store.commit('contentOutputs/REMOVE_OUTPUT', outputId);
       if (wasActive) {
-        activeOutputId.value = null;
         router.push('/chat');
         window.dispatchEvent(new CustomEvent('trigger-new-chat'));
       }
@@ -1434,22 +1436,14 @@ export default {
     //     to fire (on EVERY autosave, so every ~5s per streaming
     //     conversation) was a fetch storm that starved conversation loads.
     //
-    //   - The read watermark for the conversation being viewed is stamped BY
-    //     the save itself (viewing: true — see chat.js / ContentOutputModel).
-    //     The markRead this handler used to dispatch was the second half of a
-    //     save-then-stamp pair whose gap flashed the dot and rang the chime
-    //     every time a snapshot landed inside it.
+    //   - Read state is untouched here: saves never mark read (the email
+    //     model — see ContentOutputModel), and read stamps come only from
+    //     the user opening a conversation.
     function handleConversationSaved(event) {
       const savedId = event?.detail?.id;
       if (savedId) {
         bumpTimestamps.value = { ...bumpTimestamps.value, [savedId]: Date.now() };
       }
-    }
-
-    // Handle chat cleared event
-    function handleChatCleared() {
-      // Clear the active output when chat is cleared
-      activeOutputId.value = null;
     }
 
     // Setup lifecycle hooks
@@ -1460,14 +1454,12 @@ export default {
       document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('conversation-saved', handleConversationSaved);
-      window.addEventListener('chat-cleared', handleChatCleared);
     });
 
     onBeforeUnmount(() => {
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('conversation-saved', handleConversationSaved);
-      window.removeEventListener('chat-cleared', handleChatCleared);
     });
 
     return {

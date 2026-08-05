@@ -389,10 +389,9 @@ describe('UPSERT_OUTPUT_META', () => {
     expect(store.getters['contentOutputs/outputs'][0].group_id).toBe('g2');
   });
 
-  it('a viewing-save meta keeps the active conversation read', () => {
-    // The server stamps last_read_at atomically with a viewing save; the
-    // merged row must therefore never present as unread — this is the
-    // flicker-free path for the conversation being looked at.
+  it('a meta payload whose watermark matches updated_at derives read', () => {
+    // Derived state rides the payload as-is: if the server says the row was
+    // read up to its last change, the merge must not invent an unread dot.
     const store = makeStore();
     seed(store, [row({ id: 'out-1' })]);
 
@@ -523,45 +522,40 @@ describe('attention writes vs stale snapshots', () => {
 });
 
 /**
- * Manual "Mark as Unread" is INTENT with a lifetime: it survives anything
- * except the user actually re-opening the conversation. The autosave layer
- * consults this to decide viewing:true/false — without it, the ~5s autosaves
- * of the open conversation cleared a manual mark within seconds.
+ * Manual "Mark as Unread" needs NO client-side intent bookkeeping. The old
+ * manuallyUnread map existed solely to stop viewing:true autosaves of the
+ * open conversation from re-stamping the watermark within seconds. Saves no
+ * longer touch read state at all (the email model), so the server columns
+ * alone carry a manual unread until the user actually re-opens the
+ * conversation — there is nothing left to defend against.
  */
-describe('manuallyUnread intent', () => {
-  it('markUnread records intent; markRead clears it', async () => {
+describe('mark-unread survives saves with no intent map', () => {
+  it('a save-meta broadcast after markUnread settles does not clear it — the server never re-stamps', async () => {
     const store = makeStore();
     seed(store, [row({ id: 'out-1' })]);
+    const { release } = deferredFetch();
 
-    await store.dispatch('contentOutputs/markUnread', 'out-1');
-    expect(store.getters['contentOutputs/isManuallyUnread']('out-1')).toBe(true);
+    const patch = store.dispatch('contentOutputs/markUnread', 'out-1');
+    release();
+    await patch;
 
-    await store.dispatch('contentOutputs/markRead', 'out-1');
-    expect(store.getters['contentOutputs/isManuallyUnread']('out-1')).toBe(false);
+    // An autosave lands AFTER the mark-unread settled. Under the email model
+    // the server moves updated_at and leaves the watermark alone — so the
+    // payload still derives unread, with no client-side map needed.
+    store.commit('contentOutputs/UPSERT_OUTPUT_META', {
+      output: row({ id: 'out-1', updated_at: '2026-08-05 12:00:10' }),
+      snapshotStartedAt: Date.now() + 50,
+    });
+
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
   });
 
-  it('the rail clear-all also clears intent', async () => {
-    const store = makeStore();
-    seed(store, [row({ id: 'a' }), row({ id: 'b' })]);
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ cleared: 2 }) });
-
-    await store.dispatch('contentOutputs/markUnread', 'a');
-    await store.dispatch('contentOutputs/markUnread', 'b');
-    await store.dispatch('contentOutputs/markAllRead', ['a', 'b']);
-
-    expect(store.getters['contentOutputs/isManuallyUnread']('a')).toBe(false);
-    expect(store.getters['contentOutputs/isManuallyUnread']('b')).toBe(false);
-  });
-
-  it('a failed markUnread still records intent locally and rethrows', async () => {
-    // The optimistic flip reverts, but intent is the user's statement — the
-    // next successful write will honour it. (Design choice: losing the
-    // watermark write must not silently lose the user's intent too.)
+  it('a failed markUnread rolls back the optimistic flip and rethrows', async () => {
     const store = makeStore();
     seed(store, [row({ id: 'out-1' })]);
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
 
     await expect(store.dispatch('contentOutputs/markUnread', 'out-1')).rejects.toThrow();
-    expect(store.getters['contentOutputs/isManuallyUnread']('out-1')).toBe(true);
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
   });
 });

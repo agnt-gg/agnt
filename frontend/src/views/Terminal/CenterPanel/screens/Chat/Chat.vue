@@ -1874,10 +1874,6 @@ export default {
             conversationId: currentConversationId.value,
             isShareable: false,
             title: conversationTitle, // Add title for preview
-            // A manual save of the open conversation is by definition a
-            // "viewing" save — the watermark is stamped atomically with the
-            // write (see ContentOutputModel.createOrUpdate).
-            viewing: true,
           }),
         });
 
@@ -2323,9 +2319,8 @@ export default {
         }
         scrollToBottom();
       });
-
-      // Notify OutputList to deselect the current conversation
-      window.dispatchEvent(new CustomEvent('chat-cleared'));
+      // No event needed for the sidebar: its highlight derives from
+      // chat.savedOutputId, which SET_ACTIVE_CONVERSATION just reset.
     };
 
     const flushScrollCaptureOnHide = () => {

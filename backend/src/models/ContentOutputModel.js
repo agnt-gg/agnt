@@ -8,30 +8,29 @@ const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversat
 
 class ContentOutputModel {
   /**
-   * @param {{ viewing?: boolean, channelKey?: string|null }} [opts]
+   * @param {{ channelKey?: string|null }} [opts]
    *   channelKey: this row belongs to an embedded chat channel
    *   ('workspace:<id>', 'artifact:<id>', ...) rather than to the main chat
    *   list. Sticky once set — see the COALESCE in the conflict clause.
    *
-   *   viewing: the user is LOOKING AT this conversation right now (the saving
-   *   client says so). The save then stamps the read watermark in the same
-   *   statement as the change it writes.
-   *
-   *   This closes a race at its source rather than around it: a save bumps
-   *   updated_at, which makes the row derived-unread until a follow-up
-   *   markRead PATCH lands. During streaming a conversation autosaves every
-   *   ~5s, so that window recurred forever, and any list snapshot taken
-   *   inside it showed the conversation the user was READING as "needs you"
-   *   — a flicker in the rail and a notification chime, every few seconds.
-   *   Two writes with a gap can always be observed between them; one write
-   *   has no between.
+   * SAVES NEVER MARK READ — the email model. A save records that the
+   * conversation CHANGED (updated_at moves); the read watermark moves only
+   * when the user explicitly opens or clears the conversation (setReadState,
+   * via the read PATCH). There used to be a `viewing` flag here that let the
+   * client stamp the watermark atomically with a save ("I'm looking at it");
+   * it meant a finished run in the selected conversation was born read — no
+   * dot, no chime — even when the user was on another screen entirely.
+   * Selection is not attention, so the attestation was unverifiable and
+   * wrong; it is gone. Noise-control for the ~5s stream autosaves lives
+   * client-side, where streaming conversations are excluded from the chime
+   * until the run completes (notifiableUnreadIds).
    */
-  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { viewing = false, channelKey = null } = {}) {
+  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null } = {}) {
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
       //
-      // THE last_read_at CLAUSE, non-viewing arm. Unread is derived as
+      // THE last_read_at CLAUSE. Unread is derived as
       // "updated_at is later than last_read_at", which needs a watermark to
       // compare against; rows predating the column have none. Rather than a
       // one-shot mass backfill (see database/index.js for why that is a trap
@@ -56,10 +55,9 @@ class ContentOutputModel {
       // not mention a channel can never silently un-scope a row and drop it
       // back into the main chat list. There is no legitimate un-scope, and the
       // failure mode of getting this wrong is the original bug returning.
-      const viewingFlag = viewing ? 1 : 0;
       db.run(
         `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, channel_key, last_read_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
@@ -70,12 +68,9 @@ class ContentOutputModel {
            conversation_id = excluded.conversation_id,
            title = excluded.title,
            channel_key = COALESCE(excluded.channel_key, content_outputs.channel_key),
-           last_read_at = CASE WHEN ?
-             THEN CURRENT_TIMESTAMP
-             ELSE COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second'))
-           END,
+           last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
            updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null, viewingFlag, viewingFlag],
+        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });
