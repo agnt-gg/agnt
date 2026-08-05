@@ -255,6 +255,45 @@ describe('API documentation contract', () => {
     // it cannot hide a real violation: a file that vanished contributed no
     // env names either way, and the `known.size > 100` sanity check below
     // still fails loudly if the scan silently collapses.
+    const CODE_FILE = /\.(js|mjs|cjs|ts|vue)$/;
+    const SKIP_DIR = new Set(['node_modules', 'dist', '.git']);
+
+    const harvest = (text) => {
+      for (const m of text.matchAll(/process\.env\.([A-Z0-9_]+)/g)) known.add(m[1]);
+      for (const m of text.matchAll(/process\.env\[['"]([A-Z0-9_]+)['"]\]/g)) known.add(m[1]);
+      for (const m of text.matchAll(/import\.meta\.env\.([A-Z0-9_]+)/g)) known.add(m[1]);
+    };
+
+    // `withFileTypes` returns each entry's kind from the directory read that
+    // already happened, instead of a statSync per entry, and the extension
+    // filter runs before any I/O touches the file. Measured on this repo:
+    // 1,244 files / 18.7 MB, 484ms -> 423ms, with a byte-identical result set
+    // (same 1,244 files, same 103 names) — verified before adopting it.
+    const scanDir = (dir) => {
+      let entries;
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        if (SKIP_DIR.has(e.name)) continue;
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          scanDir(full);
+          continue;
+        }
+        if (!e.isFile() || !CODE_FILE.test(e.name)) continue;
+        let t;
+        try {
+          t = fs.readFileSync(full, 'utf8');
+        } catch {
+          continue;
+        }
+        harvest(t);
+      }
+    };
+
     const scan = (p) => {
       let st;
       try {
@@ -262,28 +301,12 @@ describe('API documentation contract', () => {
       } catch {
         return;
       }
-      if (st.isFile()) {
-        if (!/\.(js|mjs|cjs|ts|vue)$/.test(p)) return;
-        let t;
-        try {
-          t = fs.readFileSync(p, 'utf8');
-        } catch {
-          return;
-        }
-        for (const m of t.matchAll(/process\.env\.([A-Z0-9_]+)/g)) known.add(m[1]);
-        for (const m of t.matchAll(/process\.env\[['"]([A-Z0-9_]+)['"]\]/g)) known.add(m[1]);
-        for (const m of t.matchAll(/import\.meta\.env\.([A-Z0-9_]+)/g)) known.add(m[1]);
-        return;
-      }
-      let entries;
+      if (st.isDirectory()) return scanDir(p);
+      if (!CODE_FILE.test(p)) return;
       try {
-        entries = fs.readdirSync(p);
+        harvest(fs.readFileSync(p, 'utf8'));
       } catch {
-        return;
-      }
-      for (const e of entries) {
-        if (e === 'node_modules' || e === 'dist' || e === '.git') continue;
-        scan(path.join(p, e));
+        /* vanished mid-walk; contributes nothing either way */
       }
     };
     for (const d of [
@@ -313,6 +336,8 @@ describe('API documentation contract', () => {
     for (const n of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'CSC_IDENTITY_AUTO_DISCOVERY']) known.add(n);
 
     // Sanity: if the scan found almost nothing, the assertion below is vacuous.
+    // Also the flake tripwire — a scan degraded by a bad filter shows up here
+    // as a shrinking number rather than as a mysteriously fast green run.
     expect(known.size).toBeGreaterThan(100);
 
     const docsDir = path.join(REPO, 'docs');
@@ -346,7 +371,16 @@ describe('API documentation contract', () => {
         'does nothing and reports no error, so the reader has no way to tell:\n' +
         report.map((r) => `  ${r}`).join('\n')
     ).toEqual([]);
-  });
+    // 60s, not the 5s default. This is repo-wide static analysis wearing a unit
+    // test's clothes: it reads 1,244 files / 18.7 MB synchronously. Measured at
+    // 423ms on an idle disk in a single process — only 8x under the default —
+    // and the full backend suite runs it alongside ~20 workers that are each
+    // doing their own file I/O and sqlite init. It passed 9/9 in isolation and
+    // timed out at 5000ms in the full run: a pure contention overrun, never a
+    // real failure. A gate that fires randomly on green code gets ignored
+    // exactly like a permanently red one, so the budget now reflects what the
+    // work actually costs instead of asserting a speed it never had.
+  }, 60_000);
 
   // -------------------------------------------------------------------------
   // TOPOLOGY COVERAGE
