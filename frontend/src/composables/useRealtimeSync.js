@@ -3,6 +3,7 @@ import { debounce } from 'lodash-es';
 import { API_CONFIG } from '../tt.config.js';
 import { useStore } from 'vuex';
 import { dispatchWorkflowUpdated } from '../utils/workflowBroadcast.js';
+import { GLOBAL_FRONTEND_EVENTS, dispatchGlobalFrontendEvent } from '../services/globalFrontendEvents.js';
 
 // Singleton socket instance
 let socket = null;
@@ -204,22 +205,16 @@ export function useRealtimeSync() {
       }
     });
 
-    socket.on('tutorial:start', (data) => {
-      console.log('[Realtime] tutorial:start broadcast received', data);
-      try {
-        window.dispatchEvent(new CustomEvent('ai-tour:start', { detail: data }));
-      } catch (e) {
-        console.error('[Realtime] dispatching ai-tour:start failed:', e);
-      }
-    });
-    socket.on('tutorial:end', (data) => {
-      console.log('[Realtime] tutorial:end broadcast received', data);
-      try {
-        window.dispatchEvent(new CustomEvent('ai-tour:end', { detail: data }));
-      } catch (e) {
-        console.error('[Realtime] dispatching ai-tour:end failed:', e);
-      }
-    });
+    // Window-scoped tool effects (guided tour, app background) are mirrored over
+    // socket.io by the orchestrator so they reach EVERY open tab, not just the
+    // one holding the SSE. Registering from the shared registry means a new
+    // global event type is delivered here the moment it is declared once.
+    for (const eventType of Object.keys(GLOBAL_FRONTEND_EVENTS)) {
+      socket.on(eventType, (data) => {
+        console.log(`[Realtime] ${eventType} broadcast received`, data);
+        dispatchGlobalFrontendEvent(eventType, data, 'Realtime');
+      });
+    }
 
     // Initialize debounced fetch functions
     // These prevent multiple rapid events from triggering multiple API calls

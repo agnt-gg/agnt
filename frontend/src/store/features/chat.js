@@ -10,6 +10,7 @@ import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
+import { dispatchGlobalFrontendEvent } from '@/services/globalFrontendEvents.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -3374,6 +3375,14 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         } catch { /* malformed result — no floor pass */ }
       }
       break;
+    // Window-scoped side effects a tool asked for (guided tour, app background).
+    // The registry in globalFrontendEvents.js is the single definition of which
+    // event types are global; every chat surface routes through it so a new one
+    // works everywhere the moment it is added there.
+    case 'frontend_event':
+      dispatchGlobalFrontendEvent(data.eventType, data.eventData, 'chat');
+      break;
+
     case 'image_generated':
       commit('SCOPED_ADD_IMAGE_TO_CACHE', {
         conversationId,

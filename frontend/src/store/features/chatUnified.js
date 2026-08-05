@@ -8,6 +8,7 @@ import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
+import { dispatchGlobalFrontendEvent, dispatchGlobalFrontendEvents } from '@/services/globalFrontendEvents.js';
 import {
   saveTranscript,
   loadTranscriptByConversationId,
@@ -1350,27 +1351,15 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
         try { toolResult = JSON.parse(toolResult); } catch { /* not JSON */ }
       }
       if (toolResult?.frontendEvents) {
-        for (const evt of toolResult.frontendEvents) {
-          // Tutorial events are global-scope (not chat-channel-scope) — dispatch
-          // a window event the AIGuidedTourHost picks up regardless of which
-          // chat channel produced the tool call.
-          if (evt.type === 'tutorial:start' || evt.type === 'tutorial:end') {
-            try {
-              window.dispatchEvent(new CustomEvent(
-                evt.type === 'tutorial:start' ? 'ai-tour:start' : 'ai-tour:end',
-                { detail: evt.data }
-              ));
-            } catch (e) {
-              console.error('[chatUnified] dispatching tutorial event failed:', e);
-            }
-            continue;
-          }
-          if (typeof onFrontendEvent === 'function') {
-            try { onFrontendEvent(evt.type, evt.data, data.toolCall); } catch (e) {
-              console.error('[chatUnified] onFrontendEvent threw:', e);
-            }
-          }
-        }
+        // Global-scope events (tour, background) go to the window; everything
+        // else is channel-scoped and belongs to this channel's callback.
+        dispatchGlobalFrontendEvents(
+          toolResult.frontendEvents,
+          (type, payload) => {
+            if (typeof onFrontendEvent === 'function') onFrontendEvent(type, payload, data.toolCall);
+          },
+          'chatUnified',
+        );
       }
       if (typeof onFrontendEvent === 'function') {
         try { onFrontendEvent('tool-completed', { toolCall: data.toolCall }, data.toolCall); } catch (e) { /* noop */ }
@@ -1380,32 +1369,12 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
 
     case 'frontend_event':
       console.log('[chatUnified] frontend_event SSE received', { eventType: data.eventType, hasData: !!data.eventData });
-      // Tutorial events are global-scope (not chat-channel-scope) — dispatch
-      // a window event the AIGuidedTourHost picks up regardless of which
-      // chat channel produced the tool call. This is the primary delivery
-      // path: OrchestratorService strips frontendEvents from tool_end and
-      // ships each one through this `frontend_event` SSE.
-      if (data.eventType === 'tutorial:start' || data.eventType === 'tutorial:end') {
-        try {
-          window.dispatchEvent(new CustomEvent(
-            data.eventType === 'tutorial:start' ? 'ai-tour:start' : 'ai-tour:end',
-            { detail: data.eventData }
-          ));
-          console.log('[chatUnified] dispatched window event', data.eventType);
-        } catch (e) {
-          console.error('[chatUnified] dispatching tutorial event failed:', e);
-        }
-      }
-      // Appearance events are global-scope for the same reason: the background
-      // belongs to the window, not to the chat channel that asked for it.
-      // TerminalLayout.vue owns #bg-layer and listens for this.
-      if (data.eventType === 'appearance:background') {
-        try {
-          window.dispatchEvent(new CustomEvent('agnt:appearance-background', { detail: data.eventData || {} }));
-        } catch (e) {
-          console.error('[chatUnified] dispatching appearance event failed:', e);
-        }
-      }
+      // Primary delivery path: OrchestratorService strips frontendEvents from
+      // tool_end and ships each one through this SSE. Window-scoped types are
+      // re-dispatched as window events (see globalFrontendEvents.js) so the
+      // host component reacts regardless of which channel made the call; the
+      // channel callback still runs so channel-scoped consumers keep working.
+      dispatchGlobalFrontendEvent(data.eventType, data.eventData, 'chatUnified');
       if (typeof onFrontendEvent === 'function') {
         try { onFrontendEvent(data.eventType, data.eventData); } catch (e) {
           console.error('[chatUnified] onFrontendEvent threw:', e);
