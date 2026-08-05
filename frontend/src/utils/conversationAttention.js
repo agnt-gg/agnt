@@ -177,8 +177,8 @@ export function formatListDate(value, now = new Date()) {
  * oven timer: a run finishing rings once, even for the conversation that is
  * currently selected — "selected" says nothing about whether the user is
  * looking (they may be on another screen entirely, with the chat still
- * active underneath). The one own-click that must not ring — the user's own
- * "Mark as Unread" — is suppressed at the call site (suppressUnreadSoundFor).
+ * active underneath). A manual "Mark as Unread" rings too: every entry into
+ * the unread set sounds the same, and the ring confirms the row is queued.
  *
  * Pure function so the exact chime contract is testable without mounting
  * the sidebar.

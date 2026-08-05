@@ -36,7 +36,7 @@
         <div id="saved-outputs" class="saved-items">
           <div class="sort-controls">
             <div class="sort-modes">
-              <Tooltip text="Unread first, longest waiting on top" width="auto">
+              <Tooltip text="Unread first" width="auto">
                 <button @click="sortBy('attention')" class="sort-button" :class="{ active: sortKey === 'attention' }">
                   <i class="fas fa-bell"></i>
                   <span>Unread</span>
@@ -361,9 +361,9 @@ export default {
     // ordered" is a preference, not session state — re-picking it on every
     // reload is the kind of small tax that makes people stop using a control.
     //
-    // The default is 'attention' — the "Unread" mode: unread first, longest
-    // waiting on top. It is the default because it is the only ordering that
-    // cannot bury something waiting on you, which is why the panel needs no
+    // The default is 'attention' — the "Unread" mode: unread first, newest
+    // on top. It is the default because it is the only ordering that cannot
+    // bury something waiting on you, which is why the panel needs no
     // separate unread section. 'updated_at' is pure recency.
     //
     // The stored key stays 'attention' even though the button reads "Unread":
@@ -465,8 +465,9 @@ export default {
     // the chime is an oven timer, and a run finishing rings once even for
     // the selected chat — selection says nothing about whether the user is
     // actually looking. Ringing on ENTRY into this set gives exactly one
-    // chime per thing that finished changing.
-    const suppressUnreadSoundFor = ref(null); // the user's own "Mark as Unread" click
+    // chime per thing that finished changing. A manual "Mark as Unread"
+    // rings too (Nathan's call): every entry into the unread set sounds the
+    // same — the chime confirms the row is queued.
     const notifiableIds = computed(() =>
       notifiableUnreadIds(unreadOutputIds.value, {
         streamingIds: streamingOutputIds.value,
@@ -475,9 +476,8 @@ export default {
     watch(notifiableIds, (newSet, oldSet) => {
       let ring = false;
       newSet.forEach((id) => {
-        if ((!oldSet || !oldSet.has(id)) && id !== suppressUnreadSoundFor.value) ring = true;
+        if (!oldSet || !oldSet.has(id)) ring = true;
       });
-      suppressUnreadSoundFor.value = null;
       if (ring) playSound('chatUnread');
     });
 
@@ -1153,7 +1153,6 @@ export default {
       if (unreadOutputIds.value.has(outputId)) {
         store.dispatch('contentOutputs/markRead', outputId).catch(() => {});
       } else {
-        suppressUnreadSoundFor.value = outputId;
         store.dispatch('contentOutputs/markUnread', outputId).catch(() => {});
       }
     }

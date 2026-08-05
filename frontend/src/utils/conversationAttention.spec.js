@@ -190,8 +190,8 @@ describe('notifiableUnreadIds — the chime contract', () => {
     // REGRESSION GUARD: the old contract excluded the selected conversation
     // (an activeIds option). Selection is not attention — the user may be on
     // another screen with the chat still selected underneath — so a finished
-    // run rings once even for the open chat. The one own-click that must not
-    // ring (the user's own Mark-as-Unread) is suppressed at the call site.
+    // run rings once even for the open chat. A manual Mark-as-Unread rings
+    // too — every entry into the unread set sounds the same.
     expect(notifiableUnreadIds(unread, { activeIds: ['b'] })).toEqual(new Set(['a', 'b', 'c']));
   });
 
