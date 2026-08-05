@@ -120,6 +120,67 @@ db.serialize(() => {
   db.run('PRAGMA auto_vacuum = INCREMENTAL');
 });
 
+// ── Index creation is DEFERRED until after migrations ──────────────────────
+//
+// An index is derived from a table's columns, so it can only be built once the
+// schema is final. `CREATE TABLE IF NOT EXISTS` supplies every column on a
+// FRESH database — but on an EXISTING one it is a no-op, and the columns it
+// names arrive later, from runMigrations(). An index declared inline in
+// createTables() therefore works on a new install and fails on every upgrade
+// across the migration that adds its column.
+//
+// It fails badly, in two compounding ways (both measured, node-sqlite3 v5):
+//   1. The index is silently never created. `IF NOT EXISTS` did not save it;
+//      the statement errored, so nothing was built and nothing said so.
+//   2. A callback-less db.run emits its error on the *Statement* object. No
+//      Database-level 'error' listener can catch it — verified: adding
+//      db.on('error') does NOT help — so it lands as an UNCAUGHT EXCEPTION
+//      and kills the process during boot.
+//
+// idx_content_outputs_channel did exactly this to every existing install on
+// the day channel_key shipped: `SQLITE_ERROR: no such column: channel_key`,
+// thrown before the migration that adds the column had run. It is the fourth
+// index in this file to have the shape; the other three predate any install
+// still in use and healed on their second boot, which is why they were never
+// seen. It would have happened again on the next migration + index pair.
+//
+// So: collect index DDL next to its table (where it reads best), run it after
+// runMigrations(), always with a callback. The ORDERING makes the failure
+// impossible; the CALLBACK makes any future one a log line instead of a dead
+// app. Enforced structurally by databaseSchemaOrder.test.js.
+const deferredIndexes = [];
+
+function createIndex(sql) {
+  deferredIndexes.push(sql);
+}
+
+function createIndexes() {
+  return new Promise((resolve) => {
+    if (deferredIndexes.length === 0) return resolve();
+    db.serialize(() => {
+      let pending = deferredIndexes.length;
+      let failed = 0;
+      for (const sql of deferredIndexes) {
+        db.run(sql, (err) => {
+          if (err) {
+            failed++;
+            // Non-fatal by design: a missing index costs speed, never
+            // correctness, and must not stop the app from starting. Loud so it
+            // cannot rot silently the way the channel_key one did.
+            console.error(
+              `[schema] index build failed (non-fatal): ${err.message}\n         ${sql.replace(/\s+/g, ' ').trim()}`
+            );
+          }
+          if (--pending === 0) {
+            if (failed > 0) console.error(`[schema] ${failed} of ${deferredIndexes.length} indexes could not be built`);
+            resolve();
+          }
+        });
+      }
+    });
+  });
+}
+
 function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
@@ -221,9 +282,9 @@ function createTables() {
       )`);
 
       // Index for faster workflow queries by user_id
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)`);
       // Composite index for status-filtered queries (active workflows panel)
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflows_user_status ON workflows(user_id, status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflows_user_status ON workflows(user_id, status)`);
 
       // Workflow version history table
       db.run(`CREATE TABLE IF NOT EXISTS workflow_versions (
@@ -244,9 +305,9 @@ function createTables() {
       )`);
 
       // Indexes for workflow versions
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow_id ON workflow_versions(workflow_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_created_at ON workflow_versions(created_at)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_checkpoint ON workflow_versions(is_checkpoint)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow_id ON workflow_versions(workflow_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_created_at ON workflow_versions(created_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_checkpoint ON workflow_versions(is_checkpoint)`);
 
       // Groups for organizing conversations
       db.run(`CREATE TABLE IF NOT EXISTS groups (
@@ -263,8 +324,8 @@ function createTables() {
         FOREIGN KEY (parent_id) REFERENCES groups(id) ON DELETE CASCADE
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_groups_user_id ON groups(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_groups_parent_id ON groups(parent_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_groups_user_id ON groups(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_groups_parent_id ON groups(parent_id)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS content_outputs (
         id TEXT PRIMARY KEY,
@@ -288,10 +349,10 @@ function createTables() {
       )`);
 
       // Index for faster content_outputs queries by user_id, sorted by updated_at
-      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_updated ON content_outputs(user_id, updated_at DESC)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_group_id ON content_outputs(group_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_channel ON content_outputs(user_id, channel_key)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_updated ON content_outputs(user_id, updated_at DESC)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_group_id ON content_outputs(group_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_channel ON content_outputs(user_id, channel_key)`);
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (
@@ -320,10 +381,10 @@ function createTables() {
       )`);
 
       // Index for faster workflow execution queries
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_id ON workflow_executions(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_status ON workflow_executions(user_id, status)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_workflow_id ON workflow_executions(workflow_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_start ON workflow_executions(user_id, start_time)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_id ON workflow_executions(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_status ON workflow_executions(user_id, status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_workflow_id ON workflow_executions(workflow_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_start ON workflow_executions(user_id, start_time)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS node_executions (
         id TEXT PRIMARY KEY,
@@ -338,8 +399,8 @@ function createTables() {
         credits_used REAL DEFAULT 0,
         FOREIGN KEY (execution_id) REFERENCES workflow_executions(id)
       )`);      // Index for faster node execution lookups by execution_id (CRITICAL for run details)
-      db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_id ON node_executions(execution_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_status ON node_executions(execution_id, status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_id ON node_executions(execution_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_status ON node_executions(execution_id, status)`);
 
       // Daily activity rollup for the dashboard's Automation Activity chart.
       // One row per (user_id, local date) with pre-aggregated credits/tokens/cost.
@@ -501,7 +562,7 @@ function createTables() {
       )`
       );
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
 
       // Migration: per-conversation AI override (provider + model). NULL means
       // "inherit" — the conversation follows the global default. Lives here
@@ -613,9 +674,9 @@ function createTables() {
       )`);
 
       // Index for faster agent execution lookups
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_start ON agent_executions(user_id, start_time)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_start ON agent_executions(user_id, start_time)`);
 
       // How much larger a real request is than our estimate of it, per
       // provider+model. Learned from provider-reported usage rather than
@@ -678,10 +739,10 @@ function createTables() {
         ts DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_user_ts ON llm_calls(user_id, ts)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_execution ON llm_calls(execution_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_root ON llm_calls(root_execution_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_llm_calls_origin ON llm_calls(origin, origin_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_llm_calls_user_ts ON llm_calls(user_id, ts)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_llm_calls_execution ON llm_calls(execution_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_llm_calls_root ON llm_calls(root_execution_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_llm_calls_origin ON llm_calls(origin, origin_id)`);
 
       // Cross-process tripwire for dropped ledger writes.
       //
@@ -735,7 +796,7 @@ function createTables() {
       )`);
 
       // Index for faster agent tool execution lookups (CRITICAL for run details)
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`);
 
       // Custom widget definitions for Widget Forge system
       db.run(`CREATE TABLE IF NOT EXISTS widget_definitions (
@@ -760,7 +821,7 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_widget_definitions_user_id ON widget_definitions(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_widget_definitions_user_id ON widget_definitions(user_id)`);
 
       // Widget layouts for dynamic canvas system
       db.run(`CREATE TABLE IF NOT EXISTS widget_layouts (
@@ -777,7 +838,7 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_widget_layouts_user_id ON widget_layouts(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_widget_layouts_user_id ON widget_layouts(user_id)`);
 
       // ==================== SKILLS TABLE ====================
       db.run(`CREATE TABLE IF NOT EXISTS skills (
@@ -798,13 +859,20 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_user_id ON skills(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skills_user_id ON skills(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)`);
 
       // Migration: add slug column for kebab-case canonical name lookup
-      db.run(`ALTER TABLE skills ADD COLUMN slug TEXT`, () => {});
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_slug ON skills(slug)`);
+      // "duplicate column name" is the expected outcome on every boot after
+      // the first and is not worth a line; anything else is a real schema
+      // failure and must not vanish into an empty callback.
+      db.run(`ALTER TABLE skills ADD COLUMN slug TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding slug column to skills:', err);
+        }
+      });
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skills_slug ON skills(slug)`);
 
       // ==================== SKILLFORGE TABLES ====================
       // Skill version history — tracks evolutionary lineage of skills
@@ -824,7 +892,7 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skill_versions_skill_id ON skill_versions(skill_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skill_versions_skill_id ON skill_versions(skill_id)`);
 
       // Skill A/B test evaluations — experiment log
       db.run(`CREATE TABLE IF NOT EXISTS skill_evaluations (
@@ -850,8 +918,8 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_id ON skill_evaluations(skill_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_id ON skill_evaluations(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_id ON skill_evaluations(skill_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_id ON skill_evaluations(user_id)`);
 
       // Security policy — versioned per-user NOPE enforcement settings
       db.run(`CREATE TABLE IF NOT EXISTS security_policies (
@@ -892,8 +960,8 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_user ON evolution_performance_snapshots(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_target ON evolution_performance_snapshots(target_type, target_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_user ON evolution_performance_snapshots(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_target ON evolution_performance_snapshots(target_type, target_id)`);
 
       // Evolution core run receipts — baseline vs best, delta, genome, and routing counts
       db.run(`CREATE TABLE IF NOT EXISTS evolution_core_runs (
@@ -916,8 +984,8 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_user ON evolution_core_runs(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_created ON evolution_core_runs(created_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_user ON evolution_core_runs(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_created ON evolution_core_runs(created_at)`);
 
 
       // Goal iteration history for AGI loop
@@ -935,7 +1003,7 @@ function createTables() {
         FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_goal_iterations_goal_id ON goal_iterations(goal_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_goal_iterations_goal_id ON goal_iterations(goal_id)`);
 
       // ==================== EXPERIMENT ECOSYSTEM ====================
       db.run(`CREATE TABLE IF NOT EXISTS experiments (
@@ -1003,28 +1071,28 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_experiments_user_id ON experiments(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_experiment_runs_experiment_id ON experiment_runs(experiment_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_experiment_results_experiment_id ON experiment_results(experiment_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_eval_datasets_user_id ON eval_datasets(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_eval_datasets_skill_id ON eval_datasets(skill_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_experiments_user_id ON experiments(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_experiment_runs_experiment_id ON experiment_runs(experiment_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_experiment_results_experiment_id ON experiment_results(experiment_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_eval_datasets_user_id ON eval_datasets(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_eval_datasets_skill_id ON eval_datasets(skill_id)`);
 
       // ==================== PERFORMANCE INDEXES ====================
       // Agents - faster lookup by user
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agents_updated_at ON agents(updated_at DESC)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_resources_agent_id ON agent_resources(agent_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agents_updated_at ON agents(updated_at DESC)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_resources_agent_id ON agent_resources(agent_id)`);
 
       // Goals - faster lookup by user and status
-      db.run(`CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status)`);
 
       // Tasks - faster lookup by goal
-      db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_goal_id ON tasks(goal_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_tasks_goal_id ON tasks(goal_id)`);
 
       // Custom tools - faster lookup by user
-      db.run(`CREATE INDEX IF NOT EXISTS idx_tools_created_by ON tools(created_by)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_tools_created_by ON tools(created_by)`);
 
       // Webhooks - faster lookup by user
       // ==================== EVOLUTION ENGINE TABLES ====================
@@ -1051,10 +1119,10 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_user_id ON insights(user_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_target ON insights(target_type, target_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_status ON insights(status)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_source ON insights(source_type, source_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_insights_user_id ON insights(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_insights_target ON insights(target_type, target_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_insights_status ON insights(status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_insights_source ON insights(source_type, source_id)`);
 
       // Agent memory — persistent memory for agents across conversations
       db.run(`CREATE TABLE IF NOT EXISTS agent_memory (
@@ -1072,8 +1140,8 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_agent_id ON agent_memory(agent_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_user_id ON agent_memory(user_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_memory_agent_id ON agent_memory(agent_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_memory_user_id ON agent_memory(user_id)`);
 
       // PRD-057: installed_plugin_assets — registry tying ecosystem-plugin-installed
       // assets (agents, workflows, skills, widgets) back to the plugin that owns them.
@@ -1089,8 +1157,8 @@ function createTables() {
         deprecated_at DATETIME,
         UNIQUE (plugin_name, asset_type, asset_slug)
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_plugin ON installed_plugin_assets(plugin_name)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_local ON installed_plugin_assets(asset_type, local_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_plugin ON installed_plugin_assets(plugin_name)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_local ON installed_plugin_assets(asset_type, local_id)`);
 
       // PRD-091: Closed Loop — Layer 1 (Clock)
       db.run(`CREATE TABLE IF NOT EXISTS schedules (
@@ -1110,8 +1178,8 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_schedules_target ON schedules(target_type, target_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_schedules_target ON schedules(target_type, target_id)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS schedule_runs (
         id TEXT PRIMARY KEY,
@@ -1124,7 +1192,7 @@ function createTables() {
         error TEXT,
         FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule ON schedule_runs(schedule_id, fired_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule ON schedule_runs(schedule_id, fired_at)`);
 
       // PRD-091: Layer 3 (Wallets) — linear capability budgets
       db.run(`CREATE TABLE IF NOT EXISTS wallets (
@@ -1145,8 +1213,8 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (parent_id) REFERENCES wallets(id) ON DELETE CASCADE
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_wallets_owner ON wallets(owner_type, owner_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_wallets_parent ON wallets(parent_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_wallets_owner ON wallets(owner_type, owner_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_wallets_parent ON wallets(parent_id)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS wallet_ledger (
         id TEXT PRIMARY KEY,
@@ -1159,7 +1227,7 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (wallet_id) REFERENCES wallets(id) ON DELETE CASCADE
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_wallet_ledger_wallet ON wallet_ledger(wallet_id, created_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_wallet_ledger_wallet ON wallet_ledger(wallet_id, created_at)`);
 
       // PRD-091: Layer 5 (Contracts) — refinement-type runtime contracts
       db.run(`CREATE TABLE IF NOT EXISTS contracts (
@@ -1179,8 +1247,8 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_contracts_target ON contracts(target_type, target_id, status)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_contracts_user ON contracts(user_id, status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_contracts_target ON contracts(target_type, target_id, status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_contracts_user ON contracts(user_id, status)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS contract_violations (
         id TEXT PRIMARY KEY,
@@ -1193,7 +1261,7 @@ function createTables() {
         observed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_contract_violations_contract ON contract_violations(contract_id, observed_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_contract_violations_contract ON contract_violations(contract_id, observed_at)`);
 
       // PRD-091: Layer 7 (FitnessScore) — mutation provenance and reward signal
       db.run(`CREATE TABLE IF NOT EXISTS mutation_history (
@@ -1215,19 +1283,16 @@ function createTables() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_mutation_history_target ON mutation_history(target_type, target_id, created_at)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_mutation_history_insight ON mutation_history(insight_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_mutation_history_status ON mutation_history(status)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_mutation_history_target ON mutation_history(target_type, target_id, created_at)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_mutation_history_insight ON mutation_history(insight_id)`);
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_mutation_history_status ON mutation_history(status)`);
 
-      db.run(`CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)`,
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        }
-      );
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)`);
+
+      // Table DDL is queued; sqlite3 runs it in call order, so a trailing
+      // no-op statement resolving here means every CREATE TABLE above has
+      // completed. Indexes are NOT part of this phase (see createIndexes).
+      db.run(`SELECT 1`, (err) => (err ? reject(err) : resolve()));
     });
   });
 }// --- Guarded build for the activity-chart covering index (2026-07-03) -------
@@ -1311,7 +1376,7 @@ function runMigrations() {
           console.error('Error adding content_shape column to agent_memory:', err);
         }
       });
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_shape
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_memory_shape
               ON agent_memory(agent_id, memory_type, content_shape)`);
 
       // Migration: duplicate-sighting census on memories (2026-08-01).
@@ -1346,7 +1411,7 @@ function runMigrations() {
         updated_at TEXT
       )`);
       // Prune scans by age, never by user.
-      db.run(`CREATE INDEX IF NOT EXISTS idx_conversation_prompt_state_updated
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_prompt_state_updated
               ON conversation_prompt_state(updated_at)`);
 
       // Migration: novelty gate in front of insight extraction (2026-08-01).
@@ -1558,10 +1623,10 @@ function runMigrations() {
         });
       });
 
-      db.run(
-        `CREATE INDEX IF NOT EXISTS idx_agent_executions_root ON agent_executions(root_execution_id)`,
-        () => {}
-      );
+      // Was `db.run(..., () => {})` — an empty callback, which is the other
+      // way to lose a schema failure: not fatal, just invisible. createIndex()
+      // logs it.
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_root ON agent_executions(root_execution_id)`);
 
       // One-time cache invalidation for the usage rollup (PRD-122).
       //
@@ -1988,6 +2053,13 @@ const dbReady = skipSchemaInit
   })
   .then(() => {
     console.log('All migrations completed successfully');
+    // Indexes LAST: the schema is only final once migrations have run. See the
+    // createIndex() comment — building them any earlier is what took boot down
+    // with `no such column: channel_key` on every upgrading install.
+    return createIndexes();
+  })
+  .then(() => {
+    console.log('All indexes ready');
   })
   .then(async () => {
     // Heal duplicate widget_layouts route pages and make (user_id, route)
