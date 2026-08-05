@@ -18,6 +18,7 @@
             @click="$emit('screen-change', tab.screen)"
           >
             {{ tab.label }}
+            <span v-if="tab.screen === 'ChatScreen' && hasUnreadChats" class="cv-unread-dot"></span>
           </button>
         </template>
       </div>
@@ -81,6 +82,7 @@
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
+              <span v-if="section.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
               <span class="cv-sb-label" v-marquee>
                 <span class="cv-sb-label-inner">{{ section.label }}</span>
               </span>
@@ -128,6 +130,7 @@
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
+              <span v-if="section.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
               <span class="cv-sb-label" v-marquee>
                 <span class="cv-sb-label-inner">{{ section.label }}</span>
               </span>
@@ -255,6 +258,7 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
 import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES } from './sections.js';
+import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -382,6 +386,19 @@ export default {
     // Section data (static)
     const mainSections = MAIN_SECTIONS;
     const settingsSections = SETTINGS_SECTIONS;
+
+    // Green dot on the Chat nav: "a conversation finished changing and you
+    // haven't seen it". EXACTLY the set that rings the chime — unread minus
+    // still-streaming (notifiableUnreadIds) — so the dot lights when the ding
+    // fires and clears when the last unread is opened. Deliberately does NOT
+    // exclude the selected conversation: selection is not attention (the
+    // whole email-model rule), and this dot exists precisely to be seen from
+    // OTHER screens.
+    const hasUnreadChats = computed(() => {
+      const unread = store.getters['contentOutputs/unreadOutputIdSet'];
+      const streaming = store.getters['chat/streamingOutputIds'];
+      return notifiableUnreadIds(unread, { streamingIds: streaming }).size > 0;
+    });
 
     // Custom pages = pages that don't belong to any section.
     // Also exclude workspace:* rows (owned by /api/workspaces) so tab names
@@ -660,6 +677,7 @@ export default {
       allPages,
       mainSections,
       settingsSections,
+      hasUnreadChats,
       customPages,
       isCustomPage,
       onCustomPage,
@@ -768,6 +786,29 @@ export default {
   color: var(--color-primary);
   border-color: rgba(var(--primary-rgb), 0.15);
   background: rgba(var(--primary-rgb), 0.04);
+}
+
+/* Unread-chats indicator — same green as the sidebar rows' unread dot
+   (--color-green), same meaning: a conversation finished changing and you
+   haven't opened it. Sits inline after the CHAT tab label… */
+.cv-unread-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-green);
+  margin-left: 5px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* …and badge-cornered on the sidebar's Chat icon so it is visible from any
+   section, collapsed or expanded. */
+.cv-unread-dot-sb {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  margin-left: 0;
 }
 
 .cv-page-title {
@@ -1029,6 +1070,8 @@ export default {
   justify-content: center;
   transition: all 0.12s;
   flex-shrink: 0;
+  /* Anchor for the .cv-unread-dot-sb badge on the Chat icon. */
+  position: relative;
 }
 
 .cv-sb-page i {
