@@ -86,6 +86,14 @@ export const RealtimeEvents = {
   TOOL_UPDATED: 'tool:updated',
   TOOL_DELETED: 'tool:deleted',
 
+  // Widget definitions. The frontend caches widget `source_code` for the life
+  // of the page; without these events a widget edited from chat, another tab
+  // or a plugin install renders stale until a full reload. Emit via
+  // utils/widgetChangeNotifier.js — never call broadcast directly.
+  WIDGET_CREATED: 'widget:created',
+  WIDGET_UPDATED: 'widget:updated',
+  WIDGET_DELETED: 'widget:deleted',
+
   // Security (PRD-051 NOPE guardrail)
   SECURITY_BLOCKED: 'security:blocked', // Phase 2+ (strict mode)
   SECURITY_WARNED: 'security:warned', // audit-mode "would block" events

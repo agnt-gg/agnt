@@ -120,10 +120,24 @@ const mutations = {
 
   UPDATE_DEFINITION(state, { id, updates }) {
     const idx = state.definitions.findIndex((d) => d.id === id);
-    if (idx !== -1) {
-      state.definitions[idx] = { ...state.definitions[idx], ...updates };
-      syncToRegistry(state.definitions[idx]);
+    if (idx === -1) return;
+
+    // Monotonicity guard. Two fetches for the same row can be in flight at
+    // once (a slow ensureDefinitionLoaded started before an edit, plus the
+    // refreshDefinition triggered by widget:updated after it). Whichever
+    // RESPONSE lands last wins, which means a stale body can silently
+    // reinstate itself over a fresh one — the original bug, resurrected by
+    // timing rather than by caching.
+    //
+    // Only applies when both sides carry updated_at; partial updates (name,
+    // thumbnail, is_shared) legitimately arrive without one.
+    const current = state.definitions[idx];
+    if (current?.updated_at && updates?.updated_at && updates.updated_at < current.updated_at) {
+      return;
     }
+
+    state.definitions[idx] = { ...current, ...updates };
+    syncToRegistry(state.definitions[idx]);
   },
 
   REMOVE_DEFINITION(state, id) {
@@ -197,6 +211,49 @@ const actions = {
 
     _pendingDetailLoads.set(id, fetchPromise);
     return fetchPromise;
+  },
+
+  /**
+   * Force-refetch a definition from the server, replacing whatever is cached.
+   *
+   * `ensureDefinitionLoaded` is deliberately idempotent — it treats "the
+   * source_code key exists" as "this row is current", which is what keeps
+   * rendering cheap. That makes it structurally unable to notice a row that
+   * changed server-side, so a widget edited from chat, another tab, another
+   * device, or a plugin install kept rendering its old body until a full page
+   * reload. This is the invalidation half of that contract: the backend emits
+   * widget:created/updated/deleted (utils/widgetChangeNotifier.js) and this
+   * action pulls the fresh row in.
+   *
+   * CustomWidgetRenderer binds :srcdoc to the store's source_code, so
+   * committing here re-renders every mounted instance of the widget with no
+   * further plumbing.
+   *
+   * Deliberately does NOT share the _pendingDetailLoads coalescing map: that
+   * map exists to dedupe "I need this now" reads, whereas a refresh must never
+   * be answered by an in-flight request that started before the change.
+   */
+  async refreshDefinition({ commit, state }, id) {
+    if (!id) return null;
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${id}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const widget = data.widget || data;
+      if (!widget || !widget.id) return null;
+
+      if (state.definitions.find((d) => d.id === widget.id)) {
+        commit('UPDATE_DEFINITION', { id: widget.id, updates: widget });
+      } else {
+        commit('ADD_DEFINITION', widget);
+      }
+      return state.definitions.find((d) => d.id === widget.id) || null;
+    } catch (error) {
+      console.error(`Failed to refresh widget definition ${id}:`, error);
+      return null;
+    }
   },
 
   /**
