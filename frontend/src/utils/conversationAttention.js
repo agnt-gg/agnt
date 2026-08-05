@@ -131,7 +131,7 @@ export function formatAge(value, now = Date.now()) {
 /**
  * The subset of unread ids that should make NOISE (the sidebar chime).
  *
- * Unread ≠ notifiable. Two kinds of unread must stay silent:
+ * Unread ≠ notifiable. ONE kind of unread must stay silent:
  *
  *   - STREAMING conversations: a running agent autosaves every few seconds,
  *     and each save legitimately re-derives the row as unread. Chiming on
@@ -141,23 +141,24 @@ export function formatAge(value, now = Date.now()) {
  *     and you haven't seen the result". When the stream ends the id leaves
  *     streamingIds, enters this set, and rings exactly once.
  *
- *   - The ACTIVE conversation: the user is looking at it; nothing about it
- *     is news to them. (Its unread flag can still be legitimately set — a
- *     manual "Mark as Unread" — but their own click must not ring.)
+ * The ACTIVE conversation is deliberately NOT excluded. The chime is an
+ * oven timer: a run finishing rings once, even for the conversation that is
+ * currently selected — "selected" says nothing about whether the user is
+ * looking (they may be on another screen entirely, with the chat still
+ * active underneath). The one own-click that must not ring — the user's own
+ * "Mark as Unread" — is suppressed at the call site (suppressUnreadSoundFor).
  *
  * Pure function so the exact chime contract is testable without mounting
  * the sidebar.
  *
  * @param {Set<string>} unreadIds derived unread set (unreadIdSet)
- * @param {{ streamingIds?: Set<string>, activeIds?: Iterable<string> }} context
+ * @param {{ streamingIds?: Set<string> }} context
  * @returns {Set<string>} new set — the ids a NEW appearance of which warrants a chime
  */
-export function notifiableUnreadIds(unreadIds, { streamingIds, activeIds } = {}) {
-  const active = new Set(activeIds || []);
+export function notifiableUnreadIds(unreadIds, { streamingIds } = {}) {
   const result = new Set();
   for (const id of unreadIds || []) {
     if (streamingIds && streamingIds.has(id)) continue;
-    if (active.has(id)) continue;
     result.add(id);
   }
   return result;

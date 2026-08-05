@@ -186,8 +186,13 @@ describe('notifiableUnreadIds — the chime contract', () => {
       .toEqual(new Set(['b']));
   });
 
-  it('the active conversation is silent — nothing about it is news', () => {
-    expect(notifiableUnreadIds(unread, { activeIds: ['b'] })).toEqual(new Set(['a', 'c']));
+  it('the active conversation rings like any other — the chime is an oven timer', () => {
+    // REGRESSION GUARD: the old contract excluded the selected conversation
+    // (an activeIds option). Selection is not attention — the user may be on
+    // another screen with the chat still selected underneath — so a finished
+    // run rings once even for the open chat. The one own-click that must not
+    // ring (the user's own Mark-as-Unread) is suppressed at the call site.
+    expect(notifiableUnreadIds(unread, { activeIds: ['b'] })).toEqual(new Set(['a', 'b', 'c']));
   });
 
   it('a stream ending makes its id notifiable — one chime, at completion', () => {

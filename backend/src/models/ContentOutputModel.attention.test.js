@@ -379,41 +379,43 @@ describe('user-initiated writes do not flag their own conversation', () => {
 });
 
 /**
- * viewing: true — the saving client attests the user is LOOKING AT this
- * conversation, so the read watermark rides the same statement as the write.
- * The old shape (save, then a separate markRead PATCH) left a window in which
- * the row was derived-unread; with ~5s stream autosaves that window recurred
- * forever, and every list snapshot inside it flashed the rail and rang the
- * chime for the conversation being read.
+ * SAVES NEVER MARK READ — the email model. There used to be a `viewing`
+ * flag letting the saving client stamp the read watermark atomically with
+ * the write ("I'm looking at it"). Selection is not attention: a run
+ * finishing in the SELECTED conversation was born read — no dot, no chime —
+ * even when the user was on another screen entirely. The watermark now
+ * moves only through setReadState (the read PATCH sent when the user
+ * actually opens or clears a conversation).
  */
-describe('viewing saves stamp the watermark atomically', () => {
+describe('saves never stamp the read watermark', () => {
   const VIEWED = 'out-attention-viewed';
 
-  it('a viewing INSERT is born read', async () => {
+  it('a fresh INSERT has no watermark — born neutral, not unread', async () => {
     await ContentOutputModel.createOrUpdate(
-      VIEWED, USER, null, null, '{}', false, 'conversation', 'conv-viewed', 'Viewed',
-      { viewing: true }
+      VIEWED, USER, null, null, '{}', false, 'conversation', 'conv-viewed', 'Viewed'
     );
     const row = await getRow(VIEWED);
-    expect(row.last_read_at).not.toBeNull();
+    expect(row.last_read_at).toBeNull();
     expect(isUnreadRow(row)).toBe(false);
   });
 
-  it('a viewing UPDATE clears derived-unread in the same write', async () => {
-    // Make it genuinely unread first.
+  it('a save cannot clear an unread conversation — only the read PATCH can', async () => {
+    // REGRESSION GUARD for "the finished ding never fires on the selected
+    // chat": mark unread, save (any save — there is no viewing arm left),
+    // and the row must STAY unread until an explicit read.
     await ContentOutputModel.setReadState(VIEWED, USER, false);
     expect(isUnreadRow(await getRow(VIEWED))).toBe(true);
 
     await ContentOutputModel.createOrUpdate(
-      VIEWED, USER, null, null, '{"messages":["seen"]}', false, 'conversation', 'conv-viewed', 'Viewed',
-      { viewing: true }
+      VIEWED, USER, null, null, '{"messages":["seen"]}', false, 'conversation', 'conv-viewed', 'Viewed'
     );
-    const row = await getRow(VIEWED);
-    expect(row.updated_at <= row.last_read_at).toBe(true);
-    expect(isUnreadRow(row)).toBe(false);
+    expect(isUnreadRow(await getRow(VIEWED))).toBe(true);
+
+    await ContentOutputModel.setReadState(VIEWED, USER, true);
+    expect(isUnreadRow(await getRow(VIEWED))).toBe(false);
   });
 
-  it('a background save (no viewing) still reports as unread — the flag is not sticky', async () => {
+  it('a save to a read conversation derives unread — it changed and you have not seen it', async () => {
     await new Promise((r) => setTimeout(r, 1100));
     await ContentOutputModel.createOrUpdate(
       VIEWED, USER, null, null, '{"messages":["agent"]}', false, 'conversation', 'conv-viewed', 'Viewed'

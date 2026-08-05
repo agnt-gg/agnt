@@ -2278,19 +2278,15 @@ export default {
           agentName: agentName || null,
         });
 
-        // `viewing` — this save is for the conversation the user is LOOKING
-        // AT, so the server stamps the read watermark atomically with the
-        // write. One write has no unread window between change and stamp;
-        // the old save-then-markRead pair recreated that window on every ~5s
-        // stream autosave, and any list snapshot inside it rang the unread
-        // chime for the very conversation being read.
-        //
-        // A manual "Mark as Unread" overrides viewing: that is the user
-        // saying "queue this for later", and it must survive autosaves until
-        // they actually re-open the conversation.
-        const viewing =
-          convId === state.activeConversationId &&
-          !(savedOutputId && rootState.contentOutputs?.manuallyUnread?.[savedOutputId]);
+        // Saves never mark read — the email model. A save records that the
+        // conversation changed; only the user opening it (the read PATCH in
+        // loadSavedOutput) moves the watermark. There used to be a `viewing`
+        // flag here that stamped the ACTIVE conversation read on every
+        // autosave — selection is not attention, so a run finishing in the
+        // selected chat while the user was on another screen was born read:
+        // no dot, no chime. Stream-time chime noise is handled where it
+        // belongs — notifiableUnreadIds excludes conversations that are
+        // still streaming.
         const saveStartedAt = Date.now();
 
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/save`, {
@@ -2306,7 +2302,6 @@ export default {
             conversationId: currentConvId,
             isShareable: false,
             title: conversationTitle,
-            viewing,
           }),
         });
 

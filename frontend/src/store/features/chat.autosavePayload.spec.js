@@ -87,15 +87,16 @@ describe('chat/autosaveConversation payload', () => {
 });
 
 /**
- * The viewing flag + event-carried save metadata.
+ * The email model + event-carried save metadata.
  *
- * viewing:true tells the server "the user is looking at this conversation",
- * so the read watermark is stamped ATOMICALLY with the save — no unread
- * window between change and stamp, hence no rail flicker and no chime for
- * the conversation being read (the save-then-markRead pair this replaces
- * reopened that window on every ~5s stream autosave).
+ * Saves NEVER claim the conversation was read. The `viewing` flag that used
+ * to ride this payload let the client stamp the read watermark on every
+ * autosave of the SELECTED conversation — so a run finishing in the selected
+ * chat was born read (no dot, no chime) even when the user was on another
+ * screen entirely. Selection is not attention. The read stamp now comes only
+ * from the read PATCH sent when the user actually opens the conversation.
  */
-describe('chat/autosaveConversation viewing + save-meta merge', () => {
+describe('chat/autosaveConversation read-state + save-meta merge', () => {
   let store;
   let fetchMock;
 
@@ -133,30 +134,20 @@ describe('chat/autosaveConversation viewing + save-meta merge', () => {
     localStorage.clear();
   });
 
-  it('saving the ACTIVE conversation sends viewing: true', async () => {
+  it('saving the ACTIVE conversation carries no viewing claim — the oven timer must ring', async () => {
+    // REGRESSION GUARD: if a save of the selected conversation could mark
+    // itself read again, a finished run would be born read — no dot, no
+    // chime — whenever its row happened to be selected.
     setupConversation('conv-1');
     await store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: 'conv-1' });
-    expect(savedBody().viewing).toBe(true);
+    expect('viewing' in savedBody()).toBe(false);
   });
 
-  it('saving a BACKGROUND conversation sends viewing: false', async () => {
-    // A background agent's autosave must not stamp the watermark — that
-    // conversation SHOULD go unread; it changed while the user was elsewhere.
+  it('a background save carries no viewing claim either', async () => {
     setupConversation('conv-bg', { active: false, savedOutputId: 'out-bg' });
     setupConversation('conv-active');
     await store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: 'conv-bg' });
-    expect(savedBody().viewing).toBe(false);
-  });
-
-  it('a manual Mark-as-Unread overrides viewing — the save must not clear it', async () => {
-    // REGRESSION GUARD for "it will not stay in the Needs-you group": the
-    // user marks the OPEN conversation unread; the next ~5s autosave used to
-    // re-stamp it read. Intent outlives autosaves; only re-opening clears it.
-    setupConversation('conv-1', { savedOutputId: 'out-1' });
-    store.commit('contentOutputs/SET_MANUAL_UNREAD', { id: 'out-1', on: true });
-
-    await store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: 'conv-1' });
-    expect(savedBody().viewing).toBe(false);
+    expect('viewing' in savedBody()).toBe(false);
   });
 
   it('merges result.output into the sidebar list — no full-list refetch', async () => {
@@ -180,7 +171,8 @@ describe('chat/autosaveConversation viewing + save-meta merge', () => {
 
     const outputs = store.getters['contentOutputs/outputs'];
     expect(outputs.map((o) => o.id)).toEqual(['out-1']);
-    // Viewing save: watermark rode along, so the active conversation is READ.
+    // The fixture's watermark equals updated_at, so the merged row derives
+    // read — the merge preserves server-derived state as-is.
     expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
     // And the ONLY network call was the save — no /content-outputs list GET.
     const listFetches = fetchMock.mock.calls.filter(([url]) =>

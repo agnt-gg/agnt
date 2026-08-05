@@ -28,7 +28,6 @@ beforeEach(() => {
   state = {
     outputs: [],
     totalCount: 0,
-    manuallyUnread: {},
     attentionInFlight: {},
     attentionSettledAt: {},
   };

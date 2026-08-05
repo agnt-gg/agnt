@@ -777,7 +777,7 @@ export default {
      * rendered transcript to content_outputs — the same table, same shape, and
      * now the same serializer as the main chat.
      */
-    async saveChannelTranscript({ commit, state }, { channelKey, viewing = false } = {}) {
+    async saveChannelTranscript({ commit, state }, { channelKey } = {}) {
       const conv = channelKey ? state.conversations[channelKey] : null;
       if (!conv?.conversationId) return { ok: false, reason: 'no_conversation_id' };
 
@@ -793,7 +793,6 @@ export default {
         conversationId: conv.conversationId,
         title: deriveTitle(conv.messages),
         messages: conv.messages,
-        viewing,
         // This transcript belongs to the surface it was typed into, not to the
         // user's main conversation list. Without this the sidebar lists every
         // workspace, artifact and widget chat alongside real conversations.
@@ -1021,7 +1020,7 @@ export default {
         // answer is still the user's conversation and must survive a restart.
         // Deliberately not awaited: persistence must never delay the UI
         // settling, and saveTranscript reports its own failures.
-        dispatch('saveChannelTranscript', { channelKey, viewing: true });
+        dispatch('saveChannelTranscript', { channelKey });
 
         // If a mid-turn steer never drained (turn ended on a final response
         // with no more tool rounds, so the between-rounds seam never fired),
