@@ -360,28 +360,47 @@ describe('one dead credential does not end the session', () => {
   };
 
   const authHeaders = () => globalThis.fetch.mock.calls.map((c) => c[1].headers.Authorization);
+  /** Every attempt as "host + which token", which is what the walk really is. */
+  const route = () =>
+    globalThis.fetch.mock.calls.map(
+      (c) => `${new URL(c[0]).host} ${c[1].headers.Authorization.replace('Bearer ', '')}`,
+    );
 
-  it('an exhausted API key falls over to the subscription', async () => {
-    // The literal reported failure, with the preference order reversed so the
-    // key is reached at all: subscription refused, key out of credit.
+  it('an exhausted API key is reached only after the subscription is out of routes', async () => {
+    // The literal reported failure. The subscription is tried first and on BOTH
+    // of its routes; only then does the walk spend the metered key.
     getValidAccessToken.mockResolvedValue('sk-no-credit');
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
-    answers({ status: 403, body: 'not entitled' }, { status: 200, body: 'answer' });
+    answers(
+      { status: 403, body: 'not entitled' },
+      { status: 403, body: 'not entitled' },
+      { status: 200, body: 'answer' },
+    );
 
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
     expect(r).toEqual({ ok: true, sdp: 'answer' });
-    expect(authHeaders()).toEqual(['Bearer eyJ.oauth.token', 'Bearer sk-no-credit']);
+    expect(route()).toEqual([
+      'chatgpt.com eyJ.oauth.token',
+      'api.openai.com eyJ.oauth.token',
+      'api.openai.com sk-no-credit',
+    ]);
   });
 
-  it.each([401, 403, 429])('walks past a %i and uses the next credential', async (status) => {
-    getValidAccessToken.mockResolvedValue('sk-test');
-    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
-    answers({ status, body: 'nope' }, { status: 200, body: 'answer' });
+  it.each([401, 403, 429])(
+    'a %i on the ChatGPT product falls back to the platform route, same token',
+    async (status) => {
+      // The reason the second route exists: if OpenAI closes one of them, the
+      // subscription must not be handed to the metered key instead.
+      getValidAccessToken.mockResolvedValue('sk-test');
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      answers({ status, body: 'nope' }, { status: 200, body: 'answer' });
 
-    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
-    expect(r.ok).toBe(true);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
-  });
+      const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+      expect(r.ok).toBe(true);
+      expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
+      expect(authHeaders()).not.toContain('Bearer sk-test');
+    },
+  );
 
   it.each([400, 500, 503])('a %i is not a credential problem and ends the walk', async (status) => {
     // A malformed offer and an OpenAI outage fail identically on every token.
@@ -411,7 +430,11 @@ describe('one dead credential does not end the session', () => {
     // them their API key is out of credit is the sentence they can act on.
     getValidAccessToken.mockResolvedValue('sk-no-credit');
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
-    answers({ status: 403, body: 'not entitled' }, { status: 429, body: 'insufficient_quota' });
+    answers(
+      { status: 403, body: 'not entitled' },
+      { status: 403, body: 'not entitled' },
+      { status: 429, body: 'insufficient_quota' },
+    );
 
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
     expect(r.reason).toBe('provider-429');
@@ -419,9 +442,9 @@ describe('one dead credential does not end the session', () => {
   });
 
   it('sends the SDP offer intact on the second attempt, not an emptied body', async () => {
-    // The request body is built once and reused across the walk. If it were
-    // consumable, the failover would succeed at the protocol level and hand
-    // OpenAI an empty offer — a failure that no status code would reveal.
+    // Each attempt builds its own body. If one were reused and consumable, the
+    // failover would succeed at the protocol level and hand OpenAI an empty
+    // offer — a failure that no status code would reveal.
     getValidAccessToken.mockResolvedValue('sk-test');
     ensureValidToken.mockResolvedValue('eyJ.oauth.token');
     answers({ status: 401, body: 'nope' }, { status: 200, body: 'answer' });
@@ -430,6 +453,66 @@ describe('one dead credential does not end the session', () => {
     const second = globalThis.fetch.mock.calls[1][1].body;
     expect(second.get('sdp')).toBe('the-real-offer');
     expect(second.get('session')).toBeTruthy();
+  });
+});
+
+describe('each credential is spent where it belongs', () => {
+  /**
+   * A ChatGPT token is accepted by the ChatGPT product's own realtime endpoint
+   * AND by the public platform API (both measured at 201). They are not equally
+   * safe to build on: every OTHER platform surface refuses this token on scope
+   * (/v1/models 403; chat, responses and both audio routes 401). Realtime is
+   * the lone exception there, so the subscription asks its own product first
+   * and treats the platform route as a backstop.
+   */
+  const ok = () =>
+    globalThis.fetch.mockResolvedValue({ ok: true, status: 200, text: async () => 'answer' });
+  const first = () => globalThis.fetch.mock.calls[0];
+
+  it('a subscription opens on the ChatGPT product, not the platform API', async () => {
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ok();
+
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(first()[0]).toBe('https://chatgpt.com/backend-api/codex/realtime/calls');
+  });
+
+  it('sends the ChatGPT product the JSON dialect it asks for', async () => {
+    // Measured: that endpoint answers `sdp` must be a string / `session` must be
+    // an object. It does not accept the multipart body the platform API takes.
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    ok();
+
+    await createRealtimeCall({ sdp: 'the-offer', userId: 'u1', voice: 'marin' });
+    const [, init] = first();
+    expect(init.headers['Content-Type']).toBe('application/json');
+    const body = JSON.parse(init.body);
+    expect(body.sdp).toBe('the-offer');
+    expect(body.session.audio.output.voice).toBe('marin');
+  });
+
+  it('never sends a platform key to the ChatGPT product', async () => {
+    // Measured: it rejects `sk-` keys with 401. Offering one there would spend a
+    // round trip to be told something already known.
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue(null);
+    ok();
+
+    await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(first()[0]).toBe('https://api.openai.com/v1/realtime/calls');
+  });
+
+  it('still sends multipart to the platform API', async () => {
+    getValidAccessToken.mockResolvedValue('sk-test');
+    ensureValidToken.mockResolvedValue(null);
+    ok();
+
+    await createRealtimeCall({ sdp: 'the-offer', userId: 'u1' });
+    expect(first()[1].body).toBeInstanceOf(FormData);
+    expect(first()[1].body.get('sdp')).toBe('the-offer');
   });
 });
 
