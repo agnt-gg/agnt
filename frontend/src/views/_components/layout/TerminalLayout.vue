@@ -159,8 +159,8 @@ export default {
     const currentBackgroundType = computed(() => store.getters['theme/currentBackgroundType']);
     const defaultBackgroundImage = computed(() => store.state.theme.defaultBackgroundImage);
 
-    // True when either the user's own setting or a chat-set ephemeral overlay
-    // wants a background layer.
+    // True when the user's custom-background setting is on. A chat-set
+    // background turns that setting on, so there is only the one condition.
     const backgroundLayerActive = computed(() => store.getters['theme/backgroundLayerActive']);
 
     const bgSrc = computed(() => {
@@ -177,16 +177,31 @@ export default {
 
     const hasBgLayer = computed(() => backgroundLayerActive.value && !!bgSrc.value);
 
-    // Ephemeral background set from a chat turn. chatUnified.js re-dispatches
-    // the `appearance:background` frontend event here as a window event because
-    // the background is global-scope, not chat-channel-scope.
-    const onAppearanceBackground = (event) => {
+    // Background set from a chat turn. chatUnified.js re-dispatches the
+    // `appearance:background` frontend event here as a window event because the
+    // background is global-scope, not chat-channel-scope.
+    //
+    // A null url means clear. Either way this goes through the same theme
+    // actions the Settings panel uses, so the change is instant, persists
+    // across reloads, and shows up in Settings — there is no second background
+    // system for the assistant.
+    const onAppearanceBackground = async (event) => {
       const detail = (event && event.detail) || {};
-      store.dispatch('theme/setEphemeralBackground', {
-        url: detail.url,
-        type: detail.kind,
-        fileName: detail.fileName,
-      });
+      try {
+        if (!detail.url) {
+          await store.dispatch('theme/clearAssistantBackground');
+          return;
+        }
+        await store.dispatch('theme/applyAssistantBackground', {
+          url: detail.url,
+          type: detail.kind,
+          fileName: detail.fileName,
+        });
+      } catch (error) {
+        // Never let a background failure escape as an unhandled rejection — it
+        // would surface as a generic app error with no hint of the cause.
+        console.error('[TerminalLayout] failed to apply background:', error);
+      }
     };
     onMounted(() => window.addEventListener('agnt:appearance-background', onAppearanceBackground));
     onUnmounted(() => window.removeEventListener('agnt:appearance-background', onAppearanceBackground));
