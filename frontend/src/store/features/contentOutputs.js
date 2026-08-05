@@ -3,7 +3,7 @@ import { API_CONFIG } from '@/tt.config.js';
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 import { toServerDate } from '@/utils/serverTime.js';
-import { unreadIdSet, triageRail } from '@/utils/conversationAttention.js';
+import { unreadIdSet, triageRail, isUnread } from '@/utils/conversationAttention.js';
 
 /**
  * Fields an attention write owns, and which a stale snapshot may therefore
@@ -354,18 +354,29 @@ export default {
     },
 
     markRead({ dispatch, state }, outputId) {
-      // Optimistic watermark = the row's own updated_at, NOT the client
-      // clock. "Read" means "seen everything up to the last change", and
-      // updated_at IS the last change — so this is exact and immune to
-      // client/server clock skew (a skewed client clock behind the server's
-      // updated_at would otherwise leave a phantom unread dot until the
-      // next refetch). The server stamps its own CURRENT_TIMESTAMP as truth.
+      // Mirrors the server exactly (ContentOutputModel.setReadState):
+      //
+      // A genuine unread→read transition ALSO re-dates the row to now —
+      // finally reading the thing is last-activity, and the old behaviour
+      // (watermark only) made a days-old unread sink back to its stale save
+      // date the instant it was clicked, out from under the cursor. Both
+      // fields get the SAME instant, and a tie derives read.
+      //
+      // An already-read row keeps the watermark-only shape: the read PATCH
+      // fires on EVERY conversation open, and browsing must not shuffle the
+      // list. There the optimistic watermark = the row's own updated_at, NOT
+      // the client clock — exact, and immune to client/server clock skew.
+      // The server stamps its own CURRENT_TIMESTAMP as truth either way.
       const row = state.outputs.find((o) => o.id === outputId);
+      const now = new Date();
+      const updates = row && isUnread(row)
+        ? { updated_at: now, last_read_at: now }
+        : { last_read_at: row?.updated_at || now };
       return dispatch('_patchAttention', {
         outputId,
         path: 'read',
         body: { read: true },
-        updates: { last_read_at: row?.updated_at || new Date() },
+        updates,
       });
     },
 
@@ -418,13 +429,16 @@ export default {
       });
 
       const revert = [];
+      const now = new Date();
       for (const id of ids) {
         const row = state.outputs.find((o) => o.id === id);
         if (!row) continue;
-        revert.push({ id, updates: { last_read_at: row.last_read_at } });
-        // Watermark = the row's own updated_at, not the client clock — see
-        // markRead for why this is skew-proof.
-        commit('PATCH_OUTPUT', { id, updates: { last_read_at: row.updated_at || new Date() } });
+        revert.push({ id, updates: { last_read_at: row.last_read_at, updated_at: row.updated_at } });
+        // Mirrors the server (ContentOutputModel.markAllRead): clearing
+        // re-dates — both fields take the same instant, a tie derives read,
+        // and the cleared rows HOLD their positions instead of snapping back
+        // to stale dates and scattering down the list.
+        commit('PATCH_OUTPUT', { id, updates: { updated_at: now, last_read_at: now } });
       }
 
       const token = localStorage.getItem('token');

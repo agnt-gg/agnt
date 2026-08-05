@@ -119,6 +119,41 @@ describe('markRead / markUnread', () => {
     expect(JSON.parse(opts.body)).toEqual({ read: true });
   });
 
+  it('reading an UNREAD row re-dates it to NOW — it holds its place instead of sinking to its stale save date', async () => {
+    const store = makeStore();
+    // A days-old unread: sorted by its stale date, it sat low in the list;
+    // the OLD behaviour then left that stale date on read, so a fresh unread
+    // near the top teleported DOWN the moment it was clicked.
+    seed(store, [row({ id: 'out-1', updated_at: '2025-01-02 03:04:05', last_read_at: '2025-01-02 03:04:04' })]);
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(true);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    const before = Date.now();
+    await store.dispatch('contentOutputs/markRead', 'out-1');
+
+    const r = store.getters['contentOutputs/outputs'][0];
+    // Re-dated to now (mirrors the server's transition arm)…
+    expect(new Date(r.updated_at).getTime()).toBeGreaterThanOrEqual(before);
+    // …and derives READ: both fields carry the same instant, a tie.
+    expect(store.getters['contentOutputs/unreadOutputIdSet'].has('out-1')).toBe(false);
+  });
+
+  it('reading an already-READ row never touches updated_at — browsing must not shuffle the list', async () => {
+    // The read PATCH fires on EVERY conversation open (loadSavedOutput),
+    // so an open of a read conversation must be a strict no-op on position.
+    const store = makeStore();
+    seed(store, [row({ id: 'out-1', updated_at: '2025-01-02 03:04:05', last_read_at: '2025-01-02 03:04:05' })]);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    // Compare against the row's own converted value — string parsing here
+    // would re-introduce the local-vs-UTC skew serverTime.js exists to kill.
+    const before = new Date(store.getters['contentOutputs/outputs'][0].updated_at).getTime();
+
+    await store.dispatch('contentOutputs/markRead', 'out-1');
+
+    const r = store.getters['contentOutputs/outputs'][0];
+    expect(new Date(r.updated_at).getTime()).toBe(before);
+  });
+
   it('markUnread moves updated_at to NOW and sets the watermark one second behind', async () => {
     const store = makeStore();
     // A conversation whose last activity was ages ago — the case that
@@ -222,6 +257,26 @@ describe('markRead / markUnread', () => {
 });
 
 describe('markAllRead — the rail\'s clear-all button', () => {
+  it('re-dates every row it clears — cleared rows hold their positions instead of scattering', async () => {
+    // REGRESSION GUARD: this first shipped watermark-only, and pressing the
+    // button snapped every cleared row back to its stale date — "I lost all
+    // my chats". One rule everywhere: acting on a conversation re-dates it.
+    const store = makeStore();
+    seed(store, [
+      row({ id: 'a', updated_at: '2025-01-02 03:04:05', last_read_at: '2025-01-02 03:04:04' }),
+      row({ id: 'b', updated_at: '2025-03-04 05:06:07', last_read_at: '2025-03-04 05:06:06' }),
+    ]);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ cleared: 2 }) });
+
+    const before = Date.now();
+    await store.dispatch('contentOutputs/markAllRead', ['a', 'b']);
+
+    for (const r of store.getters['contentOutputs/outputs']) {
+      expect(new Date(r.updated_at).getTime()).toBeGreaterThanOrEqual(before);
+      expect(store.getters['contentOutputs/unreadOutputIdSet'].has(r.id)).toBe(false);
+    }
+  });
+
   it('clears every requested id in ONE request, optimistically', async () => {
     const store = makeStore();
     seed(store, [

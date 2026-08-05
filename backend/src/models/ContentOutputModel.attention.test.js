@@ -4,13 +4,16 @@
  * Unread is DERIVED (updated_at > last_read_at, or last_read_at NULL), never
  * stored — so the invariants that matter here are the write-shape ones:
  *
- *   1. setReadState(true)/setArchived must NOT touch updated_at. Reading is
- *      not a change; bumping updated_at on read would immediately un-read the
- *      read, and bumping it on archive would teleport the conversation to the
- *      top of the recency sort when unarchived.
- *      setReadState(FALSE) is the one deliberate exception — marking a
- *      conversation unread IS activity, so it moves updated_at with the
- *      watermark. See the "mark-as-unread is activity" block at the bottom.
+ *   1. The sidebar sorts by last USER activity, and the read/unread writes
+ *      follow one rule: a deliberate act on a conversation re-dates it.
+ *      setReadState(false) moves updated_at (queueing for later IS activity),
+ *      and setReadState(true) moves it ONLY on a genuine unread→read
+ *      transition (finally reading the thing IS activity — without this, a
+ *      days-old unread teleported DOWN the list the moment it was clicked).
+ *      Opening an already-read or never-watermarked row must NOT re-date:
+ *      the read PATCH fires on every open, and browsing must not shuffle
+ *      the list. setArchived never touches updated_at — unarchiving must
+ *      not teleport the row to the top of the recency sort.
  *   2. Both writes are ownership-scoped (WHERE user_id) and report
  *      changes: 0 for a foreign or missing row so the route can 404.
  *   3. The list endpoint's column set includes both new columns — the
@@ -133,7 +136,10 @@ describe('content_outputs attention columns', () => {
     expect(outputs[0]).toHaveProperty('archived_at');
   });
 
-  it('setReadState(true) stamps last_read_at without touching updated_at', async () => {
+  it('reading a NEVER-watermarked row stamps the watermark without re-dating — browsing must not shuffle the list', async () => {
+    // The read PATCH fires on EVERY conversation open. This row is not
+    // unread (no watermark), so there is no transition and updated_at
+    // must hold still.
     const before = await getRow(OUT);
 
     const result = await ContentOutputModel.setReadState(OUT, USER, true);
@@ -141,6 +147,15 @@ describe('content_outputs attention columns', () => {
 
     const after = await getRow(OUT);
     expect(after.last_read_at).not.toBeNull();
+    expect(after.updated_at).toBe(before.updated_at);
+  });
+
+  it('re-reading an already-read row is a strict no-op on updated_at', async () => {
+    const before = await getRow(OUT);
+
+    await ContentOutputModel.setReadState(OUT, USER, true);
+
+    const after = await getRow(OUT);
     expect(after.updated_at).toBe(before.updated_at);
   });
 
@@ -156,6 +171,24 @@ describe('content_outputs attention columns', () => {
     expect(after.last_read_at).not.toBeNull();
     expect(after.last_read_at < after.updated_at).toBe(true);
     expect(isUnreadRow(after)).toBe(true);
+  });
+
+  it('reading an UNREAD row re-dates it — the row holds its place instead of sinking to its stale save date', async () => {
+    // OUT is unread from the previous write. Let the clock tick so a moved
+    // updated_at is distinguishable at second resolution.
+    const before = await getRow(OUT);
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const result = await ContentOutputModel.setReadState(OUT, USER, true);
+    expect(result.changes).toBe(1);
+
+    const after = await getRow(OUT);
+    // Re-dated: finally reading a queued conversation is last-activity.
+    expect(after.updated_at > before.updated_at).toBe(true);
+    // Both columns from the same statement's CURRENT_TIMESTAMP — a tie,
+    // and a tie derives READ (unread requires strictly greater).
+    expect(after.updated_at).toBe(after.last_read_at);
+    expect(isUnreadRow(after)).toBe(false);
   });
 
   it('setArchived(true) stamps archived_at without touching updated_at', async () => {
@@ -201,7 +234,10 @@ describe('content_outputs attention columns', () => {
     await ContentOutputModel.createOrUpdate(BULK_B, USER, null, null, '{}', false, 'conversation', 'conv-bulk-b', 'Bulk B');
     expect((await getRow(BULK_A)).last_read_at).toBeNull();
 
-    // OUT is genuinely unread (marked so above); the two fresh rows are not.
+    // Seed our own unread — don't lean on what earlier tests left behind.
+    await ContentOutputModel.setReadState(OUT, USER, false);
+
+    // OUT is genuinely unread; the two fresh rows are not.
     // The bulk clear reuses the exact derived-unread predicate, so `cleared`
     // is an honest count and never sweeps up quiet rows.
     const result = await ContentOutputModel.markAllRead(USER);
@@ -210,9 +246,14 @@ describe('content_outputs attention columns', () => {
     expect((await getRow(BULK_A)).last_read_at).toBeNull();
   });
 
-  it('markAllRead clears every genuinely unread row the user owns, in one statement', async () => {
+  it('markAllRead clears every genuinely unread row the user owns, in one statement — AND re-dates them', async () => {
     await ContentOutputModel.setReadState(BULK_A, USER, false);
     await ContentOutputModel.setReadState(BULK_B, USER, false);
+    const beforeA = await getRow(BULK_A);
+    const beforeB = await getRow(BULK_B);
+    // Let the clock tick so a moved updated_at is distinguishable at
+    // second resolution.
+    await new Promise((r) => setTimeout(r, 1100));
 
     const result = await ContentOutputModel.markAllRead(USER);
     expect(result.changes).toBe(2);
@@ -222,6 +263,17 @@ describe('content_outputs attention columns', () => {
       expect(isUnreadRow(row)).toBe(false);
       expect(row.updated_at <= row.last_read_at).toBe(true);
     }
+    // REGRESSION GUARD: this first shipped WITHOUT re-dating ("janitorial")
+    // and the cleared rows snapped back to their stale dates and scattered
+    // down the recency-sorted list — "I lost all my chats". One rule for
+    // every read/unread interaction: acting on a conversation re-dates it.
+    const afterA = await getRow(BULK_A);
+    const afterB = await getRow(BULK_B);
+    expect(afterA.updated_at > beforeA.updated_at).toBe(true);
+    expect(afterB.updated_at > beforeB.updated_at).toBe(true);
+    // Same statement stamps both columns — a tie, which derives read.
+    expect(afterA.updated_at).toBe(afterA.last_read_at);
+    expect(afterB.updated_at).toBe(afterB.last_read_at);
   });
 
   it('markAllRead reports 0 when nothing is unread (clearing a clear rail is not an error)', async () => {
@@ -258,16 +310,16 @@ describe('content_outputs attention columns', () => {
     await ContentOutputModel.setArchived(BULK_B, USER, false);
   });
 
-  it('markAllRead does not touch updated_at', async () => {
+  it('a scoped markAllRead re-dates what it clears, same as the unscoped one', async () => {
     const before = await getRow(BULK_B);
-    // SQLite CURRENT_TIMESTAMP is second-resolution: without this wait an
-    // accidental `updated_at = CURRENT_TIMESTAMP` writes the SAME string and
-    // the assertion passes vacuously. Verified — the negative control for
-    // that mutation was green until this line existed.
+    // SQLite CURRENT_TIMESTAMP is second-resolution: without this wait a
+    // moved updated_at would write the SAME string and the assertion would
+    // pass vacuously.
     await new Promise((r) => setTimeout(r, 1100));
     await ContentOutputModel.markAllRead(USER, [BULK_B]);
     const after = await getRow(BULK_B);
-    expect(after.updated_at).toBe(before.updated_at);
+    expect(after.updated_at > before.updated_at).toBe(true);
+    expect(after.updated_at).toBe(after.last_read_at);
     expect(isUnreadRow(after)).toBe(false);
   });
 

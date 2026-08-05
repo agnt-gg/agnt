@@ -219,11 +219,20 @@ class ContentOutputModel {
   /**
    * Set the read watermark.
    *
-   * `read = true`  -> last_read_at = now, and updated_at is NOT touched.
-   *                   Reading is not a change to the conversation, and since
-   *                   unread is derived as updated_at > last_read_at,
-   *                   bumping updated_at here would immediately un-read the
-   *                   read.
+   * `read = true`  -> last_read_at = now, and updated_at moves too — but ONLY
+   *                   on a genuine unread→read transition. Reading a days-old
+   *                   unread is the user finally getting to it, i.e. the
+   *                   strongest "last activity" signal there is; leaving the
+   *                   stale save date made the row teleport DOWN the
+   *                   activity-sorted list the moment it was clicked —
+   *                   clearing your queue demoted the very thing you just
+   *                   engaged with. Opening an already-read conversation
+   *                   stays a strict no-op on updated_at (the read PATCH
+   *                   fires on EVERY open, and browsing must not shuffle the
+   *                   list). Both columns come from the same statement's
+   *                   CURRENT_TIMESTAMP, so they TIE — and a tie derives
+   *                   read, because unread requires strictly greater.
+   *                   (Mark-all-read follows the SAME rule — see markAllRead.)
    *
    * `read = false` -> updated_at = now AND last_read_at = one second earlier.
    *
@@ -253,8 +262,15 @@ class ContentOutputModel {
    */
   static setReadState(id, userId, read) {
     return new Promise((resolve, reject) => {
+      // The CASE predicate is the same unread derivation the client uses
+      // (conversationAttention.js): archived or never-watermarked rows are
+      // not unread, so reading them re-dates nothing.
       const sql = read
-        ? 'UPDATE content_outputs SET last_read_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?'
+        ? `UPDATE content_outputs SET
+             updated_at = CASE WHEN archived_at IS NULL AND last_read_at IS NOT NULL AND updated_at > last_read_at
+               THEN CURRENT_TIMESTAMP ELSE updated_at END,
+             last_read_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?`
         : "UPDATE content_outputs SET updated_at = CURRENT_TIMESTAMP, last_read_at = datetime(CURRENT_TIMESTAMP, '-1 second') WHERE id = ? AND user_id = ?";
       db.run(sql, [id, userId], function (err) {
         if (err) reject(err);
@@ -271,8 +287,13 @@ class ContentOutputModel {
    * The WHERE clause is the same predicate the client derives unread from
    * (frontend/src/utils/conversationAttention.js): archived rows are never
    * unread, and already-read rows are skipped, so `changes` is an honest
-   * count of what was actually cleared. updated_at is untouched for the same
-   * reason setReadState leaves it alone.
+   * count of what was actually cleared. updated_at moves WITH the watermark
+   * — ONE rule for every read/unread interaction: acting on a conversation
+   * re-dates it. This shipped as "janitorial, so don't re-date" and Nathan
+   * lost his chats within the hour: the cleared rows snapped back to their
+   * stale dates and scattered down the list. Rows keeping their just-cleared
+   * positions (all dated the same second, at the top) is the behaviour that
+   * matches what the user's eyes were on when they pressed the button.
    *
    * `ids = null` means "every unread conversation this user owns". An EMPTY
    * array means "these zero conversations" and must never be widened into
@@ -285,7 +306,7 @@ class ContentOutputModel {
       const scoped = Array.isArray(ids);
       const scopeClause = scoped ? ` AND id IN (${ids.map(() => '?').join(',')})` : '';
       db.run(
-        `UPDATE content_outputs SET last_read_at = CURRENT_TIMESTAMP
+        `UPDATE content_outputs SET updated_at = CURRENT_TIMESTAMP, last_read_at = CURRENT_TIMESTAMP
          WHERE user_id = ?
            AND archived_at IS NULL
            AND last_read_at IS NOT NULL
