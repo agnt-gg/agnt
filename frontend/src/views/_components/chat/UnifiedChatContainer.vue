@@ -890,8 +890,9 @@ export default {
 }
 
 /*
- * A recessed band above the composer. `--surface-sunken` is the app's token for
- * exactly this (wells, tracks, code) and flips per theme; the inline
+ * A recessed band above the composer. `--color-darker-0` is the app's token for
+ * exactly this (wells, tracks, fields) — an ALPHA in every theme, so it tints
+ * whatever it sits on instead of painting a fixed colour. The inline
  * rgba(0,0,0,0.35) it replaced is the DARK theme's own value, which rendered a
  * black bar with dark text on the light theme.
  */
@@ -902,8 +903,8 @@ export default {
   padding: 6px 10px;
   margin: 0 8px 6px;
   border-radius: 6px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-subtle);
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
   font-size: 12px;
   color: var(--text-secondary);
   min-height: 28px;
@@ -966,7 +967,7 @@ export default {
 .voice-end-btn {
   flex: 0 0 auto;
   background: transparent;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--terminal-border-color);
   color: var(--text-secondary);
   border-radius: 4px;
   padding: 2px 8px;

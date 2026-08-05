@@ -21,7 +21,11 @@
       defined in a theme fails the build.
    2. This block is the ONLY place a legacy name may be resolved. Each alias
       points at a SEMANTIC token, so it is theme-correct by construction — the
-      light theme cannot fall out of sync with it.
+      light theme cannot fall out of sync with it. The three recessed-surface
+      aliases and --color-light-gray are the exception: they point at
+      --color-darker-0 / --terminal-border-color, which are theme-correct for the
+      same reason (an alpha and a per-theme border, both redefined by every
+      theme) and are the approved tokens for those two roles.
    3. This list only shrinks. Migrating a call site to the semantic token on
       the right and deleting the alias is always the better fix.
 
@@ -45,16 +49,16 @@ body {
      Every one of these was used as a `background`. Aliasing to a semantic
      surface makes them invert with the theme instead of staying dark. */
   --terminal-bg: var(--surface-canvas);
-  --terminal-section-bg: var(--surface-sunken);
+  --terminal-section-bg: var(--color-darker-0);
   --terminal-background-color: var(--surface-canvas);
   --color-background-primary: var(--surface-canvas);
   --color-bg: var(--surface-canvas);
-  --color-bg-secondary: var(--surface-sunken);
+  --color-bg-secondary: var(--color-darker-0);
   --color-bg-dark-navy: var(--surface-raised);
   --color-background-hover: var(--surface-hover);
   /* Used as a background on 8 of 11 sites; the 3 `color:` uses were migrated
      to --on-fill-success, which is what they actually meant. */
-  --color-darkest: var(--surface-sunken);
+  --color-darkest: var(--color-darker-0);
 
   /* ── Text ─────────────────────────────────────────────────────────────────
      --Dark-Navy is `color:` sitting on a --color-dull-white fill. That fill is
@@ -110,7 +114,7 @@ body {
      COMMENTED OUT — the references outlived the declarations and nobody could
      tell, because a dead var() just paints its fallback. */
   --color-black: #000000; /* literal: used for scrims and shadows */
-  --color-light-gray: var(--border-subtle);
+  --color-light-gray: var(--terminal-border-color);
   --color-dark-gray: var(--text-secondary);
   --color-med-gray: var(--text-tertiary);
   --color-grey-dark: var(--text-secondary);

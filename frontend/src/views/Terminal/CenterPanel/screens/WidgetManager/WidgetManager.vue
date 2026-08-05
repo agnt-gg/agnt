@@ -1035,7 +1035,7 @@ export default {
      light mode — the largest surviving dark surface in the app. This token is
      #0b0b17 in dark and #ffffff in light, so the preview matches the theme the
      widget itself renders in. */
-  background: var(--surface-sunken);
+  background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
 }
 

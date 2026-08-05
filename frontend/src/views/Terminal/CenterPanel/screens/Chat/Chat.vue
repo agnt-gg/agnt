@@ -2837,7 +2837,7 @@ export default {
   font-family: inherit;
   color: var(--color-text-muted, #8a8a9e);
   background: transparent;
-  border: 1px solid var(--border-subtle, #2a2a3e);
+  border: 1px solid var(--terminal-border-color);
   border-radius: var(--border-radius-full, 999px);
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;

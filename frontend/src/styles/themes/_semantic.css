@@ -49,9 +49,23 @@
 body {
   --surface-canvas: var(--color-black-navy);
   --surface-raised: var(--color-navy);
-  --surface-sunken: var(--color-ultra-dark-navy);
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
+
+  /* NO --surface-sunken, AND NO --border-subtle. NOT APPROVED — do not
+     reintroduce either name; themeTokens.spec.js fails the build if you do.
+
+     A RECESSED SURFACE IS --color-darker-0. A BORDER IS --terminal-border-color.
+     Those are the app's existing tokens for the job and every other layer
+     already uses them (_forms.css, _tables.css, _layout-components.css).
+
+     --surface-sunken was an OPAQUE per-theme colour, so it painted a fixed
+     near-black regardless of what it sat on. --color-darker-0 is an ALPHA in
+     every theme, so a well tints its own parent — correct on the canvas, on a
+     raised card and inside a modal alike, with no per-theme value to keep in
+     sync. --border-subtle was never anything but an alias: it was declared
+     `var(--terminal-border-color)` in all three blocks of this file, i.e. a
+     second name for a token that already existed. */
 
   /* ── THE TEXT RAMP ────────────────────────────────────────────────────────
      FOUR tiers. This is the complete vocabulary for text colour — there is no
@@ -209,7 +223,6 @@ body {
      base rule in _forms.css. That part stands. */
   --gradient-wash: linear-gradient(180deg, rgba(var(--primary-rgb), 0.08), rgba(var(--primary-rgb), 0.03));
 
-  --border-subtle: var(--terminal-border-color);
   --border-strong: var(--color-duller-navy);
 
   --shadow-xs: none;
@@ -239,7 +252,7 @@ body:not(.dark) {
      page background, doing no work at all. */
   --surface-canvas: var(--color-background); /* tinted page background   */
   --surface-raised: #ffffff; /* cards, panels, popovers  */
-  --surface-sunken: var(--color-ultra-light-navy); /* wells, tracks, code      */
+  /* Wells/tracks take --color-darker-0 — see the note in the block above. */
   --surface-hover: rgba(16, 24, 40, 0.04);
   --surface-active: rgba(16, 24, 40, 0.07);
 
@@ -337,7 +350,6 @@ body:not(.dark) {
      band is actually visible against a white panel. */
   --gradient-wash: linear-gradient(180deg, rgba(16, 24, 40, 0.055), rgba(16, 24, 40, 0.02));
 
-  --border-subtle: var(--terminal-border-color);
   --border-strong: #87898e; /* 3.50:1 on white — meets WCAG 1.4.11 */
 
   /* Replaces the 194 coloured `0 0 8px` glow shadows, which are a dark-mode
@@ -377,7 +389,6 @@ body.rose {
 body.dark {
   --surface-canvas: var(--color-black-navy);
   --surface-raised: var(--color-navy);
-  --surface-sunken: var(--color-ultra-dark-navy);
   --surface-hover: rgba(255, 255, 255, 0.05);
   --surface-active: rgba(255, 255, 255, 0.09);
 
@@ -403,7 +414,6 @@ body.dark {
   --text-tertiary: #9598a8; /*  7.01:1 */
   --text-quaternary: #7f8193; /*  5.22:1 */
 
-  --border-subtle: var(--terminal-border-color);
   --border-strong: var(--color-duller-navy);
 }
 

@@ -125,6 +125,79 @@ describe('theme tokens: nothing references a token that does not exist', () => {
   });
 });
 
+/* ─────────────────── check 1b: banned token names ─────────────────── */
+describe('theme tokens: unapproved names stay deleted', () => {
+  /**
+   * --surface-sunken and --border-subtle ARE NOT APPROVED TOKENS. Neither may
+   * be declared or referenced anywhere, in any layer.
+   *
+   * WHY A GUARD AND NOT JUST A DELETION
+   * A deletion is a one-time event; the reason the name existed is still
+   * there — someone needs a recessed surface, greps the semantic layer, finds
+   * nothing obvious, and invents a token. That is exactly how these two got
+   * in. Naming them here makes the next attempt fail in CI with the answer
+   * attached, which a deleted line cannot do.
+   *
+   * THE APPROVED SPELLINGS
+   *   recessed surface / well / track / field  ->  var(--color-darker-0)
+   *   1px hairline border                      ->  var(--terminal-border-color)
+   *
+   * Both are already declared per-theme (_variables.css + every theme file),
+   * so they are theme-correct with no second name to keep in sync.
+   *
+   * Check 1 above cannot catch a reintroduction on its own: re-adding the name
+   * to _semantic.css makes it "declared", and therefore legal again. This one
+   * bans the NAME, so both halves fail together.
+   *
+   * COMMENTS ARE BLANKED FIRST, DELIBERATELY. The rule is about live CSS — a
+   * declaration or a var() reference. Prose that NAMES the banned token is the
+   * documentation, and it has to live where the next person will grep: the
+   * note in _semantic.css that says "do not reintroduce --surface-sunken" must
+   * not be the thing that fails this test. (It was, on the first run.)
+   */
+  const BANNED = ['--surface-sunken', '--border-subtle'];
+  // Trailing (?![A-Za-z0-9_-]) so --border-subtle does not match a
+  // hypothetical --border-subtle-2. Matches a declaration (`--x:`) or a
+  // reference (`var(--x`); bare prose mentions are not CSS and do not count.
+  const usage = (tok) => new RegExp(`(var\\(\\s*${tok}|${tok}\\s*:)(?![A-Za-z0-9_-])`);
+
+  it('no file declares or references --surface-sunken or --border-subtle', () => {
+    const hits = [];
+    for (const f of ALL_FILES) {
+      const css = blankComments(fs.readFileSync(f, 'utf8'));
+      css.split('\n').forEach((line, i) => {
+        for (const tok of BANNED) {
+          if (usage(tok).test(line)) hits.push(`  ${rel(f)}:${i + 1}  ${line.trim().slice(0, 80)}`);
+        }
+      });
+    }
+    expect(
+      hits.join('\n') || 'clean',
+      'An unapproved token name is back. Neither of these is a real token:\n\n'
+      + '  --surface-sunken  ->  use var(--color-darker-0)          (recessed fill)\n'
+      + '  --border-subtle   ->  use var(--terminal-border-color)   (hairline border)\n\n'
+      + 'Both replacements are declared by every theme, so they cannot invert.\n'
+      + 'Found at:\n'
+    ).toBe('clean');
+  });
+
+  it('the scan can actually see a banned name (anti-vacuity)', () => {
+    // Guards that silently stop scanning are worse than no guard. Prove the
+    // matcher fires on a synthetic line before trusting the 'clean' above.
+    const probe = (line) => BANNED.some((t) => usage(t).test(line));
+    expect(probe('  background: var(--surface-sunken);')).toBe(true);
+    expect(probe('  border: 1px solid var( --border-subtle );')).toBe(true);
+    expect(probe('  --border-subtle: var(--terminal-border-color);')).toBe(true);
+    expect(probe('  border: 1px solid var(--terminal-border-color);')).toBe(false);
+    // Prose is documentation, not usage — see the note above.
+    expect(probe('   * do not reintroduce --surface-sunken or --border-subtle')).toBe(false);
+    // ...but a commented-out declaration is caught, because blankComments()
+    // erases the comment BEFORE this runs, so it can never reach the matcher.
+    expect(blankComments('/* --surface-sunken: red; */').trim()).toBe('');
+    expect(ALL_FILES.length).toBeGreaterThan(100);
+  });
+});
+
 /* ─────────────────── check 2: fills are paired with a label ─────────────────── */
 describe('theme tokens: every fill ships with its on-fill companion', () => {
   const semantic = stripComments(fs.readFileSync(path.join(THEMES, '_semantic.css'), 'utf8'));
@@ -180,10 +253,10 @@ describe('theme tokens: every fill ships with its on-fill companion', () => {
    */
   it('the light block still declares its whole token set', () => {
     const REQUIRED = [
-      '--surface-canvas', '--surface-raised', '--surface-sunken',
+      '--surface-canvas', '--surface-raised',
       '--text-primary', '--text-secondary', '--text-tertiary', '--text-quaternary',
       '--fill-accent', '--on-fill-accent',
-      '--canvas-grid-dot', '--gradient-wash', '--border-subtle', '--border-strong',
+      '--canvas-grid-dot', '--gradient-wash', '--border-strong',
       '--shadow-xs', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-overlay',
       '--scrim', '--focus-ring',
       '--status-blue-text', '--status-purple-text', '--status-amber-text',

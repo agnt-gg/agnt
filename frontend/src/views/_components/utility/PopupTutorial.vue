@@ -837,7 +837,7 @@ export default {
 }
 .back-button {
   /* --terminal-muted-color is a MID grey; body text on it was 1.68:1 in light. */
-  background-color: var(--surface-sunken);
+  background-color: var(--color-darker-0);
   color: var(--text-primary) !important;
   border: none;
   padding: 8px 15px;
@@ -937,7 +937,7 @@ export default {
   transition: width 0.3s ease-in-out;
 }
 .skip-button {
-  background-color: var(--surface-sunken);
+  background-color: var(--color-darker-0);
   color: var(--text-primary) !important;
   border: none;
   padding: 8px 15px;

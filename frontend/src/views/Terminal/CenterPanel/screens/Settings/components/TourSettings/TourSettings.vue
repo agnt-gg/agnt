@@ -620,7 +620,7 @@ input:checked + .slider:before {
   /* --terminal-muted-color is a MID grey (#6d6d78 light, #1f1f2f dark), so it
      works as a border but not as a fill: accent text on it measured 1.01:1 in
      light. A sunken surface with primary text reads the same and inverts. */
-  background: var(--surface-sunken);
+  background: var(--color-darker-0);
   color: var(--color-primary);
 }
 

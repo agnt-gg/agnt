@@ -1795,7 +1795,7 @@ body.dark .form-group.output-value p {
   padding: 6px 12px 4px;
   /* --color-light-navy is light in BOTH themes (#d0d0dd / #d9d9d9), so the
      themed text colour landed light-on-light in dark mode: 1.32:1. */
-  background-color: var(--surface-sunken);
+  background-color: var(--color-darker-0);
   color: var(--text-primary);
   border-radius: 4px;
   font-size: 14px;

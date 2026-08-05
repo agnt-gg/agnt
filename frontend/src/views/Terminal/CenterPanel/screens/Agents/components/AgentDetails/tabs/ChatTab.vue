@@ -619,8 +619,8 @@ h3.section-title {
   padding: 6px 10px;
   margin-bottom: 6px;
   border-radius: 6px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-subtle);
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
   font-size: 12px;
   color: var(--text-secondary);
   min-height: 28px;
@@ -682,7 +682,7 @@ h3.section-title {
 .voice-end-btn {
   flex: 0 0 auto;
   background: transparent;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--terminal-border-color);
   color: var(--text-secondary);
   border-radius: 4px;
   padding: 2px 8px;

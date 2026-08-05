@@ -429,7 +429,7 @@ export default {
 
 .action-button.purchased-button,
 .action-button.unavailable-button {
-  background-color: var(--surface-sunken);
+  background-color: var(--color-darker-0);
   /* was --color-grey-darker, which aliases --text-primary: a near-white edge in
      dark and a near-black one in light. A spent/unavailable button is quieter
      than a live one, not louder. */

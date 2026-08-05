@@ -331,7 +331,7 @@ body[data-page='docs'] .sidebar {
   /* --color-dull-white resolves to #2a2a3a (near-black) in light mode — the
      name describes the DARK-theme value. Using it as a background painted a
      near-black panel under near-black text: 1.00:1, body copy invisible. */
-  background: var(--surface-sunken);
+  background: var(--color-darker-0);
   border-right: 1px solid var(--terminal-border-color);
   overflow: scroll;
 }
