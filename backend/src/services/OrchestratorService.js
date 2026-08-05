@@ -39,6 +39,7 @@ import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
+import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
@@ -2895,11 +2896,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
               eventType: event.type,
               eventData: event.data,
             });
-            // Tutorial/highlight events are UI-global: they must reach every
-            // tab the user has open, not just the SSE-originating one. Mirror
-            // them over socket.io so a tab that's only listening to broadcasts
-            // (chat sent from a different window, etc.) still pops the tour.
-            if (userId && (event.type === 'tutorial:start' || event.type === 'tutorial:end')) {
+            // Window-scoped events (tours, app background) must reach every tab
+            // the user has open, not just the SSE-originating one. Mirror them
+            // over socket.io so a tab that's only listening to broadcasts (chat
+            // sent from a different window, etc.) still applies the effect.
+            // The list lives in orchestrator/globalFrontendEvents.js so it is
+            // extended in one place instead of three.
+            if (userId && isGlobalFrontendEvent(event.type)) {
               try {
                 broadcastToUser(userId, event.type, {
                   ...event.data,
