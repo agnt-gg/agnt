@@ -69,8 +69,8 @@ export function activityTime(output, bumps = {}) {
  */
 export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', bumps = {}, previewOf } = {}) {
   // 'attention' is a SEMANTIC order, not a directional one: unread first,
-  // longest-waiting at the top, then everything else by recency. Surfaced in
-  // the UI as the "Unread" sort mode.
+  // newest at the top, then everything else by recency. Surfaced in the UI
+  // as the "Unread" sort mode.
   //
   // This order is what lets the panel have no separate unread section. There
   // was once a pinned "Needs you" card above the groups holding exactly the
@@ -79,30 +79,32 @@ export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', 
   // the card is gone and this is the single place the ordering lives.
   //
   // sortOrder is deliberately ignored here — "unread, backwards" is not a
-  // thing a user wants, and offering it would only produce an ordering that
-  // buries the oldest waiting conversation, which is the exact failure this
-  // whole feature exists to prevent.
+  // thing a user wants; the one meaningful axis (unread above read) has no
+  // useful reverse.
+  //
+  // BOTH partitions are newest-first — one direction, like an inbox. The
+  // unread partition was briefly longest-waiting-first; Nathan reversed it:
+  // the newest thing is what you are most likely to want next, and the
+  // partition split already guarantees the oldest unread cannot be buried
+  // under read rows — it is at worst a short scroll down a group of dots.
   //
   // Bumps apply only to the read partition. Inside the unread partition the
   // measure is updated_at alone — the same one triageRail() uses, so the
-  // Unread count/clear-all set and the top of the list agree on the order of
-  // the same rows.
+  // Unread count/clear-all badge and the list top agree on the same rows.
   //
   // A manual "Mark as Unread" MOVES updated_at server-side (queueing a
   // conversation is activity — see ContentOutputModel.setReadState), so it
-  // needs no client-side bump to hold its place. It also lands at "now",
-  // which puts a freshly queued conversation at the BOTTOM of the unread
-  // partition — correct under "longest waiting on top", since it has waited
-  // zero seconds. That position is deliberate and it is what fixes the
-  // reported jump: reading it moves it to the TOP of the read partition,
-  // which is the very next row, instead of dropping it back to wherever its
-  // original date happened to fall.
+  // needs no client-side bump to hold its place. It lands at "now", which
+  // under newest-first puts a freshly queued conversation at the VERY TOP
+  // of the list — and reading it later re-dates it again (unread→read
+  // transition), so it stays the top row of the read partition instead of
+  // dropping back to wherever its original date happened to fall.
   if (sortKey === 'attention') {
     return [...list].sort((a, b) => {
       const aUnread = isUnread(a);
       const bUnread = isUnread(b);
       if (aUnread !== bUnread) return aUnread ? -1 : 1;
-      if (aUnread) return activityTime(a) - activityTime(b);
+      if (aUnread) return activityTime(b) - activityTime(a);
       return activityTime(b, bumps) - activityTime(a, bumps);
     });
   }

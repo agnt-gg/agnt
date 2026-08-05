@@ -175,12 +175,12 @@ describe("sortOutputs — the 'attention' (Unread) order", () => {
     expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['ancient', 'fresh']);
   });
 
-  it('orders the unread partition longest-waiting first', () => {
-    // This is the invariant the whole feature exists for: the longer
-    // something has waited, the higher it sits. A recency order here would
-    // rebuild the burial bug the rail was built to fix.
+  it('orders the unread partition newest first — an inbox, one direction throughout', () => {
+    // Briefly longest-waiting-first; Nathan reversed it. The newest thing is
+    // what you most likely want next, and the partition split above already
+    // guarantees the oldest unread cannot be buried under read rows.
     const outputs = [unread('newer', t('11:00')), unread('oldest', t('02:00')), unread('mid', t('09:00'))];
-    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['oldest', 'mid', 'newer']);
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['newer', 'mid', 'oldest']);
   });
 
   it('orders the read partition most-recent first', () => {
@@ -188,15 +188,16 @@ describe("sortOutputs — the 'attention' (Unread) order", () => {
     expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['new', 'old']);
   });
 
-  it('agrees with triageRail on the order of the same unread rows', () => {
+  it('lifts exactly the triageRail rows — same set, same measure, opposite direction', () => {
     // triageRail() still backs the Unread count badge and the clear-all
-    // button. If the two orderings drift, the number on the badge stops
-    // describing the rows the sort actually lifts to the top, and clear-all
-    // stops clearing exactly what the user was looking at.
+    // button, oldest-first (an age-ordered queue). The list shows the same
+    // rows newest-first. Same updated_at measure on both, so they are exact
+    // mirrors: if this drifts, the badge counts rows the sort isn't lifting,
+    // and clear-all stops clearing what the user is looking at.
     const outputs = [unread('b', t('09:00')), unread('a', t('03:00')), unread('c', t('10:00'))];
     const railOrder = ids(triageRail(outputs));
     const listOrder = ids(sortOutputs(outputs, { sortKey: 'attention' }));
-    expect(listOrder).toEqual(railOrder);
+    expect(listOrder).toEqual([...railOrder].reverse());
   });
 
   it('does not let a client bump reorder the unread partition', () => {
@@ -204,9 +205,11 @@ describe("sortOutputs — the 'attention' (Unread) order", () => {
     // "Mark as Unread" moves updated_at server-side, so it needs no bump to
     // hold its place — and letting bumps in here would let a client-side
     // timestamp disagree with the count badge about the same rows.
+    // If the bump were honoured, 'marked' (23:00 bump) would outrank
+    // 'recent' (10:00). It must not — updated_at alone decides.
     const outputs = [unread('marked', t('02:00')), unread('recent', t('10:00'))];
     const sorted = sortOutputs(outputs, { sortKey: 'attention', bumps: { marked: ms('23:00') } });
-    expect(ids(sorted)).toEqual(['marked', 'recent']);
+    expect(ids(sorted)).toEqual(['recent', 'marked']);
   });
 
   it('treats archived rows as read — archiving IS "done with this"', () => {
@@ -285,13 +288,12 @@ describe('mark-as-unread lifecycle — the conversation keeps the place it was g
     expect(ids(sortOutputs([...neighbours, queuedRead], { sortKey: 'attention' }))[0]).toBe('queued');
   });
 
-  it('is the LAST unread row while it waits — zero seconds is the shortest wait', () => {
-    // A deliberate consequence of dating it "now", not an accident: the
-    // partition is longest-waiting-first, and this one has waited no time at
-    // all. It still outranks every read conversation, and reading it moves it
-    // to the head of the read partition — the very next row down.
+  it('is the FIRST unread row the moment it is queued — marking unread re-dates to now', () => {
+    // Dating it "now" + newest-first means the row the user just queued
+    // jumps straight to the very top — and reading it later re-dates it
+    // again, so it stays the top row instead of sinking.
     const waiting = [unreadAt('old-unread', t('02:00')), queuedUnread];
-    expect(ids(sortOutputs(waiting, { sortKey: 'attention' }))).toEqual(['old-unread', 'queued']);
+    expect(ids(sortOutputs(waiting, { sortKey: 'attention' }))).toEqual(['queued', 'old-unread']);
   });
 
   it('THE BUG: the old write let it fall back to its original position', () => {
