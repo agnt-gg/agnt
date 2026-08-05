@@ -289,8 +289,12 @@ describe('client event builders', () => {
     expect(typeof buildFunctionOutput('c', undefined).item.output).toBe('string');
   });
 
-  it('response.create is the trigger to speak', () => {
-    expect(buildResponseCreate()).toEqual({ type: 'response.create' });
+  it('response.create is the trigger to speak — and can NEVER act', () => {
+    // tools: [] is load-bearing: a client-created response inherits the
+    // session's tools by default, and a model instructed to send everything
+    // to run_agnt will occasionally re-call it from the response meant to
+    // read the answer aloud — re-posting the user's words as a new turn.
+    expect(buildResponseCreate()).toEqual({ type: 'response.create', response: { tools: [] } });
   });
 
   it('an aside stays out of session history so it cannot confuse later turns', () => {
@@ -298,5 +302,7 @@ describe('client event builders', () => {
     expect(e.response.conversation).toBe('none');
     expect(e.response.output_modalities).toEqual(['audio']);
     expect(e.response.instructions).toContain('still working on it');
+    // An aside is a sentence to speak — it must not be able to call tools.
+    expect(e.response.tools).toEqual([]);
   });
 });

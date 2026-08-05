@@ -213,9 +213,24 @@ export function buildFunctionOutput(callId, result) {
   };
 }
 
-/** Ask the model to speak now (used after answering a tool call). */
+/**
+ * Ask the model to speak now (used after answering a tool call).
+ *
+ * `tools: []` — A RESPONSE WE CREATE EXISTS TO SPEAK, NEVER TO ACT.
+ *
+ * A client-created response inherits the session's tools by default, and the
+ * session instructions push the model as hard as possible toward calling
+ * run_agnt. Put those together and the response meant to read an answer aloud
+ * would occasionally call run_agnt AGAIN — with the only verbatim user words
+ * it has, the utterance it just answered. Fresh call_id, so no dedupe catches
+ * it, and the same words arrive in the chat as a brand-new user turn: the
+ * duplicate-message bug, minted by the model itself.
+ *
+ * Only the SERVER creates responses in reaction to user speech; those keep the
+ * session tools and are the one legitimate path to run_agnt.
+ */
 export function buildResponseCreate() {
-  return { type: 'response.create' };
+  return { type: 'response.create', response: { tools: [] } };
 }
 
 /**
@@ -226,7 +241,14 @@ export function buildResponseCreate() {
 export function buildSpokenAside(text) {
   return {
     type: 'response.create',
-    response: { conversation: 'none', output_modalities: ['audio'], instructions: `Say exactly: ${text}` },
+    // tools: [] for the same reason as buildResponseCreate — an aside is a
+    // sentence to be spoken, and must not be able to act.
+    response: {
+      conversation: 'none',
+      output_modalities: ['audio'],
+      instructions: `Say exactly: ${text}`,
+      tools: [],
+    },
   };
 }
 

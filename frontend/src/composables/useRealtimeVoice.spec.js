@@ -42,6 +42,13 @@ function harness(options = {}) {
   return useRealtimeVoice({ ...options, sendFrame: (e) => sent.push(e) });
 }
 
+/**
+ * The server's VAD saw the user speak — the frame that precedes every real
+ * tool call on the wire. A call with no speech behind it is the model
+ * freelancing, and is refused (see the one-utterance-one-run describe).
+ */
+const userSpoke = (s) => s._handleMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+
 /** A response.done frame, with or without a tool call. */
 const turnDoneFrame = (hadToolCall) =>
   JSON.stringify({
@@ -87,6 +94,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     const onRunAgnt = vi.fn(async () => 'the build is green');
     const s = harness({ onRunAgnt });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
 
@@ -100,6 +108,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     // every "is answered" test below pass by observing nothing.
     const s = harness({ onRunAgnt: async () => 'x' });
     expect(sent).toHaveLength(0);
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     expect(sent.length).toBeGreaterThan(0);
@@ -112,6 +121,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     });
     const s = harness({ onRunAgnt: () => gate });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(1);
     expect(s.state.value).toBe(RealtimeState.WORKING);
@@ -128,6 +138,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     const s = harness({ onRunAgnt });
 
     // Must not reject out of the handler, and must not leave the call open.
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await expect(vi.advanceTimersByTimeAsync(10)).resolves.not.toThrow();
     expect(onRunAgnt).toHaveBeenCalled();
@@ -139,6 +150,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     // Never resolves: without the timeout race the model waits for ever.
     const s = harness({ onRunAgnt: () => new Promise(() => {}) });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(1);
     expect(s.state.value).toBe(RealtimeState.WORKING);
@@ -152,6 +164,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     const onRunAgnt = vi.fn();
     const s = harness({ onRunAgnt });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame({ arguments: JSON.stringify({ user_message: '   ' }) }));
     await vi.advanceTimersByTimeAsync(10);
 
@@ -163,6 +176,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     const onRunAgnt = vi.fn();
     const s = harness({ onRunAgnt });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame({ arguments: '{"user_message": broken' }));
     await vi.advanceTimersByTimeAsync(10);
 
@@ -186,6 +200,7 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
     });
     const s = harness({ onRunAgnt: () => gate });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(1);
     s.stop();
@@ -212,6 +227,7 @@ describe('useRealtimeVoice — one call runs once', () => {
     const onRunAgnt = vi.fn(async () => 'the build is green');
     const s = harness({ onRunAgnt });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     s._handleMessage(toolCallFrame()); // same call_id, redelivered
@@ -221,12 +237,14 @@ describe('useRealtimeVoice — one call runs once', () => {
     expect(answersFor('call_1')).toHaveLength(1);
   });
 
-  it('distinct calls both run (the guard is on identity, not on count)', async () => {
+  it('distinct calls both run when each follows its own utterance', async () => {
     const onRunAgnt = vi.fn(async () => 'ok');
     const s = harness({ onRunAgnt });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
+    userSpoke(s);
     s._handleMessage(
       toolCallFrame({ call_id: 'call_2', arguments: JSON.stringify({ user_message: 'and the tests?' }) })
     );
@@ -240,10 +258,12 @@ describe('useRealtimeVoice — one call runs once', () => {
     const onRunAgnt = vi.fn(async () => 'ok');
     const s = harness({ onRunAgnt });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     s.stop();
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     expect(onRunAgnt).toHaveBeenCalledTimes(2);
@@ -256,7 +276,9 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
    * long as the turn takes — a minute on a tool-heavy run. The answer streams,
    * so it is spoken as it streams.
    */
-  const asides = () => sent.filter((e) => e.type === 'response.create' && e.response);
+  // Only instruction-carrying creates are asides — the speak-the-answer
+  // response now carries a payload too (tools: []), and must not be counted.
+  const asides = () => sent.filter((e) => e.type === 'response.create' && e.response?.instructions);
 
   it('THE FIRST SENTENCE answers the call, before the run has finished', async () => {
     let finish;
@@ -268,6 +290,7 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
         }),
     });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
 
@@ -291,6 +314,7 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
         }),
     });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
 
@@ -311,6 +335,7 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
 
   it('a run that streams NOTHING is still answered (deadlock guard holds)', async () => {
     const s = harness({ onRunAgnt: async () => '' });
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     expect(expectAnswered('call_1')).toBeTruthy();
@@ -319,6 +344,7 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
   it('a host that ignores `emit` entirely still works', async () => {
     // The old contract returned the whole answer; that path must not break.
     const s = harness({ onRunAgnt: async () => 'the whole answer at once' });
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     expect(expectAnswered('call_1')).toBe('the whole answer at once');
@@ -333,6 +359,7 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
         return '';
       },
     });
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     expect(expectAnswered('call_1')).toBe('Real sentence.');
@@ -347,6 +374,7 @@ describe('useRealtimeVoice — speaks as the answer arrives, not after it lands'
         }),
     });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(1);
     s.stop();
@@ -369,7 +397,8 @@ describe('useRealtimeVoice — an interrupt stops ALL of the speech', () => {
    * is precisely what the user interrupted to stop.
    */
   const interrupt = () => JSON.stringify({ type: 'input_audio_buffer.speech_started' });
-  const asides = () => sent.filter((e) => e.type === 'response.create' && e.response);
+  // Instruction-carrying creates only — see the streaming describe above.
+  const asides = () => sent.filter((e) => e.type === 'response.create' && e.response?.instructions);
 
   /**
    * Drive three streamed sentences and stop just short of the interrupt.
@@ -387,6 +416,7 @@ describe('useRealtimeVoice — an interrupt stops ALL of the speech', () => {
         }),
     });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
     emitFn('Second sentence.');
@@ -440,6 +470,7 @@ describe('useRealtimeVoice — an interrupt stops ALL of the speech', () => {
         }),
     });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
 
@@ -466,6 +497,7 @@ describe('useRealtimeVoice — an interrupt stops ALL of the speech', () => {
         }),
     });
 
+    userSpoke(s);
     s._handleMessage(toolCallFrame());
     await vi.advanceTimersByTimeAsync(10);
 
@@ -477,7 +509,8 @@ describe('useRealtimeVoice — an interrupt stops ALL of the speech', () => {
 
     expect(answersFor('call_1'), 'the call was left unanswered — the session hangs').toHaveLength(1);
     expect(asides(), 'the abandoned answer was spoken').toHaveLength(0);
-    expect(sent.some((e) => e.type === 'response.create' && !e.response)).toBe(false);
+    // Nothing at all was asked to speak — not the answer, not an aside.
+    expect(sent.filter((e) => e.type === 'response.create')).toHaveLength(0);
   });
 
   it('the interrupted turn is not recorded as an off-script turn', async () => {
@@ -600,6 +633,7 @@ describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () 
         }),
     });
 
+    userSpoke(s); // the delegation follows real speech, as on the wire
     s._handleMessage(turnDone(true)); // delegated
     await vi.advanceTimersByTimeAsync(10);
     emitFn('Second sentence.');
@@ -669,5 +703,109 @@ describe('useRealtimeVoice — robustness', () => {
     const s = harness({});
     expect(() => s.stop()).not.toThrow();
     expect(s.isActive.value).toBe(false);
+  });
+});
+
+describe('useRealtimeVoice — one utterance funds at most one run', () => {
+  /**
+   * THE DUPLICATE-MESSAGE BUG, THIRD MECHANISM — AND THE INVARIANT.
+   *
+   * The model mints call_ids, so identity dedupe cannot stop it inventing a
+   * SECOND call for words it already delivered — which it does: its
+   * instructions demand every utterance goes to run_agnt, and after narrating
+   * an answer the only verbatim user words it holds are the utterance it just
+   * answered. Any spurious response (echo, a breath, a VAD retrigger) and the
+   * same words arrived in the chat as a brand-new user turn, seconds after
+   * the real one.
+   *
+   * The server VAD's speech_started frame is ground truth for "the user
+   * actually spoke". One speech_started funds exactly one run.
+   */
+  it('THE DUPLICATE BUG: a fresh call_id with no new speech does not run', async () => {
+    const onRunAgnt = vi.fn(async () => 'the story, told once');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    // The model calls again — new call_id, same words, no new speech.
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' }));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt, 'the freelanced call reached the orchestrator — duplicate turn').toHaveBeenCalledTimes(1);
+  });
+
+  it('the refused call is still answered — a swallowed call hangs the session', async () => {
+    const s = harness({ onRunAgnt: async () => 'ok' });
+
+    userSpoke(s);
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' }));
+    await vi.advanceTimersByTimeAsync(10);
+
+    const answers = answersFor('call_2');
+    expect(answers).toHaveLength(1);
+    expect(answers[0].item.output).toMatch(/already handled/i);
+  });
+
+  it('the refusal is silent — it does not ask the model to speak', async () => {
+    const s = harness({ onRunAgnt: async () => 'ok' });
+
+    userSpoke(s);
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    const createsBefore = sent.filter((e) => e.type === 'response.create').length;
+
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' }));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(sent.filter((e) => e.type === 'response.create')).toHaveLength(createsBefore);
+  });
+
+  it('a new utterance re-opens the gate', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    userSpoke(s); // the user really did speak again
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' }));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledTimes(2);
+  });
+
+  it('an unreadable call does not spend the utterance — a clean retry still runs', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    s._handleMessage(toolCallFrame({ arguments: '{"user_message": broken' }));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(onRunAgnt).not.toHaveBeenCalled();
+
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' }));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(onRunAgnt).toHaveBeenCalledTimes(1);
+  });
+
+  it('repeated speech_started frames do not bank extra runs', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    // Semantic VAD can fire speech_started more than once for one utterance.
+    userSpoke(s);
+    userSpoke(s);
+    userSpoke(s);
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' }));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledTimes(1);
   });
 });

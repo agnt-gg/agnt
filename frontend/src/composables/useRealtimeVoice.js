@@ -160,6 +160,26 @@ export function useRealtimeVoice(options = {}) {
    */
   const dispatchedCalls = new Set();
 
+  /**
+   * ONE USER UTTERANCE FUNDS AT MOST ONE ORCHESTRATOR RUN.
+   *
+   * The model mints call_ids, so call_id dedupe cannot stop it INVENTING a
+   * second call for words it already delivered — which it does, because its
+   * instructions demand every user utterance goes to run_agnt and the last
+   * utterance is the only verbatim user text it holds. Echo, a breath, a VAD
+   * retrigger after narration: any spurious response, and the same words came
+   * back as a brand-new turn.
+   *
+   * The server's own VAD is ground truth for "the user actually spoke":
+   * `input_audio_buffer.speech_started` precedes every real turn on an ordered
+   * channel. So speech credits exactly one run, dispatch consumes it, and a
+   * call arriving with no credit is by definition not the user talking — it is
+   * answered (a swallowed call hangs the session) and NOT run. Capped at one
+   * credit: transcription events must NOT credit (they arrive after dispatch
+   * and would re-fund the very duplicate this exists to stop).
+   */
+  let utteranceCredit = 0;
+
   const speakQueue = [];
   /**
    * Bumped every time the user takes the floor — barge-in, or stopping the
@@ -240,6 +260,19 @@ export function useRealtimeVoice(options = {}) {
      */
     if (dispatchedCalls.has(action.callId)) return;
     dispatchedCalls.add(action.callId);
+
+    // A call with no unconsumed utterance behind it is the model freelancing,
+    // not the user speaking. Answer it (never leave a call open) but do not
+    // run it, do not speak, and stay listening.
+    if (utteranceCredit === 0) {
+      send(
+        buildFunctionOutput(
+          action.callId,
+          'Duplicate call — that was already handled. Do not repeat it. Stay silent and wait for the user to speak.'
+        )
+      );
+      return;
+    }
     // Bounded: a long session must not accumulate ids for ever. Sets keep
     // insertion order, so the oldest is the first key.
     if (dispatchedCalls.size > MAX_TRACKED_CALLS) {
@@ -271,9 +304,15 @@ export function useRealtimeVoice(options = {}) {
     };
 
     if (action.parseError || !action.instruction) {
+      // Deliberately does NOT consume the credit: the utterance was never
+      // run, so a well-formed retry for the same words is still legitimate.
       answerCall('I could not read that request. Ask the user to rephrase it.');
       return;
     }
+
+    // The utterance is being run — spend its credit now, so no later call can
+    // run these words again until the user actually speaks again.
+    utteranceCredit = 0;
 
     state.value = RealtimeState.WORKING;
     runFinished = false;
@@ -362,6 +401,8 @@ export function useRealtimeVoice(options = {}) {
            * still in flight compares its captured epoch and goes quiet.
            */
           speechEpoch += 1;
+          // The user is speaking: fund exactly one run for this utterance.
+          utteranceCredit = 1;
           speakQueue.length = 0;
           pendingNarrations = 0;
           narrating = false;
@@ -552,6 +593,7 @@ export function useRealtimeVoice(options = {}) {
     clearTurnBuffers();
     speakQueue.length = 0;
     dispatchedCalls.clear();
+    utteranceCredit = 0;
     speechEpoch += 1;
     responseActive = false;
     narrating = false;
