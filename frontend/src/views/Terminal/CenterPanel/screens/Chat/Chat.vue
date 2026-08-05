@@ -1809,21 +1809,20 @@ export default {
     const clearInput = () => baseScreenRef.value?.clearInput();
     const focusInput = () => baseScreenRef.value?.focusInput();
 
-    // Auto-fire pending steer as a fresh user turn whenever the stream is
-    // not running and a steer is parked. Two cases:
-    //   1) Stream ends with steer already queued → fire on isStreaming flip
-    //   2) Steer's socket ack arrives AFTER stream ended (race) → fire on
-    //      pendingSteer becoming set
-    // Two watchers calling the same guard keeps both paths simple.
-    const tryAutoFireSteer = () => {
-      if (store.state.chat.isStreaming) return;
-      const steer = store.state.chat.pendingSteer;
-      if (!steer) return;
-      store.commit('chat/CLEAR_PENDING_STEER');
-      setTimeout(() => handleUserInputSubmit(steer, null, null), 0);
-    };
-    watch(() => store.state.chat.isStreaming, tryAutoFireSteer);
-    watch(() => store.state.chat.pendingSteer, tryAutoFireSteer);
+    // The pending-steer auto-fire used to live here, driven by two watchers on
+    // the FLAT store mirror. It now lives in the store as `drainPendingSteer`,
+    // dispatched from the 'done' and 'run_ended' terminators where the OWNING
+    // conversation id is known.
+    //
+    // It had to move, not just get a guard. The flat mirror always names the
+    // conversation ON SCREEN, so this screen could only ever drain the chat the
+    // user was looking at — and `syncMirror` republishes a conversation's
+    // parked steer into that mirror on every switch, which made
+    // `watch(pendingSteer)` fire on HYDRATION. Clicking away orphaned the
+    // buffer; clicking back re-sent it. One utterance, two runs.
+    //
+    // Reacting to a derived mirror instead of to the real event is the same
+    // mistake `conversationEpoch` exists to prevent in BaseScreen.vue.
 
     const saveConversation = async () => {
       const token = localStorage.getItem('token');

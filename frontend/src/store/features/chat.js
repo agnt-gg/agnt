@@ -409,15 +409,28 @@ export default {
     SET_REMOTE_STREAMING(state, value) {
       state.isRemoteStreaming = value;
     },
-    SET_PENDING_STEER(state, content) {
-      // Per-conversation: write to the active conversation's slot AND
-      // mirror to flat state so existing UI bindings still work. Without
-      // this, switching conversations would carry the steer over.
-      const conv = state.conversations[state.activeConversationId];
+    /**
+     * Park a steer on the conversation whose turn it is aimed at.
+     *
+     * TAKES AN EXPLICIT conversationId ON PURPOSE. This used to write to
+     * `state.activeConversationId` — the conversation on SCREEN — while the
+     * drain side cleared the conversation that was STREAMING. Those are the
+     * same id right up until the user clicks away, and the moment they differ
+     * the buffer is orphaned: never drained, then replayed. Naming the owner
+     * here means the write and every clear address the same slot.
+     *
+     * Appends rather than replaces, so several steers inside one round all
+     * count — which is also why an orphaned buffer was so visible: the next
+     * utterance arrived joined to the stale one by a newline.
+     */
+    SCOPED_SET_PENDING_STEER(state, { conversationId, content }) {
+      const conv = state.conversations[conversationId];
       const prev = conv?.pendingSteer || '';
       const next = prev ? `${prev}\n${content}` : content;
       if (conv) conv.pendingSteer = next;
-      state.pendingSteer = next;
+      // Mirror to flat state only while this conversation is the one on
+      // screen; the chip belongs to the conversation that owns the steer.
+      if (state.activeConversationId === conversationId) state.pendingSteer = next;
     },
     CLEAR_PENDING_STEER(state) {
       const conv = state.conversations[state.activeConversationId];
@@ -1314,7 +1327,9 @@ export default {
       if (!text) return { ok: false, error: 'empty' };
       const resp = await emitSteer(conversationId, text);
       if (resp?.ok) {
-        commit('SET_PENDING_STEER', text);
+        // The SAME id the socket call was addressed to. One id for the remote
+        // stash and the local buffer means they cannot drift apart.
+        commit('SCOPED_SET_PENDING_STEER', { conversationId, content: text });
       }
       return resp;
     },
@@ -1779,6 +1794,60 @@ export default {
      *  - self-repeat cycle guard (an agent can never immediately follow itself)
      *  - a new human message resets the queue (see startStreamingConversation)
      */
+    /**
+     * Send a steer whose turn ended before the backend ever applied it.
+     *
+     * A steer is aimed at ONE conversation's turn. If the backend drained it at
+     * a tool-round seam, `steering_applied` already cleared the buffer and put
+     * the text in the transcript. If the turn ended first, the text is still
+     * parked and has to go as a fresh user turn — into the conversation it was
+     * aimed at, NEVER the one the user happens to be looking at now.
+     *
+     * WHY THIS IS IN THE STORE, NEXT TO processFloorQueue
+     * ---------------------------------------------------
+     * Same trigger, same target rule, so it belongs in the same place. The old
+     * implementation lived in Chat.vue and read the FLAT mirror
+     * (`state.chat.pendingSteer`), which always names the conversation ON
+     * SCREEN. Identical to the owner until the user clicks away, and then:
+     *
+     *   1. the owning conversation's steer was never drained, because the view
+     *      doing the draining was looking somewhere else, and
+     *   2. `syncMirror` re-published that stale text into the flat mirror when
+     *      the user came BACK, which tripped `watch(pendingSteer)` and sent it
+     *      a second time.
+     *
+     * That is the duplicate-message bug: one utterance, two runs — and because
+     * the buffer appends, the next utterance went out joined to the stale one
+     * by a newline. Hydrating a mirror is not a user action and must never
+     * send anything, so that watcher is gone and the drain is edge-triggered
+     * by the stream ending, here, where the owning id is known.
+     */
+    async drainPendingSteer({ commit, state, dispatch, rootState }, { conversationId }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      if (conv.isStreaming) return; // another stream took the conversation
+      const steer = conv.pendingSteer;
+      if (!steer) return;
+
+      // Cleared BEFORE the send. Two terminators can fire for one run ('done'
+      // racing a 'run_ended'), and a re-entrant drain must find an empty
+      // buffer. A steer lost to a failed send is a visible failure; a steer
+      // that resends for ever is not.
+      commit('SCOPED_CLEAR_PENDING_STEER', { conversationId });
+
+      await dispatch('startStreamingConversation', {
+        userInput: steer,
+        files: [],
+        provider: rootState.aiProvider?.selectedProvider,
+        model: rootState.aiProvider?.selectedModel,
+        reasoningValue: rootState.aiProvider?.reasoningValue,
+        reasoningEnabled: rootState.aiProvider?.reasoningEnabled,
+        // The steer belongs to the conversation whose turn it was aimed at —
+        // NEVER the conversation the user happens to be looking at now.
+        conversationId,
+      });
+    },
+
     async processFloorQueue({ commit, state, dispatch, rootState }, { conversationId }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
@@ -3446,6 +3515,16 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       markRunEnded(conversationId);
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: true, conversationId });
+        // A steer the backend never applied is a HUMAN turn that has been
+        // waiting for exactly this moment, so it outranks queued floor passes
+        // — the same precedence a freshly typed message gets (a new human
+        // turn resets the floor queue; see startStreamingConversation).
+        // Checked synchronously so the decision cannot depend on when an
+        // async dispatch happens to set isStreaming.
+        if (state?.conversations?.[conversationId]?.pendingSteer) {
+          dispatch('drainPendingSteer', { conversationId });
+          break;
+        }
         // Group chat: text @Name mentions in the finished reply queue floor
         // passes (synchronous action — completes before the drain below).
         dispatch('queueTextMentionFloorPasses', { conversationId });
@@ -3494,6 +3573,11 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       markRunEnded(conversationId);
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: false, conversationId });
+        // A reattached run that ends without a normal 'done' is still the end
+        // of the turn the steer was aimed at. Without this the buffer would
+        // sit until the user next opened the conversation, which is precisely
+        // the replay this fix removes.
+        dispatch('drainPendingSteer', { conversationId });
       }
       break;
   }
