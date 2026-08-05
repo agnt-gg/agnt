@@ -53,7 +53,7 @@
  * SQLite strings must never hit `new Date()` directly).
  */
 
-import { parseServerTime } from '@/utils/serverTime.js';
+import { parseServerTime, toServerDate } from '@/utils/serverTime.js';
 
 /**
  * Is this output unread?
@@ -126,6 +126,38 @@ export function formatAge(value, now = Date.now()) {
   if (hours < 24) return `${hours}h`;
 
   return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * Email-style timestamp for a conversation list row.
+ *
+ *   today       -> "6:52 PM"        (activity today is VISIBLE as it happens)
+ *   this year   -> "Aug 5"
+ *   older       -> "Aug 5, 2025"
+ *
+ * The previous rendering was day-only ("Aug 5, 2026"), which meant a save or
+ * a Mark-as-Unread today — both of which genuinely move updated_at, server
+ * and store alike — produced the exact same string all day. The date WAS
+ * updating; the format could not show it. An email client shows the time for
+ * today's mail for precisely this reason.
+ *
+ * @param {any} value server timestamp (Date | string | ms)
+ * @param {Date} [now] injectable for tests
+ * @returns {string} empty string for absent/unparseable input
+ */
+export function formatListDate(value, now = new Date()) {
+  const d = toServerDate(value);
+  if (!d) return '';
+
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /**

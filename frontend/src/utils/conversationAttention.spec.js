@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isUnread, unreadIdSet, triageRail, formatAge, groupUnreadCount, notifiableUnreadIds } from './conversationAttention.js';
+import { isUnread, unreadIdSet, triageRail, formatAge, groupUnreadCount, notifiableUnreadIds, formatListDate } from './conversationAttention.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -227,5 +227,43 @@ describe('groupUnreadCount', () => {
 
   it('archived and ungrouped conversations never count', () => {
     expect(groupUnreadCount(outputs, new Set(['g1', 'g2', 'g3']))).toBe(3);
+  });
+});
+
+describe('formatListDate — the sidebar row timestamp', () => {
+  // Local-time Dates + injected "now": deterministic in any timezone.
+  const now = new Date(2026, 7, 5, 15, 0, 0); // Aug 5 2026, 3:00 PM local
+
+  it("activity TODAY shows the time — a save or mark-unread visibly re-dates the row", () => {
+    // REGRESSION GUARD: the old day-only format rendered every save today as
+    // the same "Aug 5, 2026", so updated_at moving was invisible all day.
+    const label = formatListDate(new Date(2026, 7, 5, 6, 52, 0), now);
+    expect(label).toMatch(/6:52/);
+    expect(label).not.toMatch(/2026/);
+  });
+
+  it('this year drops the year', () => {
+    expect(formatListDate(new Date(2026, 0, 15, 9, 0, 0), now)).toBe('Jan 15');
+  });
+
+  it('older years keep the year', () => {
+    expect(formatListDate(new Date(2025, 11, 31, 9, 0, 0), now)).toBe('Dec 31, 2025');
+  });
+
+  it('same calendar day is what counts, not a 24h window', () => {
+    // 11:59 PM yesterday is 15h ago but must NOT render as a bare time.
+    expect(formatListDate(new Date(2026, 7, 4, 23, 59, 0), now)).toBe('Aug 4');
+  });
+
+  it('accepts naive server strings (UTC) without throwing', () => {
+    // Store rows are Dates; broadcast/merge paths may deliver raw SQLite
+    // strings. Both must render, never crash the row.
+    expect(formatListDate('2026-08-05 18:52:09', now)).toBeTruthy();
+  });
+
+  it('absent or garbage input renders as empty, never NaN', () => {
+    expect(formatListDate(null, now)).toBe('');
+    expect(formatListDate(undefined, now)).toBe('');
+    expect(formatListDate('not a date', now)).toBe('');
   });
 });

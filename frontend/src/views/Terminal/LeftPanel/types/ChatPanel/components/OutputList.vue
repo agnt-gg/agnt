@@ -341,7 +341,7 @@ import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { sortOutputs } from './outputSort.js';
-import { groupUnreadCount, notifiableUnreadIds } from '@/utils/conversationAttention.js';
+import { groupUnreadCount, notifiableUnreadIds, formatListDate } from '@/utils/conversationAttention.js';
 
 export default {
   name: 'OutputList',
@@ -986,12 +986,10 @@ export default {
       await store.dispatch('contentOutputs/loadAll');
     }
 
+    // Email-style: today shows the TIME, so a save or mark-unread today
+    // visibly re-dates the row instead of repeating the same day string.
     function formatDate(date) {
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
+      return formatListDate(date);
     }
 
     function getPreviewText(content, output) {
