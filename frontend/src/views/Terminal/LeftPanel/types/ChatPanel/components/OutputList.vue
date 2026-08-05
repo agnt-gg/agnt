@@ -412,14 +412,21 @@ export default {
     const selectedOutputIds = ref(new Set());
     const lastSelectedId = ref(null);
 
-    // Active/current conversation — DERIVED from the chat store, which
-    // mirrors the active conversation's saved output id. One source of
-    // truth: the row highlights the moment a new chat's first autosave
-    // lands (SCOPED_SET_SAVED_OUTPUT_ID → mirror), with no click needed,
-    // and clears when a fresh chat starts. The local ref this replaces was
-    // only ever written by clicking a row, so a brand-new conversation
-    // never highlighted until manually clicked.
-    const activeOutputId = computed(() => store.state.chat.savedOutputId);
+    // Active/current conversation — DERIVED, never click-written. Two
+    // sources with a deliberate handoff:
+    //
+    //   1. route `content-id` — written SYNCHRONOUSLY by navigateToOutput's
+    //      router.push, so the clicked row highlights immediately, before
+    //      the conversation has loaded.
+    //   2. chat.savedOutputId — the store mirror, which catches up when the
+    //      load completes. Chat.vue then strips the route param
+    //      (router.replace('/chat')), handing the highlight to the store
+    //      with no gap and no flicker — both name the same output id.
+    //
+    // The store side is also what highlights a brand-new chat on its first
+    // autosave (no click, no route param). The click-written local ref this
+    // replaced could do neither.
+    const activeOutputId = computed(() => route.query['content-id'] || store.state.chat.savedOutputId);
 
     // Streaming output IDs from the chat store
     const streamingOutputIds = computed(() => store.getters['chat/streamingOutputIds'] || new Set());

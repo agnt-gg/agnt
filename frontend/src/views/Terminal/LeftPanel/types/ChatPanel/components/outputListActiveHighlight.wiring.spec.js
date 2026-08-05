@@ -19,8 +19,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = fs.readFileSync(path.join(HERE, 'OutputList.vue'), 'utf8');
 
 describe('OutputList active-row wiring', () => {
-  it('derives the active row from the chat store — a new chat highlights on first save, no click needed', () => {
-    expect(SRC).toMatch(/const activeOutputId = computed\(\(\) => store\.state\.chat\.savedOutputId\);/);
+  it('derives the active row from the route param first, then the chat store', () => {
+    // Route param = written synchronously by the click, so the highlight is
+    // IMMEDIATE; the store mirror takes over when the load completes and
+    // Chat.vue strips the param. The store fallback is also what highlights
+    // a brand-new chat on its first autosave, with no click at all.
+    expect(SRC).toMatch(/const activeOutputId = computed\(\(\) => route\.query\['content-id'\] \|\| store\.state\.chat\.savedOutputId\);/);
   });
 
   it('keeps a single source of truth — no local active ref to drift from the store', () => {
