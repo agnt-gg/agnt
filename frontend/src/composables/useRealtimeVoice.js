@@ -68,6 +68,9 @@ export const RealtimeState = Object.freeze({
  */
 const AGNT_CALL_TIMEOUT_MS = 180000;
 
+/** How many recent call_ids to remember for duplicate detection. */
+const MAX_TRACKED_CALLS = 200;
+
 export function useRealtimeVoice(options = {}) {
   const {
     onRunAgnt = async () => 'AGNT is not connected on this surface.',
@@ -151,6 +154,12 @@ export function useRealtimeVoice(options = {}) {
    * exactly the pacing a person uses, one sentence finishing before the next
    * begins.
    */
+  /**
+   * call_ids already dispatched, so a repeated frame cannot re-run one.
+   * Bounded by MAX_TRACKED_CALLS; cleared with the session.
+   */
+  const dispatchedCalls = new Set();
+
   const speakQueue = [];
   /**
    * Bumped every time the user takes the floor — barge-in, or stopping the
@@ -214,6 +223,28 @@ export function useRealtimeVoice(options = {}) {
    */
   async function handleRunAgnt(action, gen) {
     if (!action.callId) return;
+
+    /**
+     * ONE CALL RUNS ONCE, WHATEVER THE WIRE DOES.
+     *
+     * `answered` below is a closure over a single invocation, so it stops one
+     * call being answered twice — it cannot stop the same call being INVOKED
+     * twice. When a cancelled response re-delivered its function_call, this
+     * ran again with the same call_id and submitted the user's words as a
+     * fresh turn, over and over.
+     *
+     * The bridge now refuses to dispatch a cancelled response's tool calls,
+     * which fixes the known cause. This is the second, independent guard: a
+     * call_id is a unique identity, so seeing one twice is always a repeat, no
+     * matter which frame carried it.
+     */
+    if (dispatchedCalls.has(action.callId)) return;
+    dispatchedCalls.add(action.callId);
+    // Bounded: a long session must not accumulate ids for ever. Sets keep
+    // insertion order, so the oldest is the first key.
+    if (dispatchedCalls.size > MAX_TRACKED_CALLS) {
+      dispatchedCalls.delete(dispatchedCalls.values().next().value);
+    }
 
     const epoch = speechEpoch;
 
@@ -520,6 +551,7 @@ export function useRealtimeVoice(options = {}) {
     assistantPartial.value = '';
     clearTurnBuffers();
     speakQueue.length = 0;
+    dispatchedCalls.clear();
     speechEpoch += 1;
     responseActive = false;
     narrating = false;

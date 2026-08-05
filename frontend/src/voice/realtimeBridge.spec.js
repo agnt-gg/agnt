@@ -111,6 +111,63 @@ describe('interpretEvent — the tool call that makes AGNT the brain', () => {
   });
 });
 
+describe('interpretEvent — a cancelled response does not re-run its tool call', () => {
+  /**
+   * THE REPEAT BUG. `response.done` fires for every response the server
+   * finishes with, INCLUDING one it cancelled because the user started
+   * speaking — and that frame still carries the function_call in `output[]`.
+   * Dispatching on it re-ran a call that had already run, so the same words
+   * were submitted again as a new user message, answered again, spoken again,
+   * and any further interruption repeated the cycle.
+   */
+  const doneWithCall = (status) => ({
+    type: 'response.done',
+    response: {
+      ...(status === undefined ? {} : { status }),
+      output: [
+        {
+          type: 'function_call',
+          name: AGNT_TOOL_NAME,
+          call_id: 'call_1',
+          arguments: JSON.stringify({ user_message: 'what is the build status' }),
+        },
+      ],
+    },
+  });
+
+  const runs = (event) => interpretEvent(event).filter((a) => a.type === BridgeAction.RUN_AGNT);
+
+  it('dispatches a COMPLETED response', () => {
+    expect(runs(doneWithCall('completed'))).toHaveLength(1);
+  });
+
+  it.each(['cancelled', 'incomplete', 'failed'])('does NOT dispatch a %s response', (status) => {
+    expect(runs(doneWithCall(status))).toHaveLength(0);
+  });
+
+  it('a cancelled response is not reported as having had a tool call', () => {
+    // Otherwise the runtime treats the turn as already written to the chat
+    // when in fact nothing was ever sent.
+    const actions = interpretEvent(doneWithCall('cancelled'));
+    expect(actions.at(-1)).toEqual({ type: BridgeAction.TURN_COMPLETE, hadToolCall: false });
+  });
+
+  it('STILL emits TURN_COMPLETE when cancelled — or the speak queue stalls', () => {
+    // The runtime clears `responseActive` on this marker. Dropping it for
+    // cancelled responses would leave the session permanently unable to speak
+    // again: a deadlock traded for a repeat.
+    const actions = interpretEvent(doneWithCall('cancelled'));
+    expect(actions.some((a) => a.type === BridgeAction.TURN_COMPLETE)).toBe(true);
+  });
+
+  it('FAILS OPEN: a missing status still dispatches', () => {
+    // `status` is a GA-interface field. Treating its absence as "cancelled"
+    // would stop dispatching every call on any shape that omits it — a session
+    // that silently never acts, which is worse than the bug being fixed.
+    expect(runs(doneWithCall(undefined))).toHaveLength(1);
+  });
+});
+
 describe('interpretEvent — TURN_COMPLETE tells the runtime what to record', () => {
   /**
    * The runtime cannot know whether a turn is already in the chat until it

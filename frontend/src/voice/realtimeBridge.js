@@ -97,11 +97,40 @@ export function interpretEvent(event) {
 
     case 'response.done': {
       const actions = [];
-      const outputs = Array.isArray(event.response?.output) ? event.response.output : [];
+      const response = event.response || {};
+      const outputs = Array.isArray(response.output) ? response.output : [];
+
+      /**
+       * A CANCELLED RESPONSE STILL CARRIES ITS TOOL CALL.
+       *
+       * `response.done` fires for every response the server finishes with —
+       * including one it CANCELLED because the user started speaking. That
+       * frame still contains the function_call in `output[]`, so dispatching
+       * on it re-ran a call that had already been run: the same words were
+       * submitted again as a brand-new user message, the orchestrator answered
+       * again, the model spoke again, and any further interruption repeated
+       * the whole cycle. That is the "it keeps repeating itself over and over
+       * in new messages" report.
+       *
+       * A tool call is an instruction to ACT, and a response the server threw
+       * away is not an instruction to act. Only a completed response dispatches.
+       *
+       * `undefined` counts as completed: `status` is a GA-interface field and
+       * treating its absence as "cancelled" would silently stop dispatching
+       * every call on any shape that omits it — failing closed into a session
+       * that never does anything, which is worse than the bug being fixed.
+       */
+      const status = response.status;
+      const completed = status === undefined || status === 'completed';
+
       let hadToolCall = false;
 
       for (const item of outputs) {
         if (item?.type !== 'function_call') continue;
+        // Deliberately before `hadToolCall`: a call we refuse to run must not
+        // be reported as one that ran, or the runtime treats the turn as
+        // already recorded in the chat when nothing was ever sent.
+        if (!completed) continue;
         hadToolCall = true;
 
         // Arguments arrive as a JSON *string*. A model can emit malformed JSON

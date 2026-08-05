@@ -198,6 +198,58 @@ describe('useRealtimeVoice — AGNT is the brain', () => {
   });
 });
 
+describe('useRealtimeVoice — one call runs once', () => {
+  /**
+   * `answered` is a closure over a single invocation: it stops one call being
+   * ANSWERED twice, and cannot stop the same call being INVOKED twice. When a
+   * cancelled response re-delivered its function_call, the user's words were
+   * submitted again as a fresh turn — over and over.
+   *
+   * The bridge refuses cancelled responses (see realtimeBridge.spec.js); this
+   * is the second, independent guard, on identity rather than on provenance.
+   */
+  it('THE REPEAT BUG: the same call_id delivered twice submits once', async () => {
+    const onRunAgnt = vi.fn(async () => 'the build is green');
+    const s = harness({ onRunAgnt });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    s._handleMessage(toolCallFrame()); // same call_id, redelivered
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledTimes(1);
+    expect(answersFor('call_1')).toHaveLength(1);
+  });
+
+  it('distinct calls both run (the guard is on identity, not on count)', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    s._handleMessage(
+      toolCallFrame({ call_id: 'call_2', arguments: JSON.stringify({ user_message: 'and the tests?' }) })
+    );
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledTimes(2);
+    expect(answersFor('call_2')).toHaveLength(1);
+  });
+
+  it('a new session may reuse an id — stop() forgets them', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    s.stop();
+
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+    expect(onRunAgnt).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('useRealtimeVoice — speaks as the answer arrives, not after it lands', () => {
   /**
    * Waiting for the whole turn before speaking a word means silence for as
