@@ -125,6 +125,7 @@ import { mapActions, mapGetters } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import { maxBytesFor, formatMb } from '@/services/backgroundLimits';
 
 export default {
   name: 'ThemeSelector',
@@ -145,7 +146,6 @@ export default {
         { id: 'light', name: 'Light', icon: 'fas fa-sun' },
         { id: 'rose', name: 'Rose', icon: 'fas fa-heart' },
       ],
-      bgFileName: 'No file',
       fontOptions: [
         { label: 'Sans-serif', value: 'sans' },
         { label: 'Monospace', value: 'mono' },
@@ -159,6 +159,7 @@ export default {
       'currentThemeBackgroundImage',
       'isCurrentBackgroundVideo',
       'useCustomBackground',
+      'backgroundFileName',
       'fontFamily',
       'uiScale',
       'bgOpacity',
@@ -166,6 +167,11 @@ export default {
     ]),
     isVideoBackground() {
       return this.isCurrentBackgroundVideo;
+    },
+    // Reads from the store, not local state, so a background set from a chat
+    // turn shows its real file name here instead of "No file".
+    bgFileName() {
+      return this.backgroundFileName || (this.currentThemeBackgroundImage ? 'Custom background' : 'No file');
     },
   },
   mounted() {
@@ -206,19 +212,18 @@ export default {
         return;
       }
 
-      const maxSize = isVideo ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+      // Shared with the set_background_image chat tool so both ways of setting
+      // a background accept exactly the same files.
+      const maxSize = maxBytesFor(isVideo ? 'video' : 'image');
       if (file.size > maxSize) {
-        const maxSizeMB = isVideo ? '20MB' : '5MB';
         await this.$refs.simpleModal.showModal({
           title: 'File Too Large',
-          message: `File is too large. Please select a ${isVideo ? 'video' : 'image'} smaller than ${maxSizeMB}.`,
+          message: `File is too large. Please select a ${isVideo ? 'video' : 'image'} smaller than ${formatMb(maxSize)}.`,
           confirmText: 'OK',
           showCancel: false,
         });
         return;
       }
-
-      this.bgFileName = file.name;
 
       this.setCustomBackgroundImage({
         theme: this.currentTheme,
@@ -229,7 +234,6 @@ export default {
     },
     removeBackgroundImage() {
       this.removeCustomBackgroundImage(this.currentTheme);
-      this.bgFileName = 'No file';
     },
     handleScaleInput(event) {
       this.setUiScale(parseInt(event.target.value, 10));

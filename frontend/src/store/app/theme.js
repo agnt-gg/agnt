@@ -1,4 +1,5 @@
 import { mediaStorage } from '../../utils/mediaStorage.js';
+import { maxBytesFor, formatMb } from '../../services/backgroundLimits.js';
 
 const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose'];
 
@@ -8,6 +9,20 @@ function mediaKeyFor(theme) {
 
 function existsKeyFor(theme) {
   return `customBackgroundImage_${theme}_exists`;
+}
+
+function nameKeyFor(theme) {
+  return `customBackgroundImage_${theme}_name`;
+}
+
+// File names are display-only, so they live in localStorage next to the
+// exists flags rather than in IndexedDB with the bytes.
+function buildBackgroundFileNames() {
+  const names = {};
+  for (const theme of SUPPORTED_THEMES) {
+    names[theme] = localStorage.getItem(nameKeyFor(theme)) || null;
+  }
+  return names;
 }
 
 function buildHasCustomBackgroundFlags() {
@@ -22,6 +37,20 @@ function blobTypeKind(blob) {
   if (!blob) return null;
   if (blob.type && blob.type.startsWith('video/')) return 'video';
   return 'image';
+}
+
+// Whether a Blob's own MIME type already says what the backend says it is.
+// Only the top-level type matters — blobTypeKind never looks at the subtype.
+function blobMatchesKind(blob, kind) {
+  if (!blob) return false;
+  return blobTypeKind(blob) === (kind === 'video' ? 'video' : 'image');
+}
+
+// Re-tag a Blob whose Content-Type arrived generic (application/octet-stream)
+// so it still renders as the right element after a reload. The subtype is a
+// placeholder; nothing reads past `video/` or `image/`.
+function retypeBlob(blob, kind) {
+  return new Blob([blob], { type: kind === 'video' ? 'video/mp4' : 'image/png' });
 }
 
 // Revoke an object URL after the next paint cycle so any <video>/<img>
@@ -92,12 +121,9 @@ export default {
     currentBackgroundUrl: null,
     currentBackgroundType: null, // 'video' | 'image' | null
 
-    // EPHEMERAL background overlay, set from a chat turn via the
-    // `appearance:background` frontend event. Purely in-memory — never written
-    // to IndexedDB or localStorage — so the background the user configured in
-    // Settings is untouched and comes back on reload or on clear. Takes
-    // precedence over currentBackgroundUrl while set.
-    ephemeralBackground: null, // { url, type, fileName } | null
+    // Per-theme file name behind the custom background, when we know it (from
+    // the Settings picker or a chat turn). Display only.
+    backgroundFileNames: buildBackgroundFileNames(),
 
     // Default background image for all themes
     defaultBackgroundImage: '/images/backgrounds/bg7.jpg',
@@ -264,11 +290,15 @@ export default {
       if (previous && previous !== url) revokeSoon(previous);
     },
 
-    // Set/clear the in-memory overlay. Deliberately revokes nothing: these are
-    // /api/local-file URLs, not object URLs, and the persisted blob URL
-    // underneath must survive so clearing restores it with no reload.
-    SET_EPHEMERAL_BACKGROUND(state, payload) {
-      state.ephemeralBackground = payload && payload.url ? { ...payload } : null;
+    // Name of the file behind a theme's custom background, for display in
+    // Settings. Purely cosmetic — the background itself lives in IndexedDB.
+    SET_BACKGROUND_FILE_NAME(state, { theme, fileName }) {
+      state.backgroundFileNames = { ...state.backgroundFileNames, [theme]: fileName || null };
+      if (fileName) {
+        localStorage.setItem(nameKeyFor(theme), fileName);
+      } else {
+        localStorage.removeItem(nameKeyFor(theme));
+      }
     },
   },
   actions: {
@@ -430,7 +460,7 @@ export default {
     // Custom background image actions. `file` may be a File/Blob (preferred)
     // or a legacy data URL string; data URLs are converted to Blobs before
     // hitting IndexedDB so we never persist base64 again.
-    async setCustomBackgroundImage({ commit, state, dispatch }, { theme, file, imageDataUrl }) {
+    async setCustomBackgroundImage({ commit, state, dispatch }, { theme, file, imageDataUrl, fileName }) {
       let blob = file instanceof Blob ? file : null;
       if (!blob && typeof imageDataUrl === 'string' && imageDataUrl.startsWith('data:')) {
         try {
@@ -450,6 +480,10 @@ export default {
       }
 
       commit('SET_HAS_CUSTOM_BACKGROUND', { theme, hasCustom: true });
+      // A File carries its own name; a Blob fetched from disk does not, so the
+      // caller passes one. Recording it here means every way of setting a
+      // background labels itself in Settings, with no extra call site.
+      commit('SET_BACKGROUND_FILE_NAME', { theme, fileName: fileName || file?.name || null });
 
       if (theme === state.currentTheme) {
         const url = URL.createObjectURL(blob);
@@ -458,13 +492,67 @@ export default {
 
       dispatch('applyCurrentThemeBackground');
     },
-    // Ephemeral overlay — see SET_EPHEMERAL_BACKGROUND. A falsy `url` clears it.
-    setEphemeralBackground({ commit, dispatch }, { url, type, fileName } = {}) {
-      commit('SET_EPHEMERAL_BACKGROUND', url ? { url, type: type || 'image', fileName: fileName || null } : null);
-      dispatch('applyCurrentThemeBackground');
+    // Install a background chosen from a chat turn (`set_background_image`).
+    //
+    // This is deliberately NOT a separate mechanism: it fetches the bytes and
+    // hands them to setCustomBackgroundImage — the exact action the Settings
+    // file picker uses — then makes sure the "Custom Background" toggle is on.
+    // One storage location, one render path, one settings surface, so a
+    // chat-set background and a user-set background can never behave
+    // differently.
+    //
+    // `credentials: 'include'` is what authenticates: /api/local-file accepts
+    // the narrowly-scoped agnt_media_token cookie, which is the same carrier
+    // the <img>/<video> tags already rely on.
+    async applyAssistantBackground({ commit, state, dispatch }, { url, type, fileName } = {}) {
+      if (!url) {
+        await dispatch('clearAssistantBackground');
+        return { ok: true, cleared: true };
+      }
+
+      let blob;
+      try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
+        }
+        blob = await response.blob();
+      } catch (error) {
+        // Loud, not silent: the background visibly did not change, and the
+        // reason belongs somewhere a person can find it.
+        console.error('[theme] failed to fetch background media:', url, error);
+        return { ok: false, reason: 'fetch-failed' };
+      }
+
+      const limit = maxBytesFor(type);
+      if (blob.size > limit) {
+        console.error(`[theme] background is ${formatMb(blob.size)}, over the ${formatMb(limit)} limit — ignored.`);
+        return { ok: false, reason: 'too-large' };
+      }
+
+      // The server's Content-Type is authoritative for well-known extensions,
+      // but an unmapped one arrives as application/octet-stream, and blob.type
+      // is what decides <img> vs <video> on every later reload. The backend
+      // already classified the file by extension, so trust that and re-tag the
+      // Blob before it is persisted — otherwise a video could come back as an
+      // image after a restart.
+      const stored = blobMatchesKind(blob, type) ? blob : retypeBlob(blob, type);
+
+      // Toggle first: loadCurrentThemeBackground refuses to hold a Blob in
+      // memory while the setting is off, so flipping it afterwards would
+      // immediately drop what we just stored.
+      if (!state.useCustomBackground) {
+        commit('SET_USE_CUSTOM_BACKGROUND', true);
+      }
+      await dispatch('setCustomBackgroundImage', { theme: state.currentTheme, file: stored, fileName });
+      return { ok: true };
     },
-    clearEphemeralBackground({ commit, dispatch }) {
-      commit('SET_EPHEMERAL_BACKGROUND', null);
+
+    // The × button in Settings, plus turning the setting back off — "clear"
+    // means the plain theme background, not the default wallpaper.
+    async clearAssistantBackground({ commit, state, dispatch }) {
+      await dispatch('removeCustomBackgroundImage', state.currentTheme);
+      commit('SET_USE_CUSTOM_BACKGROUND', false);
       dispatch('applyCurrentThemeBackground');
     },
     async removeCustomBackgroundImage({ commit, state, dispatch }, theme) {
@@ -475,6 +563,7 @@ export default {
       }
 
       commit('SET_HAS_CUSTOM_BACKGROUND', { theme, hasCustom: false });
+      commit('SET_BACKGROUND_FILE_NAME', { theme, fileName: null });
 
       if (theme === state.currentTheme) {
         commit('SET_CURRENT_BACKGROUND', { url: null, type: null });
@@ -518,7 +607,7 @@ export default {
       // An ephemeral overlay activates the background layer even when the
       // user's own toggle is off — otherwise setting a background from chat
       // would store a URL that nothing renders.
-      const backgroundActive = state.useCustomBackground || !!state.ephemeralBackground;
+      const backgroundActive = state.useCustomBackground;
 
       if (backgroundActive) {
         // Set on body.style so it overrides theme CSS declarations on body selectors
@@ -569,18 +658,15 @@ export default {
     bgBlur: (state) => state.bgBlur,
     // Custom background image getters
     hasCustomBackground: (state) => state.hasCustomBackground,
-    currentThemeBackgroundImage: (state) => (
-      (state.ephemeralBackground && state.ephemeralBackground.url) || state.currentBackgroundUrl
-    ),
-    currentBackgroundType: (state) => (
-      state.ephemeralBackground ? state.ephemeralBackground.type : state.currentBackgroundType
-    ),
+    currentThemeBackgroundImage: (state) => state.currentBackgroundUrl,
+    currentBackgroundType: (state) => state.currentBackgroundType,
     isCurrentBackgroundVideo: (state, getters) => getters.currentBackgroundType === 'video',
     useCustomBackground: (state) => state.useCustomBackground,
-    ephemeralBackground: (state) => state.ephemeralBackground,
-    // Whether #bg-layer should render at all: the user's own setting OR a
-    // chat-set ephemeral overlay.
-    backgroundLayerActive: (state) => state.useCustomBackground || !!state.ephemeralBackground,
+    backgroundFileName: (state) => state.backgroundFileNames[state.currentTheme] || null,
+    // Whether #bg-layer should render at all. One condition now: a chat-set
+    // background IS the user's setting, so it turns this on the same way the
+    // Settings toggle does.
+    backgroundLayerActive: (state) => state.useCustomBackground,
     // Promo banner getter
     isPromoBannerClosed: (state) => state.isPromoBannerClosed,
     // Rate limit banner getters

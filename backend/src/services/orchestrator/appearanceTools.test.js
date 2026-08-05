@@ -3,13 +3,16 @@
 //
 //   1. It must never be able to point the browser at something that is not a
 //      renderable media file the user is allowed to see.
-//   2. It must never persist. The background in Settings → Theme is the user's
-//      setting; an assistant preview that quietly became permanent would be a
-//      worse bug than the feature is a feature.
+//   2. It must set the user's REAL background — the same setting the Settings →
+//      Theme picker writes — so it applies instantly, survives a reload, and is
+//      visible and reversible in the UI. The old in-memory overlay satisfied
+//      none of that and produced "you set a background, it isn't in my theme
+//      settings, and it's gone when I refresh."
 //
-// (2) is structural — this module has no storage of any kind — so it is guarded
-// here by asserting the ONLY effect is a frontend event, and in the frontend by
-// theme.ephemeralBackground.spec.js.
+// This module still writes nothing itself; it emits an event and the browser
+// does the storing (only the browser has the IndexedDB). So (2) is guarded here
+// by asserting the event contract, and end-to-end in the frontend by
+// theme.assistantBackground.spec.js.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import os from 'os';
@@ -19,6 +22,8 @@ import {
   executeAppearanceTool,
   kindForExtension,
   toLocalFileUrl,
+  MAX_IMAGE_BYTES,
+  MAX_VIDEO_BYTES,
 } from './appearanceTools.js';
 
 let tmpDir;
@@ -58,12 +63,72 @@ describe('schemas', () => {
     expect(s.function.parameters.required).toEqual(['path']);
   });
 
-  it('both descriptions state the change is ephemeral', () => {
-    // The model decides whether to warn the user. If the schema stops saying
-    // this, it will start describing the change as permanent.
-    for (const s of schemas) {
-      expect(s.function.description.toLowerCase()).toMatch(/ephemeral|restore/);
-    }
+  it('tells the model the change persists and replaces the current background', () => {
+    // The model decides whether to warn the user their wallpaper is being
+    // swapped. If the schema stops saying this, it will start describing a
+    // permanent, overwriting change as a harmless preview.
+    const set = schemas.find((x) => x.function.name === 'set_background_image');
+    expect(set.function.description).toMatch(/persist/i);
+    expect(set.function.description).toMatch(/replaces/i);
+    expect(set.function.description).toMatch(/Settings/);
+    // And it must not claim the opposite any more.
+    expect(set.function.description.toLowerCase()).not.toMatch(/ephemeral/);
+  });
+
+  it('describes clearing as removing the setting, not restoring a previous one', () => {
+    const clear = schemas.find((x) => x.function.name === 'clear_background_image');
+    expect(clear.function.description).toMatch(/remove/i);
+    expect(clear.function.description.toLowerCase()).not.toMatch(/ephemeral/);
+  });
+});
+
+describe('size limits', () => {
+  // MIRRORS frontend/src/services/backgroundLimits.js, which pins the same two
+  // numbers. Changing one side alone fails the other side's test — which is
+  // the point: a file the assistant installs must be one Settings accepts.
+  it('pins the shared ceilings', () => {
+    expect(MAX_IMAGE_BYTES).toBe(25 * 1024 * 1024);
+    expect(MAX_VIDEO_BYTES).toBe(100 * 1024 * 1024);
+  });
+
+  it('refuses an oversized file with an actionable message', async () => {
+    const bigPath = path.join(tmpDir, 'huge.png');
+    // Sparse file — no need to actually write 25MB of bytes.
+    const fd = fs.openSync(bigPath, 'w');
+    fs.ftruncateSync(fd, MAX_IMAGE_BYTES + 1);
+    fs.closeSync(fd);
+
+    const res = await run('set_background_image', { path: bigPath });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/over the 25MB background limit/);
+    expect(res.frontendEvents).toBeUndefined();
+
+    fs.rmSync(bigPath, { force: true });
+  });
+
+  it('allows a video that would be over the image limit', async () => {
+    const bigVideo = path.join(tmpDir, 'big.mp4');
+    const fd = fs.openSync(bigVideo, 'w');
+    fs.ftruncateSync(fd, MAX_IMAGE_BYTES + 1);
+    fs.closeSync(fd);
+
+    const res = await run('set_background_image', { path: bigVideo });
+    expect(res.success).toBe(true);
+
+    fs.rmSync(bigVideo, { force: true });
+  });
+
+  it('accepts an ordinary multi-megabyte wallpaper', async () => {
+    // The old picker capped images at 5MB, a leftover from persisting base64 in
+    // localStorage. A 7MB PNG is a perfectly normal wallpaper and must work.
+    const sevenMb = path.join(tmpDir, 'wallpaper.png');
+    const fd = fs.openSync(sevenMb, 'w');
+    fs.ftruncateSync(fd, 7 * 1024 * 1024);
+    fs.closeSync(fd);
+
+    expect((await run('set_background_image', { path: sevenMb })).success).toBe(true);
+
+    fs.rmSync(sevenMb, { force: true });
   });
 });
 
@@ -164,7 +229,8 @@ describe('set_background_image — success', () => {
     expect(res.success).toBe(true);
     expect(res.kind).toBe('image');
     expect(res.fileName).toBe('annie.png');
-    expect(res.ephemeral).toBe(true);
+    expect(res.persisted).toBe(true);
+    expect(res.ephemeral).toBeUndefined();
     expect(res.frontendEvents).toHaveLength(1);
     expect(res.frontendEvents[0].type).toBe('appearance:background');
     expect(res.frontendEvents[0].data.url).toBe(toLocalFileUrl(pngPath));
@@ -185,14 +251,21 @@ describe('set_background_image — success', () => {
     expect(res.error).toMatch(/File not found/);
   });
 
-  it('the ONLY side effect is the event — nothing is written anywhere', async () => {
+  it('touches nothing on disk — the browser does the storing', async () => {
     const before = fs.readdirSync(tmpDir).sort();
     const res = await run('set_background_image', { path: pngPath });
     expect(res.success).toBe(true);
     expect(fs.readdirSync(tmpDir).sort()).toEqual(before);
-    // Result carries no storage handle, id, or key of any kind.
-    expect(Object.keys(res)).not.toContain('id');
-    expect(JSON.stringify(res)).not.toMatch(/localStorage|indexeddb|INSERT|UPDATE/i);
+  });
+
+  it('tells the user, in the result, that this is their real setting', async () => {
+    // The message is what the assistant paraphrases back. If it still called
+    // this a temporary overlay, the user would be told the opposite of what
+    // just happened to their theme.
+    const res = await run('set_background_image', { path: pngPath });
+    expect(res.message).toMatch(/Settings/);
+    expect(res.message).toMatch(/survives a reload|persist/i);
+    expect(res.message.toLowerCase()).not.toMatch(/ephemeral|returns on refresh/);
   });
 });
 
@@ -203,6 +276,12 @@ describe('clear_background_image', () => {
     expect(res.frontendEvents).toHaveLength(1);
     expect(res.frontendEvents[0].type).toBe('appearance:background');
     expect(res.frontendEvents[0].data.url).toBeNull();
+  });
+
+  it('reports removing the setting, not restoring a hidden previous one', async () => {
+    const res = await run('clear_background_image', {});
+    expect(res.message).toMatch(/removed/i);
+    expect(res.message.toLowerCase()).not.toMatch(/ephemeral/);
   });
 
   it('is safe with no args at all', async () => {

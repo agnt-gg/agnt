@@ -6,7 +6,8 @@ import TerminalLayout from './TerminalLayout.vue';
 // TerminalLayout resolves its background layer from the theme module. Mounting
 // without a store leaves useStore() undefined and every render throws on
 // `store.getters`. This mirrors the real theme module's read surface.
-const setEphemeralBackground = vi.fn();
+const applyAssistantBackground = vi.fn();
+const clearAssistantBackground = vi.fn();
 
 const createThemeStore = (theme = {}) =>
   createStore({
@@ -18,22 +19,19 @@ const createThemeStore = (theme = {}) =>
           useCustomBackground: false,
           currentThemeBackgroundImage: null,
           currentBackgroundType: 'image',
-          ephemeralBackground: null,
           ...theme,
         },
         getters: {
           useCustomBackground: (s) => s.useCustomBackground,
-          // Mirrors the real module: the ephemeral overlay wins while set.
-          currentThemeBackgroundImage: (s) => (
-            (s.ephemeralBackground && s.ephemeralBackground.url) || s.currentThemeBackgroundImage
-          ),
-          currentBackgroundType: (s) => (
-            s.ephemeralBackground ? s.ephemeralBackground.type : s.currentBackgroundType
-          ),
-          backgroundLayerActive: (s) => s.useCustomBackground || !!s.ephemeralBackground,
+          currentThemeBackgroundImage: (s) => s.currentThemeBackgroundImage,
+          currentBackgroundType: (s) => s.currentBackgroundType,
+          // One condition: a chat-set background turns the user's own setting
+          // on, so there is no second source of truth to OR in.
+          backgroundLayerActive: (s) => s.useCustomBackground,
         },
         actions: {
-          setEphemeralBackground,
+          applyAssistantBackground,
+          clearAssistantBackground,
         },
       },
     },
@@ -407,53 +405,68 @@ describe('TerminalLayout', () => {
       expect(wrapper.find('#bg-layer img').attributes('src')).toBe('/blob/user.png');
     });
 
-    it('renders an ephemeral overlay even when the user setting is OFF', () => {
-      // Regression guard: gating the layer on useCustomBackground alone meant a
-      // chat-set background stored a URL that nothing ever rendered.
-      wrapper = createWrapper({}, {
-        useCustomBackground: false,
-        ephemeralBackground: { url: '/api/local-file/C:/x/annie.png', type: 'image' },
-      });
-      expect(wrapper.find('#bg-layer').exists()).toBe(true);
-      expect(wrapper.find('#bg-layer img').attributes('src')).toBe('/api/local-file/C:/x/annie.png');
-    });
-
-    it('overlay takes precedence over the user background', () => {
+    it('renders a <video> when the stored background is a video', () => {
       wrapper = createWrapper({}, {
         useCustomBackground: true,
-        currentThemeBackgroundImage: '/blob/user.png',
-        ephemeralBackground: { url: '/api/local-file/C:/x/annie.png', type: 'image' },
-      });
-      expect(wrapper.find('#bg-layer img').attributes('src')).toBe('/api/local-file/C:/x/annie.png');
-    });
-
-    it('renders a <video> when the overlay is a video', () => {
-      wrapper = createWrapper({}, {
-        ephemeralBackground: { url: '/api/local-file/C:/x/loop.mp4', type: 'video' },
+        currentThemeBackgroundImage: 'blob:loop',
+        currentBackgroundType: 'video',
       });
       expect(wrapper.find('#bg-layer video').exists()).toBe(true);
       expect(wrapper.find('#bg-layer img').exists()).toBe(false);
     });
 
-    it('applies the overlay when the global appearance event fires', async () => {
-      setEphemeralBackground.mockClear();
+    it('installs the background as a real setting when the appearance event fires', async () => {
+      // The event carries `kind`; the store action takes `type`. Getting that
+      // rename wrong is silent — the background installs as the wrong element.
+      applyAssistantBackground.mockClear();
       wrapper = createWrapper();
 
       window.dispatchEvent(new CustomEvent('agnt:appearance-background', {
         detail: { url: '/api/local-file/C:/x/annie.png', kind: 'image', fileName: 'annie.png' },
       }));
-      await wrapper.vm.$nextTick();
+      await flushPromises();
 
-      expect(setEphemeralBackground).toHaveBeenCalledTimes(1);
-      expect(setEphemeralBackground.mock.calls[0][1]).toEqual({
+      expect(applyAssistantBackground).toHaveBeenCalledTimes(1);
+      expect(applyAssistantBackground.mock.calls[0][1]).toEqual({
         url: '/api/local-file/C:/x/annie.png',
         type: 'image',
         fileName: 'annie.png',
       });
+      expect(clearAssistantBackground).not.toHaveBeenCalled();
+    });
+
+    it('clears through the theme setting when the event carries a null url', async () => {
+      applyAssistantBackground.mockClear();
+      clearAssistantBackground.mockClear();
+      wrapper = createWrapper();
+
+      window.dispatchEvent(new CustomEvent('agnt:appearance-background', {
+        detail: { url: null, kind: null, fileName: null },
+      }));
+      await flushPromises();
+
+      expect(clearAssistantBackground).toHaveBeenCalledTimes(1);
+      expect(applyAssistantBackground).not.toHaveBeenCalled();
+    });
+
+    it('swallows a failing dispatch instead of raising an unhandled rejection', async () => {
+      applyAssistantBackground.mockClear();
+      applyAssistantBackground.mockRejectedValueOnce(new Error('boom'));
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      wrapper = createWrapper();
+
+      window.dispatchEvent(new CustomEvent('agnt:appearance-background', {
+        detail: { url: '/api/local-file/C:/x/annie.png', kind: 'image' },
+      }));
+      await flushPromises();
+
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+      applyAssistantBackground.mockReset();
     });
 
     it('stops listening after unmount', async () => {
-      setEphemeralBackground.mockClear();
+      applyAssistantBackground.mockClear();
       wrapper = createWrapper();
       wrapper.unmount();
       wrapper = null;
@@ -462,7 +475,7 @@ describe('TerminalLayout', () => {
         detail: { url: '/api/local-file/C:/x/annie.png', kind: 'image' },
       }));
 
-      expect(setEphemeralBackground).not.toHaveBeenCalled();
+      expect(applyAssistantBackground).not.toHaveBeenCalled();
     });
   });
 
