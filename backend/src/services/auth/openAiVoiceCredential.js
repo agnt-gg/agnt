@@ -64,54 +64,97 @@ export const VOICE_CREDENTIAL_SOURCE = Object.freeze({
 });
 
 /**
- * Resolve a credential that can open a Realtime session for this user.
+ * Every credential this user could open a Realtime session with, best first.
  *
- * Order is deliberate: a platform key wins, because a user who has explicitly
- * configured one has said which account should be billed, and because it is the
- * credential with full scope. The ChatGPT/Codex token is the fallback, so users
- * who never touch the platform side still get voice.
+ * WHY A CHAIN AND NOT A WINNER
+ * ----------------------------
+ * This used to resolve exactly one credential, eagerly, and hand it to the
+ * caller as the answer. That conflates two different events — "a credential
+ * exists" and "a credential works" — and the gap between them is a real bug a
+ * user hit: a metered API key that has run out of credit still RESOLVES
+ * perfectly, so it won, and the session died with a 429 while a fully entitled
+ * ChatGPT subscription sat one branch away, never tried. Resolution cannot know
+ * whether a token works; only the call knows. So resolution's job is to enumerate
+ * candidates and rank them, and the call's job is to walk them.
  *
- * @returns {Promise<{ token: string, source: string, accountId: string|null } | null>}
- *   `null` means "this user cannot do speech-to-speech" — a normal state, never
+ * ORDER: SUBSCRIPTION BEFORE METER
+ * --------------------------------
+ * The ChatGPT/Codex token is tried FIRST. A Realtime minute on a ChatGPT
+ * subscription is already paid for, while the same minute on a platform key is
+ * billed per token, so preferring the subscription is both cheaper and the
+ * behaviour a user with both would expect. Nothing is lost by the reversal:
+ * a plan that is not entitled answers 401/403 and the caller moves to the key.
+ *
+ * @returns {Promise<Array<{ token: string, source: string, accountId: string|null }>>}
+ *   Empty means "this user cannot do speech-to-speech" — a normal state, never
  *   an exception. Every failure path inside is swallowed for that reason: this
  *   is a capability probe as much as a credential fetch, and a probe that
  *   throws would take out the status endpoint with it.
  */
-export async function resolveOpenAiVoiceCredential(userId) {
-  // Tier 1 — platform API key (env → local encrypted store → remote vault).
-  try {
-    const key = await authManager.getValidAccessToken(userId, 'openai');
-    if (typeof key === 'string' && key.trim()) {
-      return { token: key.trim(), source: VOICE_CREDENTIAL_SOURCE.PLATFORM, accountId: null };
-    }
-  } catch {
-    // A vault that cannot be reached is not a credential. Fall through.
-  }
+export async function resolveOpenAiVoiceCredentialChain(userId) {
+  const chain = [];
+  const seen = new Set();
+  const push = (candidate) => {
+    if (!candidate || seen.has(candidate.token)) return;
+    seen.add(candidate.token);
+    chain.push(candidate);
+  };
 
-  // Tier 2 — ChatGPT / Codex OAuth. `ensureValidToken` owns JWT expiry checking
-  // and refresh-token rotation against auth.openai.com, so token lifecycle is
-  // not reimplemented here.
+  // Tier 1 — the ChatGPT / Codex subscription. `ensureValidOAuthToken` owns JWT
+  // expiry checking and refresh-token rotation against auth.openai.com, so
+  // token lifecycle is not reimplemented here.
+  //
+  // It is the OAuth-SPECIFIC accessor on purpose. `ensureValidToken` lets
+  // `OPENAI_API_KEY` override the OAuth token, which is right for Codex chat
+  // and wrong here: it would hand back the very key we are trying to have a
+  // fallback for, and the subscription would never appear in the chain at all.
   try {
-    const token = await codexAuthManager.ensureValidToken();
+    const token = await codexAuthManager.ensureValidOAuthToken();
     if (typeof token === 'string' && token.trim()) {
       const trimmed = token.trim();
-      if (trimmed.startsWith('sk-')) {
-        return { token: trimmed, source: VOICE_CREDENTIAL_SOURCE.PLATFORM, accountId: null };
-      }
-      return {
-        token: trimmed,
-        source: VOICE_CREDENTIAL_SOURCE.CHATGPT,
-        // Sent as `chatgpt-account-id`, matching what the Codex CLI does, so a
-        // user with more than one ChatGPT account gets the session billed to
-        // the account they actually signed in with. Verified accepted (201).
-        accountId: safeAccountId(),
-      };
+      push(
+        trimmed.startsWith('sk-')
+          ? // An `sk-` key sitting in the Codex auth file is a platform key that
+            // happens to live there. Scope, not provenance, decides the source.
+            { token: trimmed, source: VOICE_CREDENTIAL_SOURCE.PLATFORM, accountId: null }
+          : {
+              token: trimmed,
+              source: VOICE_CREDENTIAL_SOURCE.CHATGPT,
+              // Sent as `chatgpt-account-id`, matching what the Codex CLI does,
+              // so a user with more than one ChatGPT account gets the session
+              // billed to the account they signed in with. Verified accepted (201).
+              accountId: safeAccountId(),
+            },
+      );
     }
   } catch {
     // No Codex auth file, unreadable, or refresh failed outright.
   }
 
-  return null;
+  // Tier 2 — platform API key (env → local encrypted store → remote vault).
+  try {
+    const key = await authManager.getValidAccessToken(userId, 'openai');
+    if (typeof key === 'string' && key.trim()) {
+      push({ token: key.trim(), source: VOICE_CREDENTIAL_SOURCE.PLATFORM, accountId: null });
+    }
+  } catch {
+    // A vault that cannot be reached is not a credential. Fall through.
+  }
+
+  return chain;
+}
+
+/**
+ * The single best credential, or `null`.
+ *
+ * Kept for the capability probe, which asks "is there any way in?" and has no
+ * call to fail over from.
+ *
+ * @returns {Promise<{ token: string, source: string, accountId: string|null } | null>}
+ */
+export async function resolveOpenAiVoiceCredential(userId) {
+  const [best] = await resolveOpenAiVoiceCredentialChain(userId);
+  return best ?? null;
 }
 
 /**
@@ -123,7 +166,7 @@ export async function resolveOpenAiVoiceCredential(userId) {
  * for it to drift from.
  */
 export async function hasOpenAiVoiceCredential(userId) {
-  return Boolean(await resolveOpenAiVoiceCredential(userId));
+  return (await resolveOpenAiVoiceCredentialChain(userId)).length > 0;
 }
 
 /**
@@ -147,6 +190,7 @@ function safeAccountId() {
 }
 
 export default {
+  resolveOpenAiVoiceCredentialChain,
   resolveOpenAiVoiceCredential,
   hasOpenAiVoiceCredential,
   isBorrowedCredential,

@@ -269,6 +269,41 @@ class CodexAuthManager {
   }
 
   /**
+   * The ChatGPT/Codex OAuth token, refreshed if it is close to expiry, and
+   * NEVER an API key.
+   *
+   * `ensureValidToken` answers "what credential should Codex use?", and its
+   * answer is deliberately overridable by `OPENAI_API_KEY` — an install that
+   * sets a key means it. But a caller that specifically wants the SUBSCRIPTION
+   * gets the wrong answer from that question: the key shadows the OAuth token,
+   * so the subscription becomes invisible even though it is signed in and
+   * entitled. That is exactly how a user with a ChatGPT Pro plan and an
+   * exhausted API key lost speech-to-speech.
+   *
+   * The two questions are different, so they are two methods. Refresh
+   * lifecycle is shared, not reimplemented: `isTokenExpiringSoon` and
+   * `refreshAccessToken` already operate on the OAuth token alone.
+   *
+   * @returns {Promise<string|null>}
+   */
+  async ensureValidOAuthToken() {
+    const token = this.getOAuthToken();
+    if (!token) return null;
+
+    if (this.isTokenExpiringSoon()) {
+      console.log('[CodexAuth] OAuth token expiring soon, attempting refresh...');
+      const result = await this.refreshAccessToken();
+      if (result.success) return this.getOAuthToken();
+      console.warn('[CodexAuth] Auto-refresh failed:', result.error);
+      // Fall through with the existing token — it may still have minutes left,
+      // and a rejected token costs one round trip while a withheld one costs
+      // the feature.
+    }
+
+    return token;
+  }
+
+  /**
    * Ensure the OAuth token is valid. If expiring soon, attempt auto-refresh.
    * Returns the current (possibly refreshed) access token, or null.
    */
