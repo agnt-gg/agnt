@@ -230,7 +230,7 @@ import {
   PROVIDER_FETCH_ACTIONS,
   resolveProviderKey,
   providerLabel,
-  byProviderLabel,
+  connectableAiProviders,
 } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
@@ -307,23 +307,11 @@ export default {
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
-    const aiProviders = computed(() => {
-      return allProviders.value
-        .filter((p) => {
-          // Hide the non-CLI Codex provider when the OpenAI API is not usable (403, etc.).
-          if (p.id === 'openai-codex' && codexStatus.value?.available === true && codexStatus.value?.apiUsable !== true) {
-            return false;
-          }
-
-          const categories = Array.isArray(p.categories) ? p.categories : p.categories ? JSON.parse(p.categories) : [];
-          const lowerCategories = categories.map((cat) => cat.toLowerCase());
-          return lowerCategories.includes('ai');
-        })
-        // By the LABEL, which is what this grid renders. Sorting by the auth
-        // API's `name` put ChatGPT under O, between the OpenAI providers,
-        // because that is where "OpenAI Codex" sorts.
-        .sort(byProviderLabel);
-    });
+    // Shared with the chat's provider setup card. These were two copies of the
+    // same filter and sort, and they drifted — see connectableAiProviders.
+    const aiProviders = computed(() =>
+      connectableAiProviders(allProviders.value, { codexStatus: codexStatus.value })
+    );
 
     // Check if a provider is connected
     const isProviderConnected = (providerId) => {

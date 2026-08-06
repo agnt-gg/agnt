@@ -1,17 +1,17 @@
 <template>
   <div class="provider-setup">
     <div class="provider-grid">
-      <Tooltip v-for="provider in aiProviders" :key="provider.id" :text="provider.name">
+      <Tooltip v-for="provider in aiProviders" :key="provider.id" :text="providerLabel(provider)">
         <button
           type="button"
           class="provider-tile"
-          :aria-label="`Connect to ${provider.name}`"
+          :aria-label="`Connect to ${providerLabel(provider)}`"
           @click="handleProviderClick(provider)"
         >
           <div class="provider-icon">
             <SvgIcon :name="provider.icon" />
           </div>
-          <span class="provider-name">{{ provider.name }}</span>
+          <span class="provider-name">{{ providerLabel(provider) }}</span>
         </button>
       </Tooltip>
     </div>
@@ -27,7 +27,12 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
-import { PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
+import {
+  PROVIDER_FETCH_ACTIONS,
+  resolveProviderKey,
+  providerLabel,
+  connectableAiProviders,
+} from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
 
 export default {
@@ -47,22 +52,15 @@ export default {
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
     const claudeCodeStatus = computed(() => store.state.appAuth.claudeCodeStatus || {});
 
-    // Filter to only show AI providers
-    const aiProviders = computed(() => {
-      return allProviders.value
-        .filter((p) => {
-          // Hide the non-CLI Codex provider when the OpenAI API is not usable (403, etc.).
-          if (p.id === 'openai-codex' && codexStatus.value?.available === true && codexStatus.value?.apiUsable !== true) {
-            return false;
-          }
-
-          const categories = Array.isArray(p.categories) ? p.categories : p.categories ? JSON.parse(p.categories) : [];
-          // Convert all categories to lowercase for case-insensitive comparison
-          const lowerCategories = categories.map((cat) => cat.toLowerCase());
-          return lowerCategories.includes('ai');
-        })
-        .sort((a, b) => a.name.localeCompare(b.name));
-    });
+    /**
+     * Shared with the onboarding modal, deliberately. This was a private copy
+     * of the same filter and sort, and it fell behind: the modal learned to
+     * order and label by what it renders, this card kept sorting by the auth
+     * API's `name`, so ChatGPT sat under O here and under C there.
+     */
+    const aiProviders = computed(() =>
+      connectableAiProviders(allProviders.value, { codexStatus: codexStatus.value })
+    );
 
     const showAlert = async (title, message) => {
       await modal.value.showModal({
@@ -497,6 +495,7 @@ export default {
 
     return {
       aiProviders,
+      providerLabel,
       handleProviderClick,
       modal,
     };
