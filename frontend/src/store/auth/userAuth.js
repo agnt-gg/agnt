@@ -439,6 +439,35 @@ export default {
     },
 
     /**
+     * Hand this token to the local backend's session store.
+     *
+     * The backend keeps a server-side session alongside the bearer token; some
+     * routes (and the media cookie path) read from it. Three login paths each
+     * called this by hand from LoginSection.vue, one of them without awaiting
+     * it — which is the usual outcome when a step belongs to "a session has
+     * started" but lives in a component. It now runs once, from startSession.
+     */
+    async syncTokenWithBackend({ state }) {
+      if (!state.token) return { ok: false, reason: 'no_token' };
+      try {
+        const response = await axios.post(
+          `${API_CONFIG.BASE_URL}/users/sync-token`,
+          {},
+          {
+            headers: { Authorization: `Bearer ${state.token}` },
+            withCredentials: true,
+          },
+        );
+        return { ok: Boolean(response.data?.success) };
+      } catch (error) {
+        // Non-fatal: the bearer token still authenticates every API call. Only
+        // the server-side session convenience is missing.
+        console.warn('[userAuth] token sync with local backend failed:', error?.message);
+        return { ok: false, reason: 'request_failed' };
+      }
+    },
+
+    /**
      * Remote PROFILE fetch — name, email, pseudonym, and (via fetchSubscription)
      * plan tier. Talks to api.agnt.gg.
      *
@@ -532,7 +561,14 @@ export default {
           console.error(`Error fetching user data (${failure.reason}):`, error);
         }
       }
-    }, { staleAfter: TTL.userAuthFetchUserData }),
+    }, {
+      staleAfter: TTL.userAuthFetchUserData,
+      // Scope the cache to the session it was fetched for. A TTL answers "is
+      // this data old?", which is the wrong question for a value describing a
+      // PERSON: after a logout and a sign-in as someone else, the cached value
+      // is not stale, it is somebody else's. See withFreshness.
+      identity: (ctx) => authSubject(ctx.state.token),
+    }),
     fetchPseudonym: withFreshness('userAuth.fetchPseudonym', async ({ commit, state }) => {
       if (!state.userEmail) return;
 
@@ -551,7 +587,10 @@ export default {
         const fallback = state.userEmail.split('@')[0];
         commit('SET_PSEUDONYM', fallback);
       }
-    }, { staleAfter: TTL.userAuthFetchPseudonym }),
+    }, {
+      staleAfter: TTL.userAuthFetchPseudonym,
+      identity: (ctx) => authSubject(ctx.state.token),
+    }),
     async requestMagicLink({ commit }, email) {
       try {
         const response = await axios.post(`${API_CONFIG.REMOTE_URL}/users/auth/magic-link/request`, { email }, { withCredentials: true });
@@ -592,17 +631,13 @@ export default {
             commit('RESET_ONBOARDING');
           }
 
-          // CRITICAL: Fetch subscription and validate license immediately after login
-          // This ensures users see their correct plan status on day 1
-          console.log('🔄 Fetching subscription after login...');
-          await dispatch('fetchSubscription');
-          console.log('🔐 Validating license after login...');
-          await dispatch('validateLicense');
-
-          // Fetch initial data in background after successful login
-          // using root: true to access root action
-          this.dispatch('initializeStore', null, { root: true });
-
+          // Nothing else is loaded here on purpose. verifySession above moved
+          // sessionState to 'valid', and sessionBoot's watcher takes it from
+          // there: subscription, license, pseudonym, initializeStore, provider
+          // polling, user settings, run resumption. This path used to do four
+          // of those by hand while the two Google paths did two and neither
+          // did initializeStore — which is precisely why it is no longer any
+          // individual sign-in path's job to remember.
           return { success: true, isNewUser: response.data.isNewUser };
         }
         return { success: false, error: 'Verification failed' };
@@ -611,7 +646,7 @@ export default {
         return { success: false, error: errorMessage };
       }
     },
-    async devLogin({ commit, dispatch }) {
+    async devLogin({ commit }) {
       if (process.env.NODE_ENV === 'development') {
         const mockToken = 'dev-' + Math.random().toString(36).substring(2);
         const mockUser = {
@@ -620,13 +655,13 @@ export default {
         };
         commit('SET_TOKEN', mockToken);
         commit('SET_USER', mockUser);
-
-        // Fetch subscription and validate license after dev login
-        await dispatch('fetchSubscription');
-        await dispatch('validateLicense');
-
-        // Initialize data for dev login too
-        dispatch('initializeStore', null, { root: true });
+        // A dev token cannot be verified by the backend, so grant the session
+        // explicitly. This is the ONLY place that sets 'valid' without a server
+        // confirmation, it is behind a NODE_ENV check, and it exists so the dev
+        // path exercises the same session-start sequence as every real login.
+        commit('SET_SESSION_STATE', SESSION.VALID);
+        // No data loading here — the session watcher does it, same as every
+        // other sign-in path.
       }
     },
     fetchSubscription: withFreshness('userAuth.fetchSubscription', async ({ commit, state }) => {
@@ -656,7 +691,12 @@ export default {
         commit('CLEAR_SUBSCRIPTION');
         return null;
       }
-    }, { staleAfter: TTL.userAuthFetchSubscription }),
+    }, {
+      staleAfter: TTL.userAuthFetchSubscription,
+      // 5 minutes is short, but "which plan is this account on" is exactly the
+      // kind of answer that must never survive a change of account.
+      identity: (ctx) => authSubject(ctx.state.token),
+    }),
     async createSubscription({ commit, state }, { planType, interval = 'yearly', pricingTier = 'discount', successUrl, cancelUrl }) {
       if (!state.token) {
         throw new Error('Authentication required');
@@ -894,11 +934,22 @@ export default {
       commit('CLEAR_LICENSE');
       // Clear onboarding status on logout so new users see onboarding
       commit('RESET_ONBOARDING');
-      // Clear all feature stores to prevent data leakage between users
-      commit('agents/CLEAR_AGENTS', null, { root: true });
-      commit('workflows/CLEAR_WORKFLOWS', null, { root: true });
-      commit('tools/CLEAR_TOOLS', null, { root: true });
-      commit('goals/CLEAR_GOALS', null, { root: true });
+
+      // Feature stores are DELIBERATELY not cleared here any more.
+      //
+      // This used to name four of them (agents, workflows, tools, goals) while
+      // `initializeStore` fills twelve, so the other eight kept the previous
+      // user's data and their `lastFetched` timestamps — which then made the
+      // NEXT user's fetch short-circuit. A list of stores maintained inside the
+      // auth module was always going to fall behind the list of stores the app
+      // actually loads.
+      //
+      // Clearing is now driven by the session ENDING rather than by this one
+      // way of ending it: sessionBoot's watcher sees sessionState leave 'valid'
+      // — whether from here, from a 401 caught by the axios interceptor, or
+      // from a backend that rejected the token at boot — and dispatches
+      // resetUserScopedData, which is derived from the module table in
+      // store/state.js.
     },
   },
   getters: {

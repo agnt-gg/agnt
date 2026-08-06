@@ -104,7 +104,6 @@
 import { computed, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
-import axios from 'axios';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
@@ -156,25 +155,7 @@ export default {
           window.removeEventListener('message', handleMessage);
 
           if (token) {
-            store.commit('userAuth/SET_TOKEN', token);
-            await store.dispatch('userAuth/fetchUserData');
-            await syncTokenWithBackend();
-
-            // CRITICAL: Fetch subscription immediately after Google login
-            console.log('🔄 Fetching subscription after Google login...');
-            await store.dispatch('userAuth/fetchSubscription').catch((error) => {
-              console.error('Failed to fetch subscription after Google login:', error);
-            });
-            console.log('✅ Subscription fetched after Google login. PlanType:', store.state.userAuth.planType);
-
-            // CRITICAL: Validate license after Google login
-            console.log('🔐 Validating license after Google login...');
-            await store.dispatch('userAuth/validateLicense').catch((error) => {
-              console.error('Failed to validate license after Google login:', error);
-            });
-            console.log('✅ License validated after Google login.');
-
-            router.push('/');
+            await signIn(token);
           }
         } else if (event.data?.type === 'google-auth-error') {
           window.removeEventListener('message', handleMessage);
@@ -232,22 +213,9 @@ export default {
         });
 
         if (result.success) {
-          // Sync token with local backend
-          await syncTokenWithBackend();
-
-          // Fetch pseudonym for the user
-          await store.dispatch('userAuth/fetchPseudonym').catch((error) => {
-            console.error('Failed to fetch pseudonym after login:', error);
-          });
-
-          // CRITICAL: Fetch subscription immediately after login
-          console.log('🔄 Fetching subscription after login...');
-          await store.dispatch('userAuth/fetchSubscription').catch((error) => {
-            console.error('Failed to fetch subscription after login:', error);
-          });
-          console.log('✅ Subscription fetched after login. PlanType:', store.state.userAuth.planType);
-
-          // Close modal
+          // No data loading here. verifyMagicLink verified the session, which
+          // is what sessionBoot watches; it loads everything, for every sign-in
+          // path, so this one does not need its own copy.
           showCodeModal.value = false;
 
           // Navigate to home (or the returnTo path if one was preserved by
@@ -300,56 +268,40 @@ export default {
       const newToken = urlParams.get('token');
 
       if (newToken) {
-        // Google login returned with token
-        store.commit('userAuth/SET_TOKEN', newToken);
-        await store.dispatch('userAuth/fetchUserData');
-        await syncTokenWithBackend();
-
-        // CRITICAL: Fetch subscription immediately after Google login
-        console.log('🔄 Fetching subscription after Google login (URL token)...');
-        await store.dispatch('userAuth/fetchSubscription').catch((error) => {
-          console.error('Failed to fetch subscription after Google login:', error);
-        });
-        console.log('✅ Subscription fetched after Google login. PlanType:', store.state.userAuth.planType);
-
-        // CRITICAL: Validate license after Google login
-        console.log('🔐 Validating license after Google login (URL token)...');
-        await store.dispatch('userAuth/validateLicense').catch((error) => {
-          console.error('Failed to validate license after Google login:', error);
-        });
-        console.log('✅ License validated after Google login.');
-
+        // Google login came back through a redirect rather than the popup.
+        // Strip the token from the address bar before navigating so it does not
+        // survive in history.
         const newURL = window.location.pathname;
         window.history.replaceState({}, document.title, newURL);
-        router.push('/');
-      } else {
-        await store.dispatch('userAuth/fetchUserData');
-
-        if (isAuthenticated.value) {
-          await syncTokenWithBackend();
-        }
+        await signIn(newToken);
       }
+      // No `else` branch. It used to call fetchUserData and conditionally sync
+      // the token — boot already does both, and doing it again from a component
+      // mount raced the session start.
     });
 
-    const syncTokenWithBackend = async () => {
-      try {
-        const response = await axios.post(
-          `${API_CONFIG.BASE_URL}/users/sync-token`,
-          {},
-          {
-            headers: {
-              Authorization: `Bearer ${store.state.userAuth.token}`,
-            },
-            withCredentials: true,
-          },
-        );
-
-        if (response.data.success) {
-          console.log('Token synchronized with backend successfully');
-        }
-      } catch (error) {
-        console.error('Error syncing token with backend:', error);
+    /**
+     * Adopt a token that a Google flow just handed us.
+     *
+     * Store it, ask THIS computer's backend whether it is real, and navigate.
+     * That is the whole login path now: the session becoming valid is what
+     * loads the app, so this stays the same three lines however much the
+     * loading sequence grows.
+     *
+     * Verifying before navigating also means a token the backend rejects fails
+     * HERE, with a message, instead of bouncing off the router guard into an
+     * empty screen.
+     */
+    const signIn = async (token) => {
+      store.commit('userAuth/SET_TOKEN', token);
+      const sessionState = await store.dispatch('userAuth/verifySession');
+      if (sessionState !== 'valid') {
+        errorMessage.value =
+          'Signed in, but this computer\u2019s AGNT backend rejected the session. Restart AGNT and try again.';
+        return;
       }
+      const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+      router.push(returnTo || '/');
     };
 
     return {

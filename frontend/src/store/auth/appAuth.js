@@ -4,6 +4,16 @@ import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
+import { authSubject } from './licenseIdentity.js';
+
+/**
+ * Which account these caches describe. `withFreshness` treats a changed
+ * identity as a miss regardless of TTL, which is what stops one user's
+ * connected apps being served to the next — `fetchAllProviders` caches for
+ * THIRTY MINUTES, so without this a sign-in as a different account showed the
+ * previous account's provider connections for half an hour.
+ */
+const sessionIdentity = (ctx) => authSubject(ctx.rootState?.userAuth?.token ?? null);
 
 /**
  * CLI provider IDs that use local filesystem auth.
@@ -209,7 +219,7 @@ const actions = {
     })();
 
     return _fetchConnectedAppsPromise;
-  }, { staleAfter: TTL.appAuthFetchConnectedApps }),
+  }, { staleAfter: TTL.appAuthFetchConnectedApps, identity: sessionIdentity }),
   fetchAllProviders: withFreshness('appAuth.fetchAllProviders', async ({ commit }) => {
     try {
       const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
@@ -351,7 +361,7 @@ const actions = {
         },
       ]);
     }
-  }, { staleAfter: TTL.appAuthFetchAllProviders }),
+  }, { staleAfter: TTL.appAuthFetchAllProviders, identity: sessionIdentity }),
 
   // ── Generic provider actions (unified endpoints) ──────────────────
 

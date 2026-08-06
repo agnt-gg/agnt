@@ -222,19 +222,30 @@ describe('the gate is wired to the same verification as the data routes', () => 
     expect(client).not.toMatch(/verifySession:\s*withFreshness/);
   });
 
-  it('boot verifies BEFORE it loads anything belonging to the user', () => {
-    // The router guard is the hard gate, but the boot path used to fire ~20
-    // requests for the user's agents, workflows, tools and conversations while
-    // the session was still unverified. Every one of them would 401 for a dead
-    // session, and the app was already painting by then.
+  it('nothing belonging to the user loads until the session is verified', () => {
+    // Boot used to fire ~20 requests for the user's agents, workflows, tools
+    // and conversations while the session was still unverified, and the fix was
+    // an ORDERING check: verify, then load.
+    //
+    // That ordering is no longer something boot can get wrong, because boot no
+    // longer loads anything. Loading hangs off the session transition, and the
+    // only transition that starts it is the one INTO 'valid' — which only
+    // verifySession can produce. The guarantee moved from "these two lines are
+    // in the right order" to "there is no other order expressible".
     const boot = fs.readFileSync(path.join(HERE, '../../../frontend/src/main.js'), 'utf8');
-    const verifyAt = boot.indexOf("dispatch('userAuth/verifySession')");
-    const loadAt = boot.indexOf("dispatch('initializeStore')");
-    expect(verifyAt, 'boot never verifies the session').toBeGreaterThan(-1);
-    expect(boot).toMatch(/await store\.dispatch\('userAuth\/verifySession'\)/);
-    expect(verifyAt, 'boot loads user data before verifying').toBeLessThan(loadAt);
-    // ...and it must actually stop when the answer is no.
-    expect(boot).toMatch(/if \(sessionState !== 'valid'\)[\s\S]{0,400}?return;/);
+    const sessionBoot = fs.readFileSync(
+      path.join(HERE, '../../../frontend/src/store/auth/sessionBoot.js'),
+      'utf8',
+    );
+
+    expect(boot, 'boot never verifies the session').toMatch(
+      /await store\.dispatch\('userAuth\/verifySession'\)/,
+    );
+    expect(boot, 'boot loads user data directly again').not.toMatch(/dispatch\('initializeStore'\)/);
+    expect(sessionBoot).toMatch(/dispatch\('initializeStore'\)/);
+    // ...and the sequence is gated on the verified state, not merely sequenced
+    // after a call that might have failed.
+    expect(sessionBoot).toMatch(/if \(next === 'valid'\)/);
   });
 
   it('the client keys its mid-session logout on the reason we actually send', () => {
