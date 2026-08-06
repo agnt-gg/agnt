@@ -190,6 +190,22 @@ class GeminiCliAuthManager {
       }
     }
 
+    // These used to be supplied by a committed backend/.env, which is gone —
+    // it also carried three real secrets into a public repository. Without a
+    // client, Google answers with an opaque 400 that reads like a bug in AGNT,
+    // so say what is actually wrong. Mirrors AntigravityAuthManager.
+    //
+    // Note this affects ONLY sign-in performed inside AGNT. Users who signed in
+    // with the real Gemini CLI are unaffected: their ~/.gemini/oauth_creds.json
+    // carries its own client_id/client_secret, which refreshTokens() prefers.
+    if (!OAUTH_CONFIG.CLIENT_ID || !OAUTH_CONFIG.CLIENT_SECRET) {
+      throw new Error(
+        'Gemini CLI OAuth client is not configured. Either sign in with the real ' +
+          'Gemini CLI (AGNT reads ~/.gemini/oauth_creds.json), or set ' +
+          'GEMINI_CLI_CLIENT_ID and GEMINI_CLI_CLIENT_SECRET in your environment.'
+      );
+    }
+
     const params = new URLSearchParams({
       client_id: OAUTH_CONFIG.CLIENT_ID,
       redirect_uri: redirectUri,

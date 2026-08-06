@@ -242,7 +242,9 @@
       "!node_modules/playwright-core/.local-browsers/**/*",
       "!node_modules/onnxruntime-node/bin/**/*",
       "!backend/.chrome/**/*",
-      "!backend/node_modules/**/*"
+      "!backend/node_modules/**/*",
+      "!backend/.env",
+      "!backend/.env.*"
     ],
     "extraMetadata": {
       "AGNT_LITE_MODE": "${env.AGNT_BUILD_VARIANT}"

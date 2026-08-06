@@ -1,4 +1,10 @@
 import 'dotenv/config';
+// MUST stay directly under dotenv, and BEFORE every other import: AuthManager
+// (`export default new AuthManager()`) and Middleware (`new Middleware()`)
+// capture these values in constructors that run at import time, so filling the
+// defaults from a statement further down would run too late. Replaces the
+// non-secret half of the committed backend/.env — see src/config/envDefaults.js.
+import './src/config/envDefaults.js';
 // MUST stay directly under dotenv: import hoisting means diagnostics are live
 // before any other module's top-level code can throw.
 import './src/diagnostics/bootstrap.js';
@@ -401,6 +407,28 @@ async function initializePlugins() {
 }
 
 async function deferredInit() {
+  // Re-encrypt credentials written under the published key with this install's
+  // own key. A no-op unless a legacy key is available AND legacy rows exist,
+  // and idempotent by construction, so it costs one small SELECT per boot.
+  //
+  // Deferred rather than blocking: dual-key decrypt (utils/encryption.js) means
+  // every row is readable whether or not this ever runs, so there is no reason
+  // to hold up the listener for it, and no reason to let a failure here stop
+  // the app from starting.
+  try {
+    const { default: db } = await import('./src/models/database/index.js');
+    const { migrateEncryptedColumns } = await import('./src/utils/encryptionMigration.js');
+    const result = await migrateEncryptedColumns(db);
+    if (result.migrated > 0 || result.skipped > 0 || result.unreadable > 0) {
+      console.log(
+        `[encryption] migrated=${result.migrated} skipped=${result.skipped} ` +
+          `unreadable=${result.unreadable} sidecar=${result.sidecar || 'none'}`
+      );
+    }
+  } catch (error) {
+    console.warn('[Server] Credential re-encryption failed (non-fatal, data still readable):', error);
+  }
+
   // Warm Codex thread cache so conversations can resume after restarts
   try {
     await CodexCliSessionManager.init();

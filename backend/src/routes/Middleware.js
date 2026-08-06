@@ -2,6 +2,7 @@ import session from "express-session";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import db from "../models/database/index.js";
+import { resolveSecret } from "../utils/secretResolver.js";
 
 dotenv.config();
 
@@ -13,7 +14,17 @@ class Middleware {
     const isProduction = process.env.NODE_ENV === "production";
 
     this.sessionMiddleware = session({
-      secret: process.env.SESSION_SECRET,
+      // Was process.env.SESSION_SECRET, supplied by a committed backend/.env —
+      // so every install shared one published cookie-signing key, and
+      // express-session throws 'secret option required' when it is absent,
+      // making that file a second hard boot dependency alongside encryption.js.
+      //
+      // 'ephemeral' on persist failure is deliberate: a session secret only
+      // protects a 24-hour cookie that clients re-establish transparently, so
+      // refusing to boot over an unwritable data directory would cause far
+      // more harm than the regenerated secret it prevents. ENCRYPTION_KEY,
+      // which guards data at rest, takes the opposite branch.
+      secret: resolveSecret('SESSION_SECRET', { bytes: 64, onPersistFailure: 'ephemeral' }),
       resave: false,
       saveUninitialized: false,
       proxy: trustProxy, // Trust the reverse proxy
