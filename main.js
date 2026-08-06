@@ -755,6 +755,65 @@ ipcMain.on('shell:show-item-in-folder', (event, fullPath) => {
   shell.showItemInFolder(fullPath);
 });
 
+/**
+ * Native "choose a folder" dialog, for settings that hold a directory path.
+ *
+ * WHY THIS REFUSES WHEN THE BACKEND IS REMOTE
+ * -------------------------------------------
+ * A folder path is only meaningful to the process that will open it, and the
+ * workspace root is created and read by the BACKEND (FileSystemRoutes does the
+ * mkdir). When the backend is another machine, this dialog browses the wrong
+ * filesystem: the user picks a folder they can see, we send it to a server
+ * where that path is absent or — worse — is a different real directory. So the
+ * picker declines rather than producing a plausible wrong answer, and the
+ * renderer explains why.
+ *
+ * `isRemoteActive()` rather than `connection.mode`, deliberately: after a
+ * per-session fallback the configured mode says remote while the app is
+ * demonstrably running against this computer, and in THAT state browsing is
+ * correct. The question is what the backend is actually talking to.
+ *
+ * Resolves rather than throws on cancel — closing a dialog is an ordinary
+ * outcome, not an error, and making callers try/catch it invites a bare catch
+ * that also swallows real failures.
+ */
+ipcMain.handle('dialog:choose-directory', async (_evt, options = {}) => {
+  if (isRemoteActive()) {
+    return { ok: false, reason: 'remote-backend', remoteUrl: connection.url || null };
+  }
+
+  // Parent the dialog to the window. Unparented, Windows is free to place it
+  // BEHIND the app, which reads as a freeze — the user clicked Browse and
+  // nothing happened, and the modal they cannot see is swallowing their clicks.
+  const parent = BrowserWindow.getFocusedWindow() || mainWindow || null;
+  const startIn = typeof options.defaultPath === 'string' ? options.defaultPath.trim() : '';
+
+  const dialogOptions = {
+    title: typeof options.title === 'string' && options.title ? options.title : 'Choose a folder',
+    // 'createDirectory' is the macOS New Folder button; on Windows the native
+    // dialog always offers one. Without it a Mac user cannot pick a folder
+    // that does not exist yet, which is most of them on a fresh install.
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: typeof options.buttonLabel === 'string' && options.buttonLabel ? options.buttonLabel : 'Use this folder',
+  };
+  // Only set defaultPath when we have one. Passing '' makes the dialog open at
+  // an unpredictable location rather than the OS default.
+  if (startIn) dialogOptions.defaultPath = startIn;
+
+  try {
+    const result = parent
+      ? await dialog.showOpenDialog(parent, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+
+    const chosen = result?.filePaths?.[0];
+    if (result?.canceled || !chosen) return { ok: false, reason: 'canceled' };
+    return { ok: true, path: chosen };
+  } catch (err) {
+    console.error('[Electron] dialog:choose-directory failed:', err);
+    return { ok: false, reason: 'failed', error: String(err?.message || err) };
+  }
+});
+
 // Open a folder directly in the OS file manager. For files, prefer
 // shell:show-item-in-folder — openPath on a file would launch it in its
 // associated app, which isn't what the menu action implies.

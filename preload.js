@@ -22,6 +22,17 @@ contextBridge.exposeInMainWorld('electron', {
   revealInFolder: (fullPath) => ipcRenderer.send('shell:show-item-in-folder', fullPath),
   openPath: (fullPath) => ipcRenderer.send('shell:open-path', fullPath),
 
+  /**
+   * Native folder chooser for directory settings. Renderer code MUST feature
+   * detect `window.electron?.chooseDirectory` — browser and Docker users have
+   * no Electron bridge and need the typed path to keep working.
+   *
+   * Always resolves: { ok: true, path } | { ok: false, reason }, where reason
+   * is 'canceled' | 'remote-backend' | 'failed'. Cancel is not an error.
+   * @param {{ defaultPath?: string, title?: string, buttonLabel?: string }} [options]
+   */
+  chooseDirectory: (options) => ipcRenderer.invoke('dialog:choose-directory', options),
+
   // Diagnostics relay. The renderer is sandboxed and has no fs, so client-side
   // errors reach disk through main. Fire-and-forget by design: a failing error
   // reporter must never itself throw inside an error handler.

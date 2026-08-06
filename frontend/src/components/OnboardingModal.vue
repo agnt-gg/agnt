@@ -128,21 +128,15 @@
                 This is the root folder for projects, generated code, and artifacts. You can change it anytime in the file tree settings.
               </p>
               <div class="input-group">
-                <label for="workspaceRoot">Workspace Folder</label>
-                <input
-                  id="workspaceRoot"
+                <WorkspacePicker
                   v-model="workspaceRoot"
-                  type="text"
-                  class="workspace-path-input"
+                  input-id="workspaceRoot"
+                  label="Workspace Folder"
+                  :default-path="defaultWorkspaceRoot"
+                  :error="workspaceError"
                   :placeholder="defaultWorkspaceRoot || 'Loading default...'"
-                  spellcheck="false"
-                  @keyup.enter="nextStep"
+                  @submit="nextStep"
                 />
-                <p v-if="workspaceError" class="hint error">{{ workspaceError }}</p>
-                <p v-else-if="defaultWorkspaceRoot" class="hint">
-                  Default: <code>{{ defaultWorkspaceRoot }}</code>
-                </p>
-                <p v-else class="hint">Leave blank to use the default location.</p>
               </div>
             </div>
 
@@ -206,6 +200,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ProviderLanes from '@/components/ProviderLanes.vue';
+import WorkspacePicker from '@/components/WorkspacePicker.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import {
   PROVIDER_FETCH_ACTIONS,
@@ -219,6 +214,7 @@ export default {
   components: {
     SimpleModal,
     ProviderLanes,
+    WorkspacePicker,
   },
   props: {
     show: {
@@ -1069,9 +1065,11 @@ export default {
   font-size: 0.92em;
 }
 
-.workspace-path-input {
-  font-family: var(--font-family-mono, monospace) !important;
-  font-size: 0.95em !important;
+/* The workspace field lives in WorkspacePicker.vue now, shared with the file
+   tree's settings dialog. It needs more room than the other single-line inputs
+   because it carries a Browse button beside a path. */
+.workspace-step .input-group {
+  max-width: 520px;
 }
 
 /* Theme Step */
