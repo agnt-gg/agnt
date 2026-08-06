@@ -28,7 +28,7 @@ import {
   writeConfig as writeConnectionConfig,
   normalizeRemoteUrl,
 } from './electron/connectionConfig.js';
-import { waitForBackend as pollBackendHealth } from './electron/backendHealth.js';
+import { waitForBackend as pollBackendHealth, probeBackendOnce } from './electron/backendHealth.js';
 
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
@@ -131,6 +131,8 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow;
 let backendProcess;
+// Which window attachWindowBehaviour() has already wired up (see there).
+let behaviourAttachedTo = null;
 
 // ============================================================================
 // CONNECTION — local backend (default) vs remote backend
@@ -167,15 +169,159 @@ let connectPhase = isRemoteMode() ? 'connecting' : 'ready';
 let healthPoll = null;
 let localBackendSpawned = false;
 
+// Set when the user chooses to share a backend that was ALREADY running on
+// this port. Nothing was forked, so nothing may be reaped on quit either.
+let localBackendAttached = false;
+// Identity of the AGNT found squatting on the local port, if any.
+let occupant = null;
+
 const isRemoteActive = () => activeMode === 'remote' && Boolean(connection.url);
 const statusPagePath = () => path.join(__dirname, 'electron', 'connection-error.html');
-const localBackendUrl = () => `http://localhost:${process.env.PORT || 3333}`;
+const localPort = () => Number(process.env.PORT || 3333);
+const localBackendUrl = () => `http://localhost:${localPort()}`;
 
-/** Fork the local backend at most once per launch. */
-function ensureLocalBackend() {
-  if (localBackendSpawned) return;
+/**
+ * Get a local backend, at most once per launch — but ASK FIRST.
+ *
+ * THE BUG THIS FIXES: this used to fork unconditionally and let the child
+ * discover the collision. When an AGNT backend already owned the port (the
+ * commonest cause being an orphan the previous launch failed to reap — see
+ * reapBackend and the SIGTERM handler in backend/server.js), the child lost the
+ * bind, retried five times, exited nonzero, and the supervisor read that as a
+ * crash and quit the app. Meanwhile a healthy backend was answering on that
+ * exact port the whole time.
+ *
+ * A collision is not a crash, it is a QUESTION — use the one that is running,
+ * or replace it? — and the connection status page already exists to ask
+ * questions like that. So resolve it before spawning anything.
+ *
+ * @returns {Promise<'spawned'|'occupied'|'already'>}
+ */
+async function ensureLocalBackend() {
+  if (localBackendSpawned || localBackendAttached) return 'already';
+
+  // Cheap in the normal case: nothing listening on loopback means an instant
+  // ECONNREFUSED, not a timeout.
+  const found = await probeBackendOnce({ port: localPort() });
+  if (found.alive) {
+    occupant = found;
+    connectPhase = 'occupied';
+    console.warn(
+      `[connection] an AGNT backend is already listening on port ${localPort()}` +
+        `${found.pid ? ` (pid ${found.pid})` : ''}${found.version ? `, version ${found.version}` : ''}` +
+        ' — asking the user whether to use it or replace it.'
+    );
+    showStatusPage({
+      phase: 'occupied',
+      occupiedBy: 'agnt',
+      port: localPort(),
+      pid: found.pid,
+      remoteVersion: found.version,
+      // Without a pid there is nothing to signal, so "start fresh" cannot be
+      // offered honestly. Older backends predate identity in /api/health.
+      canReplace: Number.isInteger(found.pid),
+    });
+    return 'occupied';
+  }
+
   localBackendSpawned = true;
   startBackend();
+  return 'spawned';
+}
+
+/**
+ * Normal local boot: get a backend, then wait for it and show the app.
+ *
+ * Split out of the ready handler because the poll must NOT start when the port
+ * turned out to be occupied — it would succeed instantly against the occupant
+ * and silently attach the user to a backend they never agreed to share.
+ */
+async function startLocalBoot() {
+  if ((await ensureLocalBackend()) === 'occupied') return;
+  healthPoll = pollBackendHealth({
+    port: localPort(),
+    log: (m) => console.log('[backend]', m),
+    onReady: () => {
+      healthPoll = null;
+      supervisor.state = 'running';
+      connectPhase = 'ready';
+      console.log('Backend is ready. Creating main window...');
+      createWindow();
+      attachWindowBehaviour();
+    },
+  });
+}
+
+/**
+ * Adopt the backend that was already running, without forking one.
+ *
+ * `localBackendAttached` is what makes this safe on the way out: reapBackend
+ * only ever signals a child WE forked, so quitting this window can never kill
+ * a backend that belongs to another app instance.
+ */
+function useExistingLocalBackend() {
+  localBackendAttached = true;
+  activeMode = 'local';
+  connectPhase = 'ready';
+  supervisor.state = 'running';
+  console.log(`[connection] sharing the AGNT backend already on port ${localPort()}.`);
+  loadActiveTarget();
+  attachWindowBehaviour();
+}
+
+/**
+ * Stop the backend that owns the port, then fork ours.
+ *
+ * Escalates, and verifies by PROBING rather than by trusting the signal: a pid
+ * can exit while the socket lingers, and process.kill() reports nothing about
+ * whether the port was actually released.
+ */
+async function replaceLocalBackend() {
+  const pid = occupant?.pid;
+  if (!Number.isInteger(pid)) return { ok: false, error: 'The running backend did not report a process id.' };
+
+  const gone = async () => !(await probeBackendOnce({ port: localPort(), timeoutMs: 500 })).alive;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  console.log(`[connection] stopping the backend on port ${localPort()} (pid ${pid})...`);
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (err) {
+    // ESRCH: already dead, and something else may hold the socket.
+    if (err.code !== 'ESRCH') {
+      return { ok: false, error: `Couldn't stop it — ${err.message}` };
+    }
+  }
+
+  for (let i = 0; i < 20 && !(await gone()); i += 1) await wait(250);
+  if (!(await gone())) {
+    console.warn(`[connection] pid ${pid} ignored SIGTERM for 5s — SIGKILL.`);
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
+    for (let i = 0; i < 8 && !(await gone()); i += 1) await wait(250);
+  }
+  if (!(await gone())) return { ok: false, error: 'It is still holding the port.' };
+
+  occupant = null;
+  connectPhase = 'connecting';
+  pushConnectionState({ phase: 'connecting', detail: 'Starting AGNT on this computer…' });
+  localBackendSpawned = true;
+  startBackend();
+  healthPoll = pollBackendHealth({
+    port: localPort(),
+    log: (m) => console.log('[backend]', m),
+    onReady: () => {
+      healthPoll = null;
+      supervisor.state = 'running';
+      connectPhase = 'ready';
+      loadActiveTarget();
+      attachWindowBehaviour();
+    },
+  });
+  return { ok: true };
 }
 
 function pushConnectionState(patch = {}) {
@@ -272,18 +418,21 @@ function beginRemoteConnect() {
  * the remote again. Otherwise one bad afternoon permanently and silently moves
  * someone onto a different database.
  */
-function startLocalSessionFallback(why) {
+async function startLocalSessionFallback(why) {
   healthPoll?.cancel('switching to this computer');
   healthPoll = null;
   activeMode = 'local';
   fellBack = true;
   connectPhase = 'connecting';
   pushConnectionState({ phase: 'connecting', detail: 'Starting AGNT on this computer…' });
-  ensureLocalBackend();
+  // 'occupied' means the status page is now asking which backend to use, and
+  // the poll below must not run: it would succeed instantly against the
+  // occupant and answer the question on the user's behalf.
+  if ((await ensureLocalBackend()) === 'occupied') return;
   // Local policy: unbounded, exactly as a normal local boot. Our own backend is
   // coming up and there is nothing better to fall back TO.
   healthPoll = pollBackendHealth({
-    port: process.env.PORT || 3333,
+    port: localPort(),
     log: (m) => console.log('[connection:local]', m),
     onReady: () => {
       healthPoll = null;
@@ -302,7 +451,8 @@ function retryConfiguredConnection() {
   activeMode = connection.mode;
   fellBack = false;
   if (!isRemoteActive()) {
-    ensureLocalBackend();
+    // startLocalSessionFallback calls ensureLocalBackend itself; calling it
+    // here too would probe the port twice for one user action.
     return startLocalSessionFallback('retry');
   }
   showStatusPage({ phase: 'connecting', attempt: 0, elapsedMs: 0 });
@@ -316,6 +466,10 @@ function retryConfiguredConnection() {
 // backend/src/services/RestartManager.js). Any other nonzero exit keeps the
 // pre-existing crash semantics (log + quit in 5s).
 const RESTART_EXIT_CODE = 42;
+// Declared in backend/server.js as PORT_IN_USE_EXIT_CODE. "Something else owns
+// the port" is a connection condition with a UI, not a crash — exiting 1 for it
+// made the supervisor quit the entire app over a machine that was fine.
+const PORT_IN_USE_EXIT_CODE = 43;
 const supervisor = {
   state: 'starting', // 'starting' | 'running' | 'restarting' | 'quitting'
   restartTimestamps: [],
@@ -344,6 +498,29 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
   // the zombie-backend-into-dying-Electron race.
   if (supervisor.state === 'quitting') {
     console.log('App is quitting - not respawning backend.');
+    return;
+  }
+
+  if (code === PORT_IN_USE_EXIT_CODE) {
+    // Reached only when the preflight in ensureLocalBackend found nothing that
+    // ANSWERS AGNT's health check, yet the bind still failed — i.e. a non-AGNT
+    // program owns the port. Respawning cannot help and quitting is a lie about
+    // what went wrong, so hand it to the connection page, which is the one
+    // surface built to explain "the backend you wanted isn't reachable".
+    localBackendSpawned = false; // let "Try again" fork again
+    // The poll started alongside this fork is now chasing a backend that will
+    // never arrive. Left running it retries every 250ms for the life of the app.
+    healthPoll?.cancel('port is held by another program');
+    healthPoll = null;
+    connectPhase = 'occupied';
+    console.error(`[connection] port ${localPort()} is held by something that is not AGNT.`);
+    showStatusPage({
+      phase: 'occupied',
+      occupiedBy: 'unknown',
+      port: localPort(),
+      pid: null,
+      canReplace: false,
+    });
     return;
   }
 
@@ -581,6 +758,9 @@ ipcMain.on('shell:open-path', async (event, fullPath) => {
 
 // Function to start the bundled backend executable
 function startBackend() {
+  // A fresh child gets a fresh reaping budget — otherwise a sanctioned restart
+  // (exit 42) after a reap would leave the new backend unkillable on quit.
+  backendReaped = false;
   // With ASAR enabled, backend files are inside the archive but accessible via Electron's patched fs
   // __dirname will be inside app.asar when packaged (e.g., C:\...\resources\app.asar)
   const serverPath = path.join(__dirname, 'backend', 'server.js');
@@ -1112,7 +1292,14 @@ ipcMain.handle('connection:get', () => ({
   // change a setting that silently does nothing.
   envPinned: connection.source === 'env',
   invalid: connection.invalid || null,
-  localPort: Number(process.env.PORT || 3333),
+  localPort: localPort(),
+  // Present only in the 'occupied' phase, so a status page that reloads (or
+  // asks before the push arrives) can render the choice with the same detail
+  // it was first shown with, rather than a stripped-down version of it.
+  occupiedBy: occupant ? 'agnt' : null,
+  pid: occupant?.pid ?? null,
+  remoteVersion: occupant?.version ?? null,
+  canReplace: Number.isInteger(occupant?.pid),
 }));
 
 // Probed from the MAIN process on purpose: no origin, therefore no CORS, and
@@ -1145,8 +1332,12 @@ ipcMain.handle('connection:set', (_evt, next) => {
   }
 });
 
-ipcMain.handle('connection:relaunch', () => {
+ipcMain.handle('connection:relaunch', async () => {
   app.relaunch();
+  // app.exit() does NOT fire will-quit, so without this the backend survives
+  // the relaunch and the fresh instance finds its own port taken — the same
+  // orphan, produced by the button whose whole job is to fix the connection.
+  await reapBackend();
   app.exit(0);
 });
 
@@ -1162,6 +1353,19 @@ ipcMain.handle('connection:use-local-now', () => {
   startLocalSessionFallback('user chose this computer');
   return { ok: true, activeMode: 'local', configPreserved: true };
 });
+
+// Port already held by a healthy AGNT — share it. Two windows onto one backend
+// is a supported state (it is what a second app instance has always wanted),
+// and it is the right answer for the common case where the occupant is an
+// orphan from a previous launch holding the user's own data.
+ipcMain.handle('connection:use-existing-local', () => {
+  useExistingLocalBackend();
+  return { ok: true, activeMode: 'local', attached: true, pid: occupant?.pid ?? null };
+});
+
+// ...or replace it. Destructive by nature, so it is the secondary action on the
+// page and it never runs without an explicit click.
+ipcMain.handle('connection:replace-local', async () => replaceLocalBackend());
 
 // Health polling now lives in electron/backendHealth.js (imported above as
 // pollBackendHealth) so its bound can be tested. The version that used to sit
@@ -1270,7 +1474,11 @@ app.on('ready', () => {
 
   // GUARD 2: only fork a local backend when we are actually going to use one.
   // In remote mode the backend already runs on another machine.
-  if (!isRemoteMode()) ensureLocalBackend();
+  if (!isRemoteMode()) {
+    // Boot and poll together: the poll must not start when the preflight found
+    // the port already occupied, or it would attach without asking.
+    startLocalBoot();
+  }
 
   // In remote mode the window comes up FIRST, showing a live status page with a
   // way out, and the health poll runs behind it. Previously createWindow() was
@@ -1283,17 +1491,9 @@ app.on('ready', () => {
     return;
   }
 
-  // Instead of a fixed delay, poll until the backend is ready.
-  pollBackendHealth({
-    port: process.env.PORT || 3333,
-    log: (m) => console.log('[backend]', m),
-    onReady: () => {
-      supervisor.state = 'running';
-      console.log('Backend is ready. Creating main window...');
-      createWindow();
-      attachWindowBehaviour();
-    },
-  });
+  // The local boot path (preflight -> fork -> poll -> window) lives in
+  // startLocalBoot(), called above. It used to be inlined here, which is why
+  // the poll could not be skipped when the port turned out to be occupied.
 });
 
 /**
@@ -1303,6 +1503,12 @@ app.on('ready', () => {
  */
 function attachWindowBehaviour() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  // Idempotent per window. There are now four routes to a visible app (local
+  // boot, remote connect, session fallback, adopting an existing backend) and
+  // several can run in one launch — attaching twice would make F11 toggle
+  // fullscreen on and straight back off.
+  if (behaviourAttachedTo === mainWindow) return;
+  behaviourAttachedTo = mainWindow;
 
 
   // HTML5 element fullscreen (a <video> control bar, a chart popout) ALSO
@@ -1357,11 +1563,69 @@ app.on('activate', () => {
   }
 });
 
-app.on('will-quit', () => {
+/**
+ * Terminate the backend WE forked, and resolve only once it is really gone.
+ *
+ * THE BUG THIS FIXES: shutdown used to be `backendProcess.kill()` — fire a
+ * SIGTERM, assume the best, exit. On macOS that signal reaches a real handler
+ * which (before the fix in backend/server.js) could hang forever on
+ * server.close(), so Electron exited and left the backend running, still
+ * holding port 3333. The next launch inherited the wreckage. On Windows the
+ * same call is TerminateProcess, so the bug was invisible there for the entire
+ * life of the code.
+ *
+ * Two independent guarantees, because either one alone has failed in practice:
+ * the backend now always exits on SIGTERM, AND this refuses to let the app go
+ * before confirming it did.
+ */
+let backendReaped = false;
+function reapBackend({ graceMs = 2500 } = {}) {
+  const child = backendProcess;
+  if (!child || backendReaped) return Promise.resolve();
+  backendReaped = true;
+  backendProcess = null;
   supervisor.state = 'quitting'; // terminal: beats 'restarting', prevents zombie respawn
-  if (backendProcess) {
-    console.log('Shutting down backend process...');
-    backendProcess.kill();
-  }
+
+  const pid = child.pid;
+  console.log(`Shutting down backend process (pid ${pid})...`);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (how) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      console.log(`Backend ${pid} ${how}.`);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      console.warn(`Backend ${pid} ignored SIGTERM for ${graceMs}ms — SIGKILL.`);
+      try {
+        if (Number.isInteger(pid)) process.kill(pid, 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+      finish('force-killed');
+    }, graceMs);
+
+    child.once('exit', () => finish('exited'));
+    try {
+      child.kill();
+    } catch (err) {
+      console.warn(`kill() threw for pid ${pid}: ${err.message}`);
+      finish('was already gone');
+    }
+  });
+}
+
+app.on('will-quit', (event) => {
+  supervisor.state = 'quitting';
   globalShortcut.unregisterAll();
+  if (!backendProcess || backendReaped) return;
+  // Hold the quit open. Without this Electron exits first and the reaping
+  // above never gets a chance to run — which is exactly how the orphan that
+  // poisoned the next launch was created. reapBackend is idempotent, so the
+  // second pass through this handler falls out at the guard above.
+  event.preventDefault();
+  reapBackend().then(() => app.quit());
 });

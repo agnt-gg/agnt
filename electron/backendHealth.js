@@ -255,4 +255,80 @@ export function waitForBackend({
   };
 }
 
-export default { waitForBackend, healthTarget, LOCAL_POLICY, REMOTE_POLICY };
+/**
+ * One-shot "is an AGNT already listening on this port?" question.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS
+ * ---------------------------------------------------------------------------
+ * The app used to fork its backend unconditionally and only afterwards ask
+ * whether a backend was answering. When something already owned the port, the
+ * fork lost the bind, retried five times, exited 1, and the supervisor read
+ * that as a crash and quit the whole app — while a perfectly healthy AGNT was
+ * answering on that very port the entire time.
+ *
+ * Asking BEFORE spawning turns an unrecoverable crash into a choice, so this is
+ * deliberately a different shape from waitForBackend(): it answers once, it
+ * answers fast, and it answers with WHO is there rather than just "something".
+ *
+ * `alive` is true only for a 200 carrying AGNT's own health body. Anything else
+ * listening on the port — another dev server, a proxy, a captive portal — is
+ * reported as not-alive with a reason, because the two cases have completely
+ * different remedies and must never be confused: one is "attach or replace",
+ * the other is "that isn't us, don't touch it".
+ *
+ * @param {{ port?: number|string, timeoutMs?: number, deps?: object }} spec
+ * @returns {Promise<{ alive: boolean, pid: number|null, version: string|null, reason: string|null }>}
+ */
+export function probeBackendOnce({ port = 3333, timeoutMs = 1_500, deps = {} } = {}) {
+  const target = healthTarget({ port });
+  const transport = deps.transport || target.transport;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve({ alive: false, pid: null, version: null, reason: null, ...result });
+    };
+
+    let req;
+    try {
+      req = transport.request({ ...target.options, timeout: timeoutMs }, (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        // Cap the read: a hostile or merely wrong listener on this port must not
+        // be able to buffer unbounded memory into the main process.
+        res.on('data', (chunk) => {
+          if (body.length < 4096) body += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode !== 200) return done({ reason: `status ${res.statusCode}` });
+          let json = null;
+          try {
+            json = JSON.parse(body);
+          } catch {
+            /* not JSON, therefore not ours */
+          }
+          if (!json || json.status !== 'OK') {
+            return done({ reason: 'something is listening, but it is not AGNT' });
+          }
+          done({
+            alive: true,
+            pid: Number.isInteger(json.pid) ? json.pid : null,
+            version: typeof json.version === 'string' ? json.version : null,
+          });
+        });
+      });
+    } catch (err) {
+      return done({ reason: err.message });
+    }
+
+    req.on('error', (err) => done({ reason: err.message }));
+    // Destroy only — the resulting 'error' settles us, exactly as in probe().
+    req.on('timeout', () => req.destroy());
+    req.end();
+  });
+}
+
+export default { waitForBackend, probeBackendOnce, healthTarget, LOCAL_POLICY, REMOTE_POLICY };

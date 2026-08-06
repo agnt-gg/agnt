@@ -93,12 +93,24 @@
       <code id="url">—</code>
       <p class="meta" id="meta"></p>
 
-      <div class="row">
+      <div class="row" id="remoteRow">
         <button class="primary" id="retry" hidden>Try again</button>
         <button id="local">Use this computer</button>
       </div>
 
-      <div class="linkrow">
+      <!--
+        The 'occupied' phase: a backend is already listening on the local port.
+        This is a QUESTION, not an error, and it is the reason the app no longer
+        forks blindly and quits when the bind fails. Adopting is primary because
+        it is right in the common case (an orphaned backend from a previous
+        launch, holding the user's own data) and because it destroys nothing.
+      -->
+      <div class="row" id="occupiedRow" hidden>
+        <button class="primary" id="useexisting">Use the running AGNT</button>
+        <button id="replace">Stop it and start fresh</button>
+      </div>
+
+      <div class="linkrow" id="linkrow">
         <button class="link" id="always">Always use this computer</button>
       </div>
 
@@ -122,6 +134,14 @@
       const retryBtn = el('retry');
       const localBtn = el('local');
       const alwaysBtn = el('always');
+      const remoteRow = el('remoteRow');
+      const occupiedRow = el('occupiedRow');
+      const linkRow = el('linkrow');
+      const useExistingBtn = el('useexisting');
+      const replaceBtn = el('replace');
+      const hint = el('hint');
+
+      const REMOTE_HINT = hint.innerHTML;
 
       let phase = 'connecting';
 
@@ -133,6 +153,65 @@
       function render(state) {
         if (state.url) el('url').textContent = state.url;
         phase = state.phase || phase;
+
+        if (phase === 'occupied') {
+          const port = state.port || state.localPort || 3333;
+          const isAgnt = state.occupiedBy !== 'unknown';
+          mark.className = 'mark bad';
+          mark.textContent = '!';
+          el('url').textContent = `http://localhost:${port}`;
+          // The remote escape hatches are meaningless here: this IS this
+          // computer, and the question is which backend on it to talk to.
+          remoteRow.hidden = isAgnt;
+          occupiedRow.hidden = !isAgnt;
+          linkRow.hidden = true;
+
+          if (isAgnt) {
+            const who = [
+              state.remoteVersion ? `AGNT ${state.remoteVersion}` : 'AGNT',
+              state.pid ? `process ${state.pid}` : null,
+            ]
+              .filter(Boolean)
+              .join(', ');
+            title.textContent = 'AGNT is already running on this computer';
+            blurb.textContent =
+              `A backend is already listening on port ${port} (${who}). ` +
+              'You can open a window onto it, or stop it and start a fresh one.';
+            meta.textContent = '';
+            useExistingBtn.disabled = false;
+            useExistingBtn.textContent = 'Use the running AGNT';
+            // No pid means no way to signal it. Say so instead of offering a
+            // button that cannot work.
+            replaceBtn.disabled = state.canReplace === false;
+            replaceBtn.textContent = 'Stop it and start fresh';
+            hint.innerHTML =
+              '<b>Use the running AGNT</b> shares the backend that is already up — ' +
+              'nothing is restarted and no work in progress is lost. ' +
+              '<b>Start fresh</b> stops it first, which will close any other AGNT window using it.';
+          } else {
+            title.textContent = `Port ${port} is already in use`;
+            blurb.textContent =
+              'Another program on this computer is using that port, and it is not AGNT. ' +
+              'Quit it — or give AGNT a different PORT — and try again.';
+            meta.textContent = state.why || '';
+            retryBtn.hidden = false;
+            retryBtn.disabled = false;
+            retryBtn.textContent = 'Try again';
+            localBtn.hidden = true;
+            hint.innerHTML =
+              '<b>Tip:</b> on macOS or Linux, <code style="display:inline;padding:2px 6px">lsof -nP -iTCP:' +
+              port +
+              ' -sTCP:LISTEN</code> names the program holding it.';
+          }
+          return;
+        }
+
+        // Every non-occupied phase is about the REMOTE connection.
+        remoteRow.hidden = false;
+        occupiedRow.hidden = true;
+        linkRow.hidden = false;
+        localBtn.hidden = false;
+        hint.innerHTML = REMOTE_HINT;
 
         if (phase === 'failed') {
           mark.className = 'mark bad';
@@ -162,7 +241,7 @@
       }
 
       api?.onState?.(render);
-      api?.get?.().then((cfg) => render({ phase: cfg?.phase || 'connecting', url: cfg?.url }));
+      api?.get?.().then((cfg) => render({ ...(cfg || {}), phase: cfg?.phase || 'connecting' }));
 
       retryBtn.addEventListener('click', () => {
         setBusy(retryBtn, 'Reconnecting…');
@@ -176,6 +255,26 @@
         setBusy(localBtn, 'Starting…');
         retryBtn.disabled = true;
         api?.useLocalNow?.();
+      });
+
+      useExistingBtn.addEventListener('click', () => {
+        setBusy(useExistingBtn, 'Connecting…');
+        replaceBtn.disabled = true;
+        api?.useExistingLocal?.();
+      });
+
+      replaceBtn.addEventListener('click', async () => {
+        setBusy(replaceBtn, 'Stopping…');
+        useExistingBtn.disabled = true;
+        const res = await api?.replaceLocal?.();
+        // Only a FAILURE needs handling here: on success main.js loads the app
+        // over this page, so there is nothing left to re-enable.
+        if (res && res.ok === false) {
+          meta.textContent = res.error || 'Could not stop it.';
+          replaceBtn.disabled = false;
+          replaceBtn.textContent = 'Stop it and start fresh';
+          useExistingBtn.disabled = false;
+        }
       });
 
       alwaysBtn.addEventListener('click', async () => {
