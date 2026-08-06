@@ -800,7 +800,31 @@ describe('breakdowns', () => {
   it('orders buckets by size and names them for humans', async () => {
     const w = mountWith({ summary: summaryOf({ notionalUsd: 16.67, calls: 9 }), byOrigin: BY_ORIGIN });
     await expand(w);
-    expect(w.findAll('.bar-label').map((n) => n.text())).toEqual(['Chat', 'Workflows']);
+    expect(w.findAll('.bar-label').map((n) => n.text())).toEqual(['Chat (legacy)', 'Workflow runs']);
+  });
+
+  it('names a chat-surface origin instead of printing the database token', async () => {
+    // REGRESSION: when the chat surfaces were split apart the backend began
+    // writing orchestrator/widget/workflow/tool, none of which were in this
+    // component's local label map. The `|| bucket` fallback then rendered them
+    // verbatim, so one list read "Chat · orchestrator · Workflows · widget" —
+    // two naming conventions and a duplicate-looking pair. Labels now come
+    // from @/utils/originLabels, which has no pass-through.
+    const w = mountWith({
+      summary: summaryOf({ notionalUsd: 10, calls: 4 }),
+      byOrigin: [
+        { bucket: 'orchestrator', costUsd: 0, notionalUsd: 6, calls: 2 },
+        { bucket: 'widget', costUsd: 0, notionalUsd: 3, calls: 1 },
+        { bucket: 'workflow', costUsd: 0, notionalUsd: 1, calls: 1 },
+      ],
+    });
+    await expand(w);
+    const labels = w.findAll('.bar-label').map((n) => n.text());
+    expect(labels).toEqual(['Orchestrator', 'Widget Forge', 'Workflow Forge']);
+    for (const label of labels) {
+      expect(label).toMatch(/^[A-Z]/);
+      expect(label).not.toMatch(/_/);
+    }
   });
 
   it('keeps a tiny-but-real bucket visible instead of rendering it as nothing', async () => {

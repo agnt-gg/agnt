@@ -314,16 +314,7 @@
 import { computed, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-
-const ORIGIN_LABELS = {
-  chat: 'Chat',
-  agent: 'Agents',
-  goal_task: 'Goal tasks',
-  goal_eval: 'Goal evaluation',
-  workflow_node: 'Workflows',
-  insight: 'Insights',
-  system: 'System',
-};
+import { originLabel } from '@/utils/originLabels';
 
 const PROVIDER_LABELS = {
   'claude-code': 'Claude Code',
@@ -652,7 +643,6 @@ export default {
       return String(v);
     }
 
-    const originLabel = (b) => ORIGIN_LABELS[b] || b;
     const providerLabel = (b) => PROVIDER_LABELS[String(b).toLowerCase()] || b;
 
     return {

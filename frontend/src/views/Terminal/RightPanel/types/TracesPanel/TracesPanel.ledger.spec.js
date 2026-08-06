@@ -170,4 +170,47 @@ describe('run tree', () => {
     expect(w.text()).toContain('Goal tasks');
     expect(w.find('.tree-total').text()).toContain('$5.0000');
   });
+
+  it('names an unattached row by its own origin, not by what it is not', async () => {
+    // REGRESSION: this list was labelled
+    //   u.origin === 'goal_task' ? 'Goal tasks' : 'Goal evaluation'
+    // so it reported anything that was not a goal task AS a goal evaluation.
+    // It is defined as "ledger rows with no execution of their own", which
+    // already admits insight and system rows.
+    const w = mountWith(
+      executionOf({
+        ledger: ledgerOf({ costUsd: 1 }),
+        tree: {
+          rootExecutionId: 'exec-1',
+          nodes: [{ id: 'exec-1', parentExecutionId: null, agentName: 'Orchestrator', origin: 'chat', ledger: ledgerOf({ costUsd: 1 }) }],
+          unattached: [{ origin: 'insight', originId: 'ins-3', costUsd: 2, notionalUsd: 0, calls: 3 }],
+          subtree: { costUsd: 3, notionalUsd: 0, savedUsd: 0, notionalSavedUsd: 0, unpricedCalls: 0, calls: 4 },
+        },
+      })
+    );
+    await w.vm.$nextTick();
+    expect(w.text()).toContain('Insights');
+    expect(w.text()).not.toContain('Goal evaluation');
+  });
+
+  it('names each node’s origin instead of printing the column value', async () => {
+    // REGRESSION: `{{ node.origin }}` printed `workflow_node` into the tree.
+    const w = mountWith(
+      executionOf({
+        ledger: ledgerOf({ costUsd: 1 }),
+        tree: {
+          rootExecutionId: 'exec-1',
+          nodes: [
+            { id: 'exec-1', parentExecutionId: null, agentName: 'Orchestrator', origin: 'orchestrator', ledger: ledgerOf({ costUsd: 1 }) },
+            { id: 'exec-2', parentExecutionId: 'exec-1', agentName: 'Node', origin: 'workflow_node', ledger: ledgerOf({ costUsd: 1 }) },
+          ],
+          unattached: [],
+          subtree: { costUsd: 2, notionalUsd: 0, savedUsd: 0, notionalSavedUsd: 0, unpricedCalls: 0, calls: 2 },
+        },
+      })
+    );
+    await w.vm.$nextTick();
+    const origins = w.findAll('.tree-origin').map((n) => n.text());
+    expect(origins).toEqual(['Orchestrator', 'Workflow runs']);
+  });
 });
