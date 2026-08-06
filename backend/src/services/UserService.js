@@ -385,6 +385,52 @@ class UserService {
       res.end();
     }
   }
+  /**
+   * THE session oracle for this backend.
+   *
+   * -------------------------------------------------------------------------
+   * WHY THIS EXISTS
+   * -------------------------------------------------------------------------
+   * The app used to ask https://api.agnt.gg whether a session was valid, while
+   * reading its agents, conversations and outputs from THIS server. Two
+   * different authorities for one question, and nobody ever asked the one that
+   * actually holds the data. When the remote was unreachable the client fell
+   * back to DECODING the JWT locally and called that a session — so an
+   * unverified token rendered a full, populated app.
+   *
+   * This route closes that gap by construction: it sits behind the very same
+   * `authenticateToken` that guards every data route, so its answer and the
+   * data routes' answers are produced by ONE code path. "The gate says yes but
+   * every request 401s" stops being expressible.
+   *
+   * It cannot be reached unauthenticated — the middleware 401s first, with
+   * { error: 'Authentication required', reason: 'missing' | 'invalid' }. That
+   * rejection shape is the client's logout trigger, so it is pinned by
+   * backend/src/routes/authStatus.contract.test.js.
+   */
+  getAuthStatus(req, res) {
+    // Reaching this handler means authenticateToken verified the signature.
+    // Assert it anyway: if a future refactor moves this route behind the
+    // permissive `authenticateTokenOptional`, silently answering "yes, no user"
+    // would be exactly the confident-wrong answer this route exists to kill.
+    if (!req.user?.isAuthenticated || !req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        reason: 'invalid',
+      });
+    }
+
+    res.json({
+      isAuthenticated: true,
+      user: {
+        id: req.user.id,
+        email: req.user.email ?? null,
+        auth_type: req.user.auth_type ?? 'local',
+      },
+    });
+  }
+
   getTokenStatus(req, res) {
     // Get token status from backend session
     try {
