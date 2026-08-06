@@ -29,6 +29,7 @@ import {
   normalizeRemoteUrl,
 } from './electron/connectionConfig.js';
 import { waitForBackend as pollBackendHealth, probeBackendOnce } from './electron/backendHealth.js';
+import { localFilePathFromUrl } from './electron/localFileLink.js';
 
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
@@ -178,6 +179,23 @@ let occupant = null;
 const isRemoteActive = () => activeMode === 'remote' && Boolean(connection.url);
 const statusPagePath = () => path.join(__dirname, 'electron', 'connection-error.html');
 const localPort = () => Number(process.env.PORT || 3333);
+
+/**
+ * Windows shell APIs are unreliable with forward slashes, and every path that
+ * arrives from a URL has them. Applied at the single point where a path meets
+ * the OS so no caller has to remember.
+ */
+const nativePath = (p) => (process.platform === 'win32' ? String(p).replace(/\//g, '\\') : String(p));
+
+/** Open an absolute path in whatever application the OS associates with it. */
+async function openLocalPathInOS(absPath) {
+  try {
+    const errorMessage = await shell.openPath(nativePath(absPath));
+    if (errorMessage) console.error('[Electron] openPath failed:', absPath, errorMessage);
+  } catch (err) {
+    console.error('[Electron] openPath threw:', absPath, err.message);
+  }
+}
 const localBackendUrl = () => `http://localhost:${localPort()}`;
 
 /**
@@ -746,7 +764,7 @@ ipcMain.on('shell:open-path', async (event, fullPath) => {
     return;
   }
   try {
-    const errorMessage = await shell.openPath(fullPath);
+    const errorMessage = await shell.openPath(nativePath(fullPath));
     if (errorMessage) {
       console.error('[Electron] shell:open-path failed:', errorMessage);
     }
@@ -1150,6 +1168,17 @@ function createWindow(opts = {}) {
   // were being logged (and handled) multiple times per real event.
   mainWindow.webContents.setWindowOpenHandler(({ url, features }) => {
     console.log('Window open requested:', { url, features });
+
+    // A link to a file on this machine is opened BY THE OS, from its real
+    // path. Handing it to shell.openExternal instead sends the user's browser
+    // at http://localhost:3333/api/local-file/... — an origin it has no
+    // session for, so the answer is "Authentication required" rather than the
+    // file. See electron/localFileLink.js.
+    const localPath = localFilePathFromUrl(url, { port: localPort() });
+    if (localPath) {
+      openLocalPathInOS(localPath);
+      return { action: 'deny' };
+    }
 
     // Check if this is a popup window (OAuth windows have specific features like width/height)
     // Features string will contain things like "width=600,height=700,toolbar=no"

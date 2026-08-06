@@ -676,6 +676,92 @@ describe('main.js — the backend must not outlive the app', () => {
   });
 });
 
+describe('main.js — a link to a local file is opened by the OS', () => {
+  // THE BUG. Every anchor in the app is target=_blank, and this handler sends
+  // target=_blank to shell.openExternal — the user's real browser. The chat
+  // renderer was rewriting file:// links to
+  // http://localhost:3333/api/local-file/<path>, an authenticated endpoint
+  // that browser has no session for, so clicking a link to your own file
+  // returned {"error":"Authentication required"}. Measured live: 401 with no
+  // credential, 200 with one.
+  //
+  // The renderer no longer emits those URLs for anchors. This handler is the
+  // net that makes it hold for every OTHER surface — iframes, widgets,
+  // plugins, a model that pasted the URL by hand.
+
+  const openHandler = () => blockAfter(code, 'setWindowOpenHandler(', { afterArrow: true });
+
+  it('consults the tested resolver instead of hand-rolling URL parsing', () => {
+    expect(code).toMatch(/import \{ localFilePathFromUrl \} from '\.\/electron\/localFileLink\.js'/);
+    expect(openHandler(), 'window open handler not found').not.toBeNull();
+    expect(openHandler()).toMatch(/localFilePathFromUrl\(url, \{ port: localPort\(\) \}\)/);
+  });
+
+  it('opens the path and DENIES the navigation', () => {
+    const branch = blockAfter(openHandler(), 'if (localPath)');
+    expect(branch, 'no local-file branch').not.toBeNull();
+    expect(branch).toMatch(/openLocalPathInOS\(localPath\)/);
+    // Without the deny, shell.openExternal still runs and the 401 tab still
+    // opens — alongside the correct one.
+    expect(branch).toMatch(/return \{ action: 'deny' \}/);
+  });
+
+  it('checks BEFORE the popup and external branches, which would both consume it', () => {
+    const body = openHandler();
+    expect(body.indexOf('localFilePathFromUrl')).toBeLessThan(body.indexOf('shell.openExternal'));
+    expect(body.indexOf('localFilePathFromUrl')).toBeLessThan(body.indexOf('isPopup'));
+  });
+
+  it('converts to native separators at the one point a path meets the OS', () => {
+    // Every path arriving from a URL has forward slashes, and Windows shell
+    // APIs are unreliable with them. Both openPath call sites go through it.
+    expect(code).toMatch(/const nativePath = \(p\) => \(process\.platform === 'win32'/);
+    const calls = code.match(/shell\.openPath\([^)]*\)/g) || [];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const call of calls) {
+      expect(call, `raw path handed to the shell: ${call}`).toMatch(/nativePath\(/);
+    }
+  });
+});
+
+describe('the chat renderer stops producing the URL in the first place', () => {
+  // Layered deliberately: main.js catches a bad URL, but the renderer should
+  // not create one. A source contract because mounting MessageItem.vue (5k
+  // lines, morphdom, highlight.js) to assert one argument is not worth it.
+  const messageItem = fs.readFileSync(
+    path.join(ROOT, 'frontend', 'src', 'views', 'Terminal', 'CenterPanel', 'screens', 'Chat', 'components', 'MessageItem.vue'),
+    'utf8'
+  );
+
+  it('tells the rewriter that it owns link clicks', () => {
+    expect(messageItem).toMatch(/rewriteLocalFileURLsInHTML\(html, \{[\s\S]{0,200}?interceptsLinkClicks: true/);
+  });
+
+  it('actually installs the handler on the rendered message', () => {
+    // The flag alone would leave file:// hrefs that nothing acts on — worse
+    // than before, because Chromium blocks the navigation outright.
+    expect(messageItem).toMatch(/import \{ handleLocalFileLinkClick \} from '@\/utils\/openLocalFile\.js'/);
+    expect(messageItem).toMatch(/@click="onMessageClick"/);
+    expect(messageItem).toMatch(/const onMessageClick = \(event\) => \{[\s\S]{0,120}?handleLocalFileLinkClick\(event\)/);
+    // ...and it must be exposed, or the template binding is silently dead.
+    expect(messageItem).toMatch(/return \{[\s\S]{0,200}?onMessageClick,/);
+  });
+});
+
+describe('the prompt distinguishes embedding from linking', () => {
+  const prompt = fs.readFileSync(
+    path.join(ROOT, 'backend', 'src', 'services', 'orchestrator', 'system-prompts', 'orchestrator-chat.js'),
+    'utf8'
+  );
+
+  it('names the anchor case, which it previously only showed for subresources', () => {
+    const block = /export const LOCAL_FILE_RENDERING = `[\s\S]*?`;/.exec(prompt);
+    expect(block, 'LOCAL_FILE_RENDERING not found').not.toBeNull();
+    expect(block[0]).toMatch(/<a href="file:\/\/\//);
+    expect(block[0], 'the model must be told not to hand-write the API URL').toMatch(/localhost:<port>\/api/);
+  });
+});
+
 describe('electron-builder packaging', () => {
   // main.js imports ./electron/connectionConfig.js and loadFile() for connection-error.html.
   // electron-builder uses an explicit allowlist (build.files) — if electron/ is missing,

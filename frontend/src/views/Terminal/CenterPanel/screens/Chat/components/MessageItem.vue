@@ -4,6 +4,7 @@
     :class="[message.role, { compact, editing: isEditing, steered: !!message.steered }]"
     :data-message-id="message.id"
     ref="messageRef"
+    @click="onMessageClick"
   >
     <div
       v-if="message.role === 'assistant' && showAvatar && emojiAvatar"
@@ -372,6 +373,7 @@ import {
   fileUrlToLocalFileUrl as sharedFileUrlToLocalFileUrl,
   rewriteLocalFileURLsInHTML as sharedRewriteLocalFileURLsInHTML,
 } from '@/utils/localFileUrl.js';
+import { handleLocalFileLinkClick } from '@/utils/openLocalFile.js';
 
 // Lazy-loaded heavy library caches (loaded on first use)
 let _hljs = null;
@@ -1577,7 +1579,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       // never saw the value to rewrite it. Pre-rewriting matches the Artifacts /
       // CustomWidget renderer pattern (Artifacts.vue:1446, CustomWidgetRenderer.vue:181)
       // and means DOMPurify only ever sees http:// URLs it's happy with.
-      const preRewritten = rewriteLocalFileURLsInHTML(html, inlineBaseDir ? { baseDir: inlineBaseDir } : undefined);
+      // interceptsLinkClicks: onMessageClick below owns anchor activation, so
+      // links to local files keep their true file:// href and are opened by the
+      // OS. Rewriting them would produce a localhost URL that 401s the moment
+      // Electron hands it to the user's browser. Subresources are unaffected.
+      const preRewritten = rewriteLocalFileURLsInHTML(html, {
+        ...(inlineBaseDir ? { baseDir: inlineBaseDir } : {}),
+        interceptsLinkClicks: true,
+      });
       // Use DOMPurify hook to add target="_blank" and rel="noopener noreferrer" to all anchor tags
       DOMPurify.addHook('afterSanitizeAttributes', (node) => {
         // Set all elements owning target to target=_blank
@@ -2833,8 +2842,16 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       window.open(url, '_blank');
     };
 
+    // Anchors pointing at a file on disk are opened by the OS from their real
+    // path (see utils/openLocalFile.js). Every other click passes straight
+    // through untouched.
+    const onMessageClick = (event) => {
+      handleLocalFileLinkClick(event);
+    };
+
     return {
       messageRef,
+      onMessageClick,
       reasoningContentRef,
       showReasoning,
       toggleReasoning,
