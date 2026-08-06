@@ -211,6 +211,6 @@ describe('run tree', () => {
     );
     await w.vm.$nextTick();
     const origins = w.findAll('.tree-origin').map((n) => n.text());
-    expect(origins).toEqual(['Orchestrator', 'Workflow runs']);
+    expect(origins).toEqual(['Chat', 'Workflow runs']);
   });
 });

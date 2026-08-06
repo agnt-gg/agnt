@@ -29,7 +29,13 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORIGIN_LABELS, originLabel } from './originLabels.js';
+import {
+  ORIGIN_LABELS,
+  ORIGIN_ALIASES,
+  originLabel,
+  canonicalOrigin,
+  mergeOriginRows,
+} from './originLabels.js';
 
 /** Walk up until the backend file is found, so this works from any vitest root. */
 function findBackendLlmCallModel() {
@@ -71,14 +77,17 @@ describe('origin label vocabulary mirrors the backend', () => {
     expect(origins).toContain('workflow_node'); // ORIGINS
   });
 
-  it('gives every backend origin its own explicit label', () => {
-    const missing = backendOrigins().filter((o) => !Object.hasOwn(ORIGIN_LABELS, o));
+  it('names every backend origin, by its own label or a declared alias', () => {
+    const missing = backendOrigins().filter(
+      (o) => !Object.hasOwn(ORIGIN_LABELS, o) && !Object.hasOwn(ORIGIN_ALIASES, o)
+    );
     expect(missing).toEqual([]);
   });
 
-  it('has no label for an origin the backend cannot write', () => {
+  it('has no label or alias for an origin the backend cannot write', () => {
     const known = new Set(backendOrigins());
-    const extra = Object.keys(ORIGIN_LABELS).filter((k) => !known.has(k));
+    const extra = [...Object.keys(ORIGIN_LABELS), ...Object.keys(ORIGIN_ALIASES)]
+      .filter((k) => !known.has(k));
     expect(extra).toEqual([]);
   });
 
@@ -93,15 +102,108 @@ describe('origin label vocabulary mirrors the backend', () => {
     }
   });
 
-  it('names every origin distinctly', () => {
-    const labels = backendOrigins().map((o) => originLabel(o));
-    expect(labels.length).toBeGreaterThanOrEqual(13);
+  it('names every distinct source distinctly', () => {
+    // Two origins may share a name ONLY by being declared aliases, which also
+    // makes them share a row. An undeclared collision would print one name
+    // twice with two different numbers under it.
+    const canonical = [...new Set(backendOrigins().map(canonicalOrigin))];
+    expect(canonical.length).toBeGreaterThanOrEqual(12);
+    const labels = canonical.map((o) => originLabel(o));
     expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('distinguishes the Workflow Forge surface from workflow runs', () => {
     // These two rows sit adjacent on the dashboard and are different things.
     expect(originLabel('workflow')).not.toBe(originLabel('workflow_node'));
+  });
+});
+
+describe('aliases', () => {
+  it('declares at least the legacy chat fold (anti-vacuity)', () => {
+    expect(Object.keys(ORIGIN_ALIASES).length).toBeGreaterThan(0);
+    expect(canonicalOrigin('chat')).toBe('orchestrator');
+  });
+
+  it('points every alias at a real, labelled, non-alias origin', () => {
+    const known = new Set(backendOrigins());
+    for (const [from, to] of Object.entries(ORIGIN_ALIASES)) {
+      expect(known.has(to), `${from} -> ${to}`).toBe(true);
+      expect(Object.hasOwn(ORIGIN_LABELS, to), `${from} -> ${to}`).toBe(true);
+      // A chain would make the canonical form depend on how many times you
+      // resolved it, and canonicalOrigin resolves exactly once.
+      expect(Object.hasOwn(ORIGIN_ALIASES, to), `${from} -> ${to}`).toBe(false);
+      // An origin cannot be both a name and an alias for another name.
+      expect(Object.hasOwn(ORIGIN_LABELS, from), from).toBe(false);
+    }
+  });
+
+  it('gives an alias and its target the same name', () => {
+    for (const [from, to] of Object.entries(ORIGIN_ALIASES)) {
+      expect(originLabel(from), from).toBe(originLabel(to));
+    }
+  });
+});
+
+describe('mergeOriginRows', () => {
+  const row = (bucket, n) => ({
+    bucket, costUsd: n, notionalUsd: n * 2, calls: n, inputTokens: n * 10,
+  });
+
+  it('sums an alias into its target instead of listing it twice', () => {
+    // THE REPORTED BUG: the dashboard showed "Chat (legacy) $17,517.39" above
+    // "Orchestrator $2,029.30" and left the reader to add them.
+    const merged = mergeOriginRows([row('chat', 10), row('orchestrator', 3)]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].bucket).toBe('orchestrator');
+    expect(merged[0].costUsd).toBe(13);
+    expect(merged[0].notionalUsd).toBe(26);
+    expect(merged[0].calls).toBe(13);
+    expect(originLabel(merged[0].bucket)).toBe('Chat');
+  });
+
+  it('folds in either order, and when only the legacy half is present', () => {
+    expect(mergeOriginRows([row('orchestrator', 3), row('chat', 10)])[0].costUsd).toBe(13);
+    const legacyOnly = mergeOriginRows([row('chat', 10)]);
+    expect(legacyOnly).toHaveLength(1);
+    expect(legacyOnly[0].bucket).toBe('orchestrator');
+    expect(legacyOnly[0].costUsd).toBe(10);
+  });
+
+  it('leaves unaliased origins alone and preserves first-appearance order', () => {
+    const merged = mergeOriginRows([row('widget', 1), row('chat', 2), row('workflow', 3)]);
+    expect(merged.map((r) => r.bucket)).toEqual(['widget', 'orchestrator', 'workflow']);
+  });
+
+  it('sums numeric fields it was never told about', () => {
+    // The backend row carries thirteen additive measures and gains more over
+    // time. A hand-listed sum would drop the next one silently.
+    const merged = mergeOriginRows([
+      { bucket: 'chat', costUsd: 1, someFutureMeasure: 5 },
+      { bucket: 'orchestrator', costUsd: 1, someFutureMeasure: 7 },
+    ]);
+    expect(merged[0].someFutureMeasure).toBe(12);
+  });
+
+  it('keeps a field only one row carries rather than losing it', () => {
+    const merged = mergeOriginRows([
+      { bucket: 'chat', costUsd: 1 },
+      { bucket: 'orchestrator', costUsd: 1, lateArrival: 4 },
+    ]);
+    expect(merged[0].lateArrival).toBe(4);
+  });
+
+  it('does not mutate the rows it was given', () => {
+    const rows = [row('chat', 10), row('orchestrator', 3)];
+    mergeOriginRows(rows);
+    expect(rows[0].costUsd).toBe(10);
+    expect(rows[1].costUsd).toBe(3);
+  });
+
+  it('survives empty, null and holey input', () => {
+    expect(mergeOriginRows([])).toEqual([]);
+    expect(mergeOriginRows(null)).toEqual([]);
+    expect(mergeOriginRows(undefined)).toEqual([]);
+    expect(mergeOriginRows([null, row('chat', 1)])).toHaveLength(1);
   });
 });
 

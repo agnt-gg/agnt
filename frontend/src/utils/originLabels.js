@@ -27,6 +27,20 @@
  *   - The fallback HUMANISES rather than passes through, so even an origin
  *     that somehow escapes the guard renders as "Some thing", never as
  *     "some_thing". A raw database token is not a label.
+ *
+ * ALIASES
+ * -------
+ * Some origins are the SAME PLACE to the person reading the dashboard even
+ * though they are different values in the database. `chat` is the pre-split
+ * value every chat surface wrote before they were told apart; `orchestrator`
+ * is what that same surface writes now. Showing them as two rows asks the user
+ * to add two numbers together to learn what one thing cost.
+ *
+ * So they are declared aliases and FOLDED — summed into a single row — rather
+ * than merely relabelled, because two rows sharing one name is worse than two
+ * rows with two names. The fold is a DISPLAY concern only: `llm_calls.origin`
+ * keeps its raw values, so feature-usage analytics can still tell a pre-split
+ * row from a post-split one.
  */
 
 /**
@@ -42,7 +56,7 @@
  */
 export const ORIGIN_LABELS = Object.freeze({
   // Chat surfaces (mirror of CHAT_SURFACE_ORIGINS).
-  orchestrator: 'Orchestrator',
+  orchestrator: 'Chat',
   agent: 'Agents', // agent chat AND agents delegated as a tool — not just the Forge
   workflow: 'Workflow Forge',
   tool: 'Tool Forge',
@@ -51,7 +65,6 @@ export const ORIGIN_LABELS = Object.freeze({
   artifact: 'Artifacts',
 
   // Everything else.
-  chat: 'Chat (legacy)', // pre-split rows: a real surface we can no longer name
   goal_task: 'Goal tasks',
   goal_eval: 'Goal evaluation',
   workflow_node: 'Workflow runs',
@@ -60,17 +73,71 @@ export const ORIGIN_LABELS = Object.freeze({
 });
 
 /**
+ * Origins that are the same surface under two names. Key is the value written
+ * to the database, value is the origin it is displayed and totalled as.
+ *
+ * `chat` covered every surface before they were split apart, so a legacy row
+ * is not provably orchestrator — but it is provably CHAT, which is the name
+ * both sides now share, and it cannot be sub-attributed after the fact.
+ */
+export const ORIGIN_ALIASES = Object.freeze({
+  chat: 'orchestrator',
+});
+
+/** The origin a value is displayed and totalled as. */
+export function canonicalOrigin(origin) {
+  const key = origin == null ? '' : String(origin).trim();
+  return ORIGIN_ALIASES[key] || key;
+}
+
+/**
  * Human-readable name for an origin. Never returns a raw database token and
  * never returns an empty string.
  */
 export function originLabel(origin) {
-  const key = origin == null ? '' : String(origin).trim();
+  const key = canonicalOrigin(origin);
   if (!key) return 'Unknown';
   if (ORIGIN_LABELS[key]) return ORIGIN_LABELS[key];
 
   const words = key.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!words) return 'Unknown';
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Fold breakdown rows onto their canonical origins, summing every numeric
+ * field. Order of first appearance is preserved; callers sort afterwards.
+ *
+ * Numeric fields are summed GENERICALLY rather than by name. The backend row
+ * carries thirteen additive measures today (cost, notional, savings, calls,
+ * four token counts, …) and gains more over time; a hand-listed sum would
+ * silently drop the next one and under-report a merged row with no error.
+ */
+export function mergeOriginRows(rows) {
+  const merged = new Map();
+
+  for (const row of rows || []) {
+    if (!row) continue;
+    const bucket = canonicalOrigin(row.bucket);
+    const existing = merged.get(bucket);
+
+    if (!existing) {
+      merged.set(bucket, { ...row, bucket });
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(row)) {
+      if (key === 'bucket') continue;
+      if (typeof value === 'number' && typeof existing[key] === 'number') {
+        existing[key] += value;
+      } else if (existing[key] === undefined) {
+        // A field only the later row carries: keep it rather than lose it.
+        existing[key] = value;
+      }
+    }
+  }
+
+  return [...merged.values()];
 }
 
 export default originLabel;
