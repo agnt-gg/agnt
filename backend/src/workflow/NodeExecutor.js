@@ -5,6 +5,19 @@ import CustomToolExecutor from './CustomToolExecutor.js';
 import PluginManager from '../plugins/PluginManager.js';
 import { dbRunWithRetry } from '../models/database/index.js';
 
+/**
+ * Name the parameter that tripped the gate.
+ *
+ * A bare rule id cannot be triaged: a block on `params.content` is a false
+ * positive on sight, while the same rule on `params.command` is the gate
+ * working. Empty string when the gate reported no field, so the message
+ * shape is unchanged for older violations.
+ */
+function describeBlockedFields(gate) {
+  const fields = [...new Set((gate?.violations || []).filter((v) => v.decision === 'block' && v.field).map((v) => v.field))];
+  return fields.length ? ` (matched in ${fields.join(', ')})` : '';
+}
+
 class NodeExecutor {
   constructor(workflowEngine) {
     this.workflowEngine = workflowEngine;
@@ -119,7 +132,7 @@ class NodeExecutor {
           // Internal gate errors must not break workflow execution.
         }
         if (policyBlock) {
-          throw new Error(`Blocked by security policy: ${policyBlock.blockedRules.join(', ')} — action not executed`);
+          throw new Error(`Blocked by security policy: ${policyBlock.blockedRules.join(', ')}${describeBlockedFields(policyBlock)} — action not executed`);
         }
 
         const executableNode = {
@@ -233,7 +246,7 @@ class NodeExecutor {
         }
         if (policyBlock) {
           throw new Error(
-            `Blocked by security policy: ${policyBlock.blockedRules.join(', ')} — action not executed`
+            `Blocked by security policy: ${policyBlock.blockedRules.join(', ')}${describeBlockedFields(policyBlock)} — action not executed`
           );
         }
 

@@ -39,6 +39,7 @@ import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import pathManager from '../../utils/PathManager.js';
 import SecurityPolicyService from './SecurityPolicyService.js';
 import { resolveCredentialDecision, resolveViolationDecision } from './securityPolicy.js';
+import { buildSecurityAction } from './toolCapabilities.js';
 
 // ── Durable telemetry ───────────────────────────────────────────────────────
 
@@ -220,10 +221,10 @@ export function selectWorkflowSecurityArgs(nodeType, authoredParams = {}, resolv
 export async function checkAction({ toolName, args, userId, role, surface, workflowPolicy }) {
   try {
     const { policy, revision, scope } = await SecurityPolicyService.getEffectivePolicy({ userId, workflowPolicy });
-    const result = nope.check(
-      { tool: toolName, params: args, command: args?.command, code: args?.code },
-      { userId, role: role || 'user' }
-    );
+    // Declares what this tool can actually do and which arguments reach a
+    // sink. Action rules are matched against the sink; credential/DLP rules
+    // are unscoped in the library and still see full params.
+    const result = nope.check(buildSecurityAction(toolName, args), { userId, role: role || 'user' });
 
     const combinedViolations = [...result.violations, ...detectCommonSecretViolations(args)];
     const uniqueViolations = [...new Map(combinedViolations.map((violation) => [`${violation.rule}:${violation.description}`, violation])).values()];
@@ -250,7 +251,9 @@ export async function checkAction({ toolName, args, userId, role, surface, workf
           outputScanning: policy.outputScanning,
           credentials: resolveCredentialDecision(policy),
         },
-        violations: evaluated.map(({ rule, severity, category, decision, source }) => ({ rule, severity, category, decision, source })),
+        // `field` makes a false positive obvious on sight: a block on
+        // `params.content` reads very differently from one on `command`.
+        violations: evaluated.map(({ rule, severity, category, decision, source, field }) => ({ rule, severity, category, decision, source, field })),
       });
       if (userId) {
         try {

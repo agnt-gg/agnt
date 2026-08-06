@@ -5432,11 +5432,16 @@ export async function executeTool(toolName, args, authToken, context) {
     surface: 'orchestrator',
   });
   if (!gate.allowed) {
+    // Naming the argument that matched turns an opaque rule id into something
+    // triageable: a block on `params.content` is a false positive on sight,
+    // a block on `command` is the gate doing its job.
+    const matchedFields = [...new Set(gate.violations.filter((v) => v.decision === 'block' && v.field).map((v) => v.field))];
+    const where = matchedFields.length ? ` (matched in ${matchedFields.join(', ')})` : '';
     return JSON.stringify({
       success: false,
       tool: toolName,
       policy_blocked: true,
-      error: `Blocked by security policy: ${gate.blockedRules.join(', ')} — this action was not executed. Explain what was attempted and which policy rule blocked it. Do not retry with trivial rewording.`,
+      error: `Blocked by security policy: ${gate.blockedRules.join(', ')}${where} — this action was not executed. Explain what was attempted and which policy rule blocked it. Do not retry with trivial rewording.`,
       violations: gate.violations,
       security: gate.policy,
     });
