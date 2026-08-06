@@ -214,7 +214,9 @@ async function runExec({
   // terminal object. Only opt into streaming when a handler wants the deltas,
   // so the non-streaming path keeps its proven behaviour.
   const args = ['-p', '--output-format', streaming ? 'stream-json' : 'json'];
-  if (streaming) args.push('--stream-partial-output');
+  // Partial output only concerns text. Asking for it when the caller wants
+  // tool events alone would multiply the event volume for nobody's benefit.
+  if (onDelta || onReasoning) args.push('--stream-partial-output');
   // A read-only mode cannot edit anything, so auto-approval would be both
   // pointless and misleading to anyone reading the process list.
   if (force && !mode) args.push('--force');
@@ -414,11 +416,18 @@ function briefText(value) {
  * Flatten that to a stable { id, name, status, path, command, stats } shape so
  * consumers need not know Cursor's wire format, and keep it small. Returns
  * null for anything unrecognised rather than guessing at a shape.
+ *
+ * The key must actually look like a tool entry. Matching any object-valued key
+ * would let a future sibling of metadata be reported as though it were a tool,
+ * inventing a name from whatever that key happened to be called. Dropping an
+ * event we cannot identify is the better failure: a missing entry in a
+ * progress feed is recoverable, a fabricated one is not.
  */
 function summarizeToolCall(obj) {
   const payload = obj?.tool_call;
   if (!payload || typeof payload !== 'object') return null;
-  const key = Object.keys(payload).find((k) => payload[k] && typeof payload[k] === 'object');
+  const key = Object.keys(payload)
+    .find((k) => k.endsWith('ToolCall') && payload[k] && typeof payload[k] === 'object');
   if (!key) return null;
   const inner = payload[key];
   const args = inner.args && typeof inner.args === 'object' ? inner.args : {};

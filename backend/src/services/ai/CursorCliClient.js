@@ -221,14 +221,18 @@ export function createCursorCliClient({
             sessionId: existingSessionId,
             timeoutMs,
           };
+          // Tool events are orthogonal to how the caller wants the ANSWER
+          // delivered. A non-streaming completion still runs an agent that
+          // reads and writes files, and an observer asked to watch that should
+          // not fall silent because the reply arrives in one piece. Supplying
+          // this puts the CLI in stream-json so the events exist to be parsed;
+          // the aggregated result is unaffected.
+          if (onToolCall) runOptions.onToolCall = onToolCall;
 
           // Streaming must return the generator BEFORE the run completes,
           // otherwise the deltas are already history by the time anyone reads.
           if (options.stream) {
-            return createCursorStreamGenerator(
-              onToolCall ? { ...runOptions, onToolCall } : runOptions,
-              resolvedSessionKey,
-            );
+            return createCursorStreamGenerator(runOptions, resolvedSessionKey);
           }
 
           const result = await CursorCliService.runExec(runOptions);

@@ -180,6 +180,27 @@ describe('CursorCliService tool + system events', () => {
     });
     expect(events).toHaveLength(0);
   });
+
+  it('does not mistake a non-tool sibling key for the tool itself', async () => {
+    // A metadata sibling must not be reported as a tool named 'metadata'.
+    const events = [];
+    await runWith([
+      {
+        type: 'tool_call',
+        subtype: 'started',
+        tool_call: {
+          metadata: { requestId: 'r1' },
+          readToolCall: { args: { path: 'a.js' } },
+        },
+      },
+      // Only metadata: nothing identifiable, so nothing is reported.
+      { type: 'tool_call', subtype: 'started', tool_call: { metadata: { requestId: 'r2' } } },
+      RESULT,
+    ], { onToolCall: (e) => events.push(e) });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ name: 'read', path: 'a.js' });
+  });
 });
 
 describe('CursorCliService execution policy', () => {
@@ -207,6 +228,13 @@ describe('CursorCliService execution policy', () => {
     await runWith([RESULT], { sandbox: true });
     const { args } = spawnCalls[0];
     expect(args[args.indexOf('--sandbox') + 1]).toBe('enabled');
+  });
+
+  it('watching tools alone needs the event stream, not text deltas', async () => {
+    await runWith([RESULT], { onToolCall: () => {} });
+    const { args } = spawnCalls[0];
+    expect(args[args.indexOf('--output-format') + 1]).toBe('stream-json');
+    expect(args).not.toContain('--stream-partial-output');
   });
 
   it('rejects an unsupported mode before spawning', async () => {
