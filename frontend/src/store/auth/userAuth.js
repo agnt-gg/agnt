@@ -116,6 +116,48 @@ export function isDefinitiveAuthRejection(reason) {
   return DEFINITIVE_AUTH_REJECTIONS.has(reason);
 }
 
+/**
+ * The three states a session can be in, and the ONE that renders the app.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A TRISTATE AND NOT A BOOLEAN
+ * ---------------------------------------------------------------------------
+ * `isAuthenticated` used to be `!!state.token` — a string in localStorage.
+ * Nothing had verified it, and the server that could verify it was a DIFFERENT
+ * server from the one serving the data. So an expired, revoked or simply
+ * unverifiable token rendered a complete, populated app.
+ *
+ * Two states cannot express the situation honestly, because "not confirmed
+ * valid" and "confirmed invalid" demand opposite responses:
+ *
+ *   VALID    the backend serving this data confirmed the session  -> render
+ *   INVALID  it definitively rejected it (401/403)                -> log out
+ *   UNKNOWN  we could not get an answer (offline, 5xx, timeout)   -> neither
+ *
+ * Collapsing UNKNOWN into VALID is the original bug. Collapsing it into
+ * INVALID logs people out over a blip. So it is its own state, and it renders
+ * nothing while destroying nothing.
+ *
+ * THE ASYMMETRY IS THE POINT: only a positive confirmation grants a session,
+ * only a definitive rejection destroys one. Silence does neither.
+ */
+export const SESSION = Object.freeze({
+  UNKNOWN: 'unknown',
+  VALID: 'valid',
+  INVALID: 'invalid',
+});
+
+/**
+ * In-flight verification, shared by concurrent callers.
+ *
+ * Boot and the router guard both want an answer at the same instant on every
+ * launch, and a burst of 401s can ask several more. This is NOT a cache — it
+ * holds only a promise that has not settled yet, so every caller still gets a
+ * live answer; they just share the one round trip. A real TTL cache here would
+ * be a gate that keeps saying "valid" after the session died.
+ */
+let inFlightVerify = null;
+
 // Helper function to sync token with local backend
 const syncTokenWithBackend = async (token) => {
   try {
@@ -166,12 +208,28 @@ export default {
     // Reasons: no_token | http_401 | http_403 | http_5xx | http_<N> |
     //          timeout | network_error | unauthenticated_response | unknown
     lastAuthFailure: null,
+
+    // Has the backend that serves this app's data confirmed the session?
+    // See SESSION above. Starts UNKNOWN on every load — deliberately NOT
+    // derived from the presence of a token, because a token you have not
+    // checked is exactly what this state exists to stop trusting.
+    sessionState: SESSION.UNKNOWN,
   },
   mutations: {
+    SET_SESSION_STATE(state, next) {
+      state.sessionState = next;
+    },
     SET_TOKEN(state, token) {
       const subjectChanged = authSubject(state.token) !== authSubject(token);
       state.token = token;
       localStorage.setItem('token', token);
+
+      // A token that has just arrived has not been verified by anything yet.
+      // Saying otherwise here is how "I have a token" became "I am signed in":
+      // the client would have granted itself a session and only found out it
+      // was wrong when every subsequent request 401'd. verifySession promotes
+      // this to VALID once the backend actually confirms it.
+      state.sessionState = SESSION.UNKNOWN;
 
       // The session now belongs to someone else. Any license held from the
       // previous subject — including the anonymous one the app fetches before
@@ -199,6 +257,11 @@ export default {
       state.token = null;
       localStorage.removeItem('token');
       clearMediaCookie();
+      // No credential, therefore no session. Enforced HERE rather than at the
+      // call sites so the invariant cannot be lost by a future caller that
+      // forgets — there is no reachable state with a valid session and no
+      // token, and this is the only place a token is dropped.
+      state.sessionState = SESSION.INVALID;
     },
     SET_USER(state, user) {
       state.user = user;
@@ -281,6 +344,116 @@ export default {
     },
   },
   actions: {
+    /**
+     * Ask the backend that serves this app's data whether the session is real.
+     *
+     * This is THE gate. Everything else about auth in this module is profile
+     * decoration; this is the only thing that may promote a session to VALID.
+     *
+     * -----------------------------------------------------------------------
+     * WHY BASE_URL AND NOT REMOTE_URL
+     * -----------------------------------------------------------------------
+     * BASE_URL is, by construction, the backend this window is talking to —
+     * localhost in a normal desktop launch, the remote origin when the user
+     * chose a remote backend. It is the server that answers with the agents,
+     * conversations and outputs on screen.
+     *
+     * Asking THAT server makes the gate and the data one decision. Asking
+     * api.agnt.gg instead — which is what this used to do — made them two, and
+     * they could disagree in both directions: a session the data server would
+     * reject still rendered a full app, and a network hiccup at a server that
+     * holds none of your data could bounce you out of it.
+     *
+     * It also removes the reason the JWT fallback existed. The old code could
+     * not reach its auth server while the app was running, so it decoded the
+     * token itself and called that good enough. This server cannot be
+     * unreachable while the app is up: if it were, there would be no app — the
+     * Electron shell shows the connection page instead.
+     *
+     * DELIBERATELY NOT wrapped in withFreshness. Every other fetch here is
+     * cached by TTL; a security gate answered from a cache is a gate that says
+     * "valid" for a session that was revoked a minute ago. The guard only calls
+     * this when the session is not already VALID, so the steady-state cost is
+     * zero, and the cost when it does run is one loopback round trip.
+     *
+     * @returns {Promise<'valid'|'invalid'|'unknown'>} the resulting state
+     */
+    async verifySession({ commit, state }) {
+      if (!state.token) {
+        commit('SET_AUTH_FAILURE', { reason: 'no_token', timestamp: Date.now() });
+        commit('SET_SESSION_STATE', SESSION.INVALID);
+        return SESSION.INVALID;
+      }
+      if (inFlightVerify) return inFlightVerify;
+
+      inFlightVerify = (async () => {
+        try {
+          const response = await axios.get(`${API_CONFIG.BASE_URL}/users/auth/status`, {
+            headers: { Authorization: `Bearer ${state.token}` },
+            withCredentials: true,
+            timeout: 10000,
+          });
+
+          if (response.data?.isAuthenticated && response.data.user) {
+            commit('SET_USER', response.data.user);
+            commit('CLEAR_AUTH_FAILURE');
+            commit('SET_SESSION_STATE', SESSION.VALID);
+            return SESSION.VALID;
+          }
+
+          // A 200 that does not actually confirm anyone. Treated as a refusal,
+          // not as an outage: the server answered, and the answer was no.
+          commit('SET_AUTH_FAILURE', {
+            reason: 'unauthenticated_response',
+            status: response.status,
+            detail: response.data?.error || null,
+            timestamp: Date.now(),
+          });
+          commit('SET_SESSION_STATE', SESSION.INVALID);
+          return SESSION.INVALID;
+        } catch (error) {
+          const failure = classifyAuthError(error);
+          commit('SET_AUTH_FAILURE', failure);
+
+          // The asymmetry, in three lines. A definitive rejection ends the
+          // session. Anything else — 5xx, timeout, the backend still booting —
+          // leaves it UNKNOWN: not trusted, so nothing renders, but not
+          // destroyed either, so a blip does not cost the user their sign-in.
+          const rejected = failure.reason === 'http_401' || failure.reason === 'http_403';
+          commit('SET_SESSION_STATE', rejected ? SESSION.INVALID : SESSION.UNKNOWN);
+          if (!rejected) {
+            console.warn(`[userAuth] session unverified (${failure.reason}) — not granting, not clearing`);
+          }
+          return rejected ? SESSION.INVALID : SESSION.UNKNOWN;
+        }
+      })();
+
+      try {
+        return await inFlightVerify;
+      } finally {
+        // Cleared unconditionally: if this leaked on a rejection, the gate
+        // would answer every future call from a settled promise — a cache,
+        // and a permanent one.
+        inFlightVerify = null;
+      }
+    },
+
+    /**
+     * Remote PROFILE fetch — name, email, pseudonym, and (via fetchSubscription)
+     * plan tier. Talks to api.agnt.gg.
+     *
+     * NOT a session gate, and it must never become one again. It used to be:
+     * the router asked this whether to let you in, and when api.agnt.gg could
+     * not be reached it answered out of `userFromJwt` — a DECODE, not a verify
+     * — so an unchecked token produced a fully rendered app. The fallback below
+     * is still here and still useful, but what it now populates is a display
+     * name, not an entitlement. verifySession decides who is signed in.
+     *
+     * A definitive 401/403 here is still meaningful: this is the server that
+     * ISSUED the token, so if it disowns it the credential is dead everywhere,
+     * and the session ends. That is the one direction this action may still
+     * move the gate — revocation only, never a grant.
+     */
     fetchUserData: withFreshness('userAuth.fetchUserData', async ({ commit, state, dispatch }) => {
       if (!state.token) {
         commit('SET_AUTH_FAILURE', { reason: 'no_token', timestamp: Date.now() });
@@ -337,6 +510,7 @@ export default {
             detail: response.data?.error || null,
             timestamp: Date.now(),
           });
+          commit('SET_SESSION_STATE', SESSION.INVALID);
           console.error('Auth status returned but no user data:', response.data);
         }
       } catch (error) {
@@ -348,6 +522,12 @@ export default {
         // Network/timeout/5xx: restore a local JWT user so a paired phone
         // survives full page loads. Definitive 401/403 get no fallback.
         const definitive = failure.reason === 'http_401' || failure.reason === 'http_403';
+        if (definitive) {
+          // The issuer disowned the credential. It is dead for every server
+          // that trusts it, including the local one, so end the session here
+          // rather than wait for the next request to discover it.
+          commit('SET_SESSION_STATE', SESSION.INVALID);
+        }
         if (definitive || !applyJwtFallback(failure.reason)) {
           console.error(`Error fetching user data (${failure.reason}):`, error);
         }
@@ -393,6 +573,19 @@ export default {
             email: response.data.email,
             authMethod: response.data.authMethod,
           });
+
+          // Prove the credential to the backend that will actually serve this
+          // user's data BEFORE claiming they are signed in. One loopback round
+          // trip, and it converts the whole class of "logged in but every
+          // request 401s" (mismatched JWT_SECRET, clock skew, a backend that
+          // never got the token) into an honest failure at the login screen.
+          const sessionState = await dispatch('verifySession');
+          if (sessionState !== SESSION.VALID) {
+            return {
+              success: false,
+              error: 'Signed in, but this computer\u2019s AGNT backend rejected the session. Restart AGNT and try again.',
+            };
+          }
 
           // If this is a new user, reset onboarding so they see it
           if (response.data.isNewUser) {
@@ -690,6 +883,10 @@ export default {
     },
 
     logout({ commit }) {
+      // CLEAR_TOKEN already forces sessionState to INVALID; the explicit commit
+      // here states the intent at the call site rather than relying on a side
+      // effect two mutations away.
+      commit('SET_SESSION_STATE', SESSION.INVALID);
       commit('CLEAR_TOKEN');
       commit('SET_USER', null);
       commit('SET_PSEUDONYM', null);
@@ -705,7 +902,22 @@ export default {
     },
   },
   getters: {
-    isAuthenticated: (state) => !!state.token,
+    /**
+     * Signed in means CONFIRMED signed in.
+     *
+     * This was `!!state.token` — the presence of a string in localStorage,
+     * which nothing had verified and which the app could not verify against
+     * the server that held its data. Every consumer of this getter (the
+     * sidebar, the canvas toolbar, screen navigation, the login panel) was
+     * therefore gating on "a token exists", and an expired or revoked one
+     * rendered the entire app.
+     *
+     * Reading sessionState instead means the answer comes from the backend
+     * that serves the data — and, crucially, that UNKNOWN renders nothing.
+     * See SESSION above.
+     */
+    isAuthenticated: (state) => state.sessionState === SESSION.VALID,
+    sessionState: (state) => state.sessionState,
     userName: (state) => state.userName,
     userEmail: (state) => state.userEmail,
     userPseudonym: (state) => state.userPseudonym || state.userName || state.userEmail?.split('@')[0] || 'User',

@@ -44,8 +44,9 @@ store.dispatch('theme/initTheme');
 // Register all canvas widgets
 registerAllWidgets();
 
-// Initialize axios rate limit interceptor
-initializeAxiosInterceptor(store);
+// Initialize axios interceptors: rate limiting, and the mid-session auth net
+// that signs the user out when the data backend rejects their token.
+initializeAxiosInterceptor(store, router);
 
 // ============================================================================
 // DIAGNOSTICS — renderer error capture
@@ -139,6 +140,7 @@ const initializeApp = async () => {
 
   if (!token) {
     console.log('No token found, skipping authenticated init');
+    store.commit('userAuth/SET_SESSION_STATE', 'invalid');
     // Defer license validation off first-paint. Anonymous/free tier doesn't
     // need it before the shell renders.
     idle(() => {
@@ -149,7 +151,24 @@ const initializeApp = async () => {
     return;
   }
 
-  console.log('Token found, initializing app in background...');
+  console.log('Token found, verifying session...');
+
+  // BEFORE anything else. Everything below either reads this user's data or
+  // decorates their profile, and firing 20 requests for a session the backend
+  // is about to reject is how the app came to render a full UI for someone who
+  // was not signed in. The router guard is the hard gate -- no protected route
+  // paints until this resolves -- but the boot path must not race it either.
+  const sessionState = await store.dispatch('userAuth/verifySession');
+  if (sessionState !== 'valid') {
+    console.warn(`[boot] session is ${sessionState} - not loading user data.`);
+    // A license is not user data and the login screen still needs plan copy.
+    idle(() => {
+      store.dispatch('userAuth/validateLicense').catch(() => {
+        /* free tier is the correct fallback */
+      });
+    });
+    return;
+  }
 
   try {
     // Smart license caching - only clear if actually expired

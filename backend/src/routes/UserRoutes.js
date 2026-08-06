@@ -30,8 +30,19 @@ UserRoutes.put('/security-policy', authenticateToken, UserService.updateSecurity
 UserRoutes.delete('/security-policy', authenticateToken, UserService.resetSecurityPolicy);
 UserRoutes.get('/security-audit', authenticateToken, UserService.getSecurityAudit);
 
+// THE session gate. The desktop client asks THIS server — the one that serves
+// its data — whether the session is real, instead of asking a remote auth
+// server that may be unreachable or may disagree. Behind authenticateToken on
+// purpose: the answer has to come from the same verification every data route
+// uses, or the gate and the data can disagree (they did).
+UserRoutes.get('/auth/status', authenticateToken, UserService.getAuthStatus);
+
 // Token management routes
 UserRoutes.post('/sync-token', authenticateToken, UserService.syncToken);
+// Session-cookie based and deliberately unauthenticated — a DIAGNOSTIC, not a
+// gate. It answers "is there a server-side session?", which is a different
+// question from "is this bearer token valid", and the two can disagree. Do not
+// route the auth gate through here.
 UserRoutes.get('/token-status', UserService.getTokenStatus);
 
 // Connection health routes

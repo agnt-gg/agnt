@@ -5,7 +5,14 @@
  * redirects to /settings") replaced two unconditional `next('/settings')`
  * fallbacks with structured surfacing. Subsequent commits added clearing
  * of stale token + user (4a6b1a4) and reason-aware classification of WHY
- * the session is no longer trusted (this commit).
+ * the session is no longer trusted.
+ *
+ * THE GATE'S ORACLE CHANGED (2026-08-06). It used to ask "is there a user
+ * object?", populated by a call to the REMOTE auth server — which, when
+ * unreachable, answered out of a client-side JWT *decode*. An unverified token
+ * therefore walked through this guard into a fully rendered app. It now asks
+ * `userAuth/verifySession`, which asks the backend that serves this app's
+ * data, and only SESSION.VALID passes.
  *
  * Pinned contract:
  *   1. console warn so the bounce is visible in DevTools
@@ -18,12 +25,12 @@
  *      (http_401, http_403, unauthenticated_response, no_token); transient
  *      failures (http_5xx, network_error, timeout) leave the token alone
  *      so users are not logged out by an outage
- *   6. fetchUserData dispatched with { forceRefresh: true } so the gate
- *      bypasses the withFreshness TTL cache (live probe, not background)
+ *   6. the gate probes the DATA backend via verifySession, and an
+ *      unconfirmed session (UNKNOWN) does NOT pass
  *
  * If a future refactor removes the event, drops returnTo, reverts to a
- * silent redirect, starts clearing tokens on transient failures, or drops
- * forceRefresh and lets the gate ride the cache — these tests fail.
+ * silent redirect, starts clearing tokens on transient failures, or lets an
+ * unverified session through — these tests fail.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -42,30 +49,39 @@ if (typeof globalThis.localStorage?.getItem !== 'function') {
 }
 
 const { createAuthGuard } = await import('./authGuard.js');
+const { SESSION } = await import('@/store/auth/userAuth.js');
 
 function makeStore({
-  user = null,
-  fetchUserAfterDispatch = null,
+  sessionState = SESSION.UNKNOWN,
+  sessionAfterVerify = null,
   dispatchThrows = null,
   lastAuthFailure = null,
+  user = null,
 } = {}) {
-  const state = { userAuth: { user, lastAuthFailure } };
+  const state = { userAuth: { user, lastAuthFailure, sessionState } };
   return {
     state,
     dispatch: vi.fn(async (action) => {
-      if (dispatchThrows && action === 'userAuth/fetchUserData') {
+      if (dispatchThrows && action === 'userAuth/verifySession') {
         throw dispatchThrows;
       }
-      if (action === 'userAuth/fetchUserData' && fetchUserAfterDispatch !== null) {
-        state.userAuth.user = fetchUserAfterDispatch;
-        state.userAuth.lastAuthFailure = null;
+      if (action === 'userAuth/verifySession' && sessionAfterVerify !== null) {
+        state.userAuth.sessionState = sessionAfterVerify;
+        if (sessionAfterVerify === SESSION.VALID) {
+          state.userAuth.user = { id: 'verified' };
+          state.userAuth.lastAuthFailure = null;
+        }
+        return sessionAfterVerify;
       }
+      return state.userAuth.sessionState;
     }),
     commit: vi.fn((type, payload) => {
-      // Reflect SET_AUTH_FAILURE into state so handleAuthFailure can read it
-      // back on the unknown-error path.
+      // Reflect mutations into state so handleAuthFailure can read them back.
       if (type === 'userAuth/SET_AUTH_FAILURE') {
         state.userAuth.lastAuthFailure = payload;
+      }
+      if (type === 'userAuth/SET_SESSION_STATE') {
+        state.userAuth.sessionState = payload;
       }
     }),
   };
@@ -103,8 +119,8 @@ describe('createAuthGuard', () => {
 
   // --- happy paths ---
 
-  it('authenticated user on protected route passes through with next()', async () => {
-    const store = makeStore({ user: { id: 'u1', email: 'a@b.c' } });
+  it('confirmed session on protected route passes through with next()', async () => {
+    const store = makeStore({ sessionState: SESSION.VALID });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -113,12 +129,14 @@ describe('createAuthGuard', () => {
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith();
     expect(dispatchEventSpy).not.toHaveBeenCalled();
+    // Already confirmed — no re-probe. This is what keeps the gate free in
+    // steady state and is why verifySession needs no TTL cache.
     expect(store.dispatch).not.toHaveBeenCalled();
     expect(store.commit).not.toHaveBeenCalled();
   });
 
-  it('non-auth route (e.g. /settings) passes through even with no user', async () => {
-    const store = makeStore({ user: null });
+  it('non-auth route (e.g. /settings) passes through with no session', async () => {
+    const store = makeStore({ sessionState: SESSION.INVALID });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -130,41 +148,80 @@ describe('createAuthGuard', () => {
     expect(store.commit).not.toHaveBeenCalled();
   });
 
-  it('fetchUserData succeeds in populating user: passes through without redirect or clearing', async () => {
-    const store = makeStore({ user: null, fetchUserAfterDispatch: { id: 'u2' } });
+  it('verifySession confirms the session: passes through without redirect or clearing', async () => {
+    const store = makeStore({ sessionAfterVerify: SESSION.VALID });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
     await guard(makeRoute(), {}, next);
 
-    expect(store.dispatch).toHaveBeenCalledWith('userAuth/fetchUserData', { forceRefresh: true });
+    expect(store.dispatch).toHaveBeenCalledWith('userAuth/verifySession');
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith();
     expect(dispatchEventSpy).not.toHaveBeenCalled();
-    // No CLEAR_TOKEN, no SET_USER(null) on the happy path
     expect(store.commit).not.toHaveBeenCalledWith('userAuth/CLEAR_TOKEN');
     expect(store.commit).not.toHaveBeenCalledWith('userAuth/SET_USER', null);
   });
 
-  it('dispatches fetchUserData with forceRefresh:true so the gate bypasses the withFreshness cache', async () => {
-    // The gate is a live probe — riding the cache would mask both a
-    // recovered service (sticky transient failure) and a freshly-valid
-    // token (delayed pickup). If a future refactor drops forceRefresh,
-    // this test fails. See comment in createAuthGuard.
-    const store = makeStore({ user: null, fetchUserAfterDispatch: { id: 'u9' } });
+  // --- THE BUG THIS GUARD EXISTS TO CLOSE ---
+
+  it('a user object without a confirmed session does NOT get in', async () => {
+    // This is the exact shape of the original failure: fetchUserData could not
+    // reach the remote auth server, so it DECODED the local JWT and committed
+    // the result as `user`. The old gate read `user` and let it through, and
+    // the app rendered in full for a session nobody had verified.
+    const store = makeStore({
+      user: { id: 'decoded-from-an-unverified-jwt', email: 'a@b.c' },
+      sessionState: SESSION.UNKNOWN,
+      sessionAfterVerify: SESSION.UNKNOWN,
+      lastAuthFailure: { reason: 'network_error', detail: 'Network Error', timestamp: 1 },
+    });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
     await guard(makeRoute(), {}, next);
 
-    expect(store.dispatch).toHaveBeenCalledWith(
+    expect(next).toHaveBeenCalledWith({
+      path: '/settings',
+      query: { returnTo: '/chat?content-id=abc-123' },
+    });
+    expect(next).not.toHaveBeenCalledWith();
+  });
+
+  it('asks the backend that serves the data, not the remote auth server', async () => {
+    // fetchUserData talks to api.agnt.gg and can answer from a JWT decode.
+    // If the gate ever routes through it again, the fallback becomes a session
+    // grant again.
+    const store = makeStore({ sessionAfterVerify: SESSION.VALID });
+    const guard = createAuthGuard(store);
+
+    await guard(makeRoute(), {}, vi.fn());
+
+    expect(store.dispatch).toHaveBeenCalledWith('userAuth/verifySession');
+    expect(store.dispatch).not.toHaveBeenCalledWith(
       'userAuth/fetchUserData',
-      expect.objectContaining({ forceRefresh: true }),
+      expect.anything(),
     );
   });
 
+  it('UNKNOWN (could not check) is not a pass', async () => {
+    const store = makeStore({
+      sessionAfterVerify: SESSION.UNKNOWN,
+      lastAuthFailure: { reason: 'http_5xx', status: 503, timestamp: 1 },
+    });
+    const guard = createAuthGuard(store);
+    const next = vi.fn();
+
+    await guard(makeRoute(), {}, next);
+
+    expect(next).toHaveBeenCalledWith({
+      path: '/settings',
+      query: { returnTo: '/chat?content-id=abc-123' },
+    });
+  });
+
   it('OAuth callback to /settings with ?code redirects to /connectors preserving all query', async () => {
-    const store = makeStore({ user: null });
+    const store = makeStore({ sessionState: SESSION.INVALID });
     const guard = createAuthGuard(store);
     const next = vi.fn();
     const query = { code: 'oauth-abc', state: 'xyz', scope: 'read write' };
@@ -181,7 +238,7 @@ describe('createAuthGuard', () => {
 
   it('lite /m/chat auth failure bounces to /m (not full Settings)', async () => {
     const failure = { reason: 'no_token', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -203,7 +260,7 @@ describe('createAuthGuard', () => {
 
   it('http_401 (token explicitly rejected): clears token + user, emits event with reason', async () => {
     const failure = { reason: 'http_401', status: 401, detail: 'token expired', timestamp: 12345 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -231,7 +288,7 @@ describe('createAuthGuard', () => {
 
   it('http_403 (account forbidden): clears token + user', async () => {
     const failure = { reason: 'http_403', status: 403, detail: 'account suspended', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -244,7 +301,7 @@ describe('createAuthGuard', () => {
 
   it('unauthenticated_response (server says no user): clears token + user', async () => {
     const failure = { reason: 'unauthenticated_response', status: 200, detail: null, timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -256,7 +313,7 @@ describe('createAuthGuard', () => {
 
   it('no_token (localStorage empty): clears (no-op clear is fine) + emits', async () => {
     const failure = { reason: 'no_token', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -271,7 +328,7 @@ describe('createAuthGuard', () => {
 
   it('http_5xx (server error): emits event but does NOT clear token', async () => {
     const failure = { reason: 'http_5xx', status: 503, detail: 'Service Unavailable', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.UNKNOWN, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -290,7 +347,7 @@ describe('createAuthGuard', () => {
 
   it('network_error (offline / DNS / CORS): emits event but does NOT clear token', async () => {
     const failure = { reason: 'network_error', detail: 'Network Error', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.UNKNOWN, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -303,7 +360,7 @@ describe('createAuthGuard', () => {
 
   it('timeout (slow upstream): emits event but does NOT clear token', async () => {
     const failure = { reason: 'timeout', detail: 'timeout of 10000ms exceeded', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.UNKNOWN, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -316,9 +373,9 @@ describe('createAuthGuard', () => {
 
   // --- defensive paths ---
 
-  it('fetchUserData throws unexpectedly: synthesizes unknown failure, emits event, does NOT clear', async () => {
+  it('verifySession throws unexpectedly: synthesizes unknown failure, emits event, does NOT clear', async () => {
     const boom = new Error('thrown by a bug, not classified');
-    const store = makeStore({ user: null, dispatchThrows: boom });
+    const store = makeStore({ dispatchThrows: boom });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -339,9 +396,22 @@ describe('createAuthGuard', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
+  it('a thrown verifySession still leaves the session UNCONFIRMED, never valid', async () => {
+    // Fail closed. If the probe blows up we know strictly less than nothing
+    // about the session, and the one unacceptable outcome is letting it read
+    // as signed in.
+    const store = makeStore({ dispatchThrows: new Error('boom') });
+    const guard = createAuthGuard(store);
+
+    await guard(makeRoute(), {}, vi.fn());
+
+    expect(store.commit).toHaveBeenCalledWith('userAuth/SET_SESSION_STATE', SESSION.UNKNOWN);
+    expect(store.state.userAuth.sessionState).not.toBe(SESSION.VALID);
+  });
+
   it('emits with timestamp from the failure record so admins can correlate logs', async () => {
     const failure = { reason: 'http_401', status: 401, detail: null, timestamp: 1700000000000 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 
@@ -352,7 +422,7 @@ describe('createAuthGuard', () => {
 
   it('warns to console with structured detail so admins can grep', async () => {
     const failure = { reason: 'http_401', status: 401, detail: 'expired', timestamp: 1 };
-    const store = makeStore({ user: null, lastAuthFailure: failure });
+    const store = makeStore({ sessionAfterVerify: SESSION.INVALID, lastAuthFailure: failure });
     const guard = createAuthGuard(store);
     const next = vi.fn();
 

@@ -7,7 +7,24 @@
  *
  * Single source of truth for two orthogonal rules:
  *   1. OAuth callback redirect — /settings?code=… → /connectors (preserve query)
- *   2. Auth gating — requiresAuth routes need store.state.userAuth.user
+ *   2. Auth gating — requiresAuth routes need a CONFIRMED session
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THE GATE ASKS, AND WHY IT CHANGED
+ * ---------------------------------------------------------------------------
+ * It used to ask "is there a user object in the store?" and populate one by
+ * calling the REMOTE auth server. Both halves were wrong:
+ *
+ *   - the user object could be manufactured client-side by DECODING the JWT
+ *     when the remote was unreachable, so an unverified token walked straight
+ *     through this guard into a fully rendered app
+ *   - the remote is not the server that holds the data on screen, so its
+ *     answer was never binding on the requests the app was about to make
+ *
+ * It now asks the backend that serves this app's data, through
+ * `userAuth/verifySession`, and lets exactly one answer through: VALID.
+ * UNKNOWN (offline, 5xx, timeout) is NOT a pass — the whole failure mode being
+ * closed is "we could not check, so we assumed yes".
  *
  * When the auth gate trips a redirect, the guard:
  *   - reads `state.userAuth.lastAuthFailure` for the structured reason
@@ -21,15 +38,14 @@
  *     transient failures (5xx, network, timeout) leave the token alone so
  *     an outage doesn't log everyone out
  *
- * The gate dispatches fetchUserData with `forceRefresh: true` because
- * fetchUserData is wrapped in withFreshness. An active attempt to enter
- * a protected route is a live probe, not a background refresh: riding
- * the TTL cache would (a) keep showing "service is down" after a transient
- * failure has recovered and (b) delay honoring a token that became valid
- * mid-TTL. Background refreshers (main.js boot, LoginSection) still use
- * the cached path.
+ * The gate needs a LIVE answer, never a cached one. It gets that structurally:
+ * verifySession is deliberately not wrapped in withFreshness, so there is no
+ * cache to bypass and no `forceRefresh` flag anyone can forget to pass. (The
+ * previous gate called the TTL-cached fetchUserData and had to opt out by
+ * hand.) The steady-state cost is nil — a session already VALID is not
+ * re-probed — and the cost when it does run is one loopback round trip.
  */
-import { isDefinitiveAuthRejection } from '@/store/auth/userAuth.js';
+import { isDefinitiveAuthRejection, SESSION } from '@/store/auth/userAuth.js';
 
 export function createAuthGuard(storeInstance) {
   return async (to, from, next) => {
@@ -43,26 +59,28 @@ export function createAuthGuard(storeInstance) {
       return;
     }
 
-    if (to.meta.requiresAuth && !storeInstance.state.userAuth.user) {
+    if (to.meta.requiresAuth && storeInstance.state.userAuth.sessionState !== SESSION.VALID) {
       try {
-        // forceRefresh bypasses the withFreshness TTL cache. The gate must
-        // re-probe live; a cached no-op would mask both a recovered service
-        // and a freshly-valid token.
-        await storeInstance.dispatch('userAuth/fetchUserData', { forceRefresh: true });
+        await storeInstance.dispatch('userAuth/verifySession');
 
-        if (!storeInstance.state.userAuth.user) {
-          handleAuthFailure(storeInstance, to, next);
-        } else {
+        // Re-read from the store rather than trusting the return value: the
+        // store is what every other consumer (sidebar, canvas, nav) reads, and
+        // a gate that agreed with a return value while disagreeing with the
+        // rendered UI would be the same class of bug all over again.
+        if (storeInstance.state.userAuth.sessionState === SESSION.VALID) {
           next();
+        } else {
+          handleAuthFailure(storeInstance, to, next);
         }
       } catch (error) {
-        // Defensive: fetchUserData currently swallows its own errors, but if
-        // a future change starts re-throwing we still want a clean bounce.
-        // Synthesize a failure record so downstream consumers see consistent
-        // shape regardless of which path got here.
+        // Defensive: verifySession handles its own errors, but if a future
+        // change starts re-throwing we still want a clean bounce rather than
+        // an unhandled rejection that leaves navigation hanging — which would
+        // strand the user on whatever was already painted.
         const failure = { reason: 'unknown', detail: error?.message || null, timestamp: Date.now() };
         storeInstance.commit('userAuth/SET_AUTH_FAILURE', failure);
-        console.error(`[router] fetchUserData threw while navigating to ${to.fullPath}:`, error);
+        storeInstance.commit('userAuth/SET_SESSION_STATE', SESSION.UNKNOWN);
+        console.error(`[router] verifySession threw while navigating to ${to.fullPath}:`, error);
         handleAuthFailure(storeInstance, to, next);
       }
     } else {
