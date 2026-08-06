@@ -9,7 +9,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { claimVoiceFloor, releaseVoiceFloor, voiceFloorTicket } from './voiceFloor.js';
+import {
+  claimVoiceFloor,
+  releaseVoiceFloor,
+  voiceFloorTicket,
+  isVoiceFloorHeld,
+} from './voiceFloor.js';
 
 beforeEach(() => {
   // Leave no holder behind for the next test: claim it and release it.
@@ -19,6 +24,47 @@ beforeEach(() => {
 describe('voiceFloor', () => {
   it('starts free', () => {
     expect(voiceFloorTicket()).toBeNull();
+  });
+
+  describe('isVoiceFloorHeld — "is a microphone open right now?"', () => {
+    /**
+     * Asked by the notification sound, which is not a voice host and has no
+     * other way to know. Playing a chime into a live microphone makes the
+     * Realtime server hear speech and cut the assistant off mid-sentence.
+     */
+    it('is false with no session', () => {
+      expect(isVoiceFloorHeld()).toBe(false);
+    });
+
+    it('is true while a session holds the floor', () => {
+      claimVoiceFloor(() => {});
+      expect(isVoiceFloorHeld()).toBe(true);
+    });
+
+    it('is false again once released', () => {
+      releaseVoiceFloor(claimVoiceFloor(() => {}));
+      expect(isVoiceFloorHeld()).toBe(false);
+    });
+
+    it('stays true across an eviction — the mic never actually closed', () => {
+      // Two hosts handing the floor between them is still one open microphone.
+      // A naive "release then claim" reading would report a gap that does not
+      // exist and let a chime through in the middle of a handover.
+      const first = claimVoiceFloor(() => releaseVoiceFloor(first));
+      claimVoiceFloor(() => {});
+      expect(isVoiceFloorHeld()).toBe(true);
+    });
+
+    it('agrees with voiceFloorTicket at all times', () => {
+      // Two answers to one question is how they drift. This pins them together
+      // so a future change cannot make the sound guard and the eviction logic
+      // disagree about whether a session is live.
+      expect(isVoiceFloorHeld()).toBe(voiceFloorTicket() !== null);
+      const ticket = claimVoiceFloor(() => {});
+      expect(isVoiceFloorHeld()).toBe(voiceFloorTicket() !== null);
+      releaseVoiceFloor(ticket);
+      expect(isVoiceFloorHeld()).toBe(voiceFloorTicket() !== null);
+    });
   });
 
   it('a claim takes the floor', () => {

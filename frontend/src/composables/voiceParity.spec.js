@@ -176,17 +176,39 @@ describe('only one surface can be listening', () => {
     expect(src).toMatch(/onUnmounted\(stopVoice\)/);
   });
 
-  it('nothing else touches the floor directly', () => {
-    // Compared as resolved paths, not by suffix: `endsWith('voice/voiceFloor.js')`
-    // never matches on Windows, where the separator is a backslash — and the
-    // module would exclude itself only by accident on one platform.
+  it('nothing else CLAIMS or RELEASES the floor', () => {
+    /**
+     * The singleton is broken by a second CLAIMER, not by a second reader. This
+     * used to reject any mention of the module at all, which is a stricter rule
+     * than the invariant needs and rejected a legitimate read: the notification
+     * sound asks `isVoiceFloorHeld()` so it never plays a chime into an open
+     * microphone (the Realtime server hears it, treats it as a barge-in, and
+     * cuts the assistant off mid-sentence).
+     *
+     * A read-only query cannot start or end a session, so it cannot produce two
+     * live microphones. What must stay in one place is the mutation.
+     *
+     * Compared as resolved paths, not by suffix: `endsWith('voice/voiceFloor.js')`
+     * never matches on Windows, where the separator is a backslash — and the
+     * module would exclude itself only by accident on one platform.
+     */
     const FLOOR = path.join(SRC, 'voice/voiceFloor.js');
-    const others = ALL_FILES.filter((f) => f !== ENGINES && f !== FLOOR && /voiceFloor/.test(read(f)));
+    const mutators = /\b(claimVoiceFloor|releaseVoiceFloor)\s*\(/;
+    const others = ALL_FILES.filter((f) => f !== ENGINES && f !== FLOOR && mutators.test(read(f)));
     expect(others.map(rel)).toEqual([]);
   });
 
   it('anti-vacuity: the floor module is where it is expected to be', () => {
     expect(fs.existsSync(path.join(SRC, 'voice/voiceFloor.js'))).toBe(true);
+  });
+
+  it('anti-vacuity: the mutator names the scan looks for still exist', () => {
+    // Renaming claimVoiceFloor would otherwise empty the scan above and turn a
+    // load-bearing guard into a test that can never fail.
+    const floor = read(path.join(SRC, 'voice/voiceFloor.js'));
+    expect(floor).toMatch(/export function claimVoiceFloor\s*\(/);
+    expect(floor).toMatch(/export function releaseVoiceFloor\s*\(/);
+    expect(read(ENGINES)).toMatch(/claimVoiceFloor\s*\(/);
   });
 });
 
