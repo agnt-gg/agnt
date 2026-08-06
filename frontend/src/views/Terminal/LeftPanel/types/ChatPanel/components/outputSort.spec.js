@@ -247,6 +247,92 @@ describe("sortOutputs — the 'attention' (Unread) order", () => {
   });
 });
 
+describe("sortOutputs — the streaming tier", () => {
+  // A conversation with a run IN FLIGHT pins to the top, above unread and
+  // read alike. Read state is the wrong axis for something being written to
+  // right now: "unread" means "changed while you weren't looking", which
+  // says nothing about a conversation changing while you ARE looking.
+  const unread = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: t('00:01') });
+  const read = (id, updatedAt) => ({ id, updated_at: updatedAt, last_read_at: t('23:59') });
+
+  it('THE FLAP: opening a running conversation must not drop it below the unread rows', () => {
+    // REGRESSION GUARD for what Nathan reported. Without this tier:
+    //   t+0s  run starts, autosave    -> derives unread -> top
+    //   t+1s  he opens it             -> marked READ    -> below every unread
+    //   t+5s  next stream autosave    -> unread again   -> back to the top
+    // …over and over, while he watched it stream. The row is READ here —
+    // that is the whole point: it is pinned by the run, not by its dot.
+    const outputs = [
+      unread('waiting-a', t('10:00')),
+      read('running', t('04:00')),
+      unread('waiting-b', t('09:00')),
+    ];
+    const sorted = sortOutputs(outputs, {
+      sortKey: 'attention',
+      streamingIds: new Set(['running']),
+    });
+    expect(ids(sorted)).toEqual(['running', 'waiting-a', 'waiting-b']);
+  });
+
+  it('a live run outranks a queued one — the tier sits ABOVE unread, not between', () => {
+    const outputs = [unread('queued', t('11:00')), read('running', t('01:00'))];
+    const sorted = sortOutputs(outputs, { sortKey: 'attention', streamingIds: new Set(['running']) });
+    expect(ids(sorted)[0]).toBe('running');
+  });
+
+  it('orders concurrent runs newest-first among themselves', () => {
+    const outputs = [read('older-run', t('03:00')), read('newer-run', t('08:00'))];
+    const sorted = sortOutputs(outputs, {
+      sortKey: 'attention',
+      streamingIds: new Set(['older-run', 'newer-run']),
+    });
+    expect(ids(sorted)).toEqual(['newer-run', 'older-run']);
+  });
+
+  it('hands off seamlessly when the run ends — same position, no jump', () => {
+    // The run's final autosave moves updated_at and never touches the
+    // watermark (the email model), so the row leaves the streaming tier and
+    // lands at the TOP of the unread tier: the position it already held.
+    const during = sortOutputs(
+      [unread('other', t('10:00')), read('running', t('04:00'))],
+      { sortKey: 'attention', streamingIds: new Set(['running']) }
+    );
+    const after = sortOutputs(
+      [unread('other', t('10:00')), unread('running', t('12:00'))],
+      { sortKey: 'attention', streamingIds: new Set() }
+    );
+    expect(ids(during)[0]).toBe('running');
+    expect(ids(after)[0]).toBe('running');
+  });
+
+  it('cannot ossify: membership is live run state, so an ended run keeps no rank', () => {
+    // The DELETED bump tier failed exactly here — it was sticky and
+    // unbounded, so everything that had ever gone unread permanently
+    // outranked everything that never had. An empty set must sort as if the
+    // tier did not exist.
+    const outputs = [read('ran-earlier', t('01:00')), unread('waiting', t('09:00'))];
+    const sorted = sortOutputs(outputs, { sortKey: 'attention', streamingIds: new Set() });
+    expect(ids(sorted)).toEqual(['waiting', 'ran-earlier']);
+  });
+
+  it('an absent streamingIds behaves exactly as before', () => {
+    const outputs = [read('a', t('01:00')), unread('b', t('09:00'))];
+    expect(ids(sortOutputs(outputs, { sortKey: 'attention' }))).toEqual(['b', 'a']);
+  });
+
+  it('does not touch the recency sort — no partition there to fall through', () => {
+    // The flap was an artifact of the read/unread split alone. Pure recency
+    // keeps its honest updated_at order; a second home for the ordering
+    // rules would be the thing to avoid, not a feature.
+    const outputs = [read('newest', t('12:00')), read('running', t('02:00'))];
+    const sorted = sortOutputs(outputs, {
+      sortKey: 'updated_at',
+      streamingIds: new Set(['running']),
+    });
+    expect(ids(sorted)).toEqual(['newest', 'running']);
+  });
+});
+
 describe('mark-as-unread lifecycle — the conversation keeps the place it was given', () => {
   // Row SHAPES as the store and server now write them (the write itself is
   // covered in contentOutputs.attention.spec.js and

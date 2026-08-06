@@ -580,6 +580,10 @@ export default {
         sortKey: sortKey.value,
         sortOrder: sortOrder.value,
         bumps: bumpTimestamps.value,
+        // A conversation with a run in flight pins to the top of the Unread
+        // sort — opening it must not drop it below the unread rows while it
+        // is still writing. See outputSort.js (the streaming tier).
+        streamingIds: streamingOutputIds.value,
         previewOf: (output) => getPreviewText(output.content, output),
       });
     }

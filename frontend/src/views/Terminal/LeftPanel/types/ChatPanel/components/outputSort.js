@@ -61,16 +61,17 @@ export function activityTime(output, bumps = {}) {
 /**
  * Order outputs for the sidebar. Pure: returns a new array.
  *
- * @param {Array}    list        outputs to sort
- * @param {string}   sortKey     'updated_at' | 'created_at' | 'content' | any field
- * @param {string}   sortOrder   'asc' | 'desc'
- * @param {Object}   bumps       { [outputId]: epochMs } client-side activity
- * @param {Function} previewOf   (output) => string, used for the 'content' sort
+ * @param {Array}    list         outputs to sort
+ * @param {string}   sortKey      'updated_at' | 'created_at' | 'content' | any field
+ * @param {string}   sortOrder    'asc' | 'desc'
+ * @param {Object}   bumps        { [outputId]: epochMs } client-side activity
+ * @param {Set}      streamingIds output ids with a run in flight right now
+ * @param {Function} previewOf    (output) => string, used for the 'content' sort
  */
-export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', bumps = {}, previewOf } = {}) {
-  // 'attention' is a SEMANTIC order, not a directional one: unread first,
-  // newest at the top, then everything else by recency. Surfaced in the UI
-  // as the "Unread" sort mode.
+export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', bumps = {}, streamingIds, previewOf } = {}) {
+  // 'attention' is a SEMANTIC order, not a directional one: streaming first,
+  // then unread, then everything else by recency — each tier newest at the
+  // top. Surfaced in the UI as the "Unread" sort mode.
   //
   // This order is what lets the panel have no separate unread section. There
   // was once a pinned "Needs you" card above the groups holding exactly the
@@ -99,8 +100,38 @@ export function sortOutputs(list, { sortKey = 'updated_at', sortOrder = 'desc', 
   // of the list — and reading it later re-dates it again (unread→read
   // transition), so it stays the top row of the read partition instead of
   // dropping back to wherever its original date happened to fall.
+  //
+  // THE STREAMING TIER sits above both. Read state is the wrong axis for a
+  // conversation that is being written to RIGHT NOW: "unread" means "changed
+  // while you weren't looking", which is meaningless for something changing
+  // while you ARE looking. Without this tier a running conversation FLAPPED
+  // — its autosave derived it unread (top), opening it marked it read so it
+  // fell below every unread row, and its next ~5s autosave threw it back to
+  // the top, over and over, while the user watched it stream.
+  //
+  // This is NOT the sticky "bump tier" deleted from this comparator earlier
+  // (see the history above): membership here is derived live from run state
+  // (chat/streamingOutputIds), so it is transient and self-clearing. It
+  // cannot accumulate, so it cannot ossify into "everything that ever ran
+  // outranks everything that never did".
+  //
+  // The handoff is seamless BECAUSE of the re-dating rule: when the run
+  // ends the row leaves this tier and lands at the top of the unread tier
+  // (newest-first, just re-dated) — the same position it already occupied.
+  //
+  // Deliberately confined to 'attention'. The pure recency sort has no
+  // partition to fall through, so a streaming row simply keeps its honest
+  // updated_at order there; the flap was an artifact of the read/unread
+  // split alone, and inventing a tier for a sort that doesn't need one
+  // would just be a second place for ordering to live.
   if (sortKey === 'attention') {
+    const isStreaming = (o) => !!streamingIds && streamingIds.has(o.id);
     return [...list].sort((a, b) => {
+      const aStreaming = isStreaming(a);
+      const bStreaming = isStreaming(b);
+      if (aStreaming !== bStreaming) return aStreaming ? -1 : 1;
+      if (aStreaming) return activityTime(b) - activityTime(a);
+
       const aUnread = isUnread(a);
       const bUnread = isUnread(b);
       if (aUnread !== bUnread) return aUnread ? -1 : 1;
