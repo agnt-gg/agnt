@@ -59,7 +59,13 @@ const events = ref([]);
 const loading = ref(false);
 const error = ref('');
 
-const matchedRules = event => event.violations?.map(violation => violation.rule).join(', ') || 'No matched rules';
+// Naming the argument is what makes a false positive visible here rather than
+// only in the log: a rule matching `params.content` is obviously wrong, while
+// the same rule matching `command` is obviously right. Falls back to the bare
+// rule id for events recorded before the gate reported a field.
+const matchedRules = event =>
+  event.violations?.map(violation => (violation.field ? `${violation.rule} in ${violation.field}` : violation.rule)).join(', ')
+  || 'No matched rules';
 const shortDate = value => new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 async function loadAudit() {
