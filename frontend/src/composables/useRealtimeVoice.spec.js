@@ -706,6 +706,120 @@ describe('useRealtimeVoice — robustness', () => {
   });
 });
 
+describe('useRealtimeVoice — a sound is not a turn', () => {
+  /**
+   * THE PHANTOM STEER.
+   *
+   * `utteranceCredit` is granted by `input_audio_buffer.speech_started`, a VAD
+   * event that fires before any word has been transcribed — so it cannot tell
+   * "the user spoke" from "the room made a noise". A cough bought a turn, came
+   * back transcribed as "um", and the model correctly forwarded it (its
+   * instructions forbid it deciding what is worth answering). Mid-run that
+   * arrived as a STEER: real work interrupted to be told "um".
+   *
+   * The tool argument is a verbatim quote of what was heard, so this is the
+   * first point in the chain where words exist — and checking here depends on
+   * no event ordering, which matters because the separate input-transcription
+   * event is not guaranteed to arrive before the call.
+   */
+  const fillerCall = (text) => toolCallFrame({ arguments: JSON.stringify({ user_message: text }) });
+
+  it.each(['um', 'Uh...', 'hmm', 'Um, uh...'])(
+    'a noise transcribed as %s never reaches the orchestrator',
+    async (text) => {
+      const onRunAgnt = vi.fn(async () => 'should not happen');
+      const s = harness({ onRunAgnt });
+
+      userSpoke(s); // the VAD heard the noise and funded a turn
+      s._handleMessage(fillerCall(text));
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(onRunAgnt, 'room noise was submitted as a turn').not.toHaveBeenCalled();
+    }
+  );
+
+  it('the refused call is still answered — a swallowed call hangs the session', async () => {
+    const s = harness({ onRunAgnt: vi.fn() });
+
+    userSpoke(s);
+    s._handleMessage(fillerCall('um'));
+    await vi.advanceTimersByTimeAsync(10);
+
+    const answers = answersFor('call_1');
+    expect(answers).toHaveLength(1);
+    expect(answers[0].item.output).toMatch(/background noise/i);
+  });
+
+  it('the refusal is silent — nothing is spoken about it', async () => {
+    // Any spoken acknowledgement would be the voice model talking in its own
+    // voice about something the user never said.
+    const s = harness({ onRunAgnt: vi.fn() });
+
+    userSpoke(s);
+    s._handleMessage(fillerCall('um'));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(sent.filter((e) => e.type === 'response.create')).toHaveLength(0);
+  });
+
+  it('the noise does not leave a funded credit behind it', async () => {
+    // The credit was bought by a noise. Left funded, the next freelanced call
+    // spends it and the phantom turn happens anyway, one step later.
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    s._handleMessage(fillerCall('um'));
+    await vi.advanceTimersByTimeAsync(10);
+
+    s._handleMessage(toolCallFrame({ call_id: 'call_2' })); // real words, no new speech
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).not.toHaveBeenCalled();
+  });
+
+  it('REAL SPEECH STILL RUNS — the whole point of the filter being narrow', async () => {
+    // Anti-vacuity for this describe: if the filter rejected everything, every
+    // test above would pass and voice would be dead.
+    const onRunAgnt = vi.fn(async () => 'the build is green');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    s._handleMessage(toolCallFrame());
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledWith('check the build', expect.any(Function));
+  });
+
+  it('a request that merely STARTS with a stumble still runs', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    s._handleMessage(fillerCall('um, restart the backend'));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledWith('um, restart the backend', expect.any(Function));
+  });
+
+  it.each(['hey', 'hello', 'stop', 'no', 'what'])(
+    '%s is a real turn and is NOT filtered',
+    async (text) => {
+      // Short is not the same as meaningless. "stop" mid-run is the most
+      // important thing a user can say, and the model is explicitly told to
+      // forward "hello" rather than judge it beneath answering.
+      const onRunAgnt = vi.fn(async () => 'ok');
+      const s = harness({ onRunAgnt });
+
+      userSpoke(s);
+      s._handleMessage(fillerCall(text));
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(onRunAgnt).toHaveBeenCalledWith(text, expect.any(Function));
+    }
+  );
+});
+
 describe('useRealtimeVoice — one utterance funds at most one run', () => {
   /**
    * THE DUPLICATE-MESSAGE BUG, THIRD MECHANISM — AND THE INVARIANT.

@@ -227,6 +227,14 @@ describe('buildSessionConfig', () => {
       expect(c.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
     });
 
+    it('denoises the input BEFORE turn detection reads it', () => {
+      // Turn detection asks "is someone speaking?" of whatever arrives, and a
+      // cough answers yes — which opened a turn, came back transcribed as
+      // "um", and mid-run landed as a steer. near_field is the desk/headset
+      // profile; far_field assumes a room mic and would be the wrong guess.
+      expect(buildSessionConfig().audio.input.noise_reduction).toEqual({ type: 'near_field' });
+    });
+
     it('still declares the tool — a text response can act, it just cannot talk', () => {
       // If this broke, voice would go silent AND stop working entirely, so it
       // is worth stating rather than inferring from the config shape.

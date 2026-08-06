@@ -30,7 +30,7 @@ import { shouldEndpoint } from '../voice/semanticEndpointer.js';
 import { createSentenceChunker } from '../voice/sentenceChunker.js';
 import { createSpeechOut, isWebSpeechAvailable } from '../voice/speechOut.js';
 import { detectWake, isStopPhrase, stripWakePhrase } from '../voice/wakePhrase.js';
-import { sanitizeTranscript } from '../voice/asrArtifacts.js';
+import { meaningfulTranscript } from '../voice/asrArtifacts.js';
 import { API_CONFIG } from '../../user.config.js';
 
 /** How often the gate is ticked. Bounds reopen/barge-in resolution. */
@@ -220,8 +220,9 @@ export function useVoiceSession(options = {}) {
       const data = await res.json();
       // Whisper annotates silence rather than returning nothing —
       // [BLANK_AUDIO], (coughs), a bare hallucinated "you." — and unfiltered
-      // those commit as real messages the assistant then answers.
-      const text = sanitizeTranscript(data?.transcript);
+      // those commit as real messages the assistant then answers. A segment
+      // that is nothing but "um" is the same event wearing a different coat.
+      const text = meaningfulTranscript(data?.transcript);
       if (!text) return;
 
       // The session may have been stopped while the fetch was in flight;

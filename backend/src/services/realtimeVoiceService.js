@@ -315,6 +315,21 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
     audio: {
       input: {
         format: { type: 'audio/pcm', rate: 24000 },
+        /**
+         * Denoise BEFORE the VAD sees the audio.
+         *
+         * Turn detection asks "is someone speaking?" of whatever arrives, and
+         * a cough, a chair, or a door answers yes. That opened a turn, the
+         * noise came back transcribed as "um", and mid-run it landed as a
+         * steer — interrupting real work to deliver a hesitation sound.
+         *
+         * The client filter (asrArtifacts.isFillerOnly) catches those after
+         * the fact; this stops fewer of them being produced at all, which is
+         * the better half of the same fix. `near_field` is the correct profile
+         * for a headset or a desk microphone — the far_field profile is tuned
+         * for a room mic and would be the wrong assumption here.
+         */
+        noise_reduction: { type: 'near_field' },
         // Semantic turn detection: the model decides when the user is done
         // from what they said, not from how long they have been quiet.
         turn_detection: { type: 'semantic_vad' },
