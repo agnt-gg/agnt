@@ -78,3 +78,39 @@
 .fade-in-stagger > *:nth-child(5) { animation-delay: 0.16s; }
 .fade-in-stagger > *:nth-child(6) { animation-delay: 0.2s; }
 .fade-in-stagger > *:nth-child(n+7) { animation-delay: 0.24s; }
+
+/* ---------------------------------------------------------------------------
+   Cross-device preference hydration (services/userPreferences.js)
+
+   localStorage paints first so boot is instant and correct offline; the server
+   reconciles a beat later. On the rare boot where another device changed the
+   theme, that reconciliation repaints — and an unsoftened repaint reads as a
+   glitch rather than as a sync.
+
+   Scoped to a class the sync module adds for ~400ms and then removes, and only
+   when a value actually differs from what localStorage already painted — so a
+   normal boot never enters this state at all, and ordinary theme switching a
+   moment later is not still easing.
+
+   Colours only: transitioning layout would make panels visibly slide.
+
+   :where() keeps the whole selector at the specificity of `.prefs-hydrating`
+   alone (0,1,0). `transition` is a SHORTHAND, so it resets the entire
+   transition list of everything it matches — without :where(), a component
+   that declares its own `transition: transform .3s` would lose it for the
+   duration of the window and snap mid-animation. At this specificity any
+   component rule wins instead, and only elements with no transition of their
+   own pick this up.
+   --------------------------------------------------------------------------- */
+.prefs-hydrating :where(body, body *) {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prefs-hydrating :where(body, body *) {
+    transition: none;
+  }
+}

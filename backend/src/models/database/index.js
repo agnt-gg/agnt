@@ -199,7 +199,8 @@ function createTables() {
         max_tool_rounds INTEGER DEFAULT 100,
         fallback_providers TEXT,
         fallback_enabled INTEGER DEFAULT 0,
-        subscription_costs TEXT
+        subscription_costs TEXT,
+        preferences TEXT
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -1923,6 +1924,25 @@ function runMigrations() {
           console.error('Error adding max_tool_rounds column to users:', err);
         } else if (!err) {
           console.log('✓ Added max_tool_rounds column to users table');
+        }
+      });
+
+      // Migration: Add preferences column to users — cross-device UI
+      // preferences (theme, font, panel geometry) as a single JSON blob
+      // (2026-08-06). A blob rather than a column per setting because these
+      // are presentation keys with no query, index or constraint against
+      // them: a column each would mean a schema migration every time someone
+      // adds a toggle, for no gain the blob does not already provide.
+      //
+      // Structure and validation live in src/utils/userPreferences.js. NULL
+      // (every existing row) is the documented empty state and reads back as
+      // "no stored preferences", so upgrading installs keep whatever their
+      // browsers already have in localStorage.
+      db.run(`ALTER TABLE users ADD COLUMN preferences TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding preferences column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added preferences column to users table');
         }
       });
 

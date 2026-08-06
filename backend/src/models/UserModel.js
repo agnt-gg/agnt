@@ -1,5 +1,46 @@
 import db from './database/index.js';
 import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
+import {
+  parsePreferences,
+  mergePreferences,
+  serializePreferences,
+} from '../utils/userPreferences.js';
+
+/**
+ * Serializes preference read-modify-write per user.
+ *
+ * THE BUG THIS PREVENTS
+ * ─────────────────────
+ * Preferences are ONE JSON column, so an update is read → merge → write. Two
+ * requests interleaving between the read and the write both start from the
+ * same snapshot and the second write erases the first. That is not
+ * theoretical here: the frontend saves theme and panel geometry from separate
+ * watchers, so a single user action (switch theme while a panel animates)
+ * fires two PUTs milliseconds apart. The loser vanishes with no error on
+ * either side — the exact failure mode this whole feature exists to fix.
+ *
+ * A promise chain per user is sufficient because the backend is a single
+ * process sharing one sqlite connection. It would NOT be sufficient across
+ * processes; if AGNT ever forks workers, this has to become a real
+ * `BEGIN IMMEDIATE` transaction. Documented rather than pre-solved, because a
+ * transaction on node-sqlite3's shared connection serializes every other
+ * writer too, and that is a real cost to pay for a hypothetical.
+ */
+const preferenceWriteQueues = new Map();
+
+function withPreferenceLock(userId, task) {
+  const prev = preferenceWriteQueues.get(userId) || Promise.resolve();
+  // Swallow the predecessor's rejection: one failed write must not poison
+  // every subsequent write for that user.
+  const next = prev.catch(() => {}).then(task);
+  preferenceWriteQueues.set(userId, next);
+  // Drop the entry once drained so a long-lived process does not accumulate
+  // one resolved promise per user forever.
+  next.catch(() => {}).finally(() => {
+    if (preferenceWriteQueues.get(userId) === next) preferenceWriteQueues.delete(userId);
+  });
+  return next;
+}
 
 /**
  * What each subscription seat costs per month (PRD-122), as
@@ -239,6 +280,60 @@ class UserModel {
           }
         }
       );
+    });
+  }
+
+  /**
+   * Read a user's stored UI preferences.
+   *
+   * Returns the parsed structure (never null). A user row that does not exist
+   * and a user with nothing stored are the same answer — empty preferences —
+   * because a preferences GET has no business 404ing a browser that is simply
+   * booting for the first time.
+   */
+  static getPreferences(userId) {
+    return new Promise((resolve, reject) => {
+      db.get(`SELECT preferences FROM users WHERE id = ?`, [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(parsePreferences(row ? row.preferences : null));
+      });
+    });
+  }
+
+  /**
+   * Merge a patch into a user's stored preferences.
+   *
+   * @returns { preferences, result } — `result` reports which keys were
+   *   applied, deleted or rejected, so the caller can hand that back to the
+   *   client instead of a bare 200 that hides a dropped key.
+   */
+  static updatePreferences(userId, patch) {
+    return withPreferenceLock(userId, async () => {
+      const stored = await UserModel.getPreferences(userId);
+      const { next, result } = mergePreferences(stored, patch);
+      const serialized = serializePreferences(next);
+
+      const changes = await new Promise((resolve, reject) => {
+        db.run(
+          `UPDATE users SET preferences = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [serialized, userId],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          },
+        );
+      });
+
+      // No row updated means no such user. Surfaced explicitly rather than
+      // reported as a silent success — a write that stored nothing must not
+      // look identical to one that stored everything.
+      if (changes === 0) {
+        const err = new Error('User not found');
+        err.code = 'USER_NOT_FOUND';
+        throw err;
+      }
+
+      return { preferences: next, result };
     });
   }
 }
