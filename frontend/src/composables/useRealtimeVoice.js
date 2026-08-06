@@ -47,6 +47,7 @@ import {
   buildSpokenAside,
   BridgeAction,
 } from '../voice/realtimeBridge.js';
+import { isFillerOnly, meaningfulTranscript } from '../voice/asrArtifacts.js';
 import { API_CONFIG } from '../../user.config.js';
 
 export const RealtimeState = Object.freeze({
@@ -261,6 +262,37 @@ export function useRealtimeVoice(options = {}) {
     if (dispatchedCalls.has(action.callId)) return;
     dispatchedCalls.add(action.callId);
 
+    /**
+     * NOISE IS NOT A TURN.
+     *
+     * `utteranceCredit` is granted by `input_audio_buffer.speech_started` — a
+     * pure VAD event, fired before a single word has been transcribed. It
+     * cannot tell "the user spoke" from "the room made a noise", because at the
+     * moment it fires there is nothing to read. So the credit was granted by
+     * acoustics and spent by semantics: a cough bought a turn, came back
+     * transcribed as "um", and — because the model is correctly instructed to
+     * forward EVERY utterance — arrived as a real request. Mid-run that landed
+     * as a steer, interrupting work to deliver the word "um".
+     *
+     * This is the first point in the whole chain where WORDS exist: the tool's
+     * `user_message` is a verbatim quote of what was heard. Checking here also
+     * avoids depending on whether the separate input-transcription event has
+     * arrived yet — an ordering this code does not control and must not assume.
+     *
+     * The credit is cleared as well. It was bought by a noise; leaving it
+     * funded would let a later call spend it.
+     */
+    if (action.instruction && isFillerOnly(action.instruction)) {
+      utteranceCredit = 0;
+      send(
+        buildFunctionOutput(
+          action.callId,
+          'That was background noise, not speech. Say nothing and keep listening.'
+        )
+      );
+      return;
+    }
+
     // A call with no unconsumed utterance behind it is the model freelancing,
     // not the user speaking. Answer it (never leave a call open) but do not
     // run it, do not speak, and stay listening.
@@ -415,7 +447,11 @@ export function useRealtimeVoice(options = {}) {
           break;
 
         case BridgeAction.USER_SAID:
-          pendingUserText = action.text;
+          // Buffered in case the model goes off-script and answers without
+          // delegating, in which case the turn is written to the chat. A
+          // filler-only transcript must not become a user message there
+          // either — same rule, same reason, one function.
+          pendingUserText = meaningfulTranscript(action.text);
           break;
 
         case BridgeAction.ASSISTANT_PARTIAL:

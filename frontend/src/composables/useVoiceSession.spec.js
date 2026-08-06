@@ -195,6 +195,43 @@ describe('useVoiceSession — a complete turn', () => {
 
     expect(onCommit).not.toHaveBeenCalled();
   });
+
+  it.each(['um', 'Uh...', 'hmm'])(
+    'does not commit when the noise transcribes as %s',
+    async (t) => {
+      // The realtime engine refuses these; the cascade must agree. When the two
+      // engines answered "did the user take a turn?" separately, identical room
+      // noise was discarded on one and submitted on the other.
+      transcriptToReturn = t;
+      const onCommit = vi.fn();
+      const s = useVoiceSession({ onCommit });
+      await s.start();
+
+      fire('speech_start', {});
+      fakeCapture.silenceMs = 2000;
+      await advance(100);
+      await advance(900);
+
+      expect(onCommit).not.toHaveBeenCalled();
+    }
+  );
+
+  it('DOES commit a real request that starts with a stumble', async () => {
+    // Anti-vacuity for the pair above: a filter that rejected everything would
+    // satisfy them and leave the cascade permanently deaf.
+    transcriptToReturn = 'um, open the auth file';
+    const onCommit = vi.fn();
+    const s = useVoiceSession({ onCommit });
+    await s.start();
+
+    fire('speech_start', {});
+    fakeCapture.silenceMs = 700;
+    await advance(60);
+    await advance(10);
+    await advance(700);
+
+    expect(onCommit).toHaveBeenCalledWith({ text: 'um, open the auth file', voice: true });
+  });
 });
 
 describe('useVoiceSession — self-correction (the reopen window)', () => {
