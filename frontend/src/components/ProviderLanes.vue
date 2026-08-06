@@ -402,6 +402,14 @@ export default {
 .lane-foot {
   margin-top: 4px;
   padding-top: 16px;
+}
+
+/* The divider only exists when there is something above it to divide from.
+   Local is offered unconditionally — including when the catalog is empty or
+   never arrived — so the footer can legitimately be the first thing in this
+   component, and a rule above nothing reads as a stray line left behind by
+   content that failed to render. */
+.lane + .lane-foot {
   border-top: 1px solid var(--terminal-border-color);
 }
 

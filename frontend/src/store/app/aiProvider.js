@@ -281,6 +281,40 @@ export const PROVIDER_LANE_SIBLING = {
 export const LANE_PREVIEW_COUNT = 4;
 
 /**
+ * Running a model on this machine.
+ *
+ * SYNTHESIZED HERE, NEVER FETCHED. Every other entry on the connect screen is
+ * an account in the remote provider catalog, because every other entry is
+ * something you sign into. `local` is not an account — it is a runtime already
+ * on the user's disk, with no credential to store and nothing to authorize, so
+ * there is no row for it at api.agnt.gg and there should not be one.
+ *
+ * Deriving the offer from that catalog is what made it disappear: the lane
+ * split only ever saw providers the catalog returned, so the single option
+ * that needs no network became the first one to vanish when the network was
+ * unavailable — exactly backwards, and worst for the user with no accounts at
+ * all, who is the one this option exists for.
+ *
+ * The rest of the app already treats local as a mode rather than a connection:
+ * `handleProviderClick` selects it without an auth round trip, the chat and
+ * settings pickers keep it enabled regardless of `connectedApps`, and the
+ * workspace list includes it unconditionally. This makes the connect screen
+ * agree with them.
+ *
+ * Frozen because it is a module-level singleton handed to every caller; one
+ * component mutating it would change what every other screen renders.
+ */
+export const LOCAL_PROVIDER = Object.freeze({
+  id: 'local',
+  name: 'Local',
+  icon: 'terminal',
+  categories: ['AI'],
+  // Not 'apikey' and not 'oauth': there is no credential to collect. The panel
+  // branches on this, so naming it honestly keeps local out of both forms.
+  connectionType: 'none',
+});
+
+/**
  * The connectable AI providers, split by WHAT THEY COST rather than by how they
  * authenticate.
  *
@@ -325,6 +359,11 @@ export function providerLanes(providers, { codexStatus, connectedIds } = {}) {
     else if (SUBSCRIPTION_PROVIDER_IDS.has(id)) lanes.subscription.push(provider);
     else lanes.api.push(provider);
   }
+
+  // Offered unconditionally — including when the catalog is empty, malformed,
+  // or never arrived. A catalog record wins if one ever exists, so this can
+  // never produce a duplicate. See LOCAL_PROVIDER for why it is not fetched.
+  if (lanes.local.length === 0) lanes.local.push(LOCAL_PROVIDER);
 
   const rank = (provider) => {
     const id = String(provider?.id || '').toLowerCase();

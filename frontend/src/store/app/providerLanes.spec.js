@@ -75,6 +75,57 @@ describe('providerLanes', () => {
     expect(idsIn(lanes.api)).not.toContain('local');
   });
 
+  describe('running a model on this machine is always offered', () => {
+    /**
+     * Local is a runtime on the user's disk, not an account, so it has no row
+     * in the remote provider catalog — and the catalog is where every other
+     * entry on this screen comes from. Deriving the offer from it deleted the
+     * option entirely: the one choice that needs no network was the first to
+     * disappear without one.
+     */
+    it('appears even though the real catalog has no local record', () => {
+      // Verbatim shape of the live catalog's AI subset: no `local`.
+      const real = [
+        ai('openai'), ai('anthropic'), ai('gemini'), ai('groq'),
+        ai('openai-codex'), ai('claude-code'),
+      ];
+      expect(idsIn(providerLanes(real).local)).toEqual(['local']);
+    });
+
+    it('appears when the catalog is empty', () => {
+      expect(idsIn(providerLanes([]).local)).toEqual(['local']);
+    });
+
+    it('carries what the click handler needs to select it', () => {
+      // handleProviderClick short-circuits on `provider.id` and reports using
+      // `provider.name`; getProviderCase maps 'local' → 'Local' for the store.
+      const [local] = providerLanes([]).local;
+      expect(local.id).toBe('local');
+      expect(local.name).toBe('Local');
+    });
+
+    it('asks for no credential, so neither form claims it', () => {
+      const [local] = providerLanes([]).local;
+      expect(local.connectionType).not.toBe('apikey');
+      expect(local.connectionType).not.toBe('oauth');
+    });
+
+    it('defers to a catalog record rather than duplicating it', () => {
+      // If `local` is ever published, that row wins and only one is offered.
+      const lanes = providerLanes([ai('local', { name: 'Local Models' })]);
+      expect(lanes.local).toHaveLength(1);
+      expect(lanes.local[0].name).toBe('Local Models');
+    });
+
+    it('is never handed out as a mutable singleton', () => {
+      // One module-level record is shared by every caller; a component
+      // mutating it would change what every other screen renders.
+      const [first] = providerLanes([]).local;
+      expect(() => { first.name = 'Hacked'; }).toThrow();
+      expect(providerLanes([]).local[0].name).toBe('Local');
+    });
+  });
+
   it('orders each lane by rendered label, so ChatGPT is under C', () => {
     const lanes = providerLanes(PROVIDERS);
     // ChatGPT before Claude within the subscription lane.
@@ -163,7 +214,12 @@ describe('providerLanes', () => {
     // throwing here blanks the fix.
     for (const junk of [null, undefined, 'nope', 42, {}]) {
       const lanes = providerLanes(junk);
-      expect(lanes).toEqual({ subscription: [], api: [], local: [] });
+      // Local survives junk input on purpose — a broken or unreachable
+      // catalog is precisely when running a model on this machine is the only
+      // thing that still works, so it is the last option to withdraw.
+      expect(lanes.subscription).toEqual([]);
+      expect(lanes.api).toEqual([]);
+      expect(lanes.local.map((p) => p.id)).toEqual(['local']);
     }
   });
 

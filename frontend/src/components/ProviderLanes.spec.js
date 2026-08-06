@@ -86,9 +86,27 @@ describe('ProviderLanes — the footer icon', () => {
     expect(footerBlock).not.toMatch(/\.lane-foot[^}]*fill:\s*var\(--color-text\)/);
   });
 
+  it('draws its divider only when a lane precedes it', () => {
+    /**
+     * Source-asserted: jsdom applies no CSS cascade, so a mounted test cannot
+     * see which selector carries the border.
+     *
+     * Local is offered even when the catalog is empty, so the footer can be
+     * the FIRST thing this component renders — and an unconditional
+     * `border-top` then paints a rule above nothing, which reads as a stray
+     * line left by content that failed to load.
+     */
+    expect(SOURCE).toMatch(/\.lane \+ \.lane-foot\s*\{[^}]*border-top:/);
+
+    const bare = SOURCE.match(/(?<![+~]\s)\.lane-foot\s*\{[^}]*\}/);
+    expect(bare, '.lane-foot rule not found').not.toBeNull();
+    expect(bare[0], 'the bare .lane-foot rule must not carry the divider').not.toMatch(/border-top:/);
+  });
+
   it('anti-vacuity: the footer rules are actually present to be checked', () => {
     expect(footerBlock.length).toBeGreaterThan(80);
     expect(SOURCE).toContain('.lane-foot :deep(.svg-icon)');
+    expect(SOURCE).toContain('.lane-foot {');
   });
 });
 
@@ -159,6 +177,35 @@ describe('ProviderLanes — the list', () => {
     const wrapper = mountLanes();
     expect(wrapper.find('.lane-foot').text()).toContain('Run a model on this machine');
     expect(tileText(wrapper)).not.toContain('Local');
+  });
+
+  it('offers it even though the real catalog contains no local record', () => {
+    /**
+     * The regression this replaces. `local` is a runtime, not an account, so
+     * api.agnt.gg has no row for it — and the fixture above is the only reason
+     * the test before this one passes. Given the catalog the app actually
+     * receives, the footer rendered nothing at all.
+     */
+    const wrapper = mountLanes({
+      providers: PROVIDERS.filter((p) => p.id !== 'local'),
+    });
+    expect(wrapper.find('.lane-foot').exists()).toBe(true);
+    expect(wrapper.find('.lane-foot').text()).toContain('Run a model on this machine');
+  });
+
+  it('offers it when the catalog never arrived', () => {
+    // No network, no providers, no accounts — the case where running a model
+    // on this machine is the only thing left that can work.
+    const wrapper = mountLanes({ providers: [] });
+    expect(wrapper.find('.lane-foot').text()).toContain('Run a model on this machine');
+  });
+
+  it('still selects local when it was synthesized rather than fetched', async () => {
+    const wrapper = mountLanes({
+      providers: PROVIDERS.filter((p) => p.id !== 'local'),
+    });
+    await wrapper.find('.lane-foot button').trigger('click');
+    expect(wrapper.emitted('connect')[0][0].id).toBe('local');
   });
 
   it('emits connect for the local runtime without a detail step', async () => {
