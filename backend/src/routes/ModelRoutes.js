@@ -562,13 +562,17 @@ router.post('/:provider/models/refresh', async (req, res) => {
         });
       }
       if (!codexStatus.apiUsable) {
-        const detail = codexStatus.apiStatus ? ` (API status: ${codexStatus.apiStatus})` : '';
+        const detail = codexStatus.apiStatus ? ` (status: ${codexStatus.apiStatus})` : '';
         return res.status(400).json({
           success: false,
-          error: `OpenAI Codex is connected but the OpenAI API is not usable${detail}.`,
+          error: `ChatGPT is connected but its Codex service is not usable${detail}.`,
         });
       }
-      apiKey = CodexAuthManager.getAccessToken();
+      // The OAuth token specifically. This is sent to chatgpt.com, which
+      // rejects `sk-` keys (401) — and `getAccessToken()` returns one whenever
+      // OPENAI_API_KEY is set, which would silently degrade every model list to
+      // the hardcoded fallback on any machine that has a platform key.
+      apiKey = CodexAuthManager.getOAuthToken();
     } else if (providerLower === 'grok-build') {
       // CLI transport: refresh means re-asking the local CLI, never HTTP — the
       // config baseURL is decorative and GenericProviderService must not be hit.

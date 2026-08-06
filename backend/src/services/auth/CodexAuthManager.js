@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
+import { getClientVersion } from '../ai/clientVersions.js';
 
 const CODEX_AUTH_FILENAME = 'auth.json';
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
@@ -328,6 +329,35 @@ class CodexAuthManager {
     return token;
   }
 
+  /**
+   * Is this provider actually usable, and with what?
+   *
+   * WHAT THIS USED TO ASK, AND WHY IT WAS THE WRONG QUESTION
+   * --------------------------------------------------------
+   * It probed `GET https://api.openai.com/v1/models`. This provider never talks
+   * to that host. It talks to `chatgpt.com/backend-api/codex` with a ChatGPT
+   * OAuth token — see LlmService `createLlmClient('openai-codex')` and
+   * ModelRoutes `_fetchCodexModelsFromUpstream`.
+   *
+   * The two disagree, and not by accident: a ChatGPT OAuth token is scope-
+   * limited on the platform API (measured — /v1/models 403 `api.model.read`,
+   * chat + responses + audio all 401) while answering 200 on its own product.
+   * So the probe returned `apiUsable: false` for precisely the users the
+   * provider exists to serve, and two call sites believed it:
+   *
+   *   OnboardingModal.vue — HID the provider from the connection page
+   *   ModelRoutes         — refused the model list with a 400
+   *
+   * A user who signed in with ChatGPT was told the ChatGPT provider did not
+   * exist, while the endpoint it uses answered 200. A health check must call
+   * the service whose health it reports; anything else is a different question
+   * wearing the same name.
+   *
+   * It is ALSO asked with the OAuth token specifically. `ensureValidToken`
+   * lets `OPENAI_API_KEY` override it, which masked this bug on any machine
+   * that had a platform key: the probe spent the key, got 200, and reported a
+   * provider healthy for a reason that had nothing to do with the provider.
+   */
   async checkApiUsable({ forceRefresh = false } = {}) {
     // Auto-refresh expired OAuth tokens before checking
     const token = await this.ensureValidToken();
@@ -353,18 +383,32 @@ class CodexAuthManager {
     let apiStatus = null;
     let apiUsable = false;
 
-    try {
-      const response = await axios.get('https://api.openai.com/v1/models', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        timeout: 5000,
-      });
-      apiStatus = response.status;
-      apiUsable = response.status >= 200 && response.status < 300;
-    } catch (error) {
-      apiStatus = error?.response?.status || null;
-      apiUsable = false;
+    // The provider requires OAuth. An `sk-` key cannot drive it at all (the
+    // Codex backend answers 401 for one), so "no OAuth token" is a definite no
+    // and costs no round trip.
+    const oauthToken = await this.ensureValidOAuthToken();
+
+    if (oauthToken) {
+      try {
+        const accountId = this.getChatGptAccountId();
+        const headers = { Authorization: `Bearer ${oauthToken}`, originator: 'codex_cli_rs' };
+        if (accountId) headers['ChatGPT-Account-ID'] = accountId;
+
+        // `client_version` is REQUIRED — the endpoint gates its model list on it
+        // and answers 400 without one (measured). Same source as the real model
+        // fetch, so the probe cannot drift from the call it is vouching for.
+        const clientVersion = await getClientVersion('openai-codex');
+
+        const response = await axios.get(
+          `https://chatgpt.com/backend-api/codex/models?client_version=${clientVersion}`,
+          { headers, timeout: 5000 },
+        );
+        apiStatus = response.status;
+        apiUsable = response.status >= 200 && response.status < 300;
+      } catch (error) {
+        apiStatus = error?.response?.status || null;
+        apiUsable = false;
+      }
     }
 
     const expiry = this.getTokenExpiry();
