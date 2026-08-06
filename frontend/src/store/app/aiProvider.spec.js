@@ -135,6 +135,16 @@ describe('byProviderLabel', () => {
     expect(list).toEqual(['Grok-Build', 'GrokAI', 'Groq']);
   });
 
+  it('ignores CASE, which is what custom provider names actually vary in', () => {
+    // A naive `a < b` agrees with localeCompare on every built-in label, so the
+    // built-ins alone cannot prove this option is doing anything. Custom
+    // providers are user-named and arrive in any casing: with a raw comparison
+    // every capitalised name sorts before every lowercase one, so 'zeta' would
+    // land after 'Zeta' but also after 'OpenAI'.
+    const list = ['zeta', 'Antigravity', 'anthropic', 'OpenAI'].sort(byProviderLabel);
+    expect(list).toEqual(['anthropic', 'Antigravity', 'OpenAI', 'zeta']);
+  });
+
   it('does not throw on an unknown provider', () => {
     expect(() => ['zzz-unknown', 'openai'].sort(byProviderLabel)).not.toThrow();
   });

@@ -146,6 +146,56 @@ describe('OnboardingModal', () => {
     });
   };
 
+  describe('provider grid ordering', () => {
+    /**
+     * The grid must be alphabetical BY WHAT IT RENDERS. It used to sort by the
+     * auth API's `name`, so `openai-codex` — labelled "ChatGPT" — sorted as
+     * "OpenAI Codex" and appeared under O between the OpenAI providers, where
+     * nobody scanning for a C would find it.
+     *
+     * Asserted on the computed rather than the DOM so it holds regardless of
+     * which onboarding step happens to be showing.
+     */
+    const PROVIDERS = [
+      { id: 'openai', name: 'OpenAI', icon: 'openai', categories: ['AI'], connectionType: 'apikey' },
+      { id: 'openai-codex', name: 'OpenAI Codex', icon: 'openai', categories: ['AI'], connectionType: 'oauth' },
+      { id: 'openrouter', name: 'OpenRouter', icon: 'openrouter', categories: ['AI'], connectionType: 'apikey' },
+      { id: 'cerebras', name: 'Cerebras', icon: 'cerebras', categories: ['AI'], connectionType: 'apikey' },
+      { id: 'chutes', name: 'Chutes', icon: 'chutes', categories: ['AI'], connectionType: 'apikey' },
+      { id: 'anthropic', name: 'Anthropic', icon: 'anthropic', categories: ['AI'], connectionType: 'apikey' },
+    ];
+
+    const renderedOrder = () => {
+      wrapper = createWrapper({}, { allProviders: PROVIDERS });
+      return wrapper.vm.aiProviders.map((p) => wrapper.vm.providerLabel(p));
+    };
+
+    it('lists providers alphabetically by their rendered label', () => {
+      expect(renderedOrder()).toEqual([
+        'Anthropic',
+        'Cerebras',
+        'ChatGPT',
+        'Chutes',
+        'OpenAI',
+        'OpenRouter',
+      ]);
+    });
+
+    it('puts ChatGPT in the C group, not down among the OpenAIs', () => {
+      const order = renderedOrder();
+      expect(order.indexOf('ChatGPT')).toBeLessThan(order.indexOf('OpenAI'));
+      expect(order.indexOf('ChatGPT')).toBeGreaterThan(order.indexOf('Cerebras'));
+    });
+
+    it('renders the tile text from the same function it sorts by', () => {
+      // The sort key and the visible text drifting apart is the whole bug; if
+      // the template ever re-derives its own label this fails.
+      wrapper = createWrapper({}, { allProviders: PROVIDERS });
+      const codex = wrapper.vm.aiProviders.find((p) => p.id === 'openai-codex');
+      expect(wrapper.vm.providerLabel(codex)).toBe('ChatGPT');
+    });
+  });
+
   describe('Rendering', () => {
     it('renders when show prop is true', () => {
       wrapper = createWrapper({ show: true });
