@@ -47,8 +47,31 @@ const POST_RESULT_KILL_MS = 500;
 // recovers, so resuming it would simply re-hang.
 const RETRY_ON_TIMEOUT = process.env.AGNT_CURSOR_RETRY !== '0';
 
+// Cursor's Free plan refuses every named model:
+//   ActionRequiredError: Named models unavailable. Free plans can only use Auto.
+// That is a property of the ACCOUNT, not of the call, so it fails identically
+// forever — and AGNT passes --model on EVERY invocation (getDefaultModel plus
+// four hardcoded 'cursor-grok-4.5-high' literals in StreamEngine/tools.js).
+// On such an account the whole provider is dead, and the only clue was an
+// error saying "usage limit reached", which points nowhere near the cause.
+//
+// Recover once, then remember: the first rejection is the entire entitlement
+// answer, so later calls go straight to 'auto' rather than paying a doomed
+// round-trip each time.
+const AUTO_MODEL = 'auto';
+const NAMED_MODEL_REJECTED = /named models?\s+(?:are\s+)?unavailable|can only use auto/i;
+let namedModelsUnavailable = false;
+
 function isTimeoutError(e) {
   return /timed out after \d+ms/.test(e?.message || '');
+}
+
+// runExec RESOLVES { success: false, error, raw } for a rejected model — it
+// only REJECTS on timeout/auth/spawn — so this reads a returned value, not a
+// thrown one.
+function isNamedModelRejection(result) {
+  if (!result || result.success !== false) return false;
+  return NAMED_MODEL_REJECTED.test(`${result.error || ''}\n${result.raw || ''}`);
 }
 
 // The CLI prints "cursor-retrieval: tracing to '<logfile>'" on every run.
@@ -64,21 +87,77 @@ export function getDefaultTimeoutMs() {
   return DEFAULT_TIMEOUT_MS;
 }
 
-/** runExec + one retry on a stall. Preferred entry point for all callers. */
+/**
+ * runExec plus the two recoveries that need memory across attempts: a stalled
+ * session, and an account that cannot use named models. Preferred entry point
+ * for all callers.
+ */
 async function runExecResilient(opts = {}) {
-  try {
-    return await runExec(opts);
-  } catch (err) {
-    // Never retry a STREAMING call: if the first attempt already emitted any
-    // onDelta/onReasoning output before stalling, a retry would push a second,
-    // duplicated token stream into the same consumer. A streamed timeout is
-    // rare and is better surfaced as an error than re-streamed.
-    const isStreaming =
-      typeof opts.onDelta === 'function' || typeof opts.onReasoning === 'function';
-    if (!RETRY_ON_TIMEOUT || isStreaming || !isTimeoutError(err)) throw err;
-    console.warn('[CursorCliService] stall detected, retrying once with a fresh session');
-    return runExec({ ...opts, resume: false, sessionId: null });
+  // A retry is only safe while nothing has reached the caller yet. The old
+  // test for that was "onDelta or onReasoning was supplied" — a proxy that
+  // silently drifted the moment onToolCall/onInit were added (a tool-only
+  // observer would have been re-fed its events, the exact duplication this
+  // guard exists to prevent), and that also refused a perfectly safe retry
+  // whenever the stall happened before the first token. Count what was
+  // actually emitted instead: that predicate cannot drift from the handler
+  // list, because it IS the handler list.
+  //
+  // onInit is deliberately not counted. It describes the run rather than the
+  // answer, and a retry genuinely IS a second run with its own session id, so
+  // a second init is accurate rather than duplicated.
+  let emittedPayload = 0;
+  const tap = (fn) => (typeof fn === 'function'
+    ? (...args) => { emittedPayload += 1; return fn(...args); }
+    : fn);
+  const attempt = {
+    ...opts,
+    onDelta: tap(opts.onDelta),
+    onReasoning: tap(opts.onReasoning),
+    onToolCall: tap(opts.onToolCall),
+  };
+
+  // Already learned this account is Auto-only — don't spend a round-trip
+  // rediscovering it on every single call.
+  if (namedModelsUnavailable && (attempt.model ?? DEFAULT_MODEL) !== AUTO_MODEL) {
+    attempt.model = AUTO_MODEL;
   }
+
+  let result;
+  try {
+    result = await runExec(attempt);
+  } catch (err) {
+    if (!RETRY_ON_TIMEOUT || emittedPayload > 0 || !isTimeoutError(err)) throw err;
+    console.warn('[CursorCliService] stall detected, retrying once with a fresh session');
+    // A stalled session never recovers, so resuming it would simply re-hang.
+    return runExec({ ...attempt, resume: false, sessionId: null });
+  }
+
+  if (isNamedModelRejection(result) && (attempt.model ?? DEFAULT_MODEL) !== AUTO_MODEL) {
+    if (!namedModelsUnavailable) {
+      namedModelsUnavailable = true;
+      console.warn(
+        `[CursorCliService] this Cursor account cannot use named models (requested '${attempt.model ?? DEFAULT_MODEL}'). `
+        + `Falling back to '${AUTO_MODEL}' for the rest of this process. `
+        + 'Set AGNT_CURSOR_DEFAULT_MODEL=auto to make that explicit, or upgrade the Cursor plan.',
+      );
+    }
+    if (emittedPayload > 0) return result;
+    // Unlike a stall, the CLI rejected at startup and never touched the
+    // session. Keep resume/sessionId and swap only the model — dropping them
+    // here would silently discard the conversation's history.
+    return runExec({ ...attempt, model: AUTO_MODEL });
+  }
+
+  return result;
+}
+
+/**
+ * Forget the learned model entitlement. Used by tests, and by anyone who
+ * upgrades a Cursor plan and would otherwise need a backend restart before the
+ * named model became reachable again.
+ */
+function resetModelEntitlement() {
+  namedModelsUnavailable = false;
 }
 // --- end resilience helpers ------------------------------------------------
 
@@ -129,7 +208,9 @@ function getDefaultWorkdir() {
 }
 
 function getDefaultModel() {
-  return DEFAULT_MODEL;
+  // Handing a new client a default the account provably cannot run would make
+  // it fail on first use. Once entitlement is known, report what works.
+  return namedModelsUnavailable ? AUTO_MODEL : DEFAULT_MODEL;
 }
 
 /**
@@ -202,6 +283,7 @@ async function runExec({
   if (mode != null && !READ_ONLY_MODES.has(mode)) {
     throw new Error(`cursor_exec: unsupported mode '${mode}' (expected 'plan' or 'ask')`);
   }
+  const resolvedSandbox = normalizeSandbox(sandbox);
   const streaming = typeof onDelta === 'function'
     || typeof onReasoning === 'function'
     || typeof onToolCall === 'function'
@@ -221,7 +303,7 @@ async function runExec({
   // pointless and misleading to anyone reading the process list.
   if (force && !mode) args.push('--force');
   if (mode) args.push('--mode', mode);
-  if (sandbox) args.push('--sandbox', sandbox === true ? 'enabled' : sandbox);
+  if (resolvedSandbox) args.push('--sandbox', resolvedSandbox);
   if (model) args.push('--model', model);
   if (resume && sessionId) args.push('--resume', sessionId);
   else if (resume) args.push('--continue');
@@ -377,9 +459,16 @@ async function runExec({
         return;
       }
       if (/usage limit|ActionRequiredError|spend limit/i.test(combined)) {
+        // Two very different failures share this branch. A spend/usage limit is
+        // temporary and model-specific; a rejected named model is a permanent
+        // property of the account. Calling the second one a "usage limit" sent
+        // anyone debugging it looking for a quota that was never the problem.
         finish({
           success: false,
-          error: 'cursor_exec: model usage limit reached. Try a different model (e.g. composer-2.5 or auto).',
+          error: NAMED_MODEL_REJECTED.test(combined)
+            ? `cursor_exec: this Cursor account cannot use named models (requested '${model}'). `
+              + "Free plans are limited to 'auto' — set AGNT_CURSOR_DEFAULT_MODEL=auto or upgrade the plan."
+            : 'cursor_exec: model usage limit reached. Try a different model (e.g. composer-2.5 or auto).',
           raw: combined.slice(0, 800),
           exitCode: code ?? 1,
         });
@@ -397,6 +486,30 @@ async function runExec({
 }
 
 const READ_ONLY_MODES = new Set(['plan', 'ask']);
+
+// `--sandbox` takes exactly 'enabled' | 'disabled'. It normally arrives via
+// CURSOR_CLI_SANDBOX, where the natural spelling is a boolean — and the CLI
+// hard-rejects `--sandbox true`, so a plausible typo in an env var took the
+// provider down with an error from a process nobody was watching. `mode` is
+// already validated here for the same reason; this closes the other half.
+// Normalize the boolean spellings, pass the CLI's own literals through, and
+// reject anything else at the call site, where the message can name the fix.
+const SANDBOX_ALIASES = new Map([
+  [true, 'enabled'], ['true', 'enabled'], ['enabled', 'enabled'],
+  [false, 'disabled'], ['false', 'disabled'], ['disabled', 'disabled'],
+]);
+
+function normalizeSandbox(value) {
+  if (value == null || value === '') return null;
+  const resolved = SANDBOX_ALIASES.get(typeof value === 'string' ? value.trim().toLowerCase() : value);
+  if (!resolved) {
+    throw new Error(
+      `cursor_exec: unsupported sandbox '${value}' (expected 'enabled' or 'disabled'; `
+      + 'CURSOR_CLI_SANDBOX also accepts true/false)',
+    );
+  }
+  return resolved;
+}
 
 // Longest string carried out of a tool event. A write call's args hold the
 // entire new file body and a read result holds the entire file that was read;
@@ -482,4 +595,5 @@ export default {
   runExec: runExecResilient,
   runExecRaw: runExec,
   getDefaultTimeoutMs,
+  resetModelEntitlement,
 };
