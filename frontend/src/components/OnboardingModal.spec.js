@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ref } from 'vue';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { mount, flushPromises } from '@vue/test-utils';
+
+const MODAL_SOURCE = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'OnboardingModal.vue'),
+  'utf8',
+);
 import { createStore } from 'vuex';
 import OnboardingModal from './OnboardingModal.vue';
 
@@ -23,6 +32,41 @@ vi.mock('@/services/fileSystemService.js', () => ({
     })
   ),
   updateSettings: vi.fn(() => Promise.resolve({ success: true })),
+}));
+
+/**
+ * The harness scan is stubbed for this suite.
+ *
+ * It fires a `fetch` on mount, and several tests here queue a response with
+ * `mockResolvedValueOnce` BEFORE mounting — a queue that is consumed in call
+ * order, not by URL. Letting a real scan run would silently eat the response
+ * meant for the pseudonym check, and any future mount-time request would break
+ * these tests again for a reason unrelated to what they assert. Stubbing the
+ * composable is also the honest scope: this file tests the modal, and the
+ * scanner has its own spec.
+ *
+ * `harnessImportStub` is mutable so a test can say "there IS something to
+ * import" and check that the step appears.
+ */
+const harnessImportStub = {
+  detect: vi.fn(),
+  // A real ref: the step list is a computed that reads this, and a plain
+  // object would not re-evaluate it.
+  hasAnythingToImport: ref(false),
+  // Enough surface for HarnessImport to render if a test navigates onto it.
+  sources: ref([]),
+  totals: ref({ sources: 0, skillsSeen: 0, skillsImportable: 0, personas: 0, memories: 0 }),
+  offerable: ref([]),
+  selectedCount: ref(0),
+  running: ref(false),
+  result: ref(null),
+  error: ref(''),
+  toggle: vi.fn(),
+  isSelected: () => false,
+  run: vi.fn(),
+};
+vi.mock('@/composables/useHarnessImport.js', () => ({
+  useHarnessImport: () => harnessImportStub,
 }));
 
 // Mock fetch globally
@@ -97,6 +141,8 @@ describe('OnboardingModal', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    harnessImportStub.detect.mockClear();
+    harnessImportStub.hasAnythingToImport.value = false;
     global.fetch.mockReset();
     global.fetch.mockResolvedValue({
       ok: true,
@@ -232,6 +278,133 @@ describe('OnboardingModal', () => {
       wrapper = createWrapper();
       const dots = wrapper.findAll('.dot');
       expect(dots[0].classes()).toContain('active');
+    });
+  });
+
+  describe('steps are addressed by name, not by position', () => {
+    /**
+     * Steps used to be addressed by index: `currentStep === 4` gated the
+     * provider requirement and `=== 5` saved the workspace, while the number
+     * of steps already varied with the referral bonus. Inserting any
+     * conditional step above those two shifts them, and the symptom is not a
+     * crash — it is the provider gate guarding the wrong screen and the
+     * workspace silently never being saved.
+     *
+     * These pin the property that makes insertion safe, so the next person to
+     * add a step gets a failure here rather than a bug report about a setting
+     * that does not stick.
+     */
+    const idAt = (w, n) => {
+      w.vm.currentStep = n;
+      return w.vm.currentStepId;
+    };
+
+    it('derives the visible step id from the step list', async () => {
+      wrapper = createWrapper();
+      expect(wrapper.vm.steps).toEqual(['welcome', 'theme', 'profile', 'provider', 'workspace', 'ready']);
+      expect(idAt(wrapper, 1)).toBe('welcome');
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+    });
+
+    it('counts steps from the same list it renders from', async () => {
+      wrapper = createWrapper();
+      expect(wrapper.vm.totalSteps).toBe(wrapper.vm.steps.length);
+      expect(wrapper.vm.finalStep).toBe(wrapper.vm.steps.length);
+      expect(wrapper.vm.steps.at(-1)).toBe('ready');
+    });
+
+    it('shifts every later step when a conditional one appears', async () => {
+      // The referral step is the conditional step that already exists. If the
+      // gates were still index-based, this shift is what would break them.
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+      expect(wrapper.vm.steps).toContain('referral');
+      expect(idAt(wrapper, 6)).toBe('referral');
+      expect(idAt(wrapper, 7)).toBe('ready');
+      // ...and the two gated steps have NOT moved, because they sit above it.
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+    });
+
+    it('gates the provider requirement on the provider step by name', async () => {
+      wrapper = createWrapper({}, { connectedApps: [] });
+      await flushPromises();
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('provider') + 1;
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      // Blocked: still on the provider step with nothing connected.
+      expect(wrapper.vm.currentStepId).toBe('provider');
+    });
+
+    it('saves the workspace on the workspace step by name', async () => {
+      const { updateSettings } = await import('@/services/fileSystemService.js');
+      updateSettings.mockClear();
+
+      wrapper = createWrapper({}, { connectedApps: ['openai'] });
+      await flushPromises();
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('workspace') + 1;
+      wrapper.vm.workspaceRoot = '/somewhere/new';
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      await flushPromises();
+      expect(updateSettings).toHaveBeenCalledWith('/somewhere/new');
+    });
+
+    it('adds an import step only when there is something to import', async () => {
+      wrapper = createWrapper();
+      await flushPromises();
+      expect(wrapper.vm.steps).not.toContain('import');
+
+      harnessImportStub.hasAnythingToImport.value = true;
+      await wrapper.vm.$nextTick();
+      expect(wrapper.vm.steps).toContain('import');
+    });
+
+    it('keeps the gated steps in place when the import step appears', async () => {
+      // The exact shift the named-step refactor exists to survive: 'import'
+      // sits between 'workspace' and 'ready', so every later index moves.
+      harnessImportStub.hasAnythingToImport.value = true;
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+
+      expect(wrapper.vm.steps).toEqual(
+        ['welcome', 'theme', 'profile', 'provider', 'workspace', 'import', 'referral', 'ready'],
+      );
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+      expect(idAt(wrapper, 8)).toBe('ready');
+    });
+
+    it('starts the scan on mount', async () => {
+      wrapper = createWrapper();
+      expect(harnessImportStub.detect).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not WAIT for the scan before rendering', () => {
+      /**
+       * Asserted against the source, because a mounted test cannot see the
+       * difference: an awaited call and a fire-and-forget call are both "called
+       * once", and with a stub that resolves immediately the rendered output is
+       * identical either way. The cost of getting this wrong is only visible on
+       * a real disk — a filesystem scan in front of the welcome screen on every
+       * single launch.
+       */
+      const call = MODAL_SOURCE.match(/^\s*(await\s+)?harnessImport\.detect\(\);/m);
+      expect(call, 'harnessImport.detect() call not found in OnboardingModal.vue').not.toBeNull();
+      expect(call[1], 'detect() must not be awaited — it gates a step, not the render').toBeUndefined();
+    });
+
+    it('never renders two steps at once', async () => {
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+      for (let n = 1; n <= wrapper.vm.steps.length; n++) {
+        wrapper.vm.currentStep = n;
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findAll('.step-content > .step')).toHaveLength(1);
+      }
     });
   });
 

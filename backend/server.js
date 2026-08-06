@@ -72,6 +72,7 @@ import { sessionMiddleware } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 import { stashSteer, clearSteer } from './src/services/OrchestratorService.js';
 import SystemRoutes from './src/routes/SystemRoutes.js';
+import ImportRoutes from './src/routes/ImportRoutes.js';
 import PairingRoutes from './src/routes/PairingRoutes.js';
 import RemoteAccessConfig from './src/services/RemoteAccessConfig.js';
 import RestartManager from './src/services/RestartManager.js';
@@ -233,6 +234,7 @@ app.use('/api/contracts', ContractRoutes);
 app.use('/api/mutations', MutationHistoryRoutes);
 app.use('/api/evolution', EvolutionCoreRoutes);
 app.use('/api/system', SystemRoutes);
+app.use('/api/import', ImportRoutes);
 app.use('/api/pairing', PairingRoutes);
 
 // PRD-122: inherit pre-ledger history from agent_executions, once. Marker-
