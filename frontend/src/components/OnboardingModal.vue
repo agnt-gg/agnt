@@ -146,7 +146,23 @@
               </div>
             </div>
 
-            <!-- Step 6: Referral Bonus (conditional) -->
+            <!-- Import from other AI tools (conditional — only when there is
+                 something on this machine worth offering) -->
+            <div v-if="currentStepId === 'import'" class="step import-step">
+              <div class="icon-circle">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </div>
+              <h2>Bring Your Setup With You</h2>
+              <p class="subtitle">You've already built things in other AI tools.</p>
+
+              <HarnessImport :importer="harnessImport" />
+            </div>
+
+            <!-- Referral Bonus (conditional) -->
             <div v-if="currentStepId === 'referral'" class="step referral-step">
               <div class="celebration-icon">🎉</div>
               <h2>You've Earned a Bonus!</h2>
@@ -206,6 +222,8 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ProviderLanes from '@/components/ProviderLanes.vue';
+import HarnessImport from '@/components/HarnessImport.vue';
+import { useHarnessImport } from '@/composables/useHarnessImport.js';
 import { API_CONFIG } from '@/tt.config.js';
 import {
   PROVIDER_FETCH_ACTIONS,
@@ -219,6 +237,7 @@ export default {
   components: {
     SimpleModal,
     ProviderLanes,
+    HarnessImport,
   },
   props: {
     show: {
@@ -230,6 +249,11 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const modal = ref(null);
+
+    // Owned here rather than inside HarnessImport, because whether the import
+    // step EXISTS is this component's question and the answer lives in the
+    // composable. A child cannot decide whether it should be rendered.
+    const harnessImport = useHarnessImport();
 
     // Theme data
     const currentTheme = computed(() => store.getters['theme/currentTheme']);
@@ -313,6 +337,11 @@ export default {
      */
     const steps = computed(() => {
       const list = ['welcome', 'theme', 'profile', 'provider', 'workspace'];
+      // Only when there is something to offer. Having Claude Code installed
+      // with every skill already in AGNT is a common state with nothing to
+      // import, and a step that exists only to say so wastes the one first run
+      // this user gets.
+      if (harnessImport.hasAnythingToImport.value) list.push('import');
       if (hasReferralBonus.value) list.push('referral');
       list.push('ready');
       return list;
@@ -747,6 +776,13 @@ export default {
 
     // Fetch referrer info if has bonus
     onMounted(async () => {
+      // Deliberately NOT awaited. This looks at the disk for other AI tools and
+      // decides whether a whole step exists; awaiting it here would put a
+      // filesystem scan in front of the welcome screen. It resolves long
+      // before the user reaches the step it controls, and resolves to "nothing
+      // found" if it cannot answer.
+      harnessImport.detect();
+
       // Fetch providers if not already loaded
       if (allProviders.value.length === 0) {
         await store.dispatch('appAuth/fetchAllProviders');
@@ -827,6 +863,7 @@ export default {
       steps,
       totalSteps,
       finalStep,
+      harnessImport,
       userName,
       pseudonym,
       pseudonymStatus,
