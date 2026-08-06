@@ -112,24 +112,51 @@ describe('every screen that shows providers', () => {
 describe('the two AI setup grids specifically', () => {
   /**
    * These are the screens a user with no provider sees, and they are the two
-   * that drifted. Named explicitly because they are the load-bearing case:
-   * if either stops using the shared list, the ChatGPT tile goes missing or
-   * lands in the wrong group again, and nothing else would catch it.
+   * that drifted. Named explicitly because they are the load-bearing case: if
+   * either stops using the shared list, the ChatGPT tile goes missing or lands
+   * in the wrong group again, and nothing else would catch it.
+   *
+   * They used to be held to "call connectableAiProviders and providerLabel",
+   * which two separate copies can both satisfy while disagreeing about
+   * everything else — spacing, hover colour, which tiles are visible at all.
+   * They now RENDER THE SAME COMPONENT, so the rule is delegation: each screen
+   * must mount ProviderLanes and must not re-derive a provider list of its own.
+   * That cannot be satisfied by a copy, which is the point.
    */
+  const LANES = 'components/ProviderLanes.vue';
   const GRIDS = [
     'components/OnboardingModal.vue',
     'views/Terminal/CenterPanel/screens/Chat/components/ProviderSetup.vue',
   ];
 
-  it.each(GRIDS)('%s exists', (file) => {
+  it.each([LANES, ...GRIDS])('%s exists', (file) => {
     expect(fs.existsSync(path.join(SRC, file))).toBe(true);
   });
 
-  it.each(GRIDS)('%s builds its list with connectableAiProviders', (file) => {
-    expect(read(path.join(SRC, file))).toMatch(/connectableAiProviders\s*\(/);
+  it.each(GRIDS)('%s renders the shared ProviderLanes component', (file) => {
+    expect(read(path.join(SRC, file))).toMatch(/<ProviderLanes[\s/>]/);
   });
 
-  it.each(GRIDS)('%s renders tiles with providerLabel', (file) => {
-    expect(read(path.join(SRC, file))).toMatch(/providerLabel\(provider\)/);
+  it.each(GRIDS)('%s does not derive a provider list of its own', (file) => {
+    // Growing the copy back starts here: a local filter or lane split beside
+    // the component that already owns one.
+    const src = read(path.join(SRC, file));
+    expect(src).not.toMatch(/connectableAiProviders\s*\(/);
+    expect(src).not.toMatch(/providerLanes\s*\(/);
+  });
+
+  it('ProviderLanes builds its list with the shared helpers', () => {
+    const src = read(path.join(SRC, LANES));
+    expect(src).toMatch(/providerLanes\s*\(/);
+    expect(src).toMatch(/providerLabel/);
+  });
+
+  it('ProviderLanes is the only component that splits providers into lanes', () => {
+    // The lane split is the new shared answer, and so the new thing to copy.
+    // STORE is excluded because it DEFINES the function the rule is about.
+    const offenders = ALL_FILES.filter(
+      (f) => f !== STORE && f !== path.join(SRC, LANES) && /providerLanes\s*\(/.test(read(f)),
+    );
+    expect(offenders.map(rel), 'Render ProviderLanes instead.').toEqual([]);
   });
 });

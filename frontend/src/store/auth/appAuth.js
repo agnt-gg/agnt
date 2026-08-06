@@ -5,8 +5,20 @@ import providerAuthService from '@/services/providerAuthService.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 
-// CLI provider IDs that use local filesystem auth
-const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
+/**
+ * CLI provider IDs that use local filesystem auth.
+ *
+ * Exported so the connect UI can say "this session stays on your computer"
+ * only where that is actually true, rather than keeping a second opinion.
+ *
+ * DELIBERATELY NOT the same list as aiProvider's SUBSCRIPTION_PROVIDER_IDS.
+ * That one asks "who bills you"; this one asks "can I read the credential off
+ * this disk". Every entry here is also a subscription seat (pinned by
+ * providerLanes.spec.js), but `kimi-code` is a subscription seat with no local
+ * auth manager, so it belongs there and not here. Adding it would invent a
+ * status probe that the backend answers with `local: false`.
+ */
+export const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
 
 // Tell the local backend a provider changed so it can fan a Socket.IO
 // event out to every other connected client (other tabs / chat panels)
