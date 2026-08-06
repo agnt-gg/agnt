@@ -1,4 +1,5 @@
 import { createStore } from 'vuex';
+import { withUserScopedReset, RESET_MUTATION } from './_utils/userScopedReset.js';
 import chat from './features/chat';
 import chatUnified from './features/chatUnified';
 import pluginBuilder from './features/pluginBuilder';
@@ -37,6 +38,35 @@ import schedules from './features/schedules';
 import wallets from './features/wallets';
 import contracts from './features/contracts';
 import mutations from './features/mutations';
+
+/**
+ * Modules holding data that belongs to ONE signed-in user.
+ *
+ * This is the other half of `initializeStore` below: everything that action
+ * loads on behalf of a user has to be dropped when that user's session ends,
+ * or the next sign-in shows the previous account's data. Keeping the two lists
+ * adjacent is deliberate — they are two views of the same fact, and
+ * `sessionReset.spec.js` fails if one gains an entry the other lacks.
+ *
+ * Wrapping happens HERE rather than in each module file so a module cannot be
+ * listed as user-scoped without actually gaining the reset.
+ */
+const USER_SCOPED_MODULES = {
+  agents,
+  workflows,
+  tools,
+  groups,
+  contentOutputs,
+  userStats,
+  widgetLayout,
+  widgetDefinitions,
+  skills,
+  appAuth,
+};
+
+const resettableModules = Object.fromEntries(
+  Object.entries(USER_SCOPED_MODULES).map(([name, mod]) => [name, withUserScopedReset(mod)]),
+);
 
 const store = createStore({
   state: {
@@ -118,23 +148,47 @@ const store = createStore({
         console.error('Failed to initialize app data:', error);
       }
     },
+
+    /**
+     * Drop everything that belonged to the session that just ended.
+     *
+     * The mirror of initializeStore, and it used to not exist: logout cleared
+     * agents, workflows, tools and goals by hand and left the other eight
+     * stores populated — along with their `lastFetched` timestamps, so the
+     * NEXT user's fetch short-circuited and showed the previous account's data
+     * until the cache aged out.
+     *
+     * Ordering is load-bearing. Side effects that reference state must run
+     * BEFORE the state they reference is wiped:
+     *   - appAuth holds `pollingIntervalId`; blanking it without clearing the
+     *     interval leaks a poller that then 401s forever against a dead token.
+     *   - goals holds live subscription callbacks in a Map; CLEAR_GOALS
+     *     unsubscribes them, which a blind state reset cannot do.
+     */
+    async resetUserScopedData({ commit, dispatch }) {
+      await dispatch('appAuth/stopPolling');
+      commit('goals/CLEAR_GOALS');
+      for (const name of Object.keys(USER_SCOPED_MODULES)) {
+        commit(`${name}/${RESET_MUTATION}`);
+      }
+      console.log('[session] user-scoped stores reset');
+    },
   },
   modules: {
+    // User-scoped modules come from `resettableModules` so every one of them
+    // carries RESET_USER_SCOPED_STATE. Listing a raw module here instead would
+    // compile and then silently fail to clear on logout.
+    ...resettableModules,
     chat,
     chatUnified,
     pluginBuilder,
     canvas,
     theme,
-    appAuth,
     userAuth,
     player,
     aiProvider,
     executionHistory,
-    userStats,
     // missions,
-    agents,
-    tools,
-    workflows,
     marketplace,
     // market,
     // map,
@@ -146,11 +200,6 @@ const store = createStore({
     mcpServers,
     goals,
     goalTemplates,
-    contentOutputs,
-    groups,
-    widgetLayout,
-    widgetDefinitions,
-    skills,
     skillforge,
     experiments,
     insights,

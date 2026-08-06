@@ -1,6 +1,7 @@
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
+import { authSubject } from '../auth/licenseIdentity.js';
 
 // ─────────────────────────── PROVIDER REGISTRY ───────────────────────────
 // Single source of truth for all built-in provider metadata on the frontend.
@@ -1556,7 +1557,13 @@ export default {
         console.error('Error fetching custom providers:', error);
         return [];
       }
-    }, { staleAfter: TTL.aiProviderFetchCustomProviders }),
+    }, {
+      staleAfter: TTL.aiProviderFetchCustomProviders,
+      // Custom providers are rows in the signed-in user's database. Scoping the
+      // cache to the session means a sign-in as a different account cannot be
+      // answered from the previous account's list.
+      identity: (ctx) => authSubject(ctx.rootState?.userAuth?.token ?? null),
+    }),
 
     async createCustomProvider({ commit }, providerData) {
       try {
