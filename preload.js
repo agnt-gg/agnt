@@ -40,6 +40,11 @@ contextBridge.exposeInMainWorld('electron', {
     retry: () => ipcRenderer.invoke('connection:retry'),
     // Run a local backend for THIS SESSION ONLY, leaving connection.json alone.
     useLocalNow: () => ipcRenderer.invoke('connection:use-local-now'),
+    // Port already held by a healthy AGNT: share it rather than fork a second
+    // backend that cannot bind. Nothing is spawned, so nothing is killed on quit.
+    useExistingLocal: () => ipcRenderer.invoke('connection:use-existing-local'),
+    // ...or stop the one that is running and start a fresh backend here.
+    replaceLocal: () => ipcRenderer.invoke('connection:replace-local'),
     /**
      * Live connection phase. Used by electron/connection-error.html to show a
      * progressing "connecting" state instead of a blank window, and by Settings

@@ -49,6 +49,26 @@ function blockAfter(src, marker, opts = {}) {
     from = src.indexOf('=>', from);
     if (from === -1) return null;
   }
+  // Same trap, second flavour: `function f({ opts = 1 } = {})` has a
+  // destructured PARAMETER LIST that is itself a `{...}`, so a bare marker
+  // returns the parameters instead of the body. (It did — an assertion about
+  // reapBackend's SIGKILL escalation was measured against ' graceMs = 2500 '.)
+  // Skipping a balanced `(...)` first is exact, whatever the defaults say.
+  if (opts.afterParams) {
+    const openParen = src.indexOf('(', from);
+    if (openParen === -1) return null;
+    let depth = 0;
+    let i = openParen;
+    for (; i < src.length; i += 1) {
+      if (src[i] === '(') depth += 1;
+      else if (src[i] === ')') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    if (i >= src.length) return null;
+    from = i + 1;
+  }
   const open = src.indexOf('{', from);
   if (open === -1) return null;
   let depth = 0;
@@ -85,7 +105,12 @@ describe('main.js — the three guards', () => {
   });
 
   it('GUARD 2: only forks a local backend when one will be used', () => {
-    expect(code).toMatch(/if \(!isRemoteMode\(\)\) ensureLocalBackend\(\);/);
+    // The local boot path is startLocalBoot(): preflight -> fork -> poll ->
+    // window. It must stay gated on !isRemoteMode(), and it must be the ONLY
+    // thing the ready handler does for local mode — an inline poll alongside it
+    // is what used to attach the user to whatever was on the port.
+    expect(readyBody()).toMatch(/if \(!isRemoteMode\(\)\) \{[\s\S]{0,240}?startLocalBoot\(\);/);
+    expect(readyBody(), 'the ready handler polls directly again').not.toMatch(/pollBackendHealth\(\{/);
     // and never unconditionally
     expect(code).not.toMatch(/\n\s*startBackend\(\);\s*\n\s*\n\s*\/\/ Instead of a fixed delay/);
   });
@@ -94,17 +119,25 @@ describe('main.js — the three guards', () => {
     // Both the normal local boot and the per-session fallback need a local
     // backend, so startBackend() gained a second caller. Forking twice would
     // race two servers onto the same port.
-    const guard = blockAfter(code, 'function ensureLocalBackend');
+    const guard = blockAfter(code, 'async function ensureLocalBackend');
     expect(guard, 'ensureLocalBackend not found').not.toBeNull();
-    expect(guard).toMatch(/if \(localBackendSpawned\) return;/);
+    // `localBackendAttached` joined the guard when adopting an already-running
+    // backend became an option: nothing was spawned, but a fork would still be
+    // wrong — it could not bind, and the user already answered the question.
+    expect(guard).toMatch(/if \(localBackendSpawned \|\| localBackendAttached\) return 'already';/);
     expect(guard).toMatch(/localBackendSpawned = true;[\s\S]{0,80}?startBackend\(\);/);
 
-    // Exactly two call sites, and the second is the SANCTIONED RESPAWN, which
-    // must be able to spawn again after the backend exits with code 42 — it
-    // deliberately does not go through the once-per-launch guard.
+    // Three call sites, and every one of them is deliberate:
+    //   ensureLocalBackend   — the once-per-launch guarded path
+    //   handleBackendExit    — the SANCTIONED RESPAWN (exit 42), which must be
+    //                          able to spawn again and so bypasses the guard
+    //   replaceLocalBackend  — the user chose to replace an existing backend,
+    //                          after we confirmed the port was released
+    // Any fourth is a fork nobody reasoned about.
     const calls = code.match(/\bstartBackend\(\);/g) || [];
-    expect(calls.length, 'unexpected startBackend() call site').toBe(2);
+    expect(calls.length, 'unexpected startBackend() call site').toBe(3);
     expect(blockAfter(code, 'function handleBackendExit')).toMatch(/startBackend\(\);/);
+    expect(blockAfter(code, 'async function replaceLocalBackend')).toMatch(/startBackend\(\);/);
   });
 
   it('GUARD 3: the window URL is no longer hardcoded to localhost', () => {
@@ -149,12 +182,20 @@ describe('main.js — the app must never become a window-less process', () => {
     expect(blockAfter(code, "opts.initial === 'status'")).toMatch(/loadFile\(statusPagePath\(\)\)/);
   });
 
-  it('attaches window behaviour on BOTH boot paths', () => {
+  it('attaches window behaviour on EVERY path to a visible app', () => {
     // The F11/title/fullscreen handlers used to be inline in the local-only
-    // success callback; the remote path creates its window elsewhere and would
-    // otherwise silently lose all of them.
-    expect((code.match(/attachWindowBehaviour\(\);/g) || []).length).toBe(2);
+    // success callback; other paths create their window elsewhere and would
+    // otherwise silently lose all of them. There are now four such paths
+    // (local boot, remote connect, session fallback, adopting a running
+    // backend), so the count is no longer the invariant — IDEMPOTENCE is.
     expect(code).toMatch(/function attachWindowBehaviour\(\)/);
+    expect((code.match(/attachWindowBehaviour\(\);/g) || []).length).toBeGreaterThanOrEqual(2);
+    // Two of those paths can run in a single launch (remote fails -> use this
+    // computer -> port occupied -> adopt). Attaching twice makes F11 toggle
+    // fullscreen on and straight back off.
+    const attach = blockAfter(code, 'function attachWindowBehaviour');
+    expect(attach).toMatch(/if \(behaviourAttachedTo === mainWindow\) return;/);
+    expect(attach).toMatch(/behaviourAttachedTo = mainWindow;/);
   });
 
   it('recovers when a load fails after the health check passed', () => {
@@ -213,7 +254,12 @@ describe('main.js — failure behaviour', () => {
   });
 
   it('delegates health polling to the tested module instead of inlining it', () => {
-    expect(code).toMatch(/import \{ waitForBackend as pollBackendHealth \} from '\.\/electron\/backendHealth\.js'/);
+    expect(code).toMatch(
+      /import \{ waitForBackend as pollBackendHealth[^}]*\} from '\.\/electron\/backendHealth\.js'/
+    );
+    // The preflight probe comes from the same tested module, not a second
+    // hand-rolled request in main.js.
+    expect(code).toMatch(/import \{[^}]*probeBackendOnce[^}]*\} from '\.\/electron\/backendHealth\.js'/);
     expect(code, 'the inline poller is back').not.toMatch(/function waitForBackend\(/);
   });
 });
@@ -253,6 +299,8 @@ const IPC_CHANNELS = [
   'connection:relaunch',
   'connection:retry',
   'connection:use-local-now',
+  'connection:use-existing-local',
+  'connection:replace-local',
 ];
 
 describe('IPC surface', () => {
@@ -419,6 +467,212 @@ describe('connection status page', () => {
   it('distinguishes the session fallback from a permanent config change', () => {
     expect(script).toMatch(/useLocalNow/);
     expect(script).toMatch(/set\?\.\(\{ mode: 'local' \}\)/);
+  });
+
+  it('renders the occupied phase as a CHOICE, with both answers on screen', () => {
+    expect(html).toMatch(/id="useexisting"/);
+    expect(html).toMatch(/id="replace"/);
+    expect(script).toMatch(/phase === 'occupied'/);
+    expect(script).toMatch(/useExistingLocal/);
+    expect(script).toMatch(/replaceLocal/);
+  });
+
+  it('makes the non-destructive answer the primary one', () => {
+    // The occupant is usually the user's own backend — often an orphan holding
+    // their live data. Sharing it costs nothing; killing it can cost work.
+    const adopt = /<button class="([^"]*)" id="useexisting"/.exec(html);
+    expect(adopt, 'the adopt button is missing or not first').not.toBeNull();
+    expect(adopt[1]).toContain('primary');
+    expect(/<button class="[^"]*" id="replace"/.test(html), 'replace must not be styled primary').toBe(false);
+  });
+
+  it('hides the remote escape hatches when the problem is local', () => {
+    // "Use this computer" and "Always use this computer" answer a different
+    // question; on a local port collision they are noise at best.
+    const occupied = script.slice(script.indexOf("phase === 'occupied'"));
+    expect(occupied).toMatch(/linkRow\.hidden = true/);
+    expect(occupied).toMatch(/occupiedRow\.hidden = !isAgnt/);
+  });
+
+  it('tells the truth when the port holder is NOT AGNT', () => {
+    // Offering "use the running AGNT" for a stranger's process would be a lie,
+    // and "stop it and start fresh" would be dangerous.
+    const occupied = script.slice(script.indexOf("phase === 'occupied'"));
+    expect(occupied).toMatch(/is not AGNT/);
+    expect(occupied).toMatch(/lsof/); // an actionable next step, not just an apology
+  });
+
+  it('restores the remote copy when the phase moves off occupied', () => {
+    // The hint text is rewritten in place. Without a restore, one occupied
+    // render would leave local-port advice on screen for the rest of the session.
+    expect(script).toMatch(/const REMOTE_HINT = hint\.innerHTML;/);
+    expect(script).toMatch(/hint\.innerHTML = REMOTE_HINT;/);
+  });
+});
+
+describe('main.js — the port is asked about, not fought over', () => {
+  // THE BUG (Nathan's Mac, 2026-08-06). The app forked its backend blind, the
+  // child lost the bind to a backend that was ALREADY THERE, retried five
+  // times, exited nonzero, and the supervisor read that as a crash and quit the
+  // whole app — while a healthy AGNT answered on that port throughout.
+
+  const ensure = () => blockAfter(code, 'async function ensureLocalBackend');
+
+  it('probes the port BEFORE forking anything', () => {
+    const body = ensure();
+    expect(body, 'ensureLocalBackend not found').not.toBeNull();
+    const probeAt = body.indexOf('probeBackendOnce(');
+    const forkAt = body.indexOf('startBackend()');
+    expect(probeAt, 'the preflight probe is gone').toBeGreaterThan(-1);
+    expect(forkAt, 'nothing forks a backend any more').toBeGreaterThan(-1);
+    expect(probeAt, 'forking before asking is the entire bug').toBeLessThan(forkAt);
+  });
+
+  it('does not fork when the port is already served by AGNT', () => {
+    const body = ensure();
+    // The alive branch must RETURN before reaching the fork, not merely notice.
+    expect(body).toMatch(/if \(found\.alive\) \{[\s\S]*?return 'occupied';[\s\S]*?\}/);
+    const aliveBranch = blockAfter(body, 'if (found.alive)');
+    expect(aliveBranch, 'no alive branch').not.toBeNull();
+    expect(aliveBranch, 'the occupied path must not spawn a second backend').not.toMatch(/startBackend\(/);
+  });
+
+  it('asks the user through the status page instead of dying', () => {
+    expect(blockAfter(ensure(), 'if (found.alive)')).toMatch(/showStatusPage\(\{[\s\S]{0,200}?phase: 'occupied'/);
+  });
+
+  it('never polls its way into an occupied backend without consent', () => {
+    // A poll started next to the fork would succeed instantly against the
+    // occupant and load the app off it, answering the question silently.
+    for (const fn of ['async function startLocalBoot', 'async function startLocalSessionFallback']) {
+      const body = blockAfter(code, fn);
+      expect(body, `${fn} not found`).not.toBeNull();
+      const guardAt = body.indexOf("=== 'occupied'");
+      const pollAt = body.indexOf('pollBackendHealth(');
+      expect(guardAt, `${fn} does not check for an occupied port`).toBeGreaterThan(-1);
+      expect(guardAt, `${fn} polls before checking`).toBeLessThan(pollAt);
+      expect(body).toMatch(/=== 'occupied'\) return;/);
+    }
+  });
+
+  it('only offers to replace a backend it can actually signal', () => {
+    // No pid in /api/health (an older build) means no way to stop it. Offering
+    // a button that cannot work is worse than not offering it.
+    expect(ensure()).toMatch(/canReplace: Number\.isInteger\(found\.pid\)/);
+    const replace = blockAfter(code, 'async function replaceLocalBackend');
+    expect(replace).toMatch(/if \(!Number\.isInteger\(pid\)\) return \{ ok: false/);
+  });
+
+  it('verifies the port was released by PROBING, not by trusting the signal', () => {
+    // process.kill() reports nothing about whether the socket was freed, and a
+    // pid can exit while the listener lingers. Forking on faith re-creates the
+    // collision this whole path exists to resolve.
+    const replace = blockAfter(code, 'async function replaceLocalBackend');
+    expect(replace).toMatch(/probeBackendOnce\(/);
+    expect(replace).toMatch(/process\.kill\(pid, 'SIGTERM'\)/);
+    // The CALL, not the word. Comments are stripped before these assertions but
+    // string literals are not, so a bare /SIGKILL/ was satisfied by the
+    // console.warn that merely announces the escalation — a negative control
+    // that deleted the actual process.kill still passed.
+    expect(replace, 'no escalation: a wedged backend would never let go').toMatch(
+      /process\.kill\(pid, 'SIGKILL'\)/
+    );
+    const killAt = replace.indexOf("process.kill(pid, 'SIGKILL')");
+    const forkAt = replace.indexOf('startBackend()');
+    expect(killAt).toBeLessThan(forkAt);
+  });
+
+  it('adopts an existing backend WITHOUT recording it as one we spawned', () => {
+    // The distinction is what keeps quit safe: reapBackend must only ever
+    // signal a child we forked, never a backend belonging to another instance.
+    const adopt = blockAfter(code, 'function useExistingLocalBackend');
+    expect(adopt, 'useExistingLocalBackend not found').not.toBeNull();
+    expect(adopt).toMatch(/localBackendAttached = true/);
+    expect(adopt, 'adopting must not claim we spawned it').not.toMatch(/localBackendSpawned = true/);
+    expect(adopt).toMatch(/loadActiveTarget\(\)/);
+  });
+
+  it('treats "port taken" as a connection state, not a crash', () => {
+    const handler = blockAfter(code, 'function handleBackendExit');
+    const branch = blockAfter(handler, 'if (code === PORT_IN_USE_EXIT_CODE)');
+    expect(branch, 'exit code 43 is not handled').not.toBeNull();
+    expect(branch).toMatch(/showStatusPage\(\{[\s\S]{0,200}?phase: 'occupied'/);
+    expect(branch, 'quitting over a healthy machine is the original bug').not.toMatch(/app\.quit\(/);
+    // It must also stop the poll it started, or the app retries every 250ms
+    // for the rest of its life against a backend that will never arrive.
+    expect(branch).toMatch(/healthPoll\?\.cancel\(/);
+    // ...and it must sit BEFORE the generic nonzero-exit branch that quits.
+    expect(handler.indexOf('PORT_IN_USE_EXIT_CODE')).toBeLessThan(handler.indexOf('Backend process crashed!'));
+  });
+
+  it('agrees with the backend about what exit code 43 means', () => {
+    // Two files, one protocol. Drift here is silent: the backend would exit
+    // with a code the supervisor treats as a crash, and the app would quit.
+    const server = fs.readFileSync(path.join(ROOT, 'backend', 'server.js'), 'utf8');
+    const declared = /export const PORT_IN_USE_EXIT_CODE = (\d+);/.exec(server);
+    const supervised = /const PORT_IN_USE_EXIT_CODE = (\d+);/.exec(code);
+    expect(declared, 'backend does not declare PORT_IN_USE_EXIT_CODE').not.toBeNull();
+    expect(supervised, 'main.js does not declare PORT_IN_USE_EXIT_CODE').not.toBeNull();
+    expect(supervised[1]).toBe(declared[1]);
+    // And the backend must actually exit with it rather than the old 1.
+    expect(server).toMatch(/Failed to start server after[\s\S]{0,500}?process\.exit\(PORT_IN_USE_EXIT_CODE\)/);
+  });
+});
+
+describe('main.js — the backend must not outlive the app', () => {
+  // The orphan factory. `backendProcess.kill()` fired a SIGTERM and assumed
+  // the best; on macOS that reached a real handler that could hang forever, so
+  // Electron exited and left the backend holding port 3333 for the NEXT launch
+  // to trip over. On Windows the same call is TerminateProcess, so the bug was
+  // invisible there for the entire life of the code.
+
+  // afterParams: reapBackend's destructured `({ graceMs = 2500 } = {})` is a
+  // brace block of its own, and a bare marker returns THAT rather than the body.
+  const reap = () => blockAfter(code, 'function reapBackend', { afterParams: true });
+
+  it('escalates to SIGKILL instead of hoping', () => {
+    expect(reap(), 'reapBackend not found').not.toBeNull();
+    // The call, not the word — see the note in replaceLocalBackend's test.
+    expect(reap()).toMatch(/process\.kill\(pid, 'SIGKILL'\)/);
+    expect(reap(), 'the escalation needs a deadline to fire from').toMatch(/setTimeout\(/);
+  });
+
+  it('holds the quit open until the child is actually gone', () => {
+    const willQuit = blockAfter(code, "app.on('will-quit'", { afterArrow: true });
+    expect(willQuit, 'will-quit handler not found').not.toBeNull();
+    expect(willQuit, 'without preventDefault Electron exits before the reap runs').toMatch(
+      /event\.preventDefault\(\)/
+    );
+    expect(willQuit).toMatch(/reapBackend\(\)[\s\S]{0,60}?app\.quit\(\)/);
+    // Idempotence, or preventDefault would trap the app in an unquittable loop.
+    expect(willQuit).toMatch(/backendReaped/);
+    expect(code, 'the fire-and-forget kill is back').not.toMatch(/backendProcess\.kill\(\);/);
+  });
+
+  it('reaps before app.exit(), which does NOT fire will-quit', () => {
+    // The relaunch button's whole job is to fix the connection. Leaving an
+    // orphan behind means the fresh instance finds its own port taken.
+    const relaunch = blockAfter(code, "ipcMain.handle('connection:relaunch'", { afterArrow: true });
+    expect(relaunch, 'relaunch handler not found').not.toBeNull();
+    expect(relaunch).toMatch(/await reapBackend\(\)/);
+    expect(relaunch.indexOf('reapBackend')).toBeLessThan(relaunch.indexOf('app.exit('));
+  });
+
+  it('gives a respawned backend a fresh reaping budget', () => {
+    // A sanctioned restart (exit 42) after a reap would otherwise leave the new
+    // child permanently unkillable.
+    expect(blockAfter(code, 'function startBackend')).toMatch(/backendReaped = false;/);
+  });
+
+  it('delegates the backend-side guarantee to the tested module', () => {
+    const server = fs.readFileSync(path.join(ROOT, 'backend', 'server.js'), 'utf8');
+    expect(server).toMatch(/import \{ createGracefulShutdown \} from '\.\/src\/utils\/gracefulShutdown\.js'/);
+    expect(server).toMatch(/process\.on\('SIGTERM', \(\) => gracefulShutdown\('SIGTERM'\)\)/);
+    // Ctrl-C in a dev terminal produced exactly the same orphan.
+    expect(server).toMatch(/process\.on\('SIGINT', \(\) => gracefulShutdown\('SIGINT'\)\)/);
+    // THE ORIGINAL SHAPE: an async handler that awaited the workflow bridge
+    // before establishing any guarantee that the process would ever exit.
+    expect(server, 'the awaiting SIGTERM handler is back').not.toMatch(/process\.on\('SIGTERM', async/);
   });
 });
 

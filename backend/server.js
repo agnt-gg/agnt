@@ -75,6 +75,7 @@ import SystemRoutes from './src/routes/SystemRoutes.js';
 import PairingRoutes from './src/routes/PairingRoutes.js';
 import RemoteAccessConfig from './src/services/RemoteAccessConfig.js';
 import RestartManager from './src/services/RestartManager.js';
+import { createGracefulShutdown } from './src/utils/gracefulShutdown.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -265,8 +266,6 @@ dbReady.then(() => {
     console.error('[Scheduler] Failed to start:', err);
   });
 });
-app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
-
 // Version + update-check endpoints share a one-time cached package.json read
 // (PRD-084-R2 §0.5) — the app version cannot change without a restart, so
 // re-reading and re-parsing the file on every request was wasted I/O.
@@ -278,6 +277,33 @@ const getPackageJson = () => {
   }
   return cachedPackageJson;
 };
+
+/**
+ * Liveness, and — for callers on this machine only — identity.
+ *
+ * The desktop app asks this BEFORE forking a backend, so that "port 3333 is
+ * already taken" becomes a choice (attach to the running AGNT, or replace it)
+ * instead of a failed bind that reads as a crash. Making that choice requires
+ * knowing WHO is there, and replacing it requires a pid.
+ *
+ * The identity fields are loopback-only. An install that has opted into LAN
+ * access has no reason to publish its process id to the network, and a remote
+ * caller could not act on it anyway — process.kill only means something to a
+ * caller on the same machine.
+ */
+const LOOPBACK = /^(::1|::ffff:127\.\d+\.\d+\.\d+|127\.\d+\.\d+\.\d+)$/;
+app.get('/api/health', (req, res) => {
+  const body = { status: 'OK' };
+  if (LOOPBACK.test(req.socket?.remoteAddress || '')) {
+    body.pid = process.pid;
+    try {
+      body.version = getPackageJson().version;
+    } catch {
+      /* identity is a convenience; liveness is the contract */
+    }
+  }
+  res.status(200).json(body);
+});
 
 app.get('/api/version', (req, res) => {
   try {
@@ -499,6 +525,16 @@ async function deferredInit() {
   );
 }
 
+/**
+ * Exit-code protocol, second entry (see RESTART_EXIT_CODE = 42 in
+ * RestartManager.js): the backend exits with 43 to tell the Electron
+ * supervisor "the port is taken, I am otherwise fine" — a condition with a UI
+ * and a user choice, not a crash. main.js declares the same constant and
+ * electron/mainWiring.test.js pins the two together so they cannot drift.
+ * 43 collides with nothing Node emits naturally (1, 3-13, 128+signal).
+ */
+export const PORT_IN_USE_EXIT_CODE = 43;
+
 function startServer() {
   const maxRetries = 5;
   let retries = 0;
@@ -680,7 +716,12 @@ function startServer() {
           }, 5000); // Wait for 5 seconds before retrying
         } else {
           console.error(`Failed to start server after ${maxRetries} attempts. Exiting.`);
-          process.exit(1);
+          // A DISTINCT exit code, because this is not a crash. Exiting 1 made
+          // the supervisor treat "someone else owns the port" identically to
+          // "the backend blew up", so it logged a crash and quit the whole app
+          // — the one failure where the machine is provably fine and the user
+          // has a real choice to make. 43 routes it to the connection UI.
+          process.exit(PORT_IN_USE_EXIT_CODE);
         }
       } else {
         console.error('Server error:', error);
@@ -688,18 +729,18 @@ function startServer() {
       }
     });
 
-    // Graceful shutdown
-    process.on('SIGTERM', async () => {
-      console.log('SIGTERM signal received: closing HTTP server');
-
-      // Shutdown workflow process first
-      await WorkflowProcessBridge.shutdown();
-
-      server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-      });
+    // Shutdown that is guaranteed to terminate. The rationale, the measured
+    // failure and the tests all live in src/utils/gracefulShutdown.js — in
+    // short: server.close() waits forever on the Socket.IO and SSE streams
+    // AGNT holds open by design, so the old inline handler never reached
+    // process.exit and left an orphan holding this port.
+    const gracefulShutdown = createGracefulShutdown({
+      server,
+      drain: () => WorkflowProcessBridge.shutdown(),
     });
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    // SIGINT too: Ctrl-C in a dev terminal produced exactly the same orphan.
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
