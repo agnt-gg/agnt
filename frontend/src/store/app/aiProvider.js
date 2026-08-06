@@ -50,12 +50,14 @@ const MODEL_CACHE_VERSION_FALLBACK = 12;
   }
 })();
 
-// Display order is ENFORCED here, not by where entries are typed. The literal
-// below was hand-alphabetized, so every new provider silently landed wherever
+// Display order is ENFORCED below, not by where entries are typed. The literal
+// here was hand-alphabetized, so every new provider silently landed wherever
 // its author appended it (PR #50 put Cursor between Grok-Build and Groq — the
 // "Cursor is in the G's" bug). Sorting at the boundary makes insertion position
-// irrelevant. localeCompare ignores punctuation at the primary strength, so
-// Grok-Build/GrokAI order by their letters rather than by the hyphen.
+// irrelevant.
+//
+// The sort itself lives after PROVIDER_DISPLAY_NAMES, because it orders by the
+// LABEL a user reads rather than by `displayName` — see `byProviderLabel`.
 const BUILT_IN_PROVIDERS = [
   { key: 'anthropic', displayName: 'Anthropic' },
   { key: 'antigravity', displayName: 'Antigravity' },
@@ -78,7 +80,7 @@ const BUILT_IN_PROVIDERS = [
   { key: 'openrouter', displayName: 'OpenRouter' },
   { key: 'togetherai', displayName: 'TogetherAI' },
   { key: 'zai', displayName: 'Z.AI' },
-].sort((a, b) => a.displayName.localeCompare(b.displayName, 'en', { sensitivity: 'base' }));
+];
 
 // ─────────────────────────── DERIVED EXPORTS ───────────────────────────
 
@@ -116,6 +118,45 @@ for (const [key, label] of Object.entries(PROVIDER_LABEL_OVERRIDES)) {
   PROVIDER_DISPLAY_NAMES[key] = label;
   if (provider) PROVIDER_DISPLAY_NAMES[provider.displayName] = label;
 }
+
+/**
+ * The text a user actually reads for a provider.
+ *
+ * Accepts anything a call site happens to hold: a key ('openai-codex'), a
+ * display name ('OpenAI-Codex'), or a provider object from either shape —
+ * `{ key, displayName }` from this module, `{ id, name }` from the auth API.
+ * Every one of those resolves to the same label, which is the point: a provider
+ * must not be called two different things on two different screens.
+ */
+export function providerLabel(provider) {
+  if (!provider) return '';
+  if (typeof provider === 'string') return PROVIDER_DISPLAY_NAMES[provider] || provider;
+  const { id, key, name, displayName } = provider;
+  for (const identifier of [id, key, name, displayName]) {
+    if (identifier && PROVIDER_DISPLAY_NAMES[identifier]) return PROVIDER_DISPLAY_NAMES[identifier];
+  }
+  return name || displayName || id || key || '';
+}
+
+/**
+ * Sort providers the way the list is READ.
+ *
+ * Both provider lists used to sort by an identifier — this module by
+ * `displayName`, the onboarding page by the auth API's `name` — while both
+ * RENDERED a label. That worked only while the two strings happened to match.
+ * The moment `openai-codex` was labelled "ChatGPT" it broke, and the entry
+ * appeared under O, between the OpenAI providers, where nobody scanning for a
+ * C would find it. Alphabetical means alphabetical by what is on screen.
+ *
+ * `sensitivity: 'base'` ignores case and punctuation at the primary strength,
+ * so Grok-Build/GrokAI order by their letters rather than by the hyphen.
+ */
+export const byProviderLabel = (a, b) =>
+  providerLabel(a).localeCompare(providerLabel(b), 'en', { sensitivity: 'base' });
+
+// Ordered in place, so EVERY list derived below inherits it rather than each
+// deriving its own order.
+BUILT_IN_PROVIDERS.sort(byProviderLabel);
 
 // Resolve any provider identifier (display name, key, or mixed case) to its canonical key.
 // e.g. "Z.AI" → "zai", "Z-AI" → "zai", "GrokAI" → "grokai", "openai" → "openai"
