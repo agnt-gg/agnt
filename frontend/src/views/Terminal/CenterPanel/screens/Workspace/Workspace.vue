@@ -1260,7 +1260,11 @@ export default {
   background: rgba(var(--primary-rgb, 229, 61, 143), 0.08);
 }
 
-/* Popover: match terminal chrome (NOT --color-surface — that can be light). */
+/* Popover: fully opaque chrome. Under custom-bg, theme.js sets
+   --color-background to `transparent` so the wallpaper shows through panels
+   that opt into the rgba(--bg-opacity) treatment. This popover floats over
+   live widget content (Memory, chat, …), so var(--color-background) made
+   every label unreadable — same trap .ws-palette already documents. */
 .ws-ai-popover {
   position: fixed;
   z-index: 10050;
@@ -1269,7 +1273,7 @@ export default {
   box-sizing: border-box;
   padding: 12px;
   border-radius: 10px;
-  background: var(--color-background, #0e0e16);
+  background: rgb(var(--color-background-rgb, 16, 16, 31));
   border: 1px solid var(--terminal-border-color, rgba(255, 255, 255, 0.12));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   display: flex;

@@ -2045,6 +2045,18 @@ describe('chat parity + the right-panel inspector (source guards)', () => {
     expect(styles).toMatch(/body\.custom-bg \.ws-root\s*\{\s*background:\s*transparent;/);
   });
 
+  it('keeps the Workspace AI popover opaque under custom-bg', () => {
+    // theme.js sets --color-background: transparent when a wallpaper is on.
+    // Floating chrome that still uses that token becomes a see-through sheet
+    // over Memory/chat widgets — labels unreadable. Same invariant as .ws-palette.
+    const ws = read('Workspace.vue');
+    const styles = ws.slice(ws.indexOf('<style'));
+    const pop = styles.slice(styles.indexOf('.ws-ai-popover {'));
+    const body = pop.slice(0, pop.indexOf('}'));
+    expect(body).toMatch(/background:\s*rgb\(\s*var\(--color-background-rgb/);
+    expect(body).not.toMatch(/background:\s*var\(--color-background\b/);
+  });
+
   it('window-nav chevrons share WidgetFrame’s control metrics', () => {
     // These sit in WidgetFrame's own header. Drifting from .wf-ctrl button's
     // padding/size makes them a second, tighter control cluster in the same
