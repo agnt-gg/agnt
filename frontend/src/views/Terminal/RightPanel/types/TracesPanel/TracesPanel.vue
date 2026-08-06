@@ -120,13 +120,17 @@
             >
               <div class="tree-node-main">
                 <span class="tree-name">{{ node.agentName || 'Run' }}</span>
-                <span class="tree-origin">{{ node.origin }}</span>
+                <span class="tree-origin">{{ originLabel(node.origin) }}</span>
               </div>
               <span class="tree-cost">{{ node.ledger ? formatUsd(nodeCost(node.ledger)) : '—' }}</span>
             </div>
             <div v-for="(u, i) in runTree.unattached" :key="'u' + i" class="tree-node child">
               <div class="tree-node-main">
-                <span class="tree-name">{{ u.origin === 'goal_task' ? 'Goal tasks' : 'Goal evaluation' }}</span>
+                <!-- Named through the shared map: this list is "ledger rows with no
+                     execution of their own", which is goal work today but is not
+                     defined as goal work, so a two-way ternary would mislabel any
+                     future member of it. -->
+                <span class="tree-name">{{ originLabel(u.origin) }}</span>
                 <span class="tree-origin">{{ u.calls }} call(s)</span>
               </div>
               <span class="tree-cost">{{ formatUsd(nodeCost(u)) }}</span>
@@ -610,6 +614,7 @@ import DOMPurify from 'dompurify';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BoundedJson from '@/components/common/BoundedJson.vue';
+import { originLabel } from '@/utils/originLabels';
 
 const mdConverter = new showdown.Converter({
   tables: true,
@@ -1415,6 +1420,7 @@ ${execution.log}
       runTree,
       nodeCost,
       formatUsd,
+      originLabel,
       showCopiedMessage,
       toggleNodeSection,
       isNodeSectionExpanded,
