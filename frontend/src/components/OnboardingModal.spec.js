@@ -146,53 +146,63 @@ describe('OnboardingModal', () => {
     });
   };
 
-  describe('provider grid ordering', () => {
+  describe('provider step delegates to ProviderLanes', () => {
     /**
-     * The grid must be alphabetical BY WHAT IT RENDERS. It used to sort by the
-     * auth API's `name`, so `openai-codex` — labelled "ChatGPT" — sorted as
-     * "OpenAI Codex" and appeared under O between the OpenAI providers, where
-     * nobody scanning for a C would find it.
+     * The filter, sort, lane split and labelling moved into ProviderLanes.vue,
+     * shared with the chat's setup card — those two screens each holding their
+     * own copy is what let them disagree about the same list. Ordering and
+     * lane membership are covered where they now live: ProviderLanes.spec.js
+     * and store/app/providerLanes.spec.js.
      *
-     * Asserted on the computed rather than the DOM so it holds regardless of
-     * which onboarding step happens to be showing.
+     * What is still this component's job, and asserted here: handing the
+     * shared component the raw store state, unfiltered, and wiring the two
+     * flows it owns back up.
      */
     const PROVIDERS = [
       { id: 'openai', name: 'OpenAI', icon: 'openai', categories: ['AI'], connectionType: 'apikey' },
       { id: 'openai-codex', name: 'OpenAI Codex', icon: 'openai', categories: ['AI'], connectionType: 'oauth' },
-      { id: 'openrouter', name: 'OpenRouter', icon: 'openrouter', categories: ['AI'], connectionType: 'apikey' },
       { id: 'cerebras', name: 'Cerebras', icon: 'cerebras', categories: ['AI'], connectionType: 'apikey' },
-      { id: 'chutes', name: 'Chutes', icon: 'chutes', categories: ['AI'], connectionType: 'apikey' },
-      { id: 'anthropic', name: 'Anthropic', icon: 'anthropic', categories: ['AI'], connectionType: 'apikey' },
+      { id: 'notes', name: 'Notes', icon: 'notes', categories: ['Productivity'] },
     ];
 
-    const renderedOrder = () => {
-      wrapper = createWrapper({}, { allProviders: PROVIDERS });
-      return wrapper.vm.aiProviders.map((p) => wrapper.vm.providerLabel(p));
+    // Step 4 is the provider step — see the flow comment below.
+    const lanes = async () => {
+      wrapper = createWrapper({}, { allProviders: PROVIDERS, connectedApps: ['openai'] });
+      wrapper.vm.currentStep = 4;
+      await wrapper.vm.$nextTick();
+      return wrapper.findComponent({ name: 'ProviderLanes' });
     };
 
-    it('lists providers alphabetically by their rendered label', () => {
-      expect(renderedOrder()).toEqual([
-        'Anthropic',
-        'Cerebras',
-        'ChatGPT',
-        'Chutes',
-        'OpenAI',
-        'OpenRouter',
-      ]);
+    it('renders no provider tile outside the shared component', async () => {
+      const component = await lanes();
+      expect(component.exists()).toBe(true);
+      // A tile in the modal but not in the child would be the private copy
+      // growing back. `.provider-grid` itself is legitimately present — it
+      // belongs to the child — so counting ownership is the honest check.
+      expect(wrapper.findAll('.provider-tile')).toHaveLength(
+        component.findAll('.provider-tile').length,
+      );
+      expect(component.findAll('.provider-tile').length).toBeGreaterThan(0);
     });
 
-    it('puts ChatGPT in the C group, not down among the OpenAIs', () => {
-      const order = renderedOrder();
-      expect(order.indexOf('ChatGPT')).toBeLessThan(order.indexOf('OpenAI'));
-      expect(order.indexOf('ChatGPT')).toBeGreaterThan(order.indexOf('Cerebras'));
+    it('passes store state through untouched, filtering nothing itself', async () => {
+      // A second filter here is exactly the drift the shared component ends.
+      const component = await lanes();
+      expect(component.props('providers')).toEqual(PROVIDERS);
+      expect(component.props('connectedIds')).toEqual(['openai']);
     });
 
-    it('renders the tile text from the same function it sorts by', () => {
-      // The sort key and the visible text drifting apart is the whole bug; if
-      // the template ever re-derives its own label this fails.
-      wrapper = createWrapper({}, { allProviders: PROVIDERS });
-      const codex = wrapper.vm.aiProviders.find((p) => p.id === 'openai-codex');
-      expect(wrapper.vm.providerLabel(codex)).toBe('ChatGPT');
+    it('passes codex status through, so the tile can be hidden when unusable', async () => {
+      expect((await lanes()).props('codexStatus')).toBeDefined();
+    });
+
+    it('handles connect and credential submission from the shared component', async () => {
+      const component = await lanes();
+      expect(component.vm.$options.emits).toContain('connect');
+      expect(component.vm.$options.emits).toContain('submit-credential');
+      // Both handlers must exist on this parent, or the events land nowhere.
+      expect(typeof wrapper.vm.handleProviderClick).toBe('function');
+      expect(typeof wrapper.vm.saveApiKey).toBe('function');
     });
   });
 

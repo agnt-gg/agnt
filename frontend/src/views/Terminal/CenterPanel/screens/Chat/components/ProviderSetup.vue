@@ -1,20 +1,12 @@
 <template>
   <div class="provider-setup">
-    <div class="provider-grid">
-      <Tooltip v-for="provider in aiProviders" :key="provider.id" :text="providerLabel(provider)">
-        <button
-          type="button"
-          class="provider-tile"
-          :aria-label="`Connect to ${providerLabel(provider)}`"
-          @click="handleProviderClick(provider)"
-        >
-          <div class="provider-icon">
-            <SvgIcon :name="provider.icon" />
-          </div>
-          <span class="provider-name">{{ providerLabel(provider) }}</span>
-        </button>
-      </Tooltip>
-    </div>
+    <ProviderLanes
+      :providers="allProviders"
+      :connected-ids="connectedApps"
+      :codex-status="codexStatus"
+      @connect="handleProviderClick"
+      @submit-credential="saveApiKey"
+    />
     <SimpleModal ref="modal" />
   </div>
 </template>
@@ -22,25 +14,21 @@
 <script>
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ProviderLanes from '@/components/ProviderLanes.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import {
   PROVIDER_FETCH_ACTIONS,
   resolveProviderKey,
-  providerLabel,
-  connectableAiProviders,
 } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
 
 export default {
   name: 'ProviderSetup',
   components: {
-    SvgIcon,
     SimpleModal,
-    Tooltip,
+    ProviderLanes,
   },
   emits: ['provider-connected'],
   setup(props, { emit }) {
@@ -53,14 +41,12 @@ export default {
     const claudeCodeStatus = computed(() => store.state.appAuth.claudeCodeStatus || {});
 
     /**
-     * Shared with the onboarding modal, deliberately. This was a private copy
-     * of the same filter and sort, and it fell behind: the modal learned to
-     * order and label by what it renders, this card kept sorting by the auth
-     * API's `name`, so ChatGPT sat under O here and under C there.
+     * The filter, sort and lane split live in ProviderLanes.vue, shared with
+     * the onboarding modal. This card held a private copy that fell behind:
+     * the modal learned to order and label by what it renders, this one kept
+     * sorting by the auth API's `name`, so ChatGPT sat under O here and under
+     * C there. Rendering the same component is what makes that unrepeatable.
      */
-    const aiProviders = computed(() =>
-      connectableAiProviders(allProviders.value, { codexStatus: codexStatus.value })
-    );
 
     const showAlert = async (title, message) => {
       await modal.value.showModal({
@@ -494,9 +480,11 @@ export default {
     });
 
     return {
-      aiProviders,
-      providerLabel,
+      allProviders,
+      connectedApps,
+      codexStatus,
       handleProviderClick,
+      saveApiKey,
       modal,
     };
   },
@@ -504,63 +492,18 @@ export default {
 </script>
 
 <style scoped>
+/* The grid, tiles and lane copy live in ProviderLanes.vue, shared with the
+   onboarding modal. This card kept its own near-copy — a different gap, no
+   transition, a different hover colour — which is how the two screens came to
+   disagree about the same list. */
 .provider-setup {
   width: 100%;
 }
 
-.provider-grid {
-  display: flex;
-  gap: 6.4px;
-  flex-wrap: wrap;
-  flex-direction: row;
-  align-content: flex-start;
-  justify-content: flex-start;
-  align-items: flex-start;
-}
-
-.provider-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border: 3px solid var(--color-text-muted);
-  border-radius: 8px;
-  /* transition: all 0.3s ease; */
-  min-width: 80px;
-  min-height: 80px;
-  justify-content: center;
-  cursor: pointer;
-  background: transparent;
-  padding: 8px;
-  font-family: inherit;
-}
-
-.provider-tile:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.provider-tile:active {
-  transform: translateY(0);
-}
-
-.provider-tile:hover {
-  background: rgba(127, 129, 147, 0.1);
-  transform: translateY(-2px);
-  border-color: rgba(var(--green-rgb), 0.3);
-}
-
-.provider-icon :deep(svg) {
-  width: 32px;
-  height: 32px;
-  margin-bottom: 3px;
-}
-
-.provider-name {
-  margin-top: 4px;
-  font-weight: 500;
-  text-align: center;
-  font-size: 0.9em;
-  color: var(--color-text);
+/* The shared component centres itself inside the 700px onboarding modal. A
+   sidebar-width chat panel wants neither the cap nor the top margin. */
+.provider-setup :deep(.provider-lanes) {
+  margin-top: 0;
+  max-width: none;
 }
 </style>

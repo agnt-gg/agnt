@@ -105,13 +105,25 @@ for (const p of BUILT_IN_PROVIDERS) {
  * model fetching for the provider it renamed. So the label changes here, where
  * the only consumers are `label:` / `placeholder:` / rendered text.
  *
- * Why this one: `openai-codex` is the ChatGPT subscription — the same OAuth
- * sign-in that powers Codex, voice, and chat. Users came here with a ChatGPT
- * account and looked for the word ChatGPT; "OpenAI-Codex" next to "OpenAI" read
- * as a second API product they had not bought.
+ * Why `openai-codex`: it is the ChatGPT subscription — the same OAuth sign-in
+ * that powers Codex, voice, and chat. Users came here with a ChatGPT account
+ * and looked for the word ChatGPT; "OpenAI-Codex" next to "OpenAI" read as a
+ * second API product they had not bought.
+ *
+ * Why the rest: `displayName` is an identifier, so it is hyphenated the way a
+ * key is, and the connect screen was rendering that hyphen at the user. Nobody
+ * subscribes to "Claude-Code" or "Gemini-CLI" — they subscribe to Claude Code
+ * and Gemini CLI. These are the SAME product, spelled the way its vendor spells
+ * it, and each stays distinct from the metered sibling beside it (Claude Code
+ * vs Anthropic, Gemini CLI vs Gemini), which is the distinction the two lanes
+ * exist to draw.
  */
 const PROVIDER_LABEL_OVERRIDES = {
   'openai-codex': 'ChatGPT',
+  'claude-code': 'Claude Code',
+  'gemini-cli': 'Gemini CLI',
+  'grok-build': 'Grok Build',
+  'kimi-code': 'Kimi Code',
 };
 for (const [key, label] of Object.entries(PROVIDER_LABEL_OVERRIDES)) {
   const provider = BUILT_IN_PROVIDERS.find((p) => p.key === key);
@@ -211,6 +223,122 @@ export function connectableAiProviders(providers, { codexStatus } = {}) {
     // By the LABEL, which is what these grids render. Sorting by the auth API's
     // `name` put ChatGPT under O, between the OpenAI providers.
     .sort(byProviderLabel);
+}
+
+/**
+ * Providers billed by a flat subscription rather than per token.
+ *
+ * MIRROR OF backend/src/services/ai/providerConfigs.js SUBSCRIPTION_PROVIDERS.
+ * The backend is the source of truth (it holds the per-entry evidence: auth
+ * scheme, pricing, which CLI writes the session). The frontend cannot import
+ * across the build boundary, so this copy is PINNED BY A CONTRACT TEST —
+ * providerLanes.spec.js reads the backend file and fails if the two sets
+ * diverge. Add a provider there and the frontend suite tells you to add it
+ * here; there is no way to end up with two quietly different answers.
+ *
+ * NOT the same question as appAuth's CLI_PROVIDER_IDS, which asks "can I probe
+ * this provider's credentials on the local filesystem?". Every locally-probed
+ * provider is a subscription seat, but not every subscription seat is locally
+ * probed — `kimi-code` is billed by seat and has no local auth manager. Merging
+ * the two lists would either invent a probe that 404s or drop kimi-code into
+ * the metered lane, and both were tried before this comment existed.
+ */
+export const SUBSCRIPTION_PROVIDER_IDS = new Set([
+  'claude-code',
+  'openai-codex',
+  'gemini-cli',
+  'antigravity',
+  'kimi-code',
+  'grok-build',
+  'cursor-cli',
+]);
+
+/** Accepts an id string or any provider record shape. */
+export function isSubscriptionProvider(provider) {
+  const id = typeof provider === 'string' ? provider : provider?.id;
+  return SUBSCRIPTION_PROVIDER_IDS.has(String(id || '').toLowerCase());
+}
+
+/**
+ * The same vendor's OTHER product, across the billing divide.
+ *
+ * "OpenAI" (metered developer API) and "ChatGPT" (the subscription) are two
+ * products with two balances, and a user who has one and picks the other hits a
+ * dead end — the panel for the wrong one is where they find out. This map is
+ * what lets each panel offer the other in one click, in both directions.
+ */
+export const PROVIDER_LANE_SIBLING = {
+  'openai-codex': 'openai',
+  openai: 'openai-codex',
+  'claude-code': 'anthropic',
+  anthropic: 'claude-code',
+  'gemini-cli': 'gemini',
+  gemini: 'gemini-cli',
+};
+
+/** Tiles shown per lane before the "+N more" expander. */
+export const LANE_PREVIEW_COUNT = 4;
+
+/**
+ * The connectable AI providers, split by WHAT THEY COST rather than by how they
+ * authenticate.
+ *
+ * "OAuth vs API key" is our vocabulary. "Already paid for vs charges me per
+ * token" is the user's, and it is the only distinction that changes what they
+ * should click. A flat alphabetical wall put OpenAI and ChatGPT side by side
+ * with nothing saying one bills per token and the other does not.
+ *
+ * ORDER WITHIN A LANE, in three stable passes over the label order:
+ *   1. connected first — a connection must never hide behind "+N more"
+ *   2. then the vendors that sell BOTH a plan and a metered API
+ *   3. then everything else, alphabetically
+ *
+ * Rule 2 exists because a purely alphabetical preview showed Anthropic,
+ * Cerebras, Chutes and DeepSeek while burying OpenAI and Google — the two keys
+ * most people arrive holding — behind the expander. Rather than invent a
+ * popularity list to maintain, it reuses PROVIDER_LANE_SIBLING: a vendor that
+ * sells on both sides of the billing divide is by definition one a user might
+ * arrive with either way, and those are the household names. It also keeps a
+ * pair's two halves visible together, so the cross-sell link points at a tile
+ * the user can see.
+ *
+ * Array#sort is stable, so label order survives within each group.
+ *
+ * @param {Array<object>} providers  raw provider records from the auth API
+ * @param {object} [opts]
+ * @param {object} [opts.codexStatus]  store.state.appAuth.codexStatus
+ * @param {Array<string>} [opts.connectedIds]  store.state.appAuth.connectedApps
+ * @returns {{subscription: object[], api: object[], local: object[]}}
+ */
+export function providerLanes(providers, { codexStatus, connectedIds } = {}) {
+  const connected = new Set(
+    (Array.isArray(connectedIds) ? connectedIds : []).map((id) => String(id).toLowerCase()),
+  );
+  const lanes = { subscription: [], api: [], local: [] };
+
+  for (const provider of connectableAiProviders(providers, { codexStatus })) {
+    const id = String(provider?.id || '').toLowerCase();
+    // `local` is a runtime on this machine, not an account — it belongs to
+    // neither billing lane and is offered as a footnote instead.
+    if (id === 'local') lanes.local.push(provider);
+    else if (SUBSCRIPTION_PROVIDER_IDS.has(id)) lanes.subscription.push(provider);
+    else lanes.api.push(provider);
+  }
+
+  const rank = (provider) => {
+    const id = String(provider?.id || '').toLowerCase();
+    if (connected.has(id)) return 0;
+    if (PROVIDER_LANE_SIBLING[id]) return 1;
+    return 2;
+  };
+  const byRank = (a, b) => rank(a) - rank(b);
+
+  // Safe to sort in place: connectableAiProviders returns a fresh array, so
+  // this never reorders the Vuex state the caller passed in.
+  lanes.subscription.sort(byRank);
+  lanes.api.sort(byRank);
+
+  return lanes;
 }
 
 // Ordered in place, so EVERY list derived below inherits it rather than each

@@ -96,34 +96,16 @@
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                 </svg>
               </div>
-              <h2>Connect an AI Provider</h2>
-              <p class="subtitle">Choose an AI provider to power your agents</p>
-              <p class="description" style="margin-bottom: 24px">
-                Select a provider below to get started. You can add more providers later in Settings.
-              </p>
+              <h2>Connect an AI</h2>
+              <p class="subtitle">Pick whichever you already have.</p>
 
-              <div class="provider-grid">
-                <Tooltip
-                  v-for="provider in aiProviders"
-                  :key="provider.id"
-                  :text="providerLabel(provider)"
-                  width="auto"
-                >
-                  <button
-                    type="button"
-                    class="provider-tile"
-                    :class="{ connected: isProviderConnected(provider.id) }"
-                    :aria-label="`Connect to ${providerLabel(provider)}`"
-                    @click="handleProviderClick(provider)"
-                  >
-                    <span v-if="isProviderConnected(provider.id)" class="provider-status-dot"></span>
-                    <div class="provider-icon">
-                      <SvgIcon :name="provider.icon" />
-                    </div>
-                    <span class="provider-name">{{ providerLabel(provider) }}</span>
-                  </button>
-                </Tooltip>
-              </div>
+              <ProviderLanes
+                :providers="allProviders"
+                :connected-ids="connectedApps"
+                :codex-status="codexStatus"
+                @connect="handleProviderClick"
+                @submit-credential="saveApiKey"
+              />
 
               <p v-if="hasAnyProviderConnected" class="hint success" style="margin-top: 16px; text-align: center">
                 Provider connected! You can add more providers later in Settings.
@@ -222,15 +204,12 @@
 <script>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
-import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ProviderLanes from '@/components/ProviderLanes.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import {
   PROVIDER_FETCH_ACTIONS,
   resolveProviderKey,
-  providerLabel,
-  connectableAiProviders,
 } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
@@ -238,9 +217,8 @@ import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceS
 export default {
   name: 'OnboardingModal',
   components: {
-    SvgIcon,
     SimpleModal,
-    Tooltip,
+    ProviderLanes,
   },
   props: {
     show: {
@@ -307,11 +285,9 @@ export default {
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
-    // Shared with the chat's provider setup card. These were two copies of the
-    // same filter and sort, and they drifted — see connectableAiProviders.
-    const aiProviders = computed(() =>
-      connectableAiProviders(allProviders.value, { codexStatus: codexStatus.value })
-    );
+    // The filter, sort and lane split now live in ProviderLanes.vue, which the
+    // chat's setup card renders too. This screen supplies the raw store state
+    // and nothing else — the copy that used to live here is what drifted.
 
     // Check if a provider is connected
     const isProviderConnected = (providerId) => {
@@ -842,7 +818,9 @@ export default {
       referralBalance,
       referrerName,
       transitionName,
-      aiProviders,
+      allProviders,
+      connectedApps,
+      codexStatus,
       currentTheme,
       availableThemes,
       workspaceRoot,
@@ -854,10 +832,10 @@ export default {
       complete,
       handleSkip,
       handleProviderClick,
+      saveApiKey,
       isProviderConnected,
       hasAnyProviderConnected,
       checkPseudonymAvailability,
-      providerLabel,
     };
   },
 };
@@ -1182,87 +1160,10 @@ export default {
   color: var(--color-text);
 }
 
-/* Provider Step */
-.provider-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  flex-direction: row;
-  align-content: flex-start;
-  justify-content: center;
-  align-items: flex-start;
-  margin-top: 24px;
-  max-width: 500px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.provider-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border: 3px solid var(--color-text-muted);
-  border-radius: 8px;
-  min-width: 80px;
-  min-height: 80px;
-  justify-content: center;
-  cursor: pointer;
-  background: transparent;
-  padding: 8px;
-  font-family: inherit;
-  transition: all 0.3s ease;
-}
-
-.provider-tile:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.provider-tile:active {
-  transform: translateY(0);
-}
-
-.provider-tile:hover {
-  background: var(--color-darker-1);
-  transform: translateY(-2px);
-  border-color: rgba(var(--primary-rgb), 0.3);
-}
-
-.provider-icon :deep(svg) {
-  width: 32px;
-  height: 32px;
-  margin-bottom: 3px;
-}
-
-.provider-tile.connected {
-  background: rgba(var(--green-rgb), 0.05);
-  border-color: var(--color-green);
-}
-
-.provider-tile.connected:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: var(--color-green);
-}
-
-.provider-status-dot {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-green);
-  box-shadow: var(--glow-success);
-}
-
-.provider-name {
-  margin-top: 4px;
-  font-weight: 500;
-  text-align: center;
-  font-size: 0.9em;
-  color: var(--color-text);
-}
+/* Provider Step — the grid, tiles and lane copy live in ProviderLanes.vue,
+   which the chat's setup card renders too. Both screens kept their own near
+   copy of this block, with different gaps and hover colours, which is how they
+   came to disagree about the same list. */
 
 /* Referral Step */
 .celebration-icon {
