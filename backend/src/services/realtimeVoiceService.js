@@ -277,7 +277,41 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
   return {
     type: 'realtime',
     model: REALTIME_MODEL,
-    output_modalities: ['audio'],
+    /**
+     * TEXT, NOT AUDIO — AND THIS IS THE WHOLE POINT.
+     *
+     * This is the default for responses the SERVER creates on its own, which
+     * is precisely one thing: the response it opens when the user stops
+     * talking, the one that calls run_agnt. We never create that response, so
+     * we cannot configure it directly — but it inherits this.
+     *
+     * WHAT WENT WRONG. Realtime models narrate their tool calls. Ours would
+     * say a line of its own — "let me look into that" — in the same response
+     * as the call, out loud, in a voice the user reasonably believes is
+     * Annie's. The client then DROPPED that text on purpose (see
+     * useRealtimeVoice, TURN_COMPLETE / hadToolCall: whatever is said
+     * alongside the call is filler). Heard, never written down. The user
+     * caught it before any log did, because there was no log.
+     *
+     * Two ways to fix that, and only one of them is true afterwards:
+     * record what it says, or make it unable to say anything. Recording
+     * legitimises a second voice in the conversation. So: the auto-created
+     * response may WRITE (which we keep, so an off-script turn still leaves a
+     * trace) and may CALL (which is its job), and it cannot SPEAK.
+     *
+     * Every response the client creates overrides this with
+     * `output_modalities: ['audio']`, and those carry only Annie's words —
+     * already on screen, verbatim, before they are spoken. So "nothing is
+     * heard that is not also written" stops being a rule the model is asked to
+     * follow and becomes a property of the session it cannot violate.
+     *
+     * Verified against the live API: a text-only session with audio input,
+     * semantic VAD, an audio output voice and a declared tool is accepted
+     * (201). `output_modalities` is genuinely validated — an invalid value is
+     * rejected with "Supported values are: 'text' and 'audio'" — so this is
+     * not being silently ignored.
+     */
+    output_modalities: ['text'],
     audio: {
       input: {
         format: { type: 'audio/pcm', rate: 24000 },
@@ -285,6 +319,10 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
         // from what they said, not from how long they have been quiet.
         turn_detection: { type: 'semantic_vad' },
       },
+      // Still configured even though the session default is text: the voice
+      // applies to the responses the CLIENT creates, which are the ones that
+      // speak. Dropping it here would leave Annie's narration on the API's
+      // default voice.
       output: {
         format: { type: 'audio/pcm' },
         voice: chosen,

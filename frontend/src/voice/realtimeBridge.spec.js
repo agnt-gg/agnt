@@ -294,7 +294,40 @@ describe('client event builders', () => {
     // session's tools by default, and a model instructed to send everything
     // to run_agnt will occasionally re-call it from the response meant to
     // read the answer aloud — re-posting the user's words as a new turn.
-    expect(buildResponseCreate()).toEqual({ type: 'response.create', response: { tools: [] } });
+    expect(buildResponseCreate()).toEqual({
+      type: 'response.create',
+      response: { tools: [], output_modalities: ['audio'] },
+    });
+  });
+
+  it('asks for audio EXPLICITLY, because the session default is text', () => {
+    // The session is text-only so the response the SERVER creates — the one
+    // that calls run_agnt — cannot speak a line that never reaches the screen.
+    // This response is the opposite case and must override, or the entire
+    // feature goes silent while every test about its content still passes.
+    expect(buildResponseCreate().response.output_modalities).toEqual(['audio']);
+    expect(buildSpokenAside('x').response.output_modalities).toEqual(['audio']);
+  });
+
+  it('a written off-script turn is still recorded, even though it is silent', () => {
+    // With a text-only session default, anything the model produces on its own
+    // initiative arrives written rather than spoken. It must still reach the
+    // runtime: a wrong turn that is merely silent is fine, a wrong turn that
+    // is invisible is the bug that started all of this.
+    expect(interpretEvent({ type: 'response.output_text.done', text: '  I think so.  ' })).toEqual([
+      { type: BridgeAction.ASSISTANT_SAID, text: 'I think so.' },
+    ]);
+  });
+
+  it('ignores empty written output rather than recording a blank turn', () => {
+    expect(interpretEvent({ type: 'response.output_text.done', text: '   ' })).toEqual([]);
+    expect(interpretEvent({ type: 'response.output_text.done' })).toEqual([]);
+  });
+
+  it('does NOT treat written deltas as speech', () => {
+    // ASSISTANT_PARTIAL drives the SPEAKING state and the live caption. Text
+    // that cannot be heard must not make the orb claim she is talking.
+    expect(interpretEvent({ type: 'response.output_text.delta', delta: 'hm' })).toEqual([]);
   });
 
   it('an aside stays out of session history so it cannot confuse later turns', () => {

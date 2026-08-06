@@ -95,6 +95,26 @@ export function interpretEvent(event) {
       return text ? [{ type: BridgeAction.ASSISTANT_SAID, text }] : [];
     }
 
+    /**
+     * The same thing, written instead of spoken.
+     *
+     * The session default is text, so anything the model produces on its own
+     * initiative — the line it used to say alongside a run_agnt call, or a
+     * whole answer if it goes off-script and refuses to delegate — now arrives
+     * here rather than as audio. The runtime applies the same rule to it: a
+     * turn that delegated is written by the orchestrator and this text is
+     * discarded; a turn that did not is recorded, so a wrong turn stays
+     * visible even though it is now silent.
+     *
+     * Only `.done` is mapped, never the deltas. ASSISTANT_PARTIAL drives the
+     * SPEAKING state and the live caption, and text that cannot be heard must
+     * not make the orb claim she is talking.
+     */
+    case 'response.output_text.done': {
+      const text = (event.text || '').trim();
+      return text ? [{ type: BridgeAction.ASSISTANT_SAID, text }] : [];
+    }
+
     case 'response.done': {
       const actions = [];
       const response = event.response || {};
@@ -230,7 +250,23 @@ export function buildFunctionOutput(callId, result) {
  * session tools and are the one legitimate path to run_agnt.
  */
 export function buildResponseCreate() {
-  return { type: 'response.create', response: { tools: [] } };
+  return {
+    type: 'response.create',
+    response: {
+      tools: [],
+      /**
+       * EXPLICIT, because the session default is now `['text']`.
+       *
+       * The session is text-only so that the response the SERVER creates — the
+       * one that calls run_agnt — is incapable of speaking a line of its own
+       * that never reaches the screen. This response is the opposite case: it
+       * exists solely to read Annie's words, which are already in the chat
+       * verbatim. Inheriting the session default would leave the whole feature
+       * silent, so the ask is stated here rather than assumed.
+       */
+      output_modalities: ['audio'],
+    },
+  };
 }
 
 /**

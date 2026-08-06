@@ -434,9 +434,17 @@ export function useRealtimeVoice(options = {}) {
           responseActive = false;
 
           if (action.hadToolCall) {
-            // The run_agnt path writes this turn, and whatever the model said
-            // alongside the call is filler. Drop both; what follows is
-            // narration of the orchestrator's answer.
+            // The run_agnt path writes this turn, and whatever the model
+            // produced alongside the call is filler. Drop both; what follows
+            // is narration of the orchestrator's answer.
+            //
+            // That filler used to be SPOKEN, and dropping it here is what made
+            // it unrecorded: heard by the user, written nowhere. The session is
+            // now text-only by default (realtimeVoiceService.buildSessionConfig),
+            // so the model cannot voice it — it arrives as
+            // `response.output_text.done` and is discarded silently. Dropping
+            // something never heard costs nothing; dropping something heard was
+            // the bug.
             narrating = true;
           } else if (narrating) {
             // A narration chunk. Her full answer is already in the chat
