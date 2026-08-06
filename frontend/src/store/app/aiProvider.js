@@ -154,6 +154,65 @@ export function providerLabel(provider) {
 export const byProviderLabel = (a, b) =>
   providerLabel(a).localeCompare(providerLabel(b), 'en', { sensitivity: 'base' });
 
+/**
+ * The AI providers to offer a user who has not connected one yet, in the order
+ * they should be read.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A COMPUTED IN EACH COMPONENT
+ * ----------------------------------------------------------
+ * Two screens ask this question — the onboarding modal and the setup card in an
+ * empty chat — and they used to answer it with two copies of the same twelve
+ * lines. Copies drift, and these did: the ChatGPT ordering and labelling fix
+ * landed on the modal and the chat card kept sorting by the auth API's `name`
+ * and rendering it raw, so the same provider was called "OpenAI Codex" and
+ * filed under O on one screen and "ChatGPT" under C on the other. Same defect,
+ * same session, one surface behind — which is the signature of duplicated logic
+ * rather than of a missed edit.
+ *
+ * @param {Array<object>} providers  raw provider records from the auth API
+ * @param {object} [opts]
+ * @param {object} [opts.codexStatus]  store.state.appAuth.codexStatus
+ * @returns {Array<object>} the same records, filtered and ordered
+ */
+export function connectableAiProviders(providers, { codexStatus } = {}) {
+  if (!Array.isArray(providers)) return [];
+
+  return providers
+    .filter((p) => {
+      /**
+       * The ChatGPT provider is hidden only when its own service says it is
+       * unusable — not when it is merely unconnected, which is the state every
+       * provider on this screen is in.
+       *
+       * `available === true` is required: before the status has loaded it is
+       * undefined, and treating that as "unusable" would hide the tile for the
+       * first moments of every session.
+       */
+      if (
+        p.id === 'openai-codex'
+        && codexStatus?.available === true
+        && codexStatus?.apiUsable !== true
+      ) {
+        return false;
+      }
+
+      // `categories` arrives as an array or as a JSON string, depending on
+      // which endpoint served it.
+      let categories = p.categories;
+      if (!Array.isArray(categories)) {
+        try {
+          categories = categories ? JSON.parse(categories) : [];
+        } catch {
+          categories = [];
+        }
+      }
+      return categories.some((c) => String(c).toLowerCase() === 'ai');
+    })
+    // By the LABEL, which is what these grids render. Sorting by the auth API's
+    // `name` put ChatGPT under O, between the OpenAI providers.
+    .sort(byProviderLabel);
+}
+
 // Ordered in place, so EVERY list derived below inherits it rather than each
 // deriving its own order.
 BUILT_IN_PROVIDERS.sort(byProviderLabel);

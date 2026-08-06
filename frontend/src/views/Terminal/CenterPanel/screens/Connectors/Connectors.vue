@@ -152,7 +152,7 @@
                       <div class="oauth-app-icon">
                         <SvgIcon :name="provider.icon" />
                       </div>
-                      <span class="oauth-app-name">{{ provider.name }}</span>
+                      <span class="oauth-app-name">{{ providerLabel(provider) }}</span>
                       <span
                         class="connection-status"
                         :class="{
@@ -194,7 +194,7 @@
                     <span v-if="provider.connected" class="health-dot" :class="provider.healthStatus || 'unknown'"></span>
                   </div>
                   <div class="list-item-content" @click="handleOAuthAppClick(provider)">
-                    <div class="list-item-name">{{ provider.name }}</div>
+                    <div class="list-item-name">{{ providerLabel(provider) }}</div>
                     <div class="list-item-categories">
                       <span v-for="cat in provider.categories" :key="cat" class="category-tag">{{ cat }}</span>
                     </div>
@@ -839,6 +839,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
 import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
 import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import ProviderSelector from '../Settings/components/ProviderSelector/ProviderSelector.vue';
@@ -1134,14 +1135,19 @@ export default {
       if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase();
         filtered = filtered.filter((p) => {
-          const nameMatch = p.name && p.name.toLowerCase().includes(q);
+          // Matched against the LABEL as well as the raw name: a user who types
+          // "chatgpt" is searching for the word on the tile, and matching only
+          // `name` would tell them the provider they can see does not exist.
+          const label = providerLabel(p);
+          const nameMatch = (p.name && p.name.toLowerCase().includes(q)) || label.toLowerCase().includes(q);
           const categoryMatch = Array.isArray(p.categories) && p.categories.some((cat) => cat.toLowerCase().includes(q));
           return nameMatch || categoryMatch;
         });
       }
 
-      // Always sort A-Z by name
-      return filtered.slice().sort((a, b) => a.name.localeCompare(b.name));
+      // A-Z by the LABEL, which is what the row renders. Sorting by the auth
+      // API's `name` filed ChatGPT under O, next to the OpenAI providers.
+      return filtered.slice().sort(byProviderLabel);
     });
 
     // Paginated providers for performance
@@ -2432,6 +2438,7 @@ export default {
       emit,
       selectedSecret,
       oauthProviders,
+      providerLabel,
       oauthSearch,
       connectOAuthApp,
       disconnectApp,

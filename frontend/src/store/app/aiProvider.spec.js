@@ -23,6 +23,7 @@ import aiProviderStore, {
   PROVIDER_DISPLAY_NAMES,
   providerLabel,
   byProviderLabel,
+  connectableAiProviders,
 } from './aiProvider.js';
 
 /** What state.providers holds: the identifiers. */
@@ -147,6 +148,107 @@ describe('byProviderLabel', () => {
 
   it('does not throw on an unknown provider', () => {
     expect(() => ['zzz-unknown', 'openai'].sort(byProviderLabel)).not.toThrow();
+  });
+});
+
+describe('connectableAiProviders — one list for every setup grid', () => {
+  /**
+   * The onboarding modal and the chat's provider setup card both ask "which AI
+   * providers do we offer, in what order?" and used to answer it with two
+   * copies of the same twelve lines. They drifted: the ChatGPT ordering and
+   * labelling fix landed on the modal, and the chat card kept sorting by the
+   * auth API's `name` and rendering it raw — so the same provider was
+   * "OpenAI Codex" filed under O on one screen and "ChatGPT" under C on the
+   * other. These pin the shared answer.
+   */
+  const AI = (id, name, extra = {}) => ({ id, name, categories: ['AI'], ...extra });
+
+  it('orders by the LABEL, so ChatGPT lands in the C group', () => {
+    const list = connectableAiProviders([
+      AI('openai', 'OpenAI'),
+      AI('cerebras', 'Cerebras'),
+      AI('openai-codex', 'OpenAI Codex'),
+      AI('chutes', 'Chutes'),
+      AI('anthropic', 'Anthropic'),
+    ]);
+    expect(list.map(providerLabel)).toEqual([
+      'Anthropic',
+      'Cerebras',
+      'ChatGPT',
+      'Chutes',
+      'OpenAI',
+    ]);
+  });
+
+  it('keeps only AI-category providers', () => {
+    const list = connectableAiProviders([
+      AI('openai', 'OpenAI'),
+      { id: 'slack', name: 'Slack', categories: ['Communication'] },
+      { id: 'stripe', name: 'Stripe', categories: [] },
+    ]);
+    expect(list.map((p) => p.id)).toEqual(['openai']);
+  });
+
+  it('accepts categories as a JSON string, which is how the API sends them', () => {
+    const list = connectableAiProviders([{ id: 'openai', name: 'OpenAI', categories: '["AI"]' }]);
+    expect(list).toHaveLength(1);
+  });
+
+  it('matches the category case-insensitively', () => {
+    expect(connectableAiProviders([{ id: 'x', name: 'X', categories: ['ai'] }])).toHaveLength(1);
+    expect(connectableAiProviders([{ id: 'y', name: 'Y', categories: ['Ai'] }])).toHaveLength(1);
+  });
+
+  it('survives malformed categories instead of taking out the whole grid', () => {
+    // One bad record used to throw from JSON.parse inside the filter, which
+    // renders an empty setup screen and leaves the user with no way in.
+    const list = connectableAiProviders([
+      { id: 'broken', name: 'Broken', categories: '{not json' },
+      AI('openai', 'OpenAI'),
+    ]);
+    expect(list.map((p) => p.id)).toEqual(['openai']);
+  });
+
+  describe('the ChatGPT tile is hidden only when its own service says so', () => {
+    const providers = [AI('openai-codex', 'OpenAI Codex'), AI('openai', 'OpenAI')];
+    const ids = (codexStatus) => connectableAiProviders(providers, { codexStatus }).map((p) => p.id);
+
+    it('shows it when the Codex service is usable', () => {
+      expect(ids({ available: true, apiUsable: true })).toContain('openai-codex');
+    });
+
+    it('hides it when connected but genuinely unusable', () => {
+      expect(ids({ available: true, apiUsable: false })).not.toContain('openai-codex');
+    });
+
+    it('shows it when NOT connected — which is every provider on this screen', () => {
+      // The whole point of the setup grid is offering providers the user has
+      // not connected. Hiding this one for being unconnected would make it
+      // impossible to ever connect.
+      expect(ids({ available: false })).toContain('openai-codex');
+    });
+
+    it('shows it before the status has loaded', () => {
+      // `available` is undefined on first paint. Treating that as unusable
+      // would blink the tile out of existence at the start of every session.
+      expect(ids(undefined)).toContain('openai-codex');
+      expect(ids({})).toContain('openai-codex');
+    });
+  });
+
+  it('returns an empty list for junk input rather than throwing', () => {
+    // This feeds a v-for. A throw here blanks the only screen that can fix it.
+    for (const junk of [null, undefined, 'nope', 42, {}]) {
+      expect(connectableAiProviders(junk)).toEqual([]);
+    }
+  });
+
+  it('does not mutate the caller\'s array', () => {
+    // It is called from a computed over Vuex state; sorting in place would
+    // reorder the store and re-trigger the computed.
+    const input = [AI('openai', 'OpenAI'), AI('anthropic', 'Anthropic')];
+    connectableAiProviders(input);
+    expect(input.map((p) => p.id)).toEqual(['openai', 'anthropic']);
   });
 });
 
