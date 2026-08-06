@@ -14,7 +14,7 @@
         <Transition :name="transitionName" mode="out-in">
           <div :key="currentStep" class="step-content">
             <!-- Step 1: Welcome -->
-            <div v-if="currentStep === 1" class="step welcome-step">
+            <div v-if="currentStepId === 'welcome'" class="step welcome-step">
               <img src="/images/agnt-logo.png" alt="AGNT Logo" class="logo-large" />
               <h1>Welcome to <span style="color: var(--color-primary)">AGNT</span>, {{ userName }}!</h1>
               <p class="subtitle">Your AI-powered automation workspace is ready to go.</p>
@@ -22,7 +22,7 @@
             </div>
 
             <!-- Step 2: Theme Selection -->
-            <div v-if="currentStep === 2" class="step theme-step">
+            <div v-if="currentStepId === 'theme'" class="step theme-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="5"></circle>
@@ -54,7 +54,7 @@
             </div>
 
             <!-- Step 3: Profile Setup -->
-            <div v-if="currentStep === 3" class="step profile-step">
+            <div v-if="currentStepId === 'profile'" class="step profile-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -90,7 +90,7 @@
             </div>
 
             <!-- Step 4: AI Provider Setup -->
-            <div v-if="currentStep === 4" class="step provider-step">
+            <div v-if="currentStepId === 'provider'" class="step provider-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
@@ -116,7 +116,7 @@
             </div>
 
             <!-- Step 5: Workspace Folder -->
-            <div v-if="currentStep === 5" class="step workspace-step">
+            <div v-if="currentStepId === 'workspace'" class="step workspace-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -147,7 +147,7 @@
             </div>
 
             <!-- Step 6: Referral Bonus (conditional) -->
-            <div v-if="currentStep === 6 && hasReferralBonus" class="step referral-step">
+            <div v-if="currentStepId === 'referral'" class="step referral-step">
               <div class="celebration-icon">🎉</div>
               <h2>You've Earned a Bonus!</h2>
               <div class="bonus-display">
@@ -161,7 +161,7 @@
             </div>
 
             <!-- Final Step: Ready to Go -->
-            <div v-if="currentStep === finalStep" class="step ready-step">
+            <div v-if="currentStepId === 'ready'" class="step ready-step">
               <div class="success-icon">
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="var(--color-primary)" stroke-width="2" />
@@ -300,14 +300,28 @@ export default {
       return (connectedApps.value || []).length > 0;
     });
 
-    // Computed
-    const totalSteps = computed(() => {
-      // Base steps: Welcome, Theme, Profile, Provider, Workspace, Ready
-      let steps = 6;
-      if (hasReferralBonus.value) steps++; // Add referral bonus step
-      return steps;
+    /**
+     * The steps this run of onboarding will show, in order.
+     *
+     * NAMED, NOT NUMBERED. Steps used to be addressed by index — `currentStep
+     * === 4` gated the provider requirement and `=== 5` saved the workspace —
+     * while the number of steps already varied with the referral bonus. Any
+     * new conditional step inserted above those two silently shifts them, and
+     * the symptom is not a crash: it is the provider gate quietly guarding the
+     * wrong screen and the workspace never being saved. Deriving ids from this
+     * one list makes position irrelevant.
+     */
+    const steps = computed(() => {
+      const list = ['welcome', 'theme', 'profile', 'provider', 'workspace'];
+      if (hasReferralBonus.value) list.push('referral');
+      list.push('ready');
+      return list;
     });
+
+    const totalSteps = computed(() => steps.value.length);
     const finalStep = computed(() => totalSteps.value);
+    /** The id of the step on screen. `currentStep` stays 1-based for the dots. */
+    const currentStepId = computed(() => steps.value[currentStep.value - 1] || 'welcome');
     const referrerName = ref(null);
 
     // Persists the workspace root if the user changed it. Returns true on
@@ -332,13 +346,13 @@ export default {
     // Methods
     const nextStep = async () => {
       // On provider step, require at least one connected provider
-      if (currentStep.value === 4 && !hasAnyProviderConnected.value) {
+      if (currentStepId.value === 'provider' && !hasAnyProviderConnected.value) {
         await showAlert('Provider Required', 'Please connect at least one AI provider to continue. AGNT needs an AI provider to power chat, agents, and workflows.');
         return;
       }
       // On workspace step, persist any changes before moving on so the user
       // sees the same root in the file tree once onboarding finishes.
-      if (currentStep.value === 5) {
+      if (currentStepId.value === 'workspace') {
         const ok = await saveWorkspaceIfChanged();
         if (!ok) return;
       }
@@ -809,6 +823,8 @@ export default {
     return {
       modal,
       currentStep,
+      currentStepId,
+      steps,
       totalSteps,
       finalStep,
       userName,

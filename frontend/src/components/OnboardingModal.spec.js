@@ -235,6 +235,89 @@ describe('OnboardingModal', () => {
     });
   });
 
+  describe('steps are addressed by name, not by position', () => {
+    /**
+     * Steps used to be addressed by index: `currentStep === 4` gated the
+     * provider requirement and `=== 5` saved the workspace, while the number
+     * of steps already varied with the referral bonus. Inserting any
+     * conditional step above those two shifts them, and the symptom is not a
+     * crash — it is the provider gate guarding the wrong screen and the
+     * workspace silently never being saved.
+     *
+     * These pin the property that makes insertion safe, so the next person to
+     * add a step gets a failure here rather than a bug report about a setting
+     * that does not stick.
+     */
+    const idAt = (w, n) => {
+      w.vm.currentStep = n;
+      return w.vm.currentStepId;
+    };
+
+    it('derives the visible step id from the step list', async () => {
+      wrapper = createWrapper();
+      expect(wrapper.vm.steps).toEqual(['welcome', 'theme', 'profile', 'provider', 'workspace', 'ready']);
+      expect(idAt(wrapper, 1)).toBe('welcome');
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+    });
+
+    it('counts steps from the same list it renders from', async () => {
+      wrapper = createWrapper();
+      expect(wrapper.vm.totalSteps).toBe(wrapper.vm.steps.length);
+      expect(wrapper.vm.finalStep).toBe(wrapper.vm.steps.length);
+      expect(wrapper.vm.steps.at(-1)).toBe('ready');
+    });
+
+    it('shifts every later step when a conditional one appears', async () => {
+      // The referral step is the conditional step that already exists. If the
+      // gates were still index-based, this shift is what would break them.
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+      expect(wrapper.vm.steps).toContain('referral');
+      expect(idAt(wrapper, 6)).toBe('referral');
+      expect(idAt(wrapper, 7)).toBe('ready');
+      // ...and the two gated steps have NOT moved, because they sit above it.
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+    });
+
+    it('gates the provider requirement on the provider step by name', async () => {
+      wrapper = createWrapper({}, { connectedApps: [] });
+      await flushPromises();
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('provider') + 1;
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      // Blocked: still on the provider step with nothing connected.
+      expect(wrapper.vm.currentStepId).toBe('provider');
+    });
+
+    it('saves the workspace on the workspace step by name', async () => {
+      const { updateSettings } = await import('@/services/fileSystemService.js');
+      updateSettings.mockClear();
+
+      wrapper = createWrapper({}, { connectedApps: ['openai'] });
+      await flushPromises();
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('workspace') + 1;
+      wrapper.vm.workspaceRoot = '/somewhere/new';
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      await flushPromises();
+      expect(updateSettings).toHaveBeenCalledWith('/somewhere/new');
+    });
+
+    it('never renders two steps at once', async () => {
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+      for (let n = 1; n <= wrapper.vm.steps.length; n++) {
+        wrapper.vm.currentStep = n;
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findAll('.step-content > .step')).toHaveLength(1);
+      }
+    });
+  });
+
   describe('Step Navigation', () => {
     it('advances to next step when Continue is clicked', async () => {
       wrapper = createWrapper();
