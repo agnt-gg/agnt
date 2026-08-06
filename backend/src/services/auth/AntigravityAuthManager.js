@@ -6,6 +6,7 @@ import url from 'url';
 import crypto from 'crypto';
 import axios from 'axios';
 import { OAuth2Client } from 'google-auth-library';
+import { ANTIGRAVITY_OAUTH } from '../../config/oauthClients.js';
 import { getClientVersion } from '../ai/clientVersions.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
@@ -44,8 +45,18 @@ const ANTIGRAVITY_CALLBACK_PORT = 51121;
 const ANTIGRAVITY_CALLBACK_PATH = '/oauth-callback';
 
 const OAUTH_CONFIG = {
-  CLIENT_ID: process.env.ANTIGRAVITY_CLIENT_ID || '',
-  CLIENT_SECRET: process.env.ANTIGRAVITY_CLIENT_SECRET || '',
+  // Was process.env.*, supplied by a committed backend/.env that also carried
+  // three real secrets into a public repo. These are Google's own PUBLIC
+  // installed-app client identifiers, not AGNT secrets, so they belong in
+  // source as constants. See config/oauthClients.js.
+  //
+  // CRITICAL: this is NOT only used for fresh sign-in. _doRefresh() falls back
+  // to these when the credentials file has no client_id of its own, and
+  // AGNT-written ~/.antigravity/oauth_creds.json files do NOT carry one. So an
+  // empty client here breaks ALREADY SIGNED-IN users at their next hourly
+  // token refresh, not just new ones.
+  CLIENT_ID: ANTIGRAVITY_OAUTH.CLIENT_ID,
+  CLIENT_SECRET: ANTIGRAVITY_OAUTH.CLIENT_SECRET,
   AUTHORIZE_URL: 'https://accounts.google.com/o/oauth2/v2/auth',
   TOKEN_URL: 'https://oauth2.googleapis.com/token',
   REDIRECT_URI: ANTIGRAVITY_REDIRECT_URI,

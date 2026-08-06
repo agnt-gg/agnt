@@ -111,6 +111,29 @@ describe('guard 3 — no secret literal in source', () => {
 
   const isCredentialName = (name) => SECRETISH.test(name) && !NOT_SECRETISH.test(name);
 
+  /**
+   * The one exemption, deliberately narrow.
+   *
+   * config/oauthClients.js holds four PUBLIC installed-app OAuth client
+   * identifiers that Google publishes in their own open-source CLIs. They are
+   * not AGNT secrets and cannot be treated as such: an installed application
+   * cannot keep a secret (RFC 8252 §8.5), and AGNT cannot sign in to Gemini CLI
+   * or Antigravity without using Google's exact client.
+   *
+   * Scoped to FILE **and** NAME rather than blanket-skipping the file, so a
+   * genuine secret added to it later is still caught. An anti-vacuity test
+   * below asserts the exemption stays this narrow.
+   */
+  const ALLOWED = [
+    ['config/oauthClients.js', 'GEMINI_CLI_CLIENT_ID'],
+    ['config/oauthClients.js', 'GEMINI_CLI_CLIENT_SECRET'],
+    ['config/oauthClients.js', 'ANTIGRAVITY_CLIENT_ID'],
+    ['config/oauthClients.js', 'ANTIGRAVITY_CLIENT_SECRET'],
+  ];
+
+  const isAllowed = (relPath, name) =>
+    ALLOWED.some(([file, allowedName]) => relPath.replace(/\\/g, '/').endsWith(file) && name === allowedName);
+
   /** `NAME = '…'` or `NAME: '…'`, capturing the identifier and the literal. */
   const ASSIGNMENT = /([A-Za-z_$][\w$]*)\s*[:=]\s*['"`]([^'"`\n]{24,})['"`]/g;
 
@@ -164,6 +187,7 @@ describe('guard 3 — no secret literal in source', () => {
             const [, name, value] = match;
             if (!isCredentialName(name)) continue;
             if (!looksHighEntropy(value)) continue;
+            if (isAllowed(path.relative(REPO_ROOT, file), name)) continue;
             hits.push(`${path.relative(REPO_ROOT, file)}:${index + 1} ${name}`);
           }
         });
@@ -213,5 +237,21 @@ describe('guard 3 — no secret literal in source', () => {
   it('scans a non-empty set of files (anti-vacuity)', () => {
     const scanned = SCAN_ROOTS.flatMap((root) => walk(root));
     expect(scanned.length).toBeGreaterThan(100);
+  });
+
+  it('the exemption stays narrow (anti-vacuity)', () => {
+    // An allowlist that grows quietly is how a guard stops guarding. Pin both
+    // its size and its shape: one file, four named public OAuth constants.
+    expect(ALLOWED).toHaveLength(4);
+    for (const [file, name] of ALLOWED) {
+      expect(file).toBe('config/oauthClients.js');
+      expect(name).toMatch(/^(GEMINI_CLI|ANTIGRAVITY)_CLIENT_(ID|SECRET)$/);
+    }
+
+    // And the exemption must not leak to the same NAME in a different file, or
+    // to a different name in the exempted file.
+    expect(isAllowed('backend/src/config/oauthClients.js', 'GEMINI_CLI_CLIENT_SECRET')).toBe(true);
+    expect(isAllowed('backend/src/services/auth/Elsewhere.js', 'GEMINI_CLI_CLIENT_SECRET')).toBe(false);
+    expect(isAllowed('backend/src/config/oauthClients.js', 'ENCRYPTION_KEY')).toBe(false);
   });
 });
