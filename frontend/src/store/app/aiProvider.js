@@ -93,6 +93,30 @@ for (const p of BUILT_IN_PROVIDERS) {
   }
 }
 
+/**
+ * Presentation-only overrides, applied last.
+ *
+ * `displayName` above is NOT a label — it is an identifier. It keys
+ * PROVIDER_FETCH_ACTIONS (`OpenAI-Codex` → `fetchOpenAICodexModels`), the
+ * `allModels` map, `state.providers`, and the localStorage model cache, and
+ * resolveProviderKey matches on it. Renaming it to change a label would break
+ * model fetching for the provider it renamed. So the label changes here, where
+ * the only consumers are `label:` / `placeholder:` / rendered text.
+ *
+ * Why this one: `openai-codex` is the ChatGPT subscription — the same OAuth
+ * sign-in that powers Codex, voice, and chat. Users came here with a ChatGPT
+ * account and looked for the word ChatGPT; "OpenAI-Codex" next to "OpenAI" read
+ * as a second API product they had not bought.
+ */
+const PROVIDER_LABEL_OVERRIDES = {
+  'openai-codex': 'ChatGPT',
+};
+for (const [key, label] of Object.entries(PROVIDER_LABEL_OVERRIDES)) {
+  const provider = BUILT_IN_PROVIDERS.find((p) => p.key === key);
+  PROVIDER_DISPLAY_NAMES[key] = label;
+  if (provider) PROVIDER_DISPLAY_NAMES[provider.displayName] = label;
+}
+
 // Resolve any provider identifier (display name, key, or mixed case) to its canonical key.
 // e.g. "Z.AI" → "zai", "Z-AI" → "zai", "GrokAI" → "grokai", "openai" → "openai"
 export function resolveProviderKey(identifier) {
