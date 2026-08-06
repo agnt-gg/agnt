@@ -8,7 +8,7 @@ import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH, isOAuthClientConfigured } from './
  * Ship-gate for the third-party OAuth clients.
  *
  * ---------------------------------------------------------------------------
- * WHY THIS TEST IS ALLOWED TO BE RED
+ * WHY IT EXISTS
  * ---------------------------------------------------------------------------
  * Deleting the committed backend/.env removed four PUBLIC Google OAuth client
  * identifiers along with the three real secrets it was carrying. The secrets
@@ -16,12 +16,12 @@ import { GEMINI_CLI_OAUTH, ANTIGRAVITY_OAUTH, isOAuthClientConfigured } from './
  * published installed-app clients, and AGNT cannot sign in to Gemini CLI or
  * Antigravity without them.
  *
- * The values could not be written back by the assistant that performed the
- * removal: AGNT's credential-scanning policy refuses to let it type a value
- * matching Google's client-secret pattern, and disguising the value to get
- * past that check would have disabled the guard for everyone after. So they
- * were left blank for a human to paste, and this test exists to make sure that
- * step cannot be forgotten.
+ * They were briefly blank between the removal commit and the commit that put
+ * them back, and this gate was written during that window precisely so the
+ * gap could not be forgotten. It stays afterwards because nothing else would
+ * notice the same mistake again: an empty client produces no build error, no
+ * type error and no startup warning — only an opaque HTTP 400 from Google, in
+ * a user's token refresh, an hour later.
  *
  * A RED test here means: OAuth sign-in is broken, do not ship.
  * Fix it by filling in the constants at the top of oauthClients.js.

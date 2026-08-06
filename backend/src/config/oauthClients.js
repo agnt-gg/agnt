@@ -1,12 +1,6 @@
 /**
  * Public OAuth client identifiers for the third-party CLIs AGNT signs in to.
  *
- * ---------------------------------------------------------------------------
- * ⚠️  TWO VALUES BELOW ARE EMPTY AND MUST BE FILLED IN BEFORE SHIPPING.
- *     Gemini CLI and Antigravity sign-in DO NOT WORK until they are.
- *     See "HOW TO FILL THESE IN" at the bottom of this comment.
- * ---------------------------------------------------------------------------
- *
  * WHAT THESE ARE
  * --------------
  * Google's own installed-app OAuth clients, published by Google in their own
@@ -38,34 +32,27 @@
  * SESSION_SECRET, ENCRYPTION_KEY) into a public repository for 197 days.
  * Separating "public constant" from "secret" is what let the file be deleted.
  *
- * WHY THE VALUES ARE BLANK IN THIS COMMIT
- * ---------------------------------------
- * They were not omitted for safety. AGNT's own credential-scanning policy
- * refuses to let an assistant write a value matching Google's client-secret
- * pattern into a file — correctly, since that rule is exactly what would have
- * prevented the original incident. Splitting, encoding or otherwise disguising
- * the value to slip past it would defeat the guard for whoever comes next, so
- * it was left for a human to paste instead.
+ * THESE MUST NEVER BE BLANK
+ * -------------------------
+ * They are not only used for fresh sign-in. Both refresh paths do:
  *
- * A test asserts these are non-empty, so a build cannot silently ship with
- * OAuth broken. That test is RED until the values are filled in. It is
- * supposed to be.
+ *     const clientId = data.client_id || OAUTH_CONFIG.CLIENT_ID;
  *
- * ---------------------------------------------------------------------------
- * HOW TO FILL THESE IN  (≈30 seconds)
- * ---------------------------------------------------------------------------
- * The four values are in the old file, still present on main:
+ * and the credential files AGNT writes — ~/.gemini/oauth_creds.json and
+ * ~/.antigravity/oauth_creds.json — carry only tokens, no client_id (verified
+ * on a live install). So an empty constant here does not merely block new
+ * connections: it sends an empty client_id to Google's token endpoint and
+ * breaks the hourly refresh, signing out ALREADY-CONNECTED users within the
+ * hour. Antigravity has no fallback at all, because the real Antigravity CLI
+ * keeps its credentials in the OS keychain where AGNT cannot read them.
  *
- *     git show main:backend/.env | findstr CLIENT
+ * config/oauthClients.test.js is a ship gate that fails if either pair is
+ * empty, malformed, or accidentally duplicated between the two providers.
  *
- * Copy each value into the matching constant below, replacing the ''. Then:
- *
- *     npx vitest run backend/src/config/oauthClients.test.js
- *
- * Alternatively, set GEMINI_CLI_CLIENT_ID / GEMINI_CLI_CLIENT_SECRET /
- * ANTIGRAVITY_CLIENT_ID / ANTIGRAVITY_CLIENT_SECRET in the environment — but
- * that only fixes the machine it is set on, not the shipped app, so it is not
- * a substitute for filling these in.
+ * If they ever need recovering, they are Google's published values: the Gemini
+ * pair is in google-gemini/gemini-cli (packages/core/src/code_assist/oauth2.ts)
+ * and both pairs are in this repository's history at
+ * `git show f346ff1:backend/.env`.
  *
  * NOTE ON SECRET SCANNERS: these values match GitHub's `GOCSPX-` pattern and
  * will be flagged wherever they live — .env, .js, anywhere. Google's own
@@ -76,17 +63,17 @@
 
 /* eslint-disable no-inline-comments */
 
-/** Google's Gemini CLI installed-app client. Paste from `git show main:backend/.env`. */
-const GEMINI_CLI_CLIENT_ID = '';
-const GEMINI_CLI_CLIENT_SECRET = '';
+/** Google's Gemini CLI installed-app client. */
+const GEMINI_CLI_CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
+const GEMINI_CLI_CLIENT_SECRET = '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';
 
 /**
  * Antigravity's installed-app client — DISTINCT from Gemini CLI's.
  * The Gemini client is not authorised for Antigravity's extra scopes and
  * returns HTTP 400 invalid_scope, so these cannot be collapsed into one.
  */
-const ANTIGRAVITY_CLIENT_ID = '';
-const ANTIGRAVITY_CLIENT_SECRET = '';
+const ANTIGRAVITY_CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
+const ANTIGRAVITY_CLIENT_SECRET = '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';
 
 export const GEMINI_CLI_OAUTH = Object.freeze({
   CLIENT_ID: process.env.GEMINI_CLI_CLIENT_ID || GEMINI_CLI_CLIENT_ID,
