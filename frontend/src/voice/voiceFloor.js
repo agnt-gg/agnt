@@ -82,4 +82,32 @@ export function voiceFloorTicket() {
   return holder ? holder.ticket : null;
 }
 
-export default { claimVoiceFloor, releaseVoiceFloor, voiceFloorTicket };
+/**
+ * Is a microphone open anywhere in the app right now?
+ *
+ * The floor already knows — it is claimed before any mic opens and released
+ * when the session ends — but only the voice hosts could ask, and the thing
+ * that most needed to ask was not a voice host at all: the notification sound.
+ *
+ * THE BUG THIS ANSWERS. A run finishing plays the completion chime out of the
+ * speakers. With a live voice session that audio goes straight back into the
+ * open microphone, the Realtime server's VAD hears speech
+ * (`input_audio_buffer.speech_started`) and TRUNCATES the assistant's own
+ * unplayed audio — it is built to treat any speech as the user barging in. The
+ * reply stopped dead mid-sentence, every time a message finished while she was
+ * still talking, which is most of them: speech lags the text stream by seconds.
+ *
+ * Echo cancellation is on and is not sufficient. A short loud transient is
+ * precisely what defeats AEC, and the cascade engine already carries a second
+ * defence for the same reason (audioCapture's analyserGuard raises the energy
+ * bar while our own audio plays). A chime is a third audio source neither
+ * defence knows about — so the answer is not another filter, it is not playing
+ * sound into an open microphone in the first place.
+ *
+ * @returns {boolean}
+ */
+export function isVoiceFloorHeld() {
+  return holder !== null;
+}
+
+export default { claimVoiceFloor, releaseVoiceFloor, voiceFloorTicket, isVoiceFloorHeld };

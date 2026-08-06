@@ -4,6 +4,7 @@ import { defineComponent, inject, nextTick } from 'vue';
 import { createStore } from 'vuex';
 import TerminalLayout from './TerminalLayout.vue';
 import { setEventPreferences, setMasterEnabled, setMasterVolume } from '@/services/soundPreferences';
+import { claimVoiceFloor, releaseVoiceFloor } from '@/voice/voiceFloor.js';
 
 /**
  * The settings panel is only real if playback honours it. These tests drive the
@@ -169,5 +170,86 @@ describe('TerminalLayout sound playback', () => {
     playSoundFrom(wrapper)('chatUnread');
 
     expect(constructed).toHaveLength(0);
+  });
+});
+
+describe('nothing is played into an open microphone', () => {
+  /**
+   * THE BUG THIS EXISTS FOR
+   * -----------------------
+   * A run finishing plays the completion chime out of the speakers. With a live
+   * voice session that audio goes straight back into the open microphone; the
+   * Realtime server's VAD hears speech and TRUNCATES the assistant's own
+   * unplayed audio, because any speech is treated as the user barging in. The
+   * reply stopped dead mid-sentence — and since speech lags the text stream by
+   * seconds, "the message finished" is precisely when she is still talking, so
+   * it happened on most turns rather than occasionally.
+   *
+   * The REAL voiceFloor singleton is used rather than a mock: the guard is only
+   * worth anything if it agrees with the thing that actually tracks the
+   * microphone, and a mock would happily agree with a guard that reads nothing.
+   */
+  let ticket = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    constructed = [];
+    vi.stubGlobal('Audio', FakeAudio);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    if (ticket !== null) releaseVoiceFloor(ticket);
+    ticket = null;
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('suppresses the completion chime while a voice session is live', async () => {
+    const wrapper = await mountLayout();
+    ticket = claimVoiceFloor(() => {});
+
+    playSoundFrom(wrapper)('chatUnread');
+
+    expect(constructed).toHaveLength(0);
+  });
+
+  it('suppresses every other sound too, not just the chime', async () => {
+    // They all reach the same microphone. A rule listing which sounds are
+    // dangerous would have to be updated by whoever adds the next one.
+    const wrapper = await mountLayout();
+    ticket = claimVoiceFloor(() => {});
+
+    for (const name of ['buttonClick', 'typewriterKeyPress', 'chaChingMoney']) {
+      playSoundFrom(wrapper)(name);
+    }
+
+    expect(constructed).toHaveLength(0);
+  });
+
+  it('plays again once the session ends', async () => {
+    // The guard must be tied to the LIVE session, not latch on for ever after
+    // the first voice turn of the app's life.
+    const wrapper = await mountLayout();
+    const t = claimVoiceFloor(() => {});
+    playSoundFrom(wrapper)('chatUnread');
+    expect(constructed).toHaveLength(0);
+
+    releaseVoiceFloor(t);
+    playSoundFrom(wrapper)('chatUnread');
+
+    expect(constructed).toHaveLength(1);
+    expect(constructed[0].src).toBe('/sounds/success-chime.mp3');
+  });
+
+  it('plays normally when no voice session has ever started', async () => {
+    // Guards against the opposite failure: silencing the app for everyone who
+    // never uses voice.
+    const wrapper = await mountLayout();
+
+    playSoundFrom(wrapper)('chatUnread');
+
+    expect(constructed).toHaveLength(1);
   });
 });

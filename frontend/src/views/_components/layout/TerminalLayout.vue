@@ -42,6 +42,7 @@ import { useStore } from 'vuex';
 import SongPlayer from '@/views/Terminal/_components/SongPlayer.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { getSoundEvent, resolveSound } from '@/services/soundPreferences';
+import { isVoiceFloorHeld } from '@/voice/voiceFloor.js';
 
 export default {
   name: 'TerminalLayout',
@@ -228,6 +229,23 @@ export default {
 
     const playSound = (soundName, volume = null) => {
       if (!props.soundEnabled) return;
+
+      /**
+       * NOTHING IS PLAYED INTO AN OPEN MICROPHONE.
+       *
+       * A live voice session hears whatever comes out of the speakers. The
+       * Realtime server treats any speech it hears as the user barging in and
+       * truncates the assistant's own unplayed audio, so the completion chime
+       * cut her off mid-sentence — and it fires at run completion, which is
+       * exactly when she is most likely to still be talking, because speech
+       * lags the text stream by seconds. See isVoiceFloorHeld.
+       *
+       * Every sound is suppressed, not just that one: they all reach the same
+       * microphone, and a rule that lists which sounds are dangerous would have
+       * to be updated by whoever adds the next one. During a voice session the
+       * user is talking, not clicking, so there is nothing to lose.
+       */
+      if (isVoiceFloorHeld()) return;
 
       if (!hasUserInteracted.value) {
         // Suppress until the browser has an interaction to attach playback to.
