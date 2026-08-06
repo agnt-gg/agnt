@@ -181,6 +181,18 @@ export function createCursorCliClient({
   conversationId = null,
   provider = 'cursor-cli',
   timeoutMs = CursorCliService.getDefaultTimeoutMs?.() ?? 300000,
+  // Execution policy, resolved by the caller instead of hardcoded at the spawn
+  // site. The defaults reproduce today's behaviour exactly, so nothing changes
+  // unless someone opts in: CURSOR_CLI_FORCE=0 turns auto-approval off without
+  // a code change, and CURSOR_CLI_MODE=plan makes the provider read-only.
+  force = process.env.CURSOR_CLI_FORCE !== '0',
+  mode = process.env.CURSOR_CLI_MODE || null,
+  sandbox = process.env.CURSOR_CLI_SANDBOX || null,
+  // Opt-in observer for file reads/writes/shell commands Cursor performs.
+  // Left null by default: the OpenAI delta shape has no slot for "the agent
+  // wrote a file", so surfacing these in chat needs a UI channel decision.
+  // The capability lands here; the wiring is a separate change.
+  onToolCall = null,
 } = {}) {
   const resolvedSessionKey =
     sessionKey || `cursor-cli::${userId || 'anon'}::${conversationId || 'default'}`;
@@ -202,11 +214,20 @@ export function createCursorCliClient({
             prompt,
             model,
             cwd,
-            force: true,
+            force,
+            mode,
+            sandbox,
             resume: Boolean(existingSessionId),
             sessionId: existingSessionId,
             timeoutMs,
           };
+          // Tool events are orthogonal to how the caller wants the ANSWER
+          // delivered. A non-streaming completion still runs an agent that
+          // reads and writes files, and an observer asked to watch that should
+          // not fall silent because the reply arrives in one piece. Supplying
+          // this puts the CLI in stream-json so the events exist to be parsed;
+          // the aggregated result is unaffected.
+          if (onToolCall) runOptions.onToolCall = onToolCall;
 
           // Streaming must return the generator BEFORE the run completes,
           // otherwise the deltas are already history by the time anyone reads.

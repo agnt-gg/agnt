@@ -182,15 +182,30 @@ async function runExec({
   sessionId = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   extraArgs = [],
-  // Streaming handlers. Supplying either switches the CLI to stream-json and
-  // emits token deltas as they arrive instead of one blob at the end.
+  // Execution policy. `force` auto-approves every tool the agent decides to
+  // run (shell, write, network) — it is the CLI's YOLO switch, so callers get
+  // to decide rather than having it welded on at the spawn site. `mode`
+  // selects a read-only posture: 'plan' proposes an approach without editing,
+  // 'ask' answers questions. Auto-approval is meaningless under both.
+  mode = null,
+  sandbox = null,
+  // Streaming handlers. Supplying any of these switches the CLI to stream-json
+  // and emits events as they arrive instead of one blob at the end.
   onDelta = null,
   onReasoning = null,
+  onToolCall = null,
+  onInit = null,
 } = {}) {
   if (!prompt || !String(prompt).trim()) {
     throw new Error('cursor_exec: prompt is required');
   }
-  const streaming = typeof onDelta === 'function' || typeof onReasoning === 'function';
+  if (mode != null && !READ_ONLY_MODES.has(mode)) {
+    throw new Error(`cursor_exec: unsupported mode '${mode}' (expected 'plan' or 'ask')`);
+  }
+  const streaming = typeof onDelta === 'function'
+    || typeof onReasoning === 'function'
+    || typeof onToolCall === 'function'
+    || typeof onInit === 'function';
   const invocation = resolveCursorInvocation();
   const workdir = cwd ? expandUserPath(cwd) : getDefaultWorkdir();
   try { fs.mkdirSync(workdir, { recursive: true }); } catch { /* ignore */ }
@@ -199,8 +214,14 @@ async function runExec({
   // terminal object. Only opt into streaming when a handler wants the deltas,
   // so the non-streaming path keeps its proven behaviour.
   const args = ['-p', '--output-format', streaming ? 'stream-json' : 'json'];
-  if (streaming) args.push('--stream-partial-output');
-  if (force) args.push('--force');
+  // Partial output only concerns text. Asking for it when the caller wants
+  // tool events alone would multiply the event volume for nobody's benefit.
+  if (onDelta || onReasoning) args.push('--stream-partial-output');
+  // A read-only mode cannot edit anything, so auto-approval would be both
+  // pointless and misleading to anyone reading the process list.
+  if (force && !mode) args.push('--force');
+  if (mode) args.push('--mode', mode);
+  if (sandbox) args.push('--sandbox', sandbox === true ? 'enabled' : sandbox);
   if (model) args.push('--model', model);
   if (resume && sessionId) args.push('--resume', sessionId);
   else if (resume) args.push('--continue');
@@ -255,11 +276,17 @@ async function runExec({
       if (!obj || typeof obj !== 'object') return;
       switch (obj.type) {
         case 'assistant': {
-          // With --stream-partial-output the CLI emits BOTH incremental deltas
-          // (which carry timestamp_ms) and a final consolidated assistant
-          // message (which does not). Counting both doubles the text, so the
-          // presence of timestamp_ms is the delta discriminator.
-          if (!streaming || obj.timestamp_ms == null) return;
+          // With --stream-partial-output the CLI emits real deltas AND
+          // consolidated re-sends of text it has already delivered. There are
+          // TWO kinds of re-send and both have to be dropped or text doubles:
+          //   end-of-turn flush   -> timestamp_ms absent
+          //   pre-tool-call flush -> timestamp_ms present, model_call_id present
+          // Only an event carrying a timestamp and no model_call_id is new.
+          // The model_call_id half of this test was missing, so every sentence
+          // emitted just before a tool call reached the user twice. It went
+          // unnoticed because it only shows up on runs that call tools, and no
+          // existing streaming test drives one.
+          if (!streaming || obj.timestamp_ms == null || obj.model_call_id != null) return;
           const parts = Array.isArray(obj.message?.content) ? obj.message.content : [];
           const text = parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
           if (text && onDelta) onDelta(text);
@@ -268,6 +295,30 @@ async function runExec({
         case 'thinking': {
           if (!streaming || obj.subtype !== 'delta') return;
           if (typeof obj.text === 'string' && obj.text && onReasoning) onReasoning(obj.text);
+          return;
+        }
+        case 'tool_call': {
+          // Previously swallowed by `default:`. That meant while Cursor read,
+          // wrote and ran shell commands against the user's checkout, AGNT
+          // observed precisely nothing until the final blob landed.
+          if (!onToolCall) return;
+          const summary = summarizeToolCall(obj);
+          if (summary) onToolCall(summary);
+          return;
+        }
+        case 'system': {
+          // Emitted once at startup. Carries what is needed to attribute the
+          // run: which session, which checkout, which model actually served it
+          // (Cursor may substitute), and the permission posture in effect.
+          if (obj.subtype !== 'init' || !onInit) return;
+          onInit({
+            sessionId: obj.session_id || null,
+            cwd: obj.cwd || null,
+            model: obj.model || null,
+            permissionMode: obj.permissionMode || obj.permission_mode || null,
+            // A source label ('login' | 'env' | 'flag'), never the secret.
+            apiKeySource: obj.apiKeySource || obj.api_key_source || null,
+          });
           return;
         }
         case 'result': {
@@ -343,6 +394,68 @@ async function runExec({
 
     child.on('error', (err) => finish(new Error(`cursor_exec spawn failed: ${err.message}`), true));
   });
+}
+
+const READ_ONLY_MODES = new Set(['plan', 'ask']);
+
+// Longest string carried out of a tool event. A write call's args hold the
+// entire new file body and a read result holds the entire file that was read;
+// forwarding those verbatim would push megabytes through the event stream and
+// into the logs. Consumers that need full content should read the file.
+const TOOL_TEXT_MAX = 240;
+
+function briefText(value) {
+  if (typeof value !== 'string') return undefined;
+  if (value.length <= TOOL_TEXT_MAX) return value;
+  return `${value.slice(0, TOOL_TEXT_MAX)}… (+${value.length - TOOL_TEXT_MAX} more chars)`;
+}
+
+/**
+ * Cursor nests each tool event under a single key naming the tool, e.g.
+ * { readToolCall: {…} }, { writeToolCall: {…} }, { shellToolCall: {…} }.
+ * Flatten that to a stable { id, name, status, path, command, stats } shape so
+ * consumers need not know Cursor's wire format, and keep it small. Returns
+ * null for anything unrecognised rather than guessing at a shape.
+ *
+ * The key must actually look like a tool entry. Matching any object-valued key
+ * would let a future sibling of metadata be reported as though it were a tool,
+ * inventing a name from whatever that key happened to be called. Dropping an
+ * event we cannot identify is the better failure: a missing entry in a
+ * progress feed is recoverable, a fabricated one is not.
+ */
+function summarizeToolCall(obj) {
+  const payload = obj?.tool_call;
+  if (!payload || typeof payload !== 'object') return null;
+  const key = Object.keys(payload)
+    .find((k) => k.endsWith('ToolCall') && payload[k] && typeof payload[k] === 'object');
+  if (!key) return null;
+  const inner = payload[key];
+  const args = inner.args && typeof inner.args === 'object' ? inner.args : {};
+  const summary = {
+    id: obj.call_id || obj.id || null,
+    name: key.replace(/ToolCall$/, ''),
+    status: obj.subtype === 'completed' ? 'completed' : 'started',
+  };
+  if (typeof args.path === 'string') summary.path = args.path;
+  const command = briefText(args.command);
+  if (command !== undefined) summary.command = command;
+  // `result` appears only on the completed event, as a one-of:
+  // { success: {…} } | { error: … }.
+  const result = inner.result && typeof inner.result === 'object' ? inner.result : null;
+  if (result) {
+    if (result.error != null) {
+      summary.error = briefText(
+        typeof result.error === 'string' ? result.error : JSON.stringify(result.error),
+      );
+    } else if (result.success && typeof result.success === 'object') {
+      const stats = {};
+      for (const f of ['linesCreated', 'linesRemoved', 'fileSize', 'totalLines', 'exitCode']) {
+        if (typeof result.success[f] === 'number') stats[f] = result.success[f];
+      }
+      if (Object.keys(stats).length) summary.stats = stats;
+    }
+  }
+  return summary;
 }
 
 function buildResult(obj, rawStdout, model) {
