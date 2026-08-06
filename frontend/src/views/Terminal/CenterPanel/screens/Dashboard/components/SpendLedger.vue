@@ -314,7 +314,7 @@
 import { computed, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import { originLabel } from '@/utils/originLabels';
+import { originLabel, mergeOriginRows } from '@/utils/originLabels';
 
 const PROVIDER_LABELS = {
   'claude-code': 'Claude Code',
@@ -553,8 +553,11 @@ export default {
       return out;
     });
 
+    // Fold BEFORE sorting: aliased origins are one source, so they are one row
+    // and one number. Sorting first would rank the halves independently and put
+    // the same source in two places on the chart.
     const byOrigin = computed(() =>
-      [...(ledger.value.byOrigin || [])].sort((a, b) => rowValue(b) - rowValue(a))
+      mergeOriginRows(ledger.value.byOrigin || []).sort((a, b) => rowValue(b) - rowValue(a))
     );
 
     const topModels = computed(() =>

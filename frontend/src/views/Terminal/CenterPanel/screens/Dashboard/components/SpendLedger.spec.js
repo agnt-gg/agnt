@@ -800,7 +800,28 @@ describe('breakdowns', () => {
   it('orders buckets by size and names them for humans', async () => {
     const w = mountWith({ summary: summaryOf({ notionalUsd: 16.67, calls: 9 }), byOrigin: BY_ORIGIN });
     await expand(w);
-    expect(w.findAll('.bar-label').map((n) => n.text())).toEqual(['Chat (legacy)', 'Workflow runs']);
+    expect(w.findAll('.bar-label').map((n) => n.text())).toEqual(['Chat', 'Workflow runs']);
+  });
+
+  it('reports one Chat row, not a legacy half and a current half', async () => {
+    // REGRESSION: the breakdown listed "Chat (legacy) $17,517.39" above
+    // "Orchestrator $2,029.30". Same surface, two database values, and the
+    // reader left to do the addition. `chat` is the pre-split origin for the
+    // very rows `orchestrator` writes now, so they are one source.
+    const w = mountWith({
+      summary: summaryOf({ notionalUsd: 20, calls: 9 }),
+      byOrigin: [
+        { bucket: 'chat', costUsd: 0, notionalUsd: 17, calls: 6 },
+        { bucket: 'orchestrator', costUsd: 0, notionalUsd: 2, calls: 2 },
+        { bucket: 'widget', costUsd: 0, notionalUsd: 1, calls: 1 },
+      ],
+    });
+    await expand(w);
+    const labels = w.findAll('.bar-label').map((n) => n.text());
+    expect(labels).toEqual(['Chat', 'Widget Forge']);
+    expect(labels.filter((l) => l === 'Chat')).toHaveLength(1);
+    // Summed, not merely relabelled: 17 + 2.
+    expect(w.findAll('.bar-value')[0].text()).toContain('19');
   });
 
   it('names a chat-surface origin instead of printing the database token', async () => {
@@ -820,7 +841,7 @@ describe('breakdowns', () => {
     });
     await expand(w);
     const labels = w.findAll('.bar-label').map((n) => n.text());
-    expect(labels).toEqual(['Orchestrator', 'Widget Forge', 'Workflow Forge']);
+    expect(labels).toEqual(['Chat', 'Widget Forge', 'Workflow Forge']);
     for (const label of labels) {
       expect(label).toMatch(/^[A-Z]/);
       expect(label).not.toMatch(/_/);
