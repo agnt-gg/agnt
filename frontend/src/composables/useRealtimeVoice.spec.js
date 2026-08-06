@@ -617,6 +617,21 @@ describe('useRealtimeVoice — every exchange leaves a trace, exactly once', () 
     expect(onAssistantSaid).toHaveBeenCalledWith('Hi there.');
   });
 
+  it('a NOISE-only off-script turn is not written to the chat', async () => {
+    // "Record it rather than let it vanish" is right for a turn the user took.
+    // A cough is not a turn, and writing "um" into the transcript as the user's
+    // own message is the same phantom wearing a different coat.
+    const onUserSaid = vi.fn();
+    const s = harness({ onUserSaid, onAssistantSaid: vi.fn() });
+
+    s._handleMessage(userSpeech('um'));
+    s._handleMessage(assistantSpeech('Sorry?'));
+    s._handleMessage(turnDone(false));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onUserSaid).not.toHaveBeenCalled();
+  });
+
   it('REGRESSION: a multi-sentence narration is not recorded as off-script', async () => {
     // The answer now streams across several responses. Clearing the narration
     // flag on the first one would make sentences two onward look like turns
