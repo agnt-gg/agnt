@@ -1,0 +1,301 @@
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import ProviderLanes from './ProviderLanes.vue';
+
+const SOURCE = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'ProviderLanes.vue'),
+  'utf8',
+);
+
+// `name` carries the auth API's capitalisation, because that is what the label
+// falls back to for any provider without an override.
+const ai = (id, name, extra = {}) => ({ id, name, icon: id, categories: ['AI'], ...extra });
+
+const PROVIDERS = [
+  ai('openai-codex', 'OpenAI Codex', { connectionType: 'oauth' }),
+  ai('claude-code', 'Claude-Code', { connectionType: 'oauth' }),
+  ai('gemini-cli', 'Gemini-CLI', { connectionType: 'oauth' }),
+  ai('cursor-cli', 'Cursor', { connectionType: 'oauth' }),
+  ai('grok-build', 'Grok-Build', { connectionType: 'oauth' }),
+  ai('openai', 'OpenAI', { connectionType: 'apikey' }),
+  ai('anthropic', 'Anthropic', { connectionType: 'apikey' }),
+  ai('gemini', 'Gemini', { connectionType: 'apikey' }),
+  ai('cerebras', 'Cerebras', { connectionType: 'apikey' }),
+  ai('groq', 'Groq', { connectionType: 'apikey' }),
+  ai('local', 'Local', { connectionType: 'apikey' }),
+];
+
+const mountLanes = (props = {}) =>
+  mount(ProviderLanes, {
+    props: { providers: PROVIDERS, connectedIds: [], codexStatus: {}, ...props },
+    global: {
+      stubs: {
+        SvgIcon: { template: '<span class="svg-icon-stub" />', props: ['name'] },
+      },
+    },
+  });
+
+const tileText = (wrapper) =>
+  wrapper.findAll('.provider-tile').map((t) => t.text().replace(/\s+/g, ' ').trim());
+
+/**
+ * Open a provider's panel by the text on its tile, expanding lanes first so a
+ * test never depends on where the preview cut happens to fall.
+ */
+const openTile = async (wrapper, label) => {
+  for (const more of wrapper.findAll('.provider-tile.more')) await more.trigger('click');
+  const tile = wrapper.findAll('.provider-tile').find((t) => t.text().trim() === label);
+  if (!tile) throw new Error(`No tile labelled "${label}" in: ${tileText(wrapper).join(', ')}`);
+  await tile.trigger('click');
+  return tile;
+};
+
+describe('ProviderLanes — the footer icon', () => {
+  /**
+   * Asserted against the SOURCE because jsdom computes no layout and resolves
+   * no custom properties, so a mounted test cannot see either of the two things
+   * that went wrong here.
+   *
+   * Both were regressions of the same kind: SvgIcon paints every path with
+   * `--color-text` from a global rule, and an icon with no size falls back to
+   * its intrinsic dimensions. The footer link is muted and small, so an icon
+   * that answers neither question renders bigger and brighter than the sentence
+   * it belongs to — which is exactly what shipped once already.
+   */
+  const footerBlock = SOURCE.slice(SOURCE.indexOf('.lane-foot :deep(.svg-icon)'));
+
+  it('sizes the footer icon relative to its label, not in fixed pixels', () => {
+    // px drifts the moment the surrounding font-size changes.
+    expect(footerBlock).toMatch(/\.lane-foot :deep\(\.svg-icon\)\s*\{[^}]*width:\s*[\d.]+em/);
+    expect(footerBlock).not.toMatch(/\.lane-foot :deep\(\.svg-icon\)\s*\{[^}]*width:\s*\d+px/);
+  });
+
+  it('sizes it BELOW cap-height, because a framed glyph reads heavier than text', () => {
+    const [, size] = footerBlock.match(/\.lane-foot :deep\(\.svg-icon\)\s*\{[^}]*width:\s*([\d.]+)em/);
+    expect(Number(size)).toBeLessThan(1);
+  });
+
+  it('paints it with currentColor so it cannot outshine its own label', () => {
+    // SvgIcon's global `.svg-icon path[fill] { fill: var(--color-text) }` wins
+    // otherwise, and the icon renders full-contrast beside muted text.
+    expect(footerBlock).toMatch(/path\[fill\]\)\s*\{\s*fill:\s*currentColor/);
+    expect(footerBlock).toMatch(/path\[stroke\]\)\s*\{\s*stroke:\s*currentColor/);
+    expect(footerBlock).not.toMatch(/\.lane-foot[^}]*fill:\s*var\(--color-text\)/);
+  });
+
+  it('anti-vacuity: the footer rules are actually present to be checked', () => {
+    expect(footerBlock.length).toBeGreaterThan(80);
+    expect(SOURCE).toContain('.lane-foot :deep(.svg-icon)');
+  });
+});
+
+describe('ProviderLanes — the list', () => {
+  it('names the bill in each lane heading, not the auth mechanism', () => {
+    const wrapper = mountLanes();
+    const text = wrapper.text();
+    expect(text).toContain('Sign in to a plan');
+    expect(text).toContain('already paid');
+    expect(text).toContain('Paste an API key');
+    expect(text).toContain('pay per token');
+
+    // Our vocabulary stays out of the copy. Scoped to the headings and notes,
+    // because "Gemini CLI" is a product name a vendor chose and we render it.
+    const copy = [...wrapper.findAll('.lane-title'), ...wrapper.findAll('.lane-note')]
+      .map((el) => el.text())
+      .join(' ');
+    expect(copy).not.toMatch(/\bOAuth\b|\bCLI\b|\bapikey\b/i);
+  });
+
+  it('spells subscription products the way their vendor does', () => {
+    // These render on a screen headed "a plan you already pay for", where an
+    // identifier like "Claude-Code" reads as internal tooling.
+    const labels = tileText(mountLanes());
+    expect(labels).toContain('Claude Code');
+    expect(labels).toContain('Gemini CLI');
+    expect(labels).not.toContain('Claude-Code');
+    expect(labels).not.toContain('Gemini-CLI');
+  });
+
+  it('previews four per lane and hides the rest behind a count', () => {
+    const wrapper = mountLanes();
+    // 4 + expander, twice.
+    expect(wrapper.findAll('.provider-tile.more')).toHaveLength(2);
+    expect(wrapper.findAll('.provider-tile')).toHaveLength(4 + 1 + 4 + 1);
+    expect(wrapper.text()).toContain('+1more');
+  });
+
+  it('expands a lane in place without collapsing the other', async () => {
+    const wrapper = mountLanes();
+    await wrapper.findAll('.provider-tile.more')[0].trigger('click');
+    expect(wrapper.findAll('.provider-tile.more')).toHaveLength(1);
+    expect(tileText(wrapper)).toContain('Grok Build');
+  });
+
+  it('shows ChatGPT by that name, in the subscription lane', async () => {
+    const wrapper = mountLanes();
+    for (const more of wrapper.findAll('.provider-tile.more')) await more.trigger('click');
+    const labels = tileText(wrapper);
+    expect(labels).toContain('ChatGPT');
+    expect(labels).not.toContain('OpenAI Codex');
+    // The subscription lane renders first, so ChatGPT precedes the metered
+    // OpenAI tile in document order.
+    expect(labels.indexOf('ChatGPT')).toBeLessThan(labels.indexOf('OpenAI'));
+  });
+
+  it('marks connected providers and never hides one behind the expander', () => {
+    // grok-build sorts last by label, so without the connected-first rule it
+    // would be the one tile the expander swallowed.
+    const wrapper = mountLanes({ connectedIds: ['grok-build'] });
+    const connected = wrapper.findAll('.provider-tile.connected');
+    expect(connected).toHaveLength(1);
+    expect(connected[0].text()).toContain('Grok Build');
+    expect(connected[0].find('.provider-status-dot').exists()).toBe(true);
+  });
+
+  it('offers a local runtime as a footnote, not a billing lane', () => {
+    const wrapper = mountLanes();
+    expect(wrapper.find('.lane-foot').text()).toContain('Run a model on this machine');
+    expect(tileText(wrapper)).not.toContain('Local');
+  });
+
+  it('emits connect for the local runtime without a detail step', async () => {
+    const wrapper = mountLanes();
+    await wrapper.find('.lane-foot button').trigger('click');
+    expect(wrapper.emitted('connect')[0][0].id).toBe('local');
+  });
+
+  it('drops a lane heading entirely rather than showing an empty one', () => {
+    const wrapper = mountLanes({ providers: [ai('openai', 'OpenAI', { connectionType: 'apikey' })] });
+    expect(wrapper.text()).not.toContain('Sign in to a plan');
+    expect(wrapper.text()).toContain('Paste an API key');
+  });
+});
+
+describe('ProviderLanes — one provider', () => {
+  it('states who charges you on the subscription panel', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.find('.panel-billing').text()).toContain('Included in your plan');
+    expect(wrapper.find('.panel-billing').classes()).toContain('subscription');
+  });
+
+  it('states who charges you on the metered panel', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.find('.panel-billing').text()).toContain('per token');
+    expect(wrapper.find('.panel-billing').classes()).toContain('api');
+  });
+
+  it('warns that the developer API is not the subscription of the same name', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.find('.panel-warn').text()).toContain('not your ChatGPT subscription');
+  });
+
+  it('does not warn in the other direction — a plan is not mistakable for an API', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.find('.panel-warn').exists()).toBe(false);
+  });
+
+  it('offers the sibling product in both directions', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.find('.panel-swap').text()).toContain('Connect ChatGPT instead');
+
+    await wrapper.find('.panel-swap button').trigger('click');
+    expect(wrapper.find('.panel-head h3').text()).toBe('ChatGPT');
+    expect(wrapper.find('.panel-swap').text()).toContain('Connect OpenAI instead');
+  });
+
+  it('omits the sibling link when that provider is not on this screen', async () => {
+    const wrapper = mountLanes({
+      providers: [
+        ai('openai', 'OpenAI', { connectionType: 'apikey' }),
+        ai('groq', 'Groq', { connectionType: 'apikey' }),
+      ],
+    });
+    await openTile(wrapper, 'OpenAI');
+    // A link to a provider we are not showing is a worse dead end than none.
+    expect(wrapper.find('.panel-swap').exists()).toBe(false);
+  });
+
+  it('shows a credential field only for providers that take one', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.find('.panel-input').exists()).toBe(true);
+
+    await wrapper.find('.panel-back').trigger('click');
+    await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.find('.panel-input').exists()).toBe(false);
+    expect(wrapper.find('.panel-action').text()).toContain('Sign in with ChatGPT');
+  });
+
+  it('branches the field on connection type, not on lane', async () => {
+    // A subscription seat redeemed by pasting a token still needs the field.
+    const wrapper = mountLanes({
+      providers: [ai('kimi-code', 'Kimi-Code', { connectionType: 'apikey' })],
+    });
+    await openTile(wrapper, 'Kimi Code');
+    expect(wrapper.find('.panel-billing').classes()).toContain('subscription');
+    expect(wrapper.find('.panel-input').exists()).toBe(true);
+  });
+
+  it('promises local storage only where that is actually true', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'ChatGPT');
+    expect(wrapper.text()).toContain('on this computer');
+
+    await wrapper.find('.panel-back').trigger('click');
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.text()).toContain('follows you to other machines');
+    expect(wrapper.text()).not.toContain('never sees a password');
+  });
+
+  it('submits what was typed, with the provider it belongs to', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    await wrapper.find('.panel-input').setValue('typed-value');
+    await wrapper.find('.panel-action').trigger('click');
+
+    const [provider, value] = wrapper.emitted('submit-credential')[0];
+    expect(provider.id).toBe('openai');
+    expect(value).toBe('typed-value');
+  });
+
+  it('refuses to submit an empty field', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.find('.panel-action').attributes('disabled')).toBeDefined();
+    await wrapper.find('.panel-action').trigger('click');
+    expect(wrapper.emitted('submit-credential')).toBeUndefined();
+  });
+
+  it('clears the field when moving between providers', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    await wrapper.find('.panel-input').setValue('typed-value');
+    await wrapper.find('.panel-swap button').trigger('click');
+    await wrapper.find('.panel-back').trigger('click');
+    await openTile(wrapper, 'Anthropic');
+    expect(wrapper.find('.panel-input').element.value).toBe('');
+  });
+
+  it('says nothing to do when the provider is already connected', async () => {
+    const wrapper = mountLanes({ connectedIds: ['claude-code'] });
+    await openTile(wrapper, 'Claude Code');
+    expect(wrapper.text()).toContain('Already connected');
+    expect(wrapper.find('.panel-input').exists()).toBe(false);
+  });
+
+  it('returns to the full list from the panel', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    expect(wrapper.find('.lane-title').exists()).toBe(false);
+    await wrapper.find('.panel-back').trigger('click');
+    expect(wrapper.findAll('.lane-title')).toHaveLength(2);
+  });
+});

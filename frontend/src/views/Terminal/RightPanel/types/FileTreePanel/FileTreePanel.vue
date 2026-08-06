@@ -198,17 +198,18 @@
       <div v-if="settingsDialog.show" class="delete-overlay" @click.self="cancelSettings">
         <div class="settings-dialog">
           <h3 class="settings-title"><i class="fas fa-cog"></i> Workspace Settings</h3>
-          <label class="settings-label">Root Directory</label>
-          <input
+          <WorkspacePicker
             ref="settingsInputRef"
             v-model="settingsDialog.workspaceRoot"
-            class="settings-input"
+            class="settings-picker"
+            input-id="fileTreeWorkspaceRoot"
+            label="Root Directory"
             placeholder="/path/to/workspace"
-            @keyup.enter="saveSettings"
-            @keyup.escape="cancelSettings"
+            :default-path="settingsDialog.defaultRoot"
+            :error="settingsDialog.error"
+            @submit="saveSettings"
+            @cancel="cancelSettings"
           />
-          <p class="settings-hint">Default: {{ settingsDialog.defaultRoot }}</p>
-          <div v-if="settingsDialog.error" class="settings-error">{{ settingsDialog.error }}</div>
           <div class="delete-actions">
             <button class="delete-cancel-btn" @click="resetToDefault">Reset Default</button>
             <button class="delete-cancel-btn" @click="cancelSettings">Cancel</button>
@@ -226,6 +227,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings, searchTree, uploadFiles } from '@/services/fileSystemService.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import WorkspacePicker from '@/components/WorkspacePicker.vue';
 import TreeNode from './TreeNode.vue';
 
 // Extension → Font Awesome class, mirroring TreeNode.vue's mapping so search
@@ -261,7 +263,7 @@ const escapeHtml = (s) =>
 
 export default {
   name: 'FileTreePanel',
-  components: { Tooltip, TreeNode },
+  components: { Tooltip, TreeNode, WorkspacePicker },
   emits: ['panel-action'],
   setup(props, { emit }) {
     const treeItems = ref([]);
@@ -1490,43 +1492,19 @@ export default {
   font-size: 13px;
 }
 
-.settings-label {
-  display: block;
-  font-size: 11px;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 6px;
-}
-
-.settings-input {
-  width: 100%;
-  padding: 8px 10px;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  color: var(--color-text);
+/* The field, its hint and its error live in WorkspacePicker.vue now, shared
+   with the onboarding step. Only DENSITY is set here: this is a sidebar dialog,
+   not a full-page form, and the shared component sizes itself in em so a single
+   font-size rescales the whole control rather than needing a second copy of
+   every rule. */
+.settings-picker {
   font-size: 12px;
-  font-family: var(--font-family-mono, monospace);
-  outline: none;
-  box-sizing: border-box;
 }
 
-.settings-input:focus {
-  border-color: rgba(var(--primary-rgb), 0.4);
-}
-
-.settings-hint {
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: var(--color-text-muted);
-  opacity: 0.6;
-}
-
-.settings-error {
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--color-red);
+.settings-picker :deep(.wp-input),
+.settings-picker :deep(.wp-browse) {
+  padding: 8px 10px;
+  border-radius: 4px;
 }
 
 .settings-save-btn {

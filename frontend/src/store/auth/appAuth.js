@@ -4,9 +4,31 @@ import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
+import { authSubject } from './licenseIdentity.js';
 
-// CLI provider IDs that use local filesystem auth
-const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
+/**
+ * Which account these caches describe. `withFreshness` treats a changed
+ * identity as a miss regardless of TTL, which is what stops one user's
+ * connected apps being served to the next — `fetchAllProviders` caches for
+ * THIRTY MINUTES, so without this a sign-in as a different account showed the
+ * previous account's provider connections for half an hour.
+ */
+const sessionIdentity = (ctx) => authSubject(ctx.rootState?.userAuth?.token ?? null);
+
+/**
+ * CLI provider IDs that use local filesystem auth.
+ *
+ * Exported so the connect UI can say "this session stays on your computer"
+ * only where that is actually true, rather than keeping a second opinion.
+ *
+ * DELIBERATELY NOT the same list as aiProvider's SUBSCRIPTION_PROVIDER_IDS.
+ * That one asks "who bills you"; this one asks "can I read the credential off
+ * this disk". Every entry here is also a subscription seat (pinned by
+ * providerLanes.spec.js), but `kimi-code` is a subscription seat with no local
+ * auth manager, so it belongs there and not here. Adding it would invent a
+ * status probe that the backend answers with `local: false`.
+ */
+export const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
 
 // Tell the local backend a provider changed so it can fan a Socket.IO
 // event out to every other connected client (other tabs / chat panels)
@@ -197,7 +219,7 @@ const actions = {
     })();
 
     return _fetchConnectedAppsPromise;
-  }, { staleAfter: TTL.appAuthFetchConnectedApps }),
+  }, { staleAfter: TTL.appAuthFetchConnectedApps, identity: sessionIdentity }),
   fetchAllProviders: withFreshness('appAuth.fetchAllProviders', async ({ commit }) => {
     try {
       const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
@@ -339,7 +361,7 @@ const actions = {
         },
       ]);
     }
-  }, { staleAfter: TTL.appAuthFetchAllProviders }),
+  }, { staleAfter: TTL.appAuthFetchAllProviders, identity: sessionIdentity }),
 
   // ── Generic provider actions (unified endpoints) ──────────────────
 

@@ -45,7 +45,7 @@ describe('provider display order', () => {
     const at = (label) => list.indexOf(label);
     expect(at('ChatGPT')).toBeGreaterThan(-1);
     expect(at('ChatGPT')).toBeGreaterThan(at('Cerebras'));
-    expect(at('ChatGPT')).toBeLessThan(at('Claude-Code'));
+    expect(at('ChatGPT')).toBeLessThan(at('Claude Code'));
     expect(at('ChatGPT')).toBeLessThan(at('OpenAI'));
   });
 
@@ -53,9 +53,9 @@ describe('provider display order', () => {
     const list = labels();
     const at = (label) => list.indexOf(label);
     expect(at('Cursor')).toBeGreaterThan(-1);
-    expect(at('Cursor')).toBeGreaterThan(at('Claude-Code'));
+    expect(at('Cursor')).toBeGreaterThan(at('Claude Code'));
     expect(at('Cursor')).toBeLessThan(at('DeepSeek'));
-    expect(at('Cursor')).toBeLessThan(at('Grok-Build'));
+    expect(at('Cursor')).toBeLessThan(at('Grok Build'));
   });
 
   it('keeps the API-key key list in the same order as the display list', () => {

@@ -14,9 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
+import aiProviderStore, {
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_FETCH_ACTIONS,
+  providerLabel,
   resolveProviderKey,
 } from './aiProvider.js';
 
@@ -39,6 +40,59 @@ describe('the ChatGPT subscription provider is labelled ChatGPT', () => {
     expect(PROVIDER_DISPLAY_NAMES['openai-codex']).not.toBe(
       PROVIDER_DISPLAY_NAMES.openai ?? 'OpenAI',
     );
+  });
+});
+
+describe('every relabelled provider, not just the first one', () => {
+  /**
+   * Derived rather than listed, so a fifth override is covered the day it is
+   * added. Any provider whose label differs from its `displayName` has crossed
+   * the layer this file exists to keep separate, and has to satisfy both halves
+   * of the contract: new label on top, untouched identifier underneath.
+   */
+  const relabelled = aiProviderStore.state.providers
+    .map((displayName) => ({ displayName, key: resolveProviderKey(displayName) }))
+    // An entry in the label map that DIFFERS from the identifier is what makes
+    // a provider relabelled. Comparing providerLabel() to displayName instead
+    // catches every provider, because the label falls back to the lowercase
+    // key when no override exists.
+    .filter(({ displayName, key }) => {
+      const label = PROVIDER_DISPLAY_NAMES[key];
+      return Boolean(label) && label !== displayName;
+    });
+
+  it('anti-vacuity: there is something to check', () => {
+    expect(relabelled.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('does not sweep in providers that were never relabelled', () => {
+    // The filter's failure mode is catching everything, which would make the
+    // assertions below look thorough while testing an unrelated population.
+    const names = relabelled.map((r) => r.displayName);
+    expect(names).not.toContain('Anthropic');
+    expect(names).not.toContain('Groq');
+    expect(names).toContain('OpenAI-Codex');
+  });
+
+  it.each(relabelled)('$displayName is labelled the same by key and by name', ({ displayName, key }) => {
+    // Call sites look providers up both ways. If only one spelling were
+    // overridden the label would change on some screens and not others, which
+    // is worse than not renaming at all.
+    expect(PROVIDER_DISPLAY_NAMES[key]).toBe(PROVIDER_DISPLAY_NAMES[displayName]);
+  });
+
+  it.each(relabelled)('$displayName keeps a fetch action keyed by its identifier', ({ displayName }) => {
+    // Generated from displayName. Relabelling by editing displayName instead
+    // of the override map re-keys this to a name nothing generated, and the
+    // model list silently stops loading.
+    const suffix = displayName.replace(/[-.]/g, '');
+    expect(PROVIDER_FETCH_ACTIONS[displayName]).toBe(`aiProvider/fetch${suffix}Models`);
+  });
+
+  it.each(relabelled)('$displayName drops the identifier hyphen from what is read', ({ key }) => {
+    // "Claude-Code" and "Gemini-CLI" are key spellings. On a screen offering a
+    // subscription a hyphenated identifier reads as internal tooling.
+    expect(providerLabel(key)).not.toMatch(/-/);
   });
 });
 

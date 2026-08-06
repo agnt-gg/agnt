@@ -32,6 +32,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Orchestrator Routes](#orchestrator-routes)
 - [Plugin Routes](#plugin-routes)
 - [Schedule Routes](#schedule-routes)
+- [Import Routes](#import-routes)
 - [Skill Routes](#skill-routes)
 - [Skill Discovery Routes](#skill-discovery-routes)
 - [SkillForge Routes](#skillforge-routes)
@@ -5812,6 +5813,78 @@ The durable cron scheduler (PRD-091 Layer 1). Use when the user wants recurring 
 ```json
 { "success": true, "deleted": true }
 ```
+
+---
+
+## Import Routes
+
+Base path: `/api/import`
+
+Bring a user's existing setup in from the other AI agent tools installed on the
+same machine — Hermes, OpenClaw, Claude Code, Codex, Cursor and Gemini CLI.
+
+> **Skills usually need no import at all.** `SkillDiscoveryService` already
+> scans every one of these tools' `skills/` directories, so their skills work in
+> AGNT untouched. What these routes add is *ownership*: copying a skill into
+> `~/.agnt/skills/` so uninstalling the tool it came from no longer takes it
+> away. Persona and memory have no equivalent in discovery and are genuinely
+> new records.
+
+### Detect Importable Setup
+
+**GET** `/detect`
+
+- **Authentication**: Required
+- **Description**: Read-only scan of the installed harnesses. Runs during
+  onboarding, so it is bounded by a ~2.5s timeout and answers with an empty
+  result rather than an error if it cannot finish. `skills.importable` counts
+  only skills AGNT does not already have, deduplicated across tools.
+- **Response**:
+
+```json
+{
+  "sources": [
+    {
+      "id": "hermes",
+      "label": "Hermes",
+      "icon": "agent",
+      "home": "C:\\Users\\you\\.hermes",
+      "skills": { "total": 9, "importable": 8, "names": ["media-use"] },
+      "persona": { "available": true, "origins": ["SOUL.md"], "bytes": 513, "preview": "You are..." },
+      "memories": { "count": 7 }
+    }
+  ],
+  "totals": { "sources": 6, "skillsSeen": 49, "skillsImportable": 8, "personas": 2, "memories": 8 }
+}
+```
+
+### Run Import
+
+**POST** `/run`
+
+- **Authentication**: Required
+- **Description**: Copy the selected items into AGNT. Additive only — a skill
+  whose name already exists is skipped, never overwritten. Each array holds
+  harness ids; the server re-scans and ignores any id it does not recognise.
+- **Request Body**:
+
+```json
+{ "skills": ["hermes"], "personas": ["openclaw"], "memories": ["hermes"] }
+```
+
+- **Response**:
+
+```json
+{
+  "imported": { "skills": 8, "agents": 1, "memories": 7 },
+  "items": [{ "kind": "skill", "name": "media-use", "source": "hermes", "status": "imported" }],
+  "failures": [{ "kind": "skill", "name": "broken", "source": "hermes", "error": "Invalid SKILL.md" }]
+}
+```
+
+- **Errors**: `400` if nothing is selected or the arrays are malformed; `401`
+  without a user. Per-item failures are reported in `failures` rather than
+  aborting the run.
 
 ---
 

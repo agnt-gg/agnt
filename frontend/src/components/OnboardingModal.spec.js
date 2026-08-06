@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ref } from 'vue';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { mount, flushPromises } from '@vue/test-utils';
+
+const MODAL_SOURCE = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'OnboardingModal.vue'),
+  'utf8',
+);
 import { createStore } from 'vuex';
 import OnboardingModal from './OnboardingModal.vue';
 
@@ -23,6 +32,41 @@ vi.mock('@/services/fileSystemService.js', () => ({
     })
   ),
   updateSettings: vi.fn(() => Promise.resolve({ success: true })),
+}));
+
+/**
+ * The harness scan is stubbed for this suite.
+ *
+ * It fires a `fetch` on mount, and several tests here queue a response with
+ * `mockResolvedValueOnce` BEFORE mounting — a queue that is consumed in call
+ * order, not by URL. Letting a real scan run would silently eat the response
+ * meant for the pseudonym check, and any future mount-time request would break
+ * these tests again for a reason unrelated to what they assert. Stubbing the
+ * composable is also the honest scope: this file tests the modal, and the
+ * scanner has its own spec.
+ *
+ * `harnessImportStub` is mutable so a test can say "there IS something to
+ * import" and check that the step appears.
+ */
+const harnessImportStub = {
+  detect: vi.fn(),
+  // A real ref: the step list is a computed that reads this, and a plain
+  // object would not re-evaluate it.
+  hasAnythingToImport: ref(false),
+  // Enough surface for HarnessImport to render if a test navigates onto it.
+  sources: ref([]),
+  totals: ref({ sources: 0, skillsSeen: 0, skillsImportable: 0, personas: 0, memories: 0 }),
+  offerable: ref([]),
+  selectedCount: ref(0),
+  running: ref(false),
+  result: ref(null),
+  error: ref(''),
+  toggle: vi.fn(),
+  isSelected: () => false,
+  run: vi.fn(),
+};
+vi.mock('@/composables/useHarnessImport.js', () => ({
+  useHarnessImport: () => harnessImportStub,
 }));
 
 // Mock fetch globally
@@ -97,6 +141,8 @@ describe('OnboardingModal', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    harnessImportStub.detect.mockClear();
+    harnessImportStub.hasAnythingToImport.value = false;
     global.fetch.mockReset();
     global.fetch.mockResolvedValue({
       ok: true,
@@ -115,6 +161,23 @@ describe('OnboardingModal', () => {
     vi.useRealTimers();
     localStorage.clear();
   });
+
+  /**
+   * Navigate to a step BY NAME.
+   *
+   * Setting `currentStep` to a literal is how these tests used to move around,
+   * and it silently lands on a different screen the moment a conditional step
+   * is inserted above the target — the test then asserts against whatever
+   * happens to be at that index and passes or fails for unrelated reasons.
+   */
+  const goto = async (w, stepId) => {
+    const index = w.vm.steps.indexOf(stepId);
+    if (index === -1) {
+      throw new Error(`No "${stepId}" step in: ${w.vm.steps.join(', ')}`);
+    }
+    w.vm.currentStep = index + 1;
+    await w.vm.$nextTick();
+  };
 
   const createWrapper = (props = {}, storeOverrides = {}) => {
     store = createMockStore(storeOverrides);
@@ -146,53 +209,63 @@ describe('OnboardingModal', () => {
     });
   };
 
-  describe('provider grid ordering', () => {
+  describe('provider step delegates to ProviderLanes', () => {
     /**
-     * The grid must be alphabetical BY WHAT IT RENDERS. It used to sort by the
-     * auth API's `name`, so `openai-codex` — labelled "ChatGPT" — sorted as
-     * "OpenAI Codex" and appeared under O between the OpenAI providers, where
-     * nobody scanning for a C would find it.
+     * The filter, sort, lane split and labelling moved into ProviderLanes.vue,
+     * shared with the chat's setup card — those two screens each holding their
+     * own copy is what let them disagree about the same list. Ordering and
+     * lane membership are covered where they now live: ProviderLanes.spec.js
+     * and store/app/providerLanes.spec.js.
      *
-     * Asserted on the computed rather than the DOM so it holds regardless of
-     * which onboarding step happens to be showing.
+     * What is still this component's job, and asserted here: handing the
+     * shared component the raw store state, unfiltered, and wiring the two
+     * flows it owns back up.
      */
     const PROVIDERS = [
       { id: 'openai', name: 'OpenAI', icon: 'openai', categories: ['AI'], connectionType: 'apikey' },
       { id: 'openai-codex', name: 'OpenAI Codex', icon: 'openai', categories: ['AI'], connectionType: 'oauth' },
-      { id: 'openrouter', name: 'OpenRouter', icon: 'openrouter', categories: ['AI'], connectionType: 'apikey' },
       { id: 'cerebras', name: 'Cerebras', icon: 'cerebras', categories: ['AI'], connectionType: 'apikey' },
-      { id: 'chutes', name: 'Chutes', icon: 'chutes', categories: ['AI'], connectionType: 'apikey' },
-      { id: 'anthropic', name: 'Anthropic', icon: 'anthropic', categories: ['AI'], connectionType: 'apikey' },
+      { id: 'notes', name: 'Notes', icon: 'notes', categories: ['Productivity'] },
     ];
 
-    const renderedOrder = () => {
-      wrapper = createWrapper({}, { allProviders: PROVIDERS });
-      return wrapper.vm.aiProviders.map((p) => wrapper.vm.providerLabel(p));
+    // Step 4 is the provider step — see the flow comment below.
+    const lanes = async () => {
+      wrapper = createWrapper({}, { allProviders: PROVIDERS, connectedApps: ['openai'] });
+      wrapper.vm.currentStep = 4;
+      await wrapper.vm.$nextTick();
+      return wrapper.findComponent({ name: 'ProviderLanes' });
     };
 
-    it('lists providers alphabetically by their rendered label', () => {
-      expect(renderedOrder()).toEqual([
-        'Anthropic',
-        'Cerebras',
-        'ChatGPT',
-        'Chutes',
-        'OpenAI',
-        'OpenRouter',
-      ]);
+    it('renders no provider tile outside the shared component', async () => {
+      const component = await lanes();
+      expect(component.exists()).toBe(true);
+      // A tile in the modal but not in the child would be the private copy
+      // growing back. `.provider-grid` itself is legitimately present — it
+      // belongs to the child — so counting ownership is the honest check.
+      expect(wrapper.findAll('.provider-tile')).toHaveLength(
+        component.findAll('.provider-tile').length,
+      );
+      expect(component.findAll('.provider-tile').length).toBeGreaterThan(0);
     });
 
-    it('puts ChatGPT in the C group, not down among the OpenAIs', () => {
-      const order = renderedOrder();
-      expect(order.indexOf('ChatGPT')).toBeLessThan(order.indexOf('OpenAI'));
-      expect(order.indexOf('ChatGPT')).toBeGreaterThan(order.indexOf('Cerebras'));
+    it('passes store state through untouched, filtering nothing itself', async () => {
+      // A second filter here is exactly the drift the shared component ends.
+      const component = await lanes();
+      expect(component.props('providers')).toEqual(PROVIDERS);
+      expect(component.props('connectedIds')).toEqual(['openai']);
     });
 
-    it('renders the tile text from the same function it sorts by', () => {
-      // The sort key and the visible text drifting apart is the whole bug; if
-      // the template ever re-derives its own label this fails.
-      wrapper = createWrapper({}, { allProviders: PROVIDERS });
-      const codex = wrapper.vm.aiProviders.find((p) => p.id === 'openai-codex');
-      expect(wrapper.vm.providerLabel(codex)).toBe('ChatGPT');
+    it('passes codex status through, so the tile can be hidden when unusable', async () => {
+      expect((await lanes()).props('codexStatus')).toBeDefined();
+    });
+
+    it('handles connect and credential submission from the shared component', async () => {
+      const component = await lanes();
+      expect(component.vm.$options.emits).toContain('connect');
+      expect(component.vm.$options.emits).toContain('submit-credential');
+      // Both handlers must exist on this parent, or the events land nowhere.
+      expect(typeof wrapper.vm.handleProviderClick).toBe('function');
+      expect(typeof wrapper.vm.saveApiKey).toBe('function');
     });
   });
 
@@ -222,6 +295,162 @@ describe('OnboardingModal', () => {
       wrapper = createWrapper();
       const dots = wrapper.findAll('.dot');
       expect(dots[0].classes()).toContain('active');
+    });
+  });
+
+  describe('steps are addressed by name, not by position', () => {
+    /**
+     * Steps used to be addressed by index: `currentStep === 4` gated the
+     * provider requirement and `=== 5` saved the workspace, while the number
+     * of steps already varied with the referral bonus. Inserting any
+     * conditional step above those two shifts them, and the symptom is not a
+     * crash — it is the provider gate guarding the wrong screen and the
+     * workspace silently never being saved.
+     *
+     * These pin the property that makes insertion safe, so the next person to
+     * add a step gets a failure here rather than a bug report about a setting
+     * that does not stick.
+     */
+    const idAt = (w, n) => {
+      w.vm.currentStep = n;
+      return w.vm.currentStepId;
+    };
+
+    it('derives the visible step id from the step list', async () => {
+      wrapper = createWrapper();
+      expect(wrapper.vm.steps).toEqual(['welcome', 'theme', 'profile', 'provider', 'workspace', 'ready']);
+      expect(idAt(wrapper, 1)).toBe('welcome');
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+    });
+
+    it('counts steps from the same list it renders from', async () => {
+      wrapper = createWrapper();
+      expect(wrapper.vm.totalSteps).toBe(wrapper.vm.steps.length);
+      expect(wrapper.vm.finalStep).toBe(wrapper.vm.steps.length);
+      expect(wrapper.vm.steps.at(-1)).toBe('ready');
+    });
+
+    it('shifts every later step when a conditional one appears', async () => {
+      // The referral step is the conditional step that already exists. If the
+      // gates were still index-based, this shift is what would break them.
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+      expect(wrapper.vm.steps).toContain('referral');
+      expect(idAt(wrapper, 6)).toBe('referral');
+      expect(idAt(wrapper, 7)).toBe('ready');
+      // ...and the two gated steps have NOT moved, because they sit above it.
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+    });
+
+    it('gates the provider requirement on the provider step by name', async () => {
+      wrapper = createWrapper({}, { connectedApps: [] });
+      await flushPromises();
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('provider') + 1;
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      // Blocked: still on the provider step with nothing connected.
+      expect(wrapper.vm.currentStepId).toBe('provider');
+    });
+
+    it('saves the workspace on the workspace step by name', async () => {
+      const { updateSettings } = await import('@/services/fileSystemService.js');
+      updateSettings.mockClear();
+
+      wrapper = createWrapper({}, { connectedApps: ['openai'] });
+      await flushPromises();
+      wrapper.vm.currentStep = wrapper.vm.steps.indexOf('workspace') + 1;
+      wrapper.vm.workspaceRoot = '/somewhere/new';
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      await flushPromises();
+      expect(updateSettings).toHaveBeenCalledWith('/somewhere/new');
+    });
+
+    it('adds an import step only when there is something to import', async () => {
+      wrapper = createWrapper();
+      await flushPromises();
+      expect(wrapper.vm.steps).not.toContain('import');
+
+      harnessImportStub.hasAnythingToImport.value = true;
+      await wrapper.vm.$nextTick();
+      expect(wrapper.vm.steps).toContain('import');
+    });
+
+    it('keeps the gated steps in place when the import step appears', async () => {
+      // The exact shift the named-step refactor exists to survive: 'import'
+      // sits between 'workspace' and 'ready', so every later index moves.
+      harnessImportStub.hasAnythingToImport.value = true;
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+
+      expect(wrapper.vm.steps).toEqual(
+        ['welcome', 'theme', 'profile', 'provider', 'workspace', 'import', 'referral', 'ready'],
+      );
+      expect(idAt(wrapper, 4)).toBe('provider');
+      expect(idAt(wrapper, 5)).toBe('workspace');
+      expect(idAt(wrapper, 8)).toBe('ready');
+    });
+
+    it('starts the scan on mount', async () => {
+      wrapper = createWrapper();
+      expect(harnessImportStub.detect).toHaveBeenCalledTimes(1);
+    });
+
+    it('compares steps to names, never to positions', () => {
+      /**
+       * Asserted against the SOURCE, because this defect is currently
+       * unreachable at runtime: 'import' is inserted AFTER 'workspace', so
+       * workspace does not move and `currentStep === 5` is still accidentally
+       * correct. A mounted test therefore passes with the bug present
+       * (verified — negative control M3 stayed green until this existed).
+       *
+       * It becomes wrong the moment any step is added ABOVE an existing one,
+       * and the symptom is silent: the workspace is never saved, or the
+       * provider gate guards the wrong screen. The invariant that prevents it
+       * is simply that no number is ever compared to a step.
+       */
+      const numericComparisons = [
+        ...MODAL_SOURCE.matchAll(/currentStep(?:\.value)?\s*===\s*(\d+)/g),
+      ].map((m) => m[0]);
+
+      expect(
+        numericComparisons,
+        'Compare currentStepId to a name instead — see the steps list.',
+      ).toEqual([]);
+    });
+
+    it('anti-vacuity: the source is loaded and does address steps by id', () => {
+      // Guards the check above against silently matching an empty file.
+      expect(MODAL_SOURCE.length).toBeGreaterThan(1000);
+      expect(MODAL_SOURCE).toMatch(/currentStepId(?:\.value)?\s*===\s*'workspace'/);
+    });
+
+    it('does not WAIT for the scan before rendering', () => {
+      /**
+       * Asserted against the source, because a mounted test cannot see the
+       * difference: an awaited call and a fire-and-forget call are both "called
+       * once", and with a stub that resolves immediately the rendered output is
+       * identical either way. The cost of getting this wrong is only visible on
+       * a real disk — a filesystem scan in front of the welcome screen on every
+       * single launch.
+       */
+      const call = MODAL_SOURCE.match(/^\s*(await\s+)?harnessImport\.detect\(\);/m);
+      expect(call, 'harnessImport.detect() call not found in OnboardingModal.vue').not.toBeNull();
+      expect(call[1], 'detect() must not be awaited — it gates a step, not the render').toBeUndefined();
+    });
+
+    it('never renders two steps at once', async () => {
+      wrapper = createWrapper({}, { referralBalance: 500 });
+      await flushPromises();
+      for (let n = 1; n <= wrapper.vm.steps.length; n++) {
+        wrapper.vm.currentStep = n;
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findAll('.step-content > .step')).toHaveLength(1);
+      }
     });
   });
 
@@ -437,10 +666,9 @@ describe('OnboardingModal', () => {
   });
 
   describe('Workspace Step', () => {
-    it('shows the workspace folder input on step 5', async () => {
+    it('shows the workspace folder picker', async () => {
       wrapper = createWrapper({}, CONNECTED);
-      wrapper.vm.currentStep = 5;
-      await wrapper.vm.$nextTick();
+      await goto(wrapper, 'workspace');
 
       expect(wrapper.find('.workspace-step').exists()).toBe(true);
       expect(wrapper.find('#workspaceRoot').exists()).toBe(true);
@@ -449,10 +677,78 @@ describe('OnboardingModal', () => {
     it('loads the current workspace root as the default hint', async () => {
       wrapper = createWrapper({}, CONNECTED);
       await flushPromises();
-      wrapper.vm.currentStep = 5;
-      await wrapper.vm.$nextTick();
+      await goto(wrapper, 'workspace');
 
       expect(wrapper.vm.defaultWorkspaceRoot).toBe('/home/user/agnt-workspace');
+    });
+
+    it('renders the shared picker, not a bare input', async () => {
+      // The field is WorkspacePicker now, shared with the file tree's settings
+      // dialog. `#workspaceRoot` alone would still pass against a plain input,
+      // so it cannot tell the two apart.
+      wrapper = createWrapper({}, CONNECTED);
+      await goto(wrapper, 'workspace');
+
+      expect(wrapper.findComponent({ name: 'WorkspacePicker' }).exists()).toBe(true);
+    });
+  });
+
+  describe('the workspace picker and the import step coexist', () => {
+    /**
+     * These arrived on two separate branches that both edited this file: one
+     * replaced the workspace step's contents, the other renamed every step's
+     * guard from an index to a name. Git merged the overlapping region without
+     * reporting a conflict, so the failure mode was never a merge marker — it
+     * was one of the two changes silently winning.
+     *
+     * Asserted on ONE mounted component, because each feature's own suite
+     * passes happily while the other is missing.
+     */
+    const BOTH = { ...CONNECTED, referralBalance: 100 };
+
+    beforeEach(() => {
+      harnessImportStub.hasAnythingToImport.value = true;
+    });
+
+    it('orders every step correctly with both features live', async () => {
+      wrapper = createWrapper({}, BOTH);
+      await flushPromises();
+      expect(wrapper.vm.steps).toEqual(
+        ['welcome', 'theme', 'profile', 'provider', 'workspace', 'import', 'referral', 'ready'],
+      );
+    });
+
+    it('renders the picker on the workspace step and the importer on the import step', async () => {
+      wrapper = createWrapper({}, BOTH);
+      await flushPromises();
+
+      await goto(wrapper, 'workspace');
+      expect(wrapper.findComponent({ name: 'WorkspacePicker' }).exists()).toBe(true);
+      expect(wrapper.findComponent({ name: 'HarnessImport' }).exists()).toBe(false);
+
+      await goto(wrapper, 'import');
+      expect(wrapper.findComponent({ name: 'HarnessImport' }).exists()).toBe(true);
+      expect(wrapper.findComponent({ name: 'WorkspacePicker' }).exists()).toBe(false);
+    });
+
+    it('still saves the workspace once the import step has shifted the later ones', async () => {
+      // The regression the named-step refactor exists to prevent: an inserted
+      // step moves 'referral' and 'ready' down, and an index-based gate would
+      // now be saving on the wrong screen — silently.
+      const { updateSettings } = await import('@/services/fileSystemService.js');
+      updateSettings.mockClear();
+
+      wrapper = createWrapper({}, BOTH);
+      await flushPromises();
+      await goto(wrapper, 'workspace');
+      wrapper.vm.workspaceRoot = '/picked/by/dialog';
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      await flushPromises();
+
+      expect(updateSettings).toHaveBeenCalledWith('/picked/by/dialog');
+      expect(wrapper.vm.currentStepId).toBe('import');
     });
   });
 

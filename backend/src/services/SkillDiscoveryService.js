@@ -28,6 +28,9 @@ const CLIENT_SKILL_DIRS = [
   '.windsurf/skills',   // Windsurf
   '.copilot/skills',    // VS Code / Copilot
   '.kilocode/skills',   // KiloCode
+  '.hermes/skills',     // Hermes
+  '.openclaw/skills',   // OpenClaw
+  '.gemini/skills',     // Gemini CLI
   '.github/skills',     // GitHub Copilot (project-level)
   '.agents/skills',     // Cross-client standard
 ];

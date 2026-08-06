@@ -14,7 +14,7 @@
         <Transition :name="transitionName" mode="out-in">
           <div :key="currentStep" class="step-content">
             <!-- Step 1: Welcome -->
-            <div v-if="currentStep === 1" class="step welcome-step">
+            <div v-if="currentStepId === 'welcome'" class="step welcome-step">
               <img src="/images/agnt-logo.png" alt="AGNT Logo" class="logo-large" />
               <h1>Welcome to <span style="color: var(--color-primary)">AGNT</span>, {{ userName }}!</h1>
               <p class="subtitle">Your AI-powered automation workspace is ready to go.</p>
@@ -22,7 +22,7 @@
             </div>
 
             <!-- Step 2: Theme Selection -->
-            <div v-if="currentStep === 2" class="step theme-step">
+            <div v-if="currentStepId === 'theme'" class="step theme-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="5"></circle>
@@ -54,7 +54,7 @@
             </div>
 
             <!-- Step 3: Profile Setup -->
-            <div v-if="currentStep === 3" class="step profile-step">
+            <div v-if="currentStepId === 'profile'" class="step profile-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -90,40 +90,22 @@
             </div>
 
             <!-- Step 4: AI Provider Setup -->
-            <div v-if="currentStep === 4" class="step provider-step">
+            <div v-if="currentStepId === 'provider'" class="step provider-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                 </svg>
               </div>
-              <h2>Connect an AI Provider</h2>
-              <p class="subtitle">Choose an AI provider to power your agents</p>
-              <p class="description" style="margin-bottom: 24px">
-                Select a provider below to get started. You can add more providers later in Settings.
-              </p>
+              <h2>Connect an AI</h2>
+              <p class="subtitle">Pick whichever you already have.</p>
 
-              <div class="provider-grid">
-                <Tooltip
-                  v-for="provider in aiProviders"
-                  :key="provider.id"
-                  :text="providerLabel(provider)"
-                  width="auto"
-                >
-                  <button
-                    type="button"
-                    class="provider-tile"
-                    :class="{ connected: isProviderConnected(provider.id) }"
-                    :aria-label="`Connect to ${providerLabel(provider)}`"
-                    @click="handleProviderClick(provider)"
-                  >
-                    <span v-if="isProviderConnected(provider.id)" class="provider-status-dot"></span>
-                    <div class="provider-icon">
-                      <SvgIcon :name="provider.icon" />
-                    </div>
-                    <span class="provider-name">{{ providerLabel(provider) }}</span>
-                  </button>
-                </Tooltip>
-              </div>
+              <ProviderLanes
+                :providers="allProviders"
+                :connected-ids="connectedApps"
+                :codex-status="codexStatus"
+                @connect="handleProviderClick"
+                @submit-credential="saveApiKey"
+              />
 
               <p v-if="hasAnyProviderConnected" class="hint success" style="margin-top: 16px; text-align: center">
                 Provider connected! You can add more providers later in Settings.
@@ -134,7 +116,7 @@
             </div>
 
             <!-- Step 5: Workspace Folder -->
-            <div v-if="currentStep === 5" class="step workspace-step">
+            <div v-if="currentStepId === 'workspace'" class="step workspace-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -146,26 +128,36 @@
                 This is the root folder for projects, generated code, and artifacts. You can change it anytime in the file tree settings.
               </p>
               <div class="input-group">
-                <label for="workspaceRoot">Workspace Folder</label>
-                <input
-                  id="workspaceRoot"
+                <WorkspacePicker
                   v-model="workspaceRoot"
-                  type="text"
-                  class="workspace-path-input"
+                  input-id="workspaceRoot"
+                  label="Workspace Folder"
+                  :default-path="defaultWorkspaceRoot"
+                  :error="workspaceError"
                   :placeholder="defaultWorkspaceRoot || 'Loading default...'"
-                  spellcheck="false"
-                  @keyup.enter="nextStep"
+                  @submit="nextStep"
                 />
-                <p v-if="workspaceError" class="hint error">{{ workspaceError }}</p>
-                <p v-else-if="defaultWorkspaceRoot" class="hint">
-                  Default: <code>{{ defaultWorkspaceRoot }}</code>
-                </p>
-                <p v-else class="hint">Leave blank to use the default location.</p>
               </div>
             </div>
 
-            <!-- Step 6: Referral Bonus (conditional) -->
-            <div v-if="currentStep === 6 && hasReferralBonus" class="step referral-step">
+            <!-- Import from other AI tools (conditional — only when there is
+                 something on this machine worth offering) -->
+            <div v-if="currentStepId === 'import'" class="step import-step">
+              <div class="icon-circle">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </div>
+              <h2>Bring Your Setup With You</h2>
+              <p class="subtitle">You've already built things in other AI tools.</p>
+
+              <HarnessImport :importer="harnessImport" />
+            </div>
+
+            <!-- Referral Bonus (conditional) -->
+            <div v-if="currentStepId === 'referral'" class="step referral-step">
               <div class="celebration-icon">🎉</div>
               <h2>You've Earned a Bonus!</h2>
               <div class="bonus-display">
@@ -179,7 +171,7 @@
             </div>
 
             <!-- Final Step: Ready to Go -->
-            <div v-if="currentStep === finalStep" class="step ready-step">
+            <div v-if="currentStepId === 'ready'" class="step ready-step">
               <div class="success-icon">
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="var(--color-primary)" stroke-width="2" />
@@ -222,15 +214,15 @@
 <script>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
-import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ProviderLanes from '@/components/ProviderLanes.vue';
+import WorkspacePicker from '@/components/WorkspacePicker.vue';
+import HarnessImport from '@/components/HarnessImport.vue';
+import { useHarnessImport } from '@/composables/useHarnessImport.js';
 import { API_CONFIG } from '@/tt.config.js';
 import {
   PROVIDER_FETCH_ACTIONS,
   resolveProviderKey,
-  providerLabel,
-  connectableAiProviders,
 } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
@@ -238,9 +230,10 @@ import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceS
 export default {
   name: 'OnboardingModal',
   components: {
-    SvgIcon,
     SimpleModal,
-    Tooltip,
+    ProviderLanes,
+    WorkspacePicker,
+    HarnessImport,
   },
   props: {
     show: {
@@ -252,6 +245,11 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const modal = ref(null);
+
+    // Owned here rather than inside HarnessImport, because whether the import
+    // step EXISTS is this component's question and the answer lives in the
+    // composable. A child cannot decide whether it should be rendered.
+    const harnessImport = useHarnessImport();
 
     // Theme data
     const currentTheme = computed(() => store.getters['theme/currentTheme']);
@@ -307,11 +305,9 @@ export default {
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
-    // Shared with the chat's provider setup card. These were two copies of the
-    // same filter and sort, and they drifted — see connectableAiProviders.
-    const aiProviders = computed(() =>
-      connectableAiProviders(allProviders.value, { codexStatus: codexStatus.value })
-    );
+    // The filter, sort and lane split now live in ProviderLanes.vue, which the
+    // chat's setup card renders too. This screen supplies the raw store state
+    // and nothing else — the copy that used to live here is what drifted.
 
     // Check if a provider is connected
     const isProviderConnected = (providerId) => {
@@ -324,14 +320,33 @@ export default {
       return (connectedApps.value || []).length > 0;
     });
 
-    // Computed
-    const totalSteps = computed(() => {
-      // Base steps: Welcome, Theme, Profile, Provider, Workspace, Ready
-      let steps = 6;
-      if (hasReferralBonus.value) steps++; // Add referral bonus step
-      return steps;
+    /**
+     * The steps this run of onboarding will show, in order.
+     *
+     * NAMED, NOT NUMBERED. Steps used to be addressed by index — `currentStep
+     * === 4` gated the provider requirement and `=== 5` saved the workspace —
+     * while the number of steps already varied with the referral bonus. Any
+     * new conditional step inserted above those two silently shifts them, and
+     * the symptom is not a crash: it is the provider gate quietly guarding the
+     * wrong screen and the workspace never being saved. Deriving ids from this
+     * one list makes position irrelevant.
+     */
+    const steps = computed(() => {
+      const list = ['welcome', 'theme', 'profile', 'provider', 'workspace'];
+      // Only when there is something to offer. Having Claude Code installed
+      // with every skill already in AGNT is a common state with nothing to
+      // import, and a step that exists only to say so wastes the one first run
+      // this user gets.
+      if (harnessImport.hasAnythingToImport.value) list.push('import');
+      if (hasReferralBonus.value) list.push('referral');
+      list.push('ready');
+      return list;
     });
+
+    const totalSteps = computed(() => steps.value.length);
     const finalStep = computed(() => totalSteps.value);
+    /** The id of the step on screen. `currentStep` stays 1-based for the dots. */
+    const currentStepId = computed(() => steps.value[currentStep.value - 1] || 'welcome');
     const referrerName = ref(null);
 
     // Persists the workspace root if the user changed it. Returns true on
@@ -356,13 +371,13 @@ export default {
     // Methods
     const nextStep = async () => {
       // On provider step, require at least one connected provider
-      if (currentStep.value === 4 && !hasAnyProviderConnected.value) {
+      if (currentStepId.value === 'provider' && !hasAnyProviderConnected.value) {
         await showAlert('Provider Required', 'Please connect at least one AI provider to continue. AGNT needs an AI provider to power chat, agents, and workflows.');
         return;
       }
       // On workspace step, persist any changes before moving on so the user
       // sees the same root in the file tree once onboarding finishes.
-      if (currentStep.value === 5) {
+      if (currentStepId.value === 'workspace') {
         const ok = await saveWorkspaceIfChanged();
         if (!ok) return;
       }
@@ -757,6 +772,13 @@ export default {
 
     // Fetch referrer info if has bonus
     onMounted(async () => {
+      // Deliberately NOT awaited. This looks at the disk for other AI tools and
+      // decides whether a whole step exists; awaiting it here would put a
+      // filesystem scan in front of the welcome screen. It resolves long
+      // before the user reaches the step it controls, and resolves to "nothing
+      // found" if it cannot answer.
+      harnessImport.detect();
+
       // Fetch providers if not already loaded
       if (allProviders.value.length === 0) {
         await store.dispatch('appAuth/fetchAllProviders');
@@ -833,8 +855,11 @@ export default {
     return {
       modal,
       currentStep,
+      currentStepId,
+      steps,
       totalSteps,
       finalStep,
+      harnessImport,
       userName,
       pseudonym,
       pseudonymStatus,
@@ -842,7 +867,9 @@ export default {
       referralBalance,
       referrerName,
       transitionName,
-      aiProviders,
+      allProviders,
+      connectedApps,
+      codexStatus,
       currentTheme,
       availableThemes,
       workspaceRoot,
@@ -854,10 +881,10 @@ export default {
       complete,
       handleSkip,
       handleProviderClick,
+      saveApiKey,
       isProviderConnected,
       hasAnyProviderConnected,
       checkPseudonymAvailability,
-      providerLabel,
     };
   },
 };
@@ -1091,9 +1118,11 @@ export default {
   font-size: 0.92em;
 }
 
-.workspace-path-input {
-  font-family: var(--font-family-mono, monospace) !important;
-  font-size: 0.95em !important;
+/* The workspace field lives in WorkspacePicker.vue now, shared with the file
+   tree's settings dialog. It needs more room than the other single-line inputs
+   because it carries a Browse button beside a path. */
+.workspace-step .input-group {
+  max-width: 520px;
 }
 
 /* Theme Step */
@@ -1182,87 +1211,10 @@ export default {
   color: var(--color-text);
 }
 
-/* Provider Step */
-.provider-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  flex-direction: row;
-  align-content: flex-start;
-  justify-content: center;
-  align-items: flex-start;
-  margin-top: 24px;
-  max-width: 500px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.provider-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border: 3px solid var(--color-text-muted);
-  border-radius: 8px;
-  min-width: 80px;
-  min-height: 80px;
-  justify-content: center;
-  cursor: pointer;
-  background: transparent;
-  padding: 8px;
-  font-family: inherit;
-  transition: all 0.3s ease;
-}
-
-.provider-tile:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.provider-tile:active {
-  transform: translateY(0);
-}
-
-.provider-tile:hover {
-  background: var(--color-darker-1);
-  transform: translateY(-2px);
-  border-color: rgba(var(--primary-rgb), 0.3);
-}
-
-.provider-icon :deep(svg) {
-  width: 32px;
-  height: 32px;
-  margin-bottom: 3px;
-}
-
-.provider-tile.connected {
-  background: rgba(var(--green-rgb), 0.05);
-  border-color: var(--color-green);
-}
-
-.provider-tile.connected:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: var(--color-green);
-}
-
-.provider-status-dot {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-green);
-  box-shadow: var(--glow-success);
-}
-
-.provider-name {
-  margin-top: 4px;
-  font-weight: 500;
-  text-align: center;
-  font-size: 0.9em;
-  color: var(--color-text);
-}
+/* Provider Step — the grid, tiles and lane copy live in ProviderLanes.vue,
+   which the chat's setup card renders too. Both screens kept their own near
+   copy of this block, with different gaps and hover colours, which is how they
+   came to disagree about the same list. */
 
 /* Referral Step */
 .celebration-icon {

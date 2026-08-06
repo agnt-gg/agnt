@@ -8,7 +8,11 @@
  *   1. userAuth.SET_SIGNED_LICENSE refuses a foreign license  (behavioural)
  *   2. userAuth.SET_TOKEN drops a foreign license on identity change (behavioural)
  *   3. validateLicense is registered with an `identity` scope    (source)
- *   4. main.js gates the cached-license fast path on subject     (source)
+ *   4. the cached-license fast path is gated on subject          (source)
+ *
+ * (4) moved from main.js to store/auth/sessionBoot.js when session start
+ * stopped being something only a page load could do. The invariant is
+ * unchanged; only its address is.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -195,15 +199,26 @@ describe('source contract — the checks are actually installed', () => {
     expect(src).toMatch(/identityChanged/);
   });
 
-  it('main.js gates the cached-license fast path on subject match', () => {
-    const src = stripComments(read('../../main.js'));
+  it('the cached-license fast path is gated on subject match', () => {
+    // In sessionBoot.js now: hydrating a cached license is session-start work,
+    // and a login can find a usable cached license just as a page load can.
+    const src = stripComments(read('./sessionBoot.js'));
     expect(src).toMatch(/licenseMatchesSubject\(parsed,\s*token\)/);
     // and the fast path must require it
     expect(src).toMatch(/expiresAt > now \+ 300 && belongsToThisSession/);
   });
 
+  it('main.js does not keep a second, unguarded copy of that fast path', () => {
+    // The failure mode this whole file exists for is a correct check that some
+    // OTHER call site skips. Moving logic is exactly when a stale duplicate
+    // gets left behind.
+    const src = stripComments(read('../../main.js'));
+    expect(src).not.toMatch(/signedLicense/);
+    expect(src).not.toMatch(/expiresAt/);
+  });
+
   it('anti-vacuity: the scanners find real, non-empty sources', () => {
     expect(stripComments(read('./userAuth.js')).length).toBeGreaterThan(5000);
-    expect(stripComments(read('../../main.js')).length).toBeGreaterThan(2000);
+    expect(stripComments(read('./sessionBoot.js')).length).toBeGreaterThan(1000);
   });
 });
