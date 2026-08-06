@@ -7042,6 +7042,78 @@ Base path: `/api/users`
 }
 ```
 
+### Get User Preferences
+
+**GET** `/preferences`
+
+- **Authentication**: Required
+- **Description**: Cross-device UI preferences (theme, font, panel geometry). Distinct from `/settings`, which holds account-level AI configuration and is replace-on-write.
+- **Query params**:
+  - `deviceId` (optional) — 1-64 chars of `[A-Za-z0-9_-]`. When supplied, that device's geometry is resolved into `preferences.device`. When omitted the response shape is unchanged: `device` is `{}` and `deviceId` is `null`, while `global` and `knownDevices` are still returned in full. `knownDevices` is deliberately not gated on `deviceId` — a caller listing a user's devices has no device of its own to name.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "preferences": {
+    "global": { "currentTheme": "dark", "fontFamily": "sans", "bgOpacity": 90 },
+    "device": { "uiScale": 100, "leftPanelWidth": 384 },
+    "deviceId": "dev-abc123",
+    "updatedAt": 1786029683945,
+    "knownDevices": [
+      { "deviceId": "dev-abc123", "label": "iMac", "updatedAt": 1786029683945, "current": true }
+    ]
+  }
+}
+```
+
+### Update User Preferences
+
+**PUT** `/preferences`
+
+- **Authentication**: Required
+- **Description**: Merges a patch into the stored preferences. Send only the keys that changed; unsent keys are preserved, so an older client cannot erase a key it does not know about. An explicit `null` deletes a key.
+- **Scopes**: `global` keys (theme, font, background treatment) sync everywhere. `device` keys (panel widths, UI scale, collapse state) are stored per `deviceId`, because pixel geometry chosen on a 27-inch display is wrong on a laptop.
+- **Conflict resolution**: `global` is last-write-wins on `updatedAt`; a patch older than the stored state is ignored and reported as `result.global.staleIgnored`. `device` writes always apply, being uncontended by construction.
+- **Body**:
+
+```json
+{
+  "global": { "currentTheme": "cyberpunk", "fontFamily": null },
+  "device": { "leftPanelWidth": 420 },
+  "deviceId": "dev-abc123",
+  "deviceLabel": "iMac",
+  "updatedAt": 1786029683945
+}
+```
+
+- **Notes**:
+  - `updatedAt` (epoch ms) should be the moment the user acted, not the moment the request was built. Defaults to server time when omitted.
+  - `deviceId` is required whenever `device` is present (400 otherwise).
+  - Unknown or malformed keys are dropped, not stored, and are listed in `result.*.rejected` so a client can see the write was refused.
+  - Custom background media is **not** synced — it lives in browser IndexedDB. Only the `useCustomBackground` / `bgOpacity` / `bgBlur` treatment flags cross devices.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "preferences": {
+    "global": { "currentTheme": "cyberpunk" },
+    "device": { "leftPanelWidth": 420 },
+    "deviceId": "dev-abc123",
+    "updatedAt": 1786029683945,
+    "knownDevices": []
+  },
+  "result": {
+    "global": { "applied": ["currentTheme"], "deleted": ["fontFamily"], "rejected": [], "staleIgnored": false },
+    "device": { "applied": ["leftPanelWidth"], "deleted": [], "rejected": [], "deviceId": "dev-abc123" },
+    "evictedDevices": []
+  }
+}
+```
+
+- **Errors**: `400` malformed body / missing `deviceId` / non-numeric `updatedAt`; `404` user not found; `413` payload exceeds 64 KB.
+
 ### Sync Token
 
 **POST** `/sync-token`

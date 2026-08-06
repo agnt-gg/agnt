@@ -25,6 +25,12 @@ UserRoutes.get('/user-stats', authenticateToken, UserService.getUserStats);
 // User settings routes
 UserRoutes.get('/settings', authenticateToken, UserService.getUserSettings);
 UserRoutes.put('/settings', authenticateToken, UserService.updateUserSettings);
+
+// Cross-device UI preferences (theme, font, panel geometry). Separate from
+// /settings because the write semantics differ: partial merge, last-write-wins
+// on global keys, and a per-device scope for anything measured in pixels.
+UserRoutes.get('/preferences', authenticateToken, UserService.getPreferences);
+UserRoutes.put('/preferences', authenticateToken, UserService.updatePreferences);
 UserRoutes.get('/security-policy', authenticateToken, UserService.getSecurityPolicy);
 UserRoutes.put('/security-policy', authenticateToken, UserService.updateSecurityPolicy);
 UserRoutes.delete('/security-policy', authenticateToken, UserService.resetSecurityPolicy);

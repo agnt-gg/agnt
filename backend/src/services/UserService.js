@@ -3,6 +3,7 @@ import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { getCliProviderIds, getAuthEntry } from './auth/AuthDispatcher.js';
 import SecurityPolicyService from './security/SecurityPolicyService.js';
+import { isValidDeviceId, projectForDevice } from '../utils/userPreferences.js';
 
 async function _getLocalCliHealthProviders() {
   const ids = getCliProviderIds();
@@ -196,6 +197,102 @@ class UserService {
       res.status(500).json({ error: 'Error updating user settings' });
     }
   }
+
+  /**
+   * GET /api/users/preferences
+   *
+   * Cross-device UI preferences. Separate from /settings because these are
+   * presentation state with different semantics: partial-merge writes,
+   * last-write-wins conflict resolution, and a per-device scope. Folding them
+   * into /settings would have forced that behaviour onto provider/model too,
+   * where a full replace is correct.
+   *
+   * `deviceId` is a query param so the caller gets ITS OWN geometry already
+   * resolved and never has to understand the storage layout.
+   */
+  async getPreferences(req, res) {
+    try {
+      const userId = req.user?.id || req.user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId : null;
+      if (deviceId !== null && !isValidDeviceId(deviceId)) {
+        return res.status(400).json({ error: 'deviceId must be 1-64 chars of [A-Za-z0-9_-]' });
+      }
+
+      const prefs = await UserModel.getPreferences(userId);
+      res.json({ success: true, preferences: projectForDevice(prefs, deviceId) });
+    } catch (error) {
+      console.error('Error fetching user preferences:', error);
+      res.status(500).json({ error: 'Error fetching user preferences' });
+    }
+  }
+
+  /**
+   * PUT /api/users/preferences
+   *
+   * Body: { global?, device?, deviceId?, deviceLabel?, updatedAt? }
+   *
+   * A MERGE, not a replace: send only what changed. An explicit null deletes a
+   * key. `updatedAt` must be when the USER acted, not when the request was
+   * built — otherwise a tab left open for a week can replay a stale theme over
+   * a fresh one just by being chatty.
+   *
+   * Always reports `applied` / `rejected` back. A silently-dropped key is the
+   * worst outcome for a client author, because it looks exactly like success.
+   */
+  async updatePreferences(req, res) {
+    try {
+      const userId = req.user?.id || req.user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const body = req.body;
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ error: 'Request body must be an object' });
+      }
+
+      const hasGlobal = body.global !== undefined;
+      const hasDevice = body.device !== undefined;
+      if (!hasGlobal && !hasDevice) {
+        return res.status(400).json({ error: 'At least one of "global" or "device" is required' });
+      }
+      if (hasGlobal && (body.global === null || typeof body.global !== 'object' || Array.isArray(body.global))) {
+        return res.status(400).json({ error: '"global" must be an object of preference keys' });
+      }
+      if (hasDevice) {
+        if (body.device === null || typeof body.device !== 'object' || Array.isArray(body.device)) {
+          return res.status(400).json({ error: '"device" must be an object of preference keys' });
+        }
+        // Rejected up front rather than inside the merge, so a client that
+        // forgot deviceId gets a 400 it can act on instead of a 200 whose
+        // rejected[] it may never read.
+        if (!isValidDeviceId(body.deviceId)) {
+          return res.status(400).json({ error: '"deviceId" is required with "device" and must be 1-64 chars of [A-Za-z0-9_-]' });
+        }
+      }
+      if (body.updatedAt !== undefined && !Number.isFinite(body.updatedAt)) {
+        return res.status(400).json({ error: '"updatedAt" must be a number (epoch ms)' });
+      }
+
+      const { preferences, result } = await UserModel.updatePreferences(userId, body);
+
+      res.json({
+        success: true,
+        preferences: projectForDevice(preferences, body.deviceId || null),
+        result,
+      });
+    } catch (error) {
+      if (error.code === 'USER_NOT_FOUND') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (error.code === 'PREFS_TOO_LARGE') {
+        return res.status(413).json({ error: 'Preferences payload too large' });
+      }
+      console.error('Error updating user preferences:', error);
+      res.status(500).json({ error: 'Error updating user preferences' });
+    }
+  }
+
   async syncToken(req, res) {
     // Sync token from frontend to backend session
     try {

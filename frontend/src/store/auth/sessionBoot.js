@@ -54,6 +54,7 @@
 
 import { authSubject, licenseMatchesSubject, licenseSubject } from './licenseIdentity.js';
 import { resumeInflightRuns as defaultResumeInflightRuns } from '@/services/runResume.js';
+import { startPreferenceSync, stopPreferenceSync } from '@/services/userPreferences.js';
 
 /** Refresh the signed license once an hour while a session is live. */
 const LICENSE_REFRESH_INTERVAL = 60 * 60 * 1000;
@@ -171,6 +172,22 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
       console.error('[session] loadUserSettings failed:', err?.message || err);
     });
 
+    // Cross-device UI preferences (theme, font, panel geometry). Session
+    // scoped, not boot scoped, for exactly the reason this module exists: a
+    // sign-in does not reload the page, so a browser that signed in without
+    // one would otherwise keep painting the previous defaults until refresh.
+    // localStorage has already painted the last known-good values
+    // synchronously; this only reconciles them with the server.
+    //
+    // try/catch for the same reason resumeInflightRuns is wrapped above: a
+    // synchronous throw in here is an unhandled ERROR, not a rejection, and
+    // would silently abort every step queued after it.
+    try {
+      startPreferenceSync(store);
+    } catch (err) {
+      console.warn('[session] preference sync failed to start:', err?.message || err);
+    }
+
     startLicenseRefresh(store);
 
     // Rejoin any chat turn still generating when this tab last went away.
@@ -216,6 +233,12 @@ export function endSession(store, { reason = 'unknown' } = {}) {
   console.log(`[session] ending (${reason})`);
   inFlight = null;
   stopLicenseRefresh();
+  // Detach the preference subscriber and drop anything queued. Without this a
+  // sign-out leaves it watching the store, and a debounced push from the
+  // previous user can land under the NEXT user's token — writing one person's
+  // theme into another's account. The in-memory "keys this user touched" set
+  // has to go the same way, or it suppresses the next user's hydration.
+  stopPreferenceSync();
   // Stops connector polling and clears every user-scoped store, in that order.
   // Derived from one table rather than the ad-hoc four-store list that used to
   // live in userAuth.logout — see resetUserScopedData in store/state.js.
