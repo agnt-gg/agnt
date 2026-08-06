@@ -189,11 +189,50 @@ describe('buildTools — exactly one door into AGNT', () => {
 });
 
 describe('buildSessionConfig', () => {
-  it('uses the speech-to-speech model and audio output', () => {
+  it('uses the speech-to-speech model', () => {
     const c = buildSessionConfig();
     expect(c.model).toBe(REALTIME_MODEL);
     expect(c.type).toBe('realtime');
-    expect(c.output_modalities).toEqual(['audio']);
+  });
+
+  describe('nothing can be HEARD that was not also WRITTEN', () => {
+    /**
+     * THE BUG THIS EXISTS FOR
+     * -----------------------
+     * Realtime models narrate their tool calls. Ours spoke a line of its own
+     * in the same response as the run_agnt call — in a voice the user takes
+     * for Annie's — and the client then discarded that text on purpose as
+     * filler. Heard, never written down, no trace anywhere. A user noticed it
+     * before any log did, because there was no log.
+     *
+     * The session default governs responses the SERVER creates on its own,
+     * which is exactly that one. Making it text-only removes the capability
+     * rather than asking the model not to use it, so the guarantee holds even
+     * when the model ignores its instructions — which is the only case that
+     * ever mattered.
+     */
+    it('the session default is TEXT, so an auto-created response cannot speak', () => {
+      expect(buildSessionConfig().output_modalities).toEqual(['text']);
+    });
+
+    it('still keeps an output voice, for the responses the client creates', () => {
+      // Those are the ones that speak, and they carry only Annie's words.
+      // Dropping this would leave her narration on the API default voice.
+      expect(buildSessionConfig({ voice: 'cedar' }).audio.output.voice).toBe('cedar');
+    });
+
+    it('still listens — output modality says nothing about input', () => {
+      const c = buildSessionConfig();
+      expect(c.audio.input.turn_detection).toEqual({ type: 'semantic_vad' });
+      expect(c.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    });
+
+    it('still declares the tool — a text response can act, it just cannot talk', () => {
+      // If this broke, voice would go silent AND stop working entirely, so it
+      // is worth stating rather than inferring from the config shape.
+      expect(buildSessionConfig().tools[0].name).toBe('run_agnt');
+      expect(buildSessionConfig().tool_choice).toBe('auto');
+    });
   });
 
   it('uses SEMANTIC turn detection, not a silence timer', () => {
@@ -203,6 +242,7 @@ describe('buildSessionConfig', () => {
 
   it('honours a valid voice and falls back on an invalid one', () => {
     expect(buildSessionConfig({ voice: 'cedar' }).audio.output.voice).toBe('cedar');
+    expect(buildSessionConfig({ voice: undefined }).audio.output.voice).toBe(DEFAULT_VOICE);
     expect(buildSessionConfig({ voice: 'not-a-voice' }).audio.output.voice).toBe(DEFAULT_VOICE);
     expect(REALTIME_VOICES).toContain(DEFAULT_VOICE);
   });
