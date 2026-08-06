@@ -316,20 +316,27 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
       input: {
         format: { type: 'audio/pcm', rate: 24000 },
         /**
-         * Denoise BEFORE the VAD sees the audio.
+         * NO `noise_reduction` HERE — DELIBERATELY, AND DO NOT ADD IT BACK.
          *
-         * Turn detection asks "is someone speaking?" of whatever arrives, and
-         * a cough, a chair, or a door answers yes. That opened a turn, the
-         * noise came back transcribed as "um", and mid-run it landed as a
-         * steer — interrupting real work to deliver a hesitation sound.
+         * It was added to suppress phantom turns at the source: a cough or a
+         * chair opens a turn, comes back transcribed as "um", and mid-run
+         * lands as a steer. Denoising before the VAD reads the audio seemed
+         * like the better half of that fix.
          *
-         * The client filter (asrArtifacts.isFillerOnly) catches those after
-         * the fact; this stops fewer of them being produced at all, which is
-         * the better half of the same fix. `near_field` is the correct profile
-         * for a headset or a desk microphone — the far_field profile is tuned
-         * for a room mic and would be the wrong assumption here.
+         * It broke barge-in, which is a far worse trade. Interrupting is the
+         * HARDEST audio the session ever sees: the user speaks while the
+         * assistant's own voice is coming out of the speakers, so the signal is
+         * already being carved up by echo cancellation before it arrives. Add a
+         * denoiser on top and the residue looks exactly like the noise it is
+         * built to remove — so the VAD never fires, the assistant talks over
+         * the user, and the one thing they urgently wanted (stop) is the one
+         * thing that stopped working.
+         *
+         * The phantom steer is an ANNOYANCE. A user unable to interrupt is a
+         * conversation they cannot get out of. The client-side filter
+         * (asrArtifacts.isFillerOnly) fixes the annoyance without touching the
+         * audio, so it carries that job alone.
          */
-        noise_reduction: { type: 'near_field' },
         // Semantic turn detection: the model decides when the user is done
         // from what they said, not from how long they have been quiet.
         turn_detection: { type: 'semantic_vad' },

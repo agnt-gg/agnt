@@ -227,12 +227,25 @@ describe('buildSessionConfig', () => {
       expect(c.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
     });
 
-    it('denoises the input BEFORE turn detection reads it', () => {
-      // Turn detection asks "is someone speaking?" of whatever arrives, and a
-      // cough answers yes — which opened a turn, came back transcribed as
-      // "um", and mid-run landed as a steer. near_field is the desk/headset
-      // profile; far_field assumes a room mic and would be the wrong guess.
-      expect(buildSessionConfig().audio.input.noise_reduction).toEqual({ type: 'near_field' });
+    it('NEVER denoises the input — it suppresses barge-in speech', () => {
+      /**
+       * This was added to stop phantom turns at the source and it broke
+       * interruption, which is the worse failure by a distance: a phantom
+       * steer is an annoyance, a user who cannot interrupt is trapped.
+       *
+       * Interrupting is the hardest audio the session ever sees — the user
+       * speaks while the assistant's voice is in the room, so echo
+       * cancellation has already carved the signal up before it arrives. A
+       * denoiser on top treats the residue as exactly what it is built to
+       * remove, the VAD never fires, and the assistant talks straight over
+       * the user.
+       *
+       * If phantom turns need attacking at the source again, do it with
+       * turn_detection eagerness — which changes how readily a turn is
+       * COMMITTED — rather than by removing signal before anything can hear
+       * it.
+       */
+      expect(buildSessionConfig().audio.input.noise_reduction).toBeUndefined();
     });
 
     it('still declares the tool — a text response can act, it just cannot talk', () => {
