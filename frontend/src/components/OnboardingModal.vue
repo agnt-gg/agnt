@@ -106,23 +106,21 @@
                 <Tooltip
                   v-for="provider in aiProviders"
                   :key="provider.id"
-                  :text="provider.name"
+                  :text="providerLabel(provider)"
                   width="auto"
                 >
                   <button
                     type="button"
                     class="provider-tile"
                     :class="{ connected: isProviderConnected(provider.id) }"
-                    :aria-label="`Connect to ${provider.name}`"
+                    :aria-label="`Connect to ${providerLabel(provider)}`"
                     @click="handleProviderClick(provider)"
                   >
                     <span v-if="isProviderConnected(provider.id)" class="provider-status-dot"></span>
                     <div class="provider-icon">
                       <SvgIcon :name="provider.icon" />
                     </div>
-                    <span class="provider-name">{{
-                      PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name
-                    }}</span>
+                    <span class="provider-name">{{ providerLabel(provider) }}</span>
                   </button>
                 </Tooltip>
               </div>
@@ -228,7 +226,12 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { PROVIDER_DISPLAY_NAMES, PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
+import {
+  PROVIDER_FETCH_ACTIONS,
+  resolveProviderKey,
+  providerLabel,
+  byProviderLabel,
+} from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
 
@@ -316,7 +319,10 @@ export default {
           const lowerCategories = categories.map((cat) => cat.toLowerCase());
           return lowerCategories.includes('ai');
         })
-        .sort((a, b) => a.name.localeCompare(b.name));
+        // By the LABEL, which is what this grid renders. Sorting by the auth
+        // API's `name` put ChatGPT under O, between the OpenAI providers,
+        // because that is where "OpenAI Codex" sorts.
+        .sort(byProviderLabel);
     });
 
     // Check if a provider is connected
@@ -863,7 +869,7 @@ export default {
       isProviderConnected,
       hasAnyProviderConnected,
       checkPseudonymAvailability,
-      PROVIDER_DISPLAY_NAMES,
+      providerLabel,
     };
   },
 };
