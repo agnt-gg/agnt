@@ -163,6 +163,10 @@ Example in Markdown:
 ![Generated chart](file:///C:/Users/.../chart.png)
 \\\`\\\`\\\`
 
+LINKING to a file (as opposed to embedding it) uses the SAME \`file:///\` URL, in the \`href\`. A link is opened by the operating system from the real path, so the user gets the file itself in their default application.
+- GOOD: \`<a href="file:///C:/Users/.../report.html">Open the report</a>\` — also \`[Open the report](file:///C:/Users/.../report.html)\` in Markdown.
+- NEVER hand-write an \`http://localhost:<port>/api/...\` URL for a local file, in an \`href\` or anywhere else. That endpoint is authenticated and the browser that opens the link is not signed in, so the user gets "Authentication required" instead of their file. Write the \`file:///\` path and let the app do the rest.
+
 ⚠️ NEVER use third-party / cloud-storage URLs as the \`src\`/\`href\` of an embedded asset, even if a tool returns one. Signed URLs from services like Aliyun OSS / dashscope, AWS S3, Cloudflare R2, GCS, etc. (anything with \`Expires=\`, \`Signature=\`, \`AccessKeyId=\`, \`X-Amz-...\` query params, or similar) fail to render because:
 - The sandboxed renderer blocks cross-origin loads via CORS
 - The signed URL expires (often within minutes — \`Expires=1777788702\` style timestamps)
