@@ -162,6 +162,23 @@ describe('OnboardingModal', () => {
     localStorage.clear();
   });
 
+  /**
+   * Navigate to a step BY NAME.
+   *
+   * Setting `currentStep` to a literal is how these tests used to move around,
+   * and it silently lands on a different screen the moment a conditional step
+   * is inserted above the target — the test then asserts against whatever
+   * happens to be at that index and passes or fails for unrelated reasons.
+   */
+  const goto = async (w, stepId) => {
+    const index = w.vm.steps.indexOf(stepId);
+    if (index === -1) {
+      throw new Error(`No "${stepId}" step in: ${w.vm.steps.join(', ')}`);
+    }
+    w.vm.currentStep = index + 1;
+    await w.vm.$nextTick();
+  };
+
   const createWrapper = (props = {}, storeOverrides = {}) => {
     store = createMockStore(storeOverrides);
     vi.spyOn(store, 'dispatch');
@@ -381,6 +398,35 @@ describe('OnboardingModal', () => {
     it('starts the scan on mount', async () => {
       wrapper = createWrapper();
       expect(harnessImportStub.detect).toHaveBeenCalledTimes(1);
+    });
+
+    it('compares steps to names, never to positions', () => {
+      /**
+       * Asserted against the SOURCE, because this defect is currently
+       * unreachable at runtime: 'import' is inserted AFTER 'workspace', so
+       * workspace does not move and `currentStep === 5` is still accidentally
+       * correct. A mounted test therefore passes with the bug present
+       * (verified — negative control M3 stayed green until this existed).
+       *
+       * It becomes wrong the moment any step is added ABOVE an existing one,
+       * and the symptom is silent: the workspace is never saved, or the
+       * provider gate guards the wrong screen. The invariant that prevents it
+       * is simply that no number is ever compared to a step.
+       */
+      const numericComparisons = [
+        ...MODAL_SOURCE.matchAll(/currentStep(?:\.value)?\s*===\s*(\d+)/g),
+      ].map((m) => m[0]);
+
+      expect(
+        numericComparisons,
+        'Compare currentStepId to a name instead — see the steps list.',
+      ).toEqual([]);
+    });
+
+    it('anti-vacuity: the source is loaded and does address steps by id', () => {
+      // Guards the check above against silently matching an empty file.
+      expect(MODAL_SOURCE.length).toBeGreaterThan(1000);
+      expect(MODAL_SOURCE).toMatch(/currentStepId(?:\.value)?\s*===\s*'workspace'/);
     });
 
     it('does not WAIT for the scan before rendering', () => {
@@ -620,10 +666,9 @@ describe('OnboardingModal', () => {
   });
 
   describe('Workspace Step', () => {
-    it('shows the workspace folder input on step 5', async () => {
+    it('shows the workspace folder picker', async () => {
       wrapper = createWrapper({}, CONNECTED);
-      wrapper.vm.currentStep = 5;
-      await wrapper.vm.$nextTick();
+      await goto(wrapper, 'workspace');
 
       expect(wrapper.find('.workspace-step').exists()).toBe(true);
       expect(wrapper.find('#workspaceRoot').exists()).toBe(true);
@@ -632,10 +677,78 @@ describe('OnboardingModal', () => {
     it('loads the current workspace root as the default hint', async () => {
       wrapper = createWrapper({}, CONNECTED);
       await flushPromises();
-      wrapper.vm.currentStep = 5;
-      await wrapper.vm.$nextTick();
+      await goto(wrapper, 'workspace');
 
       expect(wrapper.vm.defaultWorkspaceRoot).toBe('/home/user/agnt-workspace');
+    });
+
+    it('renders the shared picker, not a bare input', async () => {
+      // The field is WorkspacePicker now, shared with the file tree's settings
+      // dialog. `#workspaceRoot` alone would still pass against a plain input,
+      // so it cannot tell the two apart.
+      wrapper = createWrapper({}, CONNECTED);
+      await goto(wrapper, 'workspace');
+
+      expect(wrapper.findComponent({ name: 'WorkspacePicker' }).exists()).toBe(true);
+    });
+  });
+
+  describe('the workspace picker and the import step coexist', () => {
+    /**
+     * These arrived on two separate branches that both edited this file: one
+     * replaced the workspace step's contents, the other renamed every step's
+     * guard from an index to a name. Git merged the overlapping region without
+     * reporting a conflict, so the failure mode was never a merge marker — it
+     * was one of the two changes silently winning.
+     *
+     * Asserted on ONE mounted component, because each feature's own suite
+     * passes happily while the other is missing.
+     */
+    const BOTH = { ...CONNECTED, referralBalance: 100 };
+
+    beforeEach(() => {
+      harnessImportStub.hasAnythingToImport.value = true;
+    });
+
+    it('orders every step correctly with both features live', async () => {
+      wrapper = createWrapper({}, BOTH);
+      await flushPromises();
+      expect(wrapper.vm.steps).toEqual(
+        ['welcome', 'theme', 'profile', 'provider', 'workspace', 'import', 'referral', 'ready'],
+      );
+    });
+
+    it('renders the picker on the workspace step and the importer on the import step', async () => {
+      wrapper = createWrapper({}, BOTH);
+      await flushPromises();
+
+      await goto(wrapper, 'workspace');
+      expect(wrapper.findComponent({ name: 'WorkspacePicker' }).exists()).toBe(true);
+      expect(wrapper.findComponent({ name: 'HarnessImport' }).exists()).toBe(false);
+
+      await goto(wrapper, 'import');
+      expect(wrapper.findComponent({ name: 'HarnessImport' }).exists()).toBe(true);
+      expect(wrapper.findComponent({ name: 'WorkspacePicker' }).exists()).toBe(false);
+    });
+
+    it('still saves the workspace once the import step has shifted the later ones', async () => {
+      // The regression the named-step refactor exists to prevent: an inserted
+      // step moves 'referral' and 'ready' down, and an index-based gate would
+      // now be saving on the wrong screen — silently.
+      const { updateSettings } = await import('@/services/fileSystemService.js');
+      updateSettings.mockClear();
+
+      wrapper = createWrapper({}, BOTH);
+      await flushPromises();
+      await goto(wrapper, 'workspace');
+      wrapper.vm.workspaceRoot = '/picked/by/dialog';
+      await wrapper.vm.$nextTick();
+
+      await wrapper.vm.nextStep();
+      await flushPromises();
+
+      expect(updateSettings).toHaveBeenCalledWith('/picked/by/dialog');
+      expect(wrapper.vm.currentStepId).toBe('import');
     });
   });
 
