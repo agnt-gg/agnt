@@ -303,9 +303,68 @@ const IPC_CHANNELS = [
   'connection:replace-local',
 ];
 
+describe('the native folder picker', () => {
+  /**
+   * A directory path only means something to the process that will open it,
+   * and the workspace root is created and read by the BACKEND. So the dialog
+   * is correct exactly when the backend is this machine.
+   *
+   * Nothing about getting this wrong fails loudly: the user picks a folder
+   * that exists on their laptop, we post it to a server where the path is
+   * absent, and the backend's `mkdir -p` CREATES it somewhere they will never
+   * look. A plausible wrong answer, which is worse than a refusal — so the
+   * refusal is asserted here rather than left to a comment.
+   */
+  const handler = blockAfter(code, "ipcMain.handle('dialog:choose-directory'", { afterArrow: true });
+
+  it('is registered', () => {
+    expect(handler, 'dialog:choose-directory handler not found').not.toBeNull();
+  });
+
+  it('refuses when the backend is another machine', () => {
+    expect(handler).toMatch(/isRemoteActive\(\)/);
+    expect(handler).toMatch(/remote-backend/);
+  });
+
+  it('asks what the app is ACTUALLY talking to, not what it is configured for', () => {
+    // After a per-session fallback the configured mode says remote while the
+    // backend runs here, and in that state browsing is correct.
+    // isRemoteActive() consults activeMode; connection.mode does not.
+    expect(handler).not.toMatch(/connection\.mode\s*===/);
+  });
+
+  it('parents the dialog to a window', () => {
+    // Unparented, Windows may place it BEHIND the app: the user clicks Browse,
+    // sees nothing happen, and an invisible modal eats their clicks.
+    expect(handler).toMatch(/showOpenDialog\(\s*parent/);
+    expect(handler).toMatch(/getFocusedWindow\(\)\s*\|\|\s*mainWindow/);
+  });
+
+  it('asks for a directory, and lets the user make one', () => {
+    expect(handler).toMatch(/properties:\s*\[\s*'openDirectory'\s*,\s*'createDirectory'\s*\]/);
+  });
+
+  it('resolves on cancel instead of throwing', () => {
+    // Closing a dialog is ordinary. Making callers try/catch it invites a bare
+    // catch that swallows real failures too.
+    expect(handler).toMatch(/canceled/);
+    expect(handler).not.toMatch(/throw new Error/);
+  });
+
+  it('never lets a dialog failure escape as a rejected invoke', () => {
+    expect(handler).toMatch(/catch\s*\(/);
+    expect(handler).toMatch(/reason:\s*'failed'/);
+  });
+});
+
 describe('IPC surface', () => {
   it.each(IPC_CHANNELS)('main registers %s', (channel) => {
     expect(code).toContain(`ipcMain.handle('${channel}'`);
+  });
+
+  it('preload exposes the folder picker', () => {
+    expect(preload).toMatch(/chooseDirectory:\s*\(/);
+    expect(preload).toContain('dialog:choose-directory');
   });
 
   it('preload exposes the connection bridge', () => {
