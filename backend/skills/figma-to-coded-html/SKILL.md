@@ -20,17 +20,54 @@ Convert any Figma design into a **self-contained, shareable single-file HTML** w
 
 ### Step 1: Authenticate the Figma MCP
 
-The MCP server and AGNT auth vault store tokens separately. Always sync them:
+The MCP server and AGNT auth vault store tokens separately, so they have to be synced.
+
+**Do NOT ask a tool to hand you the token.** A tool result is sent verbatim to the
+model provider, stored in the conversations table, and rendered in the chat UI — so a
+token that passes through one is disclosed three times over. `agnt_auth` no longer has
+any operation that returns a credential value, for exactly this reason.
+
+Sync it inside the Node process instead, where the value never enters the transcript:
+
+```js
+// execute_javascript_code
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const authPath = path.join(process.env.AGNT_APP_PATH || process.cwd(), 'backend/src/services/auth/AuthManager.js');
+const AuthManager = (await import('file://' + authPath.replace(/\\/g, '/'))).default;
+
+const token = await AuthManager.getValidAccessToken(process.env.AGNT_USER_ID, 'figma');
+if (!token) {
+  console.log(JSON.stringify({ ok: false, reason: 'no_figma_token_stored' }));
+} else {
+  const cfgDir = path.join(os.homedir(), '.mcp-figma');
+  fs.mkdirSync(cfgDir, { recursive: true });
+  const cfgPath = path.join(cfgDir, 'config.json');
+  const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, 'utf8')) : {};
+  cfg.apiKey = token;
+  fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+  // Log a FACT, never the value.
+  console.log(JSON.stringify({ ok: true, wrote: cfgPath, tokenLength: token.length }));
+}
+```
+
+Then verify through the MCP, which reads that config:
 
 ```
-agnt_auth → get_valid_token(provider_id: "figma")    → get decrypted figd_xxx token
-mcp__mcp-figma__set_api_key(api_key: token)          → push to MCP server config at ~/.mcp-figma/config.json
-mcp__mcp-figma__check_api_key()                      → verify it took
+mcp__mcp-figma__check_api_key()   → confirms the MCP server picked it up
 ```
 
-**If token is expired:** Tell the user to update their Figma Personal Access Token in AGNT Settings → Connected Apps → Figma. Then retry. Tokens are generated at https://www.figma.com/settings (Security → Personal Access Tokens).
+If you need a usability check without touching the value at all:
 
-**Key gotcha:** `get_valid_token` returns the decrypted token. `retrieve_api_key` returns it encrypted — useless for the MCP. Always use `get_valid_token`.
+```
+agnt_auth → check_provider_token(provider_id: "figma")   → { usable: true, token_length: 40 }
+```
+
+**If the token is expired or missing:** tell the user to update their Figma Personal
+Access Token in AGNT Settings → Connected Apps → Figma, then retry. Tokens are
+generated at https://www.figma.com/settings (Security → Personal Access Tokens).
 
 ### Step 2: Fetch the File Structure
 
@@ -200,8 +237,8 @@ Coding the UI instead of screenshotting it produces files that are **3-4× small
 
 | Tool | Purpose |
 |------|---------|
-| `agnt_auth → get_valid_token` | Get decrypted Figma API token from vault |
-| `mcp__mcp-figma__set_api_key` | Push token to MCP server config |
+| `execute_javascript_code` + `AuthManager.getValidAccessToken` | Read the Figma token IN-PROCESS and write it to the MCP config — never through a tool result |
+| `agnt_auth → check_provider_token` | Confirm the vault has a usable Figma token, without revealing it |
 | `mcp__mcp-figma__check_api_key` | Verify MCP has a valid token |
 | `mcp__mcp-figma__get_file` | Fetch full file tree (pages, frames, components) |
 | `mcp__mcp-figma__get_file_nodes` | Deep dive into specific nodes with all properties |
@@ -214,10 +251,10 @@ Coding the UI instead of screenshotting it produces files that are **3-4× small
 
 ## Common Gotchas
 
-1. **MCP token sync is manual** — AGNT vault and MCP server have separate token copies. Must explicitly `set_api_key` after any token refresh.
+1. **MCP token sync is manual** — AGNT vault and MCP server have separate token copies. Re-run the in-process sync in Step 1 after any token refresh.
 2. **`get_image_fills` ≠ `get_image`** — fills = source photos embedded in the design; get_image = rendered screenshots of frames. Use fills for photos, screenshots only for visual reference.
 3. **Signed S3 URLs expire** — download all images immediately after receiving URLs. Never store URLs for later use.
-4. **`get_valid_token` not `retrieve_api_key`** — retrieve_api_key returns encrypted blob, get_valid_token returns the actual usable token.
+4. **Never route a credential through a tool result** — tool results go to the model provider, into the conversations table, and onto the screen. `agnt_auth` has no operation that returns a credential value; read it in-process (Step 1) and log only a length or a boolean.
 5. **Build HTML in JavaScript** — template literals + `fs.writeFileSync` is the only sane way to embed multi-MB base64 strings. Cannot use write_file with inline base64.
 6. **Large Figma files get offloaded** — the JSON will be replaced with a data reference. Use `query_data` operations (stats, search, slice, json_path) to explore it.
 7. **Vision analysis is faster than JSON parsing** — to figure out what's a photo vs what's UI, screenshot the frame and ask the vision model. This beats traversing nested JSON looking for IMAGE fill types.

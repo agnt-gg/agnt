@@ -25,8 +25,15 @@ class WebhookModel {
     });
   }
 
-  // Find webhook by workflow ID
-  static findByWorkflowId(workflowId) {
+  /**
+   * Find webhook by workflow ID.
+   *
+   * Pass `userId` from anything serving an HTTP request. A workflow id is a
+   * guessable handle, not a secret, so the owner belongs in the WHERE clause.
+   * `null` is for trusted internal callers with no user context (webhook sync
+   * at boot) and never for a route handler.
+   */
+  static findByWorkflowId(workflowId, userId = null) {
     return new Promise((resolve, reject) => {
       const query = `
         SELECT w.*, 
@@ -34,10 +41,10 @@ class WebhookModel {
                wf.status as workflow_status
         FROM webhooks w
         LEFT JOIN workflows wf ON w.workflow_id = wf.id
-        WHERE w.workflow_id = ?
+        WHERE w.workflow_id = ?${userId ? ' AND w.user_id = ?' : ''}
       `;
 
-      db.get(query, [workflowId], (err, row) => {
+      db.get(query, userId ? [workflowId, userId] : [workflowId], (err, row) => {
         if (err) {
           reject(err);
         } else {
@@ -68,15 +75,43 @@ class WebhookModel {
     });
   }
 
-  // Delete webhook by workflow ID
-  static deleteByWorkflowId(workflowId) {
+  /**
+   * Delete webhook by workflow ID.
+   *
+   * `userId` is MANDATORY here — not optional as on the read path. No internal
+   * caller needs an unscoped delete, so requiring the argument makes the
+   * unsafe call impossible to write rather than merely discouraged. Callers
+   * without a user in scope resolve one via findOwnerId below.
+   */
+  static deleteByWorkflowId(workflowId, userId) {
+    if (!userId) {
+      return Promise.reject(new Error('deleteByWorkflowId requires a userId: an unscoped delete crosses tenants'));
+    }
     return new Promise((resolve, reject) => {
-      db.run('DELETE FROM webhooks WHERE workflow_id = ?', [workflowId], function (err) {
+      db.run('DELETE FROM webhooks WHERE workflow_id = ? AND user_id = ?', [workflowId, userId], function (err) {
         if (err) {
           reject(err);
         } else {
           resolve({ deleted: this.changes > 0 });
         }
+      });
+    });
+  }
+
+  /**
+   * Resolve the owner of a webhook row.
+   *
+   * Exists so that trusted internal callers which legitimately have no user in
+   * scope (workflow deactivation, restart cleanup) can still perform a SCOPED
+   * delete. The alternative — an unscoped delete helper — would be a method
+   * whose whole purpose is to skip the ownership check, and it would be reached
+   * for by the next person in a hurry.
+   */
+  static findOwnerId(workflowId) {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT user_id FROM webhooks WHERE workflow_id = ?', [workflowId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row?.user_id || null);
       });
     });
   }

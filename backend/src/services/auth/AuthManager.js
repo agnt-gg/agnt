@@ -53,8 +53,19 @@ class AuthManager {
       console.warn(`Local api_keys lookup failed for ${providerId}:`, err.message);
     }
 
-    // Tier 3: remote fallback (always-on so users with remote-stored keys keep working;
-    // no opt-in flag — if env and local DB both miss, ask remote)
+    // Tier 3: remote fallback (legacy — for users whose keys still live only on
+    // api.agnt.gg and were never saved locally).
+    //
+    // No credential is sent here, and there is none available to send: this
+    // method is called from workflow nodes and plugins that hold a userId but
+    // no session (`getUserTokenFromSession` needs a `req`). Wiring a token
+    // through to this tier is tracked separately.
+    //
+    // Until that lands, a 401 from this tier is expected rather than
+    // exceptional, which is why it is handled explicitly below instead of being
+    // folded into the generic catch: the actionable answer is to store the key
+    // locally (Tier 2) by re-saving it in Settings, and silently returning null
+    // would present as "provider not connected" with no way to work that out.
     if (this.remoteUrl) {
       try {
         const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
@@ -63,6 +74,14 @@ class AuthManager {
         });
         return response.data?.access_token || null;
       } catch (error) {
+        if (error.response?.status === 401) {
+          console.warn(
+            `[AuthManager] ${providerId}: the remote key store now requires an authenticated request, and this ` +
+              `code path has no session token. Re-save your ${providerId} key in Settings > Connected Apps to ` +
+              `store it locally, which is the supported path.`
+          );
+          return null;
+        }
         console.warn(`Remote key fallback failed for ${providerId}:`, error.message);
         return null;
       }

@@ -3431,18 +3431,19 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
                 'delete_provider',
                 'get_provider_details',
                 'store_api_key',
-                'retrieve_api_key',
                 'connect_provider',
                 'disconnect_provider',
                 'get_connected_apps',
-                'get_valid_token',
+                'check_provider_token',
               ],
-              description: 'The AGNT auth operation to perform.',
+              description:
+                'The AGNT auth operation to perform. Note: there is deliberately no operation that ' +
+                'returns a credential value — use check_provider_token to confirm a provider is usable.',
             },
             provider_id: {
               type: 'string',
               description:
-                "The ID of the auth provider. Required for 'update_provider', 'delete_provider', 'get_provider_details', 'store_api_key', 'retrieve_api_key', 'get_valid_token'.",
+                "The ID of the auth provider. Required for 'update_provider', 'delete_provider', 'get_provider_details', 'store_api_key', 'check_provider_token'.",
             },
             provider_name: {
               type: 'string',
@@ -3463,6 +3464,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               type: 'string',
               description: "The API key string to store. Required for 'store_api_key'.",
             },
+            // NOTE: 'retrieve_api_key' and 'get_valid_token' were removed from the
+            // enum above. See the switch below for why.
           },
           required: ['operation'],
         },
@@ -3530,12 +3533,6 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             }
             result = await agnt.auth.storeApiKey(provider_id, api_key_string);
             break;
-          case 'retrieve_api_key':
-            if (!provider_id) {
-              return JSON.stringify({ success: false, error: "provider_id is required for 'retrieve_api_key'." });
-            }
-            result = await agnt.auth.retrieveApiKey(provider_id);
-            break;
           case 'connect_provider':
             if (!provider_name) {
               return JSON.stringify({ success: false, error: "provider_name is required for 'connect_provider'." });
@@ -3551,12 +3548,39 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           case 'get_connected_apps':
             result = await agnt.auth.getConnectedApps();
             break;
-          case 'get_valid_token':
+          /**
+           * CREDENTIAL VALUES MUST NOT LEAVE THIS FUNCTION.
+           *
+           * Whatever `result` holds is serialized on the next line and returned
+           * as a tool result, which means it is (1) transmitted verbatim to the
+           * model provider — OpenAI, Anthropic, Google — and retained by them,
+           * (2) written to the conversations table, and (3) rendered in the chat
+           * UI and in any exported transcript.
+           *
+           * Do not assume something downstream will scrub it. Treat this
+           * return value as published the moment it is written.
+           *
+           * The two operations that returned stored values are gone. This
+           * replacement answers the question an agent actually needs — "can I
+           * use this provider?" — without the value. Code that genuinely needs
+           * the credential calls AuthManager.getValidAccessToken() inside the
+           * Node process, where it never enters the transcript.
+           */
+          case 'check_provider_token': {
             if (!provider_id) {
-              return JSON.stringify({ success: false, error: "provider_id is required for 'get_valid_token'." });
+              return JSON.stringify({ success: false, error: "provider_id is required for 'check_provider_token'." });
             }
-            result = await agnt.auth.getValidToken(provider_id); // Returns { access_token: "..." }
+            const probe = await agnt.auth.getValidToken(provider_id);
+            const token = probe?.access_token ?? probe;
+            result = {
+              provider_id,
+              usable: Boolean(token),
+              // A length is not reversible and makes "empty string stored" and
+              // "nothing stored" distinguishable when debugging.
+              token_length: typeof token === 'string' ? token.length : 0,
+            };
             break;
+          }
           default:
             return JSON.stringify({ success: false, error: `Unknown AGNT auth operation: ${operation}` });
         }
@@ -4709,7 +4733,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Check for duplicate
         const existing = await AgentMemoryModel.findDuplicate(agentId, content);
         if (existing) {
-          await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
+          await AgentMemoryModel.update(existing.id, userId, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
           return JSON.stringify({ success: true, message: 'Memory already exists, reinforced', id: existing.id });
         }
 

@@ -261,8 +261,19 @@ class AgentMemoryModel {
 
   /**
    * Update memory content and relevance.
+   *
+   * `userId` is REQUIRED and positional, matching `delete()` three methods
+   * below, which was already scoped with `AND user_id = ?` while this one was
+   * not — same file, same table, opposite treatment.
+   *
+   * Mandatory rather than optional is the point: an unscoped update is now a
+   * call that cannot be written, instead of one that has to be noticed in
+   * review.
    */
-  static update(id, { content, relevanceScore, memoryType }) {
+  static update(id, userId, { content, relevanceScore, memoryType }) {
+    if (!userId) {
+      return Promise.reject(new Error('AgentMemoryModel.update requires a userId: an unscoped update crosses tenants'));
+    }
     const updates = [];
     const params = [];
 
@@ -273,10 +284,11 @@ class AgentMemoryModel {
     updates.push('updated_at = ?');
     params.push(new Date().toISOString());
     params.push(id);
+    params.push(userId);
 
     return new Promise((resolve, reject) => {
       db.run(
-        `UPDATE agent_memory SET ${updates.join(', ')} WHERE id = ?`,
+        `UPDATE agent_memory SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
         params,
         function (err) {
           if (err) reject(err);

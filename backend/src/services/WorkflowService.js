@@ -298,8 +298,9 @@ class WorkflowService {
       // Deactivate workflow (this also unregisters webhook)
       await WorkflowProcessBridge.deactivateWorkflow(req.params.id, req.user.userId);
 
-      // Delete webhook from database
-      await WebhookModel.deleteByWorkflowId(req.params.id);
+      // Delete webhook from database, scoped to the owner — matching the
+      // WorkflowModel.delete call immediately below, which was already scoped.
+      await WebhookModel.deleteByWorkflowId(req.params.id, req.user.userId);
 
       // Delete workflow from database
       await WorkflowModel.delete(req.params.id, req.user.userId);

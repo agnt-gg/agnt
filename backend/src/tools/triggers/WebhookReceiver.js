@@ -1,7 +1,27 @@
 import axios from 'axios';
+import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import WebhookModel from '../../models/WebhookModel.js';
 import WorkflowModel from '../../models/WorkflowModel.js';
+
+/**
+ * Constant-time string comparison for secrets.
+ *
+ * `a !== b` on a credential short-circuits at the first differing byte, which
+ * leaks the length and a prefix through response timing. timingSafeEqual needs
+ * equal-length buffers, so both sides are hashed first: SHA-256 is fixed width,
+ * so the comparison is constant time with respect to the inputs and the hash
+ * itself is computed over data the caller already supplied.
+ *
+ * Returns false for any non-string input rather than coercing — coercion is
+ * exactly how `undefined` became the password on this code path.
+ */
+function safeEqual(provided, expected) {
+  if (typeof provided !== 'string' || typeof expected !== 'string') return false;
+  const a = crypto.createHash('sha256').update(provided, 'utf8').digest();
+  const b = crypto.createHash('sha256').update(expected, 'utf8').digest();
+  return crypto.timingSafeEqual(a, b);
+}
 
 class LocalWebhookReceiver extends EventEmitter {
   constructor(processManager) {
@@ -125,8 +145,10 @@ class LocalWebhookReceiver extends EventEmitter {
 
     console.log(`Registering webhook for workflow ${workflowId}: ${webhookUrl}`);
 
-    // Store the webhook configuration locally in memory
+    // Store the webhook configuration locally in memory.
+    // `userId` is kept so unregister can scope its delete without a lookup.
     this.webhooks.set(workflowId, {
+      userId,
       method,
       authType,
       authToken,
@@ -262,7 +284,11 @@ class LocalWebhookReceiver extends EventEmitter {
       const failedTriggerIds = []; // Triggers that couldn't be processed
 
       for (const trigger of triggers) {
-        console.log('LocalWebhookReceiver: Trigger data:', trigger);
+        // Identifiers only. `trigger` carries the entire inbound HTTP request,
+        // including triggerData.headers.authorization — the caller's webhook
+        // credential in plaintext — straight into the process log and any
+        // support bundle taken from it.
+        console.log(`LocalWebhookReceiver: processing trigger ${trigger.id} for workflow ${trigger.workflowId}`);
         const result = await this._processWebhookTrigger(trigger.workflowId, trigger.triggerData);
 
         // Only mark as processed if the workflow was actually triggered
@@ -332,6 +358,30 @@ class LocalWebhookReceiver extends EventEmitter {
 
     if (webhook.authType && webhook.authType.toLowerCase() !== 'none') {
       const authTypeLower = webhook.authType.toLowerCase();
+
+      // FAIL CLOSED WHEN THE EXPECTED SECRET IS ABSENT.
+      //
+      // loadWebhooksFromDatabase() restores only { method, authType,
+      // workflowId } — credentials are deliberately not persisted — so after a
+      // restart a webhook can declare an authType while holding no secret.
+      //
+      // Never compare against an absent secret. String interpolation turns one
+      // into a fixed, guessable literal, which is the opposite of a check. Ask
+      // whether the secret exists FIRST, and refuse if it does not.
+      //
+      // Refusing costs nothing that worked: with no secret in memory a
+      // legitimate sender could not have matched either. Fail-open becomes
+      // fail-closed. Re-saving the workflow restores the credential.
+      const expectedSecret =
+        authTypeLower === 'basic' ? webhook.username || webhook.password : webhook.authToken;
+      if (!expectedSecret) {
+        console.warn(
+          `LocalWebhookReceiver: webhook ${workflowId} declares ${webhook.authType} auth but holds no credential ` +
+            `(not restored after restart) — refusing. Re-save the workflow to restore its webhook credential.`
+        );
+        return { status: 401, message: 'Unauthorized' };
+      }
+
       if (authTypeLower === 'basic') {
         const authHeader = triggerData.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -340,14 +390,16 @@ class LocalWebhookReceiver extends EventEmitter {
         }
         const base64Credentials = authHeader.split(' ')[1];
         const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-        const [username, password] = credentials.split(':');
-        if (username !== webhook.username || password !== webhook.password) {
+        const separator = credentials.indexOf(':');
+        const username = separator === -1 ? credentials : credentials.slice(0, separator);
+        const password = separator === -1 ? '' : credentials.slice(separator + 1);
+        if (!safeEqual(username, webhook.username) || !safeEqual(password, webhook.password)) {
           console.log(`LocalWebhookReceiver: Unauthorized - Invalid credentials for webhook ${workflowId}`);
           return { status: 401, message: 'Unauthorized - Invalid credentials' };
         }
       } else if (authTypeLower === 'bearer' || authTypeLower === 'webhook') {
         const providedToken = triggerData.headers['authorization'] || triggerData.headers['x-webhook-token'];
-        if (!providedToken || providedToken !== `Bearer ${webhook.authToken}`) {
+        if (!providedToken || !safeEqual(providedToken, `Bearer ${webhook.authToken}`)) {
           console.log(`LocalWebhookReceiver: Unauthorized - Invalid token for webhook ${workflowId}`);
           return { status: 401, message: 'Unauthorized - Invalid token' };
         }
@@ -413,8 +465,12 @@ class LocalWebhookReceiver extends EventEmitter {
       return null;
     }
   }
-  async unregisterWebhook(workflowId) {
+  async unregisterWebhook(workflowId, ownerIdHint = null) {
     console.log(`LocalWebhookReceiver: Unregistering webhook for workflow ${workflowId}`);
+
+    // Read the owner BEFORE dropping the in-memory entry, so the scoped delete
+    // below can avoid a database round trip when we already know it.
+    ownerIdHint = ownerIdHint || this.webhooks.get(workflowId)?.userId || null;
 
     // Remove from local memory
     this.webhooks.delete(workflowId);
@@ -432,10 +488,20 @@ class LocalWebhookReceiver extends EventEmitter {
       // Continue even if remote unregister fails
     }
 
-    // Remove from local database
+    // Remove from local database.
+    //
+    // Ownership is already established upstream (deactivateWorkflow takes a
+    // userId), but the delete is still scoped: resolving the owner here keeps
+    // WebhookModel's "every delete names its tenant" invariant intact without
+    // an unscoped escape hatch that the next caller would inherit.
     try {
-      await WebhookModel.deleteByWorkflowId(workflowId);
-      console.log(`Webhook removed from local database for workflow ${workflowId}`);
+      const ownerId = ownerIdHint || (await WebhookModel.findOwnerId(workflowId));
+      if (!ownerId) {
+        console.log(`No local webhook row to remove for workflow ${workflowId}`);
+      } else {
+        await WebhookModel.deleteByWorkflowId(workflowId, ownerId);
+        console.log(`Webhook removed from local database for workflow ${workflowId}`);
+      }
     } catch (dbError) {
       console.error(`Error removing webhook from local database: ${dbError.message}`);
     }

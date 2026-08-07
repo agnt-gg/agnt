@@ -85,7 +85,7 @@ class AgentApplicator {
 
       const existing = await AgentMemoryModel.findDuplicate(agent.id, content);
       if (existing) {
-        await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
+        await AgentMemoryModel.update(existing.id, userId, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
       } else {
         await AgentMemoryModel.create({
           agentId: agent.id,
@@ -117,7 +117,7 @@ class AgentApplicator {
 
       const existing = await AgentMemoryModel.findDuplicate(agent.id, content);
       if (existing) {
-        await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
+        await AgentMemoryModel.update(existing.id, userId, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
       } else {
         await AgentMemoryModel.create({
           agentId: agent.id,

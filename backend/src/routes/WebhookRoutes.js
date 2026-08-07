@@ -20,7 +20,8 @@ WebhookRoutes.get('/', authenticateToken, async (req, res) => {
 WebhookRoutes.get('/workflow/:workflowId', authenticateToken, async (req, res) => {
   try {
     const { workflowId } = req.params;
-    const webhook = await WebhookModel.findByWorkflowId(workflowId);
+    // Scoped to the caller: a bare workflow id is a guessable handle.
+    const webhook = await WebhookModel.findByWorkflowId(workflowId, req.user.id);
 
     if (!webhook) {
       return res.status(404).json({ success: false, error: 'Webhook not found' });
@@ -37,7 +38,9 @@ WebhookRoutes.get('/workflow/:workflowId', authenticateToken, async (req, res) =
 WebhookRoutes.delete('/workflow/:workflowId', authenticateToken, async (req, res) => {
   try {
     const { workflowId } = req.params;
-    const result = await WebhookModel.deleteByWorkflowId(workflowId);
+    // Returns { deleted: false } — and therefore a 404 — when the row exists but
+    // belongs to somebody else, so ids cannot be enumerated through this route.
+    const result = await WebhookModel.deleteByWorkflowId(workflowId, req.user.id);
 
     if (!result.deleted) {
       return res.status(404).json({ success: false, error: 'Webhook not found' });

@@ -1,29 +1,26 @@
 import express from 'express';
 import CustomOpenAIProviderService from '../services/ai/CustomOpenAIProviderService.js';
 import { getAllProviderTemplates } from '../services/ai/providerConfigs.js';
-import jwt from 'jsonwebtoken';
 import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
 
 /**
- * Helper function to extract user ID from auth token
- * Supports multiple JWT field names: id, userId, user_id, sub (standard JWT)
+ * Identity comes from `req.user`, populated by the requireAuthHeader guard
+ * every route below mounts.
+ *
+ * This replaces a local getUserIdFromToken() helper that re-parsed the header
+ * with `jwt.decode` — no signature check. It was not exploitable, because
+ * requireAuthHeader had already VERIFIED the very same token before the
+ * handler ran, and it applied the identical id/userId/user_id/sub extraction
+ * (see verifyAuthToken in utils/authGuard.js), so the value is unchanged.
+ *
+ * It is removed because it is indistinguishable at a glance from the shape
+ * that IS an authentication bypass, and a routes file is exactly where such a
+ * helper gets copied from. Reading the guard's output cannot drift from what
+ * the guard verified.
  */
-function getUserIdFromToken(req) {
-  const authToken = req.headers.authorization;
-  if (!authToken || !authToken.startsWith('Bearer ')) {
-    return null;
-  }
-
-  try {
-    const token = authToken.split(' ')[1];
-    const payload = jwt.decode(token);
-    return payload?.id || payload?.userId || payload?.user_id || payload?.sub || null;
-  } catch (e) {
-    return null;
-  }
-}
+const getUserIdFromToken = (req) => req.user?.userId || null;
 
 /**
  * GET /custom-providers

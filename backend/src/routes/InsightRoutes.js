@@ -192,7 +192,13 @@ InsightRoutes.post('/memory/:agentId', authenticateToken, async (req, res) => {
 InsightRoutes.put('/memory/entry/:id', authenticateToken, async (req, res) => {
   try {
     const { content, relevanceScore, memoryType } = req.body;
-    const changes = await AgentMemoryModel.update(req.params.id, { content, relevanceScore, memoryType });
+    // Scoped to the caller: `changes` is 0 for a row owned by somebody else,
+    // which surfaces as { updated: false } rather than a silent cross-tenant write.
+    const changes = await AgentMemoryModel.update(req.params.id, req.user.userId, {
+      content,
+      relevanceScore,
+      memoryType,
+    });
     res.json({ success: true, updated: changes > 0 });
   } catch (error) {
     console.error('[Insight Route] Memory update error:', error);

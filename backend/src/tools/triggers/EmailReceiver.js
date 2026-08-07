@@ -45,7 +45,8 @@ class EmailReceiver extends EventEmitter {
       const processedTriggerIds = [];
 
       for (const trigger of triggers) {
-        console.log('Local EmailReceiver: Trigger data:', trigger);
+        // Identifiers only — `trigger` carries the whole inbound email.
+        console.log(`Local EmailReceiver: processing trigger ${trigger.id} for workflow ${trigger.workflowId}`);
         const success = await this._triggerWorkflowByEmail(trigger.workflowId, trigger.triggerData);
         // Only confirm if the workflow was actually triggered
         // If workflow not found in this process, let the other process handle it
@@ -71,7 +72,10 @@ class EmailReceiver extends EventEmitter {
   }
   async _triggerWorkflowByEmail(workflowId, email) {
     console.log('Local EmailReceiver: Attempting trigger for workflow id:', workflowId);
-    console.log('Local EmailReceiver: Email:', email);
+    // The sender and subject are enough to trace a delivery. The full `email`
+    // object carries the body, the HTML part and every attachment, which then
+    // sat in the process log and in any support bundle collected from it.
+    console.log(`Local EmailReceiver: email from=${email?.from ?? '<unknown>'} subject=${JSON.stringify(email?.subject ?? '')}`);
     console.log('Local EmailReceiver: Active workflows:', Array.from(this.processManager.activeWorkflows.keys()));
 
     // Check if the workflow is already being triggered
