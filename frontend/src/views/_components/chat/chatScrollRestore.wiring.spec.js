@@ -24,6 +24,7 @@ import { fileURLToPath } from 'url';
 import UnifiedChatContainer from './UnifiedChatContainer.vue';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import { getScrollPosition, setScrollPosition } from '@/services/chatScrollPositions.js';
+import { SETTLE_TIMEOUT_MS, CAPTURE_DEBOUNCE_MS } from '@/composables/useChatScrollRestore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, '../../..');
@@ -34,6 +35,36 @@ vi.mock('@/services/chatChannelConfig.js', () => ({ getChannelConfig: () => null
 
 const noopDirective = { mounted() {}, unmounted() {} };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The two waits this file needs, derived from the component's OWN bounds.
+ *
+ * WHY NOT A FIXED NUMBER (2026-08-07)
+ * ──────────────────────────────────
+ * These were `sleep(120)` and `sleep(320)`. 120ms is not enough to wait out an
+ * open-time restore: the settle loop is bounded by SETTLE_TIMEOUT_MS (600),
+ * and capture is suppressed for its entire duration —
+ *
+ *     if (isRestoring.value) return;      // useChatScrollRestore.js
+ *
+ * — because saving mid-restore would overwrite the user's real position with
+ * an artefact of our own restoration. So when rAF and timer callbacks are
+ * delayed, which is exactly what happens under a full parallel suite or on a
+ * CI runner, the scroll the test then triggers is CORRECTLY ignored, nothing
+ * is recorded, and the assertion sees null.
+ *
+ * That made the file pass in isolation and fail intermittently in the full
+ * run — a flaky gate, which teaches people to re-run rather than to look, and
+ * is the one failure mode .github/workflows/test.yml exists to prevent.
+ *
+ * Measured: with the wait at 0 the failure is deterministic (5 tests, incl.
+ * the one CI reported); past the settle bound it is green 3/3.
+ *
+ * Deriving them from the exported constants means a change to the component's
+ * timing can never silently invalidate the test's assumptions again.
+ */
+const RESTORE_SETTLED = SETTLE_TIMEOUT_MS + 160;
+const CAPTURE_FLUSHED = CAPTURE_DEBOUNCE_MS + 150;
 
 const MESSAGES = [
   { id: 'm1', role: 'user', content: 'one' },
@@ -128,7 +159,7 @@ async function openChat(props, { scrollTop = 0, ...layout } = {}) {
   const w = mountChat(props);
   await w.vm.$nextTick();
   const el = giveLayout(w, layout);
-  await sleep(120);
+  await sleep(RESTORE_SETTLED);
   // Only NOW put the user where the test wants them. Setting it earlier would
   // be overwritten by the open-time restore, which legitimately owns scrollTop
   // until it settles.
@@ -166,7 +197,7 @@ describe('panel chats — a scroll position is remembered per channel', () => {
     const { w } = await openChat({ channelKey: 'workspace:ws_A' }, { scrollTop: 600 });
 
     await w.find('.chat-messages').trigger('scroll');
-    await sleep(320);
+    await sleep(CAPTURE_FLUSHED);
 
     expect(getScrollPosition('workspace:ws_A')).toMatchObject({
       atBottom: false,
@@ -181,7 +212,7 @@ describe('panel chats — a scroll position is remembered per channel', () => {
     const { w } = await openChat({ channelKey: 'workspace:ws_A' }, { scrollTop: 1600 });
 
     await w.find('.chat-messages').trigger('scroll');
-    await sleep(320);
+    await sleep(CAPTURE_FLUSHED);
 
     expect(getScrollPosition('workspace:ws_A')).toMatchObject({ atBottom: true, anchorId: null });
     w.unmount();
@@ -223,7 +254,7 @@ describe('panel chats — a scroll position is remembered per channel', () => {
     const w = mountChat({ channelKey: 'workspace:ws_A' });
     await w.vm.$nextTick();
     const el = giveLayout(w, { scrollTop: 0 });
-    await sleep(120);
+    await sleep(RESTORE_SETTLED);
     expect(el.scrollTop).toBe(600);
     w.unmount();
   });
@@ -232,7 +263,7 @@ describe('panel chats — a scroll position is remembered per channel', () => {
     const w = mountChat({ channelKey: 'workspace:ws_fresh' });
     await w.vm.$nextTick();
     const el = giveLayout(w, { scrollTop: 0 });
-    await sleep(120);
+    await sleep(RESTORE_SETTLED);
     expect(el.scrollTop).toBe(1600);
     w.unmount();
   });
