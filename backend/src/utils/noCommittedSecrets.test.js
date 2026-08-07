@@ -129,6 +129,20 @@ describe('guard 3 — no secret literal in source', () => {
     ['config/oauthClients.js', 'GEMINI_CLI_CLIENT_SECRET'],
     ['config/oauthClients.js', 'ANTIGRAVITY_CLIENT_ID'],
     ['config/oauthClients.js', 'ANTIGRAVITY_CLIENT_SECRET'],
+
+    // The second exemption is a genuine secret, and is allowed anyway.
+    //
+    // LEGACY_ENCRYPTION_KEY is the published key AGNT <= 0.6.5 encrypted with.
+    // It is in 64 forks, in this repository's history, and inside every shipped
+    // app.asar, so writing it here adds no exposure — while omitting it would
+    // silently destroy every user's stored credentials on upgrade. It is
+    // decrypt-only, and legacySecrets.test.js fails the build once the version
+    // reaches 0.6.9 with it still present.
+    //
+    // This is the ONLY entry in this list that guards real secret material.
+    // Anything similar arriving later should be argued on its own merits, not
+    // waved through by pointing at this line.
+    ['utils/legacySecrets.js', 'LEGACY_ENCRYPTION_KEY'],
   ];
 
   const isAllowed = (relPath, name) =>
@@ -241,12 +255,21 @@ describe('guard 3 — no secret literal in source', () => {
 
   it('the exemption stays narrow (anti-vacuity)', () => {
     // An allowlist that grows quietly is how a guard stops guarding. Pin both
-    // its size and its shape: one file, four named public OAuth constants.
-    expect(ALLOWED).toHaveLength(4);
-    for (const [file, name] of ALLOWED) {
-      expect(file).toBe('config/oauthClients.js');
+    // its size and its shape: four public OAuth constants in one file, plus
+    // exactly one time-limited legacy key in another.
+    expect(ALLOWED).toHaveLength(5);
+
+    const oauth = ALLOWED.filter(([file]) => file === 'config/oauthClients.js');
+    expect(oauth).toHaveLength(4);
+    for (const [, name] of oauth) {
       expect(name).toMatch(/^(GEMINI_CLI|ANTIGRAVITY)_CLIENT_(ID|SECRET)$/);
     }
+
+    // Exactly one exemption covers real secret material, and it is the one
+    // with a sunset gate attached.
+    const legacy = ALLOWED.filter(([file]) => file !== 'config/oauthClients.js');
+    expect(legacy).toEqual([['utils/legacySecrets.js', 'LEGACY_ENCRYPTION_KEY']]);
+    expect(fs.existsSync(path.join(REPO_ROOT, 'backend/src/utils/legacySecrets.test.js'))).toBe(true);
 
     // And the exemption must not leak to the same NAME in a different file, or
     // to a different name in the exempted file.

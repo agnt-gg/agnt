@@ -29,13 +29,33 @@ const ENV_KEYS = ['ENCRYPTION_KEY', 'AGNT_LEGACY_ENCRYPTION_KEY', 'USER_DATA_PAT
 
 let saved;
 
-/** Load with a chosen key pair. Env wins in the resolver, so no disk is touched. */
+/**
+ * Load with a chosen key pair. Env wins in the resolver, so no disk is touched.
+ *
+ * `legacy: null` means "this install has no legacy key at all" — the state
+ * after the key is removed in 0.6.9, and the state for anyone who overrides it
+ * away. Deleting the environment variable NO LONGER produces that state, because
+ * legacySecrets.js now ships a default, so the module is mocked instead.
+ * Simulating it by clearing the env would silently test the shipped key
+ * against itself and prove nothing.
+ */
 async function load({ current = CURRENT_KEY, legacy = LEGACY_KEY } = {}) {
   vi.resetModules();
+  vi.doUnmock('./legacySecrets.js');
+
   if (current === null) delete process.env.ENCRYPTION_KEY;
   else process.env.ENCRYPTION_KEY = current;
-  if (legacy === null) delete process.env.AGNT_LEGACY_ENCRYPTION_KEY;
-  else process.env.AGNT_LEGACY_ENCRYPTION_KEY = legacy;
+
+  if (legacy === null) {
+    delete process.env.AGNT_LEGACY_ENCRYPTION_KEY;
+    vi.doMock('./legacySecrets.js', () => ({
+      LEGACY_ENCRYPTION_KEY: '',
+      hasLegacyKey: () => false,
+    }));
+  } else {
+    process.env.AGNT_LEGACY_ENCRYPTION_KEY = legacy;
+  }
+
   return import('./encryption.js');
 }
 
@@ -173,7 +193,54 @@ describe('dual-key decrypt', () => {
   });
 });
 
-describe('without a legacy key configured (the shipped default)', () => {
+describe('the SHIPPED default (nothing set in the environment at all)', () => {
+  it('reads data written by AGNT <= 0.6.5 with no configuration whatsoever', async () => {
+    // The reason the key is committed rather than left to a setting: this is
+    // the path every existing user takes on upgrade. If it fails, they lose
+    // every stored provider key and OAuth connection — silently, because
+    // "nothing to migrate" and "nothing readable" look identical from outside.
+    vi.resetModules();
+    vi.doUnmock('./legacySecrets.js');
+    delete process.env.AGNT_LEGACY_ENCRYPTION_KEY;
+    process.env.ENCRYPTION_KEY = CURRENT_KEY;
+
+    const { LEGACY_ENCRYPTION_KEY: shipped, hasLegacyKey: shippedHas } = await import('./legacySecrets.js');
+    expect(shippedHas()).toBe(true);
+
+    // Encrypted exactly as an old version would have.
+    const oldRow = CryptoJS.AES.encrypt('a-stored-credential', shipped).toString();
+
+    const { decrypt, keyGenerationOf } = await import('./encryption.js');
+    expect(keyGenerationOf(oldRow)).toBe('legacy');
+    expect(decrypt(oldRow)).toBe('a-stored-credential');
+  });
+
+  it('still writes new data under the per-install key, never the legacy one', async () => {
+    vi.resetModules();
+    vi.doUnmock('./legacySecrets.js');
+    delete process.env.AGNT_LEGACY_ENCRYPTION_KEY;
+    process.env.ENCRYPTION_KEY = CURRENT_KEY;
+
+    const { LEGACY_ENCRYPTION_KEY: shipped } = await import('./legacySecrets.js');
+    const { encrypt, keyGenerationOf, CIPHERTEXT_PREFIX } = await import('./encryption.js');
+
+    const fresh = encrypt('newly-stored');
+    expect(keyGenerationOf(fresh)).toBe('current');
+    expect(fresh.startsWith(CIPHERTEXT_PREFIX)).toBe(true);
+
+    // The published key must not open anything written from now on.
+    const body = fresh.slice(CIPHERTEXT_PREFIX.length);
+    let viaLegacy;
+    try {
+      viaLegacy = CryptoJS.AES.decrypt(body, shipped).toString(CryptoJS.enc.Utf8);
+    } catch {
+      viaLegacy = null;
+    }
+    expect(viaLegacy).not.toBe('newly-stored');
+  });
+});
+
+describe('with no legacy key at all (post-0.6.9, or overridden away)', () => {
   it('still encrypts and decrypts current data normally', async () => {
     const { encrypt, decrypt } = await load({ legacy: null });
 

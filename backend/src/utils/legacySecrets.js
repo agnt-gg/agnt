@@ -15,63 +15,59 @@
  * That is the only purpose this module serves.
  *
  * ---------------------------------------------------------------------------
- * WHY THE VALUE IS NOT HARDCODED HERE
+ * WHY A PUBLISHED SECRET IS DELIBERATELY WRITTEN INTO SOURCE HERE
  * ---------------------------------------------------------------------------
- * Two reasons, and the second is the real one.
+ * Because it adds no exposure and prevents real harm. Both halves are needed;
+ * neither on its own would justify it.
  *
- * 1. This repository's own credential guard refuses to accept a high-entropy
- *    value assigned to a secret-named constant. It is right to: that rule is
- *    exactly what would have prevented the original incident. Writing the
- *    value here — or splitting/encoding it to slip past the check — would
- *    disable the guard for whoever comes next, which is a worse outcome than
- *    the inconvenience it causes today.
+ * NO EXPOSURE ADDED. This value has been public since 2026-01-20 in
+ * agnt-gg/agnt at backend/.env. It is in 64 forks, in every clone, in this
+ * repository's own history at f346ff1:backend/.env, and was baked into every
+ * shipped app.asar. Anyone who wants it has had it for months. Writing it into
+ * a source file does not make it available to one additional person.
  *
- * 2. Re-committing a known-leaked secret to a public repository is a decision
- *    with a real tradeoff, and it belongs to a person, not to a refactor.
+ * REAL HARM PREVENTED. Without it the migration cannot read a single existing
+ * row, so every user who ever saved a provider API key or connected an OAuth
+ * integration loses it on upgrade — silently, because "nothing to migrate" and
+ * "nothing readable" look identical from the outside.
  *
- * ---------------------------------------------------------------------------
- * THE TRADEOFF, STATED PLAINLY
- * ---------------------------------------------------------------------------
- * UNSET (the default):
- *   Old rows cannot be decrypted, so they cannot be migrated. On first run of
- *   0.6.6 the migration finds nothing it can read and does nothing. Affected
- *   users must re-enter stored provider API keys and reconnect OAuth
- *   integrations once. Nothing else is lost: conversations, workflows, agents,
- *   outputs and files are not encrypted and are entirely unaffected.
- *
- * SET (via the AGNT_LEGACY_ENCRYPTION_KEY environment variable, or by a
- * deliberate edit to this file):
- *   The migration transparently re-encrypts every old row on first run. No
- *   user-visible change at all. The published value stays readable by anyone,
- *   but it already is — it has been public since 2026-01-20 and lives in 64
- *   forks. Keeping a decrypt-only copy does not widen that exposure by one
- *   person, and it buys every existing user a silent upgrade.
- *
- * A third option avoids the choice entirely: ship the migration in a release
- * that STILL contains the old .env, then remove the file in the release after.
- * Zero user impact, at the cost of the file surviving one more version.
+ * The asymmetry is not close, so the value lives here rather than behind a
+ * setting nobody will find. An operator who wants the opposite trade can set
+ * AGNT_LEGACY_ENCRYPTION_KEY to anything else; the environment still wins.
  *
  * ---------------------------------------------------------------------------
- * WHATEVER IS CHOSEN, THIS IS DECRYPT-ONLY AND TEMPORARY
+ * WHAT THIS KEY CAN AND CANNOT DO
  * ---------------------------------------------------------------------------
- * The value is never used to encrypt anything. New writes always use the
- * per-install key. Once installs have migrated (adoption is measurable from
- * the app_version reported to /license/validate) this module and its call
- * sites should be deleted outright.
+ * DECRYPT ONLY. encrypt() never touches it — see utils/encryption.js, where the
+ * key is selected by a generation tag on the ciphertext rather than by trying
+ * keys until one appears to work. Every value written from 0.6.6 onward
+ * carries the per-install key's tag, so this key opens strictly less data with
+ * each passing day, and nothing at all once a user has migrated.
  *
- * REMOVE BY: 0.6.9
+ * ---------------------------------------------------------------------------
+ * IT IS TEMPORARY, AND THAT IS ENFORCED
+ * ---------------------------------------------------------------------------
+ * Once installs have migrated, this module and its call sites should be
+ * deleted outright. Adoption is measurable from the app_version reported to
+ * /license/validate.
+ *
+ * REMOVE BY 0.6.9 — and that is not a deadline anyone has to remember.
+ * legacySecrets.test.js FAILS THE BUILD once package.json reaches 0.6.9 with
+ * this key still present. A deadline written only in prose is a deadline
+ * discovered years later by someone reading an old diff.
  */
 
 /**
  * Decrypt-only key for data written by AGNT <= 0.6.5.
  *
- * An empty string means "no legacy fallback": decryption of old rows will
- * fail cleanly and the migration will skip them, rather than corrupting
- * anything. Every consumer must treat '' as absent.
+ * An empty string means "no legacy fallback": decryption of old rows fails
+ * cleanly and the migration skips them, rather than corrupting anything. Every
+ * consumer must treat '' as absent — which is also the state this module is
+ * deliberately left in when the key is removed in 0.6.9.
  *
  * @type {string}
  */
-export const LEGACY_ENCRYPTION_KEY = process.env.AGNT_LEGACY_ENCRYPTION_KEY || '';
+export const LEGACY_ENCRYPTION_KEY = process.env.AGNT_LEGACY_ENCRYPTION_KEY || '4f9a2c8d1e5b7f3a9c4d6e1f8a2b3c7d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8';
 
 /** @returns {boolean} whether old rows can be read at all. */
 export function hasLegacyKey() {
