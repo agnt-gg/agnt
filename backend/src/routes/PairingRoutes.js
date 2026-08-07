@@ -36,6 +36,7 @@ import { requireAuthHeader, extractToken, verifyAuthToken } from '../utils/authG
 import { rateLimit } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
 import NetworkIdentity from '../services/NetworkIdentity.js';
+import { requirePaidFeature, hasFeature } from '../services/auth/planEntitlements.js';
 
 // Warm the network name at boot, so the first user to open the panel is not
 // the one who pays for the OS probe. Fire-and-forget by design: nothing waits
@@ -89,6 +90,11 @@ function consumeCode(code) {
 // ---------------------------------------------------------------------------
 // GET /api/pairing/status  — where am I reachable, and is LAN access on?
 // ---------------------------------------------------------------------------
+//
+// NOT plan-gated, deliberately. The panel needs to render for everyone — a free
+// user should see the feature and a PRO badge, not an error. It reports
+// entitlement as a field so the UI can say so honestly instead of letting a
+// user tap through to a 403.
 router.get('/status', requireAuthHeader, async (req, res) => {
   const desired = RemoteAccessConfig.resolveBindHost();
   const actual = RemoteAccessConfig.getActualBind();
@@ -140,13 +146,21 @@ router.get('/status', requireAuthHeader, async (req, res) => {
     // string[] for backwards compatibility with older frontends.
     origins: reach.origins,
     urls: reach.origins.filter((o) => o.external).map((o) => o.origin),
+    // Whether this plan may actually use any of the above. Unknown resolves to
+    // true, matching the guard on /code, so the UI never shows a lock the
+    // backend would not actually enforce.
+    remoteAccessEntitled: await hasFeature('remoteAccess'),
   });
 });
 
 // ---------------------------------------------------------------------------
 // POST /api/pairing/lan-access  { enabled }
 // ---------------------------------------------------------------------------
-router.post('/lan-access', requireAuthHeader, (req, res) => {
+//
+// PAID (`remoteAccess`). Turning LAN access on is the act of exposing this
+// desktop to other devices, so it belongs to the same entitlement as pairing
+// itself — gating only the QR code would leave the capability half-sold.
+router.post('/lan-access', requireAuthHeader, requirePaidFeature('remoteAccess'), (req, res) => {
   const enabled = req.body?.enabled === true;
   try {
     RemoteAccessConfig.writeConfig({ lanEnabled: enabled });
@@ -183,10 +197,21 @@ router.post('/lan-access', requireAuthHeader, (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /api/pairing/code  — mint a single-use pairing code
 // ---------------------------------------------------------------------------
+//
+// PAID (`remoteAccess`). The gate goes HERE rather than on /claim: the phone
+// has no session when it claims — that is the entire point of the code — so
+// /claim has nothing to check a plan against. No code minted, no pairing
+// possible, and the claim path stays exactly as it was.
+//
+// Fails OPEN when the plan cannot be determined. Pairing a phone to your own
+// desktop over your own LAN is a local operation, and making it die when
+// api.agnt.gg has a bad hour would be a worse bug than the one being fixed.
+// See services/auth/planEntitlements.js.
 router.post(
   '/code',
   rateLimit({ name: 'pairing-code', limit: 20, windowMs: 60_000 }),
   requireAuthHeader,
+  requirePaidFeature('remoteAccess'),
   (req, res) => {
     sweep();
     if (pending.size >= MAX_PENDING) {

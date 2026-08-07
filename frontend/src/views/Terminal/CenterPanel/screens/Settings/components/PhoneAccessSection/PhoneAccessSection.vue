@@ -2,7 +2,10 @@
   <div class="phone-access" :aria-busy="!ready">
     <div class="pa-header">
       <div>
-        <h3 class="pa-title"><i class="fas fa-mobile-alt"></i> Phone Access</h3>
+        <h3 class="pa-title">
+          <i class="fas fa-mobile-alt"></i> Phone Access
+          <span v-if="planLocked" class="pa-pro-badge"><i class="fas fa-lock"></i> PRO</span>
+        </h3>
         <p class="pa-sub">Run this AGNT instance from your phone.</p>
       </div>
       <!-- Bound to the SAVED setting, not the live socket: after switching on,
@@ -10,12 +13,26 @@
            springs back to off is indistinguishable from "it did not save".
            Absent entirely until measured: a switch rendered off is a claim, and
            an unread setting has not earned one. -->
-      <label v-if="ready" class="pa-switch" :class="{ disabled: busy || envPinned }">
-        <input type="checkbox" :checked="desiredLanEnabled" :disabled="busy || envPinned" @change="onToggle" />
+      <label v-if="ready" class="pa-switch" :class="{ disabled: busy || envPinned || planLocked }">
+        <input
+          type="checkbox"
+          :checked="desiredLanEnabled"
+          :disabled="busy || envPinned || planLocked"
+          @change="onToggle"
+        />
         <span class="pa-slider"></span>
       </label>
       <span v-else class="pa-sk pa-sk-switch" aria-hidden="true"></span>
     </div>
+
+    <!-- Says so up front rather than letting the user flip a switch and meet a
+         403. The backend is the authority (see planEntitlements.js); this only
+         renders what it reported, so the badge can never claim a restriction
+         the server would not actually apply. -->
+    <p v-if="planLocked" class="pa-note pa-note-warn">
+      <i class="fas fa-lock"></i>
+      <span>Phone Access is a PRO feature. Upgrade to pair your phone with this install.</span>
+    </p>
 
     <p v-if="envPinned" class="pa-note pa-note-warn">
       <i class="fas fa-lock"></i>
@@ -296,6 +313,11 @@ const desiredLanEnabled = computed(() => status.value?.desiredLanEnabled === tru
 const bindHost = computed(() => status.value?.bindHost || '');
 const envPinned = computed(() => status.value?.envPinned === true);
 const restartRequired = computed(() => status.value?.restartRequired === true);
+// Entitlement, as reported by the backend. `!== false` rather than `=== true`
+// on purpose: an older backend does not send the field at all, and an absent
+// answer must read as ENTITLED. The backend guard fails open for the same
+// reason, so the two agree — a lock here always means a real 403 there.
+const planLocked = computed(() => ready.value && status.value?.remoteAccessEntitled === false);
 // Named network + reachability witness: the two facts that turn "it doesn't
 // work" into a specific, checkable statement.
 const networkName = computed(() => status.value?.networkName || '');
@@ -585,6 +607,28 @@ onBeforeUnmount(() => clearInterval(ticker));
   color: var(--color-primary, #19ef83);
   margin-right: 8px;
 }
+.pa-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #ffd700 40%, transparent);
+  background: color-mix(in srgb, #ffd700 12%, transparent);
+  color: var(--color-yellow, #ffd700);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+}
+
+.pa-pro-badge i {
+  font-size: 9px;
+  color: inherit;
+  margin-right: 0;
+}
+
 .pa-sub {
   margin: 0;
   font-size: 13px;
