@@ -66,6 +66,53 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RESTORE_SETTLED = SETTLE_TIMEOUT_MS + 160;
 const CAPTURE_FLUSHED = CAPTURE_DEBOUNCE_MS + 150;
 
+/**
+ * POSTSCRIPT: A LARGER SLEEP WAS STILL NOT ENOUGH.
+ *
+ * Raising the wait past SETTLE_TIMEOUT_MS fixed it locally and CI stayed red.
+ * The reason is worth keeping: the settle loop checks its deadline INSIDE a
+ * requestAnimationFrame callback. On a starved runner the frame itself is
+ * late, so the loop can still be running well past its own bound. A bigger
+ * sleep buys margin, not certainty — and a test that is merely probable is
+ * what produced this bug in the first place.
+ *
+ * So nothing below waits for a duration:
+ *
+ *   nextFrame()  resolves when a frame ACTUALLY runs, however delayed
+ *   waitFor()    polls a real condition, capped in FRAMES not milliseconds,
+ *                so a slow machine gets proportionally more wall clock
+ *   settle()     ends the restore with a real pointer interaction, which the
+ *                composable aborts on SYNCHRONOUSLY (attachAbortListeners ->
+ *                stopSettle), making "the restore is over" an event
+ */
+
+const nextFrame = () =>
+  new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 16);
+  });
+
+async function waitFor(predicate, { frames = 400, label = 'condition' } = {}) {
+  for (let i = 0; i < frames; i += 1) {
+    if (predicate()) return;
+    await nextFrame();
+  }
+  throw new Error(`waitFor: ${label} never held within ${frames} frames`);
+}
+
+/**
+ * End the open-time restore deterministically.
+ *
+ * Two frames let the settle loop's first step apply the saved position; the
+ * pointer event then aborts the loop synchronously, exactly as it would if a
+ * user grabbed the scrollbar. After this returns, capture is live.
+ */
+async function settle(el) {
+  await nextFrame();
+  await nextFrame();
+  el.dispatchEvent(new window.Event('pointerdown'));
+}
+
 const MESSAGES = [
   { id: 'm1', role: 'user', content: 'one' },
   { id: 'm2', role: 'assistant', content: 'two' },
@@ -159,7 +206,7 @@ async function openChat(props, { scrollTop = 0, ...layout } = {}) {
   const w = mountChat(props);
   await w.vm.$nextTick();
   const el = giveLayout(w, layout);
-  await sleep(RESTORE_SETTLED);
+  await settle(el);
   // Only NOW put the user where the test wants them. Setting it earlier would
   // be overwritten by the open-time restore, which legitimately owns scrollTop
   // until it settles.

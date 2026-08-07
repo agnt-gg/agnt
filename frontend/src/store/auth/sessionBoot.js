@@ -109,7 +109,16 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
 
   // Hand the token to the local backend's session store before anything reads
   // from it. Three login paths each called this by hand; one forgot to await it.
-  await store.dispatch('userAuth/syncTokenWithBackend').catch((err) => {
+  // Promise.resolve() throughout this function: Vuex returns `undefined` from
+  // dispatch() for an action it does not know — it logs and carries on — so a
+  // bare `.catch()` throws TypeError SYNCHRONOUSLY, before any handler exists.
+  // In the idle() block below that lands in a timer with no caller, where it
+  // escapes as an unhandled ERROR rather than a rejection: the suite reports
+  // 'Tests 3452 passed | Errors 1 error' and CI goes red with nothing failing.
+  // It also breaks the invariant this function is documented to hold —
+  // startSession never rejects — and is a real hazard for any store whose
+  // modules are not all registered at boot.
+  await Promise.resolve(store.dispatch('userAuth/syncTokenWithBackend')).catch((err) => {
     console.warn('[session] token sync failed:', err?.message || err);
   });
 
@@ -141,24 +150,24 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
     // The local data fan-out: agents, workflows, tools, outputs, groups,
     // stats, skills, widgets, connected apps. THE line whose absence from both
     // Google sign-in paths meant they loaded nothing at all.
-    store.dispatch('initializeStore').catch((err) => {
+    Promise.resolve(store.dispatch('initializeStore')).catch((err) => {
       console.error('[session] initializeStore failed:', err?.message || err);
     });
 
     store.dispatch('appAuth/startPolling');
 
-    store.dispatch('aiProvider/fetchCustomProviders').catch((err) => {
+    Promise.resolve(store.dispatch('aiProvider/fetchCustomProviders')).catch((err) => {
       console.warn('[session] fetchCustomProviders failed:', err?.message);
     });
 
     if (needsLicenseValidation) {
-      store.dispatch('userAuth/validateLicense').catch((err) => {
+      Promise.resolve(store.dispatch('userAuth/validateLicense')).catch((err) => {
         console.warn('[session] validateLicense failed:', err?.message);
       });
     }
 
     // Custom instructions and provider preferences.
-    store.dispatch('aiProvider/loadUserSettings').catch((err) => {
+    Promise.resolve(store.dispatch('aiProvider/loadUserSettings')).catch((err) => {
       console.error('[session] loadUserSettings failed:', err?.message || err);
     });
 
@@ -167,15 +176,22 @@ async function runStartSession(store, { reason = 'unknown', resumeInflightRuns =
     // Rejoin any chat turn still generating when this tab last went away.
     // Deliberately not awaited: each reattach holds an SSE connection open
     // until its run finishes, which can be minutes.
-    resumeInflightRuns(store).catch((err) => {
+    // Promise.resolve() because resumeInflightRuns is INJECTABLE (see opts) and
+    // so is not guaranteed to return a promise. Calling .catch() on a bare
+    // undefined throws TypeError SYNCHRONOUSLY, and this runs inside idle() — a
+    // timer with no caller — so it escapes as an unhandled ERROR rather than a
+    // rejection anything can observe. That fails the entire run while every
+    // test passes ('Tests 3452 passed | Errors 1 error'), which is the least
+    // debuggable shape a failure can take, and it breaks the invariant this
+    // function is documented to hold: startSession never rejects.
+    Promise.resolve(resumeInflightRuns(store)).catch((err) => {
       console.warn('[session] run reattach sweep failed:', err?.message || err);
     });
 
     // One-time repair for transcripts saved before chat channels declared
     // their ownership. Without it every workspace / artifact / widget chat
     // stays listed among the user's real conversations.
-    store
-      .dispatch('chatUnified/reclaimChannelScopes')
+    Promise.resolve(store.dispatch('chatUnified/reclaimChannelScopes'))
       .then((r) => {
         if (r?.scoped) {
           console.log(`[session] reclaimed ${r.scoped}/${r.total} channel transcript(s)`);
