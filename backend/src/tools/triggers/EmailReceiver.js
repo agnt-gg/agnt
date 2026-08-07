@@ -1,6 +1,25 @@
 import axios from 'axios';
 import { EventEmitter } from 'events';
+import { authHeader } from '../../services/auth/sessionTokenCache.js';
 
+/**
+ * Inbound email trigger poller.
+ *
+ * IDENTIFIES ITSELF. Every call below carries the user's session token when one
+ * is known. The remote /email/poll returns pending triggers and
+ * /email/confirm-processed deletes them, and until now both went out with no
+ * credential at all — so the server had to serve anonymous callers, which meant
+ * it could not scope results to an owner and anyone could read or delete any
+ * user's inbound mail.
+ *
+ * The header is inert today: the matching server routes are behind an
+ * enforcement gate that is in shadow, so it is accepted and counted but not
+ * required. That is the point — the client learns to identify itself first,
+ * the server starts insisting only once the counters show adoption.
+ *
+ * If no token is known yet (fresh start, nobody has opened the UI), the header
+ * is simply absent and the call behaves exactly as it does today.
+ */
 class EmailReceiver extends EventEmitter {
   constructor(processManager) {
     super();
@@ -34,7 +53,7 @@ class EmailReceiver extends EventEmitter {
   }
   async pollForTriggers() {
     try {
-      const response = await axios.get(`${this.remoteUrl}/email/poll`);
+      const response = await axios.get(`${this.remoteUrl}/email/poll`, { headers: authHeader() });
       const { triggers } = response.data;
 
       // Only log if there are triggers to process
@@ -60,7 +79,11 @@ class EmailReceiver extends EventEmitter {
       // Confirm processed triggers
       if (processedTriggerIds.length > 0) {
         try {
-          await axios.post(`${this.remoteUrl}/email/confirm-processed`, { processedTriggerIds });
+          await axios.post(
+            `${this.remoteUrl}/email/confirm-processed`,
+            { processedTriggerIds },
+            { headers: authHeader() }
+          );
           console.log(`Local EmailReceiver: Confirmed processing of ${processedTriggerIds.length} triggers`);
         } catch (confirmError) {
           console.error('Local EmailReceiver: Error confirming processed triggers:', confirmError);

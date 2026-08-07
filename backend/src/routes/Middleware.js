@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import db from "../models/database/index.js";
 import { resolveSecret } from "../utils/secretResolver.js";
+import { rememberSessionToken } from "../services/auth/sessionTokenCache.js";
 
 dotenv.config();
 
@@ -150,6 +151,12 @@ class Middleware {
             req.session.lastActivity = Date.now();
           }
 
+          // Same reasoning as the verified branch below. This token was decoded
+          // rather than verified locally — which is what TRUST_REMOTE_AUTH
+          // means — but the remote API verifies it itself, so it is exactly the
+          // right credential to forward there.
+          rememberSessionToken(token, userId);
+
           // Auth successful - don't log email for privacy
           return next();
         }
@@ -175,6 +182,13 @@ class Middleware {
         req.session.userData = req.user;
         req.session.lastActivity = Date.now();
       }
+
+      // Also remember it OUTSIDE the session, so the parts of this backend that
+      // run without a request — the email and webhook pollers, workflow nodes,
+      // plugins — can present a credential to api.agnt.gg. Without this they
+      // must call it anonymously, which is the reason those remote endpoints
+      // cannot yet require authentication. See services/auth/sessionTokenCache.js.
+      rememberSessionToken(token, userId);
 
       // console.log('Authenticated user:', req.user);
 

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
+import { authHeader } from '../../services/auth/sessionTokenCache.js';
 import WebhookModel from '../../models/WebhookModel.js';
 import WorkflowModel from '../../models/WorkflowModel.js';
 
@@ -117,16 +118,20 @@ class LocalWebhookReceiver extends EventEmitter {
    */
   async _reregisterWebhookOnRemote(workflowId, webhook) {
     try {
-      const response = await axios.post(`${this.remoteUrl}/webhooks/register`, {
-        workflowId,
-        userId: webhook.userId || null,
-        method: webhook.method || null,
-        authType: webhook.authType || null,
-        authToken: webhook.authToken || null,
-        username: webhook.username || null,
-        password: webhook.password || null,
-        responseMode: webhook.responseMode || 'Immediate',
-      });
+      const response = await axios.post(
+        `${this.remoteUrl}/webhooks/register`,
+        {
+          workflowId,
+          userId: webhook.userId || null,
+          method: webhook.method || null,
+          authType: webhook.authType || null,
+          authToken: webhook.authToken || null,
+          username: webhook.username || null,
+          password: webhook.password || null,
+          responseMode: webhook.responseMode || 'Immediate',
+        },
+        { headers: authHeader() }
+      );
 
       if (response.data.success) {
         console.log(`LocalWebhookReceiver: Re-registered webhook on remote for workflow ${workflowId}`);
@@ -160,16 +165,23 @@ class LocalWebhookReceiver extends EventEmitter {
 
     // Register webhook on remote server so it persists across remote restarts
     try {
-      const response = await axios.post(`${this.remoteUrl}/webhooks/register`, {
-        workflowId,
-        userId,
-        method: method || null,
-        authType: authType || null,
-        authToken: authToken || null,
-        username: username || null,
-        password: password || null,
-        responseMode: responseMode || 'Immediate',
-      });
+      // This body carries the webhook's OWN credentials (authToken / username /
+      // password), so it is not merely a read that needs identifying — it is a
+      // secret-bearing write that was going out unauthenticated.
+      const response = await axios.post(
+        `${this.remoteUrl}/webhooks/register`,
+        {
+          workflowId,
+          userId,
+          method: method || null,
+          authType: authType || null,
+          authToken: authToken || null,
+          username: username || null,
+          password: password || null,
+          responseMode: responseMode || 'Immediate',
+        },
+        { headers: authHeader() }
+      );
 
       if (response.data.success) {
         console.log(`Webhook registered on remote server for workflow ${workflowId}`);
@@ -266,9 +278,11 @@ class LocalWebhookReceiver extends EventEmitter {
 
       // POST with workflowIds for security filtering - server only returns our triggers
       // Server atomically claims these triggers (sets status='processing') to prevent race conditions
-      const response = await axios.post(`${this.remoteUrl}/webhooks/poll`, {
-        workflowIds: workflowIds,
-      });
+      const response = await axios.post(
+        `${this.remoteUrl}/webhooks/poll`,
+        { workflowIds: workflowIds },
+        { headers: authHeader() }
+      );
       const { triggers } = response.data;
 
       // Only log if there are triggers to process
@@ -305,10 +319,11 @@ class LocalWebhookReceiver extends EventEmitter {
       // Confirm processed triggers
       if (processedTriggerIds.length > 0) {
         try {
-          await axios.post(`${this.remoteUrl}/webhooks/confirm-processed`, {
-            processedTriggerIds,
-            results,
-          });
+          await axios.post(
+            `${this.remoteUrl}/webhooks/confirm-processed`,
+            { processedTriggerIds, results },
+            { headers: authHeader() }
+          );
           console.log(`LocalWebhookReceiver: Confirmed processing of ${processedTriggerIds.length} triggers`);
         } catch (confirmError) {
           console.error('LocalWebhookReceiver: Error confirming processed triggers:', confirmError);
@@ -318,9 +333,11 @@ class LocalWebhookReceiver extends EventEmitter {
       // Release failed triggers back to pending state
       if (failedTriggerIds.length > 0) {
         try {
-          await axios.post(`${this.remoteUrl}/webhooks/release`, {
-            triggerIds: failedTriggerIds,
-          });
+          await axios.post(
+            `${this.remoteUrl}/webhooks/release`,
+            { triggerIds: failedTriggerIds },
+            { headers: authHeader() }
+          );
           console.log(`LocalWebhookReceiver: Released ${failedTriggerIds.length} triggers back to pending`);
         } catch (releaseError) {
           console.error('LocalWebhookReceiver: Error releasing triggers:', releaseError);
@@ -332,9 +349,11 @@ class LocalWebhookReceiver extends EventEmitter {
       // If we claimed triggers but failed to process, release them
       if (claimedTriggerIds.length > 0) {
         try {
-          await axios.post(`${this.remoteUrl}/webhooks/release`, {
-            triggerIds: claimedTriggerIds,
-          });
+          await axios.post(
+            `${this.remoteUrl}/webhooks/release`,
+            { triggerIds: claimedTriggerIds },
+            { headers: authHeader() }
+          );
           console.log(`LocalWebhookReceiver: Released ${claimedTriggerIds.length} triggers after error`);
         } catch (releaseError) {
           console.error('LocalWebhookReceiver: Error releasing triggers after failure:', releaseError);
@@ -477,7 +496,11 @@ class LocalWebhookReceiver extends EventEmitter {
 
     // Unregister from remote server
     try {
-      const response = await axios.post(`${this.remoteUrl}/webhooks/unregister`, { workflowId });
+      const response = await axios.post(
+        `${this.remoteUrl}/webhooks/unregister`,
+        { workflowId },
+        { headers: authHeader() }
+      );
       if (response.data.success) {
         console.log(`LocalWebhookReceiver: Successfully unregistered webhook on remote for workflow ${workflowId}`);
       } else {

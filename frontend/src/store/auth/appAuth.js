@@ -1,4 +1,5 @@
 import { API_CONFIG } from '@/tt.config.js';
+import { backfillLocalProviderKeys } from '@/services/localKeyBackfill.js';
 import axios from 'axios';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
@@ -212,6 +213,19 @@ const actions = {
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
           const merged = Array.from(new Set([...remoteApps, ...connectedApps]));
           commit('SET_CONNECTED_APPS', merged);
+
+          // Backfill any provider whose key exists ONLY on the remote into this
+          // install's local store. This is the exact diff the backfill needs and
+          // it has already been computed above, which is why it hangs here
+          // rather than in a job of its own.
+          //
+          // Deliberately not awaited: it is opportunistic maintenance, and the
+          // connected-apps list must not wait on it. Failures are logged inside.
+          if (token) {
+            backfillLocalProviderKeys({ token, remoteApps, localApps: connectedApps }).catch((error) =>
+              console.warn('[appAuth] provider key backfill failed:', error?.message)
+            );
+          }
         }
       } finally {
         _fetchConnectedAppsPromise = null;

@@ -1,6 +1,7 @@
 import BaseAction from '../BaseAction.js';
 import nodemailer from 'nodemailer';
 import axios from 'axios';
+import { authHeader } from '../../../services/auth/sessionTokenCache.js';
 
 class SendEmail extends BaseAction {
   static schema = {
@@ -63,10 +64,15 @@ class SendEmail extends BaseAction {
   }
   async execute(params, inputData, workflowEngine) {
     const workflowId = workflowEngine.workflowId;
-    const response = await axios.post(`${process.env.REMOTE_URL}/email/send`, {
-      params,
-      workflowId,
-    });
+    // Identify the sender. Outbound mail leaves AGNT's own SMTP infrastructure,
+    // so an unauthenticated relay is a domain-reputation problem as much as a
+    // security one. The matching server guard is gated and in shadow, so this
+    // header is accepted and counted today and required later.
+    const response = await axios.post(
+      `${process.env.REMOTE_URL}/email/send`,
+      { params, workflowId },
+      { headers: authHeader() }
+    );
     return this.formatOutput({
       success: true,
       content: params,

@@ -20,6 +20,7 @@ import { userFromJwt } from './jwt.js';
  * can grep logs by reason. Distinguishes:
  *
  *   - http_401 / http_403 / http_5xx / http_<N>  — server responded
+ *   - plan_denied                                 — 403, but about ENTITLEMENT
  *   - timeout                                     — request aborted at the timeout
  *   - network_error                               — request never reached the server
  *   - unknown                                     — anything else
@@ -27,13 +28,51 @@ import { userFromJwt } from './jwt.js';
  * The caller decides whether each reason warrants clearing the local token.
  * Definitive client-side rejections (401/403/unauthenticated_response/no_token)
  * should clear; transient failures (5xx/network/timeout) should NOT.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY 403 IS NOT ONE THING
+ * ---------------------------------------------------------------------------
+ * `http_403` is in DEFINITIVE_AUTH_REJECTIONS because it has always meant
+ * "this account is forbidden" — suspended, disabled — and clearing the token is
+ * the right answer to that.
+ *
+ * The server now also returns 403 for a second, unrelated reason: the caller is
+ * perfectly authenticated but their PLAN does not include the feature. Routing
+ * that down the same path would be catastrophic in a specific way: a free user
+ * hits a paid endpoint, gets 403, is logged out, logs back in, and hits it
+ * again — an infinite login loop that logging in cannot fix, which is exactly
+ * the failure mode that a JWT_SECRET rotation would have caused and that we
+ * have already been bitten by once.
+ *
+ * So entitlement denials are classified separately. They are NOT an auth
+ * failure, they are a product state, and the UI should render an upgrade
+ * prompt. The distinguishing marker is the server's own response shape
+ * (`requiredFeature`), not the status code — see gatedFeature in the API's
+ * routes/Middleware.js.
  */
+
+/** A 403 that is about entitlement, not identity. Never clears the session. */
+function isPlanDenial(response) {
+  const data = response?.data;
+  if (!data || typeof data !== 'object') return false;
+  return Boolean(data.requiredFeature) || data.error === 'Feature not available' || data.error === 'Upgrade required';
+}
+
 export function classifyAuthError(error) {
   const timestamp = Date.now();
   if (error?.response) {
     const status = error.response.status;
     const detail = error.response.data?.error || null;
     if (status === 401) return { reason: 'http_401', status, detail, timestamp };
+    if (status === 403 && isPlanDenial(error.response)) {
+      return {
+        reason: 'plan_denied',
+        status,
+        detail,
+        requiredFeature: error.response.data?.requiredFeature || null,
+        timestamp,
+      };
+    }
     if (status === 403) return { reason: 'http_403', status, detail, timestamp };
     if (status >= 500) return { reason: 'http_5xx', status, detail, timestamp };
     return { reason: `http_${status}`, status, detail, timestamp };
@@ -110,6 +149,10 @@ const DEFINITIVE_AUTH_REJECTIONS = new Set([
   'http_403',
   'unauthenticated_response',
   'no_token',
+  // DELIBERATELY ABSENT: 'plan_denied'. It is a 403, but it means "your plan
+  // does not include this", not "your credential is bad". Adding it here would
+  // log out every free user who touches a paid endpoint, and re-logging in
+  // would return them to the same 403 — an unbreakable loop.
 ]);
 
 export function isDefinitiveAuthRejection(reason) {

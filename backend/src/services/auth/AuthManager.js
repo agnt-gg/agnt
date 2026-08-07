@@ -7,6 +7,7 @@ import ENV_KEY_MAP from './envKeyMap.js';
 
 // Add this import
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
+import { authHeader, getSessionToken } from './sessionTokenCache.js';
 
 // THIS IS NEEDED ON THE REMOTE SERVER FOR THE OAUTH SETUP
 class AuthManager {
@@ -56,29 +57,35 @@ class AuthManager {
     // Tier 3: remote fallback (legacy — for users whose keys still live only on
     // api.agnt.gg and were never saved locally).
     //
-    // No credential is sent here, and there is none available to send: this
-    // method is called from workflow nodes and plugins that hold a userId but
-    // no session (`getUserTokenFromSession` needs a `req`). Wiring a token
-    // through to this tier is tracked separately.
+    // This is called from workflow nodes and plugins that hold a userId but no
+    // request, so it cannot use `getUserTokenFromSession`. It now presents the
+    // REMEMBERED session token instead — see services/auth/sessionTokenCache.js.
     //
-    // Until that lands, a 401 from this tier is expected rather than
-    // exceptional, which is why it is handled explicitly below instead of being
-    // folded into the generic catch: the actionable answer is to store the key
-    // locally (Tier 2) by re-saving it in Settings, and silently returning null
-    // would present as "provider not connected" with no way to work that out.
+    // That closes the reason this call was anonymous. While it was, the remote
+    // endpoint had to identify the caller from the `userId` QUERY PARAMETER,
+    // which is precisely why anyone could ask it for anyone's OAuth token.
+    //
+    // `userId` is still sent so the endpoint keeps working while its
+    // enforcement gate is in shadow. Once that gate is flipped the parameter is
+    // ignored and identity comes from the header alone.
     if (this.remoteUrl) {
       try {
         const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
           params: { userId, providerId },
+          headers: authHeader(),
           timeout: 5000,
         });
         return response.data?.access_token || null;
       } catch (error) {
         if (error.response?.status === 401) {
+          // Reachable once the remote gate is enforcing AND no session token has
+          // been seen yet (backend restarted, UI never opened). Actionable
+          // rather than silent: returning null alone presents as "provider not
+          // connected" with no way to work out why.
           console.warn(
-            `[AuthManager] ${providerId}: the remote key store now requires an authenticated request, and this ` +
-              `code path has no session token. Re-save your ${providerId} key in Settings > Connected Apps to ` +
-              `store it locally, which is the supported path.`
+            `[AuthManager] ${providerId}: the remote key store requires an authenticated request and no session ` +
+              `token is available yet${getSessionToken() ? '' : ' (none seen since startup)'}. Open the AGNT ` +
+              `window once, or re-save your ${providerId} key in Settings > Connected Apps to store it locally.`
           );
           return null;
         }

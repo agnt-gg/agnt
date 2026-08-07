@@ -20,6 +20,7 @@ import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js'
 import { getAppearanceToolSchemas, executeAppearanceTool } from './appearanceTools.js';
 import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
 import AuthManager from '../auth/AuthManager.js';
+import { authHeader } from '../auth/sessionTokenCache.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import GrokBuildCliService from '../ai/GrokBuildCliService.js';
@@ -2899,10 +2900,19 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           senderName,
         };
 
+        // Prefer the CALLER'S token — it is the real identity behind this send,
+        // and it is already in scope. Fall back to the remembered session token
+        // for the paths that invoke tools without one (schedules, autonomous
+        // loops). See services/auth/sessionTokenCache.js.
+        const bearer = typeof authToken === 'string' && authToken.length
+          ? (authToken.toLowerCase().startsWith('bearer ') ? authToken : `Bearer ${authToken}`)
+          : null;
+
         const response = await fetch(`${process.env.REMOTE_URL}/email/send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(bearer ? { Authorization: bearer } : authHeader()),
           },
           body: JSON.stringify({
             params,
