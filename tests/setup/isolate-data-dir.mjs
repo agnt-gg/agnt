@@ -34,6 +34,48 @@ import path from 'node:path';
 const ESCAPE_HATCH = 'AGNT_TEST_USE_REAL_DATA';
 const MARKER = '__AGNT_TEST_DATA_DIR';
 
+/**
+ * Deployment flags and secrets the HOST may have set, which must never decide
+ * a test outcome.
+ *
+ * WHY THIS LIST EXISTS (2026-08-07)
+ * ─────────────────────────────────
+ * The data directory was not the only thing leaking in from the host. A test
+ * runner spawned by the running AGNT backend inherits that backend's entire
+ * environment — including TRUST_REMOTE_AUTH, which switches auth from
+ * `jwt.verify` to `jwt.decode`.
+ *
+ * Observed: four suites failed on a machine whose backend happened to have
+ * TRUST_REMOTE_AUTH=true, and they failed in the most misleading way possible.
+ * `LocalFileRoutes > refuses a forged token signed with the wrong secret` and
+ * `mediaRouteAuth > rejects a forged cookie` both went red because the forged
+ * tokens were ACCEPTED — the suite was reporting a genuine security failure
+ * that existed only in that shell. `rateLimit > IGNORES a spoofed XFF` failed
+ * for the same reason, since TRUST_REMOTE_AUTH also implies trust-proxy.
+ *
+ * The same class of leak had already produced two false results elsewhere in
+ * this project: an OAuth ship gate that passed with its constants empty, and
+ * a JWT fixture that verified against an inherited secret. Three instances is
+ * a pattern, so it is fixed here once, at the runner, rather than in each
+ * suite's beforeEach where the next one will forget.
+ *
+ * A test that needs one of these sets it explicitly — and every test that
+ * needs them already does, in its own setup.
+ */
+const HOST_ENV_TO_SCRUB = [
+  // Auth model switches. The most dangerous: they turn verification off, so a
+  // leaked value makes security tests pass or fail for reasons unrelated to
+  // the code under test.
+  'TRUST_REMOTE_AUTH',
+  'TRUST_PROXY',
+  // Secrets. A suite asserting "generates one when absent" cannot be trusted
+  // if the host already supplied one.
+  'JWT_SECRET',
+  'SESSION_SECRET',
+  'ENCRYPTION_KEY',
+  'AGNT_LEGACY_ENCRYPTION_KEY',
+];
+
 // setupFiles re-run for every test FILE in a worker; the worker keeps one
 // process (and one cached database module), so the redirect must happen
 // exactly once per process.
@@ -60,6 +102,10 @@ if (process.env[ESCAPE_HATCH] !== '1' && !process.env[MARKER]) {
   // The Docker tier fires on NODE_ENV=production + /app/data (Linux CI could
   // plausibly have both). Tests are tests.
   if (process.env.NODE_ENV === 'production') process.env.NODE_ENV = 'test';
+
+  // See HOST_ENV_TO_SCRUB. Same principle as the data directory: the host
+  // must not be able to change what a test means.
+  for (const key of HOST_ENV_TO_SCRUB) delete process.env[key];
 
   process.env[MARKER] = rootDir;
 

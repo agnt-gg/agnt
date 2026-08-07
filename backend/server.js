@@ -5,6 +5,11 @@ import 'dotenv/config';
 // defaults from a statement further down would run too late. Replaces the
 // non-secret half of the committed backend/.env — see src/config/envDefaults.js.
 import './src/config/envDefaults.js';
+// Populates process.env.JWT_SECRET, which five sites read directly and which
+// the committed backend/.env used to supply. Without it every session on the
+// machine is rejected — jwt.verify(token, undefined) throws and each caller
+// downgrades to unauthenticated. See src/config/secretsBootstrap.js.
+import './src/config/secretsBootstrap.js';
 // MUST stay directly under dotenv: import hoisting means diagnostics are live
 // before any other module's top-level code can throw.
 import './src/diagnostics/bootstrap.js';

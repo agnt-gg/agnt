@@ -73,3 +73,56 @@ export const LEGACY_ENCRYPTION_KEY = process.env.AGNT_LEGACY_ENCRYPTION_KEY || '
 export function hasLegacyKey() {
   return typeof LEGACY_ENCRYPTION_KEY === 'string' && LEGACY_ENCRYPTION_KEY.length > 0;
 }
+
+/**
+ * ---------------------------------------------------------------------------
+ * THE SHARED JWT SECRET
+ * ---------------------------------------------------------------------------
+ * Same category as the key above, and it belongs in the same file for the same
+ * reason: it is a published value that must keep working until the client no
+ * longer needs it.
+ *
+ * WHAT IT IS FOR. This backend does not mint tokens — `jwt.sign` appears
+ * nowhere outside tests. Every JWT it verifies was issued by api.agnt.gg,
+ * signed with this value. Verification is only possible because the value
+ * shipped to every install in the committed backend/.env.
+ *
+ * WHY REMOVING IT LOCKED EVERYONE OUT. Deleting that file left
+ * `process.env.JWT_SECRET` undefined. `jwt.verify(token, undefined)` throws;
+ * Middleware, AuthRoutes and authGuard each catch it and downgrade the caller
+ * to unauthenticated. Every session on the machine is rejected — "Session
+ * expired" in the browser, "backend rejected the session" on sign-in — with no
+ * log line naming the cause. Restoring the value restores exactly the
+ * behaviour of 0.6.5.
+ *
+ * WHY NOT A GENERATED PER-INSTALL SECRET. Because there is nothing local to
+ * verify. A random key cannot validate a token signed by the cloud, so it
+ * turns "rejects everyone" into "still rejects everyone", now with a keyfile
+ * on disk suggesting otherwise.
+ *
+ * WHY NOT TRUST_REMOTE_AUTH. That flag makes the backend `jwt.decode` instead
+ * of `jwt.verify` — it stops checking signatures at all. Today forging a
+ * session against this machine requires the published secret; under that flag
+ * it requires nothing but a base64 string. Loopback-only binding limits the
+ * blast radius, but Phone Access exists precisely to remove that limit. It is
+ * strictly weaker than what 0.6.5 shipped, and it is the code path scheduled
+ * for deletion, so defaulting it on would cement the thing being removed.
+ *
+ * THE EXPOSURE IS UNCHANGED BY WRITING IT HERE. Public since 2026-01-20 in
+ * agnt-gg/agnt, in 64 forks, in this repository's history at f346ff1, and
+ * inside every shipped app.asar. Nobody gains access who did not already have
+ * it.
+ *
+ * REMOVE BY 0.6.9, together with LEGACY_ENCRYPTION_KEY. The real fix is the
+ * `/users/sync-token` exchange, after which the client mints and verifies its
+ * own local session token and stops needing the cloud's signing key at all.
+ * legacySecrets.test.js fails the build if this is still here at that version.
+ *
+ * @type {string}
+ */
+export const SHARED_JWT_SECRET = process.env.JWT_SECRET || '6g8UlgibzfngealexqkNPv1/H2ZG00cb4gp2/5JSNgs=';
+
+/** @returns {boolean} whether cloud-issued tokens can be verified at all. */
+export function hasSharedJwtSecret() {
+  return typeof SHARED_JWT_SECRET === 'string' && SHARED_JWT_SECRET.length > 0;
+}

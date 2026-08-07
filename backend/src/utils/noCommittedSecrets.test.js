@@ -143,6 +143,13 @@ describe('guard 3 — no secret literal in source', () => {
     // Anything similar arriving later should be argued on its own merits, not
     // waved through by pointing at this line.
     ['utils/legacySecrets.js', 'LEGACY_ENCRYPTION_KEY'],
+
+    // Same file, same category, same sunset. The published signing secret that
+    // api.agnt.gg mints tokens with. This backend has no `jwt.sign` outside
+    // tests, so it can only verify a session by holding the issuer's key —
+    // omitting it does not harden anything, it rejects every session on the
+    // machine. Removed in 0.6.9 by the /users/sync-token exchange.
+    ['utils/legacySecrets.js', 'SHARED_JWT_SECRET'],
   ];
 
   const isAllowed = (relPath, name) =>
@@ -257,7 +264,7 @@ describe('guard 3 — no secret literal in source', () => {
     // An allowlist that grows quietly is how a guard stops guarding. Pin both
     // its size and its shape: four public OAuth constants in one file, plus
     // exactly one time-limited legacy key in another.
-    expect(ALLOWED).toHaveLength(5);
+    expect(ALLOWED).toHaveLength(6);
 
     const oauth = ALLOWED.filter(([file]) => file === 'config/oauthClients.js');
     expect(oauth).toHaveLength(4);
@@ -265,10 +272,13 @@ describe('guard 3 — no secret literal in source', () => {
       expect(name).toMatch(/^(GEMINI_CLI|ANTIGRAVITY)_CLIENT_(ID|SECRET)$/);
     }
 
-    // Exactly one exemption covers real secret material, and it is the one
-    // with a sunset gate attached.
+    // Exemptions covering real secret material live in exactly one file, and
+    // that file has a sunset gate attached.
     const legacy = ALLOWED.filter(([file]) => file !== 'config/oauthClients.js');
-    expect(legacy).toEqual([['utils/legacySecrets.js', 'LEGACY_ENCRYPTION_KEY']]);
+    expect(legacy).toEqual([
+      ['utils/legacySecrets.js', 'LEGACY_ENCRYPTION_KEY'],
+      ['utils/legacySecrets.js', 'SHARED_JWT_SECRET'],
+    ]);
     expect(fs.existsSync(path.join(REPO_ROOT, 'backend/src/utils/legacySecrets.test.js'))).toBe(true);
 
     // And the exemption must not leak to the same NAME in a different file, or
