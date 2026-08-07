@@ -242,6 +242,94 @@ describe('route security manifest', () => {
     expect(stale, `Stale ANONYMOUS_TOLERATED entries: ${stale.join(', ')}`).toEqual([]);
   });
 
+  // ------------------------------------------------------------------
+  // NO ROUTE MAY DERIVE IDENTITY FROM AN UNVERIFIED TOKEN.
+  // ------------------------------------------------------------------
+  // `jwt.decode` parses a token WITHOUT checking its signature, so any identity
+  // taken from it is whatever the caller typed. CustomProviderRoutes had a
+  // local `getUserIdFromToken` helper doing exactly that. It was not
+  // exploitable — requireAuthHeader had already verified the same token and
+  // applied the identical id/userId/user_id/sub extraction — but it is
+  // indistinguishable at a glance from a real bypass, sitting in the directory
+  // where such a helper is most likely to be copied.
+  //
+  // Until now the only thing watching this was an external audit scanner. That
+  // scanner lives outside the repo, is not part of CI, and its anchor for this
+  // property was about to be retired as "fixed" — which would have left the
+  // property guarded by nothing at all. A guarantee worth having belongs in the
+  // build, not in a tool someone remembers to run.
+  //
+  // TWO MODULES ARE DECLARED BELOW. They are TRACKED, NOT CLEARED — the
+  // justification says what the residual risk is, not that there isn't one.
+  // Both are pre-existing and both are currently masked by a larger problem:
+  // while SHARED_JWT_SECRET is published, `jwt.verify` accepts a forged token
+  // anyway, so the decode fallback adds nothing an attacker does not already
+  // have. That stops being true the moment token-proof enforcement lands and
+  // the shared secret is retired — at which point these become the residual
+  // hole, and this list is where someone will find them.
+  const JWT_DECODE_TOLERATED = new Map([
+    [
+      'AuthRoutes.js',
+      'extractUserIdSoft: verify first, decode as a FALLBACK for remote-issued ' +
+        'tokens. Soft by design — env-sourced providers are install-global and ' +
+        'returned to anonymous callers. RESIDUAL: a forged token yields another ' +
+        "user's CONNECTED-PROVIDER LIST (names only, no credentials). Re-evaluate " +
+        'when the shared JWT secret is retired.',
+    ],
+    [
+      'ModelRoutes.js',
+      'Three sites decode to get a userId used to look up that user\'s stored ' +
+        'provider key when listing models. RESIDUAL: higher than AuthRoutes — a ' +
+        "forged token could exercise another user's key. Masked today by the " +
+        'published shared secret. MUST be fixed before token-proof enforcement ' +
+        'is flipped, or it becomes the way in.',
+    ],
+  ]);
+
+  it('no route module extracts a user id from jwt.decode', async () => {
+    const offenders = [];
+
+    for (const file of ROUTE_FILES) {
+      const source = await fs.promises.readFile(path.join(__dirname, file), 'utf8');
+      // Strip comments: several files legitimately DOCUMENT this hazard.
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      if (/jwt\s*\.\s*decode\s*\(/.test(code) && !JWT_DECODE_TOLERATED.has(file)) offenders.push(file);
+    }
+
+    expect(
+      offenders,
+      'These route modules call jwt.decode(). Read identity from `req.user`, ' +
+        'populated by the guard the route already mounts — a decoded token is ' +
+        'not evidence of anything. If a fallback is genuinely required, add the ' +
+        'file to JWT_DECODE_TOLERATED with the residual risk spelled out:\n' +
+        offenders.map((f) => `  ${f}`).join('\n')
+    ).toEqual([]);
+  });
+
+  it('keeps the jwt.decode allow-list honest (no stale entries)', async () => {
+    // A fixed file left on the list would quietly re-permit the pattern.
+    const stale = [];
+    for (const file of JWT_DECODE_TOLERATED.keys()) {
+      const source = await fs.promises.readFile(path.join(__dirname, file), 'utf8');
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      if (!/jwt\s*\.\s*decode\s*\(/.test(code)) stale.push(file);
+    }
+    expect(stale, `Fixed — remove from JWT_DECODE_TOLERATED: ${stale.join(', ')}`).toEqual([]);
+  });
+
+  it('anti-vacuity: that scan can see a jwt.decode that is really there', () => {
+    // If the regex or the comment-stripping broke, the test above would pass
+    // forever against an empty list.
+    const reintroduced = 'const payload = jwt.decode(token);\nreturn payload?.id || payload?.sub;';
+    const code = reintroduced.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(/jwt\s*\.\s*decode\s*\(/.test(code)).toBe(true);
+
+    // ...and that a comment mentioning it does NOT trip the scan.
+    const documented = '// never use jwt.decode(token) for identity';
+    const strippedDoc = documented.replace(/^\s*\/\/.*$/gm, '');
+    expect(/jwt\s*\.\s*decode\s*\(/.test(strippedDoc)).toBe(false);
+  });
+
   it('reports the surface (informational)', () => {
     const counts = ALL_ROUTES.reduce((acc, r) => {
       acc[r.tier] = (acc[r.tier] || 0) + 1;
