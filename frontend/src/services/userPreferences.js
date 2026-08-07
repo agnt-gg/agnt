@@ -104,6 +104,40 @@ const MUTATION_MAP = {
   },
 };
 
+/**
+ * preference key → how to read its CURRENT value out of theme state.
+ *
+ * Separate from APPLY_MAP because three of these do not round-trip by name:
+ * the store calls them `isGreyscaleMode` and `isAssetPanelFullWidth`, and
+ * `leftPanelWidth`/`rightPanelWidth` are written through a single combined
+ * mutation. Guessing the state key from the preference key would silently
+ * return `undefined` for those, which compares unequal to everything and
+ * quietly reinstates the "every boot repaints" behaviour this exists to stop.
+ *
+ * Every APPLY_MAP key must appear here — userPreferences.spec.js fails if one
+ * is missing, so adding a preference cannot half-land.
+ */
+const READ_MAP = {
+  currentTheme: (s) => s.currentTheme,
+  fontFamily: (s) => s.fontFamily,
+  greyscaleMode: (s) => s.isGreyscaleMode,
+  useCustomBackground: (s) => s.useCustomBackground,
+  bgOpacity: (s) => s.bgOpacity,
+  bgBlur: (s) => s.bgBlur,
+  panelPosition: (s) => s.panelPosition,
+  assetPanelFullWidth: (s) => s.isAssetPanelFullWidth,
+
+  uiScale: (s) => s.uiScale,
+  actualLeftPanelWidth: (s) => s.actualLeftPanelWidth,
+  mainContentWidth: (s) => s.mainContentWidth,
+  showLeftPanel: (s) => s.showLeftPanel,
+  showRightPanel: (s) => s.showRightPanel,
+  leftPanelCollapsed: (s) => s.leftPanelCollapsed,
+  rightPanelCollapsed: (s) => s.rightPanelCollapsed,
+  leftPanelWidth: (s) => s.leftPanelWidth,
+  rightPanelWidth: (s) => s.rightPanelWidth,
+};
+
 /** preference key → the mutation that applies it during hydration. */
 const APPLY_MAP = {
   currentTheme: (store, v) => store.dispatch('theme/setTheme', v),
@@ -416,10 +450,15 @@ export async function hydrateFromServer(store) {
 
   const applied = [];
   const skipped = [];
+  const unchanged = [];
 
-  // Decide what will change BEFORE touching the DOM. Most boots agree with the
-  // server, and opening a transition window that repaints nothing would put a
-  // colour transition on every element for no reason.
+  // Decide what will actually CHANGE before touching the DOM.
+  //
+  // Comparing against current state, not merely "is this a key we know", is
+  // what makes the common boot free. Both sides usually already agree — the
+  // browser painted these values from localStorage moments ago — so without
+  // this every boot re-dispatches every setting and opens a transition window
+  // over the whole document to repaint nothing.
   const work = [];
   for (const source of [prefs.global || {}, prefs.device || {}]) {
     for (const [key, value] of Object.entries(source)) {
@@ -431,11 +470,16 @@ export async function hydrateFromServer(store) {
         skipped.push(key);
         continue;
       }
+      const read = READ_MAP[key];
+      if (read && read(store.state.theme) === value) {
+        unchanged.push(key);
+        continue;
+      }
       work.push([key, value, apply]);
     }
   }
 
-  if (!work.length) return { applied, skipped };
+  if (!work.length) return { applied, skipped, unchanged };
 
   applying = true;
   // Opened here and closed on a TIMER, not in the finally below. The apply
@@ -456,7 +500,7 @@ export async function hydrateFromServer(store) {
     applying = false;
   }
 
-  return { applied, skipped };
+  return { applied, skipped, unchanged };
 }
 
 /**
@@ -554,4 +598,4 @@ export function startPreferenceSync(store) {
   return unsubscribe;
 }
 
-export const _internal = { MUTATION_MAP, APPLY_MAP, PUSH_DEBOUNCE_MS };
+export const _internal = { MUTATION_MAP, APPLY_MAP, READ_MAP, PUSH_DEBOUNCE_MS };

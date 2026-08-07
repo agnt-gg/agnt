@@ -157,6 +157,39 @@ describe('routing: taste syncs globally, pixels stay per-device', () => {
     expect(_internal.MUTATION_MAP['theme/SET_HAS_CUSTOM_BACKGROUND']).toBeUndefined();
     expect(_internal.MUTATION_MAP['theme/SET_BACKGROUND_FILE_NAME']).toBeUndefined();
   });
+
+  it('every appliable key knows how to read its own current value', () => {
+    // A key in APPLY_MAP but not READ_MAP reads as `undefined`, compares
+    // unequal to everything, and silently reinstates "re-dispatch and repaint
+    // on every boot" for that setting. Adding a preference must not half-land.
+    const missing = Object.keys(_internal.APPLY_MAP).filter((k) => !_internal.READ_MAP[k]);
+    expect(missing, `APPLY_MAP keys with no READ_MAP entry: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('reads back exactly what each mutation writes', () => {
+    // Guards the three keys whose store field is NOT the preference name
+    // (isGreyscaleMode, isAssetPanelFullWidth, and the combined panel widths).
+    const store = makeStore();
+    const cases = {
+      currentTheme: 'nord',
+      fontFamily: 'mono',
+      greyscaleMode: true,
+      panelPosition: 'left',
+      assetPanelFullWidth: true,
+      bgOpacity: 75,
+      bgBlur: 6,
+      uiScale: 125,
+      leftPanelWidth: 321,
+      rightPanelWidth: 654,
+      showLeftPanel: false,
+      leftPanelCollapsed: true,
+    };
+
+    for (const [key, value] of Object.entries(cases)) {
+      _internal.APPLY_MAP[key](store, value, store.state.theme);
+      expect(_internal.READ_MAP[key](store.state.theme), `round-trip failed for ${key}`).toBe(value);
+    }
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -440,6 +473,52 @@ describe('hydration repaint window', () => {
     // The common case. Transitioning every element for a repaint that never
     // happens is pure cost.
     expect(hydrating()).toBe(false);
+  });
+
+  it('★ does not open the window when the server ECHOES what is already applied', async () => {
+    // The realistic common boot, and the one an empty payload does NOT cover:
+    // the server returns real values that happen to match what localStorage
+    // already painted. Verified in a real browser first — this case opened the
+    // window on every boot until the READ_MAP comparison existed.
+    const store = makeStore();
+    const s = store.state.theme;
+    fetchMock.mockResolvedValue(
+      okJson({
+        success: true,
+        preferences: {
+          global: { currentTheme: s.currentTheme, fontFamily: s.fontFamily, bgOpacity: s.bgOpacity },
+          device: { uiScale: s.uiScale, leftPanelWidth: s.leftPanelWidth },
+        },
+      }),
+    );
+
+    const result = await hydrateFromServer(store);
+
+    expect(hydrating()).toBe(false);
+    expect(result.applied).toEqual([]);
+    expect(result.unchanged).toEqual(
+      expect.arrayContaining(['currentTheme', 'fontFamily', 'bgOpacity', 'uiScale', 'leftPanelWidth']),
+    );
+  });
+
+  it('still applies the keys that DO differ when others agree', async () => {
+    const store = makeStore();
+    const s = store.state.theme;
+    fetchMock.mockResolvedValue(
+      okJson({
+        success: true,
+        preferences: {
+          global: { currentTheme: s.currentTheme, fontFamily: 'mono' },
+          device: {},
+        },
+      }),
+    );
+
+    const result = await hydrateFromServer(store);
+
+    expect(result.unchanged).toContain('currentTheme');
+    expect(result.applied).toEqual(['fontFamily']);
+    expect(hydrating()).toBe(true); // one real change still earns the window
   });
 
   it('does not leave the app stuck transitioning when an apply throws', async () => {

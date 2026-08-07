@@ -94,15 +94,24 @@
 
    Colours only: transitioning layout would make panels visibly slide.
 
-   :where() keeps the whole selector at the specificity of `.prefs-hydrating`
-   alone (0,1,0). `transition` is a SHORTHAND, so it resets the entire
-   transition list of everything it matches — without :where(), a component
-   that declares its own `transition: transform .3s` would lose it for the
-   duration of the window and snap mid-animation. At this specificity any
-   component rule wins instead, and only elements with no transition of their
-   own pick this up.
+   `transition` is a SHORTHAND, so it resets the ENTIRE transition list of
+   everything it matches — a component declaring `transition: transform .3s`
+   would lose it for the duration of the window and snap mid-animation.
+
+   Both halves are wrapped in :where(), which contributes zero specificity, so
+   the whole selector weighs (0,0,0). That is deliberate and stronger than
+   merely lowering it: at (0,0,0) ANY competing author declaration wins
+   outright, whatever its specificity and wherever it sits in source order.
+   Leaving the `.prefs-hydrating` class outside :where() would weigh (0,1,0),
+   which merely TIES with a plain `.thing { transition: ... }` and is then
+   settled by stylesheet order — measured, and it loses for any component whose
+   CSS happens to load before this file. A guarantee that depends on import
+   order is not a guarantee.
+
+   So this only ever reaches elements that express no transition of their own,
+   which is exactly the set it is meant to soften.
    --------------------------------------------------------------------------- */
-.prefs-hydrating :where(body, body *) {
+:where(.prefs-hydrating) :where(body, body *) {
   transition:
     background-color 0.25s ease,
     color 0.25s ease,
@@ -110,7 +119,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .prefs-hydrating :where(body, body *) {
+  :where(.prefs-hydrating) :where(body, body *) {
     transition: none;
   }
 }
