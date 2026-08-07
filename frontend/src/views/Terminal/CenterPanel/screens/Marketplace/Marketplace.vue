@@ -50,6 +50,58 @@
 
         <!-- Main Content -->
         <div class="marketplace-content">
+          <!-- ── Toolbar ── Screen chrome, so it lives OUTSIDE the scroller.
+               A pinned bar INSIDE the scroll flow can only hide the cards
+               passing behind it by painting an opaque background, which is
+               unsatisfiable with a transparent theme. Out here the scroller's
+               own overflow clips them and this bar needs no background at all.
+               .mk-toolbar-slot reproduces the scrollbar gutter so the bar stays
+               centred on exactly the same axis as the grid. -->
+          <div v-if="showToolbar" class="mk-toolbar-slot">
+            <div class="mk-toolbar">
+              <div class="mk-tb-row mk-tb-controls">
+                <div class="mk-count">
+                  Showing <b>{{ gridItems.length }}</b> of <b>{{ filteredWorkflows.length }}</b> {{ currentAssetTypeLabel }}
+                  <span v-if="showSpotlight" class="mk-count-note">· {{ spotlightItems.length }} in spotlight above</span>
+                </div>
+                <div class="mk-spacer"></div>
+                <div class="mk-seg">
+                  <button
+                    v-for="opt in priceSegments"
+                    :key="opt.value"
+                    :class="{ on: (filters.priceRange || 'all') === opt.value }"
+                    @click="setPriceRange(opt.value)"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+                <CustomSelect class="mk-sort" :model-value="filters.sortBy || 'popular'" :options="sortOptions" @update:model-value="setSortBy($event)" />
+              </div>
+              <div class="mk-tb-row mk-tb-filters">
+                <span class="mk-tb-label">Filter</span>
+                <div class="mk-chip-rail">
+                  <div ref="chipRailEl" class="mk-chips" @scroll="syncRail">
+                    <button class="mk-chip" :class="{ on: selectedCategory === 'all' }" @click="selectedCategory = 'all'">
+                      All <span class="mk-chip-n">{{ categoryCounts.all || 0 }}</span>
+                    </button>
+                    <button
+                      v-for="category in availableCategories"
+                      :key="category"
+                      class="mk-chip"
+                      :class="{ on: selectedCategory === category }"
+                      @click="selectedCategory = category"
+                    >
+                      {{ category }} <span class="mk-chip-n">{{ categoryCounts[category] || 0 }}</span>
+                    </button>
+                  </div>
+                </div>
+                <button class="mk-rail-next" :class="{ hide: !railHasMore }" v-tooltip="'More categories'" @click="scrollRail">
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <main ref="mainContentEl" class="marketplace-main-content">
             <!-- Earnings Dashboard (My Earnings Tab) -->
             <div v-if="activeTab === 'my-earnings'" class="earnings-dashboard">
@@ -389,50 +441,6 @@
                   </article>
                 </div>
               </section>
-
-              <!-- ── Toolbar (inside the scroll container so gutters always match) ── -->
-              <div v-if="!profileUserId" class="mk-toolbar">
-                <div class="mk-tb-row mk-tb-controls">
-                  <div class="mk-count">
-                    Showing <b>{{ gridItems.length }}</b> of <b>{{ filteredWorkflows.length }}</b> {{ currentAssetTypeLabel }}
-                    <span v-if="showSpotlight" class="mk-count-note">· {{ spotlightItems.length }} in spotlight above</span>
-                  </div>
-                  <div class="mk-spacer"></div>
-                  <div class="mk-seg">
-                    <button
-                      v-for="opt in priceSegments"
-                      :key="opt.value"
-                      :class="{ on: (filters.priceRange || 'all') === opt.value }"
-                      @click="setPriceRange(opt.value)"
-                    >
-                      {{ opt.label }}
-                    </button>
-                  </div>
-                  <CustomSelect class="mk-sort" :model-value="filters.sortBy || 'popular'" :options="sortOptions" @update:model-value="setSortBy($event)" />
-                </div>
-                <div class="mk-tb-row mk-tb-filters">
-                  <span class="mk-tb-label">Filter</span>
-                  <div class="mk-chip-rail">
-                    <div ref="chipRailEl" class="mk-chips" @scroll="syncRail">
-                      <button class="mk-chip" :class="{ on: selectedCategory === 'all' }" @click="selectedCategory = 'all'">
-                        All <span class="mk-chip-n">{{ categoryCounts.all || 0 }}</span>
-                      </button>
-                      <button
-                        v-for="category in availableCategories"
-                        :key="category"
-                        class="mk-chip"
-                        :class="{ on: selectedCategory === category }"
-                        @click="selectedCategory = category"
-                      >
-                        {{ category }} <span class="mk-chip-n">{{ categoryCounts[category] || 0 }}</span>
-                      </button>
-                    </div>
-                  </div>
-                  <button class="mk-rail-next" :class="{ hide: !railHasMore }" v-tooltip="'More categories'" @click="scrollRail">
-                    <i class="fas fa-chevron-right"></i>
-                  </button>
-                </div>
-              </div>
 
               <!-- ── One flat grid: category never affects layout ── -->
               <div class="mk-grid" :class="{ 'mk-grid-fit': profileUserId, solo: profileUserId && visibleItems.length === 1 }">
@@ -1092,6 +1100,17 @@ export default {
 
     // One source for the grid, so profile mode reuses the card markup verbatim.
     const visibleItems = computed(() => (profileUserId.value ? profileItems.value : gridItems.value));
+
+    /**
+     * The toolbar renders outside <main>, so it can no longer inherit its
+     * visibility from the branch it used to sit in. This states that branch
+     * explicitly and in one place: it was the v-else arm of the
+     * earnings/table/grid chain, carrying its own v-if="!profileUserId".
+     * Pinned to the template by Marketplace.toolbar.spec.js.
+     */
+    const showToolbar = computed(
+      () => activeTab.value !== 'my-earnings' && currentLayout.value !== 'table' && !profileUserId.value
+    );
 
     const openProfile = (item) => {
       if (!item || !item.publisher_id) return; // anonymous publishers stay unlinked
@@ -1781,6 +1800,7 @@ export default {
       gridItems,
       collections,
       showCollections,
+      showToolbar,
       installLabel,
       installIcon,
       installWithBusy,
@@ -1845,6 +1865,8 @@ export default {
      stacking context. Without it the screen's local layering values compete
      directly against the app chrome — .mk-toolbar's z-index of 5 outranked the
      side panels' z-index of 3, so the toolbar painted over panel-hosted UI.
+     That toolbar no longer carries a z-index, but the card internals
+     (.mk-art-*) still do, so the confinement remains load-bearing.
      Screen-internal layering is a screen-internal concern; it must not be
      expressible against elements outside the screen. */
   isolation: isolate;
@@ -2000,7 +2022,8 @@ body.dark .view-btn:not(:last-child) {
 .marketplace-main-content > * {
   width: 100%;
   max-width: 1048px;
-  /* (scrollbar gutter hack removed: the toolbar now scrolls with the grid) */
+  /* .mk-toolbar-slot mirrors this width and the scrollbar gutter from outside
+     the scroller, so the bar and the grid share one centre axis. */
 }
 
 /* Featured Section */
@@ -2682,21 +2705,37 @@ body.dark .view-btn:not(:last-child) {
 }
 
 /* ─────────────────────── toolbar ─────────────────────── */
-/* Lives INSIDE the scroll container, so its gutters can never drift from
-   the grid's the way a separately-positioned bar would.
+/* Screen chrome, rendered OUTSIDE .marketplace-main-content (see template).
 
-   Its z-index is deliberately > the card internals (.mk-art-* use 2 and 3) so
-   cards scroll *under* the pinned bar. Those values are only safe because
-   .marketplace-panel isolates — without that, this 5 outranks the side panels
-   (z-index: 3) and paints over anything they render. */
+   It therefore declares NO background: nothing can pass behind it, so the
+   scroller's own overflow does the cutting and the theme's canvas — including
+   a custom wallpaper — shows through untouched. It needs no z-index either;
+   it no longer overlaps anything.
+
+   The bar previously sat inside the scroll flow and relied on painting an
+   opaque background to conceal the cards passing under it. That is
+   unsatisfiable with a transparent canvas: theme.js sets --color-background to
+   `transparent` whenever a custom background is on, so the bar became glass and
+   the whole grid read through it. A pinned surface cannot clip what scrolls
+   behind it — verified: masking the scroller erases the sticky bar along with
+   the content, and even a position:fixed child cannot escape that mask. Moving
+   the chrome out of the scroll flow is the only fix that keeps it transparent. */
+.mk-toolbar-slot {
+  /* Width comes from the flex stretch of .marketplace-content, so this padding
+     subtracts rather than overflows (there is no global border-box here).
+     It reproduces the scroller's permanent scrollbar
+     (overflow-y: scroll !important) — without it the bar centres on an axis
+     10px wider than the grid's and sits 5px right of the cards it labels. */
+  padding-right: 10px;
+}
 .mk-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  width: 100%;
+  max-width: 1048px; /* matches .marketplace-main-content > * */
+  margin: 0 auto 8px;
   padding: 12px 0;
-  margin-bottom: 8px;
-  background: var(--color-background);
-  box-shadow: 0 1px 0 var(--terminal-border-color), 0 12px 22px -18px rgba(0, 0, 0, 0.9);
+  /* Hairline only. The old drop shadow implied content sliding underneath,
+     which can no longer happen. */
+  box-shadow: 0 1px 0 var(--terminal-border-color);
 }
 .mk-tb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mk-tb-controls { margin-bottom: 10px; }

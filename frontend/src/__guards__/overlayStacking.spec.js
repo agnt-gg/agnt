@@ -191,12 +191,17 @@ describe('overlay stacking contracts', () => {
 
     const toolbar = /(?:^|[}\s])\.mk-toolbar\s*\{([^{}]*)\}/.exec(css);
     expect(toolbar, '.mk-toolbar rule not found').toBeTruthy();
-    const toolbarZ = parseInt(/(?:^|[;{\s])z-index\s*:\s*(-?\d+)/.exec(toolbar[1])[1], 10);
+    // The toolbar moved out of the scroll container and dropped its z-index
+    // along with the sticky positioning it existed to order. A rule with no
+    // z-index cannot outrank anything, so read it as absent rather than
+    // indexing a null match — that threw instead of reporting.
+    const zMatch = /(?:^|[;{\s])z-index\s*:\s*(-?\d+)/.exec(toolbar[1]);
+    const toolbarZ = zMatch ? parseInt(zMatch[1], 10) : null;
 
-    // The toolbar has to outrank card internals (.mk-art-* use 2 and 3), which
-    // is exactly what makes it outrank the panels too — unless the screen root
-    // isolates. Assert the specific rule body, not merely "the string appears
-    // somewhere in the file".
+    // Whenever it DOES carry one it has to outrank card internals (.mk-art-*
+    // use 2 and 3), which is exactly what makes it outrank the panels too —
+    // unless the screen root isolates. Assert the specific rule body, not
+    // merely "the string appears somewhere in the file".
     // Check EVERY .marketplace-panel rule body, not just the first: a selector
     // can legitimately appear more than once, and matching only the first
     // reports a correct declaration as missing.
@@ -205,10 +210,14 @@ describe('overlay stacking contracts', () => {
     const isolates = panelRules.some((m) => /isolation\s*:\s*isolate/.test(m[1]));
 
     expect(
-      toolbarZ <= 3 || isolates,
+      toolbarZ === null || toolbarZ <= 3 || isolates,
       `.mk-toolbar has z-index ${toolbarZ}, which outranks the side panels (3).\n` +
         `That is only safe while .marketplace-panel declares isolation: isolate,\n` +
         `which confines the screen's z-index space to its own stacking context.`
     ).toBe(true);
+
+    // The confinement is still required by the card internals even now that the
+    // toolbar has no z-index, so it must not be deleted as newly-unused.
+    expect(isolates, '.marketplace-panel must keep isolation: isolate').toBe(true);
   });
 });
