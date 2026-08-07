@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue';
 import { API_CONFIG } from '../../user.config.js';
 import { authHeaders } from '@/utils/apiFetch.js';
+import { MIC_CONSTRAINTS } from '@/voice/micConstraints.js';
 
 // PRD-063: recordings shorter than this are discarded client-side. A click-then-
 // immediate-click on the mic button produces ~200ms of audio that Whisper tiny.en
@@ -27,7 +28,10 @@ export function useSpeechRecognition() {
    */
   const startWhisperRecording = async () => {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // `{ audio: true }` accepts the browser's defaults, which include noise
+      // suppression and auto gain — the two things that chew the first syllable
+      // off a sentence. See micConstraints.js.
+      stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       audioChunks = [];
 
       // Use webm format for better compatibility

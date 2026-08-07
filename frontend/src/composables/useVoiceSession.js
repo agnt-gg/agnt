@@ -36,6 +36,20 @@ import { API_CONFIG } from '../../user.config.js';
 /** How often the gate is ticked. Bounds reopen/barge-in resolution. */
 const TICK_MS = 50;
 
+/**
+ * Segments shorter than this are room noise, not speech, and are dropped
+ * without being sent for transcription — Whisper hallucinates confidently on
+ * near-empty audio ("I'm a very happy person.", repeated).
+ *
+ * THIS USED TO BE A BYTE THRESHOLD (`blob.size < 1200`) and could not survive
+ * the capture format changing. 1200 bytes of Opus is about 400ms; 1200 bytes of
+ * the WAV that audioCapture now produces is 12ms, so the same number silently
+ * became no gate at all. Duration is the thing actually being asked about, so
+ * duration is what is measured. Matches MIN_RECORDING_MS in
+ * useSpeechRecognition, which learned this the same way (PRD-063).
+ */
+const MIN_UTTERANCE_MS = 400;
+
 export function useVoiceSession(options = {}) {
   const {
     onCommit = () => {},
@@ -205,13 +219,13 @@ export function useVoiceSession(options = {}) {
    * replaces.
    */
   async function finishSegment() {
-    const blob = await capture.stopRecording();
-    if (!blob || blob.size < 1200) return; // sub-threshold audio: room noise
+    const segment = await capture.stopRecording();
+    if (!segment?.blob || segment.durationMs < MIN_UTTERANCE_MS) return;
 
     isTranscribing.value = true;
     try {
       const form = new FormData();
-      form.append('audio', blob, 'utterance.webm');
+      form.append('audio', segment.blob, 'utterance.wav');
       const res = await fetch(`${API_CONFIG.BASE_URL}/speech/transcribe`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },

@@ -33,7 +33,7 @@ import { mount } from '@vue/test-utils';
 const captureHandlers = {};
 const fakeCapture = {
   startRecording: vi.fn(() => true),
-  stopRecording: vi.fn(async () => new Blob(['x'.repeat(4000)])),
+  stopRecording: vi.fn(async () => ({ blob: new Blob(['x'.repeat(4000)]), durationMs: 4000, sampleRate: 48000 })),
   start: vi.fn(async () => ({ ok: true })),
   stop: vi.fn(),
   setDucked: vi.fn(),

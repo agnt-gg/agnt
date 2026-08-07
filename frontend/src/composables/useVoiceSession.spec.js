@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const captureHandlers = {};
 const fakeCapture = {
   startRecording: vi.fn(() => true),
-  stopRecording: vi.fn(async () => new Blob(['x'.repeat(4000)])),
+  stopRecording: vi.fn(async () => ({ blob: new Blob(['x'.repeat(4000)]), durationMs: 4000, sampleRate: 48000 })),
   start: vi.fn(async () => ({ ok: true })),
   stop: vi.fn(),
   setDucked: vi.fn(),
@@ -231,6 +231,54 @@ describe('useVoiceSession — a complete turn', () => {
     await advance(700);
 
     expect(onCommit).toHaveBeenCalledWith({ text: 'um, open the auth file', voice: true });
+  });
+
+  it('never sends a sub-threshold segment for transcription', async () => {
+    /**
+     * Whisper hallucinates fluently on near-empty audio, so a segment too short
+     * to be speech must not reach it.
+     *
+     * THIS IS MEASURED IN MILLISECONDS, NOT BYTES. The old gate was
+     * `blob.size < 1200`, which meant ~400ms of Opus and means ~12ms of the WAV
+     * the capture now produces — the same constant, silently no longer a gate.
+     * A threshold has to be expressed in the units of the thing it is about.
+     */
+    fakeCapture.stopRecording.mockResolvedValueOnce({
+      blob: new Blob(['x'.repeat(40000)]), // enormous in bytes...
+      durationMs: 120, // ...and a fifth of a second of audio
+      sampleRate: 48000,
+    });
+    const onCommit = vi.fn();
+    const s = useVoiceSession({ onCommit });
+    await s.start();
+
+    fire('speech_start', {});
+    fakeCapture.silenceMs = 2000;
+    await advance(100);
+    await advance(900);
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('DOES transcribe a segment that clears the threshold (anti-vacuity)', async () => {
+    fakeCapture.stopRecording.mockResolvedValueOnce({
+      blob: new Blob(['x']), // tiny in bytes...
+      durationMs: 900, // ...and most of a second of speech
+      sampleRate: 48000,
+    });
+    const onCommit = vi.fn();
+    const s = useVoiceSession({ onCommit });
+    await s.start();
+
+    fire('speech_start', {});
+    fakeCapture.silenceMs = 700;
+    await advance(60);
+    await advance(10);
+    await advance(700);
+
+    expect(globalThis.fetch).toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledWith({ text: 'open the auth file', voice: true });
   });
 });
 

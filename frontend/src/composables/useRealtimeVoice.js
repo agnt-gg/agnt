@@ -48,6 +48,7 @@ import {
   BridgeAction,
 } from '../voice/realtimeBridge.js';
 import { isFillerOnly, meaningfulTranscript } from '../voice/asrArtifacts.js';
+import { MIC_CONSTRAINTS } from '../voice/micConstraints.js';
 import { API_CONFIG } from '../../user.config.js';
 
 export const RealtimeState = Object.freeze({
@@ -535,9 +536,7 @@ export function useRealtimeVoice(options = {}) {
     const gen = ++generation;
 
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      micStream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
     } catch (err) {
       error.value =
         err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
