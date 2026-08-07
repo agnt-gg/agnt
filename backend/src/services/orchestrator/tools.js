@@ -21,6 +21,7 @@ import { getAppearanceToolSchemas, executeAppearanceTool } from './appearanceToo
 import { getCanvasToolSchemas, executeCanvasTool, isCanvasTool } from './canvasTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import { authHeader } from '../auth/sessionTokenCache.js';
+import { readPlanDenialBody, planDenialMessage } from '../auth/planDenial.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import GrokBuildAuthManager from '../auth/GrokBuildAuthManager.js';
 import GrokBuildCliService from '../ai/GrokBuildCliService.js';
@@ -2923,6 +2924,28 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`Email API error: ${response.status} ${response.statusText}`, errorText);
+
+          // Email is a paid feature. A 403 here means the account's plan does
+          // not include it, and the model needs to be told THAT rather than
+          // "Forbidden" — otherwise it retries, or invents a reason.
+          let parsed = null;
+          try {
+            parsed = JSON.parse(errorText);
+          } catch {
+            /* not JSON; fall through to the generic error below */
+          }
+          const denial = response.status === 403 ? readPlanDenialBody(parsed) : null;
+          if (denial) {
+            return JSON.stringify({
+              success: false,
+              error: planDenialMessage(denial, 'Sending email'),
+              upgrade_required: true,
+              required_feature: denial.requiredFeature,
+              to,
+              subject,
+            });
+          }
+
           return JSON.stringify({
             success: false,
             error: `Email service API error: ${response.statusText}`,

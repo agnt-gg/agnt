@@ -2,6 +2,7 @@ import BaseAction from '../BaseAction.js';
 import nodemailer from 'nodemailer';
 import axios from 'axios';
 import { authHeader } from '../../../services/auth/sessionTokenCache.js';
+import { planDenialMessageFor } from '../../../services/auth/planDenial.js';
 
 class SendEmail extends BaseAction {
   static schema = {
@@ -68,11 +69,23 @@ class SendEmail extends BaseAction {
     // so an unauthenticated relay is a domain-reputation problem as much as a
     // security one. The matching server guard is gated and in shadow, so this
     // header is accepted and counted today and required later.
-    const response = await axios.post(
-      `${process.env.REMOTE_URL}/email/send`,
-      { params, workflowId },
-      { headers: authHeader() }
-    );
+    let response;
+    try {
+      response = await axios.post(
+        `${process.env.REMOTE_URL}/email/send`,
+        { params, workflowId },
+        { headers: authHeader() }
+      );
+    } catch (error) {
+      // Email is a paid feature. Without this the node fails with axios's
+      // "Request failed with status code 403", which tells the user a number
+      // and nothing else — wasting the whole reason the server answers 403 with
+      // a named feature instead of a bare 401.
+      const upgrade = planDenialMessageFor(error, 'Sending email');
+      if (upgrade) throw new Error(upgrade);
+      throw error;
+    }
+
     return this.formatOutput({
       success: true,
       content: params,
