@@ -37,7 +37,7 @@
             class="fb-select"
             :options="modelOptionsFor(row.provider)"
             :model-value="row.model"
-            :placeholder="modelsFor(row.provider).length ? 'Select model…' : (row.provider ? 'Provider default' : '—')"
+            :placeholder="modelPlaceholderFor(row.provider)"
             @option-selected="(opt) => onModelChange(idx, opt.value)"
           />
         </div>
@@ -118,8 +118,28 @@ export default {
       String(store.state.aiProvider?.selectedProvider || '').toLowerCase()
     );
 
+    // Custom OpenAI-compatible providers, keyed by UUID rather than by a
+    // registry key. They are deliberately NOT gated on connectedApps: that list
+    // tracks OAuth / API-key links for built-in providers, and a custom
+    // provider carries its own base_url and api_key in custom_openai_providers,
+    // so its presence there (is_active = 1) IS its connection. Gating on
+    // connectedApps would exclude every custom provider unconditionally.
+    const customProviders = computed(() => store.state.aiProvider?.customProviders || []);
+    const customProviderIds = computed(
+      () => new Set(customProviders.value.map((p) => String(p.id).toLowerCase()))
+    );
+    function isCustomProviderId(value) {
+      return !!value && customProviderIds.value.has(String(value).toLowerCase());
+    }
+    function customProviderName(id) {
+      const hit = customProviders.value.find(
+        (p) => String(p.id).toLowerCase() === String(id).toLowerCase()
+      );
+      return hit?.provider_name || id;
+    }
+
     const connectableProviders = computed(() => {
-      return providerNames.value
+      const builtIn = providerNames.value
         .filter((name) => {
           const key = resolveProviderKey(name);
           const lower = String(name).toLowerCase();
@@ -128,6 +148,13 @@ export default {
           return AI_PROVIDERS_WITH_API.includes(key) && connectedLower.value.includes(key);
         })
         .map((name) => ({ key: name, label: PROVIDER_DISPLAY_NAMES[name] || name }));
+
+      const custom = customProviders.value
+        .filter((p) => p && p.id)
+        .filter((p) => String(p.id).toLowerCase() !== defaultProviderLower.value)
+        .map((p) => ({ key: p.id, label: p.provider_name || p.id }));
+
+      return [...builtIn, ...custom];
     });
 
     function modelsFor(providerName) {
@@ -135,9 +162,29 @@ export default {
       return store.state.aiProvider?.allModels?.[providerName] || [];
     }
 
+    function modelPlaceholderFor(providerName) {
+      if (!providerName) return '—';
+      if (modelsFor(providerName).length) return 'Select model…';
+      // "Provider default" is true for a built-in (the chain builder falls back
+      // to its first text model) but a lie for a custom provider: there is no
+      // static model list, so the backend drops a modelless custom tier.
+      if (isCustomProviderId(providerName)) return 'No models found — check the endpoint';
+      return 'Provider default';
+    }
+
     async function ensureModels(providerName) {
       if (!providerName) return;
       if (modelsFor(providerName).length > 0) return;
+      // PROVIDER_FETCH_ACTIONS is keyed by built-in display name, so a custom
+      // UUID finds no action and the model list would stay empty forever.
+      // fetchProviderModels already routes custom ids to the per-provider
+      // /custom-providers/:id/models endpoint.
+      if (isCustomProviderId(providerName)) {
+        try {
+          await store.dispatch('aiProvider/fetchProviderModels', { provider: providerName });
+        } catch (e) { /* non-fatal */ }
+        return;
+      }
       const action = PROVIDER_FETCH_ACTIONS[providerName];
       if (!action) return;
       try { await store.dispatch(action); } catch (e) { /* non-fatal */ }
@@ -208,8 +255,17 @@ export default {
       saving.value = true;
       statusMsg.value = '';
       try {
+        // A custom tier with no model is dropped by buildProviderChain, so
+        // sending one would persist a tier the UI displays as configured and
+        // that can never fire. Drop it here instead and say so, rather than
+        // letting the two layers disagree silently.
+        const skipped = rows.value
+          .filter((r) => r.provider && isCustomProviderId(r.provider) && !r.model)
+          .map((r) => customProviderName(r.provider));
+
         const payload = rows.value
           .filter((r) => r.provider)
+          .filter((r) => !(isCustomProviderId(r.provider) && !r.model))
           .slice(0, MAX)
           .map((r) => ({ provider: r.provider, model: r.model || null }));
         const res = await fetch('/api/users/settings', {
@@ -224,8 +280,15 @@ export default {
           }),
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        statusOk.value = true;
-        statusMsg.value = 'Fallback providers saved.';
+        if (skipped.length) {
+          statusOk.value = false;
+          statusMsg.value =
+            `Saved, but skipped ${skipped.join(', ')}: a custom provider needs an ` +
+            'explicit model, so it was left out of the chain.';
+        } else {
+          statusOk.value = true;
+          statusMsg.value = 'Fallback providers saved.';
+        }
         dirty.value = false;
         await load();
       } catch (e) {
@@ -237,7 +300,10 @@ export default {
     }
 
     onMounted(async () => {
+      // Both lists feed the dropdown, and neither is guaranteed to have been
+      // loaded by a sibling component on a cold open of this screen.
       try { await store.dispatch('appAuth/fetchConnectedApps'); } catch (e) { /* ignore */ }
+      try { await store.dispatch('aiProvider/fetchCustomProviders'); } catch (e) { /* ignore */ }
       await load();
     });
 
@@ -245,6 +311,7 @@ export default {
       MAX,
       enabled, rows, dirty, saving, statusMsg, statusOk,
       connectableProviders, modelsFor, providerOptionsFor, modelOptionsFor, hasCandidates,
+      modelPlaceholderFor, isCustomProviderId,
       markDirty, addRow, removeRow, onProviderChange, onModelChange, save,
     };
   },
