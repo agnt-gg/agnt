@@ -1,6 +1,12 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ContextTiles from './ContextTiles.vue';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SOURCE = fs.readFileSync(path.join(HERE, 'ContextTiles.vue'), 'utf8');
 
 const economics = {
   rate: 0.000003,
@@ -728,5 +734,44 @@ describe('ContextTiles — degenerate input', () => {
     await tileByLabel(w, 'Every turn').trigger('click');
     expect(w.findAll('.driver')).toHaveLength(0);
     expect(w.html()).not.toContain('NaN');
+  });
+});
+
+// jsdom computes no layout and resolves no custom properties, so a mounted
+// component literally cannot see either of these failures. Scan the source.
+describe('ContextTiles surfaces', () => {
+  const rules = () => {
+    // Comments are stripped FIRST: a rationale comment sitting above a rule is
+    // otherwise captured as part of that rule's selector.
+    const style = SOURCE.slice(SOURCE.indexOf('<style'), SOURCE.lastIndexOf('</style>'))
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    return [...style.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .map(([, selector, body]) => ({ selector: selector.trim(), body }));
+  };
+
+  const declaration = (body, prop) => {
+    // Last one wins.
+    const hits = [...body.matchAll(new RegExp(`(?:^|;)\\s*${prop}\\s*:([^;]+)`, 'g'))];
+    return hits.length ? hits[hits.length - 1][1].trim() : null;
+  };
+
+  it('paints the tile grid on a surface token, not on the border colour', () => {
+    // Regression: `background: var(--terminal-border-color)` used the 1px gaps
+    // as dividers, but a background covers the whole element — so an opaque
+    // border slab sat under every translucent tile and blacked out the strip.
+    const grid = rules().find((r) => r.selector === '.tiles-grid');
+    expect(grid, '.tiles-grid rule').toBeTruthy();
+    expect(declaration(grid.body, 'background')).toBe('var(--color-darker-0)');
+  });
+
+  it('only lets a border token paint an element that is a line', () => {
+    // Anti-vacuity: the parser must actually see this file's rules.
+    expect(rules().length).toBeGreaterThan(40);
+
+    const offenders = rules()
+      .filter((r) => /border-color/.test(declaration(r.body, 'background') || ''))
+      .filter((r) => !['1px', '2px'].includes(declaration(r.body, 'width'))
+        && !['1px', '2px'].includes(declaration(r.body, 'height')));
+    expect(offenders.map((r) => r.selector)).toEqual([]);
   });
 });

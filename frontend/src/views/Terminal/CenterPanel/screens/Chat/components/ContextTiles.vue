@@ -827,7 +827,13 @@ export default {
      reflow 6 → 3 → 2 and always fill their row completely. */
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 1px;
-  background: var(--terminal-border-color);
+  /* This is a SURFACE, not a line — the gaps happen to show it, but the tiles
+     sit on it too. --terminal-border-color is an opaque slab in every theme
+     (#1a1a40, #2e3350, #d0d0dd…), so painting it here put an opaque block
+     under six translucent tiles: the strip went black and the wallpaper died.
+     A recessed surface token is translucent, so the panel behind still reads
+     through and the 1px gaps still differ from the tiles' --color-darker-1. */
+  background: var(--color-darker-0);
   border-top: 1px solid var(--terminal-border-color);
   border-bottom: 1px solid var(--terminal-border-color);
 }
