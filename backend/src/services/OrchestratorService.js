@@ -12,7 +12,8 @@ import { createLlmClient } from './ai/LlmService.js';
 // 'provider_recovered' and clear the entry. Ephemeral, per-process, tiny.
 const __failoverMemory = new Map();
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
-import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
+import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } from './orchestrator/ProviderFallback.js';
+import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { recordLlmCall } from './execution/LedgerRecorder.js';
 import { updateEstimateCalibration, computeResidualDrift } from '../utils/contextManager.js';
@@ -921,6 +922,20 @@ async function universalChatHandler(req, res, context = {}) {
   // updateUserSettings with a fallback tier.
   let providerChain = [{ provider: normalizedProvider, model, tier: 0, primary: true }];
   try {
+    // Custom OpenAI-compatible providers are keyed by UUID and are absent from
+    // ProviderRegistry, so buildProviderChain drops them unless we hand it the
+    // user's active ids. createLlmAdapter already resolves such a provider at
+    // call time, so a custom tier runs fine once it survives chain building.
+    //
+    // LAZY: this is a SQLite query on the per-turn hot path, and failover is
+    // off by default, so it must only be paid where a chain is actually built.
+    // Memoized, so the two call sites below cost one query, not two. Fails safe
+    // to [] = no custom tiers, never a broken turn.
+    const resolveCustomProviderIds = createCustomProviderIdResolver(
+      () => CustomOpenAIProviderService.getProvidersByUserId(userId),
+      (cpErr) => console.warn('[Chat] Could not load custom providers for failover chain:', cpErr.message),
+    );
+
     // Phase 4: prefer the ACTIVE AGENT's own fallback chain when it has one
     // (fallbackEnabled). A coding agent pinned to Claude-Code should fail over
     // to ITS configured backups, not the user's global list. Only when the
@@ -935,6 +950,7 @@ async function universalChatHandler(req, res, context = {}) {
             model,
             fallbackEnabled: true,
             fallbackProviders: agentForFb.fallbackProviders,
+            customProviderIds: await resolveCustomProviderIds(),
           });
         }
       } catch (agErr) {
@@ -953,6 +969,7 @@ async function universalChatHandler(req, res, context = {}) {
           model,
           fallbackEnabled: fbSettings.fallbackEnabled,
           fallbackProviders: fbSettings.fallbackProviders,
+          customProviderIds: await resolveCustomProviderIds(),
         });
         if (providerChain.length > 1) {
           console.log('[Chat] Provider failover chain (user):', providerChain.map(t => `${t.provider}/${t.model || '(default model)'}`).join(' → '));

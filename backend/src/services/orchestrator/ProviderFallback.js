@@ -79,12 +79,67 @@ export function parseFallbackList(raw) {
  * True if a provider key is known to the registry (case-insensitive).
  * Unknown providers would throw "Unsupported provider for LLM client factory"
  * in LlmService, so we filter them out of the chain up front.
+ *
+ * Custom OpenAI-compatible providers are keyed by UUID and live in the
+ * `custom_openai_providers` table, NOT in ProviderRegistry — so the registry
+ * lookup alone rejects them. `createLlmAdapter` already resolves them at
+ * runtime (llmAdapters.js: `CustomOpenAIProviderService.isCustomProvider`), so
+ * the only thing that ever blocked them as failover tiers was this check.
+ *
+ * That lookup is a DB call and this function is synchronous and on the hot path
+ * (every turn), so callers pass the user's active custom-provider IDs in
+ * instead. Omit the argument and behavior is exactly as before.
+ *
+ * @param {string} provider
+ * @param {Iterable<string>} [customProviderIds]  active custom provider UUIDs
  */
-export function isKnownProvider(provider) {
+export function isKnownProvider(provider, customProviderIds) {
   if (!provider || typeof provider !== 'string') return false;
-  const caps = ProviderRegistry.PROVIDER_CAPABILITIES || {};
   const lower = provider.toLowerCase();
+  if (customProviderIds) {
+    for (const id of customProviderIds) {
+      if (typeof id === 'string' && id.trim().toLowerCase() === lower) return true;
+    }
+  }
+  const caps = ProviderRegistry.PROVIDER_CAPABILITIES || {};
   return Object.keys(caps).some((k) => k.toLowerCase() === lower);
+}
+
+/**
+ * Build a lazy, memoized resolver for a user's active custom-provider ids.
+ *
+ * `buildProviderChain` needs these ids, but fetching them is a SQLite query and
+ * both turn paths call the builder at TWO sites (the agent chain and the user
+ * chain). Resolving eagerly costs a query on EVERY turn, including the common
+ * case where failover is switched off and no chain is ever built; resolving at
+ * each call site would instead double the query. Hence: call it only where a
+ * chain is actually being built, and pay at most once per turn.
+ *
+ * The fetch is INJECTED rather than imported so this module keeps its "no
+ * dependencies beyond ProviderRegistry" property and stays trivially testable.
+ *
+ * Fails safe: any lookup error resolves to [], which `buildProviderChain`
+ * treats as "no custom providers" — exactly the pre-feature behaviour. The
+ * failure is cached too, so a broken lookup is not retried at the second call
+ * site.
+ *
+ * @param {() => Promise<Array<{id: string}>>} fetchProviders
+ * @param {(err: Error) => void} [onError]  optional reporter for the caller's log
+ * @returns {() => Promise<string[]>}
+ */
+export function createCustomProviderIdResolver(fetchProviders, onError) {
+  let cache = null;
+  return async () => {
+    if (cache !== null) return cache;
+    try {
+      const providers = await fetchProviders();
+      cache = (providers || []).map((p) => p.id);
+    } catch (err) {
+      if (typeof onError === 'function') onError(err);
+      cache = [];
+    }
+    return cache;
+  };
 }
 
 /**
@@ -124,26 +179,42 @@ export function resolveTierModel(provider, model) {
  * @param {string} args.model            primary model
  * @param {boolean} args.fallbackEnabled
  * @param {string|Array} args.fallbackProviders  raw column value or array
+ * @param {Iterable<string>} [args.customProviderIds]  active custom provider
+ *   UUIDs for this user. Omit and custom providers are dropped from the chain
+ *   (the pre-existing behavior).
  * @returns {{provider: string, model: string|null, tier: number, primary: boolean}[]}
  */
-export function buildProviderChain({ provider, model, fallbackEnabled, fallbackProviders }) {
+export function buildProviderChain({ provider, model, fallbackEnabled, fallbackProviders, customProviderIds }) {
   const primaryProviderLc = String(provider || '').toLowerCase();
   const chain = [{ provider, model: model || null, tier: 0, primary: true }];
   const seen = new Set([`${primaryProviderLc}::${model || ''}`]);
 
   if (!fallbackEnabled) return chain;
 
+  const customIdSet = new Set(
+    (customProviderIds ? Array.from(customProviderIds) : [])
+      .filter((id) => typeof id === 'string' && id.trim())
+      .map((id) => id.trim().toLowerCase())
+  );
+
   const candidates = parseFallbackList(fallbackProviders);
   let tier = 1;
   for (const cand of candidates) {
     if (chain.length - 1 >= MAX_FALLBACKS) break;
-    if (!isKnownProvider(cand.provider)) continue;
+    if (!isKnownProvider(cand.provider, customIdSet)) continue;
 
     // Never fail over to the SAME provider we just exhausted — a different
     // model on the same down provider will almost certainly fail too.
     if (cand.provider.toLowerCase() === primaryProviderLc) continue;
 
+    const isCustom = customIdSet.has(cand.provider.toLowerCase());
     const usableModel = resolveTierModel(cand.provider, cand.model);
+
+    // A custom provider has no static model list to draw a default from, so an
+    // unset model would reach OpenAiLikeAdapter as `model: null` and fail the
+    // request at runtime. Drop the tier instead of shipping a dead one.
+    if (isCustom && !usableModel) continue;
+
     const key = `${cand.provider.toLowerCase()}::${usableModel || ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -330,6 +401,7 @@ export default {
   MAX_FALLBACKS,
   parseFallbackList,
   isKnownProvider,
+  createCustomProviderIdResolver,
   resolveTierModel,
   buildProviderChain,
   classifyFailure,
