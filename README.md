@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.6.5-blue.svg?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.6.6-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square&logo=node.js" alt="Node">
   <img src="https://img.shields.io/badge/AI%20Providers-15+-blueviolet?style=flat-square" alt="15+ AI Providers">
@@ -33,6 +33,7 @@
 
 <p align="center">
   <a href="https://agnt.gg">🌐 Website</a> ·
+  <a href="#-download-agnt">📥 Download</a> ·
   <a href="#-what-is-agnt">🧠 What is AGNT?</a> ·
   <a href="#-the-runtime-model">🧩 Runtime model</a> ·
   <a href="#-complete-feature-map">✨ Features</a> ·
@@ -51,6 +52,28 @@ AGNT is a **local-first agent operating system**: a desktop app and self-hostabl
 It brings agents, workflows, goals, tools, memory, plugins, evals, traces, messaging, and APIs into one local workspace.
 
 That is the product: **AI work becomes durable, inspectable, repeatable, and improvable.**
+
+---
+
+## 📥 Download AGNT
+
+Pre-built desktop apps for Windows, macOS, and GNU/Linux. No build step, no terminal.
+
+<p align="center">
+  <a href="https://agnt.gg/downloads/">
+    <img src="https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows">
+  </a>
+  <a href="https://agnt.gg/downloads/">
+    <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
+  </a>
+  <a href="https://agnt.gg/downloads/">
+    <img src="https://img.shields.io/badge/Download-GNU/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for GNU/Linux">
+  </a>
+</p>
+
+<p align="center">
+  <sub>Or run it yourself: <a href="#-quick-start">build from source</a> · <a href="#-docker-install">Docker</a> · <a href="#-installation">all install options</a></sub>
+</p>
 
 ---
 
@@ -252,8 +275,8 @@ Available tags:
 
 - `latest` / `full`: latest Full variant with browser automation
 - `lite`: latest Lite variant without browser automation
-- `v0.6.5` / `v0.6.5-full`: specific Full version
-- `v0.6.5-lite`: specific Lite version
+- `v0.6.6` / `v0.6.6-full`: specific Full version
+- `v0.6.6-lite`: specific Lite version
 
 ### 🏗️ Build Docker images from source
 
@@ -281,24 +304,6 @@ make run-both
 - 🚀 **Both**: useful for testing Full and Lite side by side.
 
 📖 See [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup.
-
----
-
-## 📥 Desktop binaries
-
-Pre-built desktop downloads are available for Windows, macOS, and GNU/Linux.
-
-<p align="center">
-  <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows">
-  </a>
-  <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
-  </a>
-  <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-GNU/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for GNU/Linux">
-  </a>
-</p>
 
 ---
 
@@ -506,9 +511,12 @@ AGNT is not just where agents run. It is where the workspace helps build itself.
 - 🧩 **Automation** — visual workflows, triggers, branches, nested workflows, timers, webhooks, and messaging.
 - 🎯 **Autonomy** — goals, planning, evaluation, rollback, AGI loop, and review states.
 - 🔌 **Extensibility** — plugins, tools, widgets, MCP, custom APIs, and marketplace assets.
-- 📜 **Observability** — traces, tool calls, node events, costs, queues, and provider health.
+- 📜 **Observability** — traces, tool calls, node events, per-turn cost, queues, and provider health.
 - 🖥️ **Runtime** — desktop, local API, Docker, headless mode, VPS, homelab, and Raspberry Pi.
 - 💻 **Workspace** — files, code editor, browser automation, media, speech, and dashboards.
+- 🎙️ **Voice** — hands-free conversation with barge-in, carried across every chat surface.
+- 📱 **Access** — phone pairing over QR, a PWA shell, and a desktop app that can point at a remote backend.
+- 🪟 **Workspaces** — per-workspace tabs, layouts, chat history, and AI provider, synced across devices.
 
 ---
 

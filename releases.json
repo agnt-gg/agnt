@@ -1,6 +1,46 @@
 {
   "releases": [
     {
+      "version": "0.6.6",
+      "date": "August 8, 2026",
+      "title": "Voice, Phone Access & Workspaces — AGNT v0.6.6",
+      "type": "patch",
+      "features": [
+        { "name": "Talk to AGNT out loud and it talks back — you can interrupt mid-sentence and it stops to listen", "status": "new" },
+        { "name": "Use AGNT from your phone by scanning a QR code", "status": "new" },
+        { "name": "Point the desktop app at an AGNT running on another computer, like a home server", "status": "new" },
+        { "name": "Workspaces keep their own tabs, layout, and chat history, and follow you across devices", "status": "new" },
+        { "name": "If an AI provider goes down, AGNT switches to a backup and keeps working", "status": "new" },
+        { "name": "See what every chat turn actually costs, broken down by provider", "status": "new" },
+        { "name": "Bring several agents into one conversation and let them work together", "status": "new" },
+        { "name": "A Needs-You list shows which chats are waiting on your reply", "status": "new" },
+        { "name": "Grok Build and Cursor Agent now work as local AI providers", "status": "new" },
+        { "name": "Import your setup from other AI tools the first time you launch", "status": "new" },
+        { "name": "Crashes and errors are recorded automatically so problems can be traced", "status": "new" },
+        { "name": "Search files and folders anywhere in your workspace", "status": "new" },
+        { "name": "Drop files onto the file tree or straight into a chat to upload them", "status": "new" },
+        { "name": "The marketplace has a new browse page with publisher profiles and screenshots", "status": "new" },
+        { "name": "Plugin authors can publish updates to plugins they have already released", "status": "new" },
+        { "name": "Ask AGNT to change your background and it happens right in the conversation", "status": "new" },
+        { "name": "Pick your workspace folder using the normal system file dialog", "status": "new" },
+        { "name": "Each conversation can use its own AI provider and model", "status": "updated" },
+        { "name": "Unsent messages are saved per conversation so a draft is never lost", "status": "updated" },
+        { "name": "Long conversations load faster and switching between chats is instant", "status": "updated" },
+        { "name": "Light mode is easier to read, and themes no longer bleed into each other", "status": "updated" },
+        { "name": "Each install now generates its own security keys instead of sharing one", "status": "updated" },
+        { "name": "Archive chats you are finished with to clear the sidebar", "status": "updated" },
+        { "name": "Renaming, deleting, and dragging chats in the sidebar happens instantly", "status": "updated" },
+        { "name": "Fixed a crash on startup after upgrading", "status": "bug" },
+        { "name": "Editing a file no longer corrupts line endings on Windows", "status": "bug" },
+        { "name": "Upgrade prompts explain what is needed instead of showing an error", "status": "bug" },
+        { "name": "The start of a spoken reply is no longer cut off", "status": "bug" },
+        { "name": "One message no longer starts two runs", "status": "bug" },
+        { "name": "Closing a tab no longer kills work that is still running", "status": "bug" },
+        { "name": "Steering a run mid-flight now actually redirects the work", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.5",
       "date": "July 20, 2026",
       "title": "Core Evolution, Plugin Trust & Security Gate — AGNT v0.6.5",
@@ -677,6 +717,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-07-06T12:00:00Z"
+    "lastUpdated": "2026-08-08T12:00:00Z"
   }
 }
