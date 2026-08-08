@@ -53,12 +53,10 @@
                 <i :class="getSortIcon('updated_at')"></i>
               </button>
             </div>
-            <Tooltip text="New Chat" width="auto">
-              <button @click="handleNewChat" class="new-chat-btn">
-                <i class="fas fa-plus"></i>
-                <span>New Chat</span>
-              </button>
-            </Tooltip>
+            <button v-tooltip="'New Chat'" @click="handleNewChat" class="new-chat-btn">
+              <i class="fas fa-plus"></i>
+              <span>New Chat</span>
+            </button>
           </div>
 
           <!-- Groups Section -->
@@ -1649,6 +1647,7 @@ div#saved-outputs {
   cursor: pointer;
   font-size: 13px;
   margin-left: auto;
+  white-space: nowrap;
   transition: all 0.2s ease;
 }
 
@@ -1683,6 +1682,7 @@ div#saved-outputs {
 
 .sort-controls {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   padding: 0 0 16px;
