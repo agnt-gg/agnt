@@ -112,3 +112,137 @@ describe('ProviderFallback.runWithFallback', () => {
     expect(tier.provider).toBe('B');
   });
 });
+
+/**
+ * Custom OpenAI-compatible providers as failover tiers.
+ *
+ * Custom providers are keyed by UUID and are NOT in ProviderRegistry, so
+ * isKnownProvider() rejected them and buildProviderChain() silently dropped the
+ * tier — a chain configured via the API appeared saved but never fired.
+ *
+ * The registry lookup cannot be made async (buildProviderChain is sync and
+ * called on every turn), so callers pass the user's active custom-provider IDs
+ * in explicitly. Omitting the argument keeps the old behavior exactly.
+ */
+const CUSTOM_ID = '2d6a62f5-b7e9-4cfe-92cc-d4bede6e9202';
+const OTHER_CUSTOM_ID = '052c419d-1beb-42c9-81b8-f287685af155';
+
+describe('ProviderFallback.isKnownProvider — custom providers', () => {
+  it('accepts a custom provider id that is in the supplied list', () => {
+    expect(PF.isKnownProvider(CUSTOM_ID, [CUSTOM_ID])).toBe(true);
+  });
+  it('rejects a custom provider id that is NOT in the supplied list', () => {
+    expect(PF.isKnownProvider(CUSTOM_ID, [OTHER_CUSTOM_ID])).toBe(false);
+  });
+  it('rejects a custom provider id when no list is supplied (unchanged default)', () => {
+    expect(PF.isKnownProvider(CUSTOM_ID)).toBe(false);
+  });
+  it('accepts a Set as well as an Array', () => {
+    expect(PF.isKnownProvider(CUSTOM_ID, new Set([CUSTOM_ID]))).toBe(true);
+  });
+  it('matches custom ids case-insensitively', () => {
+    expect(PF.isKnownProvider(CUSTOM_ID.toUpperCase(), [CUSTOM_ID])).toBe(true);
+  });
+  it('still accepts built-in providers when a custom list is supplied', () => {
+    expect(PF.isKnownProvider('openai', [CUSTOM_ID])).toBe(true);
+  });
+});
+
+describe('ProviderFallback.buildProviderChain — custom providers', () => {
+  it('includes a custom provider tier when its id is supplied', () => {
+    const c = PF.buildProviderChain({
+      provider: 'Anthropic',
+      model: 'm',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: CUSTOM_ID, model: 'ling-mini' }],
+      customProviderIds: [CUSTOM_ID],
+    });
+    expect(c.length).toBe(2);
+    expect(c[1].provider).toBe(CUSTOM_ID);
+    expect(c[1].tier).toBe(1);
+    expect(c[1].primary).toBe(false);
+  });
+
+  it('drops the custom tier when no ids are supplied (documents the old bug)', () => {
+    const c = PF.buildProviderChain({
+      provider: 'Anthropic',
+      model: 'm',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: CUSTOM_ID, model: 'ling-mini' }],
+    });
+    expect(c.length).toBe(1);
+  });
+
+  it('keeps the configured model verbatim (custom providers have no static model list)', () => {
+    const c = PF.buildProviderChain({
+      provider: 'Anthropic',
+      model: 'm',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: CUSTOM_ID, model: 'some-local-model:7b' }],
+      customProviderIds: [CUSTOM_ID],
+    });
+    expect(c[1].model).toBe('some-local-model:7b');
+  });
+
+  it('drops a custom tier with no model — there is no list to pick a default from', () => {
+    const c = PF.buildProviderChain({
+      provider: 'Anthropic',
+      model: 'm',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: CUSTOM_ID, model: null }],
+      customProviderIds: [CUSTOM_ID],
+    });
+    expect(c.length).toBe(1);
+  });
+
+  it('never fails over from a custom primary to the same custom provider', () => {
+    const c = PF.buildProviderChain({
+      provider: CUSTOM_ID,
+      model: 'ling-mini',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: CUSTOM_ID, model: 'ling-large' }],
+      customProviderIds: [CUSTOM_ID],
+    });
+    expect(c.length).toBe(1);
+  });
+
+  it('supports a custom primary failing over to a built-in provider', () => {
+    const c = PF.buildProviderChain({
+      provider: CUSTOM_ID,
+      model: 'ling-mini',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: 'openai', model: 'gpt-4o' }],
+      customProviderIds: [CUSTOM_ID],
+    });
+    expect(c.length).toBe(2);
+    expect(c[0].provider).toBe(CUSTOM_ID);
+    expect(c[1].provider).toBe('openai');
+  });
+
+  it('preserves configured order across mixed custom and built-in tiers', () => {
+    const c = PF.buildProviderChain({
+      provider: 'Anthropic',
+      model: 'm',
+      fallbackEnabled: true,
+      fallbackProviders: [
+        { provider: CUSTOM_ID, model: 'ling-mini' },
+        { provider: 'openai', model: 'gpt-4o' },
+        { provider: OTHER_CUSTOM_ID, model: 'deepseek-chat' },
+      ],
+      customProviderIds: [CUSTOM_ID, OTHER_CUSTOM_ID],
+    });
+    expect(c.map((t) => t.provider)).toEqual(['Anthropic', CUSTOM_ID, 'openai', OTHER_CUSTOM_ID]);
+    expect(c.map((t) => t.tier)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('still drops a genuinely unknown provider even when custom ids are supplied', () => {
+    const c = PF.buildProviderChain({
+      provider: 'Anthropic',
+      model: 'm',
+      fallbackEnabled: true,
+      fallbackProviders: [{ provider: 'totally-fake-xyz', model: 'x' }],
+      customProviderIds: [CUSTOM_ID],
+    });
+    expect(c.length).toBe(1);
+  });
+});

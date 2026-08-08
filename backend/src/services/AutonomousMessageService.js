@@ -9,6 +9,7 @@ import conversationManager from './ConversationManager.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
 import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
+import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import AgentModel from '../models/AgentModel.js';
 import UserModel from '../models/UserModel.js';
 import { executeTool } from './orchestrator/tools.js';
@@ -235,6 +236,18 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       // a single-tier chain = today's behavior. Dormant by default.
       let autoProviderChain = [{ provider: context.normalizedProvider, model: context.model, tier: 0, primary: true }];
       try {
+        // Custom providers (UUID-keyed, not in ProviderRegistry) are only
+        // admitted as tiers when their ids are supplied. Same contract as the
+        // interactive path in OrchestratorService; failure costs only the
+        // custom tiers.
+        let customProviderIds = [];
+        try {
+          const activeCustomProviders = await CustomOpenAIProviderService.getProvidersByUserId(context.userId);
+          customProviderIds = (activeCustomProviders || []).map((p) => p.id);
+        } catch (cpErr) {
+          log(`[AutonomousMessage] Could not load custom providers for failover chain: ${cpErr.message}`);
+        }
+
         let agChain = null;
         if (context.agentId && context.agentId !== 'agent-chat' && context.agentId !== 'orchestrator') {
           const agFb = await AgentModel.findOne(context.agentId);
@@ -244,6 +257,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               model: context.model,
               fallbackEnabled: true,
               fallbackProviders: agFb.fallbackProviders,
+              customProviderIds,
             });
           }
         }
@@ -257,6 +271,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               model: context.model,
               fallbackEnabled: uFb.fallbackEnabled,
               fallbackProviders: uFb.fallbackProviders,
+              customProviderIds,
             });
           }
         }
