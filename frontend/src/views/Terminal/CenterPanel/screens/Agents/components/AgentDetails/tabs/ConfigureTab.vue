@@ -115,7 +115,7 @@
                 v-model="row.model"
                 :options="fallbackModelOptions(row.provider)"
                 :disabled="!row.provider"
-                placeholder="Provider default"
+                :placeholder="fallbackModelPlaceholder(row.provider)"
                 maxHeight="200px"
               />
               <button type="button" class="fallback-remove" :aria-label="`Remove fallback ${index + 1}`" @click="removeFallback(index)">
@@ -284,7 +284,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import ListWithSearch from '@/views/Terminal/_components/ListWithSearch.vue';
@@ -374,32 +374,73 @@ const modelOptions = computed(() => [
   })),
 ]);
 
+// Custom OpenAI-compatible providers, keyed by UUID. They are candidates for
+// the FALLBACK chain only -- the primary select above renders its option values
+// as display names, so a custom provider would show there as a raw UUID.
+const customProviders = computed(() => store.state.aiProvider?.customProviders || []);
+const customProviderIds = computed(
+  () => new Set(customProviders.value.map((p) => String(p.id).toLowerCase())),
+);
+function isCustomProviderId(value) {
+  return !!value && customProviderIds.value.has(String(value).toLowerCase());
+}
+function customProviderName(id) {
+  const hit = customProviders.value.find((p) => String(p.id).toLowerCase() === String(id).toLowerCase());
+  return hit?.provider_name || id;
+}
+
+// Every provider that may serve as a fallback tier, as { value, label }. A
+// built-in is identified by its display name; a custom provider by its id, with
+// its friendly name as the label.
+const fallbackCandidates = computed(() => [
+  ...aiProviders.value.map((provider) => ({ value: provider, label: provider })),
+  ...customProviders.value
+    .filter((p) => p && p.id)
+    .map((p) => ({ value: p.id, label: p.provider_name || p.id })),
+]);
+
+const sameProvider = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
 function fallbackProviderOptions(index) {
   const primary = agentConfig.value.provider;
+  const own = agentConfig.value.fallbackProviders[index]?.provider;
   const chosenElsewhere = new Set(
     agentConfig.value.fallbackProviders
       .filter((_, rowIndex) => rowIndex !== index)
-      .map((entry) => entry.provider)
+      .map((entry) => String(entry.provider || '').toLowerCase())
       .filter(Boolean),
   );
-  return aiProviders.value
-    .filter((provider) => provider !== primary)
-    .filter((provider) => !chosenElsewhere.has(provider) || provider === agentConfig.value.fallbackProviders[index]?.provider)
-    .map((provider) => ({ value: provider, label: provider }));
+  return fallbackCandidates.value
+    .filter((option) => !sameProvider(option.value, primary))
+    .filter((option) => !chosenElsewhere.has(String(option.value).toLowerCase()) || sameProvider(option.value, own));
 }
 
 function fallbackModelOptions(provider) {
   if (!provider) return [];
-  return [
-    { value: '', label: 'Provider default' },
-    ...(store.state.aiProvider.allModels[provider] || []).map((model) => ({ value: model, label: model })),
-  ];
+  const models = (store.state.aiProvider.allModels[provider] || []).map((model) => ({ value: model, label: model }));
+  // "Provider default" is a real choice for a built-in: buildProviderChain
+  // substitutes the provider's first text model. A custom provider has no
+  // static model list, so the backend drops a modelless custom tier -- offering
+  // the option here would invite the user to build a tier that never fires.
+  if (isCustomProviderId(provider)) return models;
+  return [{ value: '', label: 'Provider default' }, ...models];
+}
+
+function fallbackModelPlaceholder(provider) {
+  if (provider && isCustomProviderId(provider)) {
+    return (store.state.aiProvider.allModels[provider] || []).length ? 'Select model' : 'No models found';
+  }
+  return 'Provider default';
 }
 
 const hasFallbackCandidates = computed(() => {
   const primary = agentConfig.value.provider;
-  const chosen = new Set(agentConfig.value.fallbackProviders.map((entry) => entry.provider).filter(Boolean));
-  return aiProviders.value.some((provider) => provider !== primary && !chosen.has(provider));
+  const chosen = new Set(
+    agentConfig.value.fallbackProviders.map((entry) => String(entry.provider || '').toLowerCase()).filter(Boolean),
+  );
+  return fallbackCandidates.value.some(
+    (option) => !sameProvider(option.value, primary) && !chosen.has(String(option.value).toLowerCase()),
+  );
 });
 
 function addFallback() {
@@ -431,6 +472,12 @@ watch(
     }
   },
 );
+
+// The fallback dropdown cannot list custom providers the store has never
+// loaded, and nothing guarantees a sibling screen fetched them first.
+onMounted(() => {
+  store.dispatch('aiProvider/fetchCustomProviders').catch(() => {});
+});
 
 watch(
   () => agentConfig.value.fallbackProviders.map((entry) => entry.provider),
@@ -526,6 +573,7 @@ const saveConfiguration = async () => {
       fallbackEnabled: agentConfig.value.fallbackEnabled,
       fallbackProviders: agentConfig.value.fallbackProviders
         .filter((entry) => entry.provider)
+        .filter((entry) => !(isCustomProviderId(entry.provider) && !entry.model))
         .slice(0, MAX_FALLBACKS)
         .map((entry) => ({ provider: entry.provider, model: entry.model || null })),
       toolAccessMode: agentConfig.value.toolAccessMode,
@@ -539,6 +587,18 @@ const saveConfiguration = async () => {
       autoRestart: agentConfig.value.autoRestart,
       maxRetries: agentConfig.value.maxRetries,
     };
+
+    // buildProviderChain drops a custom tier with no model, so saying nothing
+    // would persist a chain that differs from the one on screen.
+    const droppedCustom = agentConfig.value.fallbackProviders
+      .filter((entry) => entry.provider && isCustomProviderId(entry.provider) && !entry.model)
+      .map((entry) => customProviderName(entry.provider));
+    if (droppedCustom.length) {
+      emit(
+        'add-terminal-line',
+        `[Agents] Skipped fallback ${droppedCustom.join(', ')}: a custom provider needs an explicit model.`,
+      );
+    }
 
     emit('save-configuration', payload);
 
