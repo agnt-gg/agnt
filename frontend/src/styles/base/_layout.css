@@ -1,9 +1,39 @@
 /* LAYOUT */
+
+/* --app-height: the height of the area the user can actually SEE right now.
+
+   `100vh` is the LARGE viewport — the page as it would look with the mobile
+   URL bar hidden. It is 56-115px taller than what is on screen while the bar
+   is showing, and every full-height shell in this app is `overflow: hidden`,
+   so that surplus is not scrollable: it lands at the BOTTOM of the column and
+   silently swallows the bottom-most child. In every one of these shells that
+   child is the chat composer, which is why "the input is pushed off the page"
+   was the symptom on every phone.
+
+   Three declarations, not one. Each overwrites the last only if the engine
+   understands its unit, so this is a fallback chain with no @supports:
+     100vh  — every engine, wrong on mobile, better than nothing
+     100svh — Safari 15.4+ / Chrome 108+: the SMALL viewport (bar showing)
+     100dvh — same, but tracks the bar live, and — paired with
+              interactive-widget=resizes-content in index.html — shrinks when
+              the on-screen keyboard opens instead of hiding the composer
+              behind it.
+
+   utils/appHeight.js overrides this inline from window.visualViewport on
+   touch devices, because iOS never shrinks the layout viewport for its
+   keyboard and so dvh alone cannot see it. That module is a refinement of
+   this value, never a second source of truth for it. */
+:root {
+  --app-height: 100vh;
+  --app-height: 100svh;
+  --app-height: 100dvh;
+}
+
 body {
   display: flex;
   flex-direction: column;
   width: 100vw;
-  height: 100vh;
+  height: var(--app-height);
   overflow: hidden;
   font-size: var(--base-font-size);
 }

@@ -176,6 +176,93 @@ describe('touch-target floor', () => {
   });
 });
 
+/**
+ * The viewport-height chain.
+ *
+ * `100vh` is the LARGE viewport. Every full-height shell in this app is
+ * `overflow: hidden`, so the 56-115px it over-measures by is not scrollable:
+ * it lands at the bottom of the column and eats the bottom-most child, which
+ * in every one of these shells is the composer. That is the entire bug, and it
+ * shipped independently in seven files because each one spelled its own height
+ * out by hand — three of them had even hand-rolled a `100vh; 100dvh` fallback
+ * pair, i.e. three private copies of a token.
+ *
+ * So: one token, `--app-height`, and a list of the shells that must consume
+ * it. Adding a shell to this app means adding it here, on purpose.
+ */
+describe('viewport height chain', () => {
+  const layout = read('styles/base/_layout.css');
+
+  /** Declarations of one rule, comments stripped. */
+  const ruleBodyIn = (css, selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = new RegExp(`(?:^|[{}])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(
+      css.replace(/\r\n/g, '\n')
+    );
+    // Every rationale below mentions `100vh` in prose. An assertion decided by
+    // a comment is an assertion that passes after the fix is reverted.
+    return m ? m[1].replace(/\/\*[\s\S]*?\*\//g, '') : null;
+  };
+
+  it('declares the token as a vh -> svh -> dvh fallback chain, in that order', () => {
+    const root = ruleBodyIn(layout, ':root');
+    expect(root, ':root block not found in _layout.css').not.toBeNull();
+    const units = [...root.matchAll(/--app-height:\s*100(vh|svh|dvh)\s*;/g)].map((m) => m[1]);
+    // Later declaration wins if the engine understands the unit, so the order
+    // IS the preference. Reversed, every modern browser would get 100vh.
+    expect(units).toEqual(['vh', 'svh', 'dvh']);
+  });
+
+  /**
+   * [file, selector] — every box that is sized to the viewport.
+   */
+  const SHELLS = [
+    ['styles/base/_layout.css', 'body'],
+    ['views/_components/layout/TerminalLayout.vue', '.terminal-container'],
+    ['views/MobileLite/MobileChat.vue', '.ml-chat'],
+    ['views/MobileLite/MobileHome.vue', '.ml-screen'],
+    ['views/MobileLite/MobilePair.vue', '.ml-pair'],
+    ['views/Pair/Pair.vue', '.pair-screen'],
+    ['views/_components/utility/OAuthCallback.vue', '.oauth-callback'],
+  ];
+
+  it('covers every known shell (anti-vacuity)', () => {
+    expect(SHELLS.length).toBe(7);
+  });
+
+  it.each(SHELLS)('%s %s sizes itself with var(--app-height)', (file, selector) => {
+    const body = ruleBodyIn(read(file), selector);
+    expect(body, `${selector} rule not found in ${file}`).not.toBeNull();
+    expect(body).toMatch(/(?:^|\s)(?:min-)?height:\s*var\(--app-height\)/);
+    // No private copy of the token alongside the token.
+    expect(body).not.toMatch(/(?:^|\s)(?:min-)?height:\s*100[sd]?vh/);
+  });
+
+  it('does not size the lite chat shell with inset: 0', () => {
+    // A fixed box resolves `bottom: 0` against the initial containing block,
+    // which on mobile is the large viewport — the token cannot help a rule
+    // that never asks for a height.
+    const body = ruleBodyIn(read('views/MobileLite/MobileChat.vue'), '.ml-chat');
+    expect(body).not.toMatch(/inset:\s*0/);
+  });
+
+  it('sizes <html> on the lite route, which height:100% cannot do', () => {
+    const file = read('views/MobileLite/MobileChat.vue');
+    expect(ruleBodyIn(file, 'html.mobile-lite-shell')).toMatch(/height:\s*var\(--app-height\)/);
+  });
+
+  it('installs the visualViewport refinement before mount', () => {
+    // iOS never shrinks the layout viewport for its keyboard, so dvh alone
+    // cannot see it. After mount is too late: the shells paint first.
+    const main = read('main.js');
+    const install = main.indexOf('installAppHeight()');
+    const mount = main.indexOf("app.mount('#app')");
+    expect(install).toBeGreaterThan(-1);
+    expect(mount).toBeGreaterThan(-1);
+    expect(install).toBeLessThan(mount);
+  });
+});
+
 describe('PWA shell', () => {
   const html = fs.readFileSync(path.resolve(SRC, '..', 'index.html'), 'utf8');
   const manifest = JSON.parse(fs.readFileSync(path.resolve(SRC, '..', 'public', 'manifest.webmanifest'), 'utf8'));
@@ -187,6 +274,13 @@ describe('PWA shell', () => {
 
   it('sets viewport-fit=cover, without which every env(safe-area-inset-*) is 0', () => {
     expect(viewport).toContain('viewport-fit=cover');
+  });
+
+  it('lets the on-screen keyboard resize the layout viewport', () => {
+    // Chrome's default is resizes-visual: the keyboard shrinks only the visual
+    // viewport, 100dvh keeps its full value, and the composer sits behind the
+    // keys. Ignored by engines that do not know it.
+    expect(viewport).toContain('interactive-widget=resizes-content');
   });
 
   it('does not block pinch-zoom', () => {

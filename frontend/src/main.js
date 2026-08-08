@@ -12,6 +12,7 @@ import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { watchSession, stopLicenseRefresh, idle } from '@/store/auth/sessionBoot.js';
 import { vTooltip } from '@/directives/tooltip.js';
 import { vViewportClamp } from '@/directives/viewportClamp.js';
+import { installAppHeight } from '@/utils/appHeight.js';
 
 // Import test utilities in development mode
 if (process.env.NODE_ENV === 'development') {
@@ -22,6 +23,10 @@ if (process.env.NODE_ENV === 'development') {
 // src="/api/local-file/..."> on the very first paint, and that request needs
 // the cookie already present or it 401s and stays broken for the session.
 syncMediaCookieFromStorage();
+
+// Before mount: every full-height shell reads --app-height on its first paint,
+// and on a phone the CSS fallback is one keyboard too tall. No-op on desktop.
+installAppHeight();
 
 const app = createApp(App);
 

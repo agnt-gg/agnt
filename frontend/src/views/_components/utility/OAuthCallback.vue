@@ -139,7 +139,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  min-height: var(--app-height);
   background: var(--color-navy);
   font-family: var(--font-family-primary);
 }

@@ -482,8 +482,7 @@ html.mobile-lite-shell #app {
 
 <style scoped>
 .ml-screen {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: var(--app-height);
   display: flex;
   flex-direction: column;
   background: #12121c;

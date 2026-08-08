@@ -73,8 +73,7 @@ onMounted(async () => {
 
 <style scoped>
 .pair-screen {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: var(--app-height);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -472,7 +472,10 @@ export default {
   top: 0;
   left: 0;
   width: 100vw;
-  height: 100vh;
+  /* NOT 100vh: this box is overflow:hidden and the composer is its bottom-most
+     descendant, so any height above what is on screen deletes the composer.
+     See --app-height in styles/base/_layout.css. */
+  height: var(--app-height);
   background-color: transparent; /* Base background */
   color: var(--color-text, var(--color-dull-white)); /* Default text color for children */
   display: flex;

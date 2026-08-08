@@ -388,11 +388,19 @@ onBeforeUnmount(() => {
   --text: #e8e8f0;
   --muted: #8b93a7;
   --accent: #19ef83;
-  /* Fill the visual viewport; avoid 100vh/keyboard double-gap on iOS */
+  /* Fill the area that is actually on screen.
+
+     `inset: 0` did NOT do that. A fixed box resolves against the initial
+     containing block, which on mobile is the LARGE viewport (URL bar hidden),
+     so `bottom: 0` sat below the fold and .ml-composer — the bottom-most
+     child of an overflow:hidden column — went with it. Pin three edges and
+     take the height from the token instead. */
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
   width: 100%;
-  height: 100%;
+  height: var(--app-height);
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -678,6 +686,11 @@ onBeforeUnmount(() => {
 
 <!-- Unscoped: kill white body/#app under the fixed chat shell (iOS WKWebView). -->
 <style>
+html.mobile-lite-shell {
+  /* height:100% on <html> resolves against the initial containing block, i.e.
+     the large viewport — the same over-measurement .ml-chat had. */
+  height: var(--app-height);
+}
 html.mobile-lite-shell,
 html.mobile-lite-shell body,
 html.mobile-lite-shell #app {

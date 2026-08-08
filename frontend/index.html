@@ -6,8 +6,17 @@
     <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to real
          values on notched devices; without it they are all 0 and the composer
          sits under the home indicator. maximum-scale is deliberately NOT set:
-         blocking pinch-zoom is an accessibility failure. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+         blocking pinch-zoom is an accessibility failure.
+
+         interactive-widget=resizes-content makes the on-screen keyboard shrink
+         the LAYOUT viewport rather than only the visual one. Without it the
+         default is resizes-visual: 100dvh keeps its full value while the
+         keyboard is up, so a full-height shell does not move and its composer
+         ends up behind the keys. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#12121c" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
