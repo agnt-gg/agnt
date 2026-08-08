@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import conversationManager from './ConversationManager.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
-import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
+import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } from './orchestrator/ProviderFallback.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import AgentModel from '../models/AgentModel.js';
 import UserModel from '../models/UserModel.js';
@@ -238,15 +238,13 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       try {
         // Custom providers (UUID-keyed, not in ProviderRegistry) are only
         // admitted as tiers when their ids are supplied. Same contract as the
-        // interactive path in OrchestratorService; failure costs only the
-        // custom tiers.
-        let customProviderIds = [];
-        try {
-          const activeCustomProviders = await CustomOpenAIProviderService.getProvidersByUserId(context.userId);
-          customProviderIds = (activeCustomProviders || []).map((p) => p.id);
-        } catch (cpErr) {
-          log(`[AutonomousMessage] Could not load custom providers for failover chain: ${cpErr.message}`);
-        }
+        // interactive path in OrchestratorService: lazy, so a follow-up with
+        // failover disabled costs no query, and memoized so the two call sites
+        // below cost one. Fails safe to [] = no custom tiers.
+        const resolveCustomProviderIds = createCustomProviderIdResolver(
+          () => CustomOpenAIProviderService.getProvidersByUserId(context.userId),
+          (cpErr) => log(`[AutonomousMessage] Could not load custom providers for failover chain: ${cpErr.message}`),
+        );
 
         let agChain = null;
         if (context.agentId && context.agentId !== 'agent-chat' && context.agentId !== 'orchestrator') {
@@ -257,7 +255,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               model: context.model,
               fallbackEnabled: true,
               fallbackProviders: agFb.fallbackProviders,
-              customProviderIds,
+              customProviderIds: await resolveCustomProviderIds(),
             });
           }
         }
@@ -271,7 +269,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               model: context.model,
               fallbackEnabled: uFb.fallbackEnabled,
               fallbackProviders: uFb.fallbackProviders,
-              customProviderIds,
+              customProviderIds: await resolveCustomProviderIds(),
             });
           }
         }

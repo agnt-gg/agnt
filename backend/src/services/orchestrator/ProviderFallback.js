@@ -106,6 +106,43 @@ export function isKnownProvider(provider, customProviderIds) {
 }
 
 /**
+ * Build a lazy, memoized resolver for a user's active custom-provider ids.
+ *
+ * `buildProviderChain` needs these ids, but fetching them is a SQLite query and
+ * both turn paths call the builder at TWO sites (the agent chain and the user
+ * chain). Resolving eagerly costs a query on EVERY turn, including the common
+ * case where failover is switched off and no chain is ever built; resolving at
+ * each call site would instead double the query. Hence: call it only where a
+ * chain is actually being built, and pay at most once per turn.
+ *
+ * The fetch is INJECTED rather than imported so this module keeps its "no
+ * dependencies beyond ProviderRegistry" property and stays trivially testable.
+ *
+ * Fails safe: any lookup error resolves to [], which `buildProviderChain`
+ * treats as "no custom providers" — exactly the pre-feature behaviour. The
+ * failure is cached too, so a broken lookup is not retried at the second call
+ * site.
+ *
+ * @param {() => Promise<Array<{id: string}>>} fetchProviders
+ * @param {(err: Error) => void} [onError]  optional reporter for the caller's log
+ * @returns {() => Promise<string[]>}
+ */
+export function createCustomProviderIdResolver(fetchProviders, onError) {
+  let cache = null;
+  return async () => {
+    if (cache !== null) return cache;
+    try {
+      const providers = await fetchProviders();
+      cache = (providers || []).map((p) => p.id);
+    } catch (err) {
+      if (typeof onError === 'function') onError(err);
+      cache = [];
+    }
+    return cache;
+  };
+}
+
+/**
  * Pick a usable model for a fallback tier. If the configured model is falsy or
  * doesn't belong to the provider's text-model set, fall back to the provider's
  * first text model. Returns null if the provider exposes no text models
@@ -364,6 +401,7 @@ export default {
   MAX_FALLBACKS,
   parseFallbackList,
   isKnownProvider,
+  createCustomProviderIdResolver,
   resolveTierModel,
   buildProviderChain,
   classifyFailure,

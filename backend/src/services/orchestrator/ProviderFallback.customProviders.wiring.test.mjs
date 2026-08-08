@@ -18,6 +18,11 @@ import { fileURLToPath } from 'url';
  * follow-ups) and each builds TWO chains (the agent's own chain, and the user's
  * global chain). All four must be fed, so this asserts on every call site
  * rather than on the presence of the feature somewhere in the file.
+ *
+ * The ids come from a SQLite query, and failover is OFF by default, so the
+ * lookup must also be LAZY: paid only where a chain is actually built, never
+ * once per turn regardless. That is a property of the call sites, not of the
+ * resolver, so it is asserted here too.
  */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +49,17 @@ describe.each(Object.entries(FILES))('custom-provider failover is wired into %s'
     expect(SRC).toMatch(/CustomOpenAIProviderService\.getProvidersByUserId\(/);
   });
 
+  it('resolves them through the shared lazy resolver', () => {
+    expect(SRC).toMatch(/createCustomProviderIdResolver\(/);
+  });
+
+  it('never awaits the lookup directly — that would query on every turn', () => {
+    // Failover is off for almost every user, so an unconditional
+    // `await …getProvidersByUserId(...)` buys a per-turn SQLite query that
+    // nothing consumes. The lookup must be wrapped in a thunk instead.
+    expect(SRC).not.toMatch(/await\s+CustomOpenAIProviderService\.getProvidersByUserId/);
+  });
+
   it('builds at least two chains (agent chain and user chain)', () => {
     expect(chainCallSites(SRC).length).toBeGreaterThanOrEqual(2);
   });
@@ -54,24 +70,21 @@ describe.each(Object.entries(FILES))('custom-provider failover is wired into %s'
     expect(missing).toEqual([]);
   });
 
-  it('resolves the ids BEFORE the first chain is built', () => {
-    const resolvedAt = SRC.indexOf('CustomOpenAIProviderService.getProvidersByUserId(');
-    const firstChain = SRC.indexOf('buildProviderChain({');
-    expect(resolvedAt).toBeGreaterThan(-1);
-    expect(firstChain).toBeGreaterThan(-1);
-    // Resolving after the chain is built would pass an always-empty list —
-    // every positional check above would still pass while the feature is dead.
-    expect(resolvedAt).toBeLessThan(firstChain);
+  it('awaits the resolver AT every call site, so the query follows the chain', () => {
+    // This is what makes it lazy in practice: the only place the ids are
+    // resolved is inside a branch that has already decided to build a chain.
+    const sites = chainCallSites(SRC);
+    const missing = sites.filter((s) => !/await\s+resolveCustomProviderIds\(\)/.test(s));
+    expect(missing).toEqual([]);
   });
 
-  it('fails safe: id resolution cannot break the turn', () => {
-    // A custom-provider lookup failure must degrade to "no custom tiers", not
-    // throw out of the turn. Both call sites already sit inside a try/catch
-    // that falls back to a single-tier chain; assert the lookup is inside one.
-    const resolvedAt = SRC.indexOf('CustomOpenAIProviderService.getProvidersByUserId(');
-    const tryBefore = SRC.lastIndexOf('try {', resolvedAt);
-    const catchAfter = SRC.indexOf('} catch', resolvedAt);
-    expect(tryBefore).toBeGreaterThan(-1);
-    expect(catchAfter).toBeGreaterThan(resolvedAt);
+  it('creates the resolver BEFORE the first chain is built', () => {
+    const createdAt = SRC.indexOf('createCustomProviderIdResolver(');
+    const firstChain = SRC.indexOf('buildProviderChain({');
+    expect(createdAt).toBeGreaterThan(-1);
+    expect(firstChain).toBeGreaterThan(-1);
+    // Creating it after the chain is built would leave the call sites
+    // referencing an undefined resolver.
+    expect(createdAt).toBeLessThan(firstChain);
   });
 });

@@ -246,3 +246,99 @@ describe('ProviderFallback.buildProviderChain — custom providers', () => {
     expect(c.length).toBe(1);
   });
 });
+
+/**
+ * Resolving the custom-provider ids without paying for them.
+ *
+ * The ids come from a SQLite query, and both turn paths need them at TWO call
+ * sites (the agent chain and the user chain). Resolving eagerly costs a query
+ * on EVERY turn -- including the overwhelmingly common case where failover is
+ * switched off entirely and no chain is ever built. Resolving at each call site
+ * instead would double the query when both paths are considered.
+ *
+ * So: lazy AND memoized. The fetch is injected rather than imported so this
+ * module keeps its "no dependencies beyond ProviderRegistry" property and
+ * stays trivially unit-testable.
+ */
+describe('ProviderFallback.createCustomProviderIdResolver', () => {
+  it('does not touch the database until it is actually called', async () => {
+    let calls = 0;
+    PF.createCustomProviderIdResolver(async () => { calls += 1; return []; });
+    // Merely creating the resolver must not query -- that is the entire point
+    // when failover is disabled and no chain is built.
+    expect(calls).toBe(0);
+  });
+
+  it('queries once when invoked', async () => {
+    let calls = 0;
+    const resolve = PF.createCustomProviderIdResolver(async () => {
+      calls += 1;
+      return [{ id: CUSTOM_ID }];
+    });
+    await expect(resolve()).resolves.toEqual([CUSTOM_ID]);
+    expect(calls).toBe(1);
+  });
+
+  it('memoizes across call sites — two chains cost one query', async () => {
+    let calls = 0;
+    const resolve = PF.createCustomProviderIdResolver(async () => {
+      calls += 1;
+      return [{ id: CUSTOM_ID }, { id: OTHER_CUSTOM_ID }];
+    });
+    const first = await resolve();
+    const second = await resolve();
+    expect(calls).toBe(1);
+    expect(second).toEqual(first);
+  });
+
+  it('maps rows to bare ids', async () => {
+    const resolve = PF.createCustomProviderIdResolver(async () => [
+      { id: CUSTOM_ID, provider_name: 'spark-ling', base_url: 'http://x/v1' },
+    ]);
+    await expect(resolve()).resolves.toEqual([CUSTOM_ID]);
+  });
+
+  it('fails safe to [] when the lookup throws', async () => {
+    // A custom-provider lookup failure must cost the custom tiers, never the
+    // turn. buildProviderChain treats [] as "no custom providers", which is
+    // exactly the pre-feature behaviour.
+    const resolve = PF.createCustomProviderIdResolver(async () => {
+      throw new Error('SQLITE_BUSY');
+    });
+    await expect(resolve()).resolves.toEqual([]);
+  });
+
+  it('does not retry a failed lookup on the second call site', async () => {
+    let calls = 0;
+    const resolve = PF.createCustomProviderIdResolver(async () => {
+      calls += 1;
+      throw new Error('SQLITE_BUSY');
+    });
+    await resolve();
+    await resolve();
+    expect(calls).toBe(1);
+  });
+
+  it('reports the failure to the caller-supplied handler', async () => {
+    const seen = [];
+    const resolve = PF.createCustomProviderIdResolver(
+      async () => { throw new Error('SQLITE_BUSY'); },
+      (err) => seen.push(err.message),
+    );
+    await resolve();
+    expect(seen).toEqual(['SQLITE_BUSY']);
+  });
+
+  it('tolerates a null result from the fetcher', async () => {
+    const resolve = PF.createCustomProviderIdResolver(async () => null);
+    await expect(resolve()).resolves.toEqual([]);
+  });
+
+  it('caches an empty result too, so a user with no custom providers pays once', async () => {
+    let calls = 0;
+    const resolve = PF.createCustomProviderIdResolver(async () => { calls += 1; return []; });
+    await resolve();
+    await resolve();
+    expect(calls).toBe(1);
+  });
+});
