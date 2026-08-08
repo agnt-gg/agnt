@@ -55,16 +55,17 @@ describe('every chat composer uses the shared voice engine', () => {
   it('finds the composers at all (anti-vacuity)', () => {
     // If the marker ever stops matching, every test below would pass by
     // iterating an empty list — the exact failure mode this file exists for.
-    expect(COMPOSERS.length).toBeGreaterThanOrEqual(3);
+    expect(COMPOSERS.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('covers the three known surfaces, so the discovery is not missing any', () => {
+  it('covers the four known surfaces, so the discovery is not missing any', () => {
     const names = COMPOSERS.map(rel);
     expect(names).toContain('views/Terminal/CenterPanel/BaseScreen.vue');
     expect(names).toContain('views/_components/chat/UnifiedChatContainer.vue');
     expect(names).toContain(
       'views/Terminal/CenterPanel/screens/Agents/components/AgentDetails/tabs/ChatTab.vue'
     );
+    expect(names).toContain('views/MobileLite/MobileChat.vue');
   });
 
   it.each(COMPOSERS.map((f) => [rel(f), f]))('%s calls useVoiceEngines', (name, file) => {
@@ -227,6 +228,7 @@ describe('every send path marks a spoken turn', () => {
     ['store/features/chat.js', 'startStreamingConversation'],
     ['store/features/chat.js', 'startAgentStreamingConversation'],
     ['store/features/chatUnified.js', 'sendMessage'],
+    ['views/MobileLite/MobileChat.vue', 'send'],
   ];
 
   it.each(SEND_PATHS)('%s / %s consumes the voice arm', (file, action) => {
@@ -235,19 +237,30 @@ describe('every send path marks a spoken turn', () => {
       /import\s*\{\s*consumeVoiceTurn\s*\}\s*from\s*'@\/services\/voiceTurn\.js'/
     );
 
-    // Scoped to THIS action's body — bounded by the next top-level action — so
-    // one call in a neighbouring action cannot satisfy all three assertions.
-    const at = src.indexOf(`async ${action}(`);
+    // A send is an indented action in a store module and a top-level function
+    // in a <script setup> component. Matching only the store shape would let a
+    // component surface pass this block vacuously, which is the whole failure
+    // mode the file exists to prevent.
+    const at = Math.max(
+      src.indexOf(`async ${action}(`),
+      src.indexOf(`async function ${action}(`)
+    );
     expect(at, `${action} not found in ${file}`).toBeGreaterThan(-1);
-    const nextAction = src.slice(at + 1).search(/\n {4}async \w+\(/);
+
+    // Scoped to THIS send's body — bounded by the next sibling — so one call in
+    // a neighbouring function cannot satisfy all three assertions.
+    const boundary = file.endsWith('.vue')
+      ? /\n(?:async )?function \w+\(/
+      : /\n {4}async \w+\(/;
+    const nextAction = src.slice(at + 1).search(boundary);
     const body = nextAction === -1 ? src.slice(at) : src.slice(at, at + 1 + nextAction);
 
     expect(body, `${action} never calls consumeVoiceTurn`).toMatch(/consumeVoiceTurn\(/);
     expect(body, `${action} never sends voiceMode`).toMatch(/voiceMode/);
   });
 
-  it('finds all three send paths (anti-vacuity)', () => {
-    expect(SEND_PATHS).toHaveLength(3);
+  it('finds all four send paths (anti-vacuity)', () => {
+    expect(SEND_PATHS).toHaveLength(4);
     for (const [file] of SEND_PATHS) {
       expect(fs.existsSync(path.join(SRC, file))).toBe(true);
     }

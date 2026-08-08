@@ -32,10 +32,16 @@ export function isCapacitorNative() {
 }
 
 /**
- * True when the current document can use getUserMedia for QR.
+ * True when this document may open a MICROPHONE OR A CAMERA.
+ *
+ * getUserMedia is gated on the secure context, not on which device is asked
+ * for, so the camera rule and the microphone rule are the same rule. It was
+ * written for the pairing QR scan first; voice needs the identical answer, and
+ * two copies of one browser rule would drift the first time one was corrected.
+ *
  * Secure contexts + Capacitor local schemes; plain http://LAN is false.
  */
-export function canUseWebCamera() {
+export function canUseMediaCapture() {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   if (!navigator.mediaDevices?.getUserMedia) return false;
   try {
@@ -51,6 +57,11 @@ export function canUseWebCamera() {
     /* ignore */
   }
   return false;
+}
+
+/** Camera for the pairing QR scan — the same secure-context rule. */
+export function canUseWebCamera() {
+  return canUseMediaCapture();
 }
 
 /** Remote http(s) AGNT host in the WebView — camera will not work here. */

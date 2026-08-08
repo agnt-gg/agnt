@@ -45,6 +45,13 @@
           Settings), then tap refresh below.
         </p>
         <p v-else class="ml-meta">{{ providerRef }} · {{ modelRef }}</p>
+        <!--
+          Voice is hidden rather than dead when the browser will not grant a
+          microphone. Saying why once, here, beats a button that does nothing.
+        -->
+        <p v-if="!voiceSupported" class="ml-meta">
+          Voice needs a secure connection — open AGNT over HTTPS or localhost.
+        </p>
         <button
           v-if="!providerLoading && (!providerRef || !modelRef)"
           type="button"
@@ -77,6 +84,25 @@
 
     <footer class="ml-composer">
       <p v-if="error" class="ml-error">{{ error }}</p>
+      <!--
+        Voice has no visible surface of its own, so without this the user
+        cannot tell whether it is hearing them, thinking, or broken — and a
+        hands-free mode you cannot read is one you cannot trust.
+      -->
+      <div v-if="voiceActive" class="ml-voice" :class="'voice-' + voiceState">
+        <span class="ml-voice-dot"></span>
+        <span class="ml-voice-text">
+          <template v-if="voiceError">{{ voiceError }}</template>
+          <template v-else-if="voiceState === 'listening' || voiceState === 'reopen'">{{
+            voicePartial || 'Listening…'
+          }}</template>
+          <template v-else-if="voiceState === 'thinking'">Thinking…</template>
+          <template v-else-if="voiceState === 'speaking'">Speaking — talk to interrupt</template>
+          <template v-else>Voice ready</template>
+          <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
+        </span>
+        <button type="button" class="ml-voice-end" @click="toggleVoice">End</button>
+      </div>
       <div class="ml-row">
         <textarea
           ref="inputEl"
@@ -87,6 +113,22 @@
           :disabled="streaming"
           @keydown.enter.exact.prevent="send"
         />
+        <!--
+          Deliberately NOT disabled while streaming: barge-in is the point of a
+          hands-free mode, and the control that ends a session cannot be the
+          one that disappears while the session is talking.
+        -->
+        <button
+          v-if="voiceSupported"
+          type="button"
+          class="ml-voice-btn"
+          :class="['voice-' + voiceState, { on: voiceActive }]"
+          :aria-pressed="voiceActive ? 'true' : 'false'"
+          aria-label="Toggle hands-free voice conversation"
+          @click="toggleVoice"
+        >
+          <i :class="voiceActive ? 'fas fa-headset' : 'far fa-comment-dots'"></i>
+        </button>
         <button
           v-if="!streaming"
           type="button"
@@ -110,6 +152,9 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import { createAssistantMessage, applyStreamEvent, hydrateMessage } from '@/services/chatStreamReducer.js';
+import { useVoiceEngines } from '@/composables/useVoiceEngines';
+import { canUseMediaCapture } from '@/services/mobileLiteNative.js';
+import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import {
   listConversations,
   loadConversation,
@@ -145,6 +190,15 @@ const streamingMessageId = ref(null);
 const providerRef = ref(null);
 const modelRef = ref(null);
 
+// Bumped ONLY on a genuine conversation switch, so a live session cannot
+// outlive the chat it was opened in and start committing into another one.
+const voiceEpoch = ref(0);
+
+// getUserMedia does not exist outside a secure context, so on a plain
+// http://LAN host there is no microphone to offer. Read once at setup: the
+// origin cannot change without a navigation, which remounts this component.
+const voiceSupported = canUseMediaCapture();
+
 let abortController = null;
 let saveTimer = null;
 
@@ -156,6 +210,29 @@ const canSend = computed(
     providerRef.value &&
     modelRef.value
 );
+
+/**
+ * Voice, identical to every other chat surface.
+ *
+ * The whole feature — engine selection, the run_agnt bridge, the two-register
+ * split, barge-in, the app-wide floor — lives in useVoiceEngines. This host
+ * supplies only the four things that genuinely differ between surfaces. A
+ * "mobile version" of any of the rest is how voice drifted four times before.
+ */
+const { voiceActive, voiceState, voicePartial, voiceError, voiceNatural, toggleVoice } =
+  useVoiceEngines({
+    surface: 'chat',
+    submit: (text) => {
+      draft.value = text;
+      return send();
+    },
+    // The reducer mutates the assistant message in place and touchMessages()
+    // replaces the array, so reading it through `messages` is reactive.
+    streamingAnswer: () =>
+      messages.value.find((m) => m.id === streamingMessageId.value)?.content || '',
+    isStreaming: streaming,
+    epoch: voiceEpoch,
+  });
 
 /** Only the in-flight assistant bubble carries a status; everything else is settled. */
 function statusFor(m) {
@@ -214,6 +291,7 @@ async function refreshList() {
 
 function startNew() {
   if (streaming.value) stop();
+  voiceEpoch.value += 1;
   messages.value = [];
   outputId.value = null;
   conversationId.value = newConversationId();
@@ -228,6 +306,7 @@ function startNew() {
 
 async function openConversation(id) {
   if (streaming.value) stop();
+  voiceEpoch.value += 1;
   drawerOpen.value = false;
   error.value = '';
   try {
@@ -287,6 +366,11 @@ async function send() {
   error.value = '';
   draft.value = '';
 
+  // Will this answer be SPOKEN as well as shown? Consumed here, once, matched
+  // by text, so only the turn voice armed carries the spoken register — a
+  // typed message during a voice session is still answered in full.
+  const isVoiceTurn = consumeVoiceTurn(text);
+
   const userMsg = hydrateMessage({
     id: newMessageId(),
     role: 'user',
@@ -316,6 +400,7 @@ async function send() {
       provider: providerRef.value,
       model: modelRef.value,
       conversationId: conversationId.value,
+      pageContext: isVoiceTurn ? { voiceMode: true } : {},
       signal: abortController.signal,
       onEvent: (eventName, data) => {
         // One shared reducer owns the wire protocol for every surface.
@@ -519,6 +604,86 @@ onBeforeUnmount(() => {
 .ml-send.stop {
   background: var(--fill-danger);
   color: var(--on-fill-danger);
+}
+
+/* Voice. The mic reads as an ACTION, not a second input: transparent with a
+   muted outline until the session is live, then it takes the accent. */
+.ml-voice-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.ml-voice-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ml-voice-btn.voice-listening.on {
+  animation: ml-voice-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ml-voice-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+.ml-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  min-height: 34px;
+}
+.ml-voice-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ml-voice.voice-thinking .ml-voice-dot {
+  background: #e8b84a;
+}
+.ml-voice.voice-speaking .ml-voice-dot {
+  background: #6fa8ff;
+}
+.ml-voice-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-engine-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ml-voice-end {
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
 }
 .ml-error {
   margin: 0 0 8px;
