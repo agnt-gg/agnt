@@ -188,6 +188,30 @@
             </div>
           </div>
 
+          <!-- The failure this panel could not previously explain. Voice and
+               the QR scanner need a secure context, so a plain-http address
+               loses both — silently, because nothing errors: the buttons
+               simply are not there. Say it here, next to the choice that
+               causes it, and offer the address that fixes it. -->
+          <p v-if="selectedOrigin && !selectedSecure" class="pa-note pa-note-warn pa-note-block">
+            <i class="fas fa-microphone-slash"></i>
+            <span v-if="secureAlternative">
+              No microphone or camera at this address — browsers only allow them over
+              HTTPS. Pair using
+              <button
+                type="button"
+                class="pa-inline-pick"
+                @click="selectedOrigin = secureAlternative.origin"
+              >{{ secureAlternative.origin }}</button>
+              instead to get voice on the phone.
+            </span>
+            <span v-else>
+              Voice and the QR scanner will not be available — browsers only allow a
+              microphone or camera over HTTPS. Chat, history and everything else work
+              normally.
+            </span>
+          </p>
+
           <div class="pa-step">
             <span class="pa-num">2</span>
             <span>Scan the QR, or <strong>copy the link</strong> if you can&rsquo;t scan.</span>
@@ -218,6 +242,13 @@
               <span class="pa-url-text">
                 <code>{{ o.origin }}</code>
                 <span v-if="o.label" class="pa-url-label">{{ o.label }}</span>
+              </span>
+              <span
+                v-if="!originIsSecure(o)"
+                class="pa-url-flag"
+                v-tooltip="'No microphone or camera at this address'"
+              >
+                <i class="fas fa-microphone-slash"></i>
               </span>
               <button class="pa-copy" v-tooltip="'Copy ' + o.origin" @click.stop="copy(o.origin)">
                 <i class="fas" :class="copied === o.origin ? 'fa-check' : 'fa-copy'"></i>
@@ -393,6 +424,41 @@ const selectedHint = computed(() => {
   if (selectedOrigin.value.startsWith('https://')) return 'Reachable from anywhere this address resolves.';
   return 'Your phone needs a network route to this address.';
 });
+
+/**
+ * Would a browser grant a microphone and camera at this address?
+ *
+ * https anywhere, or http on a loopback host. The backend answers this per
+ * origin (`secure`); this is the fallback for a backend that predates the
+ * field, and it applies the identical rule rather than assuming either way —
+ * guessing "secure" hides a real limitation, guessing "insecure" invents one.
+ */
+function isSecureOrigin(origin) {
+  try {
+    const u = new URL(origin);
+    if (u.protocol === 'https:') return true;
+    const h = u.hostname.replace(/^\[|\]$/g, '');
+    return u.protocol === 'http:' && (h === 'localhost' || h === '::1' || h.startsWith('127.'));
+  } catch {
+    return false;
+  }
+}
+
+const originIsSecure = (o) =>
+  typeof o?.secure === 'boolean' ? o.secure : isSecureOrigin(o?.origin || '');
+
+const selectedSecure = computed(() => {
+  const match = origins.value.find((o) => o.origin === selectedOrigin.value);
+  return match ? originIsSecure(match) : isSecureOrigin(selectedOrigin.value);
+});
+
+/** A different address that WOULD give the phone a microphone, if one exists. */
+const secureAlternative = computed(
+  () =>
+    origins.value.find(
+      (o) => o.external && originIsSecure(o) && o.origin !== selectedOrigin.value
+    ) || null
+);
 
 // The pairing code lives in the server's memory keyed only by itself, so it is
 // claimable from any address that reaches the server. That is what makes
@@ -880,6 +946,30 @@ onBeforeUnmount(() => clearInterval(ticker));
 .pa-url-label {
   font-size: 11px;
   color: var(--color-light-med-navy, #8b93a7);
+}
+.pa-url-flag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-yellow, #ffd700);
+  font-size: 12px;
+  opacity: 0.85;
+}
+/* The note wraps a sentence, so it aligns to the first line rather than
+   centring the icon against a two-line paragraph. */
+.pa-note-block {
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.pa-inline-pick {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary, #19ef83);
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .pa-copy {
   flex: 0 0 auto;

@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import RemoteAccessConfig from './RemoteAccessConfig.js';
+import TailscaleServe from './TailscaleServe.js';
 import {
   parseHostHeader,
   buildOrigin,
   isLoopbackHostname,
+  isSecureContextOrigin,
   isTrustedProxyPeer,
   configuredPublicOrigin,
   candidateOrigins,
@@ -38,6 +40,11 @@ beforeEach(() => {
     port: 3333,
     lanEnabled: true,
   });
+  // Stubbed for EVERY test, not just the ones about it. The real reader is
+  // sync-with-background-refresh, so leaving it live would let a developer
+  // machine that happens to run `tailscale serve` produce different candidates
+  // than CI — and would spawn a process from a unit test.
+  vi.spyOn(TailscaleServe, 'getServeOrigin').mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -172,6 +179,103 @@ describe('configuredPublicOrigin', () => {
 
   it('is null when unset', () => {
     expect(configuredPublicOrigin()).toBeNull();
+  });
+});
+
+describe('isSecureContextOrigin — will a browser grant a microphone here?', () => {
+  it.each([
+    ['https://host.ts.net', true],
+    ['https://192.168.1.50:8443', true],
+    ['http://localhost:3333', true],
+    ['http://127.0.0.1:3333', true],
+    ['http://[::1]:3333', true],
+    ['http://192.168.1.50:3333', false],
+    ['http://100.64.1.5:3333', false],
+    ['http://agnt.example.com', false],
+    ['not a url', false],
+  ])('%s -> %s', (origin, expected) => {
+    expect(isSecureContextOrigin(origin)).toBe(expected);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE TAILSCALE HTTPS FRONT DOOR
+//
+// The panel enumerated NICs and offered `http://100.x.y.z:3333`. That URL
+// works for chat and silently has no microphone and no camera, because a
+// browser only grants those in a secure context — so voice vanished from the
+// phone with nothing on screen to explain it.
+// ---------------------------------------------------------------------------
+describe('candidateOrigins — tailscale serve', () => {
+  const SERVE = { origin: 'https://box.tail1234.ts.net', hostname: 'box.tail1234.ts.net' };
+
+  it('offers the HTTPS front door ahead of the plain-http addresses', () => {
+    TailscaleServe.getServeOrigin.mockReturnValue(SERVE);
+    const list = candidateOrigins(req({ host: 'localhost:3333' }), { port: 3333 });
+    expect(list.filter((o) => o.external)[0]).toMatchObject({
+      origin: 'https://box.tail1234.ts.net',
+      source: 'tailscale-serve',
+      secure: true,
+    });
+  });
+
+  it('still lists the LAN address, so a phone without the tailnet can pair', () => {
+    TailscaleServe.getServeOrigin.mockReturnValue(SERVE);
+    const origins = candidateOrigins(req({ host: 'localhost:3333' }), { port: 3333 }).map((o) => o.origin);
+    expect(origins).toContain('http://192.168.1.50:3333');
+  });
+
+  it('suppresses the dead http twin of the same hostname', () => {
+    // Browsing AGNT AT the tailnet name means TLS is terminated by the daemon,
+    // so the Host header would otherwise build http://box.tail1234.ts.net:3333
+    // — a hostname that resolves and a port nothing listens on.
+    TailscaleServe.getServeOrigin.mockReturnValue(SERVE);
+    const origins = candidateOrigins(
+      req({ host: 'box.tail1234.ts.net', peer: '100.64.1.9' }),
+      { port: 3333 }
+    ).map((o) => o.origin);
+    expect(origins).toContain('https://box.tail1234.ts.net');
+    expect(origins).not.toContain('http://box.tail1234.ts.net:3333');
+  });
+
+  it('an operator-pinned origin still outranks it', () => {
+    process.env.PUBLIC_ORIGIN = 'https://pinned.example.com';
+    TailscaleServe.getServeOrigin.mockReturnValue(SERVE);
+    expect(candidateOrigins(req({ host: 'localhost:3333' }))[0].origin).toBe('https://pinned.example.com');
+  });
+
+  it('changes nothing when serve is not configured', () => {
+    TailscaleServe.getServeOrigin.mockReturnValue(null);
+    const list = candidateOrigins(req({ host: 'localhost:3333' }), { port: 3333 });
+    expect(list.filter((o) => o.external)[0].origin).toBe('http://192.168.1.50:3333');
+  });
+});
+
+describe('candidateOrigins — every candidate says whether voice can work there', () => {
+  it('marks a plain LAN address insecure and loopback secure', () => {
+    const list = candidateOrigins(req({ host: 'localhost:3333' }), { port: 3333 });
+    const lan = list.find((o) => o.origin === 'http://192.168.1.50:3333');
+    expect(lan.secure).toBe(false);
+    expect(isSecureContextOrigin('http://127.0.0.1:3333')).toBe(true);
+  });
+
+  it('marks a proxied https origin secure', () => {
+    const list = candidateOrigins(
+      req({
+        host: 'agnt.example.com',
+        peer: '127.0.0.1',
+        'x-forwarded-host': 'agnt.example.com',
+        'x-forwarded-proto': 'https',
+      }),
+      { port: 3333 }
+    );
+    expect(list.find((o) => o.source === 'forwarded').secure).toBe(true);
+  });
+
+  it('gives every candidate the field, so the UI never has to guess', () => {
+    const list = candidateOrigins(req({ host: '100.64.1.5:3333', peer: '100.64.1.9' }), { port: 3333 });
+    expect(list.length).toBeGreaterThan(0);
+    for (const o of list) expect(typeof o.secure).toBe('boolean');
   });
 });
 

@@ -40,12 +40,28 @@
  * Precedence, highest first:
  *   1. PUBLIC_ORIGIN / publicOrigin  — operator pins the canonical URL
  *   2. X-Forwarded-Proto/Host        — only from a TRUSTED peer (see below)
- *   3. Host header                   — the address the client actually typed
- *   4. NIC scan                      — today's behaviour, unchanged
+ *   3. `tailscale serve` front door  — the local daemon's live proxy table
+ *   4. Host header                   — the address the client actually typed
+ *   5. NIC scan                      — today's behaviour, unchanged
  *
  * All usable candidates are returned, not just the winner, because in an
  * ambiguous topology (multi-homed box, split-horizon DNS) the human looking at
  * the screen knows something the server cannot infer. The UI shows the list.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY EVERY ORIGIN CARRIES `secure`
+ * ---------------------------------------------------------------------------
+ * A browser only grants the microphone and camera in a SECURE CONTEXT — https,
+ * or a loopback host. Over plain http on a LAN or tailnet address the phone
+ * silently loses voice and the QR scanner, and nothing on screen says why,
+ * because from the app's point of view nothing failed.
+ *
+ * The reachability layer is the only place that knows the scheme, so it is the
+ * only place that can answer this honestly. Every candidate is labelled, and
+ * the UI can then say which capabilities the chosen address actually buys —
+ * rather than sending the user off to debug a Wi-Fi problem they do not have.
+ * The rule matches the client's canUseMediaCapture() exactly, deliberately: two
+ * copies of one browser rule drift the first time either is corrected.
  *
  * ---------------------------------------------------------------------------
  * WHY FORWARDED HEADERS ARE GATED
@@ -67,6 +83,7 @@
  */
 
 import RemoteAccessConfig from './RemoteAccessConfig.js';
+import TailscaleServe from './TailscaleServe.js';
 
 /** Hostnames that only ever resolve back to the machine making the request. */
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0', '::']);
@@ -84,6 +101,26 @@ export function isLoopbackHostname(hostname) {
   const h = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
   if (!h) return true;
   return LOOPBACK_HOSTNAMES.has(h) || h.startsWith('127.');
+}
+
+/**
+ * Would a browser treat this origin as a SECURE CONTEXT — i.e. grant it a
+ * microphone and a camera?
+ *
+ * https anywhere, or http on a loopback host. Same rule the client applies in
+ * services/mobileLiteNative.js; see the module header for why it lives here.
+ *
+ * @param {string} origin
+ * @returns {boolean}
+ */
+export function isSecureContextOrigin(origin) {
+  try {
+    const u = new URL(origin);
+    if (u.protocol === 'https:') return true;
+    return u.protocol === 'http:' && isLoopbackHostname(u.hostname.replace(/^\[|\]$/g, ''));
+  } catch {
+    return false;
+  }
 }
 
 function isPrivateIpv4(ip) {
@@ -213,16 +250,31 @@ export function candidateOrigins(req, opts = {}) {
   const out = [];
   const seen = new Set();
 
+  // A tailnet host with a `serve` front door is reachable at exactly ONE
+  // address — the https one. The plain-http form of the same hostname is a
+  // dead URL (nothing listens on :3333 of the MagicDNS name), so it must not
+  // be offered alongside it. Captured before the pushes so any source can be
+  // filtered, not just the NIC scan.
+  const serve = TailscaleServe.getServeOrigin(port);
+  const serveHost = serve?.hostname?.toLowerCase() || null;
+
   const push = (origin, source, label) => {
     if (!origin || seen.has(origin)) return;
-    seen.add(origin);
     let hostname = '';
     try {
       hostname = new URL(origin).hostname.replace(/^\[|\]$/g, '');
     } catch {
       return;
     }
-    out.push({ origin, source, label, external: !isLoopbackHostname(hostname) });
+    if (serveHost && hostname.toLowerCase() === serveHost && origin !== serve.origin) return;
+    seen.add(origin);
+    out.push({
+      origin,
+      source,
+      label,
+      external: !isLoopbackHostname(hostname),
+      secure: isSecureContextOrigin(origin),
+    });
   };
 
   // 1. Operator override.
@@ -244,7 +296,18 @@ export function candidateOrigins(req, opts = {}) {
     }
   }
 
-  // 3. The address this client actually typed. The single most reliable signal
+  // 3. The Tailscale HTTPS front door, if the daemon is proxying our port.
+  //
+  //    Ranked above the request address because it is verified by the machine
+  //    rather than inferred: `serve status` reports a proxy that is running NOW
+  //    and points at this very port. It is also the only candidate that yields
+  //    a secure context, so preferring it is what makes voice and the QR
+  //    scanner work on a phone at all. See services/TailscaleServe.js.
+  if (serve) {
+    push(serve.origin, 'tailscale-serve', 'This machine on Tailscale (HTTPS)');
+  }
+
+  // 4. The address this client actually typed. The single most reliable signal
   //    for "an address that works", because it demonstrably just did.
   const host = parseHostHeader(headers.host);
   if (host && !isLoopbackHostname(host.hostname)) {
@@ -255,8 +318,8 @@ export function candidateOrigins(req, opts = {}) {
     );
   }
 
-  // 4. NIC scan — right whenever the request came from this machine, which is
-  //    exactly the case the three signals above cannot speak to.
+  // 5. NIC scan — right whenever the request came from this machine, which is
+  //    exactly the case the signals above cannot speak to.
   //
   //    Unlike them it is pure inference: sources 1-3 are EVIDENCE (a client just
   //    reached us there / a trusted proxy says so / an operator declared it),

@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import http from 'http';
 import jwt from 'jsonwebtoken';
 import PairingRoutes, { _resetPairing } from './PairingRoutes.js';
 import { _resetRateLimits } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
+import TailscaleServe from '../services/TailscaleServe.js';
 
 const SECRET = 'pairing-test-secret';
 let server;
@@ -307,6 +308,32 @@ describe('pairing — the origin in the QR', () => {
   it('cloud: encodes the public hostname, not a datacenter-internal IP', async () => {
     const { body } = await asClient('agnt.mysite.com:3333');
     expect(body.origin).toBe('http://agnt.mysite.com:3333');
+  });
+
+  // A tailnet address over plain http has no microphone and no camera, because
+  // a browser withholds both outside a secure context. When the daemon is
+  // already terminating TLS for this very port, that URL is simply the wrong
+  // one to put in front of a phone.
+  it('tailscale: prefers the HTTPS front door over the plain tailnet address', async () => {
+    const spy = vi
+      .spyOn(TailscaleServe, 'getServeOrigin')
+      .mockReturnValue({ origin: 'https://box.tail1234.ts.net', hostname: 'box.tail1234.ts.net' });
+    try {
+      const { body } = await asClient('100.64.1.5:3333');
+      expect(body.origin).toBe('https://box.tail1234.ts.net');
+      expect(body.liteUrl).toBe(`https://box.tail1234.ts.net/m/pair?c=${body.code}`);
+      // The LAN route still has to be offered: a phone that is not on the
+      // tailnet can only pair over Wi-Fi.
+      expect(body.origins.map((o) => o.origin)).toContain('http://100.64.1.5:3333');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('tells the panel which addresses can open a microphone', async () => {
+    const { body } = await asClient('100.64.1.5:3333');
+    const tailnet = body.origins.find((o) => o.origin === 'http://100.64.1.5:3333');
+    expect(tailnet.secure).toBe(false);
   });
 
   it('HTTPS proxy: keeps the scheme and drops the default port', async () => {

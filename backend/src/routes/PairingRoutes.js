@@ -36,12 +36,17 @@ import { requireAuthHeader, extractToken, verifyAuthToken } from '../utils/authG
 import { rateLimit } from '../utils/rateLimit.js';
 import RemoteAccessConfig from '../services/RemoteAccessConfig.js';
 import NetworkIdentity from '../services/NetworkIdentity.js';
+import TailscaleServe from '../services/TailscaleServe.js';
 import { requirePaidFeature, hasFeature } from '../services/auth/planEntitlements.js';
 
 // Warm the network name at boot, so the first user to open the panel is not
 // the one who pays for the OS probe. Fire-and-forget by design: nothing waits
 // on it, and every failure path inside resolves to null.
 NetworkIdentity.primeNetworkName();
+// Same reasoning for the Tailscale HTTPS front door: the first user to open the
+// panel must not be the one who pays for the CLI probe, and until it settles
+// the panel would offer the plain-http tailnet address it is meant to replace.
+TailscaleServe.primeServeOrigin(process.env.PORT || 3333);
 import {
   candidateOrigins,
   evaluateReachability,
@@ -275,6 +280,9 @@ router.post(
             label: 'This Mac (localhost)',
             external: false,
             source: 'loopback',
+            // Loopback IS a secure context, so voice and the camera work here
+            // — which is the whole reason the Simulator path is worth keeping.
+            secure: true,
           },
         ];
 

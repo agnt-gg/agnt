@@ -225,6 +225,103 @@ describe('choosing the pairing address', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// "WHY IS THERE NO MICROPHONE ON MY PHONE?"
+//
+// A browser only grants a microphone or camera in a secure context. Over a
+// plain-http LAN or tailnet address the phone loses voice and the QR scanner
+// with NO error — the controls simply are not rendered. The panel is the only
+// place that knows which address was chosen, so it is the only place that can
+// explain the consequence before the user hits it.
+// ---------------------------------------------------------------------------
+describe('saying which addresses can do voice', () => {
+  const tailnetHttps = {
+    origins: [
+      { origin: 'https://box.tail1234.ts.net', source: 'tailscale-serve', label: 'This machine on Tailscale (HTTPS)', external: true, secure: true },
+      { origin: 'http://192.168.40.208:3333', source: 'interface', label: 'This machine on Wi-Fi', external: true, secure: false },
+    ],
+    urls: ['https://box.tail1234.ts.net', 'http://192.168.40.208:3333'],
+  };
+
+  it('prefers the HTTPS address, so voice works by default', async () => {
+    const w = await mountPanel(tailnetHttps);
+    expect(w.findAll('.pa-urls .pa-url')[0].classes()).toContain('active');
+    expect(w.text()).not.toMatch(/No microphone or camera/i);
+  });
+
+  it('flags the addresses that cannot open a microphone', async () => {
+    const w = await mountPanel(tailnetHttps);
+    const rows = w.findAll('.pa-urls .pa-url');
+    expect(rows[0].find('.pa-url-flag').exists()).toBe(false);
+    expect(rows[1].find('.pa-url-flag').exists()).toBe(true);
+  });
+
+  it('explains the loss when the user picks the plain-http address', async () => {
+    const w = await mountPanel(tailnetHttps);
+    await w.findAll('.pa-urls .pa-url')[1].trigger('click');
+    await flushPromises();
+    expect(w.text()).toMatch(/No microphone or camera/i);
+    expect(w.text()).toContain('https://box.tail1234.ts.net');
+  });
+
+  it('switches to the address that works, in one tap', async () => {
+    const w = await mountPanel(tailnetHttps);
+    await w.findAll('.pa-urls .pa-url')[1].trigger('click');
+    await flushPromises();
+    await w.find('.pa-inline-pick').trigger('click');
+    await flushPromises();
+    expect(w.vm.selectedOrigin).toBe('https://box.tail1234.ts.net');
+    expect(w.text()).not.toMatch(/No microphone or camera/i);
+  });
+
+  it('offers an alternative that can ACTUALLY open a microphone', async () => {
+    // Three candidates, and the first one that is merely "different" is still
+    // insecure. Pointing the user at it would move them from one address with
+    // no microphone to another — the fix has to be a fix.
+    const w = await mountPanel({
+      origins: [
+        { origin: 'http://100.64.1.5:3333', source: 'request', label: '', external: true, secure: false },
+        { origin: 'http://192.168.40.208:3333', source: 'interface', label: '', external: true, secure: false },
+        { origin: 'https://box.tail1234.ts.net', source: 'tailscale-serve', label: '', external: true, secure: true },
+      ],
+      urls: ['http://100.64.1.5:3333', 'http://192.168.40.208:3333', 'https://box.tail1234.ts.net'],
+    });
+    // Selection defaults to the first (insecure) origin, so the note is showing.
+    expect(w.text()).toMatch(/No microphone or camera/i);
+    expect(w.find('.pa-inline-pick').text()).toBe('https://box.tail1234.ts.net');
+
+    await w.find('.pa-inline-pick').trigger('click');
+    await flushPromises();
+    expect(w.text()).not.toMatch(/No microphone or camera/i);
+  });
+
+  it('does not dangle an alternative that does not exist', async () => {
+    // LAN only. Naming a better address here would be a lie, so the note says
+    // what is lost and what still works instead.
+    const w = await mountPanel({
+      origins: [{ origin: 'http://192.168.40.208:3333', source: 'interface', label: '', external: true, secure: false }],
+      urls: ['http://192.168.40.208:3333'],
+    });
+    expect(w.find('.pa-inline-pick').exists()).toBe(false);
+    expect(w.text()).toMatch(/will not be available/i);
+  });
+
+  it('works out the answer itself against a backend that does not send it', async () => {
+    // Older backend: absent `secure` must be COMPUTED, not assumed. Assuming
+    // secure hides a real limitation; assuming insecure invents one.
+    const w = await mountPanel({
+      origins: [
+        { origin: 'https://agnt.example.com', source: 'forwarded', label: '', external: true },
+        { origin: 'http://192.168.40.208:3333', source: 'interface', label: '', external: true },
+      ],
+      urls: ['https://agnt.example.com', 'http://192.168.40.208:3333'],
+    });
+    const rows = w.findAll('.pa-urls .pa-url');
+    expect(rows[0].find('.pa-url-flag').exists()).toBe(false);
+    expect(rows[1].find('.pa-url-flag').exists()).toBe(true);
+  });
+});
+
 describe('the prerequisite matches the chosen address', () => {
   it('drops the same-Wi-Fi demand for an address that does not need it', async () => {
     // Repeating "must be on the same Wi-Fi" for a public hostname sends the
