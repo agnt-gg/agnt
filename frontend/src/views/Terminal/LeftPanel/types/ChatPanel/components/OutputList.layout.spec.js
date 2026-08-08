@@ -11,9 +11,11 @@ const template = source.match(/<template>([\s\S]*?)<\/template>/)?.[1] ?? '';
 const style = source.match(/<style[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? '';
 
 describe('saved-chat toolbar narrow-width layout', () => {
-  it('lets New Chat wrap below the sort controls instead of overlapping Date', () => {
+  it('keeps the toolbar on one row and collapses New Chat to its plus icon', () => {
     expect(template).toMatch(/<button[^>]*v-tooltip="'New Chat'"[^>]*class="new-chat-btn"/);
-    expect(style).toMatch(/\.sort-controls\s*{[^}]*flex-wrap:\s*wrap;/s);
-    expect(style).toMatch(/\.new-chat-btn\s*{[^}]*white-space:\s*nowrap;/s);
+    expect(template).toMatch(/<span class="new-chat-label">New Chat<\/span>/);
+    expect(style).toMatch(/\.sort-controls\s*{[^}]*flex-wrap:\s*nowrap;/s);
+    expect(style).toMatch(/container-type:\s*inline-size;/);
+    expect(style).toMatch(/@container[^\{]*\(max-width:[^)]+\)[\s\S]*?\.new-chat-label\s*{[^}]*display:\s*none;/s);
   });
 });

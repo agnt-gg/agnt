@@ -55,7 +55,7 @@
             </div>
             <button v-tooltip="'New Chat'" @click="handleNewChat" class="new-chat-btn">
               <i class="fas fa-plus"></i>
-              <span>New Chat</span>
+              <span class="new-chat-label">New Chat</span>
             </button>
           </div>
 
@@ -1611,6 +1611,7 @@ div#saved-outputs {
   border: none !important;
   height: 100%;
   width: 100%;
+  container-type: inline-size;
 }
 
 .list-header {
@@ -1661,6 +1662,19 @@ div#saved-outputs {
   font-size: 11px;
 }
 
+/* Keep the toolbar on one line. Once its own container gets tight, retain the
+   familiar plus action and tooltip while dropping only the redundant label. */
+@container (max-width: 340px) {
+  .new-chat-btn {
+    gap: 0;
+    padding-inline: 9px;
+  }
+
+  .new-chat-label {
+    display: none;
+  }
+}
+
 .sortable-header {
   cursor: pointer;
 }
@@ -1682,7 +1696,7 @@ div#saved-outputs {
 
 .sort-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   gap: 8px;
   padding: 0 0 16px;
