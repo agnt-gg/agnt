@@ -13,6 +13,7 @@ import { createLlmClient } from './ai/LlmService.js';
 const __failoverMemory = new Map();
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
 import { buildProviderChain, runWithFallback } from './orchestrator/ProviderFallback.js';
+import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { recordLlmCall } from './execution/LedgerRecorder.js';
 import { updateEstimateCalibration, computeResidualDrift } from '../utils/contextManager.js';
@@ -921,6 +922,20 @@ async function universalChatHandler(req, res, context = {}) {
   // updateUserSettings with a fallback tier.
   let providerChain = [{ provider: normalizedProvider, model, tier: 0, primary: true }];
   try {
+    // Custom OpenAI-compatible providers are keyed by UUID and are absent from
+    // ProviderRegistry, so buildProviderChain drops them unless we hand it the
+    // user's active ids. createLlmAdapter already resolves such a provider at
+    // call time, so a custom tier runs fine once it survives chain building.
+    // Its own try/catch: a lookup failure must cost the custom tiers, not the
+    // whole turn.
+    let customProviderIds = [];
+    try {
+      const activeCustomProviders = await CustomOpenAIProviderService.getProvidersByUserId(userId);
+      customProviderIds = (activeCustomProviders || []).map((p) => p.id);
+    } catch (cpErr) {
+      console.warn('[Chat] Could not load custom providers for failover chain:', cpErr.message);
+    }
+
     // Phase 4: prefer the ACTIVE AGENT's own fallback chain when it has one
     // (fallbackEnabled). A coding agent pinned to Claude-Code should fail over
     // to ITS configured backups, not the user's global list. Only when the
@@ -935,6 +950,7 @@ async function universalChatHandler(req, res, context = {}) {
             model,
             fallbackEnabled: true,
             fallbackProviders: agentForFb.fallbackProviders,
+            customProviderIds,
           });
         }
       } catch (agErr) {
@@ -953,6 +969,7 @@ async function universalChatHandler(req, res, context = {}) {
           model,
           fallbackEnabled: fbSettings.fallbackEnabled,
           fallbackProviders: fbSettings.fallbackProviders,
+          customProviderIds,
         });
         if (providerChain.length > 1) {
           console.log('[Chat] Provider failover chain (user):', providerChain.map(t => `${t.provider}/${t.model || '(default model)'}`).join(' → '));
