@@ -12,8 +12,9 @@ class CustomOpenAIProviderService {
    */
   async testConnection(baseUrl, apiKey) {
     try {
-      // Normalize the base URL
-      let normalizedUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      // Normalize the base URL (trim — trailing space → /v1%20/v1/models)
+      let normalizedUrl = String(baseUrl || '').trim();
+      normalizedUrl = normalizedUrl.endsWith('/') ? normalizedUrl.slice(0, -1) : normalizedUrl;
 
       // If the URL doesn't end with /v1, add it (for OpenAI-compatible APIs like LM Studio)
       if (!normalizedUrl.endsWith('/v1')) {
@@ -209,7 +210,7 @@ class CustomOpenAIProviderService {
 
     if (base_url) {
       updateFields.push('base_url = ?');
-      updateValues.push(base_url);
+      updateValues.push(String(base_url).trim());
     }
 
     // Allow updating API key (including setting it to null/empty if passed as empty string)
@@ -294,7 +295,8 @@ class CustomOpenAIProviderService {
     }
 
     // Normalize base URL - ensure it ends with /v1 for OpenAI compatibility
-    let normalizedBaseUrl = base_url.endsWith('/') ? base_url.slice(0, -1) : base_url;
+    let normalizedBaseUrl = String(base_url || '').trim();
+    normalizedBaseUrl = normalizedBaseUrl.endsWith('/') ? normalizedBaseUrl.slice(0, -1) : normalizedBaseUrl;
     if (!normalizedBaseUrl.endsWith('/v1')) {
       normalizedBaseUrl = `${normalizedBaseUrl}/v1`;
     }
@@ -342,7 +344,8 @@ class CustomOpenAIProviderService {
 
     try {
       // Normalize the base URL
-      let normalizedUrl = provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url;
+      let normalizedUrl = String(provider.base_url || '').trim();
+      normalizedUrl = normalizedUrl.endsWith('/') ? normalizedUrl.slice(0, -1) : normalizedUrl;
 
       // If the URL doesn't end with /v1, add it (for OpenAI-compatible APIs like LM Studio)
       if (!normalizedUrl.endsWith('/v1')) {
