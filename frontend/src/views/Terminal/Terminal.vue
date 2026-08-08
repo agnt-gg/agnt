@@ -97,14 +97,13 @@ const screenComponents = shallowReactive({
   ),
 });
 
-// Warm the chunks in parallel. Swapping the resolved component in for the async
-// wrapper is an optimisation only — a failure here is not fatal, because the
-// wrapper already in the map can load (and recover) on demand.
+// Warm the chunks in parallel without replacing the registered async wrappers.
+// Component identity must remain stable once a wrapper can enter <KeepAlive>;
+// swapping in the resolved SFC later can make Vue deactivate a vnode that was
+// never activated by that KeepAlive instance, aborting unrelated renders.
 const preloadScreens = () => {
   for (const [name, loader] of screenLoaders) {
-    loader()
-      .then((mod) => { screenComponents[name] = markRaw(mod.default); })
-      .catch((err) => console.warn(`[preload] Failed to load ${name}:`, err));
+    loader().catch((err) => console.warn(`[preload] Failed to load ${name}:`, err));
   }
 };
 
@@ -227,11 +226,9 @@ export default {
       const currentScreen = activeScreen.value;
       const entry = screenLoaders.find(([name]) => name === currentScreen);
       if (entry) {
-        entry[1]()
-          .then((mod) => { screenComponents[currentScreen] = markRaw(mod.default); })
-          // Not fatal: the registry already holds a recovery-wrapped async
-          // component for this screen, which handles the stale-chunk case.
-          .catch((err) => console.warn(`[eager] Failed to load ${currentScreen}:`, err));
+        // Warm the chunk, but keep the recovery-wrapped component identity
+        // stable for the lifetime of <KeepAlive>.
+        entry[1]().catch((err) => console.warn(`[eager] Failed to load ${currentScreen}:`, err));
       }
 
       // Preload remaining screens AND prime dashboard data in the same idle
