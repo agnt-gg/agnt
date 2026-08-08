@@ -275,8 +275,9 @@ Available tags:
 
 - `latest` / `full`: latest Full variant with browser automation
 - `lite`: latest Lite variant without browser automation
-- `v0.6.6` / `v0.6.6-full`: specific Full version
-- `v0.6.6-lite`: specific Lite version
+- `0.6.6` / `0.6.6-full`: specific Full version
+- `0.6.6-lite`: specific Lite version
+- `0.6` / `0.6-lite`: latest patch on that minor line
 
 ### 🏗️ Build Docker images from source
 
