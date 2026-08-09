@@ -1,93 +1,63 @@
 /**
- * Browser Agent routes — drive the browser AGNT is rendering.
+ * Browser surface registration — how the backend learns which browser AGNT is
+ * currently rendering.
  *
- * The Browser widget hosts a real Chromium surface (an Electron <webview>) and
- * asks the main process for a CDP endpoint onto it. This route takes that
- * endpoint plus a task and runs the SAME action the workflow node uses, so the
- * widget and the node cannot drift: identical provider routing, identical
- * gateway tokens for subscription providers, identical model defaults,
- * identical structured-output handling.
+ * The Browser widget is a dumb surface: a real Chromium view and nothing else,
+ * no task box and no provider picker. It is driven from the workspace chat, the
+ * same way Workflow Forge is. So the widget's only job here is to say "there is
+ * a browser at this endpoint" while it is open, and to take that back when it
+ * closes. The Browser Agent action then finds it on its own — see
+ * services/browserSurfaces.js.
  *
- * The run is synchronous by design. There is no progress feed because there
- * does not need to be one — the user is watching the actual browser navigate,
- * click and type. The page IS the progress indicator, and it is a better one
- * than any step list.
+ * There is deliberately no `run` endpoint. A second way to start a browser task
+ * would be a second place for provider resolution, model defaults and gateway
+ * tokens to drift from the tool that already does all of it.
  */
 
 import express from 'express';
 import { authenticateToken } from './Middleware.js';
-import browserAgentAction from '../tools/library/actions/ai-browser-use.js';
-import { browserUseProviderOptions } from '../tools/library/actions/browserUseProviders.js';
+import { registerSurface, unregisterSurface, getActiveSurface } from '../services/browserSurfaces.js';
 
 const router = express.Router();
 
-/** Runs in flight, so a second Run on the same surface is refused rather than raced. */
-const activeRuns = new Map();
-
 /**
- * GET /api/browser-agent/providers
- * The provider list for the widget's dropdown, generated from the same routing
- * table the node uses — a hand-copied list here is how the node's dropdown got
- * stuck advertising three providers for a year.
+ * POST /api/browser-agent/surface
+ * Body: { instanceId, cdpUrl, url?, title? }
+ * Also used to refresh the current URL as the surface navigates.
  */
-router.get('/providers', authenticateToken, (req, res) => {
+router.post('/surface', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
-  return res.json({ success: true, providers: browserUseProviderOptions() });
+
+  const { instanceId, cdpUrl, url, title } = req.body || {};
+  if (!instanceId) return res.status(400).json({ success: false, error: 'instanceId is required.' });
+
+  // Refusing anything that is not a loopback bridge keeps this from becoming a
+  // way to point the agent at an arbitrary CDP endpoint on the network.
+  if (!registerSurface(req.user.id, instanceId, { cdpUrl, url, title })) {
+    return res.status(400).json({ success: false, error: 'That is not a local browser bridge endpoint.' });
+  }
+  return res.json({ success: true });
+});
+
+/** DELETE /api/browser-agent/surface/:instanceId */
+router.delete('/surface/:instanceId', authenticateToken, (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  return res.json({ success: true, removed: unregisterSurface(req.user.id, req.params.instanceId) });
 });
 
 /**
- * POST /api/browser-agent/run
- * Body: { task, cdpUrl, provider?, model?, maxSteps?, timeoutMinutes?, outputSchema? }
+ * GET /api/browser-agent/surface
+ * Diagnostic: which browser would a chat turn drive right now?
  */
-router.post('/run', authenticateToken, async (req, res) => {
+router.get('/surface', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
-
-  const { task, cdpUrl, provider, model, maxSteps, timeoutMinutes, outputSchema } = req.body || {};
-
-  if (!task || !String(task).trim()) {
-    return res.status(400).json({ success: false, error: 'A task is required.' });
-  }
-  if (!cdpUrl || !String(cdpUrl).trim()) {
-    // Without this the action would silently LAUNCH a browser instead of
-    // driving the one on screen — the user would watch an idle page while a
-    // hidden Chromium did the work somewhere else.
-    return res.status(400).json({ success: false, error: 'No browser surface was supplied for this run.' });
-  }
-  // The bridge is loopback-only and token-gated; refusing anything else here
-  // stops this route being turned into a way to reach an arbitrary endpoint.
-  if (!/^ws:\/\/127\.0\.0\.1:\d+\//.test(cdpUrl)) {
-    return res.status(400).json({ success: false, error: 'That is not a local browser surface.' });
-  }
-
-  if (activeRuns.has(cdpUrl)) {
-    return res.status(409).json({ success: false, error: 'This browser is already running a task.' });
-  }
-  activeRuns.set(cdpUrl, Date.now());
-
-  try {
-    const result = await browserAgentAction.execute(
-      {
-        instructions: String(task),
-        provider: provider || 'Gemini',
-        model: model || '',
-        cdpUrl: String(cdpUrl),
-        maxSteps: maxSteps || 25,
-        timeoutMinutes: timeoutMinutes || 10,
-        useVision: 'auto',
-        outputSchema: outputSchema || '',
-        generateGif: 'false',
-      },
-      {},
-      { userId: req.user.id },
-    );
-
-    return res.json({ success: result.success, result });
-  } catch (error) {
-    console.error('[BrowserAgentRoutes] run failed:', error);
-    return res.status(500).json({ success: false, error: error.message });
-  } finally {
-    activeRuns.delete(cdpUrl);
-  }
+  const surface = getActiveSurface(req.user.id);
+  // The bridge token is a credential for driving the user's browser; report
+  // that a surface exists without handing its endpoint back out.
+  return res.json({
+    success: true,
+    surface: surface ? { instanceId: surface.instanceId, url: surface.url, title: surface.title } : null,
+  });
 });
 
 export default router;

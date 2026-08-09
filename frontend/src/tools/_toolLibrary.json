@@ -1223,7 +1223,7 @@
         "cdpUrl": {
           "type": "string",
           "inputType": "text",
-          "description": "Optional. Drive an EXISTING browser over CDP instead of launching one. The Browser widget sets this automatically to point at the browser rendered inside AGNT. When set, headless and allowedDomains do not apply — the browser is not ours to configure."
+          "description": "Optional. Drive an EXISTING browser over CDP instead of launching one. Chat turns resolve this automatically to the Browser widget on the canvas, so it is normally left blank. When set, headless and allowedDomains do not apply — the browser is not ours to configure."
         }
       },
       "outputs": {

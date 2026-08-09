@@ -4345,64 +4345,53 @@ Base path: `/api/mcp`
 
 Base path: `/api/browser-agent`
 
-Drives the browser rendered **inside** AGNT by the Browser widget.
+Registers the browser AGNT is currently rendering, so a chat turn can drive it.
 
-The widget hosts a real Chromium surface (an Electron `<webview>`) and asks the
-main process for a CDP endpoint onto that one surface
-(`electron/CdpBridge.js`). This route takes that endpoint plus a task and runs
-the **same action the `ai-browser-use` workflow node uses**, so the widget and
-the node cannot drift apart: identical provider routing, identical gateway
-tokens for subscription providers, identical model defaults, identical
-structured-output handling.
+The Browser widget hosts a real Chromium surface (an Electron `<webview>`) and
+opens a CDP bridge onto that one surface (`electron/CdpBridge.js`). The widget
+has **no controls of its own** — no task box, no provider picker. It is steered
+from the workspace chat, exactly the way Workflow Forge is. These routes are
+only how the widget announces that a browser exists; the `ai_browser_use` tool
+finds it on its own (`services/browserSurfaces.js`).
 
-Runs are synchronous. There is deliberately no progress feed — the user is
-watching the actual browser navigate, click and type, which is a better progress
-indicator than any step list.
+There is deliberately **no run endpoint**. A second way to start a browser task
+would be a second place for provider resolution, model defaults and gateway
+tokens to drift from the tool that already does all of it.
 
-### List Providers
+### Register (or refresh) a surface
 
-**GET** `/providers`
-
-- **Authentication**: Required
-- **Description**: Provider names for the widget's dropdown, generated from the
-  same routing table the workflow node uses. Generated rather than hand-listed:
-  a copied list is how the node's dropdown stayed stuck on three providers.
-- **Response**: `{ "success": true, "providers": ["OpenAI", "Gemini", …] }`
-
-### Run a Task
-
-**POST** `/run`
+**POST** `/surface`
 
 - **Authentication**: Required
-- **Description**: Runs a browser-agent task against an already-open browser
-  surface. The agent attaches as a guest — it never launches or closes the
-  browser.
-- **Request body**:
+- **Body**: `{ instanceId, cdpUrl, url?, title? }`
+- **Description**: Announces a live browser surface. Re-posted on every
+  navigation, so the registry knows where each window is. When more than one
+  Browser widget is open, the most recently refreshed surface is the one a chat
+  turn drives — which is the window the user was last working in.
+- **Errors**: `400` when `cdpUrl` is not a loopback bridge
+  (`ws://127.0.0.1:<port>/<token>`). Accepting anything else would turn this
+  into a way to point the agent at an arbitrary CDP endpoint on the network.
 
-```json
-{
-  "task": "Find the top story and report its title and score",
-  "cdpUrl": "ws://127.0.0.1:53241/<per-session-token>",
-  "provider": "Gemini",
-  "model": "",
-  "maxSteps": 25,
-  "timeoutMinutes": 10,
-  "outputSchema": "{\"type\":\"object\", …}"
-}
-```
+### Withdraw a surface
 
-- **Response**: `{ success, result }` where `result` is the Browser Agent node's
-  output shape (`result`, `structuredOutput`, `isSuccessful`, `urls`, `steps`,
-  `agentErrors`, `error`).
-- **Errors**:
-  - `400` — no task; no `cdpUrl`; or a `cdpUrl` that is not a loopback
-    `ws://127.0.0.1:<port>/…` address. Without a surface the action would
-    silently *launch* a browser instead of driving the visible one, so this is
-    refused rather than defaulted.
-  - `409` — that browser is already running a task.
-  - `500` — the run threw.
+**DELETE** `/surface/:instanceId`
+
+- **Authentication**: Required
+- **Description**: Called when the widget unmounts. Withdrawing first matters:
+  an entry pointing at a bridge that is about to close would send the next chat
+  turn to a dead socket.
+
+### Which browser would run now
+
+**GET** `/surface`
+
+- **Authentication**: Required
+- **Description**: Diagnostic. Returns `{ instanceId, url, title }` or `null`.
+  The bridge endpoint is deliberately **not** returned — it is a credential for
+  driving the user's browser, not status.
 
 ---
+
 
 ## Local LLM Gateway Routes
 

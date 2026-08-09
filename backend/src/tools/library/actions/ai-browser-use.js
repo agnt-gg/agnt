@@ -8,6 +8,7 @@ import AuthManager from '../../../services/auth/AuthManager.js';
 import PathManager from '../../../utils/PathManager.js';
 import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
 import { mintGatewayToken, revokeGatewayToken } from '../../../services/ai/localGatewayTokens.js';
+import { waitForSurface } from '../../../services/browserSurfaces.js';
 import {
   ROUTE,
   resolveBrowserUseProvider,
@@ -133,8 +134,9 @@ class AIBrowserUse extends BaseAction {
         type: 'string',
         inputType: 'text',
         description: 'Optional. Drive an EXISTING browser over CDP instead of launching one. '
-          + 'The Browser widget sets this automatically to point at the browser rendered inside AGNT. '
-          + 'When set, headless and allowedDomains do not apply — the browser is not ours to configure.',
+          + 'Chat turns resolve this automatically to the Browser widget on the canvas, so it is '
+          + 'normally left blank. When set, headless and allowedDomains do not apply — the browser '
+          + 'is not ours to configure.',
       },
     },
     outputs: {
@@ -167,11 +169,16 @@ class AIBrowserUse extends BaseAction {
     let gatewayToken = null;
     let providerLabel = params.provider || 'The provider';
     try {
-      const llm = await this.buildLlmSpec(params, userId);
+      const resolved = {
+        ...params,
+        provider: this.resolveProvider(params, workflowEngine),
+        cdpUrl: await this.resolveSurface(params, workflowEngine, userId),
+      };
+      const llm = await this.buildLlmSpec(resolved, userId);
       gatewayToken = llm.gatewayToken;
       providerLabel = llm.providerName;
 
-      const config = this.buildRunnerConfig(params, instructions, llm);
+      const config = this.buildRunnerConfig(resolved, instructions, llm);
       const pythonExecutable = await this.ensureEnvironment();
       const outcome = await this.runRunner(pythonExecutable, config, params);
 
@@ -212,6 +219,72 @@ class AIBrowserUse extends BaseAction {
       // not a substitute for.
       if (gatewayToken) revokeGatewayToken(gatewayToken);
     }
+  }
+
+  // ── what a chat turn means ───────────────────────────────────────────
+
+  /**
+   * Was this run started by a conversation, or by a workflow?
+   *
+   * The orchestrator executes library actions with a stand-in engine built as
+   * `{ userId, ...context }` (tools.js), so a chat turn arrives carrying the
+   * conversation's own provider. A real WorkflowEngine has no such field. That
+   * one difference is what separates "the user is watching this" from "this is
+   * running in the background", and the two want opposite behaviour.
+   */
+  isChatRun(workflowEngine) {
+    return Boolean(workflowEngine?.provider || workflowEngine?.normalizedProvider);
+  }
+
+  /**
+   * Which provider drives the browser.
+   *
+   * From chat, the session's provider is AUTHORITATIVE and a model-supplied one
+   * is ignored — the same rule analyze_image already enforces. The user picked a
+   * provider for this workspace; an agent quietly running the browser on a
+   * different one would spend credits they did not choose to spend.
+   *
+   * From a workflow node, the node's own dropdown wins, because that IS a user
+   * choice and there is no conversation to inherit from.
+   *
+   * Only the PROVIDER is inherited, never the model: the chat model is chosen
+   * for conversation, and browser-use is a screenshot-driven agent. Letting
+   * defaultModelFor pick keeps it on a vision-capable model.
+   */
+  resolveProvider(params, workflowEngine) {
+    if (!this.isChatRun(workflowEngine)) return params.provider || 'OpenAI';
+
+    const session = workflowEngine.provider || workflowEngine.normalizedProvider;
+    if (params.provider && params.provider !== session) {
+      console.log(`[Browser Agent] ignoring requested provider "${params.provider}"; this conversation uses ${session}.`);
+    }
+    return session;
+  }
+
+  /**
+   * Which browser to drive.
+   *
+   * A chat turn drives the browser the user can SEE — the Browser widget on the
+   * canvas — which is the whole point of that widget. Calling this tool also
+   * auto-opens that widget, so the wait covers the race between this code and
+   * the window mounting.
+   *
+   * A workflow node never adopts the visible browser. A background automation
+   * seizing the window the user is reading, mid-scroll, is a worse failure than
+   * launching its own.
+   */
+  async resolveSurface(params, workflowEngine, userId, waitMs = 8000) {
+    const explicit = (params.cdpUrl || '').trim();
+    if (explicit) return explicit;
+    if (!this.isChatRun(workflowEngine)) return '';
+
+    const surface = await waitForSurface(userId, waitMs);
+    if (surface) return surface.cdpUrl;
+
+    // No window to drive — chat outside a workspace, or the desktop app is not
+    // hosting one. Launching is the honest fallback, not an error.
+    console.log('[Browser Agent] no browser surface is open; launching one instead.');
+    return '';
   }
 
   // ── provider → browser-use LLM spec ──────────────────────────────────────
