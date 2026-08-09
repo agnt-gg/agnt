@@ -77,7 +77,9 @@ class AIBrowserUse extends BaseAction {
         type: 'string',
         inputType: 'text',
         inputSize: 'half',
-        description: 'Model to use. Leave blank for the provider\'s default vision model.',
+        description: 'Model to use. Leave blank — chat turns inherit the conversation\'s own '
+          + 'model (workspace setting, or the account default), and a workflow node falls back '
+          + 'to the provider\'s default.',
       },
       maxSteps: {
         type: 'number',
@@ -172,6 +174,7 @@ class AIBrowserUse extends BaseAction {
       const resolved = {
         ...params,
         provider: this.resolveProvider(params, workflowEngine),
+        model: this.resolveModel(params, workflowEngine),
         cdpUrl: await this.resolveSurface(params, workflowEngine, userId),
       };
       const llm = await this.buildLlmSpec(resolved, userId);
@@ -247,9 +250,10 @@ class AIBrowserUse extends BaseAction {
    * From a workflow node, the node's own dropdown wins, because that IS a user
    * choice and there is no conversation to inherit from.
    *
-   * Only the PROVIDER is inherited, never the model: the chat model is chosen
-   * for conversation, and browser-use is a screenshot-driven agent. Letting
-   * defaultModelFor pick keeps it on a vision-capable model.
+   * PROVIDER AND MODEL ARE BOTH INHERITED. The user selects nothing: whatever
+   * the workspace is set to — or, when the workspace overrides nothing, the
+   * account default — is what drives the browser, exactly as it drives the
+   * conversation itself.
    */
   resolveProvider(params, workflowEngine) {
     if (!this.isChatRun(workflowEngine)) return params.provider || 'OpenAI';
@@ -257,6 +261,34 @@ class AIBrowserUse extends BaseAction {
     const session = workflowEngine.provider || workflowEngine.normalizedProvider;
     if (params.provider && params.provider !== session) {
       console.log(`[Browser Agent] ignoring requested provider "${params.provider}"; this conversation uses ${session}.`);
+    }
+    return session;
+  }
+
+  /**
+   * Which model drives the browser — the session's, exactly as chosen.
+   *
+   * This used to substitute a vision default of the tool's own choosing, on the
+   * reasoning that a chat model is picked for conversation while browser-use
+   * reads screenshots. That reasoning is wrong for the same reason it is wrong
+   * in analyze_image, which already carries the warning in its own source:
+   * "Use the user's session model exactly as-is. We don't substitute
+   * alternatives behind their back" — a substitution hides the real fix (change
+   * the model in settings) behind behaviour nobody asked for and cannot see.
+   *
+   * So the session model wins, and a model the LLM asks for is ignored, for the
+   * same reason the provider is. Blank only when the session has no model at
+   * all (a workflow node with an empty field), where defaultModelFor supplies
+   * the provider's own default rather than nothing.
+   */
+  resolveModel(params, workflowEngine) {
+    if (!this.isChatRun(workflowEngine)) return params.model || '';
+
+    const session = (workflowEngine.model || '').trim();
+    if (!session) return params.model || '';
+
+    if (params.model && params.model !== session) {
+      console.log(`[Browser Agent] ignoring requested model "${params.model}"; this conversation uses ${session}.`);
     }
     return session;
   }

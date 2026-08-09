@@ -77,15 +77,62 @@ describe('the provider comes from the conversation', () => {
     expect(action.resolveProvider({}, workflow())).toBe('OpenAI');
   });
 
-  it('inherits only the provider, never the chat model', async () => {
-    // The chat model is chosen for conversation; browser-use reads screenshots.
-    // Letting defaultModelFor choose keeps the run on a vision-capable model.
+});
+
+describe('the model comes from the conversation too', () => {
+  // The user selects NOTHING. Whatever the workspace is set to — or the account
+  // default when the workspace overrides nothing — drives the browser, exactly
+  // as it drives the conversation.
+  it('uses the session model exactly as chosen', () => {
+    expect(action.resolveModel({}, chat('Gemini', { model: 'gemini-3.1-pro-preview' })))
+      .toBe('gemini-3.1-pro-preview');
+  });
+
+  it('never substitutes a model of its own choosing', async () => {
+    // This is the regression. The tool used to override the session model with
+    // its own vision default, which is precisely what analyze_image's source
+    // warns against: substituting behind the user's back hides the real fix
+    // (change the model in settings) behind behaviour nobody can see.
+    const engine = chat('Gemini', { model: 'gemini-3.1-pro-preview' });
     const llm = await action.buildLlmSpec(
-      { provider: action.resolveProvider({}, chat('Gemini', { model: 'gemini-3.1-pro-preview' })) },
+      {
+        provider: action.resolveProvider({}, engine),
+        model: action.resolveModel({}, engine),
+      },
       'u1',
     );
     expect(llm.spec.class).toBe('ChatGoogle');
-    expect(llm.spec.kwargs.model).toBe('gemini-2.5-flash');
+    expect(llm.spec.kwargs.model).toBe('gemini-3.1-pro-preview');
+  });
+
+  it('ignores a model the MODEL asked for', () => {
+    expect(action.resolveModel({ model: 'gpt-4o-mini' }, chat('Gemini', { model: 'gemini-2.5-pro' })))
+      .toBe('gemini-2.5-pro');
+  });
+
+  it('falls back to the provider default when the session names no model', async () => {
+    // Blank, not broken: defaultModelFor supplies the provider's own default
+    // rather than sending an empty model id to the wire.
+    expect(action.resolveModel({}, chat('Gemini'))).toBe('');
+    const llm = await action.buildLlmSpec({ provider: 'Gemini', model: '' }, 'u1');
+    expect(llm.spec.kwargs.model).toBeTruthy();
+  });
+
+  it('still obeys the node field in a workflow', () => {
+    expect(action.resolveModel({ model: 'gpt-4.1' }, workflow())).toBe('gpt-4.1');
+    expect(action.resolveModel({}, workflow())).toBe('');
+  });
+
+  it('carries the session model into a gateway grant', async () => {
+    // Subscription providers mint a token bound to one model. Inheriting the
+    // session model means the grant is for the model the user actually chose.
+    const engine = chat('Claude Code', { model: 'claude-opus-5' });
+    const llm = await action.buildLlmSpec(
+      { provider: action.resolveProvider({}, engine), model: action.resolveModel({}, engine) },
+      'u1',
+    );
+    const { verifyGatewayToken } = await import('../../../services/ai/localGatewayTokens.js');
+    expect(verifyGatewayToken(llm.spec.kwargs.api_key)).toMatchObject({ model: 'claude-opus-5' });
   });
 });
 

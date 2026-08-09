@@ -1159,7 +1159,7 @@
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "Model to use. Leave blank for the provider's default vision model."
+          "description": "Model to use. Leave blank — chat turns inherit the conversation's own model (workspace setting, or the account default), and a workflow node falls back to the provider's default."
         },
         "maxSteps": {
           "type": "number",
