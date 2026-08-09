@@ -156,7 +156,8 @@
         </div>
 
         <WidgetFrame
-          v-for="instance in activeWidgets"
+          v-for="instance in renderedWidgets"
+          v-show="workspaceIdFor(instance.instanceId) === activeId"
           :key="instance.instanceId"
           :widget="instance"
           :cellWidth="cellWidth"
@@ -207,6 +208,7 @@
                 :is="componentFor(instance.widgetId)"
                 v-if="componentFor(instance.widgetId)"
                 :widgetInstanceId="instance.instanceId"
+                :workspaceId="workspaceIdFor(instance.instanceId)"
                 v-bind="customDefFor(instance.widgetId) ? { definition: customDefFor(instance.widgetId) } : {}"
                 @screen-change="(s, o) => onEmbedScreenChange(s, o, instance.instanceId)"
                 @navigate="(s, o) => onEmbedScreenChange(s, o, instance.instanceId)"
@@ -339,6 +341,26 @@ export default {
       setWorkspaceAi,
       setChannelConversation,
     } = useWorkspaces();
+
+    /**
+     * What stays mounted while the user changes workspace tabs.
+     *
+     * Ordinary widgets belong only to the visible workspace. Browser widgets
+     * are different: their Electron <webview> IS the live page. Unmounting it
+     * destroys the webContents, closes its CDP bridge and remounts at
+     * about:blank when the user returns. So every browser remains mounted and
+     * is merely hidden with v-show; switching tabs changes visibility, never
+     * browser lifetime. Closing the widget/workspace still removes it normally.
+     */
+    // Return the ORIGINAL instance objects. WidgetFrame mutates their geometry
+    // during drag/resize; cloning here would make the frame edit a disposable
+    // copy and silently lose the gesture on the next computed refresh.
+    const renderedWidgets = computed(() => workspaces.value.flatMap((ws) =>
+      ws.widgets.filter((instance) => instance.visible !== false
+        && (ws.id === activeId.value || instance.widgetId === 'browser')),
+    ));
+    const workspaceIdFor = (instanceId) =>
+      workspaces.value.find((ws) => ws.widgets.some((instance) => instance.instanceId === instanceId))?.id || '';
 
     // ── per-workspace AI provider picker ────────────────────────────
     // Tab badge = set/show THIS workspace's AI. Top-right CanvasScreen
@@ -519,7 +541,9 @@ export default {
     // ── chat rail width ──────────────────────────────────────────────
 
     // ── opening widgets (user or Annie) ──────────────────────────────
-    const open = (widgetId, { objectId = '', routeParam = '', custom = false, at = null } = {}) => {
+    const open = (widgetId, {
+      objectId = '', routeParam = '', custom = false, at = null, allowDuplicate = false,
+    } = {}) => {
       if (custom) {
         // Make sure the definition is loadable before the renderer asks for it.
         store.dispatch('widgetDefinitions/ensureDefinitionLoaded', widgetId).catch(() => {});
@@ -532,7 +556,7 @@ export default {
       // Point the target screen at the object the same way it is pointed
       // today: Workflow/Tool Forge read a route query param.
       applyRouteParam(routeParam, objectId);
-      addWidget(widgetId, at);
+      addWidget(widgetId, at, { allowDuplicate });
     };
 
     // ── embedded screen-change → canvas action ──────────────────────
@@ -723,6 +747,15 @@ export default {
           openWidgets: active.value.widgets.map((w) => w.widgetId),
           layout: 'grid',
           surfaces: manifest,
+          // Browser identity is captured when the turn is sent, exactly like
+          // workspace identity. If this workspace has several browsers, the
+          // front-most one is the one "this browser" means. The backend resolves
+          // this exact id; another workspace can never steal the turn merely by
+          // navigating more recently.
+          browserInstanceId: federationOrder.value.find((w) => w.widgetId === 'browser')?.instanceId || null,
+          browserInstances: federationOrder.value
+            .filter((w) => w.widgetId === 'browser')
+            .map((w) => w.instanceId),
         },
       };
     });
@@ -958,6 +991,7 @@ export default {
         routeParam: item.routeParam || '',
         custom: !!item.custom,
         at,
+        allowDuplicate: item.widgetId === 'browser',
       });
     };
 
@@ -1071,6 +1105,7 @@ export default {
         routeParam: item.routeParam || '',
         custom: !!item.custom,
         at: pendingAt.value,
+        allowDuplicate: item.widgetId === 'browser',
       });
       pendingAt.value = null;
       paletteOpen.value = false;
@@ -1163,6 +1198,8 @@ export default {
       activeId,
       active,
       activeWidgets,
+      renderedWidgets,
+      workspaceIdFor,
       autoOpen,
       setActive,
       createWorkspace,

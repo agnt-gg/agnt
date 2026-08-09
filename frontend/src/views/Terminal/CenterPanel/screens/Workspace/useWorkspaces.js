@@ -913,21 +913,28 @@ export function useWorkspaces() {
   /**
    * Add a widget instance to the active workspace.
    *
-   * One instance per widgetId here (unlike a custom page, which allows
-   * duplicates) because instances are opened programmatically by Annie's tool
-   * calls — auto-open firing twice must focus the existing window, not stack
-   * a second copy of the same screen on top of it.
+   * Most tool surfaces are singletons because auto-open firing twice should
+   * focus the existing window, not stack duplicates. Chat and Browser are the
+   * deliberate exceptions: each chat is a separate conversation, and each
+   * browser is a separate live page/agent target with its own instance id.
    */
-  function addWidget(widgetId, at = null, { workspaceId } = {}) {
+  function addWidget(widgetId, at = null, { workspaceId, allowDuplicate = false } = {}) {
     if (!widgetId) return null;
     const ws = resolveWorkspace(workspaceId);
     if (!ws) return null;
-    // One instance per widgetId — EXCEPT chat. The dedupe exists so Annie's
-    // auto-open firing twice focuses the existing window instead of stacking
-    // a second copy; chat is opened by the USER, and a user adding a chat
-    // wants another conversation, not a focus of the one they already have.
-    if (widgetId !== 'workspace-chat') {
-      const existing = ws.widgets.find((w) => w.widgetId === widgetId);
+    // Chat is always user-created and plural. Browser is plural only for an
+    // explicit user add; tool auto-open must focus the workspace browser it
+    // just targeted instead of creating a fresh blank one on every call.
+    const plural = widgetId === 'workspace-chat' || (widgetId === 'browser' && allowDuplicate);
+    if (!plural) {
+      // For a plural-capable Browser, tool auto-open focuses the browser that
+      // was already front-most — the same one workspacePageState captured for
+      // the chat turn. Array-first would visually raise browser A while the
+      // backend correctly drove browser B by id.
+      const matching = ws.widgets.filter((w) => w.widgetId === widgetId);
+      const existing = widgetId === 'browser'
+        ? matching.sort((a, b) => (b.zIndex || 1) - (a.zIndex || 1))[0]
+        : matching[0];
       if (existing) {
         existing.visible = true;
         // Dragging an already-open widget onto the canvas MOVES it. The

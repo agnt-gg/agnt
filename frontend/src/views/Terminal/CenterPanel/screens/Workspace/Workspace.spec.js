@@ -407,6 +407,31 @@ describe('useWorkspaces — widget instances', () => {
     expect(typeof inst.zIndex).toBe('number');
   });
 
+  it('allows explicit Browser additions to create independent instances', async () => {
+    const ws = await freshWorkspaces();
+    const first = ws.addWidget('browser', null, { allowDuplicate: true });
+    const second = ws.addWidget('browser', null, { allowDuplicate: true });
+
+    expect(second).not.toBe(first);
+    expect(ws.active.value.widgets.filter((w) => w.widgetId === 'browser')).toHaveLength(2);
+  });
+
+  it('keeps Browser auto-open idempotent', async () => {
+    const ws = await freshWorkspaces();
+    const first = ws.addWidget('browser');
+    const second = ws.addWidget('browser');
+    expect(second).toBe(first);
+    expect(ws.active.value.widgets.filter((w) => w.widgetId === 'browser')).toHaveLength(1);
+  });
+
+  it('auto-open focuses the front-most Browser when several exist', async () => {
+    const ws = await freshWorkspaces();
+    const first = ws.addWidget('browser', null, { allowDuplicate: true });
+    const second = ws.addWidget('browser', null, { allowDuplicate: true });
+    expect(ws.addWidget('browser')).toBe(second);
+    expect(ws.addWidget('browser')).not.toBe(first);
+  });
+
   it('is singleton per widgetId — re-adding focuses instead of stacking', async () => {
     const ws = await freshWorkspaces();
     const first = ws.addWidget('goals');
@@ -766,6 +791,8 @@ describe('Workspace.vue', () => {
       const wrapper = await mountPage();
       const state = pageStateOf(wrapper);
       expect(state.workspaceState.surfaces).toEqual([]);
+      expect(state.workspaceState.browserInstanceId).toBeNull();
+      expect(state.workspaceState.browserInstances).toEqual([]);
       expect(Object.keys(state)).toEqual(['workspaceState']);
     });
 
@@ -1116,6 +1143,29 @@ describe('Workspace.vue', () => {
 
       expect(modal.vm.message).toContain(name);
     });
+  });
+
+  it('keeps a Browser frame mounted when its workspace tab becomes inactive', async () => {
+    const wrapper = await mountPage();
+    const { useWorkspaces } = await import('./useWorkspaces.js');
+    const ws = useWorkspaces();
+    const firstWorkspaceId = ws.active.value.id;
+    ws.addWidget('browser', null, { allowDuplicate: true });
+    await wrapper.vm.$nextTick();
+
+    const before = wrapper.findAllComponents({ name: 'WidgetFrame' })
+      .filter((frame) => frame.props('widget').widgetId === 'browser');
+    expect(before).toHaveLength(1);
+
+    ws.createWorkspace('Second'); // makes the new workspace active
+    await wrapper.vm.$nextTick();
+
+    const after = wrapper.findAllComponents({ name: 'WidgetFrame' })
+      .filter((frame) => frame.props('widget').widgetId === 'browser');
+    expect(ws.active.value.id).not.toBe(firstWorkspaceId);
+    expect(after).toHaveLength(1); // hidden with v-show, NOT unmounted
+    expect(after[0].props('widget').instanceId).toBe(before[0].props('widget').instanceId);
+    expect(after[0].isVisible()).toBe(false);
   });
 
   it('mounts a REAL WidgetFrame per instance when widgets are added', async () => {

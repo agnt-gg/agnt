@@ -62,18 +62,35 @@ describe('finding the browser a chat turn means', () => {
     expect(getActiveSurface('u1').instanceId).toBe('w_1');
   });
 
-  it('picks the window that moved most recently', async () => {
-    registerSurface('u1', 'w_1', { cdpUrl: 'ws://127.0.0.1:1111/aaa' });
+  it('resolves an exact instance inside its owning workspace', () => {
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: 'ws://127.0.0.1:1111/aaa' });
+    registerSurface('u1', 'w_b', { workspaceId: 'ws_b', cdpUrl: 'ws://127.0.0.1:2222/bbb' });
+
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a', instanceId: 'w_a' }).cdpUrl)
+      .toContain(':1111/');
+    // An instance id may not be smuggled across a workspace boundary.
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a', instanceId: 'w_b' })).toBeNull();
+  });
+
+  it('never falls through from a workspace to another workspace', () => {
+    registerSurface('u1', 'w_b', { workspaceId: 'ws_b', cdpUrl: CDP });
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a' })).toBeNull();
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a', instanceId: 'missing' })).toBeNull();
+  });
+
+  it('picks the newest window only inside the selected workspace', async () => {
+    registerSurface('u1', 'w_1', { workspaceId: 'ws_a', cdpUrl: 'ws://127.0.0.1:1111/aaa' });
     await new Promise((r) => setTimeout(r, 5));
-    registerSurface('u1', 'w_2', { cdpUrl: 'ws://127.0.0.1:2222/bbb' });
-    expect(getActiveSurface('u1').instanceId).toBe('w_2');
+    registerSurface('u1', 'w_2', { workspaceId: 'ws_a', cdpUrl: 'ws://127.0.0.1:2222/bbb' });
+    registerSurface('u1', 'w_other', { workspaceId: 'ws_b', cdpUrl: 'ws://127.0.0.1:3333/ccc' });
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a' }).instanceId).toBe('w_2');
 
     // Navigating in the first window re-announces it, which is the honest
     // signal for "the one the user is actually working in".
     await new Promise((r) => setTimeout(r, 5));
-    registerSurface('u1', 'w_1', { cdpUrl: 'ws://127.0.0.1:1111/aaa', url: 'https://example.com' });
-    expect(getActiveSurface('u1').instanceId).toBe('w_1');
-    expect(getActiveSurface('u1').url).toBe('https://example.com');
+    registerSurface('u1', 'w_1', { workspaceId: 'ws_a', cdpUrl: 'ws://127.0.0.1:1111/aaa', url: 'https://example.com' });
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a' }).instanceId).toBe('w_1');
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a' }).url).toBe('https://example.com');
   });
 
   it('forgets a window that closed', () => {
@@ -87,20 +104,20 @@ describe('finding the browser a chat turn means', () => {
 describe('waiting for a window that is still opening', () => {
   it('returns immediately when one is already there', async () => {
     registerSurface('u1', 'w_1', { cdpUrl: CDP });
-    expect((await waitForSurface('u1', 500, 10)).instanceId).toBe('w_1');
+    expect((await waitForSurface('u1', {}, 500, 10)).instanceId).toBe('w_1');
   });
 
   it('waits for a window that appears a moment later', async () => {
     // The real race: calling ai_browser_use auto-opens the Browser widget, so
     // the tool starts looking before the window has finished mounting.
     setTimeout(() => registerSurface('u1', 'w_late', { cdpUrl: CDP }), 60);
-    const surface = await waitForSurface('u1', 1000, 10);
+    const surface = await waitForSurface('u1', {}, 1000, 10);
     expect(surface.instanceId).toBe('w_late');
   });
 
   it('gives up rather than hanging when no window ever appears', async () => {
     const started = Date.now();
-    expect(await waitForSurface('u1', 80, 10)).toBeNull();
+    expect(await waitForSurface('u1', {}, 80, 10)).toBeNull();
     expect(Date.now() - started).toBeLessThan(1000);
   });
 });

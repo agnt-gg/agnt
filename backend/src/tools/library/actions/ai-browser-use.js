@@ -310,12 +310,16 @@ class AIBrowserUse extends BaseAction {
     if (explicit) return explicit;
     if (!this.isChatRun(workflowEngine)) return '';
 
-    const surface = await waitForSurface(userId, waitMs);
+    const workspaceId = workflowEngine?.workspaceState?.id || null;
+    const instanceId = workflowEngine?.workspaceState?.browserInstanceId || null;
+    const surface = await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
     if (surface) return surface.cdpUrl;
 
     // No window to drive — chat outside a workspace, or the desktop app is not
     // hosting one. Launching is the honest fallback, not an error.
-    console.log('[Browser Agent] no browser surface is open; launching one instead.');
+    console.log(
+      `[Browser Agent] no browser surface is open for ${instanceId || workspaceId || 'this chat'}; launching one instead.`,
+    );
     return '';
   }
 

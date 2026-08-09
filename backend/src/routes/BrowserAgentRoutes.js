@@ -22,18 +22,18 @@ const router = express.Router();
 
 /**
  * POST /api/browser-agent/surface
- * Body: { instanceId, cdpUrl, url?, title? }
+ * Body: { instanceId, workspaceId?, cdpUrl, url?, title? }
  * Also used to refresh the current URL as the surface navigates.
  */
 router.post('/surface', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
 
-  const { instanceId, cdpUrl, url, title } = req.body || {};
+  const { instanceId, workspaceId, cdpUrl, url, title } = req.body || {};
   if (!instanceId) return res.status(400).json({ success: false, error: 'instanceId is required.' });
 
   // Refusing anything that is not a loopback bridge keeps this from becoming a
   // way to point the agent at an arbitrary CDP endpoint on the network.
-  if (!registerSurface(req.user.id, instanceId, { cdpUrl, url, title })) {
+  if (!registerSurface(req.user.id, instanceId, { workspaceId, cdpUrl, url, title })) {
     return res.status(400).json({ success: false, error: 'That is not a local browser bridge endpoint.' });
   }
   return res.json({ success: true });
@@ -51,12 +51,20 @@ router.delete('/surface/:instanceId', authenticateToken, (req, res) => {
  */
 router.get('/surface', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
-  const surface = getActiveSurface(req.user.id);
+  const surface = getActiveSurface(req.user.id, {
+    instanceId: req.query.instanceId || null,
+    workspaceId: req.query.workspaceId || null,
+  });
   // The bridge token is a credential for driving the user's browser; report
   // that a surface exists without handing its endpoint back out.
   return res.json({
     success: true,
-    surface: surface ? { instanceId: surface.instanceId, url: surface.url, title: surface.title } : null,
+    surface: surface ? {
+      instanceId: surface.instanceId,
+      workspaceId: surface.workspaceId,
+      url: surface.url,
+      title: surface.title,
+    } : null,
   });
 });
 

@@ -137,9 +137,21 @@ describe('the model comes from the conversation too', () => {
 });
 
 describe('the browser comes from the canvas', () => {
-  it('adopts the Browser widget that is open', async () => {
-    registerSurface('u1', 'w_1', { cdpUrl: CDP });
-    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50)).toBe(CDP);
+  it('adopts the exact Browser widget captured by the chat turn', async () => {
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
+    registerSurface('u1', 'w_b', { workspaceId: 'ws_b', cdpUrl: 'ws://127.0.0.1:4444/other' });
+    const engine = chat('Gemini', {
+      workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
+    });
+    expect(await action.resolveSurface({}, engine, 'u1', 50)).toBe(CDP);
+  });
+
+  it('does not let another workspace steal the turn', async () => {
+    registerSurface('u1', 'w_b', { workspaceId: 'ws_b', cdpUrl: CDP });
+    const engine = chat('Gemini', {
+      workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
+    });
+    expect(await action.resolveSurface({}, engine, 'u1', 50)).toBe('');
   });
 
   it('never adopts another user\'s window', async () => {

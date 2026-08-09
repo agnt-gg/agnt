@@ -28,6 +28,9 @@ import { useSurfaceContribution } from '@/canvas/surfaceFederation.js';
 
 const props = defineProps({
   widgetInstanceId: { type: String, default: '' },
+  // Stable owner identity. A browser id is globally unique in practice, but
+  // workspaceId is what binds a chat turn to the right family of surfaces.
+  workspaceId: { type: String, default: '' },
 });
 
 const viewRef = ref(null);
@@ -66,6 +69,7 @@ async function announce() {
       headers: authHeaders(),
       body: JSON.stringify({
         instanceId: props.widgetInstanceId,
+        workspaceId: props.workspaceId,
         cdpUrl,
         url: pageUrl.value,
         title: pageTitle.value,
