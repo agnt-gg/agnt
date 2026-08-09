@@ -46,8 +46,15 @@ import { authHeader, getSessionToken } from './sessionTokenCache.js';
  * flipping "plan gates" does not have to remember that local is different.
  */
 
-/** Mirrors PLAN_DETAILS in the API's config/plans.js. Free is the only denier. */
-const PAID_PLANS = new Set(['personal', 'business', 'enterprise']);
+/** Mirrors PLAN_DETAILS in the API's config/plans.js. Free is the only denier.
+ *
+ * *** EVERY PAID TIER MUST BE LISTED HERE. *** This set is the difference
+ * between a paying customer and a denied one: a plan that exists in the API
+ * but is missing from this line is treated exactly like `free`, so the moment
+ * gates move from shadow to enforce, those customers lose the features they
+ * are paying for. `always_on` was added with the 2026-08 pricing; anything
+ * added to PLAN_DETAILS after this comment belongs here on the same day. */
+const PAID_PLANS = new Set(['personal', 'always_on', 'business', 'enterprise']);
 
 /**
  * Features this module can answer for. Kept explicit rather than mirroring the

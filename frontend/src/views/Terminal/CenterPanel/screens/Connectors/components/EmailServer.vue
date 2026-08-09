@@ -27,7 +27,7 @@
           <div class="email-server-details">
             <span class="label">Email:</span>
             <code class="detail-text">workflow-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx@agnt.gg</code>
-            <Tooltip text="Upgrade to PRO to access email listeners" width="auto">
+            <Tooltip text="Upgrade to Personal Cloud to access email listeners" width="auto">
               <button class="copy-btn disabled" disabled>
                 <i class="fas fa-copy"></i>
                 <i class="fas fa-lock lock-icon"></i>
@@ -52,7 +52,7 @@
       </div>
       <div class="locked-overlay">
         <i class="fas fa-lock"></i>
-        <p>Upgrade to PRO to unlock</p>
+        <p>Upgrade to Personal Cloud to unlock</p>
       </div>
     </div>
 
@@ -68,7 +68,7 @@
           <div class="email-server-details">
             <span class="label">Email:</span>
             <code class="detail-text">{{ listener.email_address }}</code>
-            <Tooltip :text="isPro ? 'Copy Email Address' : 'Upgrade to PRO to access email listeners'" width="auto">
+            <Tooltip :text="isPro ? 'Copy Email Address' : 'Upgrade to Personal Cloud to access email listeners'" width="auto">
               <button
                 class="copy-btn"
                 @click="isPro ? copyToClipboard(listener.email_address, listener.id) : null"

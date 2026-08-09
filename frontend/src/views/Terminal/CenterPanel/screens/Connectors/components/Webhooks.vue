@@ -27,7 +27,7 @@
           <div class="webhook-url">
             <span class="label">URL:</span>
             <code class="url-text">https://api.agnt.gg/webhooks/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>
-            <Tooltip text="Upgrade to PRO to access webhooks" width="auto">
+            <Tooltip text="Upgrade to Personal Cloud to access webhooks" width="auto">
               <button class="copy-btn disabled" disabled>
                 <i class="fas fa-copy"></i>
                 <i class="fas fa-lock lock-icon"></i>
@@ -56,7 +56,7 @@
       </div>
       <div class="locked-overlay">
         <i class="fas fa-lock"></i>
-        <p>Upgrade to PRO to unlock</p>
+        <p>Upgrade to Personal Cloud to unlock</p>
       </div>
     </div>
 
@@ -72,7 +72,7 @@
           <div class="webhook-url">
             <span class="label">URL:</span>
             <code class="url-text">{{ webhook.webhook_url }}</code>
-            <Tooltip :text="isPro ? 'Copy URL' : 'Upgrade to PRO to access webhooks'" width="auto">
+            <Tooltip :text="isPro ? 'Copy URL' : 'Upgrade to Personal Cloud to access webhooks'" width="auto">
               <button
                 class="copy-btn"
                 @click="isPro ? copyToClipboard(webhook.webhook_url, webhook.id) : null"

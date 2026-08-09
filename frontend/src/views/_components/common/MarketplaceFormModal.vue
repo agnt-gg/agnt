@@ -386,21 +386,34 @@ export default {
       emit('setup-stripe');
     };
 
+    /* Marketplace seller fee bands, mirroring the switch in the API's
+       StripeController. NO RATE IS CHANGED HERE. always_on is added because it
+       shares Personal's 10% - the same single-operator plan on a different
+       machine cadence - and because a plan MISSING from this table reached
+       `tiers[planType].earnings` and threw, taking the whole publish modal
+       down for that customer.
+
+       One table, used by both readouts: they were duplicated, which is how a
+       new tier gets added to one and forgotten in the other. */
+    const sellerTiers = (price) => ({
+      enterprise: { fee: 0, earnings: price * 1.0, label: 'Enterprise (0% fee)' },
+      business: { fee: 5, earnings: price * 0.95, label: 'Business (5% fee)' },
+      personal: { fee: 10, earnings: price * 0.9, label: 'Personal (10% fee)' },
+      always_on: { fee: 10, earnings: price * 0.9, label: 'Always-On (10% fee)' },
+      free: { fee: 20, earnings: price * 0.8, label: 'Free (20% fee)' },
+    });
+
     const getRevenueMainText = () => {
       if (formData.value.price <= 0) return '';
 
       const price = formData.value.price;
       const planType = store.getters['userAuth/planType'] || 'free';
+      const tiers = sellerTiers(price);
 
-      // Calculate earnings for each buyer tier
-      const tiers = {
-        enterprise: { fee: 0, earnings: price * 1.0, label: 'Enterprise (0% fee)' },
-        business: { fee: 5, earnings: price * 0.95, label: 'Business (5% fee)' },
-        personal: { fee: 10, earnings: price * 0.9, label: 'Personal (10% fee)' },
-        free: { fee: 20, earnings: price * 0.8, label: 'Free (20% fee)' },
-      };
-
-      const userTier = tiers[planType];
+      /* An unrecognised plan must never crash the modal. Quoting the free rate
+         is the conservative answer: it can only understate what a seller
+         earns, never promise them more than they will get. */
+      const userTier = tiers[planType] || tiers.free;
       const userEarnings = userTier.earnings.toFixed(2);
 
       return `As a ${userTier.label} seller, you'll earn $${userEarnings} per sale.`;
@@ -409,19 +422,14 @@ export default {
     const getRevenueComparisonText = () => {
       if (formData.value.price <= 0) return '';
 
-      const price = formData.value.price;
+      const tiers = sellerTiers(formData.value.price);
 
-      // Calculate earnings for each buyer tier
-      const tiers = {
-        enterprise: { fee: 0, earnings: price * 1.0, label: 'Enterprise (0% fee)' },
-        business: { fee: 5, earnings: price * 0.95, label: 'Business (5% fee)' },
-        personal: { fee: 10, earnings: price * 0.9, label: 'Personal (10% fee)' },
-        free: { fee: 20, earnings: price * 0.8, label: 'Free (20% fee)' },
-      };
-
-      // Build comparison text
-      const allTiers = Object.entries(tiers)
-        .map(([key, tier]) => `${tier.label}: $${tier.earnings.toFixed(2)}`)
+      /* One line per distinct fee band. Personal and Always-On pay the same
+         rate, so listing both would just print the same number twice. */
+      const seenFees = new Set();
+      const allTiers = Object.values(tiers)
+        .filter((tier) => !seenFees.has(tier.fee) && seenFees.add(tier.fee))
+        .map((tier) => `${tier.label}: $${tier.earnings.toFixed(2)}`)
         .join(' • ');
 
       return `All tiers: ${allTiers}`;

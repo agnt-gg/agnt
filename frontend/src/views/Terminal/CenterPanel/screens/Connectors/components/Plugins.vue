@@ -97,7 +97,7 @@
       </div>
       <div class="locked-overlay">
         <i class="fas fa-lock"></i>
-        <p>Upgrade to PRO to unlock</p>
+        <p>Upgrade to Personal Cloud to unlock</p>
       </div>
     </div>
 
