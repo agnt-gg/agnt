@@ -1038,6 +1038,11 @@
           "type": "string",
           "inputType": "textarea",
           "description": "Optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder."
+        },
+        "cdpUrl": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Optional. Drive an EXISTING browser over CDP instead of launching one. The Browser widget sets this automatically to point at the browser rendered inside AGNT. When set, headless and allowedDomains do not apply — the browser is not ours to configure."
         }
       },
       "outputs": {

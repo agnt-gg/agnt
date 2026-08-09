@@ -9,6 +9,14 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // Update system - invoke handlers (async with response)
+  // Browser widget: expose a CDP endpoint for the <webview> the widget renders,
+  // so an agent can drive the browser the user is looking at. Scoped by
+  // webContents id — the renderer cannot ask for a bridge to anything else,
+  // and main.js validates the id before attaching a debugger.
+  browserBridge: {
+    start: (webContentsId) => ipcRenderer.invoke('browser-bridge:start', webContentsId),
+    stop: (webContentsId) => ipcRenderer.invoke('browser-bridge:stop', webContentsId),
+  },
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 

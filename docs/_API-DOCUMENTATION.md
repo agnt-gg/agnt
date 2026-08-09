@@ -25,6 +25,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Layout Routes](#layout-routes)
 - [Ledger Routes](#ledger-routes)
 - [MCP Routes](#mcp-routes)
+- [Browser Agent Routes](#browser-agent-routes)
 - [Memory Routes](#memory-routes)
 - [Local LLM Gateway Routes](#local-llm-gateway-routes)
 - [Model Routes](#model-routes)
@@ -4337,6 +4338,69 @@ Base path: `/api/mcp`
   }
 }
 ```
+
+---
+
+## Browser Agent Routes
+
+Base path: `/api/browser-agent`
+
+Drives the browser rendered **inside** AGNT by the Browser widget.
+
+The widget hosts a real Chromium surface (an Electron `<webview>`) and asks the
+main process for a CDP endpoint onto that one surface
+(`electron/CdpBridge.js`). This route takes that endpoint plus a task and runs
+the **same action the `ai-browser-use` workflow node uses**, so the widget and
+the node cannot drift apart: identical provider routing, identical gateway
+tokens for subscription providers, identical model defaults, identical
+structured-output handling.
+
+Runs are synchronous. There is deliberately no progress feed — the user is
+watching the actual browser navigate, click and type, which is a better progress
+indicator than any step list.
+
+### List Providers
+
+**GET** `/providers`
+
+- **Authentication**: Required
+- **Description**: Provider names for the widget's dropdown, generated from the
+  same routing table the workflow node uses. Generated rather than hand-listed:
+  a copied list is how the node's dropdown stayed stuck on three providers.
+- **Response**: `{ "success": true, "providers": ["OpenAI", "Gemini", …] }`
+
+### Run a Task
+
+**POST** `/run`
+
+- **Authentication**: Required
+- **Description**: Runs a browser-agent task against an already-open browser
+  surface. The agent attaches as a guest — it never launches or closes the
+  browser.
+- **Request body**:
+
+```json
+{
+  "task": "Find the top story and report its title and score",
+  "cdpUrl": "ws://127.0.0.1:53241/<per-session-token>",
+  "provider": "Gemini",
+  "model": "",
+  "maxSteps": 25,
+  "timeoutMinutes": 10,
+  "outputSchema": "{\"type\":\"object\", …}"
+}
+```
+
+- **Response**: `{ success, result }` where `result` is the Browser Agent node's
+  output shape (`result`, `structuredOutput`, `isSuccessful`, `urls`, `steps`,
+  `agentErrors`, `error`).
+- **Errors**:
+  - `400` — no task; no `cdpUrl`; or a `cdpUrl` that is not a loopback
+    `ws://127.0.0.1:<port>/…` address. Without a surface the action would
+    silently *launch* a browser instead of driving the visible one, so this is
+    refused rather than defaulted.
+  - `409` — that browser is already running a task.
+  - `500` — the run threw.
 
 ---
 

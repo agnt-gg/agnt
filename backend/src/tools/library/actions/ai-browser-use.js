@@ -129,6 +129,13 @@ class AIBrowserUse extends BaseAction {
         inputType: 'textarea',
         description: 'Optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder.',
       },
+      cdpUrl: {
+        type: 'string',
+        inputType: 'text',
+        description: 'Optional. Drive an EXISTING browser over CDP instead of launching one. '
+          + 'The Browser widget sets this automatically to point at the browser rendered inside AGNT. '
+          + 'When set, headless and allowedDomains do not apply — the browser is not ours to configure.',
+      },
     },
     outputs: {
       result: { type: 'string', description: 'The agent\'s final answer' },
@@ -304,16 +311,25 @@ class AIBrowserUse extends BaseAction {
     const useVision = this.resolveUseVision(params, llm.visionCapable);
     const gifPath = this.resolveGifPath(params);
 
+    // An attached browser belongs to somebody else, so none of the launch-time
+    // profile options apply to it. Sending them anyway would be a silent lie:
+    // browser-use would accept `headless: true` for a browser that is visibly
+    // on screen, and `allowed_domains` would not be enforced by a profile that
+    // was never used to launch anything.
+    const cdpUrl = (params.cdpUrl || '').trim() || null;
     const browser = {};
-    if (this.isTrue(params.headless)) browser.headless = true;
-    const allowedDomains = (params.allowedDomains || '')
-      .split(',')
-      .map((d) => d.trim())
-      .filter(Boolean);
-    if (allowedDomains.length > 0) browser.allowed_domains = allowedDomains;
+    if (!cdpUrl) {
+      if (this.isTrue(params.headless)) browser.headless = true;
+      const allowedDomains = (params.allowedDomains || '')
+        .split(',')
+        .map((d) => d.trim())
+        .filter(Boolean);
+      if (allowedDomains.length > 0) browser.allowed_domains = allowedDomains;
+    }
 
     return {
       task: instructions,
+      cdpUrl,
       llm: llm.spec,
       maxSteps: Math.max(1, Number(params.maxSteps) || 100),
       agent: {
@@ -346,6 +362,10 @@ class AIBrowserUse extends BaseAction {
    * overwrote each other's recording before either rename happened.
    */
   resolveGifPath(params) {
+    // A GIF of an attached browser is a recording of the user's own window,
+    // which they are already watching. Skip it rather than paying for frames
+    // nobody will look at.
+    if ((params.cdpUrl || '').trim()) return false;
     if (!this.isTrue(params.generateGif ?? 'true')) return false;
     const gifsDirectory = PathManager.getPath('media', 'gifs');
     fs.mkdirSync(gifsDirectory, { recursive: true });

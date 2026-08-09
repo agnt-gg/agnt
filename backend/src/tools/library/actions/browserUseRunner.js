@@ -28,7 +28,7 @@ export const RESULT_SENTINEL = '__AGNT_BROWSER_USE_RESULT__';
  * rewritten to disk whenever this differs from the cached copy, so a stale file
  * from a previous version can never be executed against a new contract.
  */
-export const RUNNER_VERSION = 1;
+export const RUNNER_VERSION = 2;
 
 // NOTE: this is a String.raw template literal, so the Python below may not
 // contain a backtick or a ${ sequence. Use quotes in Python messages.
@@ -177,8 +177,18 @@ async def run(config: dict) -> dict:
     if llm is None:
         raise ValueError("No llm specification was supplied to the runner.")
 
-    profile_kwargs = {k: v for k, v in (config.get("browser") or {}).items() if v is not None}
-    browser = Browser(browser_profile=BrowserProfile(**profile_kwargs)) if profile_kwargs else Browser()
+    # ATTACH vs LAUNCH. With a cdpUrl we are a GUEST on a browser somebody else
+    # owns — today that is the Electron surface rendered inside AGNT's Browser
+    # widget. is_local=False tells browser-use not to manage that browser's
+    # lifecycle, which is the difference between "the agent finished" and "the
+    # agent closed the window the user was watching".
+    cdp_url = config.get("cdpUrl")
+    attached = bool(cdp_url)
+    if attached:
+        browser = Browser(cdp_url=cdp_url, is_local=False)
+    else:
+        profile_kwargs = {k: v for k, v in (config.get("browser") or {}).items() if v is not None}
+        browser = Browser(browser_profile=BrowserProfile(**profile_kwargs)) if profile_kwargs else Browser()
 
     agent_kwargs: dict[str, Any] = dict(config.get("agent") or {})
     agent_kwargs = {k: v for k, v in agent_kwargs.items() if v is not None}
@@ -205,15 +215,24 @@ async def run(config: dict) -> dict:
     try:
         history = await agent.run(max_steps=int(config.get("maxSteps") or 100))
     finally:
-        # Always tear the browser down. A leaked Chromium survives the workflow
-        # and there is nothing left holding a handle to it.
-        try:
-            await browser.kill()
-        except Exception:
+        if attached:
+            # Detach only. kill() here would close the browser AGNT is rendering
+            # — the user would watch their own window disappear the moment the
+            # task finished.
             try:
                 await browser.stop()
             except Exception:
                 pass
+        else:
+            # We launched it, so we own it. A leaked Chromium survives the
+            # workflow and there is nothing left holding a handle to it.
+            try:
+                await browser.kill()
+            except Exception:
+                try:
+                    await browser.stop()
+                except Exception:
+                    pass
 
     structured = None
     try:

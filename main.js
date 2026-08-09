@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard, crashReporter } from 'electron';
+import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard, crashReporter, webContents } from 'electron';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -702,6 +702,59 @@ function notifyRendererOfUpdate(updateInfo) {
 }
 
 // IPC handlers for update system
+// ─────────────────── Browser widget: CDP bridge lifecycle ───────────────────
+// The Browser widget renders a real Chromium surface inside AGNT and lets an
+// agent drive it. The agent is a separate Python process, so it needs a CDP
+// endpoint — but Electron only offers a PAGE-scoped debugger, and browser-use
+// speaks the BROWSER protocol. CdpBridge closes that gap over a loopback socket
+// scoped to one webContents and one token. See electron/CdpBridge.js for the
+// measured evidence behind its (small) emulated surface.
+//
+// Keyed by webContents id so a widget that re-renders reuses its bridge instead
+// of stacking a second debugger on the same surface.
+const browserBridges = new Map();
+
+function closeBrowserBridge(webContentsId) {
+  const bridge = browserBridges.get(webContentsId);
+  if (!bridge) return false;
+  browserBridges.delete(webContentsId);
+  try { bridge.close(); } catch (err) { console.error('[browser-bridge] close failed:', err.message); }
+  return true;
+}
+
+ipcMain.handle('browser-bridge:start', async (_evt, webContentsId) => {
+  try {
+    const existing = browserBridges.get(webContentsId);
+    if (existing && !existing.closed) return { ok: true, cdpUrl: existing.cdpUrl, reused: true };
+
+    const guest = webContents.fromId(webContentsId);
+    if (!guest || guest.isDestroyed()) {
+      return { ok: false, error: 'That browser surface no longer exists.' };
+    }
+
+    const { CdpBridge } = await import('./electron/CdpBridge.js');
+    const bridge = new CdpBridge(guest, { log: (m) => console.log(`[browser-bridge:${webContentsId}]`, m) });
+    const cdpUrl = await bridge.start();
+    browserBridges.set(webContentsId, bridge);
+
+    // If the surface goes away underneath us, take the bridge with it — a
+    // bridge holding a debugger on a destroyed webContents is a leak that
+    // reports itself as a working endpoint.
+    guest.once('destroyed', () => closeBrowserBridge(webContentsId));
+
+    return { ok: true, cdpUrl, reused: false };
+  } catch (err) {
+    console.error('[browser-bridge] start failed:', err);
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('browser-bridge:stop', (_evt, webContentsId) => ({ ok: closeBrowserBridge(webContentsId) }));
+
+app.on('before-quit', () => {
+  for (const id of [...browserBridges.keys()]) closeBrowserBridge(id);
+});
+
 ipcMain.handle('check-for-updates', async () => {
   try {
     const updateInfo = await checkForUpdates();
@@ -1119,6 +1172,13 @@ function createWindow(opts = {}) {
       // Enable media permissions for speech recognition
       webSecurity: true,
       allowRunningInsecureContent: false,
+      // Powers the Browser widget: a real Chromium surface rendered INSIDE the
+      // app, which an agent then drives over CDP (see electron/CdpBridge.js).
+      // <webview> is deliberately chosen over opening a second BrowserWindow —
+      // the whole point is that the browser lives in the canvas, not beside it.
+      // Guest content is isolated by default: no node integration, its own
+      // session partition, and no preload is attached to it.
+      webviewTag: true,
     },
     autoHideMenuBar: true,
     backgroundColor: '#070710',

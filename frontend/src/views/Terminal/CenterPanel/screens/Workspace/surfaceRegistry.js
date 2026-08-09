@@ -77,6 +77,9 @@ const ID_FIELDS = {
  * mechanism verbatim rather than inventing a new prop path.
  */
 export const TOOL_WIDGET_MAP = {
+  // Annie browsing in chat should be something you can WATCH. No id to bind:
+  // the widget owns its own browser surface, so opening it is the whole job.
+  ai_browser_use: { widgetId: 'browser' },
   update_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   revert_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   list_workflow_versions: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },

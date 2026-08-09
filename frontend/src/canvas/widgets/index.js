@@ -236,6 +236,21 @@ export function registerAllWidgets() {
     isScreenWidget: true,
   });
 
+  // A real Chromium surface rendered inside AGNT, which an agent drives over
+  // CDP. NOT a screen widget: it has no standalone route and exists only on the
+  // canvas, because a browser you cannot put next to your work is just a
+  // browser. Sized generously by default — a cramped viewport makes the agent's
+  // screenshots harder for it to read, not just harder for you to watch.
+  registerWidget('browser', {
+    name: 'Browser',
+    icon: 'fas fa-globe',
+    category: 'home',
+    component: lazyComponent(() => import('./BrowserAgentWidget.vue')),
+    defaultSize: { cols: 8, rows: 8 },
+    minSize: { cols: 4, rows: 4 },
+    description: 'A live browser your agents can drive',
+  });
+
   registerWidget('widget-forge', {
     name: 'Widget Forge',
     icon: 'fas fa-magic',

@@ -28,7 +28,11 @@ export default defineConfig({
       template: {
         // Define a function to check if an element is considered a custom element.
         compilerOptions: {
-          isCustomElement: (tag) => tag.includes('-'),
+          // `webview` is Electron's embedded-browser element and is the one
+          // built-in exception to the hyphen rule: it has no dash, so without
+          // naming it here Vue tries to resolve it as a component and the
+          // Browser widget renders nothing.
+          isCustomElement: (tag) => tag.includes('-') || tag === 'webview',
         },
       },
     }),
