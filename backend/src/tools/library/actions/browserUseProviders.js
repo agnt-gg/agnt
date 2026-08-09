@@ -40,6 +40,7 @@ import {
   getProviderConfig,
   isSubscriptionProvider,
 } from '../../../services/ai/providerConfigs.js';
+import { getLastSuccessfulModels } from '../../../services/ai/lastModelsCache.js';
 
 /** @enum {string} */
 export const ROUTE = {
@@ -70,7 +71,15 @@ const ROUTING = {
   cerebras: { route: ROUTE.NATIVE, chatClass: 'ChatCerebras' },
 
   // ── OpenAI-compatible, keyed on providerConfigs.baseURL ───────────
-  grokai: { route: ROUTE.OPENAI_COMPAT, chatClass: 'ChatOpenAI' },
+  // xAI rejects `frequencyPenalty` outright (400 invalid-argument), and
+  // browser-use's ChatOpenAI sends frequency_penalty=0.3 by default to stop
+  // 4.1-mini emitting infinite tabs. Verified live: every Grok call 400s
+  // without this. `null` means "omit" — upstream guards with `is not None`.
+  grokai: {
+    route: ROUTE.OPENAI_COMPAT,
+    chatClass: 'ChatOpenAI',
+    chatKwargs: { frequency_penalty: null },
+  },
   togetherai: { route: ROUTE.OPENAI_COMPAT, chatClass: 'ChatOpenAI' },
   kimi: { route: ROUTE.OPENAI_COMPAT, chatClass: 'ChatOpenAI' },
   minimax: { route: ROUTE.OPENAI_COMPAT, chatClass: 'ChatOpenAI' },
@@ -133,22 +142,114 @@ const DEFAULT_MODEL_OVERRIDES = {
 };
 
 /**
+ * Model ids that exist in a provider's catalogue but cannot hold a
+ * conversation. Every provider list is polluted with these — Groq alone ships
+ * whisper, TTS and prompt-guard models in the same array as its chat models.
+ */
+const NOT_A_CHAT_MODEL = /whisper|tts|embed|moderat|guard|rerank|transcrib|speech|audio|image|dall-e|orpheus|sora|veo|imagen/i;
+
+/**
+ * Model ids that AGNT's live fetch has actually seen for this provider.
+ *
+ * NOTE ON THE KEY: lastModelsCache is written by GenericProviderService as
+ * `this.name.toLowerCase()` — the DISPLAY name — so it stores 'together ai'
+ * and 'grok ai' for some providers and 'groq'/'openai' for others. Reading by
+ * key alone silently misses every multi-word provider, which would make this
+ * function quietly fall back to the stale static list for exactly the
+ * providers that need it most. Both spellings are tried until that is fixed
+ * upstream.
+ *
+ * @returns {{ids: Set<string>, ordered: string[]}|null} null when never fetched.
+ */
+function liveModelIds(config) {
+  const models = getLastSuccessfulModels(config.key)
+    || getLastSuccessfulModels(config.name)
+    || null;
+  if (!models) return null;
+
+  const ordered = models.map((m) => m?.id).filter((id) => typeof id === 'string' && id.length > 0);
+  if (ordered.length === 0) return null;
+  return { ids: new Set(ordered), ordered };
+}
+
+/**
  * The model a provider gets when the user does not name one.
  *
- * Derived from providerConfigs so the browser tool cannot drift from the rest
- * of the app the way a hardcoded 'gpt-4o' did. Vision models come first
- * because browser-use is a screenshot-driven agent.
+ * WHY THIS CONSULTS THE LIVE LIST FIRST
+ * ------------------------------------
+ * Every provider in providerConfigs is `staticModels: false` — the real
+ * catalogue is fetched from the vendor at run time. The `fallbackVisionModels`
+ * / `recommendedModels` arrays are therefore a hand-maintained guess about an
+ * open world, and they go stale silently. Verified live: the static vision
+ * default for Groq was `meta-llama/llama-4-scout-17b-16e-instruct`, which that
+ * account's catalogue does not contain at all (`model_not_found`), and
+ * Together's was a non-serverless model that 400s without a dedicated
+ * endpoint. Both defaults were unusable and nothing said so.
+ *
+ * So: prefer a static pick that the live catalogue confirms exists, then any
+ * live chat model, and only then the unverified static list — which is still
+ * the right answer when the catalogue has never been fetched.
  */
 export function defaultModelFor(providerKey) {
-  if (DEFAULT_MODEL_OVERRIDES[providerKey]) return DEFAULT_MODEL_OVERRIDES[providerKey];
   const config = getProviderConfig(providerKey);
   if (!config) return null;
-  return (
-    config.fallbackVisionModels?.[0]
-    || config.recommendedModels?.[0]
-    || config.fallbackModels?.[0]
-    || null
-  );
+
+  const preferred = [
+    DEFAULT_MODEL_OVERRIDES[config.key],
+    ...(config.fallbackVisionModels || []),
+    ...(config.recommendedModels || []),
+    ...(config.fallbackModels || []),
+  ].filter(Boolean);
+
+  const live = liveModelIds(config);
+  if (live) {
+    const confirmed = preferred.find((model) => live.ids.has(model));
+    if (confirmed) return confirmed;
+
+    const usable = live.ordered.find((id) => !NOT_A_CHAT_MODEL.test(id));
+    if (usable) return usable;
+  }
+
+  return preferred[0] || null;
+}
+
+/*
+ * REJECTED, so nobody re-derives it: filtering the live list by per-token
+ * pricing to find "serverless" models.
+ *
+ * Together lists dedicated-endpoint models beside serverless ones and 400s on
+ * the former (`Unable to access non-serverless model`). Pricing looked like the
+ * discriminator. It is not: the model that actually failed,
+ * meta-llama/Llama-4-Scout-17B-16E-Instruct, is priced at in=0.18 / out=0.59.
+ * And Together is the ONLY provider whose catalogue carries pricing at all —
+ * 0 of 132 OpenAI, 0 of 42 Gemini, 0 of 15 Groq models have the field.
+ *
+ * The real lesson is that being listed does not prove a model is callable, and
+ * no metadata we receive closes that gap. So the default stops guessing and the
+ * FAILURE carries the information instead — see describeModelAvailabilityError.
+ */
+
+/**
+ * Recognise "that model is not available to you" among the many shapes vendors
+ * express it in, and turn it into one instruction the user can act on.
+ *
+ * This exists because the alternative is a raw vendor 400 surfacing in a
+ * workflow node, which tells the user something is broken but not that the fix
+ * is one field away.
+ *
+ * @param {string} message Raw error text from the runner.
+ * @param {string} providerName Display name, for the message.
+ * @returns {string|null} Guidance, or null when this is a different failure.
+ */
+export function describeModelAvailabilityError(message, providerName) {
+  const text = String(message || '');
+  const unavailable = /model_not_found|does not exist|non-serverless|model_not_available|no such model|unknown model|not have access to it|is not supported/i;
+  if (!unavailable.test(text)) return null;
+
+  return `${providerName} rejected the model this node chose: ${text.trim().slice(0, 200)}\n\n`
+    + 'Provider catalogues list models that a given account cannot actually call, so the '
+    + 'automatic choice can be wrong. Set the Model field on this node to one you know works '
+    + `for ${providerName}.`;
 }
 
 /**
@@ -198,6 +299,7 @@ export function resolveBrowserUseProvider(providerKey) {
     baseUrl: routing.baseUrlOverride || config.baseURL || null,
     defaultModel: defaultModelFor(config.key),
     visionCapable: supportsVision(config.key),
+    chatKwargs: routing.chatKwargs || null,
     reason: routing.reason || null,
   };
 }
@@ -223,6 +325,7 @@ export function customProviderRouting(baseUrl, name) {
     // Unknowable for an arbitrary endpoint. Left to the user's `useVision`
     // choice rather than assumed either way.
     visionCapable: true,
+    chatKwargs: null,
     reason: null,
   };
 }

@@ -200,6 +200,51 @@ describe('screenshots reach the adapter', () => {
   });
 });
 
+describe('an upstream failure is a failure, not a reply', () => {
+  const notice = (text) => {
+    nextAdapterResult = {
+      responseMessage: { role: 'assistant', content: text },
+      toolCalls: [],
+      usage: {},
+    };
+    return post({ model: 'claude-sonnet-5', messages: [userTurn('go')] }, grant());
+  };
+
+  it('rejects an adapter error notice returned as assistant content', async () => {
+    // Captured live through this route from Antigravity and Chutes. Several of
+    // our adapters catch upstream errors and return a human-readable notice as
+    // content — right for a chat window, poison for an agent loop, which would
+    // treat it as the model's considered answer and keep stepping.
+    const res = await notice('⚠️ **Gemini API Error:** quota exceeded\n\nPlease check your API configuration.');
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error.code).toBe('upstream_error_notice');
+    expect(body.error.message).toMatch(/quota exceeded/);
+  });
+
+  it('rejects a dropped-connection notice too', async () => {
+    const res = await notice('⚠️ **Connection dropped:** The provider closed the stream.');
+    expect(res.status).toBe(502);
+  });
+
+  it('does not mistake a genuine reply that mentions an error', async () => {
+    const res = await notice('The page shows ⚠️ **Error 404** in red text near the header.');
+    expect(res.status).toBe(200);
+    expect((await res.json()).choices[0].message.content).toMatch(/404/);
+  });
+
+  it('lets a tool call through even when text looks like a notice', async () => {
+    nextAdapterResult = {
+      responseMessage: { role: 'assistant', content: '⚠️ **API Error:** transient' },
+      toolCalls: [{ id: 'c1', function: { name: 'click', arguments: '{}' } }],
+      usage: {},
+    };
+    const res = await post({ model: 'claude-sonnet-5', messages: [userTurn('go')] }, grant());
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('structured output', () => {
   const schemaRequest = (content) => {
     nextAdapterResult = {

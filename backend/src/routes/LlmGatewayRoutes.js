@@ -164,6 +164,20 @@ function extractJsonObject(text) {
 }
 
 /**
+ * Our adapters do not always throw on an upstream failure — several of them
+ * catch, format a human-readable notice, and RETURN it as assistant content so
+ * a chat user sees something useful instead of a stack trace. That is right for
+ * a chat window and actively harmful here: browser-use would take
+ * "⚠️ **Gemini API Error:** quota exceeded" as the model's considered reply and
+ * keep stepping against it.
+ *
+ * Verified live: Antigravity and Chutes both came back 200-with-error-text
+ * through this route. Detected and converted to a 502 so the failure is a
+ * failure.
+ */
+const ADAPTER_ERROR_NOTICE = /^\s*⚠️\s*\*\*[^*]*(Error|Rate Limit|Connection dropped)/i;
+
+/**
  * Ask for structured output the only way that works across every provider.
  *
  * Strict `response_format` is an OpenAI-family feature; Anthropic, Gemini's
@@ -253,6 +267,18 @@ router.post('/v1/chat/completions', authenticateGateway, async (req, res) => {
     let content = responseMessage?.content ?? '';
     if (Array.isArray(content)) {
       content = content.filter((p) => p?.type === 'text').map((p) => p.text).join('');
+    }
+
+    // Only when the model produced no tool call: a real reply that happens to
+    // quote an error notice is not itself a failure.
+    if ((toolCalls || []).length === 0 && ADAPTER_ERROR_NOTICE.test(String(content))) {
+      return res.status(502).json({
+        error: {
+          message: `${provider}/${grantedModel} failed: ${String(content).replace(/\s+/g, ' ').slice(0, 300)}`,
+          type: 'api_error',
+          code: 'upstream_error_notice',
+        },
+      });
     }
 
     if (responseFormat && responseFormat.type !== 'text') {

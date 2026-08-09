@@ -13,6 +13,7 @@ import {
   resolveBrowserUseProvider,
   customProviderRouting,
   browserUseProviderOptions,
+  describeModelAvailabilityError,
 } from './browserUseProviders.js';
 import { RUNNER_PY, RUNNER_VERSION, RESULT_SENTINEL } from './browserUseRunner.js';
 
@@ -157,18 +158,24 @@ class AIBrowserUse extends BaseAction {
     }
 
     let gatewayToken = null;
+    let providerLabel = params.provider || 'The provider';
     try {
       const llm = await this.buildLlmSpec(params, userId);
       gatewayToken = llm.gatewayToken;
+      providerLabel = llm.providerName;
 
       const config = this.buildRunnerConfig(params, instructions, llm);
       const pythonExecutable = await this.ensureEnvironment();
       const outcome = await this.runRunner(pythonExecutable, config, params);
 
       if (!outcome.success) {
+        // A model the account cannot call is the most likely first failure and
+        // the least self-explanatory, so name the fix rather than relaying a
+        // raw vendor 400.
+        const guidance = describeModelAvailabilityError(outcome.error, providerLabel);
         return this.formatOutput({
           success: false,
-          error: outcome.error || 'The browser agent failed without reporting a reason.',
+          error: guidance || outcome.error || 'The browser agent failed without reporting a reason.',
           gifPath: this.gifFilenameIfWritten(config.agent.generate_gif),
         });
       }
@@ -224,6 +231,7 @@ class AIBrowserUse extends BaseAction {
       }
       return {
         gatewayToken: null,
+        providerName: routing.name,
         visionCapable: routing.visionCapable,
         spec: {
           class: 'ChatOpenAI',
@@ -259,6 +267,7 @@ class AIBrowserUse extends BaseAction {
       const port = process.env.PORT || 3333;
       return {
         gatewayToken: token,
+        providerName: routing.name,
         visionCapable: routing.visionCapable,
         spec: {
           class: 'ChatOpenAI',
@@ -278,11 +287,12 @@ class AIBrowserUse extends BaseAction {
     // identical — providerConfigs lists DeepSeek as https://api.deepseek.com
     // while ChatDeepSeek defaults to .../v1. Passing ours would break it. Only
     // the OpenAI-compatible route needs an explicit endpoint.
-    const kwargs = { model, api_key: apiKey };
+    const kwargs = { model, api_key: apiKey, ...(routing.chatKwargs || {}) };
     if (routing.route === ROUTE.OPENAI_COMPAT) kwargs.base_url = routing.baseUrl;
 
     return {
       gatewayToken: null,
+      providerName: routing.name,
       visionCapable: routing.visionCapable,
       spec: { class: routing.chatClass, kwargs },
     };
