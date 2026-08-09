@@ -1,6 +1,11 @@
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  subscribe as subscribeSessionToken,
+  getSessionToken,
+  getSessionUserId,
+} from '../services/auth/sessionTokenCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +22,49 @@ class WorkflowProcessBridge {
     // both be in flight at once. Without this they each spawn a workflow
     // process and BOTH arm every trigger, double-firing every workflow.
     this.restartPromise = null;
+
+    // ---------------------------------------------------------------------
+    // CARRY THE SESSION TOKEN ACROSS THE FORK.
+    //
+    // The pollers (WebhookReceiver, EmailReceiver), workflow nodes and plugins
+    // all run in the CHILD, and all call authHeader(). The token cache that
+    // feeds authHeader() is in-memory and per-process, and it is written only
+    // by the Express middleware in THIS process. So the child's copy was empty
+    // forever, every background call to api.agnt.gg went out anonymous, and
+    // webhook-auth adoption sat at exactly 0% of 205 observations — not slow
+    // uptake, a number that could never move.
+    //
+    // Subscribing here rather than calling the bridge from Middleware keeps the
+    // dependency pointing one way: the cache knows nothing about IPC, and the
+    // request path cannot be broken by a transport failure.
+    // ---------------------------------------------------------------------
+    subscribeSessionToken(({ token, userId }) => {
+      this.pushSessionToken(this.workflowProcess, token, userId);
+    });
+  }
+
+  /**
+   * Fire-and-forget the current session token to one child.
+   *
+   * Deliberately NOT routed through sendMessage(): that awaits readiness and
+   * rejects when the child is down, and this is called from inside the request
+   * path. A missing token degrades a background poll to anonymous — exactly
+   * today's behaviour — whereas a throw here would fail a user's login.
+   *
+   * @param {import('child_process').ChildProcess|null} child
+   */
+  pushSessionToken(child, token = getSessionToken(), userId = getSessionUserId()) {
+    if (!child || !token || !userId) return false;
+    // `connected` is the only reliable guard; a child mid-exit still exists.
+    if (!child.connected) return false;
+
+    try {
+      child.send({ type: 'SESSION_TOKEN', data: { token, userId } });
+      return true;
+    } catch (error) {
+      console.warn('[WorkflowProcessBridge] could not forward session token:', error?.message);
+      return false;
+    }
   }
 
   spawn() {
@@ -112,6 +160,15 @@ class WorkflowProcessBridge {
           clearTimeout(readyTimeout);
           this.isReady = true;
           console.log('Workflow process is ready');
+
+          // A respawned child starts with an empty cache. Without this, a crash
+          // at 3am would silently drop every background call back to anonymous
+          // until the user next touched the UI — and the token is 30-day, so
+          // "next touched the UI" can be a very long time.
+          if (this.pushSessionToken(child)) {
+            console.log('[WorkflowProcessBridge] session token forwarded to workflow process');
+          }
+
           resolve();
         }
       };

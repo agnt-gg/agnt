@@ -36,12 +36,36 @@
  *
  * Nothing is persisted. The token lives in memory only, and a restart simply
  * means the next authenticated request from the UI re-populates it.
+ *
+ * ---------------------------------------------------------------------------
+ * THE CACHE IS PER-PROCESS, AND THE POLLERS ARE NOT IN THIS PROCESS
+ * ---------------------------------------------------------------------------
+ * This was built to serve the receivers named at the top of this file — and it
+ * did not, for two days, because of a boundary nobody wrote down:
+ *
+ *   rememberSessionToken()  is called ONLY from routes/Middleware.js,
+ *                           i.e. inside an Express handler, i.e. the MAIN process
+ *   WebhookReceiver         polls only when IS_WORKFLOW_PROCESS === 'true',
+ *                           i.e. inside the FORKED CHILD
+ *   this module             is in-memory, so the child gets its own empty copy
+ *
+ * The child imports Middleware but never executes it (it serves no HTTP), so
+ * `authHeader()` there returned `{}` forever. Every background call went out
+ * anonymous no matter how many clients updated, and the adoption counter the
+ * whole staged rollout depends on could not move off zero.
+ *
+ * The fix is `subscribe()` below: the main process forwards each new token over
+ * the IPC channel the bridge already owns, and the child calls
+ * rememberSessionToken() with it. See workflow/WorkflowProcessBridge.js and
+ * workflow/WorkflowProcess.js — and sessionTokenCache.ipc.test.js, which forks
+ * a real child rather than trusting that those two agree.
  */
 
 /**
  * This module performs NO I/O. It is a slot with a safety rule, and it is on the
  * hot path of every authenticated request — anything that reaches the network
- * belongs at the call site, not here.
+ * belongs at the call site, not here. `subscribe()` is a synchronous callback
+ * registry, not a transport: the bridge does the sending.
  */
 
 /** @type {{token: string, userId: string, seenAt: number} | null} */
@@ -50,6 +74,9 @@ let current = null;
 /** Set once a conflict is detected; disables the cache for the process. */
 let poisoned = false;
 
+/** @type {Set<(entry: {token: string, userId: string}) => void>} */
+const subscribers = new Set();
+
 /**
  * Tokens are 30-day, but a cached one should not outlive the user's presence by
  * much: if the app has sat unused for a day, the next poll can wait for the UI
@@ -57,6 +84,37 @@ let poisoned = false;
  * enough that a stale token is not used indefinitely.
  */
 const MAX_AGE_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * Observe tokens as they arrive, so another module can forward them somewhere
+ * this process cannot reach on its own — specifically, across the fork.
+ *
+ * FIRES ON CHANGE ONLY. `rememberSessionToken` runs on EVERY authenticated
+ * request, so notifying unconditionally would push an IPC message per request
+ * (hundreds a minute) to re-send a token the child already has. Subscribers
+ * therefore see a token exactly when it becomes new, which is also the only
+ * moment anyone downstream needs to act.
+ *
+ * @param {(entry: {token: string, userId: string}) => void} listener
+ * @returns {() => void} unsubscribe
+ */
+export function subscribe(listener) {
+  if (typeof listener !== 'function') return () => {};
+  subscribers.add(listener);
+  return () => subscribers.delete(listener);
+}
+
+function notify(entry) {
+  for (const listener of subscribers) {
+    try {
+      listener({ token: entry.token, userId: entry.userId });
+    } catch (error) {
+      // A subscriber must never be able to break authentication. This runs
+      // inside the request path; a throw here would 500 a valid login.
+      console.warn('[sessionTokenCache] subscriber threw:', error?.message);
+    }
+  }
+}
 
 /**
  * Remember a token that has ALREADY been verified by the caller.
@@ -81,7 +139,9 @@ export function rememberSessionToken(token, userId) {
     return;
   }
 
+  const isNew = !current || current.token !== token;
   current = { token, userId, seenAt: Date.now() };
+  if (isNew) notify(current);
 }
 
 /** The remembered token, or null. Never throws. */
@@ -118,8 +178,9 @@ export function clearSessionToken() {
   current = null;
 }
 
-/** Test seam: also clears the poison latch. */
+/** Test seam: also clears the poison latch and every subscriber. */
 export function __resetSessionTokenCacheForTests() {
   current = null;
   poisoned = false;
+  subscribers.clear();
 }

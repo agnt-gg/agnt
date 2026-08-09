@@ -19,6 +19,7 @@ dbReady.then(async () => {
 import ProcessManager from './ProcessManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
+import { rememberSessionToken } from '../services/auth/sessionTokenCache.js';
 
 console.log('Workflow process starting...');
 console.log(`Workflow process ID: ${process.pid}`);
@@ -118,6 +119,25 @@ function setupIPCHandlers() {
       // Only log non-frequent IPC messages (skip FETCH_WORKFLOW_STATE spam)
       if (type !== 'FETCH_WORKFLOW_STATE') {
         console.log(`[Workflow Process]: Received IPC message: ${type} (id: ${id})`);
+      }
+
+      // ---------------------------------------------------------------------
+      // THE CREDENTIAL FOR EVERYTHING THIS PROCESS DOES ON THE USER'S BEHALF.
+      //
+      // This process owns the pollers, the workflow nodes and the plugins, and
+      // every one of them calls authHeader() from the session token cache. That
+      // cache is in-memory and per-process, and only the parent's Express
+      // middleware writes to it — so without this message the copy in here is
+      // empty for the life of the process and every outbound call to
+      // api.agnt.gg is anonymous.
+      //
+      // Handled before the switch and returned early: it carries no `id`, so
+      // there is no reply to make, and answering would put a response with an
+      // undefined id on the wire for the parent to discard.
+      // ---------------------------------------------------------------------
+      if (type === 'SESSION_TOKEN') {
+        rememberSessionToken(data?.token, data?.userId);
+        return;
       }
 
       let result;
