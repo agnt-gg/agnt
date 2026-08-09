@@ -95,6 +95,12 @@ const GUARD_NAMES = new Set([
   'requireAuthMiddleware',
   'authenticateToken',
   'bound authenticateToken',
+  // The local LLM gateway carries its own credential scheme rather than the
+  // session JWT, deliberately: it hands a token to a child process, so that
+  // token must open one route and nothing else. It qualifies here for the only
+  // reason that matters — it rejects. Loopback-only, and 401s on a token it did
+  // not mint. See routes/LlmGatewayRoutes.js.
+  'authenticateGateway',
 ]);
 
 // The permissive behaviour still exists, but a route must now opt into it by
@@ -206,6 +212,7 @@ describe('route security manifest', () => {
     ['PluginRoutes.js', 'POST /update/:name', 'pulls and executes new plugin code'],
     ['PluginRoutes.js', 'GET /inspect/:name', 'discloses plugin source and permission diff'],
     ['SpeechRoutes.js', 'POST /transcribe', "spends the user's Whisper credits"],
+    ['LlmGatewayRoutes.js', 'POST /v1/chat/completions', "spends the user's LLM credits as the user, from a child process"],
   ];
 
   it.each(MUST_BE_GUARDED)('%s %s is GUARDED (%s)', (file, route) => {

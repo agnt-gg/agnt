@@ -47,6 +47,7 @@ import ToolsRoutes from './src/routes/ToolsRoutes.js';
 import ToolSchemaRoutes from './src/routes/ToolSchemaRoutes.js';
 import ModelRoutes from './src/routes/ModelRoutes.js';
 import CustomProviderRoutes from './src/routes/CustomProviderRoutes.js';
+import LlmGatewayRoutes from './src/routes/LlmGatewayRoutes.js';
 import MCPRoutes from './src/routes/MCPRoutes.js';
 import NPMRoutes from './src/routes/NPMRoutes.js';
 import WebhookRoutes from './src/routes/WebhookRoutes.js';
@@ -218,6 +219,11 @@ app.use('/api/tool-schemas', ToolSchemaRoutes);
 app.use('/api/models', ModelRoutes); // Generic models endpoint for all providers
 app.use('/api/openrouter', ModelRoutes); // Legacy support for OpenRouter
 app.use('/api/custom-providers', CustomProviderRoutes);
+// Loopback-only OpenAI-compatible shim over our own providers, so a child
+// process (the Browser Agent's Python runner) can reach subscription-auth
+// providers it could never hold credentials for. Auth is its own short-lived
+// per-run token, NOT the session JWT — see services/ai/localGatewayTokens.js.
+app.use('/api/llm', LlmGatewayRoutes);
 app.use('/api/mcp', MCPRoutes);
 app.use('/api/npm', NPMRoutes);
 app.use('/api/webhooks', WebhookRoutes);

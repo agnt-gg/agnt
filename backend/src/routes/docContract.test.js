@@ -50,7 +50,7 @@ const SERVER_PATH = path.join(REPO, 'backend/server.js');
  * degrades to an anonymous request and is NOT a guard, whatever its name
  * suggests.
  */
-const HARD_GUARDS = /^(requireAuth|requireAuthHeader|requireAuthMedia|requireAdmin|(bound )?authenticateToken$)/;
+const HARD_GUARDS = /^(requireAuth|requireAuthHeader|requireAuthMedia|requireAdmin|authenticateGateway|(bound )?authenticateToken$)/;
 
 /**
  * Mounts whose routes are documented somewhere other than a section with their

@@ -1119,33 +1119,140 @@
       "category": "action",
       "type": "ai-browser-use",
       "icon": "web",
-      "description": "Executes instructions using Browser Use to run browser automation tasks.",
+      "description": "Runs a browser automation task with browser-use, driven by any connected AI provider.",
       "parameters": {
         "instructions": {
           "type": "string",
           "inputType": "textarea",
-          "description": "Instructions for the browser automation task."
+          "description": "What the browser agent should do."
         },
         "provider": {
           "type": "string",
           "inputType": "select",
-          "options": ["OpenAI", "Gemini", "DeepSeek"],
+          "inputSize": "half",
+          "options": [
+            "OpenAI",
+            "OpenAI Codex",
+            "Anthropic",
+            "Claude Code",
+            "Gemini",
+            "Gemini CLI",
+            "Antigravity",
+            "Grok AI",
+            "Grok Build",
+            "Cursor",
+            "Groq",
+            "DeepSeek",
+            "OpenRouter",
+            "Together AI",
+            "Cerebras",
+            "Kimi",
+            "Kimi Code",
+            "MiniMax",
+            "Z.AI",
+            "Chutes"
+          ],
           "default": "OpenAI",
-          "description": "Which LLM provider to use."
+          "description": "Which AI provider drives the browser."
+        },
+        "model": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "Model to use. Leave blank for the provider's default vision model."
+        },
+        "maxSteps": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "default": 100,
+          "description": "Maximum agent steps before giving up."
+        },
+        "timeoutMinutes": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "default": 15,
+          "description": "Hard wall-clock limit for the whole run."
+        },
+        "useVision": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": [
+            "auto",
+            "on",
+            "off"
+          ],
+          "default": "auto",
+          "description": "Send screenshots to the model. \"auto\" follows the provider's vision support."
+        },
+        "headless": {
+          "type": "string",
+          "inputType": "checkbox",
+          "options": [
+            "true"
+          ],
+          "default": "false",
+          "description": "Run without a visible browser window."
+        },
+        "generateGif": {
+          "type": "string",
+          "inputType": "checkbox",
+          "options": [
+            "true"
+          ],
+          "default": "true",
+          "description": "Record a GIF of the session."
+        },
+        "allowedDomains": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Comma-separated domains the agent may visit. Blank means no restriction."
+        },
+        "outputSchema": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Optional JSON Schema. When set, structuredOutput holds data matching it instead of prose."
+        },
+        "sensitiveData": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder."
         }
       },
       "outputs": {
         "result": {
           "type": "string",
-          "description": "Text result from the automation"
+          "description": "The agent's final answer"
+        },
+        "structuredOutput": {
+          "type": "object",
+          "description": "Parsed result when outputSchema is set"
+        },
+        "isSuccessful": {
+          "type": "boolean",
+          "description": "The agent's own judgement of whether it completed the task"
+        },
+        "urls": {
+          "type": "array",
+          "description": "Pages visited, in order"
+        },
+        "steps": {
+          "type": "number",
+          "description": "How many steps the agent took"
+        },
+        "agentErrors": {
+          "type": "array",
+          "description": "Errors the agent recovered from during the run"
         },
         "gifPath": {
           "type": "string",
-          "description": "Path or URL to the generated GIF"
+          "description": "Filename of the session recording"
         },
         "error": {
           "type": "string",
-          "description": "Error message if the tool fails"
+          "description": "Why the run could not be completed"
         }
       }
     },

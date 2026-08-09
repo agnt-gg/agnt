@@ -26,6 +26,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Ledger Routes](#ledger-routes)
 - [MCP Routes](#mcp-routes)
 - [Memory Routes](#memory-routes)
+- [Local LLM Gateway Routes](#local-llm-gateway-routes)
 - [Model Routes](#model-routes)
 - [Mutation History Routes](#mutation-history-routes)
 - [NPM Routes](#npm-routes)
@@ -4336,6 +4337,77 @@ Base path: `/api/mcp`
   }
 }
 ```
+
+---
+
+## Local LLM Gateway Routes
+
+Base path: `/api/llm`
+
+An OpenAI-compatible `/chat/completions` shim over AGNT's own provider stack, so a
+child process on this machine can make LLM calls as the user who started the work.
+It exists for providers that cannot be handed to a third-party SDK at all — Claude
+Code, Codex, Gemini CLI, Antigravity, Grok Build and Cursor authenticate with
+refreshed OAuth sessions or a local CLI login, and Chutes needs an encrypted
+transport. Its first consumer is the Browser Agent node's Python runner.
+
+**This is not a general-purpose proxy.** It is deliberately narrow:
+
+- **Loopback only.** Requests from another machine get `403`.
+- **Its own credential.** Not the session JWT. A caller presents a random
+  per-run token minted by `services/ai/localGatewayTokens.js`, bound to one
+  user, one provider and one model, expiring on a timer and revoked when the run
+  that needed it ends. It opens this route and nothing else.
+- **The grant decides what runs.** A `model` in the body that differs from the
+  bound model is a `400`, never a substitution.
+- **No streaming.** `stream: true` is a `400` rather than a faked stream.
+- **Sampling hints are ignored.** `temperature`, `top_p`,
+  `max_completion_tokens` and `frequency_penalty` are not forwarded; the
+  provider's own configuration applies, as it does everywhere else in AGNT.
+
+### Chat Completion
+
+**POST** `/v1/chat/completions`
+
+- **Authentication**: Required — `Authorization: Bearer <gateway token>`. Not a
+  session JWT; see above.
+- **Description**: Runs one non-streaming completion against the provider and
+  model the presented token is bound to.
+- **Request body**: OpenAI `chat.completion` shape. `messages` is required.
+  `tools` and `response_format` are supported. Inline `data:` images in message
+  content are forwarded to the provider as vision input; remote image URLs are
+  **not** fetched.
+- **Response**: An OpenAI `chat.completion` object, including `usage` with
+  `prompt_tokens_details.cached_tokens`.
+
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1786299490,
+  "model": "claude-sonnet-4-5-20250929",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "The capital of France is Paris." },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 35,
+    "completion_tokens": 10,
+    "total_tokens": 45,
+    "prompt_tokens_details": { "cached_tokens": 0 }
+  }
+}
+```
+
+- **Errors**:
+  - `401` — token missing, unknown, expired or revoked.
+  - `403` — caller is not on this machine.
+  - `400` — empty `messages`, a model the grant does not cover, or `stream: true`.
+  - `502` — the provider failed, or was asked for JSON via `response_format` and
+    replied with something that will not parse. The message quotes what it said.
 
 ---
 

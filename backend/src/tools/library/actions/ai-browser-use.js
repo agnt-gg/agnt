@@ -1,12 +1,51 @@
 import BaseAction from '../BaseAction.js';
 import { spawn } from 'child_process';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import PathManager from '../../../utils/PathManager.js';
-import os from 'os';
+import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
+import { mintGatewayToken, revokeGatewayToken } from '../../../services/ai/localGatewayTokens.js';
+import {
+  ROUTE,
+  resolveBrowserUseProvider,
+  customProviderRouting,
+  browserUseProviderOptions,
+} from './browserUseProviders.js';
+import { RUNNER_PY, RUNNER_VERSION, RESULT_SENTINEL } from './browserUseRunner.js';
+
+/**
+ * The browser-use release this tool is written against.
+ *
+ * PINNED, AND THAT IS THE POINT. This tool used to install from
+ * `git+https://github.com/browser-use/browser-use.git`, so every machine got
+ * whatever `main` happened to be on the day its venv was created. Upstream then
+ * removed `ChatGoogleGenerativeAI` when it dropped LangChain, and the Gemini
+ * option in this node had been dead ever since — with no commit, no failing
+ * test and no way to notice, because nothing here ever named a version.
+ *
+ * Bumping this constant is the whole upgrade procedure: the version check below
+ * reinstalls when the venv disagrees.
+ */
+export const BROWSER_USE_VERSION = '0.13.7';
+
+/**
+ * Packages the runner needs that browser-use does not already pull in.
+ *
+ * Deliberately almost empty. The old list installed langchain, langchain_openai,
+ * langchain_google_genai, selenium, webdriver_manager and playwright — none of
+ * which 0.13.x uses; it dropped LangChain at 0.7 and Playwright for raw CDP.
+ * Worse, its "is it installed?" check did `__import__(name.replace('-','_'))`,
+ * which turned `python-dotenv` into `python_dotenv` and `beautifulsoup4` into
+ * `beautifulsoup4` — neither of which is importable — so the check failed every
+ * time and pip re-ran on EVERY browser task.
+ */
+const EXTRA_REQUIREMENTS = [];
+
+/** Per-process memo so the environment check runs once, not once per task. */
+let environmentReadyFor = null;
 
 class AIBrowserUse extends BaseAction {
   static schema = {
@@ -14,510 +53,581 @@ class AIBrowserUse extends BaseAction {
     category: 'action',
     type: 'ai-browser-use',
     icon: 'web',
-    description: 'Executes instructions using Browser Use to run browser automation tasks.',
+    description: 'Runs a browser automation task with browser-use, driven by any connected AI provider.',
     parameters: {
       instructions: {
         type: 'string',
         inputType: 'textarea',
-        description: 'Instructions for the browser automation task.',
+        description: 'What the browser agent should do.',
       },
       provider: {
         type: 'string',
         inputType: 'select',
-        options: ['OpenAI', 'Gemini', 'DeepSeek'],
+        inputSize: 'half',
+        // Generated from providerConfigs, so this list cannot drift from what
+        // the tool can actually run. It used to be a hand-written
+        // ['OpenAI','Gemini','DeepSeek'] — two of which were broken.
+        options: browserUseProviderOptions(),
         default: 'OpenAI',
-        description: 'Which LLM provider to use.',
+        description: 'Which AI provider drives the browser.',
+      },
+      model: {
+        type: 'string',
+        inputType: 'text',
+        inputSize: 'half',
+        description: 'Model to use. Leave blank for the provider\'s default vision model.',
+      },
+      maxSteps: {
+        type: 'number',
+        inputType: 'number',
+        inputSize: 'half',
+        default: 100,
+        description: 'Maximum agent steps before giving up.',
+      },
+      timeoutMinutes: {
+        type: 'number',
+        inputType: 'number',
+        inputSize: 'half',
+        default: 15,
+        description: 'Hard wall-clock limit for the whole run.',
+      },
+      useVision: {
+        type: 'string',
+        inputType: 'select',
+        inputSize: 'half',
+        options: ['auto', 'on', 'off'],
+        default: 'auto',
+        description: 'Send screenshots to the model. "auto" follows the provider\'s vision support.',
+      },
+      headless: {
+        type: 'string',
+        inputType: 'checkbox',
+        options: ['true'],
+        default: 'false',
+        description: 'Run without a visible browser window.',
+      },
+      generateGif: {
+        type: 'string',
+        inputType: 'checkbox',
+        options: ['true'],
+        default: 'true',
+        description: 'Record a GIF of the session.',
+      },
+      allowedDomains: {
+        type: 'string',
+        inputType: 'text',
+        description: 'Comma-separated domains the agent may visit. Blank means no restriction.',
+      },
+      outputSchema: {
+        type: 'string',
+        inputType: 'textarea',
+        description: 'Optional JSON Schema. When set, structuredOutput holds data matching it instead of prose.',
+      },
+      sensitiveData: {
+        type: 'string',
+        inputType: 'textarea',
+        description: 'Optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder.',
       },
     },
     outputs: {
-      result: {
-        type: 'string',
-        description: 'Text result from the automation',
-      },
-      gifPath: {
-        type: 'string',
-        description: 'Path or URL to the generated GIF',
-      },
-      error: {
-        type: 'string',
-        description: 'Error message if the tool fails',
-      },
+      result: { type: 'string', description: 'The agent\'s final answer' },
+      structuredOutput: { type: 'object', description: 'Parsed result when outputSchema is set' },
+      isSuccessful: { type: 'boolean', description: 'The agent\'s own judgement of whether it completed the task' },
+      urls: { type: 'array', description: 'Pages visited, in order' },
+      steps: { type: 'number', description: 'How many steps the agent took' },
+      agentErrors: { type: 'array', description: 'Errors the agent recovered from during the run' },
+      gifPath: { type: 'string', description: 'Filename of the session recording' },
+      error: { type: 'string', description: 'Why the run could not be completed' },
     },
   };
 
   constructor() {
     super('ai-browser-use');
-    this.browser = null; // Store browser instance
   }
 
   async execute(params, inputData, workflowEngine) {
+    const instructions = (params.instructions || '').trim();
+    if (!instructions) {
+      return this.formatOutput({ success: false, error: 'No instructions were provided for the browser agent.' });
+    }
+
+    const userId = workflowEngine?.userId;
+    if (!userId) {
+      return this.formatOutput({ success: false, error: 'Browser Agent could not identify the user for this run.' });
+    }
+
+    let gatewayToken = null;
     try {
-      // 1) Validate instructions
-      const userInstructions = params.instructions || 'No instructions provided';
+      const llm = await this.buildLlmSpec(params, userId);
+      gatewayToken = llm.gatewayToken;
 
-      // 2) Get or default the chosen provider
-      const provider = params.provider || 'openai';
-      // The select options are display-cased ('OpenAI' / 'Gemini' / 'DeepSeek'),
-      // but the auth registry keys are lowercase — normalize for the lookup.
-      const authProvider = provider.toLowerCase();
+      const config = this.buildRunnerConfig(params, instructions, llm);
+      const pythonExecutable = await this.ensureEnvironment();
+      const outcome = await this.runRunner(pythonExecutable, config, params);
 
-      // 3) Get browser reuse setting
-      const reuseBrowser = params.reuseBrowser === true;
-
-      // 4) Fetch user's API key
-      let apiKey;
-      try {
-        apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, authProvider);
-      } catch (authErr) {
-        throw new Error(`Failed to retrieve API key for ${provider}: ${authErr.message || authErr}`);
-      }
-      if (!apiKey) {
-        if (authProvider === 'gemini') {
-          // browser-use's ChatGoogleGenerativeAI only consumes raw API keys —
-          // Antigravity / Gemini CLI OAuth subscriptions can't be used here.
-          throw new Error(
-            'Browser Agent requires a standard Gemini API key. '
-            + 'Antigravity and Gemini CLI subscriptions are not supported for browser automation '
-            + '(browser-use can only consume raw API keys). Add a Gemini API key to use Google models.',
-          );
-        }
-        throw new Error(`${provider.toUpperCase()} API key is missing or invalid. Please authenticate.`);
+      if (!outcome.success) {
+        return this.formatOutput({
+          success: false,
+          error: outcome.error || 'The browser agent failed without reporting a reason.',
+          gifPath: this.gifFilenameIfWritten(config.agent.generate_gif),
+        });
       }
 
-      // 5) Run Python snippet (model is now hard-coded)
-      const { result, gifPath } = await this.runPythonSnippet(userInstructions, apiKey, provider, reuseBrowser);
-
-      // 6) Return success
       return this.formatOutput({
         success: true,
-        result,
-        gifPath,
+        // The agent's answer, not a scrape of its logs. The previous version
+        // discarded `await agent.run()` entirely and returned captured stdout —
+        // banner art, progress bars and all — which is why every workflow using
+        // this node had to pipe `result` into another LLM to find out what
+        // actually happened.
+        result: outcome.finalResult ?? '',
+        structuredOutput: outcome.structuredOutput ?? null,
+        isSuccessful: outcome.isSuccessful,
+        urls: outcome.urls || [],
+        steps: outcome.steps ?? 0,
+        agentErrors: outcome.errors || [],
+        gifPath: this.gifFilenameIfWritten(config.agent.generate_gif),
         error: null,
       });
     } catch (err) {
-      console.error('AI Browser Use Error:', err);
-      return this.formatOutput({
-        success: false,
-        result: null,
-        gifPath: null,
-        error: err.message || 'Unknown error occurred',
+      console.error('[Browser Agent] run failed:', err);
+      return this.formatOutput({ success: false, error: err.message || 'Unknown error occurred' });
+    } finally {
+      // Revoke before returning, always. A gateway grant outliving the process
+      // it was minted for is exactly the leak the short TTL is a backstop for,
+      // not a substitute for.
+      if (gatewayToken) revokeGatewayToken(gatewayToken);
+    }
+  }
+
+  // ── provider → browser-use LLM spec ──────────────────────────────────────
+
+  /**
+   * Turn "the user picked Z.AI" into the class name and keyword arguments the
+   * Python runner will construct, plus a gateway token when one is needed.
+   */
+  async buildLlmSpec(params, userId) {
+    const requested = params.provider || 'OpenAI';
+
+    // A custom provider is addressed by its UUID; it is OpenAI-compatible by
+    // construction, which is the only kind AGNT's custom-provider system makes.
+    if (await CustomOpenAIProviderService.isCustomProvider(requested)) {
+      const credentials = await CustomOpenAIProviderService.getProviderCredentials(requested, userId);
+      if (!credentials?.base_url) {
+        throw new Error(`Custom provider "${requested}" is not connected, or has no stored base URL.`);
+      }
+      const routing = customProviderRouting(credentials.base_url, credentials.provider_name);
+      // Custom providers store no default model — there is no catalogue to read
+      // one from — so the node must name it rather than guess.
+      if (!params.model) {
+        throw new Error(`Set a model on the Browser Agent node: custom provider "${routing.name}" has no default.`);
+      }
+      return {
+        gatewayToken: null,
+        visionCapable: routing.visionCapable,
+        spec: {
+          class: 'ChatOpenAI',
+          kwargs: {
+            model: params.model,
+            // Local runtimes (Ollama, LM Studio, vLLM, Jan) legitimately have no
+            // key; the OpenAI SDK still insists on a non-empty one.
+            api_key: credentials.api_key || 'not-required',
+            base_url: credentials.base_url,
+          },
+        },
+      };
+    }
+
+    const routing = resolveBrowserUseProvider(requested);
+    const model = params.model || routing.defaultModel;
+    if (!model) {
+      throw new Error(`Set a model on the Browser Agent node — ${routing.name} declares no default model.`);
+    }
+
+    if (routing.route === ROUTE.GATEWAY) {
+      // No API key exists to hand over: these providers authenticate with a
+      // refreshed OAuth session, a spoofed CLI user-agent or a local CLI
+      // process. Point browser-use at our own OpenAI-compatible endpoint and
+      // let the normal adapter path make the call.
+      const { token } = mintGatewayToken({
+        userId,
+        provider: routing.key,
+        model,
+        ttlMs: Math.max(1, Number(params.timeoutMinutes) || 15) * 60 * 1000 + 60_000,
+        label: `browser-agent:${routing.key}`,
       });
+      const port = process.env.PORT || 3333;
+      return {
+        gatewayToken: token,
+        visionCapable: routing.visionCapable,
+        spec: {
+          class: 'ChatOpenAI',
+          kwargs: { model, api_key: token, base_url: `http://127.0.0.1:${port}/api/llm/v1` },
+        },
+      };
+    }
+
+    const apiKey = await AuthManager.getValidAccessToken(userId, routing.key);
+    if (!apiKey) {
+      throw new Error(
+        `${routing.name} is not connected. Add its API key in Settings → Providers, then run this node again.`,
+      );
+    }
+
+    // Native classes already know their own base URL, and ours is not always
+    // identical — providerConfigs lists DeepSeek as https://api.deepseek.com
+    // while ChatDeepSeek defaults to .../v1. Passing ours would break it. Only
+    // the OpenAI-compatible route needs an explicit endpoint.
+    const kwargs = { model, api_key: apiKey };
+    if (routing.route === ROUTE.OPENAI_COMPAT) kwargs.base_url = routing.baseUrl;
+
+    return {
+      gatewayToken: null,
+      visionCapable: routing.visionCapable,
+      spec: { class: routing.chatClass, kwargs },
+    };
+  }
+
+  // ── runner configuration ─────────────────────────────────────────────────
+
+  buildRunnerConfig(params, instructions, llm) {
+    const useVision = this.resolveUseVision(params, llm.visionCapable);
+    const gifPath = this.resolveGifPath(params);
+
+    const browser = {};
+    if (this.isTrue(params.headless)) browser.headless = true;
+    const allowedDomains = (params.allowedDomains || '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    if (allowedDomains.length > 0) browser.allowed_domains = allowedDomains;
+
+    return {
+      task: instructions,
+      llm: llm.spec,
+      maxSteps: Math.max(1, Number(params.maxSteps) || 100),
+      agent: {
+        use_vision: useVision,
+        generate_gif: gifPath,
+      },
+      browser,
+      outputSchema: this.parseJsonParam(params.outputSchema, 'outputSchema'),
+      sensitiveData: this.parseJsonParam(params.sensitiveData, 'sensitiveData'),
+    };
+  }
+
+  resolveUseVision(params, providerSupportsVision) {
+    const choice = (params.useVision || 'auto').toLowerCase();
+    if (choice === 'on') return true;
+    if (choice === 'off') return false;
+    // 'auto' answers from the provider rather than defaulting to true. A
+    // provider with no vision models — DeepSeek, MiniMax, Together — would
+    // otherwise be sent screenshots it cannot see, and browser-use would keep
+    // stepping on a blank mental picture instead of failing.
+    return Boolean(providerSupportsVision);
+  }
+
+  /**
+   * Where this run's GIF goes.
+   *
+   * An absolute, unique path passed straight to `generate_gif`. The previous
+   * version let every run write `agent_history.gif` into the shared user-data
+   * directory and renamed it afterwards, so two browser tasks running at once
+   * overwrote each other's recording before either rename happened.
+   */
+  resolveGifPath(params) {
+    if (!this.isTrue(params.generateGif ?? 'true')) return false;
+    const gifsDirectory = PathManager.getPath('media', 'gifs');
+    fs.mkdirSync(gifsDirectory, { recursive: true });
+    return path.join(gifsDirectory, `agent_history_${randomBytes(6).toString('hex')}.gif`);
+  }
+
+  gifFilenameIfWritten(gifPath) {
+    if (typeof gifPath !== 'string') return null;
+    return fs.existsSync(gifPath) ? path.basename(gifPath) : null;
+  }
+
+  parseJsonParam(raw, name) {
+    if (!raw || !String(raw).trim()) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`${name} is not valid JSON: ${err.message}`);
+    }
+  }
+
+  isTrue(value) {
+    return value === true || value === 'true';
+  }
+
+  // ── running ──────────────────────────────────────────────────────────────
+
+  async runRunner(pythonExecutable, config, params) {
+    const workingDir = PathManager.getUserDataPath();
+    const runnerPath = this.writeRunner(workingDir);
+    const timeoutMs = Math.max(1, Number(params.timeoutMinutes) || 15) * 60 * 1000;
+
+    // Round-trip so the child receives plain JSON with no undefined holes.
+    const payload = JSON.parse(JSON.stringify(config));
+
+    return new Promise((resolve, reject) => {
+      const child = spawn(pythonExecutable, ['-u', runnerPath], {
+        cwd: workingDir,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: 'utf-8',
+          // The user's browsing is their business. browser-use ships PostHog
+          // telemetry and a cloud sync that are on by default.
+          ANONYMIZED_TELEMETRY: 'false',
+          BROWSER_USE_CLOUD_SYNC: 'false',
+        },
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const killTimer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+        // SIGTERM lets browser-use close Chromium; if it will not go, take it.
+        setTimeout(() => child.kill('SIGKILL'), 5000).unref?.();
+      }, timeoutMs);
+
+      child.stdout.on('data', (chunk) => {
+        const text = chunk.toString();
+        stdout += text;
+        console.log('[Browser Agent]', text.trimEnd());
+      });
+      child.stderr.on('data', (chunk) => {
+        const text = chunk.toString();
+        stderr += text;
+        console.error('[Browser Agent]', text.trimEnd());
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(killTimer);
+        reject(new Error(`Could not start the browser agent runner: ${err.message}`));
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(killTimer);
+
+        if (timedOut) {
+          return reject(new Error(
+            `The browser agent hit its ${params.timeoutMinutes || 15}-minute limit and was stopped. `
+            + 'Raise timeoutMinutes, lower maxSteps, or narrow the task.',
+          ));
+        }
+
+        const result = this.parseResultLine(stdout);
+        if (result) return resolve(result);
+
+        return reject(new Error(
+          stderr.trim()
+          || `The browser agent exited with code ${code} without reporting a result.`,
+        ));
+      });
+
+      child.stdin.write(JSON.stringify(payload));
+      child.stdin.end();
+    });
+  }
+
+  /**
+   * Pull the runner's one machine-readable line out of browser-use's logging.
+   * Last one wins — the runner emits exactly one, and taking the last is
+   * robust against a page that happens to print the sentinel.
+   */
+  parseResultLine(stdout) {
+    const lines = stdout.split(/\r?\n/).filter((line) => line.startsWith(RESULT_SENTINEL));
+    if (lines.length === 0) return null;
+    try {
+      return JSON.parse(lines[lines.length - 1].slice(RESULT_SENTINEL.length).trim());
+    } catch {
+      return null;
     }
   }
 
   /**
-   * The runPythonSnippet method now supports browser reuse
+   * Write the runner next to the venv, but only when it would change. Keyed by
+   * content hash so a partially-written or hand-edited copy is replaced.
    */
-  async runPythonSnippet(userInstructions, apiKey, provider, reuseBrowser) {
-    // First, ensure required packages are installed and get the venv python executable
-    const pythonExecutable = await this.installRequiredPackages();
+  writeRunner(workingDir) {
+    const runnerPath = path.join(workingDir, `browser_use_runner_v${RUNNER_VERSION}.py`);
+    const expected = createHash('sha256').update(RUNNER_PY).digest('hex');
+    const stampPath = `${runnerPath}.sha256`;
 
-    // Escape special chars in user instructions
-    const sanitizedInstructions = userInstructions.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-
-    let importLine = '';
-    let llmLine = '';
-    const env = { ...process.env, PYTHONIOENCODING: 'utf-8' };
-
-    // Hard-code model for each provider
-    if (provider === 'Gemini') {
-      importLine = 'from browser_use.llm import ChatGoogleGenerativeAI';
-      llmLine = `llm=ChatGoogleGenerativeAI(model='gemini-2.0-flash')`;
-      env['GOOGLE_API_KEY'] = apiKey;
-    } else if (provider === 'DeepSeek') {
-      importLine = 'from browser_use.llm import ChatOpenAI';
-      llmLine = `
-llm=ChatOpenAI(
-    base_url='https://api.deepseek.com/v1',
-    model='deepseek-reasoner'
-)`;
-      env['DEEPSEEK_API_KEY'] = apiKey;
-    } else {
-      // Default to OpenAI
-      importLine = 'from browser_use.llm import ChatOpenAI';
-      llmLine = `llm=ChatOpenAI(model='gpt-4o')`;
-      env['OPENAI_API_KEY'] = apiKey;
+    const current = fs.existsSync(stampPath) ? fs.readFileSync(stampPath, 'utf8').trim() : null;
+    if (current !== expected || !fs.existsSync(runnerPath)) {
+      fs.writeFileSync(runnerPath, RUNNER_PY, 'utf8');
+      fs.writeFileSync(stampPath, expected, 'utf8');
     }
-
-    // Generate a unique identifier for the browser instance
-    const browserInstanceId = reuseBrowser ? 'persistent_browser' : `browser_${randomBytes(4).toString('hex')}`;
-
-    // No leading indentation:
-    const pythonCode = `
-import os
-import sys
-import asyncio
-import json
-from dotenv import load_dotenv
-import certifi
-
-# Set SSL certificate file for macOS/extensions
-os.environ['SSL_CERT_FILE'] = certifi.where()
-
-load_dotenv()
-
-${importLine}
-from browser_use import Agent, Browser
-
-task = """${sanitizedInstructions}"""
-
-# Check if we have a persistent browser
-BROWSER_STATE_FILE = "browser_state.json"
-browser_data = {}
-if os.path.exists(BROWSER_STATE_FILE):
-    try:
-        with open(BROWSER_STATE_FILE, 'r') as f:
-            browser_data = json.load(f)
-    except:
-        browser_data = {}
-
-async def main():
-    try:
-        # Initialize or reuse browser
-        browser = None
-        reuse_browser = ${reuseBrowser ? 'True' : 'False'}
-        browser_id = "${browserInstanceId}"
-        
-        if reuse_browser and browser_id in browser_data:
-            try:
-                # Try to reconnect to existing browser
-                browser = Browser(id=browser_id)
-                print("Reusing existing browser session")
-            except Exception as e:
-                print(f"Failed to reconnect to browser: {e}")
-                browser = None
-        
-        if browser is None:
-            browser = Browser(id=browser_id)
-        
-        # Create and run agent with the browser
-        agent = Agent(
-            task=task,
-            ${llmLine},
-            browser=browser,
-            generate_gif=True
-        )
-        await agent.run()
-        
-        # Save browser state for future reuse if needed
-        if reuse_browser:
-            browser_data[browser_id] = {"active": True, "last_used": browser.wsEndpoint}
-            with open(BROWSER_STATE_FILE, 'w') as f:
-                json.dump(browser_data, f)
-            
-            # Don't close the browser if we want to reuse it
-            print("Browser instance kept alive for future use")
-        else:
-            # Close browser only if not reusing
-            await browser.close()
-            
-    except Exception as e:
-        print(e, file=sys.stderr)
-
-asyncio.run(main())
-`.trim();
-
-    return new Promise((resolve, reject) => {
-      // Use PathManager to get the working directory (userData)
-      const workingDir = PathManager.getUserDataPath();
-
-      const child = spawn(pythonExecutable, ['-u', '-c', pythonCode], {
-        env,
-        cwd: workingDir,
-      });
-
-      const killTimer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('Python script timed out after 10 minutes.'));
-      }, 600000);
-
-      let stdoutData = '';
-      let stderrData = '';
-
-      child.stdout.on('data', (data) => {
-        const output = data.toString();
-        console.log('Python stdout:', output);
-        stdoutData += output;
-      });
-
-      child.stderr.on('data', (data) => {
-        const errorOutput = data.toString();
-        console.error('Python stderr:', errorOutput);
-        stderrData += errorOutput;
-      });
-
-      child.on('close', async (code) => {
-        clearTimeout(killTimer);
-
-        if (code === 0) {
-          const workingDir = PathManager.getUserDataPath();
-          // Attempt to move agent_history.gif to /backend/media/gifs
-          const defaultGifFile = path.join(workingDir, 'agent_history.gif');
-          const randomSuffix = randomBytes(4).toString('hex');
-          const newGifFileName = `agent_history_${randomSuffix}.gif`;
-          let renamedGifPath = null;
-
-          if (fs.existsSync(defaultGifFile)) {
-            try {
-              // Use user data directory for media/gifs as well
-              const gifsDirectory = PathManager.getPath('media', 'gifs');
-
-              if (!fs.existsSync(gifsDirectory)) {
-                fs.mkdirSync(gifsDirectory, { recursive: true });
-              }
-              const newGifPath = path.join(gifsDirectory, newGifFileName);
-              fs.renameSync(defaultGifFile, newGifPath);
-              renamedGifPath = newGifFileName;
-            } catch (renameErr) {
-              return reject(new Error(`Failed to rename the GIF: ${renameErr.message}`));
-            }
-          }
-
-          resolve({
-            result: stdoutData.trim(),
-            gifPath: renamedGifPath,
-          });
-        } else {
-          reject(new Error(stderrData.trim() || `AI Browser Use script exited with code ${code || 'unknown'}`));
-        }
-      });
-    });
+    return runnerPath;
   }
 
-  async installRequiredPackages() {
-    // Use PathManager for the working directory
+  // ── python environment ───────────────────────────────────────────────────
+
+  /**
+   * Ensure a venv exists with exactly BROWSER_USE_VERSION installed, and return
+   * its interpreter. Memoised per process: the old code ran a full pip pass
+   * before every single browser task.
+   */
+  async ensureEnvironment() {
     const workingDir = PathManager.getUserDataPath();
     const venvPath = path.join(workingDir, 'browser_use_venv');
-    const isWin = process.platform === 'win32';
-    const venvPython = isWin ? path.join(venvPath, 'Scripts', 'python.exe') : path.join(venvPath, 'bin', 'python');
+    const isWindows = process.platform === 'win32';
+    const venvPython = isWindows
+      ? path.join(venvPath, 'Scripts', 'python.exe')
+      : path.join(venvPath, 'bin', 'python');
 
-    const pipExecutable = isWin ? path.join(venvPath, 'Scripts', 'pip.exe') : path.join(venvPath, 'bin', 'pip');
+    if (environmentReadyFor === BROWSER_USE_VERSION && fs.existsSync(venvPython)) return venvPython;
 
-    // Helper to find python executable
-    const findPython = async () => {
-      if (isWin) return 'python';
+    await this.ensureVenv(workingDir, venvPath, venvPython);
 
-      // On GNU/Linux/Mac, try python3 first, then python
-      return new Promise((resolve) => {
-        const checkPython3 = spawn('python3', ['--version']);
-        checkPython3.on('error', () => {
-          resolve('python'); // Fallback to python
-        });
-        checkPython3.on('close', (code) => {
-          resolve(code === 0 ? 'python3' : 'python');
-        });
-      });
-    };
+    const installed = await this.installedBrowserUseVersion(venvPython);
+    if (installed !== BROWSER_USE_VERSION) {
+      console.log(`[Browser Agent] installing browser-use==${BROWSER_USE_VERSION} (found: ${installed || 'nothing'})`);
+      await this.pipInstall(venvPython, [`browser-use==${BROWSER_USE_VERSION}`, ...EXTRA_REQUIREMENTS]);
 
-    // 1. Check if venv/pip exists. If not, create/repair it.
-    if (!fs.existsSync(venvPath) || !fs.existsSync(pipExecutable)) {
-      console.log('Creating or repairing Python virtual environment at:', venvPath);
-
-      // Step 1: Create venv without pip (only if it doesn't exist to avoid overwriting)
-      if (!fs.existsSync(venvPath)) {
-        const systemPython = await findPython();
-        console.log(`Using system python: ${systemPython}`);
-
-        await new Promise((resolve, reject) => {
-          // Use --without-pip to avoid error if ensurepip is missing
-          const venvProcess = spawn(systemPython, ['-m', 'venv', '--without-pip', venvPath], {
-            cwd: workingDir,
-          });
-
-          let stderrOutput = '';
-          venvProcess.stdout.on('data', (d) => console.log(`Venv creation stdout: ${d}`));
-          venvProcess.stderr.on('data', (d) => {
-            const msg = d.toString();
-            stderrOutput += msg;
-            console.error(`Venv creation stderr: ${msg}`);
-          });
-
-          venvProcess.on('close', (code) => {
-            if (code === 0) resolve();
-            else {
-              let errorMsg = `Failed to create venv. Exit code: ${code}. `;
-              if (stderrOutput.includes('apt install python3-venv')) {
-                errorMsg += 'Missing venv module. Please install it (e.g., sudo apt install python3-venv).';
-              }
-              reject(new Error(errorMsg));
-            }
-          });
-          venvProcess.on('error', (err) => {
-            reject(new Error(`Failed to spawn venv process: ${err.message}`));
-          });
-        });
+      const confirmed = await this.installedBrowserUseVersion(venvPython);
+      if (confirmed !== BROWSER_USE_VERSION) {
+        throw new Error(
+          `Installed browser-use ${confirmed || 'nothing'} but expected ${BROWSER_USE_VERSION}. `
+          + 'Check the Python environment at ' + venvPath,
+        );
       }
-
-      // Step 2: Download get-pip.py
-      console.log('Downloading get-pip.py...');
-      const getPipPath = path.join(workingDir, 'get-pip.py');
-      await new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(getPipPath);
-        https
-          .get('https://bootstrap.pypa.io/get-pip.py', (response) => {
-            response.pipe(file);
-            file.on('finish', () => {
-              file.close();
-              resolve();
-            });
-          })
-          .on('error', (err) => {
-            fs.unlink(getPipPath, () => {}); // Delete the file async. (But we don't check result)
-            reject(new Error(`Failed to download get-pip.py: ${err.message}`));
-          });
-      });
-
-      // Step 3: Install pip into the venv
-      console.log('Installing pip into venv...');
-      await new Promise((resolve, reject) => {
-        // IMPORTANT: Use the full path to the python executable in the venv
-        const installPipProcess = spawn(venvPython, [getPipPath], {
-          cwd: workingDir,
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-        });
-
-        installPipProcess.stdout.on('data', (d) => console.log(`Pip install stdout: ${d}`));
-        installPipProcess.stderr.on('data', (d) => console.error(`Pip install stderr: ${d}`));
-
-        installPipProcess.on('close', (code) => {
-          // Clean up get-pip.py
-          try {
-            fs.unlinkSync(getPipPath);
-          } catch (e) {}
-
-          if (code === 0) resolve();
-          else reject(new Error(`Failed to install pip. Exit code: ${code}`));
-        });
-      });
     }
 
-    const installScriptContent = `
-import subprocess
-import sys
-import os
-import platform
+    environmentReadyFor = BROWSER_USE_VERSION;
+    return venvPython;
+  }
 
-def install_package(package):
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-        print(f"Successfully installed {package}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install {package}: {e}", file=sys.stderr)
-        sys.exit(1)
+  async installedBrowserUseVersion(venvPython) {
+    const probe = 'import importlib.metadata as m;\nprint(m.version("browser-use"))';
+    try {
+      const { stdout } = await this.runProcess(venvPython, ['-c', probe]);
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
 
-def install_from_git(repo_url):
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", f"git+{repo_url}"])
-        print(f"Successfully installed {repo_url}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install {repo_url}: {e}", file=sys.stderr)
-        sys.exit(1)
+  async pipInstall(venvPython, packages) {
+    await this.runProcess(venvPython, ['-m', 'pip', 'install', '--upgrade', ...packages], { streamLogs: true });
+  }
 
-def check_git_installed():
-    try:
-        subprocess.run(["git", "--version"], check=True, capture_output=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+  async ensureVenv(workingDir, venvPath, venvPython) {
+    if (fs.existsSync(venvPython)) {
+      // A venv with no pip cannot install anything; repair it rather than
+      // failing several steps later with a confusing error.
+      try {
+        await this.runProcess(venvPython, ['-m', 'pip', '--version']);
+        return;
+      } catch {
+        await this.bootstrapPip(workingDir, venvPython);
+        return;
+      }
+    }
 
-required_packages = [
-    'python-dotenv', 'langchain', 'langchain_openai', 'langchain_google_genai',
-    'pydantic', 'selenium', 'webdriver_manager', 'beautifulsoup4', 'playwright',
-    'pillow', 'numpy', 'requests', 'aiohttp', 'certifi'
-]
+    const systemPython = await this.findSystemPython();
+    console.log(`[Browser Agent] creating Python environment with ${systemPython}`);
+    try {
+      await this.runProcess(systemPython, ['-m', 'venv', venvPath]);
+    } catch (err) {
+      // Debian and friends ship python3 without ensurepip.
+      if (/ensurepip|python3-venv/i.test(err.message)) {
+        await this.runProcess(systemPython, ['-m', 'venv', '--without-pip', venvPath]);
+        await this.bootstrapPip(workingDir, venvPython);
+        return;
+      }
+      throw new Error(
+        `Could not create a Python environment for the browser agent: ${err.message}. `
+        + 'browser-use needs Python 3.11 or newer on PATH.',
+      );
+    }
 
-if not check_git_installed():
-    print("Git not found. Please install Git manually.")
-    sys.exit(1)
+    try {
+      await this.runProcess(venvPython, ['-m', 'pip', '--version']);
+    } catch {
+      await this.bootstrapPip(workingDir, venvPython);
+    }
+  }
 
-should_install_browsers = False
-
-for package in required_packages:
-    try:
-        __import__(package.replace('-', '_').split('[')[0])
-        print(f"{package} is already installed")
-    except ImportError:
-        print(f"Installing {package}...")
-        install_package(package)
-        if package == 'playwright':
-            should_install_browsers = True
-
-browser_use_repo = "https://github.com/browser-use/browser-use.git"
-try:
-    import browser_use
-    print("browser-use is already installed")
-except ImportError:
-    print("Installing browser-use from GitHub...")
-    install_from_git(browser_use_repo)
-
-if should_install_browsers:
-    print("Installing Playwright browsers...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "playwright", "install"])
-        print("Playwright browsers installed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install Playwright browsers: {e}", file=sys.stderr)
-        sys.exit(1)
-else:
-    print("Playwright browsers check skipped (package already installed)")
-
-print("All packages installed successfully")
-`;
-
-    // Write the install script to a temporary file
-    const tempScriptPath = path.join(os.tmpdir(), 'install_packages.py');
-    fs.writeFileSync(tempScriptPath, installScriptContent);
-
-    return new Promise((resolve, reject) => {
-      // Use the venv python executable
-      const installProcess = spawn(venvPython, [tempScriptPath], {
-        env: {
-          ...process.env,
-          PYTHONIOENCODING: 'utf-8',
-          PATH: process.env.PATH,
-        },
-      });
-
-      let stdoutData = '';
-      let stderrData = '';
-
-      installProcess.stdout.on('data', (data) => {
-        stdoutData += data.toString();
-        console.log('Package installation:', data.toString());
-      });
-
-      installProcess.stderr.on('data', (data) => {
-        stderrData += data.toString();
-        console.error('Package installation error:', data.toString());
-      });
-
-      installProcess.on('close', (code) => {
-        // Clean up the temporary script file
-        fs.unlinkSync(tempScriptPath);
-
-        if (code === 0) {
-          console.log('Package installation completed successfully');
-          resolve(venvPython);
-        } else {
-          console.error('Package installation failed with code:', code);
-          console.error('Stdout:', stdoutData);
-          console.error('Stderr:', stderrData);
-          reject(new Error(`Failed to install required Python packages. Exit code: ${code}`));
+  async bootstrapPip(workingDir, venvPython) {
+    const getPipPath = path.join(workingDir, 'get-pip.py');
+    await new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(getPipPath);
+      https.get('https://bootstrap.pypa.io/get-pip.py', (response) => {
+        if (response.statusCode !== 200) {
+          file.close();
+          return reject(new Error(`Downloading get-pip.py returned HTTP ${response.statusCode}`));
         }
+        response.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+        return undefined;
+      }).on('error', (err) => {
+        fs.unlink(getPipPath, () => {});
+        reject(new Error(`Failed to download get-pip.py: ${err.message}`));
+      });
+    });
+
+    try {
+      await this.runProcess(venvPython, [getPipPath], { streamLogs: true });
+    } finally {
+      try { fs.unlinkSync(getPipPath); } catch { /* best effort */ }
+    }
+  }
+
+  async findSystemPython() {
+    const candidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
+    for (const candidate of candidates) {
+      try {
+        await this.runProcess(candidate, ['--version']);
+        return candidate;
+      } catch { /* try the next one */ }
+    }
+    throw new Error('No Python interpreter found on PATH. browser-use needs Python 3.11 or newer.');
+  }
+
+  runProcess(command, args, { streamLogs = false } = {}) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(command, args, {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+      });
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+        if (streamLogs) console.log('[Browser Agent setup]', chunk.toString().trimEnd());
+      });
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+        if (streamLogs) console.error('[Browser Agent setup]', chunk.toString().trimEnd());
+      });
+
+      child.on('error', (err) => reject(new Error(`${command} could not be started: ${err.message}`)));
+      child.on('close', (code) => {
+        if (code === 0) resolve({ stdout, stderr });
+        else reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
       });
     });
   }
 
   formatOutput(output) {
-    return {
-      ...output,
-      outputs: {
-        success: output.success,
-        result: output.result,
-        gifPath: output.gifPath,
-        error: output.error,
-      },
+    const shaped = {
+      success: output.success ?? false,
+      result: output.result ?? null,
+      structuredOutput: output.structuredOutput ?? null,
+      isSuccessful: output.isSuccessful ?? null,
+      urls: output.urls ?? [],
+      steps: output.steps ?? 0,
+      agentErrors: output.agentErrors ?? [],
+      gifPath: output.gifPath ?? null,
+      error: output.error ?? null,
     };
+    return { ...shaped, outputs: { ...shaped } };
   }
 }
 
