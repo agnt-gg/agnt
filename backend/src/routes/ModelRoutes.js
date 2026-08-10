@@ -18,6 +18,9 @@ import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
 import AntigravityAuthManager from '../services/auth/AntigravityAuthManager.js';
+// One resolver for the four subscription providers that authenticate through a
+// local OAuth flow rather than a stored API key.
+import { isOAuthProvider, resolveOAuthApiKey } from '../services/auth/oauthProviderAuth.js';
 import { getClientVersion } from '../services/ai/clientVersions.js';
 import { persistLastModels, getLastSuccessfulModels } from '../services/ai/lastModelsCache.js';
 import jwt from 'jsonwebtoken';
@@ -204,6 +207,8 @@ for (const config of getAllProviderConfigs()) {
 
 // Aliases
 providerServices['grok'] = providerServices['grokai'];
+
+
 
 // Providers that have hardcoded models and don't require API key for model listing
 const providersWithHardcodedModels = getAllProviderConfigs()
@@ -526,53 +531,17 @@ router.post('/:provider/models/refresh', async (req, res) => {
     let apiKey = null;
     const hasHardcodedModels = providersWithHardcodedModels.includes(providerLower);
 
-    if (providerLower === 'claude-code') {
-      const ccStatus = await ClaudeCodeAuthManager.checkApiUsable({ forceRefresh: true });
-      if (!ccStatus.available) {
-        return res.status(400).json({
-          success: false,
-          error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
-        });
+    // The four OAuth providers resolve through one shared table. This was four
+    // hand-written arms here and four more in the list route above — the same
+    // auth decision expressed twice, which is how one path gains a check the
+    // other never gets. See services/auth/oauthProviderAuth.js, which also
+    // documents why Codex needs its OAuth token specifically.
+    if (isOAuthProvider(providerLower)) {
+      const resolved = await resolveOAuthApiKey(providerLower, { forceRefresh: true });
+      if (!resolved.ok) {
+        return res.status(400).json({ success: false, error: resolved.error });
       }
-      apiKey = await ClaudeCodeAuthManager.getAccessToken();
-    } else if (providerLower === 'gemini-cli') {
-      const gcStatus = await GeminiCliAuthManager.checkApiUsable({ forceRefresh: true });
-      if (!gcStatus.available) {
-        return res.status(400).json({
-          success: false,
-          error: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
-        });
-      }
-      apiKey = await GeminiCliAuthManager.getAccessToken();
-    } else if (providerLower === 'antigravity') {
-      const agStatus = await AntigravityAuthManager.checkApiUsable({ forceRefresh: true });
-      if (!agStatus.available) {
-        return res.status(400).json({
-          success: false,
-          error: 'Antigravity is not connected. Use Google OAuth to connect.',
-        });
-      }
-      apiKey = await AntigravityAuthManager.getAccessToken();
-    } else if (providerLower === 'openai-codex') {
-      const codexStatus = await CodexAuthManager.checkApiUsable({ forceRefresh: true });
-      if (!codexStatus.available) {
-        return res.status(400).json({
-          success: false,
-          error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
-        });
-      }
-      if (!codexStatus.apiUsable) {
-        const detail = codexStatus.apiStatus ? ` (status: ${codexStatus.apiStatus})` : '';
-        return res.status(400).json({
-          success: false,
-          error: `ChatGPT is connected but its Codex service is not usable${detail}.`,
-        });
-      }
-      // The OAuth token specifically. This is sent to chatgpt.com, which
-      // rejects `sk-` keys (401) — and `getAccessToken()` returns one whenever
-      // OPENAI_API_KEY is set, which would silently degrade every model list to
-      // the hardcoded fallback on any machine that has a platform key.
-      apiKey = CodexAuthManager.getOAuthToken();
+      apiKey = resolved.apiKey;
     } else if (providerLower === 'grok-build') {
       // CLI transport: refresh means re-asking the local CLI, never HTTP — the
       // config baseURL is decorative and GenericProviderService must not be hit.

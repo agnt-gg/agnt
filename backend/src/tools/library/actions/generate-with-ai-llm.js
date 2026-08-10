@@ -525,6 +525,57 @@ class GenerateWithAiLlm extends BaseAction {
     }
   }
 
+  /**
+   * Which generator serves each provider.
+   *
+   * This replaced two twenty-arm `switch (provider)` statements — one in
+   * handleTextGeneration, one in handleVision — that listed the same providers
+   * in the same order and differed only in the params they forwarded. Two
+   * copies of one routing decision is how a provider ends up supported for
+   * text and quietly missing for vision, which is invisible until a user picks
+   * that combination.
+   *
+   * A table cannot drift from itself. Anything absent falls through to the
+   * OpenAI-compatible generator, which is what fourteen of the twenty use.
+   */
+  static PROVIDER_ROUTES = {
+    anthropic: 'generateWithAnthropic',
+    'claude-code': 'generateWithAnthropic',
+    'openai-codex': 'generateWithCodex',
+    'kimi-code': 'generateWithKimiCode',
+    chutes: 'generateWithChutes',
+    'gemini-cli': 'generateWithGoogleGateway',
+    antigravity: 'generateWithGoogleGateway',
+    // Local CLI transports: the client MUST come from createLlmClient, so they
+    // use the managed helper with an explicit default model.
+    'grok-build': { method: 'generateWithManagedOpenAiLike', provider: 'grok-build', defaultModel: 'grok-4.5' },
+    'cursor-cli': { method: 'generateWithManagedOpenAiLike', provider: 'cursor-cli', defaultModel: 'cursor-grok-4.5-high' },
+  };
+
+  /**
+   * The one place a provider key selects a generator.
+   * @param {object} params    the node's parameters
+   * @param {object} overrides prompt/image for this mode
+   * @param {string} mode      'text' | 'vision', for the error message only
+   */
+  async routeToProvider(params, overrides, mode = 'text') {
+    const provider = String(params.provider || '').toLowerCase();
+    if (!provider) {
+      throw new Error(`Unsupported provider${mode === 'vision' ? ' for vision' : ''}: ${params.provider}`);
+    }
+
+    const route = GenerateWithAiLlm.PROVIDER_ROUTES[provider];
+    const merged = { ...params, ...overrides };
+
+    if (typeof route === 'string') return this[route](merged);
+    if (route) return this[route.method](merged, { provider: route.provider, defaultModel: route.defaultModel });
+
+    // Default: the OpenAI-compatible transport. Reached by cerebras, deepseek,
+    // gemini, grokai, groq, kimi, local, minimax, openai, openrouter,
+    // togetherai and zai — and by any provider added later, which is the point.
+    return this.generateWithOpenAiLike(merged);
+  }
+
   async handleTextGeneration(params) {
     const prompt = params.prompt || params.instructions;
     let fullPrompt = prompt;
@@ -536,57 +587,7 @@ class GenerateWithAiLlm extends BaseAction {
 3. BUT DO NOT use "'\\n' +" to split lines. "+" CONCATENATION WILL BREAK THE SYSTEM!!!!`;
     }
 
-    const provider = params.provider.toLowerCase();
-    let response;
-
-    switch (provider) {
-      case 'anthropic':
-      case 'claude-code':
-        response = await this.generateWithAnthropic({ ...params, prompt: fullPrompt });
-        break;
-      case 'openai-codex':
-        response = await this.generateWithCodex({ ...params, prompt: fullPrompt });
-        break;
-      case 'kimi-code':
-        response = await this.generateWithKimiCode({ ...params, prompt: fullPrompt });
-        break;
-      case 'grok-build':
-        // Local CLI transport — client MUST come from createLlmClient.
-        response = await this.generateWithManagedOpenAiLike(
-          { ...params, prompt: fullPrompt },
-          { provider: 'grok-build', defaultModel: 'grok-4.5' },
-        );
-        break;
-      case 'cursor-cli':
-        response = await this.generateWithManagedOpenAiLike(
-          { ...params, prompt: fullPrompt },
-          { provider: 'cursor-cli', defaultModel: 'cursor-grok-4.5-high' },
-        );
-        break;
-      case 'chutes':
-        response = await this.generateWithChutes({ ...params, prompt: fullPrompt });
-        break;
-      case 'gemini-cli':
-      case 'antigravity':
-        response = await this.generateWithGoogleGateway({ ...params, prompt: fullPrompt });
-        break;
-      case 'cerebras':
-      case 'deepseek':
-      case 'gemini':
-      case 'grokai':
-      case 'groq':
-      case 'kimi':
-      case 'local':
-      case 'minimax':
-      case 'openai':
-      case 'openrouter':
-      case 'togetherai':
-      case 'zai':
-        response = await this.generateWithOpenAiLike({ ...params, prompt: fullPrompt });
-        break;
-      default:
-        throw new Error(`Unsupported provider: ${params.provider}`);
-    }
+    const response = await this.routeToProvider(params, { prompt: fullPrompt });
 
     return {
       generatedText: response.generatedText,
@@ -608,44 +609,7 @@ class GenerateWithAiLlm extends BaseAction {
       throw new Error('Vision image is required for vision mode');
     }
 
-    const provider = params.provider.toLowerCase();
-    let response;
-
-    switch (provider) {
-      case 'anthropic':
-      case 'claude-code':
-        response = await this.generateWithAnthropic({ ...params, prompt, image });
-        break;
-      case 'openai-codex':
-        response = await this.generateWithCodex({ ...params, prompt, image });
-        break;
-      case 'kimi-code':
-        response = await this.generateWithKimiCode({ ...params, prompt, image });
-        break;
-      case 'gemini-cli':
-      case 'antigravity':
-        response = await this.generateWithGoogleGateway({ ...params, prompt, image });
-        break;
-      case 'chutes':
-        response = await this.generateWithChutes({ ...params, prompt, image });
-        break;
-      case 'cerebras':
-      case 'deepseek':
-      case 'gemini':
-      case 'grokai':
-      case 'groq':
-      case 'kimi':
-      case 'local':
-      case 'minimax':
-      case 'openai':
-      case 'openrouter':
-      case 'togetherai':
-      case 'zai':
-        response = await this.generateWithOpenAiLike({ ...params, prompt, image });
-        break;
-      default:
-        throw new Error(`Unsupported provider for vision: ${params.provider}`);
-    }
+    const response = await this.routeToProvider(params, { prompt, image }, 'vision');
 
     return {
       generatedText: response.generatedText,
