@@ -10,6 +10,7 @@ import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../ai/reasoni
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from './messageSanitizers.js';
 import { openAIPromptCachePolicy } from '../../utils/promptCacheTtl.js';
+import { normalizeGeminiUsage } from '../../utils/usageCacheFields.js';
 import { resolveOpenRouterCacheContract } from '../../utils/openRouterCache.js';
 
 /**
@@ -1186,13 +1187,27 @@ Please carefully check the tool schema and ensure all parameters match the expec
               break;
             }
 
-            const choice = chunk.choices[0];
-            const delta = choice?.delta;
-
-            // Capture usage from final chunk (sent when stream_options.include_usage is true)
+            // USAGE FIRST, and defensively.
+            //
+            // With stream_options.include_usage the final chunk carries the
+            // whole billing record — input, output, cached reads. OpenAI's own
+            // spec says that chunk's `choices` is an EMPTY ARRAY, but several
+            // OpenAI-compatible providers OMIT the field entirely instead.
+            // This block used to read `chunk.choices[0]` first and unguarded,
+            // so those providers threw a TypeError on the usage chunk before
+            // the usage was ever read: measured live on kimi 2026-08-09, where
+            // a completed turn reported inputTokens undefined, outputTokens
+            // undefined and cost 0 — the entire ledger blind, not merely the
+            // cache counters, and indistinguishable from a free request.
+            //
+            // Reading usage before anything else means no future parse error
+            // on an unrelated field can cost us the billing record again.
             if (chunk.usage) {
               streamUsage = chunk.usage;
             }
+
+            const choice = chunk.choices?.[0];
+            const delta = choice?.delta;
 
             // Track finish_reason
             if (choice?.finish_reason) {
@@ -3720,7 +3735,12 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
             streamUsage = chunk.usage;
           }
 
-          const delta = chunk.choices[0]?.delta;
+          // Guarded for the same reason as OpenAiLikeAdapter above: a
+          // usage-only final chunk may omit `choices` entirely rather than
+          // sending an empty array. Usage is already captured above, so this
+          // guard protects the rest of the stream loop rather than the
+          // billing record.
+          const delta = chunk.choices?.[0]?.delta;
 
           if (!delta) continue;
 
@@ -4396,17 +4416,14 @@ class GeminiAdapter extends BaseAdapter {
           console.warn('[Gemini] Provider returned empty response (no content, no tool calls) — padded for history safety');
         }
 
-        // Extract Gemini usage metadata (including context-cache tokens when present)
-        const geminiUsage = response.usageMetadata
-          ? {
-              prompt_tokens: response.usageMetadata.promptTokenCount || 0,
-              completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
-              total_tokens: response.usageMetadata.totalTokenCount || 0,
-              prompt_tokens_details: response.usageMetadata.cachedContentTokenCount
-                ? { cached_tokens: response.usageMetadata.cachedContentTokenCount }
-                : undefined,
-            }
-          : undefined;
+        // Extract Gemini usage metadata (including context-cache tokens when
+        // present). Normalized in usageCacheFields, which knows every field
+        // spelling Google's backends use. The hand-rolled read this replaces
+        // knew only cachedContentTokenCount, so a backend reporting under any
+        // other name was indistinguishable from caching being off — measured
+        // 2026-08-09 as 0% on the API-key client versus 99.6% on Code Assist
+        // for the same model through this same adapter.
+        const geminiUsage = normalizeGeminiUsage(response.usageMetadata);
 
         return {
           responseMessage: normalizedMessage,
@@ -4668,16 +4685,11 @@ class GeminiAdapter extends BaseAdapter {
             });
           }
 
-          // Capture usage metadata (typically present on the last chunk)
+          // Capture usage metadata (typically present on the last chunk).
+          // Same normalizer as the non-streaming path — one reader for every
+          // field spelling Google uses across its backends.
           if (chunk.usageMetadata) {
-            geminiUsage = {
-              prompt_tokens: chunk.usageMetadata.promptTokenCount || 0,
-              completion_tokens: chunk.usageMetadata.candidatesTokenCount || 0,
-              total_tokens: chunk.usageMetadata.totalTokenCount || 0,
-              prompt_tokens_details: chunk.usageMetadata.cachedContentTokenCount
-                ? { cached_tokens: chunk.usageMetadata.cachedContentTokenCount }
-                : undefined,
-            };
+            geminiUsage = normalizeGeminiUsage(chunk.usageMetadata);
           }
         }
 
