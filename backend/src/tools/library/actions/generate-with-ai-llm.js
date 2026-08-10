@@ -987,16 +987,66 @@ class GenerateWithAiLlm extends BaseAction {
       completionOptions.temperature = Number(params.temperature) || 0;
     }
 
-    const completion = await openai.chat.completions.create(completionOptions);
+    // ROUTED THROUGH THE SHARED ADAPTER.
+    //
+    // This function serves most of the catalog — groq, deepseek, openrouter,
+    // togetherai, grokai, minimax, zai and friends — and used to call
+    // `openai.chat.completions.create` itself. That meant the workflow AI node
+    // was a third provider implementation alongside the orchestrator and
+    // StreamEngine, and it had none of their fixes: no cache affinity, no
+    // usage-before-choices guard on the streaming path, no normalized usage,
+    // no retry/backoff, and no provider-specific tool-schema handling.
+    //
+    // The CLIENT is still built here rather than by createLlmClient, on
+    // purpose: a workflow node may carry its own `params.apiKey`, and the
+    // vault-backed factory has no way to accept one. Keeping construction
+    // local preserves bring-your-own-key; routing the CALL through the adapter
+    // is what buys the shared behaviour.
+    //
+    // The node's own max-tokens and temperature rules are preserved verbatim
+    // via extraBody, which the adapter merges into the request — including the
+    // max_completion_tokens spelling the o-series/mini models require, and the
+    // deliberate omission of temperature for models that reject it.
+    const adapter = await createLlmAdapter(providerKey, openai, currentModel, {
+      provider: providerKey,
+      extraBody: {
+        ...(isMiniModel
+          ? { max_completion_tokens: completionOptions.max_completion_tokens }
+          : { max_tokens: completionOptions.max_tokens }),
+        ...(completionOptions.temperature !== undefined
+          ? { temperature: completionOptions.temperature }
+          : {}),
+      },
+    });
 
-    const tokenCount = completion?.usage?.total_tokens || null;
-    const content = completion?.choices?.[0]?.message?.content || '';
+    const { responseMessage, usage, recoveredFromError, recoveredError } = await adapter.call(messages, []);
+
+    // A workflow node must fail loudly. The adapter recovers from an exhausted
+    // retry by returning the provider's error text as the assistant message,
+    // which is right for a chat turn and wrong for a node whose output feeds
+    // the next step.
+    if (recoveredFromError) {
+      throw new Error(recoveredError || 'Provider request failed after retries');
+    }
+
+    let content = '';
+    if (typeof responseMessage?.content === 'string') {
+      content = responseMessage.content;
+    } else if (Array.isArray(responseMessage?.content)) {
+      content = responseMessage.content
+        .filter((b) => b && (b.type === 'text' || b.type === 'output_text' || typeof b.text === 'string'))
+        .map((b) => b.text || '')
+        .join('');
+    }
+
+    const inputTokens = usage?.prompt_tokens || usage?.input_tokens || 0;
+    const outputTokens = usage?.completion_tokens || usage?.output_tokens || 0;
 
     return {
       generatedText: content,
-      tokenCount,
-      inputTokens: completion?.usage?.prompt_tokens || 0,
-      outputTokens: completion?.usage?.completion_tokens || 0,
+      tokenCount: usage?.total_tokens || (inputTokens + outputTokens) || null,
+      inputTokens,
+      outputTokens,
     };
   }
 
