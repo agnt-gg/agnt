@@ -771,8 +771,57 @@ class OpenAiLikeAdapter extends BaseAdapter {
    * so the slice is a guard against a future id format, not a live concern.
    */
   _cacheRoutingParams() {
-    if (this.provider !== 'openrouter' || !this.conversationId) return null;
-    return { session_id: `agnt-${this.conversationId}`.slice(0, 256) };
+    return this._cacheAffinity()?.body || null;
+  }
+
+  /**
+   * Everything this request carries to pin itself to a cached prefix.
+   *
+   * Split into `body` and `headers` because providers disagree about where
+   * the hint belongs, not about whether one helps. One method so that
+   * "which providers get an affinity hint" is a single readable list rather
+   * than a condition scattered across call sites.
+   *
+   *   openrouter  session_id (body) — documented sticky-routing key.
+   *   grokai      x-grok-conv-id (header) + prompt_cache_key (body).
+   *               xAI: "we recommend setting the x-grok-conv-id HTTP header to
+   *               maximize your cache hit rate"
+   *               docs.x.ai/developers/advanced-api-usage/prompt-caching
+   *               (retrieved 2026-08-09). Measured before this change, on a
+   *               byte-identical 39,998-token prefix: a COLD conversation
+   *               reused 128 tokens on turn 2 (0.3%) and cost $0.0499, while a
+   *               warm one reached 99.8% at $0.0081 — a 6.2x swing decided by
+   *               which node the request happened to land on. That is exactly
+   *               the scatter the header exists to prevent.
+   *
+   * NOT openai: it already measures 99.7% via prompt_cache_options /
+   * prompt_cache_retention (openAIPromptCachePolicy). Adding a second,
+   * overlapping hint to a path that already works is risk without a measured
+   * benefit.
+   *
+   * NOT openai-codex: measured 0.0%, and it plainly wants an affinity key —
+   * but its ChatGPT backend is undocumented and already rejects OpenAI's
+   * public retention controls with HTTP 400 (see CodexResponsesAdapter, which
+   * nulls promptCachePolicy for that reason). Codex is also the failover
+   * target for every provider without credentials, so a 400 here would take
+   * down far more than Codex. Left alone deliberately, and recorded as an open
+   * question rather than guessed at.
+   *
+   * Capped at 256 chars per the OpenRouter contract; AGNT conversation ids are
+   * UUIDs, so the slice guards a future id format, not a live concern.
+   */
+  _cacheAffinity() {
+    if (!this.conversationId) return null;
+    const id = `agnt-${this.conversationId}`.slice(0, 256);
+
+    switch (this.provider) {
+      case 'openrouter':
+        return { body: { session_id: id }, headers: null };
+      case 'grokai':
+        return { body: { prompt_cache_key: id }, headers: { 'x-grok-conv-id': id } };
+      default:
+        return null;
+    }
   }
 
   /**
@@ -877,9 +926,12 @@ class OpenAiLikeAdapter extends BaseAdapter {
         if (this.extraBody) {
           Object.assign(requestParams, this.extraBody);
         }
-        const routingParams = this._cacheRoutingParams();
-        if (routingParams) Object.assign(requestParams, routingParams);
-        const response = await this.client.chat.completions.create(requestParams);
+        const affinity = this._cacheAffinity();
+        if (affinity?.body) Object.assign(requestParams, affinity.body);
+        const response = await this.client.chat.completions.create(
+          requestParams,
+          affinity?.headers ? { headers: affinity.headers } : undefined,
+        );
 
         const message = response.choices[0].message;
 
@@ -1109,8 +1161,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
           Object.assign(requestParams, this.extraBody);
           console.log('[OpenAI Debug] Extra body params merged:', JSON.stringify(this.extraBody));
         }
-        const routingParams = this._cacheRoutingParams();
-        if (routingParams) Object.assign(requestParams, routingParams);
+        const affinity = this._cacheAffinity();
+        if (affinity?.body) Object.assign(requestParams, affinity.body);
         // Log key request params (excluding message content for brevity)
         const requestBodySize = JSON.stringify(requestParams).length;
         console.log('[OpenAI Debug] Request params:', {
@@ -1121,7 +1173,10 @@ Please carefully check the tool schema and ensure all parameters match the expec
           max_tokens: requestParams.max_tokens || 'not set',
           requestBodySizeKB: Math.round(requestBodySize / 1024),
         });
-        const stream = await this.client.chat.completions.create(requestParams);
+        const stream = await this.client.chat.completions.create(
+          requestParams,
+          affinity?.headers ? { headers: affinity.headers } : undefined,
+        );
 
         try {
           for await (const chunk of stream) {

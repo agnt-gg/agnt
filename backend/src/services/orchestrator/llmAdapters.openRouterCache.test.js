@@ -165,11 +165,24 @@ describe('the wiring is reachable, not merely present', () => {
     expect(SRC).not.toMatch(/messages:\s*currentMessages,\n\s*tools:/);
   });
 
-  it('merges routing params unconditionally, not behind another feature flag', () => {
+  it('merges affinity body params unconditionally, not behind another feature flag', () => {
+    // Was _cacheRoutingParams(); generalised to _cacheAffinity() when xAI was
+    // added, because xAI's documented hint is a HEADER and the old shape could
+    // only express body fields. Same guarantee, wider surface.
     const merges = SRC.match(
-      /const routingParams = this\._cacheRoutingParams\(\);\s*\n\s*if \(routingParams\) Object\.assign\(requestParams, routingParams\);/g
+      /const affinity = this\._cacheAffinity\(\);\s*\n\s*if \(affinity\?\.body\) Object\.assign\(requestParams, affinity\.body\);/g
     ) || [];
     expect(merges).toHaveLength(2);
+  });
+
+  it('passes affinity HEADERS at both request sites', () => {
+    // A body-only merge would silently drop xAI's x-grok-conv-id, which is the
+    // hint that actually decides its cache hit rate. Measured cold-start
+    // without it: 0.3% reuse on a byte-identical 40k prefix.
+    const headerPasses = SRC.match(
+      /affinity\?\.headers \? \{ headers: affinity\.headers \} : undefined/g
+    ) || [];
+    expect(headerPasses).toHaveLength(2);
   });
 
   it('gates the contract on the provider, and that gate is live', () => {
