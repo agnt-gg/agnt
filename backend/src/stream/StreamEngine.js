@@ -19,6 +19,32 @@ const DEFAULT_CODEX_MODEL =
   (typeof process.env.AGNT_CODEX_DEFAULT_MODEL === 'string' && process.env.AGNT_CODEX_DEFAULT_MODEL.trim()) ||
   'gpt-5-codex';
 
+/**
+ * The model to use when a caller does not name one.
+ *
+ * Replaces four hand-maintained copies of a ~20-entry map that had drifted
+ * apart: six of nineteen providers resolved differently depending on which
+ * generator was invoked, and six of the ids named models their provider no
+ * longer lists (groq mixtral-8x7b-32768, openai o1-preview, cerebras
+ * llama-3.3-70b, openrouter z-ai/glm-4.5, gemini-cli gemini-pro, zai GLM-4.7),
+ * so an unmodelled call produced a hard API error.
+ *
+ * The registry already tracks what each provider currently serves and is
+ * refreshed from the vendor, so asking it is both correct today and correct
+ * after the next model launch — which a hardcoded map can never be.
+ *
+ * Two providers keep an explicit answer:
+ *   openai-codex — DEFAULT_CODEX_MODEL is env-overridable and deliberately
+ *                  differs from the public OpenAI catalog.
+ *   local        — not in the registry; it is whatever the user is running.
+ */
+function defaultGenerationModel(providerKey) {
+  if (providerKey === 'openai-codex') return DEFAULT_CODEX_MODEL;
+  if (providerKey === 'local') return 'llama-3.2-1b-instruct';
+  const cfg = getProviderConfig(providerKey);
+  return cfg?.recommendedModels?.[0] || cfg?.fallbackModels?.[0] || null;
+}
+
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
 
 /**
@@ -592,6 +618,100 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       console.log(`Stream ${streamId} cancelled.`);
     }
   }
+  /**
+   * THE ONE PROVIDER PATH for every generator on this class.
+   *
+   * generateTool, generateWorkflow and generateAgent each used to carry their
+   * own ~20-arm `switch (provider)` with direct SDK calls — 609 lines of
+   * near-identical dispatch, 49-71% verbatim copies of one another, plus a
+   * fourth copy inside a `generateCompletion` that no caller ever invoked.
+   *
+   * That duplication was not merely untidy. Two defects were measured before
+   * this change:
+   *
+   *   1. Every prompt-cache and usage fix made for chat lived only in
+   *      llmAdapters.js, so this stack had NONE of them: no Grok
+   *      x-grok-conv-id (a cold conversation reused 0.3% of a 40k prefix
+   *      rather than 99.9%), no Codex session_id (65% hit rate rather than
+   *      ~100%), no OpenRouter sticky routing, no usage-before-choices guard,
+   *      no shared Gemini usage reader. Agent, tool and workflow generation
+   *      paid full price on every call.
+   *
+   *   2. The four copies of the default-model map had DRIFTED. Six of
+   *      nineteen providers resolved to a different model depending on which
+   *      generator you invoked (groq llama-3.3-70b-versatile vs
+   *      mixtral-8x7b-32768; openai gpt-4o vs o1-preview; gemini
+   *      gemini-2.5-pro-exp-03-25 vs gemini-pro) — a difference nobody chose
+   *      and nobody could see. Six of those ids name models their provider no
+   *      longer lists at all, so a caller omitting the model got a hard API
+   *      error.
+   *
+   * Routing through createLlmAdapter fixes both at once: the fixes arrive
+   * automatically and cannot drift again, and the default comes from the
+   * registry that already tracks what each provider actually serves.
+   *
+   * Callers keep their own system prompt, user prompt and return shape. Only
+   * the provider dispatch is shared.
+   *
+   * @returns {{text: string, thinking: string}} `thinking` is non-empty only
+   *   for providers that emit a separate reasoning block.
+   */
+  async _generateViaAdapter({ client, provider, providerKey, model, systemPrompt, userPrompt }) {
+    const selectedModel = model || defaultGenerationModel(providerKey);
+    if (!selectedModel) {
+      throw new Error(`No model could be resolved for provider: ${provider}`);
+    }
+
+    const adapter = await createLlmAdapter(providerKey, client, selectedModel, {
+      provider: providerKey,
+    });
+
+    const result = await adapter.call(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      [], // pure text generation — no tools
+    );
+
+    // THE ADAPTER RECOVERS; A GENERATOR MUST NOT.
+    //
+    // After exhausting its retries an adapter does not throw — it returns
+    // `recoveredFromError: true` with the provider's error text as the
+    // assistant message, because a chat turn showing an error card beats a
+    // chat turn that vanishes. That is right for chat and wrong here: these
+    // callers parse the text as JSON and persist it, so recovering would
+    // create a tool or agent whose body is the string "API Error: ...".
+    //
+    // The previous per-provider ladders threw, and callers depend on it
+    // (AiService surfaces the message, agentTools aborts the run). Restore
+    // that contract explicitly.
+    if (result?.recoveredFromError) {
+      throw new Error(result.recoveredError || 'Provider request failed after retries');
+    }
+
+    // Normalized adapter usage rather than the raw per-provider SDK object, so
+    // a caller can read token counts without knowing which vendor answered.
+    this._lastGenerationUsage = result?.usage || null;
+
+    const content = result?.responseMessage?.content;
+    let text = '';
+    let thinking = '';
+    if (typeof content === 'string') {
+      text = content;
+    } else if (Array.isArray(content)) {
+      // Anthropic-style content blocks.
+      for (const item of content) {
+        if (item?.type === 'text') text += item.text || '';
+        else if (item?.type === 'thinking_result_content_block' && item.thinking_result_content) {
+          thinking = item.thinking_result_content;
+        }
+      }
+    }
+
+    return { text, thinking };
+  }
+
   async generateTool(templateOverview, provider, model) {
     const toolGenerationPrompt = `[PRIORITIZE THESE INSTRUCTIONS AND ESPECIALLY THE TEMPLATE BELOW]:
       Generate a detailed and complete JSON template with all fields and initial instructions based on the user's template overview requirements.
@@ -779,241 +899,28 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         throw new Error(`Provider ${provider} is not supported.`);
       }
 
-      const defaultModel = {
-        anthropic: 'claude-3-5-sonnet-20240620',
-        'claude-code': 'claude-sonnet-4-5-20250929',
-        cerebras: 'llama-3.3-70b',
-        deepseek: 'deepseek-reasoner',
-        gemini: 'gemini-2.5-pro-exp-03-25',
-        'gemini-cli': 'gemini-2.5-pro-exp-03-25',
-        antigravity: 'gemini-3.5-flash-low',
-        grokai: 'grok-4',
-        groq: 'llama-3.3-70b-versatile',
-        kimi: 'kimi-k2.5',
-        minimax: 'MiniMax-M2.1',
-        openai: 'gpt-4o',
-        'openai-codex': DEFAULT_CODEX_MODEL,
-        'grok-build': 'grok-4.5',
-        'cursor-cli': 'cursor-grok-4.5-high',
-        openrouter: 'z-ai/glm-4.5',
-        togetherai: 'deepseek-ai/DeepSeek-R1',
-        local: 'llama-3.2-1b-instruct',
-        zai: 'GLM-4.7',
-      }[lowerCaseProvider];
-
-      const selectedModel = model || defaultModel;
-
-      let response;
-
-      switch (lowerCaseProvider) {
-        case 'claude-code':
-        case 'anthropic': {
-          const toolGenSystemBlocks = [];
-          if (lowerCaseProvider === 'claude-code') {
-            toolGenSystemBlocks.push({
-              type: 'text',
-              text: "You are Claude Code, Anthropic's official CLI for Claude.",
-              cache_control: { type: 'ephemeral' },
-            });
-          }
-          toolGenSystemBlocks.push({
-            type: 'text',
-            text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-          });
-          response = await callAnthropicWithTemperatureFallback(
-            (params) => client.messages.create(params),
-            {
-              model: selectedModel,
-              max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-              temperature: 0,
-              system: toolGenSystemBlocks,
-              messages: [
-                {
-                  role: 'user',
-                  content: [{ type: 'text', text: toolGenerationPrompt }],
-                },
-              ],
-            }
-          );
-          return { template: this._removeMarkdownJson(response.content[0].text) };
-        }
-
-        case 'cerebras':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: toolGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'deepseek':
-        case 'kimi':
-        case 'kimi-code':
-        case 'minimax':
-        case 'zai':
-        case 'grok-build':
-        case 'cursor-cli':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: toolGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'gemini':
-        case 'gemini-cli':
-        case 'antigravity':
-          response = await client.models.generateContent({
-            model: selectedModel,
-            config: {
-              systemInstruction: {
-                parts: [
-                  {
-                    text: 'Generate valid JSON based on the user instructions. Return ONLY JSON READY TO PARSE with no additional text or markdown ticks!',
-                  },
-                ],
-              },
-            },
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: toolGenerationPrompt }],
-              },
-            ],
-          });
-          return { template: this._removeMarkdownJson(response.text || '') };
-
-        case 'grokai':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: toolGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'groq':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: toolGenerationPrompt },
-            ],
-            stream: false, // Groq doesn't support streaming for this use case
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'openai-codex': {
-          const toolText = await this._codexResponsesGenerate(
-            client,
-            selectedModel,
-            'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-            toolGenerationPrompt,
-          );
-          return { template: this._removeMarkdownJson(toolText) };
-        }
-
-        case 'openai':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'user',
-                content: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${toolGenerationPrompt}`,
-              },
-            ],
-            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'openrouter':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: toolGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'togetherai':
-          response = await client.completions.create({
-            model: selectedModel,
-            prompt: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${toolGenerationPrompt}`,
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].text) };
-
-        case 'local':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: toolGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { template: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        default:
-          throw new Error(`No implementation found for provider: ${provider}`);
-      }
+      // ONE provider path. This used to be a ~20-arm switch with direct SDK
+      // calls, duplicated across all four generators — see _generateViaAdapter
+      // for why that mattered.
+      const { text, thinking } = await this._generateViaAdapter({
+        client,
+        provider,
+        providerKey: lowerCaseProvider,
+        model,
+        systemPrompt: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
+        userPrompt: toolGenerationPrompt,
+      });
+      return { template: this._removeMarkdownJson(text) };
     } catch (error) {
       console.error('Error generating tool template:', error);
       throw error;
     }
   }
-  /**
-   * Helper for Codex Responses API generation calls.
-   * The ChatGPT backend requires streaming, so we collect chunks internally.
-   */
-  async _codexResponsesGenerate(client, model, systemPrompt, userPrompt) {
-    const stream = await client.responses.create({
-      model,
-      instructions: systemPrompt,
-      input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: userPrompt }] }],
-      store: false,
-      stream: true,
-      include: ['reasoning.encrypted_content'],
-      reasoning: { effort: 'medium', summary: 'auto' },
-      text: { verbosity: 'low' },
-    });
-
-    let content = '';
-    for await (const event of stream) {
-      if (event.type === 'response.output_text.delta') {
-        content += event.delta || '';
-      }
-    }
-    return content;
-  }
+  // _codexResponsesGenerate lived here: a hand-rolled Codex Responses call the
+  // four generator ladders used for the 'openai-codex' arm. Those arms are
+  // gone and it had no other caller, so it is deleted rather than left as a
+  // second Codex implementation that could drift from the adapter's — which is
+  // exactly how this file came to need `session_id` and never get it.
 
   _removeMarkdownJson(text) {
     // Remove <think>...</think> blocks from the response
@@ -1255,203 +1162,18 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     16: VERY IMPORTANT: ONLY RETURN JSON READY TO RUN, NO EXTRA TEXT OR EXPLANATION OR PLEASANTRIES OR INTRODUCTION OR ANYTHING ELSE BEFORE OR AFTER THE JSON OR IT WILL BREAK THE SYSTEM!!!! NOT ONE FUCKING WORD OUTSIED OF THE JSON BRACKETS {}!!!!
     17: RETURN ONLY THE WORKFLOW JSON, NOTHING ELSE!!!! PLEASE CONSIDER THIS IN YOUR THINKING!!!!`;
 
-      const defaultModel = {
-        anthropic: 'claude-sonnet-4-6',
-        'claude-code': 'claude-sonnet-4-6',
-        cerebras: 'llama-3.3-70b',
-        deepseek: 'deepseek-reasoner',
-        openai: 'o1-preview',
-        'openai-codex': DEFAULT_CODEX_MODEL,
-        'grok-build': 'grok-4.5',
-        'cursor-cli': 'cursor-grok-4.5-high',
-        openrouter: 'z-ai/glm-4.5',
-        togetherai: 'deepseek-ai/DeepSeek-R1',
-        local: 'llama-3.2-1b-instruct',
-        gemini: 'gemini-pro',
-        'gemini-cli': 'gemini-pro',
-        antigravity: 'gemini-3.5-flash-low',
-        grokai: 'grok-4',
-        groq: 'mixtral-8x7b-32768',
-        kimi: 'kimi-k2.5',
-        minimax: 'MiniMax-M2.1',
-        zai: 'GLM-4.7',
-      }[lowerCaseProvider];
-
-      const selectedModel = model || defaultModel;
-
-      let completion;
-
-      switch (lowerCaseProvider) {
-        case 'claude-code':
-        case 'anthropic': {
-          // Delegate to the same createLlmAdapter path the orchestrator chat uses.
-          // The adapter handles the Claude Code billing header block (cch hash),
-          // cache_control breakpoints, model-specific max_tokens, and retries.
-          const adapter = await createLlmAdapter(lowerCaseProvider, client, selectedModel);
-
-          const result = await adapter.call(
-            [
-              { role: 'system', content: workflowGenSystemPrompt },
-              { role: 'user', content: [{ type: 'text', text: workflowElements.overview }] },
-            ],
-            [], // no tools — pure text generation
-          );
-
-          // Extract content from the adapter's Anthropic content blocks.
-          const responseContent = result?.responseMessage?.content;
-          let workflowText = '';
-          let thinkingText = '';
-          if (Array.isArray(responseContent)) {
-            for (const item of responseContent) {
-              if (item.type === 'text') {
-                workflowText = item.text;
-              } else if (item.type === 'thinking_result_content_block' && item.thinking_result_content) {
-                thinkingText = item.thinking_result_content;
-              }
-            }
-          }
-
-          return {
-            workflow: this._removeMarkdownJson(workflowText),
-            thinking: thinkingText,
-          };
-        }
-
-        case 'cerebras':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: workflowGenSystemPrompt },
-              { role: 'user', content: workflowElements.overview },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
-
-        case 'deepseek':
-        case 'kimi':
-        case 'kimi-code':
-        case 'minimax':
-        case 'zai':
-        case 'grok-build':
-        case 'cursor-cli':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: workflowGenSystemPrompt },
-              { role: 'user', content: workflowElements.overview },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
-
-        case 'gemini':
-        case 'gemini-cli':
-        case 'antigravity':
-          completion = await client.models.generateContent({
-            model: selectedModel,
-            config: {
-              systemInstruction: {
-                parts: [{ text: workflowGenSystemPrompt }],
-              },
-            },
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: workflowElements.overview }],
-              },
-            ],
-          });
-          return {
-            workflow: this._removeMarkdownJson(completion.text || ''),
-            inputTokens: null,
-            outputTokens: null,
-          };
-
-        case 'grokai':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: workflowGenSystemPrompt },
-              { role: 'user', content: workflowElements.overview },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
-
-        case 'groq':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: workflowGenSystemPrompt,
-              },
-              {
-                role: 'user',
-                content: workflowElements.overview,
-              },
-            ],
-            stream: false, // Groq doesn't support streaming for this use case
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
-
-        case 'openai-codex': {
-          const wfText = await this._codexResponsesGenerate(
-            client,
-            selectedModel,
-            workflowGenSystemPrompt,
-            workflowElements.overview,
-          );
-          return { workflow: this._removeMarkdownJson(wfText) };
-        }
-
-        case 'openai':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'user',
-                content: `WORKFLOW SYSTEM PROMPT: ${workflowGenSystemPrompt}\nWORKFLOW OVERVIEW: ${workflowElements.overview}`,
-              },
-            ],
-            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
-
-        case 'openrouter':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: workflowGenSystemPrompt },
-              { role: 'user', content: workflowElements.overview },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
-
-        case 'togetherai':
-          completion = await client.completions.create({
-            model: selectedModel,
-            prompt: `System: ${workflowGenSystemPrompt}\nUser: ${workflowElements.overview}`,
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].text) };
-
-        case 'local':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: workflowGenSystemPrompt },
-              { role: 'user', content: workflowElements.overview },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) }; // Adjust based on your local API response
-
-        default:
-          throw new Error(`No implementation found for provider: ${provider}`);
-      }
+      // ONE provider path. This used to be a ~20-arm switch with direct SDK
+      // calls, duplicated across all four generators — see _generateViaAdapter
+      // for why that mattered.
+      const { text, thinking } = await this._generateViaAdapter({
+        client,
+        provider,
+        providerKey: lowerCaseProvider,
+        model,
+        systemPrompt: workflowGenSystemPrompt,
+        userPrompt: workflowElements.overview,
+      });
+      return { workflow: this._removeMarkdownJson(text), thinking };
     } catch (error) {
       console.error('Error generating workflow:', error);
       throw error;
@@ -1535,499 +1257,24 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         throw new Error(`Provider ${provider} is not supported.`);
       }
 
-      const defaultModel = {
-        anthropic: 'claude-3-5-sonnet-20240620',
-        'claude-code': 'claude-sonnet-4-5-20250929',
-        cerebras: 'llama-3.3-70b',
-        deepseek: 'deepseek-reasoner',
-        gemini: 'gemini-2.5-pro-exp-03-25',
-        'gemini-cli': 'gemini-2.5-pro-exp-03-25',
-        antigravity: 'gemini-3.5-flash-low',
-        grokai: 'grok-4',
-        groq: 'llama-3.3-70b-versatile',
-        kimi: 'kimi-k2.5',
-        minimax: 'MiniMax-M2.1',
-        openai: 'gpt-4o',
-        'openai-codex': DEFAULT_CODEX_MODEL,
-        'grok-build': 'grok-4.5',
-        'cursor-cli': 'cursor-grok-4.5-high',
-        openrouter: 'z-ai/glm-4.5',
-        togetherai: 'deepseek-ai/DeepSeek-R1',
-        local: 'llama-3.2-1b-instruct',
-        zai: 'GLM-4.7',
-      }[lowerCaseProvider];
-
-      const selectedModel = model || defaultModel;
-
-      let response;
-
-      switch (lowerCaseProvider) {
-        case 'claude-code':
-        case 'anthropic': {
-          const agentGenSystemBlocks = [];
-          if (lowerCaseProvider === 'claude-code') {
-            agentGenSystemBlocks.push({
-              type: 'text',
-              text: "You are Claude Code, Anthropic's official CLI for Claude.",
-              cache_control: { type: 'ephemeral' },
-            });
-          }
-          agentGenSystemBlocks.push({
-            type: 'text',
-            text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-          });
-          response = await callAnthropicWithTemperatureFallback(
-            (params) => client.messages.create(params),
-            {
-              model: selectedModel,
-              max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-              temperature: 0,
-              system: agentGenSystemBlocks,
-              messages: [
-                {
-                  role: 'user',
-                  content: [{ type: 'text', text: agentGenerationPrompt }],
-                },
-              ],
-            }
-          );
-          return { agent: this._removeMarkdownJson(response.content[0].text) };
-        }
-
-        case 'cerebras':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: agentGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'deepseek':
-        case 'kimi':
-        case 'kimi-code':
-        case 'minimax':
-        case 'zai':
-        case 'grok-build':
-        case 'cursor-cli':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: agentGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'gemini':
-        case 'gemini-cli':
-        case 'antigravity':
-          response = await client.models.generateContent({
-            model: selectedModel,
-            config: {
-              systemInstruction: {
-                parts: [
-                  {
-                    text: 'Generate valid JSON based on the user instructions. Return ONLY JSON READY TO PARSE with no additional text or markdown ticks!',
-                  },
-                ],
-              },
-            },
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: agentGenerationPrompt }],
-              },
-            ],
-          });
-          return { agent: this._removeMarkdownJson(response.text || '') };
-
-        case 'grokai':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: agentGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'groq':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: agentGenerationPrompt },
-            ],
-            stream: false, // Groq doesn't support streaming for this use case
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'openai-codex': {
-          const agentText = await this._codexResponsesGenerate(
-            client,
-            selectedModel,
-            'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-            agentGenerationPrompt,
-          );
-          return { agent: this._removeMarkdownJson(agentText) };
-        }
-
-        case 'openai':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'user',
-                content: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${agentGenerationPrompt}`,
-              },
-            ],
-            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'openrouter':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: agentGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        case 'togetherai':
-          response = await client.completions.create({
-            model: selectedModel,
-            prompt: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${agentGenerationPrompt}`,
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].text) };
-
-        case 'local':
-          response = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-              { role: 'user', content: agentGenerationPrompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
-
-        default:
-          throw new Error(`No implementation found for provider: ${provider}`);
-      }
+      // ONE provider path. This used to be a ~20-arm switch with direct SDK
+      // calls, duplicated across all four generators — see _generateViaAdapter
+      // for why that mattered.
+      const { text, thinking } = await this._generateViaAdapter({
+        client,
+        provider,
+        providerKey: lowerCaseProvider,
+        model,
+        systemPrompt: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
+        userPrompt: agentGenerationPrompt,
+      });
+      return { agent: this._removeMarkdownJson(text) };
     } catch (error) {
       console.error('Error generating agent:', error);
       throw error;
     }
   }
 
-  async generateCompletion(prompt, provider, model) {
-    try {
-      this._lastCompletionUsage = null;
-
-      // Provider/model must be resolved upstream by the caller (request body →
-      // agent config → user settings). Don't paper over a missing provider with
-      // 'openai'/'gpt-4' — that silently breaks Codex users and any non-OpenAI
-      // setup. If the caller hasn't resolved them, that's their bug to surface.
-      if (!provider || !model) {
-        throw new Error('generateCompletion requires explicit provider and model (resolved from user settings or caller config).');
-      }
-
-      const _providerConfig = getProviderConfig(provider);
-      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
-      const client = await createLlmClient(lowerCaseProvider, this.userId);
-
-      if (!client) {
-        throw new Error(`Provider ${provider} is not supported.`);
-      }
-
-      const defaultModel = {
-        anthropic: 'claude-3-5-sonnet-20240620',
-        'claude-code': 'claude-sonnet-4-5-20250929',
-        cerebras: 'llama-3.3-70b',
-        deepseek: 'deepseek-reasoner',
-        openai: 'o1-preview',
-        'openai-codex': DEFAULT_CODEX_MODEL,
-        'grok-build': 'grok-4.5',
-        'cursor-cli': 'cursor-grok-4.5-high',
-        openrouter: 'z-ai/glm-4.5',
-        togetherai: 'deepseek-ai/DeepSeek-R1',
-        local: 'llama-3.2-1b-instruct',
-        gemini: 'gemini-pro',
-        'gemini-cli': 'gemini-pro',
-        antigravity: 'gemini-3.5-flash-low',
-        grokai: 'grok-4',
-        groq: 'mixtral-8x7b-32768',
-        kimi: 'kimi-k2.5',
-        minimax: 'MiniMax-M2.1',
-        zai: 'GLM-4.7',
-      }[lowerCaseProvider];
-
-      const selectedModel = model || defaultModel;
-
-      let completion;
-
-      switch (lowerCaseProvider) {
-        case 'claude-code':
-        case 'anthropic': {
-          const completionSystemBlocks = [];
-          if (lowerCaseProvider === 'claude-code') {
-            completionSystemBlocks.push({
-              type: 'text',
-              text: "You are Claude Code, Anthropic's official CLI for Claude.",
-              cache_control: { type: 'ephemeral' },
-            });
-          }
-          completionSystemBlocks.push({
-            type: 'text',
-            text: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-          });
-          completion = await callAnthropicWithTemperatureFallback(
-            (params) => client.messages.create(params),
-            {
-              model: selectedModel,
-              max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-              temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
-              system: completionSystemBlocks,
-              messages: [
-                {
-                  role: 'user',
-                  content: [{ type: 'text', text: prompt }],
-                },
-              ],
-              thinking:
-                selectedModel === 'claude-3-7-sonnet-20250219'
-                  ? {
-                      type: 'enabled',
-                      budget_tokens: 4096,
-                    }
-                  : undefined,
-            }
-          );
-          console.log(completion);
-
-          // Extract content based on response structure
-          let completionText = '';
-          let thinkingText = '';
-
-          if (completion.content && Array.isArray(completion.content)) {
-            for (const item of completion.content) {
-              if (item.type === 'text') {
-                completionText = item.text;
-              } else if (item.type === 'thinking_result_content_block' && item.thinking_result_content) {
-                thinkingText = item.thinking_result_content; // This is typically an XML string
-              }
-            }
-          } else if (completion.content && typeof completion.content === 'string') {
-            completionText = completion.content;
-          } else if (completion.content && completion.content[0] && completion.content[0].text) {
-            // Fallback for older structures or non-array content
-            completionText = completion.content[0].text;
-          }
-
-          this._lastCompletionUsage = completion.usage || null;
-
-          return thinkingText
-            ? {
-                completion: completionText,
-                thinking: thinkingText,
-              }
-            : completionText;
-        }
-
-        case 'cerebras':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        case 'deepseek':
-        case 'kimi':
-        case 'kimi-code':
-        case 'minimax':
-        case 'zai':
-        case 'grok-build':
-        case 'cursor-cli':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        case 'gemini':
-        case 'gemini-cli':
-        case 'antigravity':
-          completion = await client.models.generateContent({
-            model: selectedModel,
-            config: {
-              systemInstruction: {
-                parts: [{ text: 'You are a helpful assistant. Generate valid responses based on the user instructions.' }],
-              },
-            },
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: prompt }],
-              },
-            ],
-          });
-          this._lastCompletionUsage = completion.usageMetadata ? {
-            input_tokens: completion.usageMetadata.promptTokenCount || 0,
-            output_tokens: completion.usageMetadata.candidatesTokenCount || 0,
-          } : null;
-          return {
-            completion: completion.text || '',
-            inputTokens: null,
-            outputTokens: null,
-          };
-
-        case 'grokai':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        case 'groq':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-              {
-                role: 'user',
-                content: prompt,
-              },
-            ],
-            stream: false, // Groq doesn't support streaming for this use case
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        case 'openai-codex': {
-          const completionText = await this._codexResponsesGenerate(
-            client,
-            selectedModel,
-            'You are a helpful assistant. Generate valid responses based on the user instructions.',
-            prompt,
-          );
-          return completionText;
-        }
-
-        case 'openai':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'user',
-                content: `System: You are a helpful assistant. Generate valid responses based on the user instructions.\nUser: ${prompt}`,
-              },
-            ],
-            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        case 'openrouter':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        case 'togetherai':
-          completion = await client.completions.create({
-            model: selectedModel,
-            prompt: `System: You are a helpful assistant. Generate valid responses based on the user instructions.\nUser: ${prompt}`,
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].text;
-
-        case 'local':
-          completion = await client.chat.completions.create({
-            model: selectedModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
-          });
-          this._lastCompletionUsage = completion.usage || null;
-          return completion.choices[0].message.content;
-
-        default:
-          throw new Error(`No implementation found for provider: ${provider}`);
-      }
-    } catch (error) {
-      console.error('Error generating completion:', error);
-      throw error;
-    }
-  }
 }
 
 export default StreamEngine;

@@ -127,43 +127,61 @@ describe('StreamEngine — the model actually requested', () => {
     expect(await modelSentFor('anthropic', 'claude-opus-4-8', 'anthropic')).toBe('claude-opus-4-8');
   });
 
-  it('DOCUMENTS TODAY\'S DEFECT: with no model it falls back to a hardcoded id', async () => {
-    // Six of the hardcoded defaults name models the provider no longer lists
-    // (groq mixtral-8x7b-32768, openai o1-preview, cerebras llama-3.3-70b,
-    // openrouter z-ai/glm-4.5, gemini-cli gemini-pro, zai GLM-4.7). A caller
-    // that omits the model gets a dead id and a hard API error.
-    //
-    // Pinned as-is so the fix is a deliberate, visible diff. After unification
-    // this must come from the registry.
-    expect(await modelSentFor('groq', undefined)).toBe('llama-3.3-70b-versatile');
+  it('FIXED: with no model it now takes the registry default, not a stale hardcoded id', async () => {
+    // Was 'llama-3.3-70b-versatile' from generateTool's private map, while
+    // generateWorkflow and generateCompletion answered 'mixtral-8x7b-32768' —
+    // a model Groq no longer serves at all. Now both come from the registry,
+    // which is refreshed from the vendor.
+    const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
+    const cfg = getProviderConfig('groq');
+    const expected = cfg.recommendedModels?.[0] || cfg.fallbackModels?.[0];
+
+    expect(await modelSentFor('groq', undefined)).toBe(expected);
+    expect(expected).not.toBe('mixtral-8x7b-32768'); // the dead id is gone
   });
 
-  it('DOCUMENTS TODAY\'S DEFECT: the four duplicated maps have DRIFTED apart', async () => {
-    // Asserted from SOURCE rather than through the mocks: the maps are a
-    // structural fact, and reaching every arm behaviourally would mean
-    // standing up four different client shapes to prove one thing.
+  it('FIXED: the duplicated default-model maps are gone entirely', async () => {
+    // There used to be four copies of a ~20-entry map, and they had drifted:
+    // 6 of 19 providers resolved differently depending on which generator was
+    // invoked (groq llama-3.3-70b-versatile vs mixtral-8x7b-32768; openai
+    // gpt-4o vs o1-preview; gemini gemini-2.5-pro-exp-03-25 vs gemini-pro).
+    // Which model answered depended on which button the user pressed.
     //
-    // The same ~20-entry map is copy-pasted into generateTool,
-    // generateWorkflow, generateAgent and generateCompletion, and the copies
-    // have diverged. Measured: 6 of 19 providers disagree — groq resolves to
-    // llama-3.3-70b-versatile from generateTool/generateAgent but
-    // mixtral-8x7b-32768 from generateWorkflow/generateCompletion; openai to
-    // gpt-4o vs o1-preview; gemini to gemini-2.5-pro-exp-03-25 vs gemini-pro.
-    //
-    // So which model answers depends on which BUTTON the user pressed — a
-    // difference nobody chose and nobody can see. One registry lookup removes
-    // the entire class.
+    // Asserted from SOURCE because their absence is a structural fact.
     const fs = await import('fs');
     const path = await import('path');
     const url = await import('url');
     const here = path.dirname(url.fileURLToPath(import.meta.url));
     const src = fs.readFileSync(path.join(here, 'StreamEngine.js'), 'utf8');
 
-    const groqDefaults = [...src.matchAll(/^\s*groq:\s*'([^']+)'/gm)].map((m) => m[1]);
-    expect(groqDefaults.length, 'the map should still be duplicated 4x today').toBeGreaterThanOrEqual(4);
-    expect(new Set(groqDefaults).size, 'the copies disagree about groq').toBeGreaterThan(1);
-    expect(new Set(groqDefaults)).toContain('llama-3.3-70b-versatile');
-    expect(new Set(groqDefaults)).toContain('mixtral-8x7b-32768');
+    // Comments are stripped first: the doc block on defaultGenerationModel
+    // NAMES the stale ids on purpose, to record what was wrong and why. A
+    // naive substring check would fail on its own explanation.
+    const codeOnly = src
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n');
+
+    expect(codeOnly).not.toMatch(/const defaultModel = \{/);
+    expect(codeOnly).not.toContain('mixtral-8x7b-32768');
+    expect(codeOnly).not.toContain("'o1-preview'");
+    // ...and exactly one place decides the default now.
+    expect((src.match(/function defaultGenerationModel\(/g) || []).length).toBe(1);
+  });
+
+  it('FIXED: no provider switch ladders remain in the generators', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const url = await import('url');
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const src = fs.readFileSync(path.join(here, 'StreamEngine.js'), 'utf8');
+
+    // 102 provider branches lived here, ~20 per generator. The streaming
+    // methods still dispatch by transport, which is legitimate; what must be
+    // gone is the duplicated per-generator ladder.
+    expect((src.match(/switch \(lowerCaseProvider\) \{/g) || []).length).toBe(0);
+    // And every generator now shares one path.
+    expect((src.match(/_generateViaAdapter\(/g) || []).length).toBeGreaterThanOrEqual(4);
   });
 });
 
