@@ -172,6 +172,55 @@ describe('the browser comes from the canvas', () => {
     expect(await action.resolveSurface({}, workflow(), 'u1', 50)).toBe('');
   });
 
+  it('opens a separate window only when explicitly asked', async () => {
+    // The tool ALREADY opens real Chromium windows — an empty cdpUrl makes the
+    // runner call Browser(), which launches one. That is the default whenever
+    // no canvas surface is found, so the user sees external windows they never
+    // asked for. externalWindow makes it a DECISION instead of a fallback, and
+    // is the lever the schema description points the model at.
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
+    const engine = chat('Gemini', {
+      workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
+    });
+
+    expect(await action.resolveSurface({}, engine, 'u1', 50)).toBe(CDP);
+    expect(await action.resolveSurface({ externalWindow: 'true' }, engine, 'u1', 50)).toBe('');
+  });
+
+  it('lets an explicit external-window request beat plumbing', async () => {
+    // "Give me a separate window" is a human instruction; cdpUrl is plumbing.
+    // They can only disagree when someone asked for both, and the person wins.
+    const explicit = 'ws://127.0.0.1:9999/explicit';
+    expect(await action.resolveSurface(
+      { externalWindow: 'true', cdpUrl: explicit },
+      chat('Gemini'),
+      'u1',
+      50,
+    )).toBe('');
+  });
+
+  it('treats an unset externalWindow as off', async () => {
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
+    const engine = chat('Gemini', { workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' } });
+    // A checkbox arrives as the STRING 'false' when cleared, which is truthy.
+    for (const off of [undefined, '', 'false', false]) {
+      expect(await action.resolveSurface({ externalWindow: off }, engine, 'u1', 50)).toBe(CDP);
+    }
+  });
+
+  it('restores launch-time options for an external window', async () => {
+    // headless/allowedDomains are meaningless against a browser we did not
+    // launch, so they are dropped when attached — but they must come BACK when
+    // the user deliberately asked for a window of our own.
+    const config = action.buildRunnerConfig(
+      { headless: 'true', allowedDomains: 'example.com', generateGif: 'false' },
+      'do a thing',
+      { spec: { class: 'ChatGoogle', kwargs: {} }, visionCapable: true, providerName: 'Gemini' },
+    );
+    expect(config.cdpUrl).toBeNull();
+    expect(config.browser).toEqual({ headless: true, allowed_domains: ['example.com'] });
+  });
+
   it('honours an explicitly supplied surface', async () => {
     const other = 'ws://127.0.0.1:9999/explicit';
     expect(await action.resolveSurface({ cdpUrl: other }, chat('Gemini'), 'u1', 50)).toBe(other);

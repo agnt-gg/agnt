@@ -8,6 +8,18 @@
 
 Runs a browser automation task with [browser-use](https://github.com/browser-use/browser-use), driven by any connected AI provider. The agent sees the page, decides what to do, and clicks, types and navigates until the task is done or it runs out of steps.
 
+## Which browser it drives
+
+**By default it drives the Browser widget inside AGNT**, on the workspace canvas, so you watch the page being used. Ask in chat and the widget opens by itself if it is not already there.
+
+It falls back to launching a **separate Chromium window on your machine** only when there is no built-in browser to use:
+
+- a workflow node run — background automation never seizes the window you are reading;
+- a chat with no Browser widget open anywhere;
+- you set **externalWindow**, which is the only way to ask for one deliberately.
+
+`headless`, `allowedDomains` and the session GIF apply **only** to a window AGNT launched itself. Against the built-in widget they are ignored, because that browser is not ours to configure — and it is on screen by definition.
+
 The first run creates a private Python environment under your AGNT data directory and installs a pinned browser-use release into it. Later runs reuse it.
 
 ## Tags
@@ -44,6 +56,7 @@ That routing is automatic. You pick a provider; the node works out how to reach 
 - **allowedDomains** (string): Comma-separated domains the agent may visit. Anything else is blocked. Worth setting for any task that handles credentials.
 - **outputSchema** (JSON): A JSON Schema. When set, `structuredOutput` holds data matching it.
 - **sensitiveData** (JSON): A map of placeholder → secret, e.g. `{"x_password": "hunter2"}`. The agent can type the value into a field but only ever sees the placeholder, so the secret never reaches the model or the logs.
+- **externalWindow** (boolean, default `false`): Launch a separate browser window outside AGNT instead of using the built-in one. Leave it off unless you specifically want the task off the canvas.
 
 ## Output Format
 

@@ -55,7 +55,15 @@ class AIBrowserUse extends BaseAction {
     category: 'action',
     type: 'ai-browser-use',
     icon: 'web',
-    description: 'Runs a browser automation task with browser-use, driven by any connected AI provider.',
+    // THIS TEXT IS THE LLM'S ONLY INSTRUCTION MANUAL for the tool, so the
+    // default is stated as a rule rather than left to be inferred. Without it a
+    // model reaches for `externalWindow` whenever a task "feels" like it needs a
+    // real browser, and the user watches an empty widget while the work happens
+    // in a window they did not ask for.
+    description: 'Runs a browser automation task with browser-use, driven by any connected AI provider. '
+      + 'ALWAYS drives the Browser widget inside AGNT on the workspace canvas — opening one if none is '
+      + 'there — so the user can watch the page being used. Do NOT set externalWindow unless the user '
+      + 'explicitly asks for a separate, external or standalone browser window.',
     parameters: {
       instructions: {
         type: 'string',
@@ -108,7 +116,8 @@ class AIBrowserUse extends BaseAction {
         inputType: 'checkbox',
         options: ['true'],
         default: 'false',
-        description: 'Run without a visible browser window.',
+        description: 'Run without a visible browser window. Applies only to an external window — '
+          + 'the built-in Browser widget is on screen by definition.',
       },
       generateGif: {
         type: 'string',
@@ -131,6 +140,16 @@ class AIBrowserUse extends BaseAction {
         type: 'string',
         inputType: 'textarea',
         description: 'Optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder.',
+      },
+      externalWindow: {
+        type: 'string',
+        inputType: 'checkbox',
+        options: ['true'],
+        default: 'false',
+        description: 'Launch a SEPARATE browser window outside AGNT instead of using the built-in '
+          + 'Browser widget. Leave this off by default. Only set it when the user explicitly asks for '
+          + 'an external, separate or standalone browser — for example to keep a long task off the '
+          + 'canvas, or to use a browser profile AGNT does not host.',
       },
       cdpUrl: {
         type: 'string',
@@ -304,8 +323,23 @@ class AIBrowserUse extends BaseAction {
    * A workflow node never adopts the visible browser. A background automation
    * seizing the window the user is reading, mid-scroll, is a worse failure than
    * launching its own.
+   *
+   * `externalWindow` is the one way to opt out, and it exists so the schema can
+   * honestly say "unless the user asks for an external window". A rule in the
+   * description with no lever behind it is just a sentence.
    */
   async resolveSurface(params, workflowEngine, userId, waitMs = 8000) {
+    // Checked FIRST, ahead of cdpUrl: "give me a separate window" is a human
+    // instruction, while cdpUrl is plumbing. Honouring the plumbing over the
+    // person would be the wrong way round — and the two only ever disagree
+    // because someone asked for both.
+    if (this.isTrue(params.externalWindow)) {
+      if ((params.cdpUrl || '').trim()) {
+        console.log('[Browser Agent] externalWindow was requested, so the supplied cdpUrl is ignored.');
+      }
+      return '';
+    }
+
     const explicit = (params.cdpUrl || '').trim();
     if (explicit) return explicit;
     if (!this.isChatRun(workflowEngine)) return '';

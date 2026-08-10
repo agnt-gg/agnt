@@ -938,7 +938,7 @@
       "category": "action",
       "type": "ai-browser-use",
       "icon": "web",
-      "description": "Runs a browser automation task with browser-use, driven by any connected AI provider.",
+      "description": "Runs a browser automation task with browser-use, driven by any connected AI provider. ALWAYS drives the Browser widget inside AGNT on the workspace canvas — opening one if none is there — so the user can watch the page being used. Do NOT set externalWindow unless the user explicitly asks for a separate, external or standalone browser window.",
       "parameters": {
         "instructions": {
           "type": "string",
@@ -1013,7 +1013,7 @@
             "true"
           ],
           "default": "false",
-          "description": "Run without a visible browser window."
+          "description": "Run without a visible browser window. Applies only to an external window — the built-in Browser widget is on screen by definition."
         },
         "generateGif": {
           "type": "string",
@@ -1038,6 +1038,15 @@
           "type": "string",
           "inputType": "textarea",
           "description": "Optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder."
+        },
+        "externalWindow": {
+          "type": "string",
+          "inputType": "checkbox",
+          "options": [
+            "true"
+          ],
+          "default": "false",
+          "description": "Launch a SEPARATE browser window outside AGNT instead of using the built-in Browser widget. Leave this off by default. Only set it when the user explicitly asks for an external, separate or standalone browser — for example to keep a long task off the canvas, or to use a browser profile AGNT does not host."
         },
         "cdpUrl": {
           "type": "string",
