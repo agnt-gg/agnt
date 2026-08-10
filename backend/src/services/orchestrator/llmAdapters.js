@@ -821,13 +821,16 @@ class OpenAiLikeAdapter extends BaseAdapter {
    * overlapping hint to a path that already works is risk without a measured
    * benefit.
    *
-   * NOT openai-codex: measured 0.0%, and it plainly wants an affinity key —
-   * but its ChatGPT backend is undocumented and already rejects OpenAI's
-   * public retention controls with HTTP 400 (see CodexResponsesAdapter, which
-   * nulls promptCachePolicy for that reason). Codex is also the failover
-   * target for every provider without credentials, so a 400 here would take
-   * down far more than Codex. Left alone deliberately, and recorded as an open
-   * question rather than guessed at.
+   * NOT openai-codex — and this was TESTED, not assumed. Codex measured 0% on
+   * a direct probe, which looked like a missing affinity key. Two controlled
+   * A/B runs against the ChatGPT backend (2026-08-10, cold prefix per arm)
+   * settled it: `prompt_cache_key` is ACCEPTED (no 400, unlike
+   * prompt_cache_options) but makes NO measurable difference — 1 hit in 5 with
+   * it, 1 hit in 5 without. Codex's cache is opportunistic and there is
+   * nothing to send that improves it, so it is flagged best-effort in
+   * promptCacheTtl.promptCacheBestEffort instead of being given a hint that
+   * would imply a control we do not have. See that function for the raw
+   * numbers.
    *
    * Capped at 256 chars per the OpenRouter contract; AGNT conversation ids are
    * UUIDs, so the slice guards a future id format, not a live concern.

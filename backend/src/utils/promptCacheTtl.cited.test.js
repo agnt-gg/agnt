@@ -58,10 +58,22 @@ describe('cited cache windows', () => {
 });
 
 describe('promptCacheBestEffort', () => {
-  it('is true for groq only', () => {
+  it('is true for the two providers whose cache we cannot influence', () => {
+    // groq       — vendor-documented as opportunistic.
+    // openai-codex — undocumented ChatGPT backend, established by measurement:
+    //   two controlled A/B runs showed ~1 hit in 5 on a byte-identical prefix,
+    //   identical with and without prompt_cache_key. The key is accepted (no
+    //   400) but changes nothing, so there is no control to offer.
     expect(promptCacheBestEffort('groq')).toBe(true);
     expect(promptCacheBestEffort('GROQ')).toBe(true);
-    for (const p of ['anthropic', 'claude-code', 'openai', 'openai-codex', 'gemini', 'openrouter', 'cerebras', 'grokai']) {
+    expect(promptCacheBestEffort('openai-codex')).toBe(true);
+  });
+
+  it('is false for providers whose cache DOES respond to what we send', () => {
+    // The distinction that matters: these either take an affinity hint we send
+    // (openai, openrouter, grokai), or place explicit breakpoints (anthropic,
+    // claude-code). Marking them best-effort would excuse a real regression.
+    for (const p of ['anthropic', 'claude-code', 'openai', 'gemini', 'openrouter', 'cerebras', 'grokai']) {
       expect(promptCacheBestEffort(p), p).toBe(false);
     }
   });
