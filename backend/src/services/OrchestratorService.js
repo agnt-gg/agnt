@@ -1404,10 +1404,40 @@ async function universalChatHandler(req, res, context = {}) {
       : Promise.resolve();
 
     // client/adapter are LET so failover can rebuild them on a fallback tier.
-    let client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-    let adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
+    //
+    // A FAILURE HERE MUST NOT BE FATAL. The failover chain can only roll over
+    // from a throw that happens INSIDE runWithFallback, and every fallback
+    // tier builds its client there (see runTierStream). The primary tier used
+    // to build eagerly at this point instead, so a provider with NO stored
+    // credential threw out here, was caught by the outer handler ~2000 lines
+    // below, and reported a turn with status "completed", no usage, no cost
+    // and no context manifest — a silently empty success.
+    //
+    // Measured 2026-08-10: a keyless `kimi` request did exactly that, while a
+    // keyless `zai` request failed over to the next tier correctly. The
+    // difference was only WHERE the credential failure surfaced — zai's key
+    // exists and is rejected at request time (inside the chain), kimi's is
+    // absent and threw at client construction (outside it). Same user-facing
+    // fault, two different outcomes, which is the bug.
+    //
+    // The error is captured and re-thrown from inside runTierStream so the
+    // primary tier fails over on exactly the same terms as every other tier.
+    let client = null;
+    let adapter = null;
+    let primaryTierInitError = null;
+    try {
+      client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
+      adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
+    } catch (initError) {
+      primaryTierInitError = initError;
+      console.warn(
+        `[Chat] Could not initialise primary provider ${normalizedProvider}: ${initError.message} ` +
+        `— deferring to the failover chain (${providerChain.length - 1} fallback tier(s) configured)`
+      );
+    }
 
-    // Store client in context
+    // Store client in context. Null is already the initial value here, and
+    // nothing between this point and runTierStream dereferences it.
     conversationContext.llmClient = client;
     if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex') {
       conversationContext.openai = client;
@@ -2062,6 +2092,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // normalizedProvider/model so the rest of the turn (tool loop) continues on
     // the tier that actually worked.
     const runTierStream = async (tier) => {
+      if (tier.primary && !adapter) {
+        // The primary client could not be built (see primaryTierInitError
+        // above). Throwing HERE — inside runWithFallback — is what turns a
+        // missing credential into a normal failover instead of a silently
+        // empty "completed" turn.
+        throw primaryTierInitError
+          || new Error(`Could not initialise provider ${normalizedProvider}`);
+      }
       if (!tier.primary) {
         // Rebuild client+adapter for the fallback tier.
         normalizedProvider = String(tier.provider).toLowerCase();

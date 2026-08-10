@@ -1731,6 +1731,28 @@ export function registerDynamicPricingFromModels(providerKey, models) {
       if (Number.isFinite(v) && v >= 0) pricing.outputCostPer1M = v;
     }
 
+    // xAI's spelling: FLAT top-level integers in units of 1e-10 dollars per
+    // token, i.e. divide by 10,000 for dollars per million. Verified live
+    // 2026-08-10 against api.x.ai/v1/models — grok-4.20 returns
+    // prompt_text_token_price 12500 and cached_prompt_text_token_price 2000,
+    // which convert to $1.25/M and $0.20/M and match this catalog's hand-
+    // maintained entry for that model exactly.
+    //
+    // This matters more for xAI than for most providers because its cached
+    // rates differ PER MODEL (grok-4.3 is 0.1x of input, grok-4.20 is 0.16x),
+    // so no family multiplier can be correct for it. Reading the vendor's own
+    // numbers is the only approach that stays right when they add a model.
+    const xaiPerMillion = (v) => {
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
+      return v / 10_000;
+    };
+    const xaiInput = xaiPerMillion(model.prompt_text_token_price);
+    if (pricing.inputCostPer1M == null && xaiInput != null) pricing.inputCostPer1M = xaiInput;
+    const xaiOutput = xaiPerMillion(model.completion_text_token_price);
+    if (pricing.outputCostPer1M == null && xaiOutput != null) pricing.outputCostPer1M = xaiOutput;
+    const xaiCached = xaiPerMillion(model.cached_prompt_text_token_price);
+    if (xaiCached != null) pricing.inputCacheReadCostPer1M = xaiCached;
+
     // Published cache rates (OpenRouter's per-token spelling). A provider that
     // states its own cached-read/write price is authoritative; the multiplier
     // table in getModelCost is only a fallback for providers that publish a

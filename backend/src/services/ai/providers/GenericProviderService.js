@@ -337,6 +337,25 @@ class GenericProviderService extends EventEmitter {
       out.pricing = rawModel.pricing;
     }
 
+    // xAI is the next instance of exactly the loss described above, with a
+    // third spelling: it publishes rates as FLAT top-level fields rather than
+    // a nested `pricing` object — prompt_text_token_price,
+    // cached_prompt_text_token_price, completion_text_token_price — on the
+    // ordinary /v1/models response AGNT already fetches. Verified live
+    // 2026-08-10. Because they sit outside `pricing`, the block above dropped
+    // them, which is why 11 of 15 grokai models had no cached-read price and
+    // billed cache hits at full rate.
+    //
+    // Copied verbatim under the same contract: the parser owns interpretation,
+    // including the unit conversion.
+    for (const field of [
+      'prompt_text_token_price',
+      'cached_prompt_text_token_price',
+      'completion_text_token_price',
+    ]) {
+      if (typeof rawModel[field] === 'number') out[field] = rawModel[field];
+    }
+
     const ctx = rawModel.context_length || rawModel.context_window || rawModel.max_model_len;
     if (ctx) out.contextLength = ctx;
 

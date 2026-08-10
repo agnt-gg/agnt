@@ -247,6 +247,13 @@ export function classifyFailure(recoveredError) {
     s.includes('api key') ||
     s.includes('oauth') ||
     s.includes('token not found') ||
+    // The exact wording LlmService throws when no credential is stored:
+    // "Missing access token for provider: <key>". Before the primary tier was
+    // moved inside the failover boundary this string never reached the
+    // classifier, so nothing noticed it was unlisted. It classified as
+    // 'unknown' — a plainly diagnosable auth fault reported as a shrug, in the
+    // log line and the provider_fallback event a user is shown.
+    s.includes('access token') ||
     s.includes('authentication')
   ) {
     return 'auth';
