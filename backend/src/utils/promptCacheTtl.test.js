@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readAdapterSource } from '../services/orchestrator/transports/adapterSource.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -76,10 +77,11 @@ describe('the table matches what the adapter actually sends', () => {
   // tracks the adapter. Duplicating the value without pinning it is exactly how
   // the original 5-minute bug survived: the constant was plausible, documented,
   // and had nothing to do with the request we were sending.
-  const ADAPTER = fs.readFileSync(
-    path.join(__dirname, '../services/orchestrator/llmAdapters.js'),
-    'utf8'
-  );
+  // The cache breakpoints now live in transports/BaseAdapter.js and
+  // transports/anthropicMessages.js. Reading llmAdapters.js alone would find
+  // no `cache_control` at all, and this test would go from guarding the TTL to
+  // guarding nothing.
+  const ADAPTER = readAdapterSource();
 
   it('finds explicit ttl parameters on every Anthropic cache breakpoint', () => {
     const withTtl = ADAPTER.match(/cache_control(?:\s*[:=]\s*)\{\s*type:\s*'ephemeral',\s*ttl:\s*'([^']+)'/g) || [];

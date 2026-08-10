@@ -22,6 +22,7 @@
  * instrument, and it fails loudly if anyone deletes or reorders the gate.
  */
 import { describe, it, expect } from 'vitest';
+import { readAdapterSource } from './transports/adapterSource.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -107,8 +108,10 @@ describe('the guard runs at the right moment', () => {
 });
 
 describe('the Anthropic adapter feeds the recovery pipeline', () => {
-  const ADAPTERS = path.resolve(here, './llmAdapters.js');
-  const adapters = fs.readFileSync(ADAPTERS, 'utf8');
+  // The adapters were split into transports/, so the layer is what to scan.
+  // Reading llmAdapters.js alone would now find zero occurrences and this
+  // guard would pass while protecting nothing.
+  const adapters = readAdapterSource();
 
   it('returns invalidToolCalls, which the orchestrator recovery path consumes', () => {
     // Before the fix only OpenAiLikeAdapter returned this field, so the

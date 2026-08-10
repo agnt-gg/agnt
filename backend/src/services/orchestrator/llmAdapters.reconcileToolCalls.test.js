@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BaseAdapter } from './llmAdapters.js';
+import { readAdapterSource } from './transports/adapterSource.js';
 
 const reconcile = (calls, blocks, label) =>
   BaseAdapter._reconcileToolCallsWithContent(calls, blocks, label);
@@ -99,10 +100,9 @@ describe('_reconcileToolCallsWithContent', () => {
 });
 
 describe('wiring: the Anthropic return boundary must actually call it', () => {
-  const SRC = fs.readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), 'llmAdapters.js'),
-    'utf8',
-  );
+  // The Anthropic return boundary now lives in transports/anthropicMessages.js.
+  // Scan the layer rather than the file it used to be in.
+  const SRC = readAdapterSource();
 
   it('the helper is defined on BaseAdapter', () => {
     expect(typeof BaseAdapter._reconcileToolCallsWithContent).toBe('function');

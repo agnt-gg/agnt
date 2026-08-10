@@ -36,17 +36,40 @@ const BACKEND_SRC = path.resolve(__dirname, '../../');
  * with no chat semantics, no prompt cache and no tool loop, so routing it
  * through a chat adapter would buy nothing.
  */
-const DIRECT_TEXT_CALL =
-  /\b(?:client|openai|anthropic|genAI|ai)\s*\.\s*(?:chat\s*\.\s*completions|messages|responses)\s*\.\s*(?:create|stream)\s*\(/;
+const DIRECT_TEXT_CALL = new RegExp([
+  // OpenAI-compatible, Anthropic, and the Responses API.
+  /\b(?:client|openai|anthropic|genAI|ai)\s*\.\s*(?:chat\s*\.\s*completions|messages|responses)\s*\.\s*(?:create|stream)\s*\(/.source,
+  // Gemini. Originally MISSING, and the staleness check below is what caught
+  // it: transports/gemini.js was on the allow-list while the detector could
+  // not see a single call in it, so the whole Gemini transport was
+  // unguarded — a new module could have copied its SDK calls freely.
+  /\b(?:client|genAI|ai)\s*\.\s*models\s*\.\s*generateContent(?:Stream)?\s*\(/.source,
+].join('|'));
 
 /**
  * Every file still allowed to call a provider SDK directly, with the reason.
  * This list may SHRINK freely. Growing it should require an argument.
  */
 const ALLOWED = new Map([
+  // THE adapter layer. These four files ARE the sanctioned SDK boundary — one
+  // per wire protocol. llmAdapters.js itself is no longer listed because after
+  // the transport split it is a factory and a re-export list, and it makes no
+  // provider calls at all; leaving it here would grant permission nothing uses.
   [
-    'services/orchestrator/llmAdapters.js',
-    'THE adapter layer. This is the one place that is supposed to talk to an SDK.',
+    'services/orchestrator/transports/chatCompletions.js',
+    'OpenAI-compatible Chat Completions — fourteen providers.',
+  ],
+  [
+    'services/orchestrator/transports/anthropicMessages.js',
+    'Anthropic Messages — anthropic and claude-code.',
+  ],
+  [
+    'services/orchestrator/transports/openaiResponses.js',
+    'OpenAI Responses — openai (gpt-5.x / o-series) and openai-codex.',
+  ],
+  [
+    'services/orchestrator/transports/gemini.js',
+    'Google Gemini — gemini, gemini-cli and antigravity.',
   ],
   [
     'stream/StreamEngine.js',
@@ -95,8 +118,9 @@ describe('provider SDK calls are contained', () => {
   it('ANTI-VACUITY: the detector actually finds the known call sites', () => {
     // If the regex stops matching, every assertion below passes while
     // guarding nothing at all.
-    expect(seen.has('services/orchestrator/llmAdapters.js')).toBe(true);
-    expect(seen.size).toBeGreaterThanOrEqual(2);
+    expect(seen.has('services/orchestrator/transports/chatCompletions.js')).toBe(true);
+    expect(seen.has('services/orchestrator/transports/anthropicMessages.js')).toBe(true);
+    expect(seen.size).toBeGreaterThanOrEqual(4);
   });
 
   it('no unlisted module calls a provider SDK directly for text generation', () => {

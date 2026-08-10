@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { OpenAiLikeAdapter } from './llmAdapters.js';
+import { readAdapterSource } from './transports/adapterSource.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -154,7 +155,9 @@ describe('the wiring is reachable, not merely present', () => {
   // A source-contract test that asserts PRESENCE and ORDER does not assert
   // REACHABILITY — a dead `if (false && ...)` branch satisfies every
   // positional check. These pin the call shape so an unreachable version fails.
-  const SRC = fs.readFileSync(path.join(__dirname, 'llmAdapters.js'), 'utf8');
+  // The adapter layer, not one file: the transports were split out of
+  // llmAdapters.js and scanning it alone would now guard almost nothing.
+  const SRC = readAdapterSource();
 
   it('shapes messages at BOTH request sites, not just the streaming one', () => {
     // callStream carries chat traffic; call() carries suggestions, titles and
