@@ -306,6 +306,15 @@
 ; =========================================================================
 !macro customHeader
 
+; The template compiles this script TWICE — the second pass (with
+; BUILD_UNINSTALLER defined) produces the uninstaller, where the assisted-
+; installer pages do not exist. An install function compiled there is
+; unreferenced, and makensis' warning 6010 is promoted to an error by
+; electron-builder. Layers 2 and 3 are installer-side by definition; the
+; uninstaller's protection is layer 1, whose macro expands only where it
+; is inserted.
+!ifndef BUILD_UNINSTALLER
+
 ; -------------------------------------------------------------------------
 ; LAYER 2 — .onVerifyInstDir
 ;
@@ -393,6 +402,8 @@ Function agntRescuePagePre
   agnt_rescue_proceed:
   Abort
 FunctionEnd
+
+!endif ; BUILD_UNINSTALLER
 
 !macroend
 
