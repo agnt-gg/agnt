@@ -72,6 +72,8 @@ export function buildContextManifest({
   economics = null,
   cacheTtlMs = null,
   cacheBestEffort = false,
+  servedProvider = null,
+  servedModel = null,
   calibration = 1,
 } = {}) {
   // A per-turn price on every line item. Sections and tool schemas are re-sent
@@ -132,6 +134,12 @@ export function buildContextManifest({
     // hit and miss, and no affinity parameter exists). Lets the panel present
     // a miss as expected behaviour rather than as a broken cache.
     cacheBestEffort: !!cacheBestEffort,
+    // Which provider actually answered (invariant I3). Null on the first emit
+    // — nothing has run yet — and set when a failover re-emits the manifest,
+    // so a panel can never attribute one provider's cache economics to a
+    // request that a different provider served.
+    servedProvider: servedProvider ?? null,
+    servedModel: servedModel ?? null,
     system: {
       total: systemTokens,
       sections: pricedSections,

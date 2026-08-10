@@ -1843,6 +1843,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Itemized inventory of everything in this request: which prompt sections,
     // which tools and why, what was hidden or dropped, and whether the cached
     // prompt prefix survived. All of it was already computed above.
+    // Held so a provider failover can re-emit the manifest with the economics
+    // of the provider that actually served (invariant I3, below).
+    let __lastManifest = null;
+    let __manifestTokens = { systemTokens: 0, toolTokens: 0 };
+
     try {
       const { manifest, fingerprints } = buildContextManifest({
         cacheTtlMs: promptCacheTtlMs(normalizedProvider, model),
@@ -1868,6 +1873,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
       conversationContext._manifestFingerprints = fingerprints;
       sendEvent('context_manifest', manifest);
+      // Keep the manifest so a failover can correct its provider-dependent
+      // fields. See __emitManifestForServedProvider below (invariant I3).
+      __lastManifest = manifest;
+      __manifestTokens = {
+        systemTokens: contextResult.systemTokens,
+        toolTokens: contextResult.toolTokens,
+      };
     } catch (manifestError) {
       // Never let an observability feature break a chat turn.
       console.warn('[ContextManifest] Failed to build manifest:', manifestError.message);
@@ -2079,6 +2091,45 @@ IMPORTANT: The image data is already available in the system context. You don't 
       );
     };
 
+    /**
+     * INVARIANT I3 — report the provider that SERVED, not the one requested.
+     *
+     * The manifest is built before the request goes out, from the requested
+     * provider. When the chain fails over, everything provider-dependent in it
+     * becomes a statement about a provider that never ran: measured 2026-08-09,
+     * a request for anthropic that Codex actually served still displayed
+     * Anthropic's 1h TTL and 0.1x cached rate. Observed on three separate
+     * providers, so it is the rule rather than an edge case.
+     *
+     * Token counts and the itemised inventory are provider-independent and
+     * unchanged, so only the economics/TTL/best-effort fields are recomputed
+     * and the existing context_manifest event is re-sent. The frontend already
+     * handles that event; a later one simply supersedes the earlier.
+     */
+    const __emitManifestForServedProvider = (servedProvider, servedModel) => {
+      if (!__lastManifest) return;
+      try {
+        const corrected = {
+          ...__lastManifest,
+          cacheTtlMs: promptCacheTtlMs(servedProvider, servedModel),
+          cacheBestEffort: promptCacheBestEffort(servedProvider),
+          economics: buildEconomics({
+            provider: servedProvider,
+            model: servedModel,
+            systemTokens: __manifestTokens.systemTokens,
+            toolTokens: __manifestTokens.toolTokens,
+          }),
+          servedProvider,
+          servedModel,
+        };
+        __lastManifest = corrected;
+        sendEvent('context_manifest', corrected);
+      } catch (err) {
+        // Never let an observability correction break a chat turn.
+        console.warn('[ContextManifest] Failed to re-emit for served provider:', err.message);
+      }
+    };
+
     const { result: _r0, tier: _r0Tier } = await runWithFallback({
       chain: providerChain,
       runOne: runTierStream,
@@ -2095,6 +2146,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           reason,
           tier: to.tier,
         });
+        __emitManifestForServedProvider(to.provider, to.model);
       },
     });
 
