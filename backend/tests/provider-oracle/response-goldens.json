@@ -1,0 +1,1162 @@
+{
+  "groq/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "openai/gpt-oss-120b"
+  },
+  "groq/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "openai/gpt-oss-120b"
+  },
+  "groq/parallelToolCalls": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_a",
+          "name": "web_search",
+          "arguments": "{\"query\":\"x\"}"
+        },
+        {
+          "id": "call_b",
+          "name": "read_file",
+          "arguments": "{\"path\":\"b\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "openai/gpt-oss-120b"
+  },
+  "kimi/usageChunkWithoutChoices": {
+    "stream": {
+      "ok": true,
+      "content": "OK",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "kimi-k2-turbo-preview"
+  },
+  "deepseek/withReasoning": {
+    "stream": {
+      "ok": true,
+      "content": "answer",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "deepseek-chat"
+  },
+  "openrouter/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "anthropic/claude-haiku-4.5"
+  },
+  "grokai/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "grok-4-0709"
+  },
+  "togetherai/emptyResponse": {
+    "stream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "openai/gpt-oss-120b"
+  },
+  "zai/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "glm-4.5-air"
+  },
+  "minimax/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "MiniMax-M2.1"
+  },
+  "chutes/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "zai-org/GLM-5-FP8"
+  },
+  "cerebras/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **Cerebras API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different model/provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-oss-120b"
+  },
+  "cerebras/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **Cerebras API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different model/provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-oss-120b"
+  },
+  "cerebras/usageChunkWithoutChoices": {
+    "stream": {
+      "ok": true,
+      "content": "OK",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "⚠️ **Cerebras API Error:** Cannot read properties of undefined (reading '0')\n\nPlease check your API configuration or try a different model/provider.",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": null,
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-oss-120b"
+  },
+  "anthropic/plainText": {
+    "stream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "claude-opus-4-8"
+  },
+  "anthropic/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "id": "toolu_1"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "toolu_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 0
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "claude-opus-4-8"
+  },
+  "anthropic/withThinking": {
+    "stream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "let me think"
+        },
+        {
+          "type": "text",
+          "text": "the answer"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 0
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "claude-opus-4-8"
+  },
+  "anthropic/textThenTool": {
+    "stream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Let me look."
+        },
+        {
+          "type": "tool_use",
+          "name": "web_search",
+          "id": "toolu_2"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "toolu_2",
+          "name": "web_search",
+          "arguments": "{\"query\":\"x\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 0
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "claude-opus-4-8"
+  },
+  "claude-code/plainText": {
+    "stream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "claude-opus-4-8"
+  },
+  "claude-code/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "id": "toolu_1"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "toolu_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 0
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello, world"
+        }
+      ],
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "claude-opus-4-8"
+  },
+  "openai/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-5.6"
+  },
+  "openai/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-5.6"
+  },
+  "openai/withReasoning": {
+    "stream": {
+      "ok": true,
+      "content": "answer",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": "text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "answer",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-5.6"
+  },
+  "openai-codex/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": "text,text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "Hello, world",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-5.6-sol"
+  },
+  "openai-codex/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": "tool,tool,tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-5.6-sol"
+  },
+  "openai-codex/withReasoning": {
+    "stream": {
+      "ok": true,
+      "content": "answer",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": "text"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "answer",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": true,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gpt-5.6-sol"
+  },
+  "gemini/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gemini-2.5-flash"
+  },
+  "gemini/toolCall": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "gemini-tool-<ts>-0",
+          "name": "read_file",
+          "arguments": "{\"path\":\"a.txt\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": "tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gemini-2.5-flash"
+  },
+  "gemini/snakeCaseUsage": {
+    "stream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gemini-2.5-flash"
+  },
+  "gemini/withThoughtSignature": {
+    "stream": {
+      "ok": true,
+      "content": "",
+      "role": "assistant",
+      "toolCalls": [
+        {
+          "id": "gemini-tool-<ts>-0",
+          "name": "web_search",
+          "arguments": "{\"query\":\"x\"}"
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": false,
+      "hasReplayItems": false,
+      "thoughtSignatures": 1,
+      "deltas": "tool"
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gemini-2.5-flash"
+  },
+  "gemini-cli/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gemini-2.5-flash"
+  },
+  "antigravity/plainText": {
+    "stream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "nonStream": {
+      "ok": true,
+      "content": "[The model returned an empty response.]",
+      "role": "assistant",
+      "toolCalls": [],
+      "usage": {
+        "input": 1200,
+        "output": 45,
+        "cachedRead": 1024
+      },
+      "recoveredFromError": true,
+      "hasReplayItems": false,
+      "thoughtSignatures": 0,
+      "deltas": ""
+    },
+    "model": "gemini-3.6-flash-low"
+  }
+}
