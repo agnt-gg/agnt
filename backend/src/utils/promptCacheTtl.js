@@ -54,7 +54,12 @@ const GROQ_CACHED_MODELS = /^openai\/gpt-oss/i;
 const CEREBRAS_CACHED_MODELS = /^(zai-glm-4\.7|gpt-oss-120b)$/i;
 
 const OPENAI_EXTENDED_CACHE_MODELS = /^(?:gpt-5\.5(?:-pro)?|gpt-5\.4|gpt-5\.2|gpt-5\.1(?:-codex(?:-max|-mini)?|-chat-latest)?|gpt-5(?:-codex)?|gpt-4\.1)$/i;
-const OPENAI_GPT56_OR_LATER = /^gpt-(?:[6-9](?:\.|-|$)|5\.(?:[6-9]|\d{2,})(?:\.|-|$))/i;
+// EXPORTED because the GPT-5.6 boundary decides two different things: which
+// retention control the request may carry (here) and whether cache WRITES
+// bill at 1.25x (providerConfigs.getCacheEconomics). One family, one regex —
+// a second copy would let the pricing and the policy disagree about which
+// models are 5.6, which is precisely the drift this branch exists to remove.
+export const OPENAI_GPT56_OR_LATER = /^gpt-(?:[6-9](?:\.|-|$)|5\.(?:[6-9]|\d{2,})(?:\.|-|$))/i;
 
 /**
  * Return request-level cache controls for public OpenAI API requests.

@@ -701,7 +701,15 @@ async function getUnifiedToolSchemas(context) {
         prov[n] = { reason: isAlwaysOnToolName(n) && !context.enabledTools.has(n) ? 'universal' : 'selected' };
       }
       return recordToolManifest(context, {
-        schemas: ceilingSchemas, registryTotal: namedSchemas.length, mode: 'whitelist', provenance: prov,
+        // Append-only, same as the discovery path. The ceiling is the user's
+        // checkbox selection, which they can change MID-CONVERSATION: ticking
+        // one more tool re-emits this list in registry order, so the new entry
+        // lands in the MIDDLE and every schema after it shifts. Measured on
+        // the raw filter, a group arriving at slot 0 leaves 0.1% of the
+        // previous 29.5k-char tools block byte-identical — which discards the
+        // cached prefix for the tools AND all message history behind them.
+        schemas: applyStableToolOrder(context, ceilingSchemas),
+        registryTotal: namedSchemas.length, mode: 'whitelist', provenance: prov,
       });
     }
 
@@ -733,7 +741,12 @@ async function getUnifiedToolSchemas(context) {
       if (n) prov[n] = { reason: specialtySet.has(n) ? 'specialty' : 'universal' };
     }
     return recordToolManifest(context, {
-      schemas: filteredSchemas, registryTotal: allSchemas.length, mode: 'specialty', provenance: prov,
+      // Append-only for the same reason. A sidebar's specialty set is stable,
+      // but the REGISTRY behind it is not — installing a plugin mid-session
+      // renumbers registry positions and would reshuffle an established
+      // surface. Replaying first-seen order makes that a no-op.
+      schemas: applyStableToolOrder(context, filteredSchemas),
+      registryTotal: allSchemas.length, mode: 'specialty', provenance: prov,
     });
   }
 

@@ -8,6 +8,10 @@
  */
 
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from './reasoningModels.js';
+// The GPT-5.6 family boundary. Defined once in promptCacheTtl, which uses it
+// to pick the retention control; reused here because the same boundary decides
+// whether cache writes bill at 1.25x.
+import { OPENAI_GPT56_OR_LATER as GPT_56_OR_LATER } from '../../utils/promptCacheTtl.js';
 
 // Reasoning predicates live in the SHARED DESCRIPTOR (invariant I1). That
 // module is isomorphic — the Vue frontend imports the very same file through a
@@ -2203,7 +2207,20 @@ export function getCacheEconomics(providerKey, modelId) {
     return { readMult: 0.1, write5mMult: 1.25, write1hMult: 2.0, known: true };
   }
   if (key === 'openai' || key === 'openai-codex') {
-    return { readMult: 0.5, write5mMult: 1.0, write1hMult: 1.0, known: true };
+    // "Cache writes have no additional fee on models before the GPT-5.6
+    // family. For GPT-5.6 models and later model families, cache writes cost
+    // 1.25x the uncached input token rate."
+    // developers.openai.com/api/docs/guides/prompt-caching (retrieved
+    // 2026-08-10).
+    //
+    // This matters most on openai-codex, whose model list LEADS with the 5.6
+    // family (gpt-5.6-sol/terra/luna) — so the provider people use most was
+    // the one being under-billed. It also changes the economics of a cache
+    // MISS on these models: a miss is no longer neutral, it writes at 1.25x,
+    // which is why prefix stability is worth real money here and not just
+    // latency.
+    const writeMult = GPT_56_OR_LATER.test(model) ? 1.25 : 1.0;
+    return { readMult: 0.5, write5mMult: writeMult, write1hMult: writeMult, known: true };
   }
   if (key === 'groq' && /^openai\/gpt-oss/.test(model)) {
     return { readMult: 0.5, write5mMult: 1.0, write1hMult: 1.0, known: true };
