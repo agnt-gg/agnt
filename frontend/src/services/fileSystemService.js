@@ -95,6 +95,18 @@ export async function updateSettings(workspaceRoot) {
     headers: getHeaders(),
     body: JSON.stringify({ workspaceRoot }),
   });
-  if (!res.ok) throw new Error(`Failed to update settings: ${res.statusText}`);
+  if (!res.ok) {
+    // The server rejects a workspace folder that an update would delete, and
+    // says exactly why. `res.statusText` is "Bad Request", which tells the
+    // user nothing and hides the one sentence that would save their files.
+    let reason = '';
+    try {
+      const body = await res.json();
+      reason = body?.error || '';
+    } catch {
+      // Non-JSON body — fall back to the status line.
+    }
+    throw new Error(reason || `Failed to update settings: ${res.statusText}`);
+  }
   return res.json();
 }

@@ -7,6 +7,7 @@ import { authenticateToken } from './Middleware.js';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import PathManager from '../utils/PathManager.js';
 import { prepareWrite } from '../utils/lineEndings.js';
+import { describeUnsafeRoot } from '../utils/installDirGuard.js';
 
 const router = express.Router();
 
@@ -121,12 +122,49 @@ function validatePath(inputPath, workspaceRoot) {
   return resolved;
 }
 
+/**
+ * Shout, once, at startup if the CONFIGURED workspace root is already inside
+ * the install directory.
+ *
+ * The picker now refuses to create this situation, but installs that predate
+ * the guard are already in it and lose everything on their next update. They
+ * cannot be fixed silently — the folder is the user's, and moving someone's
+ * files without asking is its own kind of data loss — so the loudest thing we
+ * can do without touching their disk is say so on every boot and flag it on
+ * the settings endpoint the UI already calls.
+ */
+async function warnIfWorkspaceUnsafe() {
+  try {
+    const unsafe = describeUnsafeRoot(await getWorkspaceRoot());
+    if (!unsafe) return;
+    console.warn(
+      '\n' +
+        '='.repeat(72) + '\n' +
+        '  WARNING: your workspace folder will be DELETED by the next update.\n' +
+        `  Workspace: ${unsafe.workspaceRoot}\n` +
+        `  AGNT install: ${unsafe.installRoot}\n` +
+        '  Installing an AGNT update erases the install directory and\n' +
+        '  everything inside it. Move your work and pick a different\n' +
+        '  workspace folder BEFORE you install another update.\n' +
+        '='.repeat(72) + '\n',
+    );
+  } catch {
+    // Never let a diagnostic take the backend down.
+  }
+}
+warnIfWorkspaceUnsafe();
+
 // GET /api/filesystem/settings
 // Returns current workspace root and default
 router.get('/settings', authenticateToken, async (req, res) => {
   try {
     const workspaceRoot = await getWorkspaceRoot();
-    res.json({ workspaceRoot, defaultRoot: DEFAULT_WORKSPACE_ROOT });
+    res.json({
+      workspaceRoot,
+      defaultRoot: DEFAULT_WORKSPACE_ROOT,
+      // null when safe; the UI shows a banner when it isn't.
+      unsafeRoot: describeUnsafeRoot(workspaceRoot),
+    });
   } catch (error) {
     console.error('FileSystem settings error:', error);
     res.status(500).json({ error: error.message });
@@ -141,6 +179,15 @@ router.put('/settings', authenticateToken, async (req, res) => {
     if (!workspaceRoot) return res.status(400).json({ error: 'workspaceRoot is required' });
 
     const resolved = path.resolve(workspaceRoot);
+
+    // Refuse BEFORE mkdir. Creating the folder first is what made the original
+    // failure look survivable: the user saw a real, empty directory appear and
+    // reasonably concluded their files had been erased from it, when in fact
+    // this call had just created it. Validate, then create.
+    const unsafe = describeUnsafeRoot(resolved);
+    if (unsafe) {
+      return res.status(400).json({ error: unsafe.message, ...unsafe });
+    }
 
     // Verify the directory exists or can be created
     await fs.mkdir(resolved, { recursive: true });
