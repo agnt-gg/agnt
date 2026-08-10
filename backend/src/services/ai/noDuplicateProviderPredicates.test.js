@@ -61,7 +61,17 @@ describe('provider predicate definitions are unique (I1)', () => {
     // If the regex stops matching the codebase's naming, the guard below would
     // pass while checking nothing at all.
     expect(defs.size).toBeGreaterThanOrEqual(15);
-    expect(defs.get('isGroqGptOssReasoningModel')).toEqual(['services/ai/providerConfigs.js']);
+    // The canonical home is the shared descriptor, which the Vue frontend also
+    // imports. providerConfigs re-exports it for existing consumers.
+    expect(defs.get('isGroqGptOssReasoningModel')).toEqual(['services/ai/descriptor/reasoningPredicates.js']);
+  });
+
+  it('every reasoning predicate lives in the shared descriptor', () => {
+    // Anywhere else is by definition a copy the frontend cannot see.
+    const strays = [...defs.entries()]
+      .filter(([, files]) => !files.every((f) => f === 'services/ai/descriptor/reasoningPredicates.js'))
+      .map(([name, files]) => `${name}: ${files.join(' , ')}`);
+    expect(strays, 'define reasoning predicates in descriptor/reasoningPredicates.js so UI and wire share one answer').toEqual([]);
   });
 
   it('no predicate is defined in more than one module', () => {

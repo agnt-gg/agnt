@@ -9,6 +9,57 @@
 
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from './reasoningModels.js';
 
+// Reasoning predicates live in the SHARED DESCRIPTOR (invariant I1). That
+// module is isomorphic — the Vue frontend imports the very same file through a
+// Vite alias — which is what finally removes the third copy of this knowledge.
+// Imported for local use and re-exported so existing consumers (llmAdapters,
+// tests) keep their current import paths.
+import {
+  isOpenAIResponsesReasoningModel,
+  isAnthropicAdaptiveThinkingModel,
+  isGemini3ReasoningModel,
+  isGemini25ReasoningModel,
+  supportsDeepSeekThinkingToggle,
+  isGroqGptOssReasoningModel,
+  isGroqQwenReasoningModel,
+  isCerebrasGptOssReasoningModel,
+  isCerebrasGlmReasoningModel,
+  supportsZaiThinkingToggle,
+  supportsZaiReasoningEffort,
+  supportsKimiReasoningToggle,
+  isOpenRouterOpenAIReasoningModel,
+  isOpenRouterAnthropicReasoningModel,
+  isOpenRouterGeminiReasoningModel,
+  isOpenRouterXaiReasoningModel,
+  isTogetherGptOssReasoningModel,
+  isChutesKimiReasoningModel,
+  isChutesGlmReasoningModel,
+  isChutesQwenReasoningModel,
+} from './descriptor/reasoningPredicates.js';
+
+export {
+  isOpenAIResponsesReasoningModel,
+  isAnthropicAdaptiveThinkingModel,
+  isGemini3ReasoningModel,
+  isGemini25ReasoningModel,
+  supportsDeepSeekThinkingToggle,
+  isGroqGptOssReasoningModel,
+  isGroqQwenReasoningModel,
+  isCerebrasGptOssReasoningModel,
+  isCerebrasGlmReasoningModel,
+  supportsZaiThinkingToggle,
+  supportsZaiReasoningEffort,
+  supportsKimiReasoningToggle,
+  isOpenRouterOpenAIReasoningModel,
+  isOpenRouterAnthropicReasoningModel,
+  isOpenRouterGeminiReasoningModel,
+  isOpenRouterXaiReasoningModel,
+  isTogetherGptOssReasoningModel,
+  isChutesKimiReasoningModel,
+  isChutesGlmReasoningModel,
+  isChutesQwenReasoningModel,
+};
+
 // ─────────────────────────── PROVIDER CONFIGS ───────────────────────────
 
 const PROVIDER_CONFIGS = [
@@ -1448,140 +1499,6 @@ function buildReasoningControl(kind, options, defaultValue = 'default') {
     defaultValue,
     options,
   };
-}
-
-function isOpenAIResponsesReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('gpt-5') || /^o\d/.test(lower);
-}
-
-export function isAnthropicAdaptiveThinkingModel(modelId) {
-  return isAnthropicReasoningModel(modelId);
-}
-
-function isGemini3ReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('gemini-3');
-}
-
-function isGemini25ReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('gemini-2.5');
-}
-
-// ── Shared reasoning predicates ─────────────────────────────────────────────
-// EXPORTED because llmAdapters.js consumes them to build the wire body. It
-// used to keep its own copies, and two had drifted: for Groq gpt-oss and
-// qwen3 this file said startsWith() while the adapter said exact-match on
-// three model ids. The UI renders from THIS file and the wire is built from
-// the adapter, so a model in the gap showed the user a reasoning toggle that
-// silently sent nothing — they pay for the request and nothing changes.
-//
-// One definition, two consumers (invariant I1). The frontend still mirrors
-// these in store/app/aiProvider.js until the shared descriptor package lands;
-// noDuplicateProviderPredicates.test.js guards the backend today.
-export function supportsDeepSeekThinkingToggle(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return (
-    lower === 'deepseek-chat' ||
-    lower === 'deepseek-reasoner' ||
-    lower.startsWith('deepseek-v4-')
-  );
-}
-
-export function isGroqGptOssReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
-}
-
-export function isGroqQwenReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower === 'qwen/qwen3-32b' || lower.startsWith('qwen/qwen3-');
-}
-
-export function isCerebrasGptOssReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase() === 'gpt-oss-120b';
-}
-
-export function isCerebrasGlmReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase() === 'zai-glm-4.7';
-}
-
-function supportsZaiThinkingToggle(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  // GLM-5.2 uses the effort-based control (see supportsZaiReasoningEffort),
-  // not the legacy enabled/disabled toggle. Exclude it from this check so
-  // it falls through to the effort branch in getReasoningControl.
-  if (supportsZaiReasoningEffort(modelId)) return false;
-  return (
-    lower.startsWith('glm-5') ||
-    lower.startsWith('glm-4.7') ||
-    lower.startsWith('glm-4.6') ||
-    lower.startsWith('glm-4.5')
-  );
-}
-
-// GLM-5.2 switched from the enabled/disabled thinking toggle that older GLM
-// models used to an OpenAI-compatible `reasoning_effort` parameter that only
-// accepts `high` (default) and `max`. Per Z.AI docs (docs.z.ai/guides/llm/
-// glm-5.2), omitting the parameter lets Z.AI apply the server-side default
-// of `high`. Matches both the bare `glm-5.2` and the `glm-5.2[1m]` 1M-context
-// variant. Exported because llmAdapters.js routes the reasoning-extra-body
-// shape based on this distinction.
-export function supportsZaiReasoningEffort(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('glm-5.2');
-}
-
-export function supportsKimiReasoningToggle(providerKey, modelId) {
-  const lowerProvider = String(providerKey || '').toLowerCase();
-  const lowerModel = String(modelId || '').toLowerCase();
-
-  if (lowerProvider === 'kimi-code') {
-    return lowerModel === 'kimi-for-coding';
-  }
-
-  return lowerModel.startsWith('kimi-k2') && !lowerModel.includes('thinking');
-}
-
-function isOpenRouterOpenAIReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('openai/gpt-5') || /^openai\/o\d/.test(lower);
-}
-
-function isOpenRouterAnthropicReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return (
-    lower.startsWith('anthropic/claude-opus-4') ||
-    lower.startsWith('anthropic/claude-sonnet-4') ||
-    lower.startsWith('anthropic/claude-3.7')
-  );
-}
-
-function isOpenRouterGeminiReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('google/gemini-3') || lower.startsWith('google/gemini-2.5');
-}
-
-function isOpenRouterXaiReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('x-ai/') || lower.startsWith('xai/');
-}
-
-export function isTogetherGptOssReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
-}
-
-// Chutes hosts upstream models inside TEE; reasoning protocol routes by family
-// of the underlying model, not by Chutes itself. The model IDs follow the
-// pattern <family-org>/<model>-TEE.
-export function isChutesKimiReasoningModel(modelId) {
-  return /^moonshotai\/kimi-k2/i.test(String(modelId || ''));
-}
-
-export function isChutesGlmReasoningModel(modelId) {
-  return /^zai-org\/glm-5/i.test(String(modelId || ''));
-}
-
-export function isChutesQwenReasoningModel(modelId) {
-  return /^qwen\/qwen3/i.test(String(modelId || ''));
 }
 
 function inferVariantModelMetadata(providerKey, modelId) {

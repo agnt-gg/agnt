@@ -4,6 +4,7 @@ import path from 'path'
 import jsdom from 'jsdom'
 import { onUnhandledError } from '../tests/setup/unhandledErrorFilter.mjs'
 import { verifyDeps } from './build/verifyDeps.js'
+import { aliases } from './build/aliases.js'
 
 // Same guard as vite.config.js: refuse to start on a node_modules that has
 // drifted from the lockfile, with an error that names the real cause.
@@ -22,9 +23,7 @@ export default defineConfig({
     // fails CI with all tests green. See tests/setup/unhandledErrorFilter.mjs.
     onUnhandledError,
   },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
+  // Shared with vite.config.js. Tests must resolve exactly what the build
+  // resolves, or a passing suite proves nothing about the shipped bundle.
+  resolve: { alias: aliases }
 })

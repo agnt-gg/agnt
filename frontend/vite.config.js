@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
 import fs from 'fs-extra';
+import { aliases } from './build/aliases.js';
 import { preserveHashedAssets } from './build/assetRetention.js';
 import { verifyDeps } from './build/verifyDeps.js';
 
@@ -44,9 +45,16 @@ export default defineConfig({
     // emptyOutDir:false below — see build/assetRetention.js for why.
     preserveHashedAssets(),
   ],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+  // Defined once in build/aliases.js and shared with vitest.config.js — see
+  // that file for why `@llm` points into backend/src and why that costs
+  // nothing at packaging time.
+  resolve: { alias: aliases },
+  server: {
+    fs: {
+      // The dev server must be allowed to read the shared descriptor, which
+      // sits outside this app's root. Build output is unaffected — Vite inlines
+      // the module rather than serving it.
+      allow: ['..'],
     },
   },
   build: {

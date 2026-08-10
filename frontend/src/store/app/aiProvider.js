@@ -3,6 +3,42 @@ import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject } from '../auth/licenseIdentity.js';
 
+// SHARED PROVIDER DESCRIPTOR — the same module the backend imports.
+//
+// These twenty predicates used to be redefined in this file, with a comment
+// asking whoever edited them to keep the regexes in sync with the backend by
+// hand. They had already fallen out of sync: this store recognised a narrower
+// set of OpenRouter Anthropic models than the wire accepted, and offered
+// GLM-5.2 an on/off toggle for a control that model does not have.
+//
+// `@llm` is a Vite alias onto backend/src/services/ai/descriptor — no npm
+// workspace, no new packaged artifact; Vite inlines it into dist/ at build
+// time. See vite.config.js for why it is done that way.
+import {
+  normalizeReasoningValue,
+  isReasoningEnabledValue,
+  isOpenAIResponsesReasoningModel as isOpenAIReasoningModel,
+  isAnthropicReasoningModel,
+  anthropicSupportsXHigh,
+  isGemini3ReasoningModel,
+  isGemini25ReasoningModel,
+  supportsDeepSeekThinkingToggle as supportsDeepSeekThinking,
+  isGroqGptOssReasoningModel,
+  isGroqQwenReasoningModel,
+  isCerebrasGlmReasoningModel,
+  supportsZaiThinkingToggle,
+  supportsZaiReasoningEffort,
+  supportsKimiReasoningToggle as supportsKimiToggle,
+  isOpenRouterOpenAIReasoningModel,
+  isOpenRouterAnthropicReasoningModel,
+  isOpenRouterGeminiReasoningModel,
+  isOpenRouterXaiReasoningModel,
+  isTogetherGptOssReasoningModel,
+  isChutesKimiReasoningModel,
+  isChutesGlmReasoningModel,
+  isChutesQwenReasoningModel,
+} from '@llm/reasoningPredicates.js';
+
 // ─────────────────────────── PROVIDER REGISTRY ───────────────────────────
 // Single source of truth for all built-in provider metadata on the frontend.
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
@@ -425,113 +461,16 @@ for (const p of BUILT_IN_PROVIDERS) {
   INITIAL_ALL_MODELS[p.displayName] = [];
 }
 
-function normalizeReasoningValue(value) {
-  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : 'default';
-}
-
-function isReasoningEnabledValue(value) {
-  const normalized = normalizeReasoningValue(value);
-  return normalized !== 'default' && normalized !== 'off' && normalized !== 'none';
-}
-
 function buildReasoningControl(kind, options, defaultValue = 'default') {
   return { kind, options, defaultValue };
 }
 
-function isOpenAIReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('gpt-5') || /^o\d/.test(lower);
-}
 
-// MIRROR of backend/src/services/ai/reasoningModels.js — keep regexes in sync.
-// Matches claude-opus-4-6+, claude-sonnet-4-6+ (auto-covers 4.7 / 4.8 / 4.9 / 4.10+),
-// plus the always-on Fable / Mythos family.
-const ANTHROPIC_VERSIONED_REASONING_RE = /^claude-(opus|sonnet)-4-([6-9]|[1-9]\d{1,2})(?:-|$)/;
-const ANTHROPIC_FAMILY_REASONING_RE = /^claude-(fable|mythos)-/;
-const ANTHROPIC_XHIGH_RE = /^claude-(opus-4-([7-9]|[1-9]\d{1,2})(?:-|$)|fable-|mythos-)/;
-
-function isAnthropicReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return ANTHROPIC_VERSIONED_REASONING_RE.test(lower) || ANTHROPIC_FAMILY_REASONING_RE.test(lower);
-}
-
-function isGemini3ReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('gemini-3');
-}
-
-function isGemini25ReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('gemini-2.5');
-}
-
-function supportsDeepSeekThinking(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner' || lower.startsWith('deepseek-v4-');
-}
-
-function isGroqGptOssReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
-}
-
-function isGroqQwenReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower === 'qwen/qwen3-32b' || lower.startsWith('qwen/qwen3-');
-}
-
-function isCerebrasGlmReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase() === 'zai-glm-4.7';
-}
-
-function supportsZaiThinking(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('glm-5') || lower.startsWith('glm-4.7') || lower.startsWith('glm-4.6') || lower.startsWith('glm-4.5');
-}
-
-function supportsKimiToggle(providerKey, modelId) {
-  const lowerProvider = String(providerKey || '').toLowerCase();
-  const lowerModel = String(modelId || '').toLowerCase();
-  if (lowerProvider === 'kimi-code') return lowerModel === 'kimi-for-coding';
-  return lowerModel.startsWith('kimi-k2') && !lowerModel.includes('thinking');
-}
-
-function isOpenRouterOpenAIReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('openai/gpt-5') || /^openai\/o\d/.test(lower);
-}
-
-function isOpenRouterAnthropicReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  if (!lower.startsWith('anthropic/')) return false;
-  return isAnthropicReasoningModel(lower.slice('anthropic/'.length));
-}
-
-function isOpenRouterGeminiReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('google/gemini-3') || lower.startsWith('google/gemini-2.5');
-}
-
-function isOpenRouterXaiReasoningModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('x-ai/') || lower.startsWith('xai/');
-}
-
-function isTogetherGptOssReasoningModel(modelId) {
-  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
-}
-
-// Chutes hosts upstream models inside TEE; reasoning routes by underlying family.
-function isChutesKimiReasoningModel(modelId) {
-  return /^moonshotai\/kimi-k2/i.test(String(modelId || ''));
-}
-
-function isChutesGlmReasoningModel(modelId) {
-  return /^zai-org\/glm-5/i.test(String(modelId || ''));
-}
-
-function isChutesQwenReasoningModel(modelId) {
-  return /^qwen\/qwen3/i.test(String(modelId || ''));
-}
-
-function inferReasoningControl(providerKey, modelId) {
+// Exported (as well as exposed through the store getter) so the reasoning
+// control it derives can be asserted directly against the shared descriptor,
+// without standing up a store. It is pure: provider key + model id in, control
+// descriptor out.
+export function inferReasoningControl(providerKey, modelId) {
   const lowerProvider = String(providerKey || '').toLowerCase();
   const lowerModel = String(modelId || '').toLowerCase();
 
@@ -603,7 +542,7 @@ function inferReasoningControl(providerKey, modelId) {
       { value: 'medium', label: 'Medium' },
       { value: 'high', label: 'High' },
     ];
-    if (ANTHROPIC_XHIGH_RE.test(lowerModel)) {
+    if (anthropicSupportsXHigh(lowerModel)) {
       options.push({ value: 'xhigh', label: 'Max' });
     }
     return buildReasoningControl('effort', options);
@@ -707,7 +646,20 @@ function inferReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'zai') {
-    if (!supportsZaiThinking(modelId)) return null;
+    // GLM-5.2 takes an OpenAI-compatible `reasoning_effort` of high (default)
+    // or max, and has no off — adaptive thinking is always on. This branch was
+    // MISSING here while the backend had it, so the UI offered GLM-5.2 users an
+    // on/off toggle for a control the model does not have. Found by adopting
+    // the shared descriptor: its supportsZaiThinkingToggle excludes GLM-5.2,
+    // which made the gap visible instead of silently mismatched.
+    if (supportsZaiReasoningEffort(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'high', label: 'High' },
+        { value: 'max', label: 'Max' },
+      ]);
+    }
+    if (!supportsZaiThinkingToggle(modelId)) return null;
     return buildReasoningControl('toggle', [
       { value: 'default', label: 'Default' },
       { value: 'off', label: 'Off' },
