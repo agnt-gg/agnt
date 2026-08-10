@@ -358,11 +358,72 @@ class ContentOutputModel {
     });
   }
 
+  /**
+   * THE CANONICAL ROW FOR A CONVERSATION.
+   *
+   * `conversation_id` has no unique constraint, and for most of this table's
+   * life nothing enforced one row per conversation: dedupe happened only on
+   * the output `id`, which lives in a single tab's memory. So a conversation
+   * opened in a second browser saved itself as a SECOND row, and the sidebar
+   * showed one chat three times.
+   *
+   * Saving now reuses this row (see RunService.saveOrUpdateContentOutput), so
+   * new duplicates are not created. Rows that already exist still need a
+   * deterministic WINNER, because `db.get` with no ORDER BY returns whichever
+   * row SQLite happens to visit first — which is how a client could open a
+   * 1KB stub of a conversation whose full 74KB transcript sat in the next row.
+   *
+   * Longest content wins. A transcript only grows during a conversation, so
+   * the longest row is the most complete one; `updated_at` would pick the most
+   * RECENTLY TOUCHED row, which can easily be a stub saved by a tab that
+   * joined at the end. Recency breaks ties.
+   */
   static findByConversationId(conversationId, userId) {
     return new Promise((resolve, reject) => {
-      db.get('SELECT * FROM content_outputs WHERE conversation_id = ? AND user_id = ?', [conversationId, userId], (err, output) => {
+      db.get(
+        `SELECT * FROM content_outputs
+         WHERE conversation_id = ? AND user_id = ?
+         ORDER BY LENGTH(COALESCE(content, '')) DESC, updated_at DESC, id ASC
+         LIMIT 1`,
+        [conversationId, userId],
+        (err, output) => {
+          if (err) reject(err);
+          else resolve(output);
+        }
+      );
+    });
+  }
+
+  /**
+   * The same canonical pick, WITHOUT the content column.
+   *
+   * Used on the save path purely to answer "does a row already exist, and is
+   * it mine?". `findOne` selects *, so using it there read an entire
+   * transcript (~0.5MB typical, ~28MB worst case on a real install) off disk
+   * on every ~5s autosave just to look at two identity columns.
+   */
+  static findMetaByConversationId(conversationId, userId) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT ${LIST_COLUMNS} FROM content_outputs
+         WHERE conversation_id = ? AND user_id = ?
+         ORDER BY LENGTH(COALESCE(content, '')) DESC, updated_at DESC, id ASC
+         LIMIT 1`,
+        [conversationId, userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row || null);
+        }
+      );
+    });
+  }
+
+  /** Identity of one row — ownership check on the save path, no content read. */
+  static findIdentityById(id) {
+    return new Promise((resolve, reject) => {
+      db.get('SELECT id, user_id, conversation_id FROM content_outputs WHERE id = ?', [id], (err, row) => {
         if (err) reject(err);
-        else resolve(output);
+        else resolve(row || null);
       });
     });
   }

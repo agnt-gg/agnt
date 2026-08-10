@@ -283,6 +283,19 @@ function createConversationState(conversationId) {
     messages: [],
     isStreaming: false,
     isRemoteStreaming: false,
+    // A reattach has been decided on but its replay has not arrived yet.
+    //
+    // isStreaming cannot serve here: it is deliberately raised only once the
+    // server sends something, so a page load where nothing is running does not
+    // flash a spinner. That leaves a gap of one HTTP round trip during which
+    // the socket delta mirror is still applying content — and the replay that
+    // follows starts from the beginning of the turn, so whatever landed in that
+    // gap is applied a second time (SCOPED_ADD_MESSAGE pushes without checking
+    // ids, SCOPED_APPEND_MESSAGE_CONTENT appends unconditionally: a duplicated
+    // bubble AND duplicated prose).
+    //
+    // This flag closes the gap from the instant the decision is made.
+    isReattaching: false,
     streamAbortController: null,
     streamReader: null,
     activeAsyncTools: new Map(),
@@ -823,7 +836,11 @@ export default {
         const keys = Object.keys(state.conversations);
         if (keys.length >= MAX_CONVERSATIONS) {
           const evictable = keys
-            .filter(id => id !== state.activeConversationId && !state.conversations[id].isStreaming)
+            // A conversation awaiting a replay is as live as a streaming one:
+            // evicting it aborts the reattach and drops the turn on the floor.
+            .filter(id => id !== state.activeConversationId
+              && !state.conversations[id].isStreaming
+              && !state.conversations[id].isReattaching)
             .sort((a, b) => {
               const aLast = state.conversations[a].messages.at(-1)?.timestamp || 0;
               const bLast = state.conversations[b].messages.at(-1)?.timestamp || 0;
@@ -861,6 +878,20 @@ export default {
         state.activeConversationId = newId;
         state.currentConversationId = newId;
       }
+    },
+
+    /**
+     * Claim a conversation for an in-flight reattach.
+     *
+     * Kept separate from SCOPED_SET_STREAMING because it means something
+     * different to the UI: the spinner tracks "the server is sending", while
+     * this tracks "we have committed to a replay, so nothing else may write
+     * here". Conflating them would either flash a spinner on every idle boot or
+     * reopen the double-apply window.
+     */
+    SCOPED_SET_REATTACHING(state, { conversationId, value }) {
+      const conv = state.conversations[conversationId];
+      if (conv) conv.isReattaching = value;
     },
 
     SCOPED_SET_STREAMING(state, { conversationId, value }) {
@@ -1901,9 +1932,16 @@ export default {
       if (!conversationId || String(conversationId).startsWith('temp-')) return false;
 
       const existing = state.conversations[conversationId];
-      if (existing && existing.isStreaming) return false;
+      // isReattaching as well as isStreaming: two announcements for the same
+      // run (or an announcement racing boot resume) would otherwise open two
+      // replays of one turn into one slot.
+      if (existing && (existing.isStreaming || existing.isReattaching)) return false;
 
       commit('ENSURE_CONVERSATION', conversationId);
+      // Claimed BEFORE the request goes out — the round trip is exactly the
+      // window in which the socket mirror would write content the replay is
+      // about to deliver again.
+      commit('SCOPED_SET_REATTACHING', { conversationId, value: true });
 
       const abortController = new AbortController();
       commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId, controller: abortController });
@@ -1952,6 +1990,10 @@ export default {
         return false;
       } finally {
         if (live) commit('SCOPED_SET_STREAMING', { conversationId, value: false });
+        // Released on every path, including a 204 "nothing running" and an
+        // abort: a claim that outlived its request would make the conversation
+        // permanently deaf to the socket mirror.
+        commit('SCOPED_SET_REATTACHING', { conversationId, value: false });
         commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId, controller: null });
         markRunEnded(conversationId);
       }
@@ -2726,8 +2768,11 @@ export default {
 
       // Check if the target conversation is actively streaming via SSE in this tab
       const targetConv = targetConvId ? state.conversations[targetConvId] : null;
-      if (targetConv && targetConv.isStreaming && !isAutonomousEvent && !isAsyncToolEvent) {
-        console.log('[Realtime Chat] Ignoring Socket.IO event - conversation is streaming via SSE');
+      // isReattaching counts as owned too. The replay about to arrive covers
+      // this turn from its first event, so anything applied here in the
+      // meantime is content the replay will deliver a second time.
+      if (targetConv && (targetConv.isStreaming || targetConv.isReattaching) && !isAutonomousEvent && !isAsyncToolEvent) {
+        console.log('[Realtime Chat] Ignoring Socket.IO event - conversation is owned by an SSE stream');
         return;
       }
 

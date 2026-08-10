@@ -354,6 +354,14 @@ function createTables() {
       createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_updated ON content_outputs(user_id, updated_at DESC)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_group_id ON content_outputs(group_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_channel ON content_outputs(user_id, channel_key)`);
+      // Saving a chat transcript now looks the conversation up by id to decide
+      // whether it already has a row (RunService.saveOrUpdateContentOutput),
+      // and that runs on every ~3s autosave of every streaming conversation.
+      // Unindexed, each one is a full scan of a table whose rows average ~0.5MB
+      // — and the lookup orders by LENGTH(content), so the scan would read
+      // those blobs too. With this index it touches only the handful of rows
+      // that share the conversation.
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_content_outputs_conversation ON content_outputs(user_id, conversation_id)`);
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (

@@ -6,8 +6,9 @@ import { authenticateToken } from './Middleware.js';
 import multer from 'multer';
 
 import universalChatHandler, { getAvailableTools } from '../services/OrchestratorService.js';
-import { attachSubscriber, cancelRun, getRunStatus } from '../services/orchestrator/activeRuns.js';
+import { attachSubscriber, cancelRun, getRunStatus, listRunsForUser } from '../services/orchestrator/activeRuns.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
+import ContentOutputModel from '../models/ContentOutputModel.js';
 
 const router = express.Router();
 
@@ -52,6 +53,54 @@ router.post('/artifact-chat', authenticateToken, upload.array('files'), universa
  * different intentions and now have different mechanisms.
  * ---------------------------------------------------------------------------
  */
+
+// What is running for ME?
+//
+// Declared before '/runs/:conversationId' — house rule for this codebase: a
+// literal segment goes above the parameter that could swallow it. Express
+// happens to distinguish these two by depth, but the rule is not conditional
+// on that, and the next literal added here might not be so lucky.
+//
+// This is the route that makes a run findable from a device that did not start
+// it. Every other run route needs a conversationId the caller must already
+// hold, and the only record of one was a localStorage marker — so a run
+// started in Chrome was invisible to Safari and to the Mac app, even though it
+// was alive and reattachable the entire time.
+router.get('/runs', authenticateToken, async (req, res) => {
+  const runs = listRunsForUser(req.user?.id);
+
+  // Enrich with the two facts the registry cannot know, because they belong to
+  // the saved transcript rather than to the run: which surface owns the
+  // conversation (channelKey — main list vs a workspace/artifact/widget
+  // channel), and what it is called.
+  //
+  // channelKey never reaches this process on the chat request, so deriving it
+  // from the stored row is the only authoritative answer available; the
+  // alternative is making every client guess, and a wrong guess reattaches a
+  // workspace turn into the main chat window.
+  //
+  // Best-effort by design: a conversation younger than its first autosave has
+  // no row yet. That is a null channelKey, not an error — the run is still
+  // perfectly reattachable, which is the point of the endpoint.
+  try {
+    const enriched = await Promise.all(
+      runs.map(async (run) => {
+        try {
+          const row = await ContentOutputModel.findMetaByConversationId(run.conversationId, req.user?.id);
+          return { ...run, channelKey: row?.channel_key || null, title: row?.title || null, outputId: row?.id || null };
+        } catch {
+          return { ...run, channelKey: null, title: null, outputId: null };
+        }
+      })
+    );
+    return res.json({ runs: enriched });
+  } catch (e) {
+    // The registry answer is the valuable half. Losing the decoration must not
+    // cost the caller the list itself.
+    console.warn('[Runs] listing could not be enriched:', e?.message || e);
+    return res.json({ runs: runs.map((r) => ({ ...r, channelKey: null, title: null, outputId: null })) });
+  }
+});
 
 // Is a turn still generating for this conversation?
 router.get('/runs/:conversationId', authenticateToken, (req, res) => {

@@ -448,6 +448,31 @@ export function useRealtimeSync() {
       store.dispatch('contentOutputs/refreshOutputs');
     });
 
+    // A turn has started on one of this user's OTHER clients.
+    //
+    // The chat:* handlers below mirror a turn's content, which only helps a
+    // client that was already watching when it began — they carry no replay, so
+    // arriving mid-run means having missed the start. This instead attaches to
+    // the run over SSE, which replays the whole turn from conversation_started.
+    // It is what lets a browser that was sitting open and idle pick up a task
+    // begun somewhere else without being reloaded.
+    //
+    // All of the routing, and the do-not-attach-to-your-own-run rule, live in
+    // runResume.js so the boot path and this one cannot drift apart.
+    socket.on('run:started', async (data) => {
+      try {
+        const { adoptAnnouncedRun } = await import('../services/runResume.js');
+        // Not logged from the return value: it resolves only when the run ENDS.
+        // adoptAnnouncedRun announces the decision synchronously instead.
+        await adoptAnnouncedRun(store, data || {});
+      } catch (e) {
+        // Resume is an enhancement on top of a working chat. A failure here
+        // must never break the socket handler and take the rest of realtime
+        // sync down with it.
+        console.warn('[Realtime] Could not attach to announced run:', e?.message || e);
+      }
+    });
+
     // Chat events (real-time message sync across tabs)
     // Only forward events from main chat types (orchestrator, agent) — not widget/workflow/tool/goal chats
     const isMainChatEvent = (data) => !data.chatType || data.chatType === 'orchestrator' || data.chatType === 'agent';

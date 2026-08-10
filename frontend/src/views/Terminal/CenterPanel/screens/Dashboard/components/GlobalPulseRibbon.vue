@@ -1,5 +1,12 @@
 <template>
-  <div class="global-pulse-ribbon">
+  <!--
+    data-tour-id implements the `dashboard.global-pulse-ribbon` entry that
+    tourTargets.js (and its backend mirror) has always declared. The registry
+    promises the assistant it can highlight this element; until now the
+    attribute did not exist anywhere in the app, so a tour step naming it
+    resolved to nothing and highlighted air. See tests/e2e/tour-targets.spec.js.
+  -->
+  <div class="global-pulse-ribbon" data-tour-id="dashboard.global-pulse-ribbon">
     <div class="pulse-section agnt-score-section">
       <span class="pulse-label"><span style="color: var(--color-primary)">AGNT</span> XP:</span>
       <span class="agnt-score-value">{{ agntScoreData?.formatted || '0' }}</span>

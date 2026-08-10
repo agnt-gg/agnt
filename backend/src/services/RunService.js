@@ -61,20 +61,35 @@ class RunService {
       const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey } = req.body;
       const userId = req.user.userId;
 
-      // Check if the output already exists
-      const existingOutput = id ? await ContentOutputModel.findOne(id) : null;
-      let isNewOutput = !existingOutput;
+      // WHICH ROW DOES THIS SAVE BELONG TO?
+      //
+      // Identity was the output `id` alone. That id is minted on a
+      // conversation's FIRST save and then remembered in the saving tab's
+      // memory (`savedOutputId` in the chat store) — nowhere else. A second
+      // browser, or the Mac app, holding the same conversation has no id to
+      // send, so this method saw `id: undefined`, concluded "new", and minted
+      // another row. Same conversation, three clients, three sidebar entries.
+      //
+      // A conversation is the durable identity here, so it is what we key on:
+      // when the caller names a conversation but no row, adopt the row that
+      // conversation already has. `conversationId` is set only for chat
+      // transcripts, so nothing else changes behaviour.
+      //
+      // Identity lookups only — neither read the content column (see
+      // ContentOutputModel.findIdentityById).
+      let existingOutput = id ? await ContentOutputModel.findIdentityById(id) : null;
 
-      let outputId;
-      if (isNewOutput) {
-        outputId = generateUUID(); // Generate a new UUID for the new output
-      } else if (existingOutput.user_id !== userId) {
-        // If the user is not the creator, create a new output with a new ID
-        outputId = generateUUID();
-        isNewOutput = true;
-      } else {
-        outputId = id; // Use the existing ID
+      // Ownership is checked BEFORE adopting: a row belonging to someone else
+      // is not a row we may write to, and falling through to the conversation
+      // lookup with another user's id would be a second chance to get that
+      // wrong. Scoped by userId, so it can only ever adopt the caller's row.
+      if (existingOutput && existingOutput.user_id !== userId) existingOutput = null;
+      else if (!existingOutput && conversationId) {
+        existingOutput = await ContentOutputModel.findMetaByConversationId(conversationId, userId);
       }
+
+      const isNewOutput = !existingOutput;
+      const outputId = isNewOutput ? generateUUID() : existingOutput.id;
 
       await ContentOutputModel.createOrUpdate(
         outputId,

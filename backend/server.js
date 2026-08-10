@@ -289,6 +289,46 @@ dbReady.then(() => {
     console.error('[Scheduler] Failed to start:', err);
   });
 });
+
+// Restore turns that were still generating when the last process died.
+//
+// The sibling of the stale-run sweep in models/database/index.js, and for the
+// same reason: the orchestrator's finally block cannot fire across a restart.
+// The sweep marks those executions 'interrupted' so the UI stops lying about
+// them; this puts the ANSWER back, from the on-disk replay journal, into the
+// conversation where the user will look for it.
+//
+// Main process only, matching the sweep — the workflow child sets
+// AGNT_SKIP_DB_INIT=1 and has no runs of its own to recover.
+//
+// Deliberately not awaited: recovery reads files and writes a handful of rows,
+// and no request depends on it having finished. A failure inside is logged and
+// swallowed by the function itself.
+if (process.env.AGNT_SKIP_DB_INIT !== '1') {
+  dbReady.then(async () => {
+    try {
+      const { recoverJournaledRuns } = await import('./src/services/orchestrator/recoverJournaledRuns.js');
+      await recoverJournaledRuns();
+    } catch (err) {
+      console.error('[RunRecovery] Boot recovery failed (non-fatal):', err);
+    }
+
+    // Safety net for the journal. The event-driven throttle already gets every
+    // published event to disk within seconds; what it cannot do is retry a
+    // write that FAILED, because it only ever schedules work when the next
+    // event arrives — and during a long synchronous tool call none does. This
+    // sweeps for runs whose journal is behind, and skips silently when none is.
+    try {
+      const [{ startJournalHeartbeat }, { liveRuns }] = await Promise.all([
+        import('./src/services/orchestrator/runJournal.js'),
+        import('./src/services/orchestrator/activeRuns.js'),
+      ]);
+      startJournalHeartbeat(liveRuns);
+    } catch (err) {
+      console.warn('[RunJournal] Heartbeat not started (non-fatal):', err?.message || err);
+    }
+  });
+}
 // Version + update-check endpoints share a one-time cached package.json read
 // (PRD-084-R2 §0.5) — the app version cannot change without a restart, so
 // re-reading and re-parsing the file on every request was wasted I/O.
@@ -781,7 +821,32 @@ function startServer() {
     // process.exit and left an orphan holding this port.
     const gracefulShutdown = createGracefulShutdown({
       server,
-      drain: () => WorkflowProcessBridge.shutdown(),
+      drain: async () => {
+        // FIRST, and synchronously: write every in-flight turn to disk.
+        //
+        // SIGTERM is what `launchctl kickstart -k`, systemd, Ctrl-C and an app
+        // quit all send, so the ordinary restart is not a crash at all — the
+        // process is still alive and holds the only copy of a turn that has
+        // not reached conversation_logs yet. Saving it here is the difference
+        // between losing an answer and keeping it.
+        //
+        // Sync, and before the drain proper, because this path has a hard
+        // deadline: an awaited write can lose the race to process.exit.
+        try {
+          const [{ liveRuns }, { flushAllSync, stopJournalHeartbeat }] = await Promise.all([
+            import('./src/services/orchestrator/activeRuns.js'),
+            import('./src/services/orchestrator/runJournal.js'),
+          ]);
+          // Stop the heartbeat FIRST: an async write it started could still be
+          // in flight, and letting it race the synchronous flush below is the
+          // one way to have two writers for the same run at once.
+          stopJournalHeartbeat();
+          flushAllSync(liveRuns());
+        } catch (err) {
+          console.warn('[RunJournal] Shutdown flush skipped:', err?.message || err);
+        }
+        return WorkflowProcessBridge.shutdown();
+      },
     });
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     // SIGINT too: Ctrl-C in a dev terminal produced exactly the same orphan.

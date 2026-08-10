@@ -219,4 +219,99 @@ describe('status and cancel over HTTP', () => {
     const res = await req('GET', '/orchestrator/runs/nope');
     expect(res.json).toEqual({ active: false, known: false });
   });
+
+  /**
+   * The discovery route.
+   *
+   * Every test above names a conversation up front. That is the assumption
+   * this route breaks: a client that never started the run has no id to name,
+   * and the localStorage marker that used to be the only record is
+   * per-browser. So a task started in Chrome was invisible to Safari and to
+   * the Mac app — alive and reattachable the whole time, and undiscoverable.
+   */
+  describe('listing what is running for me', () => {
+    it('finds a run this client never started and knows nothing about', async () => {
+      startRun({ conversationId: 'c-elsewhere', userId: 'u1', chatType: 'orchestrator', userMessage: 'long task' });
+
+      const res = await req('GET', '/orchestrator/runs');
+
+      expect(res.status).toBe(200);
+      expect(res.json.runs).toHaveLength(1);
+      expect(res.json.runs[0]).toMatchObject({
+        conversationId: 'c-elsewhere',
+        chatType: 'orchestrator',
+        active: true,
+        userMessage: 'long task',
+      });
+    });
+
+    it('shows only MY runs', async () => {
+      startRun({ conversationId: 'c-mine-list', userId: 'u1' });
+      startRun({ conversationId: 'c-theirs-list', userId: 'someone-else' });
+
+      const res = await req('GET', '/orchestrator/runs', 'u1');
+
+      expect(res.json.runs.map((r) => r.conversationId)).toEqual(['c-mine-list']);
+    });
+
+    it('still lists a run that just FINISHED, flagged as ended', async () => {
+      // Retained runs are the "...or finished one" half of picking a task up
+      // from another device: a client arriving seconds after the last token
+      // must still be able to collect the answer, which is the whole reason
+      // activeRuns keeps ended runs around for a minute.
+      startRun({ conversationId: 'c-just-done', userId: 'u1' });
+      endRun('c-just-done', 'completed');
+
+      const res = await req('GET', '/orchestrator/runs');
+      const run = res.json.runs.find((r) => r.conversationId === 'c-just-done');
+
+      expect(run).toMatchObject({ active: false, ended: true, status: 'completed' });
+    });
+
+    it('orders newest first', async () => {
+      const older = startRun({ conversationId: 'c-older', userId: 'u1' });
+      older.startedAt = Date.now() - 60_000;
+      startRun({ conversationId: 'c-newer', userId: 'u1' });
+
+      const res = await req('GET', '/orchestrator/runs');
+
+      expect(res.json.runs.map((r) => r.conversationId)).toEqual(['c-newer', 'c-older']);
+    });
+
+    it('answers with an empty list, not an error, when nothing is running', async () => {
+      const res = await req('GET', '/orchestrator/runs');
+      expect(res.status).toBe(200);
+      expect(res.json.runs).toEqual([]);
+    });
+
+    it('carries the routing fields a client needs, even when unsaved', async () => {
+      // channelKey decides WHICH chat surface reattaches. A conversation too
+      // young to have been autosaved has no stored row to derive it from, and
+      // that must degrade to null rather than failing the whole listing — the
+      // run is still perfectly reattachable.
+      startRun({ conversationId: 'c-unsaved', userId: 'u1' });
+
+      const res = await req('GET', '/orchestrator/runs');
+      const run = res.json.runs.find((r) => r.conversationId === 'c-unsaved');
+
+      expect(run).toHaveProperty('channelKey', null);
+      expect(run).toHaveProperty('title', null);
+      expect(run).toHaveProperty('outputId', null);
+    });
+
+    it('is not reachable without authentication', async () => {
+      // The mocked middleware admits everyone, so this asserts the route is
+      // GUARDED rather than that the guard works (auth is covered elsewhere).
+      const source = await import('fs').then((fs) =>
+        fs.readFileSync(new URL('./OrchestratorRoutes.js', import.meta.url), 'utf8'));
+      expect(source).toMatch(/router\.get\(\s*'\/runs'\s*,\s*authenticateToken/);
+    });
+
+    it('is declared BEFORE the :conversationId route it could be swallowed by', async () => {
+      const source = await import('fs').then((fs) =>
+        fs.readFileSync(new URL('./OrchestratorRoutes.js', import.meta.url), 'utf8'));
+      expect(source.indexOf("router.get('/runs',")).toBeLessThan(
+        source.indexOf("router.get('/runs/:conversationId'"));
+    });
+  });
 });
