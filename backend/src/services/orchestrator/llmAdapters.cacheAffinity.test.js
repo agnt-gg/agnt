@@ -33,6 +33,22 @@ describe('_cacheAffinity', () => {
     });
   });
 
+  it('openai-codex sends the CLI session_id header the ChatGPT backend keys on', async () => {
+    // Measured on gpt-5.6-sol, 12 turns per arm, 18k byte-identical prefix,
+    // candidate arm run FIRST so warming penalised it:
+    //   baseline                       7/11
+    //   session_id + prompt_cache_key 11/11
+    //   session_id alone              11/11   <- the header is the mechanism
+    // Every documented control (prompt_cache_breakpoint, prompt_cache_options,
+    // store:true) returns 400 on this backend; the private header is the only
+    // lever there is.
+    const a = await adapterFor('openai-codex', 'gpt-5.6-sol');
+    expect(a._cacheAffinity()).toEqual({
+      body: { prompt_cache_key: expectedId },
+      headers: { session_id: expectedId },
+    });
+  });
+
   it('openrouter keeps its documented sticky-routing key, body only', async () => {
     const a = await adapterFor('openrouter', 'anthropic/claude-haiku-4.5');
     expect(a._cacheAffinity()).toEqual({
@@ -72,6 +88,16 @@ describe('_cacheAffinity', () => {
     const router = await adapterFor('openrouter', 'anthropic/claude-haiku-4.5');
     expect(grok._cacheRoutingParams()).toEqual({ prompt_cache_key: expectedId });
     expect(router._cacheRoutingParams()).toEqual({ session_id: expectedId });
+  });
+
+  it('the Responses hierarchy carries the identity the hint needs', async () => {
+    // This hierarchy descends from BaseAdapter, not OpenAiLikeAdapter, and
+    // used to store neither provider nor conversationId — which is precisely
+    // why the Codex hint had nowhere to attach. A regression here would make
+    // _cacheAffinity silently return null rather than fail.
+    const codex = await adapterFor('openai-codex', 'gpt-5.6-sol');
+    expect(codex.provider).toBe('openai-codex');
+    expect(codex.conversationId).toBe(conversationId);
   });
 
   it('caps the identifier at the 256-char API contract', async () => {

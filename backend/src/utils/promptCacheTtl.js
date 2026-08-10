@@ -124,33 +124,25 @@ export function promptCacheTtlMs(provider, model = null) {
  * Note this is NOT the same thing as an unknown TTL: Groq's window is known and
  * cited above. What is unknowable is whether any individual request hits.
  *
- * openai-codex qualifies on MEASUREMENT rather than documentation, which this
- * module's rule explicitly allows ("a reproducible live measurement"). Its
- * ChatGPT backend is undocumented, so the question had to be settled
- * experimentally, twice:
+ * openai-codex WAS briefly listed here and has been REMOVED, which is worth
+ * recording because the reasoning is the useful part.
  *
- *   run 1 (2026-08-10, shared 28k prefix, 4 calls per arm)
- *     no key        0, 0, 0, 0
- *     cache key     0, 0, 27904, 0
- *   run 2 (controlled: a COLD prefix per arm, keyed arm first so drift works
- *          against it, 6 calls per arm, scoring turns 2-6)
- *     cache key     1/5 hits
- *     no key        1/5 hits
+ * It looked uncontrollable: `prompt_cache_key` measured no better than
+ * baseline on two models, and `prompt_cache_breakpoint`, `prompt_cache_options`
+ * and `store:true` all return HTTP 400 on the ChatGPT backend. Labelling it
+ * best-effort was the honest call ON THAT EVIDENCE — but the evidence was
+ * incomplete. The backend keys its cache affinity on the Codex CLI's own
+ * `session_id` HEADER, not on the public parameter. Supplying it took the hit
+ * rate from 7/11 to 11/11 on a byte-identical prefix.
  *
- * Run 1 looked like the key helped. Run 2 removed the confound — both arms had
- * shared one prefix, so each was warming the other — and the effect vanished
- * entirely. Codex hits roughly one request in five on a byte-identical prefix,
- * with or without an affinity key.
+ * So Codex is a CONTROLLED cache after all, and calling its misses expected
+ * would now excuse a real regression. See BaseAdapter._cacheAffinity for the
+ * full experiment log.
  *
- * TWO CONCLUSIONS WORTH KEEPING, so nobody re-runs this:
- *   1. `prompt_cache_key` IS accepted by the ChatGPT backend — no 400. The
- *      earlier worry that it would fail like prompt_cache_options did is
- *      unfounded. It simply has no measurable effect.
- *   2. There is therefore nothing AGNT can send to improve Codex's hit rate,
- *      so the honest thing is to label the misses as expected rather than to
- *      keep presenting them as a broken cache.
+ * The general lesson, since this module is where such judgements get made:
+ * "we cannot influence it" is a claim about our own knowledge as much as about
+ * the provider, and it should be retired the moment a lever turns up.
  */
 export function promptCacheBestEffort(provider) {
-  const p = String(provider || '').toLowerCase();
-  return p === 'groq' || p === 'openai-codex';
+  return String(provider || '').toLowerCase() === 'groq';
 }

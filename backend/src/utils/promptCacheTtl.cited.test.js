@@ -58,24 +58,26 @@ describe('cited cache windows', () => {
 });
 
 describe('promptCacheBestEffort', () => {
-  it('is true for the two providers whose cache we cannot influence', () => {
-    // groq       — vendor-documented as opportunistic.
-    // openai-codex — undocumented ChatGPT backend, established by measurement:
-    //   two controlled A/B runs showed ~1 hit in 5 on a byte-identical prefix,
-    //   identical with and without prompt_cache_key. The key is accepted (no
-    //   400) but changes nothing, so there is no control to offer.
+  it('is true for groq — vendor-documented as opportunistic, with no parameter to send', () => {
     expect(promptCacheBestEffort('groq')).toBe(true);
     expect(promptCacheBestEffort('GROQ')).toBe(true);
-    expect(promptCacheBestEffort('openai-codex')).toBe(true);
   });
 
   it('is false for providers whose cache DOES respond to what we send', () => {
-    // The distinction that matters: these either take an affinity hint we send
-    // (openai, openrouter, grokai), or place explicit breakpoints (anthropic,
-    // claude-code). Marking them best-effort would excuse a real regression.
+    // These either take an affinity hint we send (openai, openrouter, grokai,
+    // openai-codex) or place explicit breakpoints (anthropic, claude-code).
+    // Marking any of them best-effort would excuse a real regression.
     for (const p of ['anthropic', 'claude-code', 'openai', 'gemini', 'openrouter', 'cerebras', 'grokai']) {
       expect(promptCacheBestEffort(p), p).toBe(false);
     }
+  });
+
+  it('openai-codex is NOT best-effort — it was, until the lever was found', () => {
+    // Listed here briefly on the evidence that prompt_cache_key did nothing and
+    // every documented cache control returned 400. That was true and still is;
+    // what was missing was the CLI's own session_id header, which took the hit
+    // rate from 7/11 to 11/11. Pinned so the label cannot quietly come back.
+    expect(promptCacheBestEffort('openai-codex')).toBe(false);
   });
 
   it('is safe on junk input', () => {

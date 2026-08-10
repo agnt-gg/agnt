@@ -341,6 +341,99 @@ class BaseAdapter {
   }
 
   /**
+   * Everything this request carries to pin itself to a cached prefix.
+   *
+   * Lives on BaseAdapter, like _applyCacheMarker above and for the same
+   * reason: cache affinity is not an OpenAI-compatible-transport concept, it
+   * is a CONVERSATION concept. Three unrelated adapter hierarchies need it,
+   * and a per-hierarchy copy would drift.
+   *
+   * Split into `body` and `headers` because providers disagree about WHERE the
+   * hint belongs, not about whether one helps. One method, so "which providers
+   * get an affinity hint" is a single readable list rather than a condition
+   * scattered across six call sites.
+   *
+   *   openrouter    session_id (body) — documented sticky-routing key.
+   *
+   *   grokai        x-grok-conv-id (header) + prompt_cache_key (body).
+   *                 xAI: "we recommend setting the x-grok-conv-id HTTP header
+   *                 to maximize your cache hit rate" (docs.x.ai, 2026-08-09).
+   *                 Measured before: a COLD conversation reused 128 of 39,998
+   *                 tokens on turn 2 (0.3%, $0.0499) while a warm one reached
+   *                 99.8% ($0.0081). After: 99.9%.
+   *
+   *   openai-codex  session_id (header) + prompt_cache_key (body).
+   *                 See the measurement note below — this one took four
+   *                 experiments to get right.
+   *
+   * NOT openai: it already measures 97.9% via prompt_cache_options /
+   * prompt_cache_retention (openAIPromptCachePolicy). Adding a second,
+   * overlapping hint to a path that already works is risk without a measured
+   * benefit.
+   *
+   * ── openai-codex, and why the obvious answer was wrong twice ─────────────
+   *
+   * Codex first measured 0% over two turns, which looked like the Grok defect.
+   * It was not, and neither of the first two hypotheses survived contact:
+   *
+   *   prompt_cache_key alone   1/5 vs 1/5 baseline (gpt-5.4-mini)
+   *                            1/3 vs 2/3 baseline (gpt-5.6-sol)  → no effect
+   *   prompt_cache_breakpoint  HTTP 400 "not supported on this model"
+   *   prompt_cache_options     HTTP 400 (the pre-existing finding)
+   *   store:true + previous_response_id   HTTP 400
+   *
+   * The whole GPT-5.6 explicit-cache toolkit is closed on the ChatGPT backend.
+   * A properly powered baseline (two runs, 20 scored turns) put the real hit
+   * rate at 13/20 ≈ 65%, not 0% — the early number was under-powered AND on
+   * gpt-5.4-mini, while this provider's model list leads with the 5.6 family.
+   *
+   * What actually worked was noticing that AGNT already impersonates the Codex
+   * CLI almost exactly — OpenAI-Beta: responses=experimental, originator:
+   * codex_cli_rs, chatgpt-account-id, pinned client_version — and was missing
+   * only the CLI's `session_id` header. A private backend is far likelier to
+   * key affinity on its own session header than on the public parameter, which
+   * is exactly what the evidence shows (12 turns/arm, candidate arm run FIRST
+   * so warming penalises it, gpt-5.6-sol, 18k byte-identical prefix):
+   *
+   *   baseline                        7/11
+   *   session_id + prompt_cache_key  11/11
+   *   session_id alone               11/11   ← the header is the mechanism
+   *
+   * Depth when it hits was 17,152 of 18,041 tokens (95%) in every case, so the
+   * gain is in FREQUENCY: ~62% of the prefix reused on average before, ~95%
+   * after. Header value need not be a UUID — an `agnt-`-prefixed conversation
+   * id measured 7/7.
+   *
+   * prompt_cache_key rides along because it is the DOCUMENTED public mechanism
+   * and costs nothing (accepted, no 400, no measured behaviour change on its
+   * own). The header is the part that works today; the parameter is the part
+   * that is specified. Neither is load-bearing for the other.
+   *
+   * Capped at 256 chars per the OpenRouter contract; AGNT conversation ids are
+   * UUIDs, so the slice guards a future id format, not a live concern.
+   */
+  _cacheAffinity() {
+    if (!this.conversationId) return null;
+    const id = `agnt-${this.conversationId}`.slice(0, 256);
+
+    switch (this.provider) {
+      case 'openrouter':
+        return { body: { session_id: id }, headers: null };
+      case 'grokai':
+        return { body: { prompt_cache_key: id }, headers: { 'x-grok-conv-id': id } };
+      case 'openai-codex':
+        return { body: { prompt_cache_key: id }, headers: { session_id: id } };
+      default:
+        return null;
+    }
+  }
+
+  /** Body-only view of _cacheAffinity, for callers that merge into the payload. */
+  _cacheRoutingParams() {
+    return this._cacheAffinity()?.body || null;
+  }
+
+  /**
    * Strip all cache_control markers from conversation messages.
    * Must be called before applying fresh markers to avoid exceeding
    * Anthropic's 4-breakpoint limit across tool loop rounds.
@@ -792,63 +885,6 @@ class OpenAiLikeAdapter extends BaseAdapter {
    * Capped at 256 chars per the API contract; AGNT conversation ids are UUIDs,
    * so the slice is a guard against a future id format, not a live concern.
    */
-  _cacheRoutingParams() {
-    return this._cacheAffinity()?.body || null;
-  }
-
-  /**
-   * Everything this request carries to pin itself to a cached prefix.
-   *
-   * Split into `body` and `headers` because providers disagree about where
-   * the hint belongs, not about whether one helps. One method so that
-   * "which providers get an affinity hint" is a single readable list rather
-   * than a condition scattered across call sites.
-   *
-   *   openrouter  session_id (body) — documented sticky-routing key.
-   *   grokai      x-grok-conv-id (header) + prompt_cache_key (body).
-   *               xAI: "we recommend setting the x-grok-conv-id HTTP header to
-   *               maximize your cache hit rate"
-   *               docs.x.ai/developers/advanced-api-usage/prompt-caching
-   *               (retrieved 2026-08-09). Measured before this change, on a
-   *               byte-identical 39,998-token prefix: a COLD conversation
-   *               reused 128 tokens on turn 2 (0.3%) and cost $0.0499, while a
-   *               warm one reached 99.8% at $0.0081 — a 6.2x swing decided by
-   *               which node the request happened to land on. That is exactly
-   *               the scatter the header exists to prevent.
-   *
-   * NOT openai: it already measures 99.7% via prompt_cache_options /
-   * prompt_cache_retention (openAIPromptCachePolicy). Adding a second,
-   * overlapping hint to a path that already works is risk without a measured
-   * benefit.
-   *
-   * NOT openai-codex — and this was TESTED, not assumed. Codex measured 0% on
-   * a direct probe, which looked like a missing affinity key. Two controlled
-   * A/B runs against the ChatGPT backend (2026-08-10, cold prefix per arm)
-   * settled it: `prompt_cache_key` is ACCEPTED (no 400, unlike
-   * prompt_cache_options) but makes NO measurable difference — 1 hit in 5 with
-   * it, 1 hit in 5 without. Codex's cache is opportunistic and there is
-   * nothing to send that improves it, so it is flagged best-effort in
-   * promptCacheTtl.promptCacheBestEffort instead of being given a hint that
-   * would imply a control we do not have. See that function for the raw
-   * numbers.
-   *
-   * Capped at 256 chars per the OpenRouter contract; AGNT conversation ids are
-   * UUIDs, so the slice guards a future id format, not a live concern.
-   */
-  _cacheAffinity() {
-    if (!this.conversationId) return null;
-    const id = `agnt-${this.conversationId}`.slice(0, 256);
-
-    switch (this.provider) {
-      case 'openrouter':
-        return { body: { session_id: id }, headers: null };
-      case 'grokai':
-        return { body: { prompt_cache_key: id }, headers: { 'x-grok-conv-id': id } };
-      default:
-        return null;
-    }
-  }
-
   /**
    * Apply provider-specific tool schema fixes. Currently only Kimi/Kimi Code
    * (Moonshot) requires sanitization — every other OpenAI-compatible provider
@@ -4882,6 +4918,11 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     super(client, model);
     this.reasoningValue = options.reasoningValue || 'default';
     this.promptCachePolicy = openAIPromptCachePolicy(model);
+    // Provider + conversation identity, for BaseAdapter._cacheAffinity. This
+    // hierarchy did not carry them before, which is why the Codex cache hint
+    // had nowhere to attach.
+    this.provider = options.provider || 'openai';
+    this.conversationId = options.conversationId || null;
     this.maxRetries = 3;
     this.baseDelay = 1000;
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
@@ -5446,7 +5487,12 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         console.log(`[OpenAI Responses] Calling model '${this.model}' with Responses API`);
         console.log(`[OpenAI Responses] Input items: ${input.length}, Tools: ${responsesTools?.length || 0}`);
 
-        const response = await this.client.responses.create(requestParams);
+        const affinity = this._cacheAffinity();
+        if (affinity?.body) Object.assign(requestParams, affinity.body);
+        const response = await this.client.responses.create(
+          requestParams,
+          affinity?.headers ? { headers: affinity.headers } : undefined,
+        );
 
         // Extract content and tool calls from response
         const textContent = this._extractTextContent(response.output);
@@ -5590,7 +5636,12 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         console.log(`[OpenAI Responses] Streaming call to model '${this.model}'`);
 
         const abortSignal = context.abortSignal;
-        const stream = await this.client.responses.create(requestParams);
+        const affinity = this._cacheAffinity();
+        if (affinity?.body) Object.assign(requestParams, affinity.body);
+        const stream = await this.client.responses.create(
+          requestParams,
+          affinity?.headers ? { headers: affinity.headers } : undefined,
+        );
 
         // Handle streaming events
         for await (const event of stream) {
@@ -5784,7 +5835,13 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // The ChatGPT Codex backend rejects api.openai.com's public retention
     // controls with HTTP 400. Keep its cache policy implicit; only the public
     // OpenAI Responses adapter may send prompt_cache_options/retention.
+    // (Re-verified 2026-08-10, along with prompt_cache_breakpoint → 400 and
+    // store:true → 400. The affinity hint this provider CAN use is the
+    // session_id header — see BaseAdapter._cacheAffinity.)
     this.promptCachePolicy = null;
+    // The factory passes options through without a provider key, and this
+    // class serves exactly one provider.
+    this.provider = 'openai-codex';
     // Codex reasoning models — match by prefix so new models work automatically
     this.reasoningModels = new Set();
     // The ChatGPT backend hiccups (transient 5xx with the generic
@@ -6240,7 +6297,12 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         console.log(`[Codex Responses] Calling model '${this.model}' via ChatGPT backend (streaming internally)`);
         console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
 
-        const stream = await this.client.responses.create(params);
+        const affinity = this._cacheAffinity();
+        if (affinity?.body) Object.assign(params, affinity.body);
+        const stream = await this.client.responses.create(
+          params,
+          affinity?.headers ? { headers: affinity.headers } : undefined,
+        );
         const { accumulatedContent, accumulatedToolCalls, responseId, usage, replayableOutputItems } = await this._consumeStream(stream);
 
         if (attempt > 0) {
@@ -6356,7 +6418,12 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
 
         const abortSignal = context.abortSignal;
-        const stream = await this.client.responses.create(params);
+        const affinity = this._cacheAffinity();
+        if (affinity?.body) Object.assign(params, affinity.body);
+        const stream = await this.client.responses.create(
+          params,
+          affinity?.headers ? { headers: affinity.headers } : undefined,
+        );
         const { accumulatedContent, accumulatedToolCalls, usage, replayableOutputItems } = await this._consumeStream(stream, onChunk, abortSignal);
 
         if (attempt > 0) {

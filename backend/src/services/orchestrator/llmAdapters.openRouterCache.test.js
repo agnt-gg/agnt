@@ -165,24 +165,43 @@ describe('the wiring is reachable, not merely present', () => {
     expect(SRC).not.toMatch(/messages:\s*currentMessages,\n\s*tools:/);
   });
 
-  it('merges affinity body params unconditionally, not behind another feature flag', () => {
-    // Was _cacheRoutingParams(); generalised to _cacheAffinity() when xAI was
-    // added, because xAI's documented hint is a HEADER and the old shape could
-    // only express body fields. Same guarantee, wider surface.
-    const merges = SRC.match(
-      /const affinity = this\._cacheAffinity\(\);\s*\n\s*if \(affinity\?\.body\) Object\.assign\(requestParams, affinity\.body\);/g
-    ) || [];
-    expect(merges).toHaveLength(2);
+  it('resolving affinity, merging its body and passing its headers are PAIRED everywhere', () => {
+    // Was a hardcoded "exactly 2 sites" when only OpenAiLikeAdapter carried
+    // affinity. Codex then needed it on the Responses transport too, and a
+    // magic number just breaks and gets bumped, which asserts nothing.
+    //
+    // The real invariant is a pairing: every site that RESOLVES affinity must
+    // also merge the body AND pass the headers. Half-wiring is the actual
+    // hazard — a body-only merge silently drops xAI's x-grok-conv-id and
+    // Codex's session_id, which are the fields that decide their hit rates,
+    // and it fails silently because the request still succeeds.
+    const resolves = (SRC.match(/const affinity = this\._cacheAffinity\(\);/g) || []).length;
+    const bodyMerges = (SRC.match(/if \(affinity\?\.body\) Object\.assign\(\w+, affinity\.body\);/g) || []).length;
+    const headerPasses = (SRC.match(/affinity\?\.headers \? \{ headers: affinity\.headers \} : undefined/g) || []).length;
+
+    expect(bodyMerges, 'every resolved affinity must merge its body').toBe(resolves);
+    expect(headerPasses, 'every resolved affinity must pass its headers').toBe(resolves);
   });
 
-  it('passes affinity HEADERS at both request sites', () => {
-    // A body-only merge would silently drop xAI's x-grok-conv-id, which is the
-    // hint that actually decides its cache hit rate. Measured cold-start
-    // without it: 0.3% reuse on a byte-identical 40k prefix.
-    const headerPasses = SRC.match(
-      /affinity\?\.headers \? \{ headers: affinity\.headers \} : undefined/g
-    ) || [];
-    expect(headerPasses).toHaveLength(2);
+  it('ANTI-VACUITY: affinity is wired at a realistic number of transports', () => {
+    // Six: call + callStream on each of OpenAiLike, OpenAIResponses and
+    // Codex. If this collapses, the pairing test above would still pass while
+    // guarding nothing.
+    const resolves = (SRC.match(/const affinity = this\._cacheAffinity\(\);/g) || []).length;
+    expect(resolves).toBeGreaterThanOrEqual(6);
+  });
+
+  it('_cacheAffinity lives on BaseAdapter, so every hierarchy shares one copy', () => {
+    // It moved there when Codex needed it: OpenAIResponsesAdapter descends
+    // from BaseAdapter, not OpenAiLikeAdapter, so leaving it where it was
+    // would have meant a second copy — the exact drift this branch is about.
+    const baseIdx = SRC.indexOf('class BaseAdapter');
+    const nextClassIdx = SRC.indexOf('class OpenAiLikeAdapter');
+    const affinityIdx = SRC.indexOf('  _cacheAffinity() {');
+    expect(affinityIdx).toBeGreaterThan(baseIdx);
+    expect(affinityIdx).toBeLessThan(nextClassIdx);
+    // ...and exactly one definition of it exists.
+    expect((SRC.match(/^  _cacheAffinity\(\) \{/gm) || []).length).toBe(1);
   });
 
   it('gates the contract on the provider, and that gate is live', () => {
