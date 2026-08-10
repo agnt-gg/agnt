@@ -79,8 +79,13 @@ export function fingerprint(params) {
  */
 export function makeCaptureClient() {
   const captured = [];
-  const record = (surface) => (params) => {
-    captured.push({ surface, params });
+  // BOTH arguments are recorded. The SDKs take (body, options) and `options`
+  // carries per-request HEADERS — which are wire bytes like any other, and are
+  // where several providers' cache-affinity hints live (e.g. xAI's
+  // x-grok-conv-id). Capturing only the body would let a header change, or a
+  // header silently disappearing, pass the oracle unnoticed.
+  const record = (surface) => (params, options) => {
+    captured.push({ surface, params, options });
     throw new CaptureSentinel();
   };
 
@@ -130,7 +135,8 @@ async function captureOne(adapter, scenario, method) {
 
   if (captured.length) {
     const first = captured[0];
-    return { ok: true, surface: first.surface, ...fingerprint(first.params), params: scrub(first.params) };
+    const wire = { body: first.params, options: first.options ?? null };
+    return { ok: true, surface: first.surface, ...fingerprint(wire), wire: scrub(wire) };
   }
   return {
     ok: false,
