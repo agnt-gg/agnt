@@ -1327,13 +1327,6 @@ const actions = {
         commit('UPDATE_GOAL', { id: goalId, loop_status: 'replanning' });
         break;
 
-      case 'goal:iteration_checkpoint':
-        commit('SET_LIVE_ITERATION', {
-          goalId,
-          data: { iteration: data.iteration, phase: 'checkpointing', gitHash: data.gitHash },
-        });
-        break;
-
       case 'goal:iteration_end':
         commit('SET_LIVE_ITERATION', {
           goalId,

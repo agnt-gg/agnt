@@ -562,26 +562,22 @@ class GoalService {
       // Restore world state from snapshot
       await GoalModel.updateWorldState(goalId, iterationRecord.world_state_snapshot);
       await GoalModel.updateIteration(goalId, iterationRecord.iteration_number);
+
+      // Restore tasks to how they looked at that iteration (older records
+      // predate task snapshots and only get their world state back)
+      let restoredTasks = 0;
+      if (iterationRecord.task_snapshot?.length) {
+        restoredTasks = await TaskModel.restoreSnapshot(goalId, iterationRecord.task_snapshot);
+      }
+
       await GoalModel.updateLoopStatus(goalId, 'reverted');
       await GoalModel.updateStatus(goalId, 'paused');
-
-      // If there's a git hash, try to checkout that state
-      if (iterationRecord.git_commit_hash) {
-        try {
-          const { exec } = await import('child_process');
-          const { promisify } = await import('util');
-          const execAsync = promisify(exec);
-          const branchName = `goal/${goalId}`;
-          await execAsync(`git checkout ${branchName} -- .agnt/goals/${goalId}.json`, { cwd: process.cwd() });
-        } catch (gitError) {
-          console.warn(`[AGI Loop] Git revert failed (non-fatal):`, gitError.message);
-        }
-      }
 
       res.json({
         message: `Reverted to iteration ${iteration}`,
         worldState: iterationRecord.world_state_snapshot,
         iteration: iterationRecord.iteration_number,
+        restoredTasks,
       });
     } catch (error) {
       console.error('Error reverting iteration:', error);

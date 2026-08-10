@@ -134,6 +134,31 @@ class TaskModel {
     });
   }
 
+  /**
+   * Restore tasks to a previously captured snapshot (revert-to-iteration).
+   * Only touches tasks present in the snapshot; matches on task id AND goal id
+   * so a stale snapshot can never write into another goal's tasks. Output is
+   * written back verbatim — it was captured as stored (already serialized).
+   */
+  static async restoreSnapshot(goalId, snapshot) {
+    const tasks = Array.isArray(snapshot) ? snapshot : [];
+    const updatedAt = new Date().toISOString();
+    let restored = 0;
+    for (const t of tasks) {
+      restored += await new Promise((resolve, reject) => {
+        db.run(
+          `UPDATE tasks SET title = ?, description = ?, status = ?, progress = ?, output = ?, error = ?, updated_at = ? WHERE id = ? AND goal_id = ?`,
+          [t.title, t.description, t.status, t.progress || 0, t.output ?? null, t.error ?? null, updatedAt, t.id, goalId],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      });
+    }
+    return restored;
+  }
+
   static findPendingTasks() {
     return new Promise((resolve, reject) => {
       db.all(

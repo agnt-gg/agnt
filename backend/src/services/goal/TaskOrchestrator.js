@@ -15,12 +15,8 @@ import { getProviderConfig } from '../ai/providerConfigs.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import autonomousMessageService from '../AutonomousMessageService.js';
 import db from '../../models/database/index.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
-
-const execAsync = promisify(exec);
 
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
@@ -854,6 +850,10 @@ The goal you delegated did not fully pass. Let the user know:
     try {
       console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
 
+      // Must run before updateLoopStatus below overwrites the previous run's
+      // loop state — that state is what tells us whether to resume or start fresh.
+      const resume = await this._resolveResumeState(goalId, maxIterations);
+
       await GoalModel.updateMaxIterations(goalId, maxIterations);
       await GoalModel.updateLoopStatus(goalId, 'starting');
       await GoalModel.updateStatus(goalId, 'executing');
@@ -906,12 +906,13 @@ The goal you delegated did not fully pass. Let the user know:
       let identicalReplanCount = 0;
       let lastReplanHash = null;
 
-      // Keep/discard tracking (monotone improvement guarantee)
-      let bestScore = 0;
-      let bestIteration = 0;
-      let bestTaskSnapshot = null;
+      // Keep/discard tracking (monotone improvement guarantee), seeded from
+      // the previous run's persisted state when resuming an interrupted loop.
+      let bestScore = resume.bestScore;
+      let bestIteration = resume.bestIteration;
+      let bestTaskSnapshot = resume.bestTaskSnapshot;
 
-      for (let iteration = 1; iteration <= maxIterations; iteration++) {
+      for (let iteration = resume.startIteration; iteration <= maxIterations; iteration++) {
         const iterationStart = Date.now();
 
         // Check if goal was paused/stopped
@@ -998,14 +999,16 @@ The goal you delegated did not fully pass. Let the user know:
           bestScore = currentScore;
           bestIteration = iteration;
           // Snapshot current tasks for potential revert
-          const currentTasks = await TaskModel.findByGoalId(goalId);
-          bestTaskSnapshot = currentTasks.map(t => ({
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            status: t.status,
-            output: t.output,
-          }));
+          bestTaskSnapshot = await this._captureTaskSnapshot(goalId);
+          // Persist best-tracking so an interrupted run can resume with it
+          // (the snapshot itself is recovered from that iteration's DB record).
+          try {
+            const stateWithBest = await GoalModel.getWorldState(goalId);
+            stateWithBest.best = { score: bestScore, iteration: bestIteration, updatedAt: new Date().toISOString() };
+            await GoalModel.updateWorldState(goalId, stateWithBest);
+          } catch (bestError) {
+            console.error(`[AGI Loop] Failed to persist best-tracking (non-fatal):`, bestError.message);
+          }
           console.log(`[AGI Loop] New best score: ${bestScore}% at iteration ${iteration}`);
         } else {
           console.log(`[AGI Loop] No improvement (${currentScore}% <= best ${bestScore}%) — will try different approach`);
@@ -1020,11 +1023,12 @@ The goal you delegated did not fully pass. Let the user know:
 
           // Record iteration (non-fatal if this fails)
           try {
-            const gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
             await GoalIterationModel.create(
               goalId, iteration, evaluation.scores.overall, true,
-              await GoalModel.getWorldState(goalId), [], gitHash, iterationDuration
+              await GoalModel.getWorldState(goalId), [], iterationDuration,
+              await this._captureTaskSnapshot(goalId)
             );
+            await GoalIterationModel.prune(goalId);
           } catch (recordError) {
             console.error(`[AGI Loop] Failed to record iteration (non-fatal):`, recordError.message);
           }
@@ -1111,23 +1115,16 @@ The goal you delegated did not fully pass. Let the user know:
 
         // Phase 5: Update world state & record iteration (non-fatal if these fail)
         let worldState = {};
-        let gitHash = null;
         try {
           worldState = await this._updateWorldState(goalId, iteration, evaluation);
-          gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
-
-          broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_CHECKPOINT, {
-            goalId,
-            iteration,
-            gitHash,
-          });
-
           await GoalIterationModel.create(
             goalId, iteration, evaluation.scores.overall, false,
-            worldState, replannedTasks, gitHash, iterationDuration
+            worldState, replannedTasks, iterationDuration,
+            await this._captureTaskSnapshot(goalId)
           );
+          await GoalIterationModel.prune(goalId);
         } catch (stateError) {
-          console.error(`[AGI Loop] World state/checkpoint error (non-fatal):`, stateError.message);
+          console.error(`[AGI Loop] World state/iteration record error (non-fatal):`, stateError.message);
         }
 
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_END, {
@@ -1370,6 +1367,8 @@ Rules:
         .filter((t) => t.status === 'failed')
         .map((t) => ({ id: t.id, title: t.title, error: t.error })),
       pendingTasks: tasks.filter((t) => t.status === 'pending').map((t) => ({ id: t.id, title: t.title })),
+      // Cap: a goal that re-runs on a schedule accumulates history forever;
+      // only the recent window is useful context for replanning.
       iterationHistory: [
         ...(existingState.iterationHistory || []),
         {
@@ -1378,7 +1377,7 @@ Rules:
           passed: evaluation.passed,
           timestamp: new Date().toISOString(),
         },
-      ],
+      ].slice(-50),
     };
 
     await GoalModel.updateWorldState(goalId, worldState);
@@ -1386,67 +1385,71 @@ Rules:
   }
 
   /**
-   * Create a git checkpoint for the current iteration.
-   * Writes world state to a file and commits on an isolated branch.
+   * Capture the full state of a goal's tasks for iteration records.
+   * Stored per-iteration in goal_iterations.task_snapshot; this is what
+   * revert-to-iteration and resume-best restore from.
    */
-  static async _gitCheckpoint(goalId, iteration, score, userId) {
+  static async _captureTaskSnapshot(goalId) {
+    const tasks = await TaskModel.findByGoalId(goalId);
+    return tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      progress: t.progress || 0,
+      output: t.output ?? null,
+      error: t.error ?? null,
+    }));
+  }
+
+  /**
+   * Decide where a new autonomous run should start.
+   *
+   * A loop interrupted mid-run (backend restart, pause/stop) resumes from the
+   * iteration after the last recorded one, seeded with the persisted best
+   * score/snapshot. A loop whose previous run reached a terminal state
+   * (completed, stuck, error, max_iterations) starts fresh — including
+   * clearing best-tracking, because the monotone-improvement guarantee is
+   * per-run: yesterday's outputs are stale context for today's scheduled run.
+   */
+  static async _resolveResumeState(goalId, maxIterations) {
+    const fresh = { startIteration: 1, bestScore: 0, bestIteration: 0, bestTaskSnapshot: null };
     try {
-      // Determine a safe working directory for git operations
-      const cwd = process.cwd();
+      const goal = await GoalModel.findOne(goalId);
+      const interruptedStatuses = ['starting', 'executing', 'replanning', 'stopped', 'reverted'];
+      const lastIteration = goal?.current_iteration || 0;
+      const resumable = !!goal
+        && interruptedStatuses.includes(goal.loop_status)
+        && lastIteration >= 1
+        && lastIteration < maxIterations;
 
-      // Check if we're in a git repo
-      try {
-        await execAsync('git rev-parse --git-dir', { cwd });
-      } catch {
-        console.log(`[AGI Loop] Not in a git repo, skipping checkpoint`);
-        return null;
-      }
-
-      const branchName = `goal/${goalId}`;
       const worldState = await GoalModel.getWorldState(goalId);
 
-      // Create/switch to goal branch (from current HEAD)
-      try {
-        await execAsync(`git checkout -b ${branchName}`, { cwd });
-      } catch {
-        // Branch may already exist, switch to it
-        try {
-          await execAsync(`git checkout ${branchName}`, { cwd });
-        } catch {
-          console.log(`[AGI Loop] Could not switch to branch ${branchName}, skipping checkpoint`);
-          return null;
+      if (!resumable) {
+        if (worldState.best) {
+          delete worldState.best;
+          await GoalModel.updateWorldState(goalId, worldState);
         }
+        return fresh;
       }
 
-      // Write world state file
-      const stateDir = path.join(cwd, '.agnt', 'goals');
-      await fs.mkdir(stateDir, { recursive: true });
-      const stateFile = path.join(stateDir, `${goalId}.json`);
-      await fs.writeFile(stateFile, JSON.stringify(worldState, null, 2));
+      const best = worldState.best || {};
+      let bestTaskSnapshot = null;
+      if (best.iteration >= 1) {
+        const bestRecord = await GoalIterationModel.findOne(goalId, best.iteration);
+        bestTaskSnapshot = bestRecord?.task_snapshot?.length ? bestRecord.task_snapshot : null;
+      }
 
-      // Stage and commit
-      // -f: the state dir (backend/.agnt) is commonly gitignored — checkpoints
-      // should still be recorded on the goal branch without noisy failures.
-      await execAsync(`git add -f "${stateFile}"`, { cwd });
-      const commitMessage = `checkpoint: goal ${goalId} iteration ${iteration} - score ${Math.round(score)}%`;
-      const { stdout } = await execAsync(`git commit -m "${commitMessage}"`, { cwd });
-
-      // Extract commit hash
-      const hashMatch = stdout.match(/\[[\w/]+ ([a-f0-9]+)\]/);
-      const commitHash = hashMatch ? hashMatch[1] : null;
-
-      // Switch back to previous branch
-      await execAsync('git checkout -', { cwd });
-
-      console.log(`[AGI Loop] Git checkpoint: ${commitHash} on branch ${branchName}`);
-      return commitHash;
+      console.log(`[AGI Loop] Resuming goal ${goalId} from iteration ${lastIteration + 1} (best ${best.score || 0}% at iteration ${best.iteration || 0})`);
+      return {
+        startIteration: lastIteration + 1,
+        bestScore: best.score || 0,
+        bestIteration: best.iteration || 0,
+        bestTaskSnapshot,
+      };
     } catch (error) {
-      console.error(`[AGI Loop] Git checkpoint failed (non-fatal):`, error.message);
-      // Try to switch back to previous branch
-      try {
-        await execAsync('git checkout -', { cwd: process.cwd() });
-      } catch { /* ignore */ }
-      return null;
+      console.error(`[AGI Loop] Resume-state resolution failed (starting fresh):`, error.message);
+      return fresh;
     }
   }
 }

@@ -175,11 +175,6 @@
               <span class="iteration-score" :class="iter.evaluation_passed ? 'score-pass' : 'score-fail'">
                 {{ iter.evaluation_score ? Math.round(iter.evaluation_score) : 0 }}%
               </span>
-              <Tooltip v-if="iter.git_commit_hash" :text="iter.git_commit_hash">
-                <span class="iteration-hash">
-                  <i class="fas fa-code-branch"></i> {{ iter.git_commit_hash.substring(0, 7) }}
-                </span>
-              </Tooltip>
             </div>
             <div class="iteration-meta">
               <span v-if="iter.duration_ms"><i class="fas fa-clock"></i> {{ (iter.duration_ms / 1000).toFixed(1) }}s</span>
@@ -598,7 +593,6 @@ export default {
         executing: 'Executing Tasks',
         evaluating: 'Evaluating Results',
         replanning: 'Re-planning Tasks',
-        checkpointing: 'Git Checkpoint',
         completed: 'Iteration Done',
       };
       return labels[phase] || phase;
@@ -1413,13 +1407,6 @@ h3 {
   color: var(--color-yellow);
 }
 
-.iteration-hash {
-  font-size: 0.75em;
-  color: var(--color-text-muted);
-  font-family: var(--font-family-mono);
-  margin-left: auto;
-}
-
 .iteration-meta {
   display: flex;
   gap: 12px;
@@ -1470,7 +1457,6 @@ h3 {
   background: rgba(255, 193, 7, 0.2);
   color: var(--color-yellow);
 }
-.phase-badge.checkpointing,
 .phase-badge.completed {
   background: rgba(34, 197, 94, 0.2);
   color: var(--color-green);
