@@ -46,11 +46,27 @@ describe('cachedInputTokenRate', () => {
     expect(cached / plain).toBeCloseTo(0.1, 6);
   });
 
-  it('equals the plain rate where no cache discount exists', () => {
+  it('is null where no cache discount is KNOWN — never the plain rate as a claim', () => {
+    // This used to assert cached === plain. That was the silent default: a 1.0x
+    // multiplier presented as a fact about a model with no known cache pricing,
+    // which the panel then rendered as "$0.00 saved". The contract is now
+    // explicit ignorance (I2): no sourced multiplier and no published catalog
+    // rate means null, and the panel says nothing.
+    //
+    // llama-on-groq is a genuine instance, not a contrived one: Groq documents
+    // caching for the gpt-oss family only, so this model has no cache at all.
     const plain = inputTokenRate('groq', 'llama-3.3-70b-versatile');
-    const cached = cachedInputTokenRate('groq', 'llama-3.3-70b-versatile');
     if (plain == null) return; // model not catalogued in this build
-    expect(cached).toBeCloseTo(plain, 12);
+    expect(cachedInputTokenRate('groq', 'llama-3.3-70b-versatile')).toBeNull();
+  });
+
+  it('is a real discount where the rate IS known', () => {
+    // The other half of the contract — otherwise "always null" would pass.
+    const plain = inputTokenRate('groq', 'openai/gpt-oss-120b');
+    const cached = cachedInputTokenRate('groq', 'openai/gpt-oss-120b');
+    if (plain == null) return;
+    expect(cached).not.toBeNull();
+    expect(cached).toBeLessThan(plain);
   });
 
   it('returns null for an unpriceable model', () => {

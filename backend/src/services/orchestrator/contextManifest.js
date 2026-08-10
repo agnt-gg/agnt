@@ -71,6 +71,7 @@ export function buildContextManifest({
   prior = null,
   economics = null,
   cacheTtlMs = null,
+  cacheBestEffort = false,
   calibration = 1,
 } = {}) {
   // A per-turn price on every line item. Sections and tool schemas are re-sent
@@ -126,6 +127,11 @@ export function buildContextManifest({
     // a claim, in which case the panel says nothing about cache freshness
     // rather than inventing a deadline.
     cacheTtlMs: cacheTtlMs ?? null,
+    // True for providers whose cache is automatic, server-side and documented
+    // as opportunistic (Groq: byte-identical requests measurably flip between
+    // hit and miss, and no affinity parameter exists). Lets the panel present
+    // a miss as expected behaviour rather than as a broken cache.
+    cacheBestEffort: !!cacheBestEffort,
     system: {
       total: systemTokens,
       sections: pricedSections,

@@ -22,7 +22,7 @@ import { manageContext, getContextBudget, estimateToolTokens, estimateTokens } f
 import { capToolsToBudget, computeToolBudget, getToolCountLimit } from './orchestrator/toolSelector.js';
 import { buildContextManifest, TOKEN_UNIT_RAW } from './orchestrator/contextManifest.js';
 import { buildEconomics } from '../utils/contextEconomics.js';
-import { promptCacheTtlMs } from '../utils/promptCacheTtl.js';
+import { promptCacheTtlMs, promptCacheBestEffort } from '../utils/promptCacheTtl.js';
 import { readOpenAiShapedCacheUsage } from '../utils/usageCacheFields.js';
 import {
   getCalibration,
@@ -1846,6 +1846,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     try {
       const { manifest, fingerprints } = buildContextManifest({
         cacheTtlMs: promptCacheTtlMs(normalizedProvider, model),
+        cacheBestEffort: promptCacheBestEffort(normalizedProvider),
         // RAW tokens, matching the per-item tokens priceItems works from. The
         // floor cost and the itemized costs that explain it must be computed
         // from the same unit or they cannot add up.

@@ -31,11 +31,12 @@ export function isAnthropicReasoningModel(modelId) {
   return ANTHROPIC_VERSIONED_REASONING_RE.test(m) || ANTHROPIC_FAMILY_REASONING_RE.test(m);
 }
 
-export function isOpenRouterAnthropicReasoningModel(modelId) {
-  const m = String(modelId || '').toLowerCase();
-  if (!m.startsWith('anthropic/')) return false;
-  return isAnthropicReasoningModel(m.slice('anthropic/'.length));
-}
+// isOpenRouterAnthropicReasoningModel used to be exported here too. It had
+// ZERO importers, and it was not equivalent to the live definition in
+// providerConfigs.js, which deliberately also recognises claude-3.7 and
+// opus-4.0/4.5 when routed through OpenRouter. Two subtly different answers to
+// one question, one of them unreachable: deleted rather than "unified", since
+// unifying would have silently narrowed the live behaviour.
 
 export function anthropicSupportsXHigh(modelId) {
   return ANTHROPIC_XHIGH_RE.test(String(modelId || '').toLowerCase());

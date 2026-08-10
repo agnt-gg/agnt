@@ -1455,7 +1455,7 @@ function isOpenAIResponsesReasoningModel(modelId) {
   return lower.startsWith('gpt-5') || /^o\d/.test(lower);
 }
 
-function isAnthropicAdaptiveThinkingModel(modelId) {
+export function isAnthropicAdaptiveThinkingModel(modelId) {
   return isAnthropicReasoningModel(modelId);
 }
 
@@ -1467,7 +1467,18 @@ function isGemini25ReasoningModel(modelId) {
   return String(modelId || '').toLowerCase().startsWith('gemini-2.5');
 }
 
-function supportsDeepSeekThinkingToggle(modelId) {
+// ── Shared reasoning predicates ─────────────────────────────────────────────
+// EXPORTED because llmAdapters.js consumes them to build the wire body. It
+// used to keep its own copies, and two had drifted: for Groq gpt-oss and
+// qwen3 this file said startsWith() while the adapter said exact-match on
+// three model ids. The UI renders from THIS file and the wire is built from
+// the adapter, so a model in the gap showed the user a reasoning toggle that
+// silently sent nothing — they pay for the request and nothing changes.
+//
+// One definition, two consumers (invariant I1). The frontend still mirrors
+// these in store/app/aiProvider.js until the shared descriptor package lands;
+// noDuplicateProviderPredicates.test.js guards the backend today.
+export function supportsDeepSeekThinkingToggle(modelId) {
   const lower = String(modelId || '').toLowerCase();
   return (
     lower === 'deepseek-chat' ||
@@ -1476,20 +1487,20 @@ function supportsDeepSeekThinkingToggle(modelId) {
   );
 }
 
-function isGroqGptOssReasoningModel(modelId) {
+export function isGroqGptOssReasoningModel(modelId) {
   return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
-function isGroqQwenReasoningModel(modelId) {
+export function isGroqQwenReasoningModel(modelId) {
   const lower = String(modelId || '').toLowerCase();
   return lower === 'qwen/qwen3-32b' || lower.startsWith('qwen/qwen3-');
 }
 
-function isCerebrasGptOssReasoningModel(modelId) {
+export function isCerebrasGptOssReasoningModel(modelId) {
   return String(modelId || '').toLowerCase() === 'gpt-oss-120b';
 }
 
-function isCerebrasGlmReasoningModel(modelId) {
+export function isCerebrasGlmReasoningModel(modelId) {
   return String(modelId || '').toLowerCase() === 'zai-glm-4.7';
 }
 
@@ -1519,7 +1530,7 @@ export function supportsZaiReasoningEffort(modelId) {
   return lower.startsWith('glm-5.2');
 }
 
-function supportsKimiReasoningToggle(providerKey, modelId) {
+export function supportsKimiReasoningToggle(providerKey, modelId) {
   const lowerProvider = String(providerKey || '').toLowerCase();
   const lowerModel = String(modelId || '').toLowerCase();
 
@@ -1554,22 +1565,22 @@ function isOpenRouterXaiReasoningModel(modelId) {
   return lower.startsWith('x-ai/') || lower.startsWith('xai/');
 }
 
-function isTogetherGptOssReasoningModel(modelId) {
+export function isTogetherGptOssReasoningModel(modelId) {
   return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
 // Chutes hosts upstream models inside TEE; reasoning protocol routes by family
 // of the underlying model, not by Chutes itself. The model IDs follow the
 // pattern <family-org>/<model>-TEE.
-function isChutesKimiReasoningModel(modelId) {
+export function isChutesKimiReasoningModel(modelId) {
   return /^moonshotai\/kimi-k2/i.test(String(modelId || ''));
 }
 
-function isChutesGlmReasoningModel(modelId) {
+export function isChutesGlmReasoningModel(modelId) {
   return /^zai-org\/glm-5/i.test(String(modelId || ''));
 }
 
-function isChutesQwenReasoningModel(modelId) {
+export function isChutesQwenReasoningModel(modelId) {
   return /^qwen\/qwen3/i.test(String(modelId || ''));
 }
 
@@ -2123,37 +2134,14 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
   const cacheWriteTotal = cacheWrite5m + cacheWrite1h;
   const uncached = Math.max(0, inputTokens - cacheRead - cacheWriteTotal);
 
-  let key = (providerKey || '').toLowerCase();
-
-  // OpenRouter is a router, not a vendor: the family that decides cache
-  // economics is named in the model slug, not the provider key. Selecting the
-  // multiplier by 'openrouter' fell through to the generic 1.0x branch, which
-  // priced a read at full rate AND a write at no premium — the read error
-  // over-reported cost, the write error under-reported it, and the two do not
-  // cancel. This is the same family table below, reached by the correct key;
-  // it is NOT a second price list to maintain. Published per-model rates still
-  // win over any multiplier (see readRate/writeRate below); this only governs
-  // the fallback for models whose catalog entry has not been fetched yet.
-  if (key === 'openrouter') {
-    const vendor = String(modelId || '').toLowerCase().split('/')[0];
-    if (vendor === 'anthropic') key = 'anthropic';
-    else if (vendor === 'openai') key = 'openai';
-  }
-
-  let readMult, write5mMult, write1hMult;
-  if (key === 'anthropic' || key === 'claude-code') {
-    readMult = 0.1;
-    write5mMult = 1.25;
-    write1hMult = 2.0;
-  } else if (key === 'openai' || key === 'openai-codex') {
-    readMult = 0.5;
-    write5mMult = 1.0;
-    write1hMult = 1.0;
-  } else {
-    readMult = 1.0;
-    write5mMult = 1.0;
-    write1hMult = 1.0;
-  }
+  // Family multipliers — including the OpenRouter vendor remap, which lives
+  // there now so the router's economics are resolved in exactly one place —
+  // live in getCacheEconomics so the DISPLAY layer can ask
+  // "is this rate actually known?" without re-deriving the table. Billing math
+  // here is unchanged: an unknown family still bills conservatively at 1.0x —
+  // we never invent a discount — but the panel no longer presents that 1.0x as
+  // a fact about the provider.
+  const { readMult, write5mMult, write1hMult } = getCacheEconomics(providerKey, modelId);
 
   const baseIn = meta.inputCostPer1M / 1_000_000;
   // A provider-published cached-read price (catalogs report one per model)
@@ -2213,6 +2201,98 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
  *   cursor-cli   - authScheme 'cursor-cli', local `cursor-agent login`
  *                  session (Cursor subscription); models priced at 0.
  */
+/**
+ * Cache pricing multipliers, with `known` as a first-class answer.
+ *
+ * This used to be an if/else ladder inside getModelCost whose `else` assigned
+ * 1.0x. That 1.0x was never "unknown" — it was a confident assertion that the
+ * provider gives no cache discount, made about providers that demonstrably do.
+ * Measured 2026-08-08: 109 of 206 priced models fell through it, so the
+ * savings panel read $0.00 forever.
+ *
+ * promptCacheTtl.js already states the house rule for this exact situation —
+ * "silence is safer than a confident false claim about money" — and this table
+ * now follows it (invariant I2):
+ *
+ *   known: true   traceable to vendor documentation, whatever the value.
+ *                 Cerebras is the instructive case: its documented multiplier
+ *                 IS 1.0x, and that is a FACT, not a fallback. `known` must
+ *                 therefore be independent of the number.
+ *   known: false  the multipliers are a conservative BILLING stance, and the
+ *                 display layer must render the rate as unknown rather than as
+ *                 "no discount".
+ *
+ * Sources for the non-obvious rows (all retrieved 2026-08-09):
+ *   groq     0.5x  "There is a 50% discount for cached input tokens."
+ *                  console.groq.com/docs/prompt-caching. SCOPED to the gpt-oss
+ *                  family because the same page's "Supported models" section
+ *                  lists only gpt-oss-120b / -20b / -safeguard-20b; every other
+ *                  Groq model has no cache at all, so it must stay unknown
+ *                  rather than inherit a discount for reads that cannot occur.
+ *   gemini   0.1x  "Customers pay only 10% of standard input token cost for
+ *                  cached tokens for all supported Gemini 2.5 and above
+ *                  models." cloud.google.com/blog/products/ai-machine-learning/
+ *                  vertex-ai-context-caching. Scoped to 2.5+ ids because the
+ *                  citation is; older ids stay unknown. gemini-cli shares it
+ *                  (same catalog, notional metered pricing).
+ *   cerebras 1.0x  "cached tokens ... billed at the standard input token rate"
+ *                  inference-docs.cerebras.ai/capabilities/prompt-caching — the
+ *                  discount is latency, not money.
+ *
+ * NOT xai/grokai: its cached rates differ PER MODEL (grok-4.3 is 0.1x,
+ * grok-4.20 is 0.16x), so a family constant would be wrong by construction.
+ * Those models carry published per-model catalog rates instead, which always
+ * win over this table — see getModelCost.
+ *
+ * @param {string} providerKey
+ * @param {string} modelId
+ * @returns {{readMult:number, write5mMult:number, write1hMult:number, known:boolean}}
+ */
+export function getCacheEconomics(providerKey, modelId) {
+  let key = String(providerKey || '').toLowerCase();
+  const model = String(modelId || '').toLowerCase();
+
+  // OpenRouter is a router, not a vendor: the family that decides cache
+  // economics is named in the model slug, not the provider key.
+  if (key === 'openrouter') {
+    const vendor = model.split('/')[0];
+    if (vendor === 'anthropic') key = 'anthropic';
+    else if (vendor === 'openai') key = 'openai';
+  }
+
+  if (key === 'anthropic' || key === 'claude-code') {
+    return { readMult: 0.1, write5mMult: 1.25, write1hMult: 2.0, known: true };
+  }
+  if (key === 'openai' || key === 'openai-codex') {
+    return { readMult: 0.5, write5mMult: 1.0, write1hMult: 1.0, known: true };
+  }
+  if (key === 'groq' && /^openai\/gpt-oss/.test(model)) {
+    return { readMult: 0.5, write5mMult: 1.0, write1hMult: 1.0, known: true };
+  }
+  if ((key === 'gemini' || key === 'gemini-cli') && /^gemini-(2\.5|[3-9])/.test(model)) {
+    return { readMult: 0.1, write5mMult: 1.0, write1hMult: 1.0, known: true };
+  }
+  if (key === 'cerebras') {
+    return { readMult: 1.0, write5mMult: 1.0, write1hMult: 1.0, known: true };
+  }
+
+  return { readMult: 1.0, write5mMult: 1.0, write1hMult: 1.0, known: false };
+}
+
+/**
+ * Whether the cached-input price for this model is a fact or a fallback.
+ *
+ * True when the model publishes a cached-read rate in its catalog metadata, or
+ * its family has a sourced multiplier above. Consumers that DISPLAY a cached
+ * rate must check this; consumers that BILL may keep calling getModelCost
+ * unconditionally, since its unknown path is deliberately conservative.
+ */
+export function isCachedRateKnown(providerKey, modelId) {
+  const meta = getModelMetadata(providerKey, modelId);
+  if (meta && meta.inputCacheReadCostPer1M != null) return true;
+  return getCacheEconomics(providerKey, modelId).known;
+}
+
 export const SUBSCRIPTION_PROVIDERS = new Set([
   'claude-code',
   'openai-codex',

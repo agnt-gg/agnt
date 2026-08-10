@@ -5,7 +5,28 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
-import { getModelMetadata, getProviderConfig, getReasoningControl, supportsZaiReasoningEffort } from '../ai/providerConfigs.js';
+import {
+  getModelMetadata,
+  getProviderConfig,
+  getReasoningControl,
+  supportsZaiReasoningEffort,
+  // Reasoning predicates are defined ONCE, in providerConfigs, and consumed
+  // here to build the wire body. This module used to carry its own copies and
+  // two had drifted (Groq gpt-oss / qwen3: config said startsWith, this file
+  // said exact-match), which silently no-ops the UI toggle on any newly listed
+  // model in the gap. Import, never redefine — enforced by
+  // noDuplicateProviderPredicates.test.js.
+  isGroqGptOssReasoningModel,
+  isGroqQwenReasoningModel,
+  isCerebrasGptOssReasoningModel,
+  isCerebrasGlmReasoningModel,
+  isTogetherGptOssReasoningModel,
+  isChutesKimiReasoningModel,
+  isChutesGlmReasoningModel,
+  isChutesQwenReasoningModel,
+  supportsKimiReasoningToggle as supportsKimiToggle,
+  supportsDeepSeekThinkingToggle as supportsDeepSeekToggle,
+} from '../ai/providerConfigs.js';
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../ai/reasoningModels.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from './messageSanitizers.js';
@@ -2619,7 +2640,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
             // Opus 4.6 / 4.7 / 4.8 / Sonnet 4.6 also support adaptive thinking but
             // only emit a thinking block when our adapter passes `thinking: {type:
             // 'adaptive'}`. They worked fine pre-fix because we never enabled it.
-            // With those models now recognized by supportsAnthropicAdaptiveThinking,
+            // With those models now recognized by isAnthropicReasoningModel,
             // the indexed-assignment fix protects them too once a user turns on
             // a non-default reasoning effort.
             if (event.type === 'content_block_start') {
@@ -6497,10 +6518,6 @@ function buildResponsesReasoningConfig(model, reasoningValue) {
   return { effort };
 }
 
-function supportsAnthropicAdaptiveThinking(model) {
-  return isAnthropicReasoningModel(model);
-}
-
 // PRD-083: Fable 5 and Mythos 5 are the only Anthropic models we've observed
 // emitting empty 2-token responses immediately after a large tool_result
 // payload (typically a file save / read echo). The hypothesis is that a fresh
@@ -6688,7 +6705,12 @@ function logAnthropicPreCall(model, provider, conversationMessages, slimSummary)
 }
 
 function buildAnthropicReasoningConfig(model, reasoningValue) {
-  if (!supportsAnthropicAdaptiveThinking(model)) return null;
+  // Single source: reasoningModels.isAnthropicReasoningModel. This module used
+  // to wrap it under a second name (supportsAnthropicAdaptiveThinking), which
+  // is the same duplicate-predicate disease under a different spelling — and
+  // exactly why the guard test matches a NAMING PATTERN rather than a fixed
+  // list of names.
+  if (!isAnthropicReasoningModel(model)) return null;
 
   const normalized = normalizeReasoningValue(reasoningValue);
   const lower = String(model || '').toLowerCase();
@@ -6760,55 +6782,12 @@ function buildGeminiThinkingConfig(model, reasoningValue) {
   return null;
 }
 
-function supportsKimiToggle(provider, model) {
-  const normalizedProvider = String(provider || '').toLowerCase();
-  const lower = String(model || '').toLowerCase();
-
-  if (normalizedProvider === 'kimi-code') {
-    return lower === 'kimi-for-coding';
-  }
-
-  return lower.startsWith('kimi-k2') && !lower.includes('thinking');
-}
-
-function supportsDeepSeekToggle(model) {
-  const lower = String(model || '').toLowerCase();
-  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner' || lower.startsWith('deepseek-v4-');
-}
-
-function isGroqGptOssReasoningModel(model) {
-  const lower = String(model || '').toLowerCase();
-  return lower === 'openai/gpt-oss-20b' || lower === 'openai/gpt-oss-120b';
-}
-
-function isGroqQwenReasoningModel(model) {
-  return String(model || '').toLowerCase() === 'qwen/qwen3-32b';
-}
-
-function isCerebrasGptOssReasoningModel(model) {
-  return String(model || '').toLowerCase() === 'gpt-oss-120b';
-}
-
-function isCerebrasGlmReasoningModel(model) {
-  return String(model || '').toLowerCase() === 'zai-glm-4.7';
-}
-
-function isTogetherGptOssReasoningModel(model) {
-  return String(model || '').toLowerCase().startsWith('openai/gpt-oss-');
-}
-
-// Chutes reasoning models — protocol routes by underlying family.
-function isChutesKimiReasoningModel(model) {
-  return /^moonshotai\/kimi-k2/i.test(String(model || ''));
-}
-
-function isChutesGlmReasoningModel(model) {
-  return /^zai-org\/glm-5/i.test(String(model || ''));
-}
-
-function isChutesQwenReasoningModel(model) {
-  return /^qwen\/qwen3/i.test(String(model || ''));
-}
+// Reasoning predicates (isGroq* / isCerebras* / isChutes* / supports*Toggle /
+// Anthropic adaptive thinking) are imported from providerConfigs.js at the top
+// of this file. The local copies that used to live here had drifted from the
+// config's definitions and were deleted — see
+// noDuplicateProviderPredicates.test.js, which fails the build if any of them
+// is reintroduced under any name.
 
 function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   const normalizedProvider = String(provider || '').toLowerCase();

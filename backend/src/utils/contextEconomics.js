@@ -1,4 +1,4 @@
-import { getModelCost } from '../services/ai/providerConfigs.js';
+import { getModelCost, isCachedRateKnown } from '../services/ai/providerConfigs.js';
 
 /**
  * What the *shape* of a request costs, as opposed to what a request cost.
@@ -55,6 +55,14 @@ export function inputTokenRate(provider, model) {
  * @returns {number|null}
  */
 export function cachedInputTokenRate(provider, model) {
+  // NULL when the cached rate is unknown — no published catalog rate and no
+  // sourced family multiplier. This used to fall through to 1.0x, so the panel
+  // showed cachedRate === rate, which asserts "this provider gives no cache
+  // discount" about providers that demonstrably do (measured 2026-08-08: 109 of
+  // 206 priced models). Null lets the panel say nothing, which is the honest
+  // answer about money. Billing is unaffected — getModelCost still charges the
+  // conservative full rate.
+  if (!isCachedRateKnown(provider, model)) return null;
   const cost = probeInputCost(provider, model, { cacheReadTokens: PROBE_TOKENS });
   if (cost == null || cost < 0) return null;
   return cost / PROBE_TOKENS;
@@ -108,6 +116,9 @@ export function buildEconomics({ provider, model, systemTokens = 0, toolTokens =
   return {
     rate,
     cachedRate,
+    // Distinguishes "cached rate unknown" (cachedRate null) from a real rate,
+    // so the UI can render unknown as unknown instead of as $0.00 saved.
+    cacheRateKnown: cachedRate != null,
     floorTokens,
     // What the fixed prefix costs on a turn that misses the cache…
     floorCost: floorTokens * rate,

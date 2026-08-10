@@ -38,7 +38,11 @@ describe('promptCacheTtlMs', () => {
   it('returns null rather than guessing for providers we have no basis for', () => {
     // A wrong TTL produces a confident false statement about the user's money.
     // Silence is the correct output when there is nothing to say.
-    expect(promptCacheTtlMs('groq')).toBeNull();
+    // groq and cerebras used to sit in this list. They graduated on 2026-08-09
+    // when their docs were read and cited (2h idle / 5m guaranteed) — see
+    // promptCacheTtl.cited.test.js. The rule did not change; the evidence did.
+    expect(promptCacheTtlMs('togetherai')).toBeNull();
+    expect(promptCacheTtlMs('minimax')).toBeNull();
     expect(promptCacheTtlMs('gemini')).toBeNull();
     expect(promptCacheTtlMs('kimi-code')).toBeNull();
     expect(promptCacheTtlMs('')).toBeNull();
