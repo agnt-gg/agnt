@@ -42,13 +42,19 @@
 
 !include "LogicLib.nsh"
 
-; Real builds receive these from electron-builder as makensis /D defines.
-; The fallbacks exist ONLY so the test harness can compile this file alone.
-!ifndef APP_EXECUTABLE_FILENAME
-  !define APP_EXECUTABLE_FILENAME "AGNT.exe"
-!endif
-!ifndef UNINSTALL_FILENAME
-  !define UNINSTALL_FILENAME "Uninstall AGNT.exe"
+; Real builds get these from common.nsh, which electron-builder includes
+; AFTER this file. The fallbacks may therefore only exist when compiling the
+; test harness (harness.nsi defines AGNT_HARNESS): an unconditional !ifndef
+; here fires in the real build too, and common.nsh's own !define then dies
+; with "already defined" — which is exactly how the first packaging attempt
+; of this file failed. Harness-scoped or nothing.
+!ifdef AGNT_HARNESS
+  !ifndef APP_EXECUTABLE_FILENAME
+    !define APP_EXECUTABLE_FILENAME "AGNT.exe"
+  !endif
+  !ifndef UNINSTALL_FILENAME
+    !define UNINSTALL_FILENAME "Uninstall AGNT.exe"
+  !endif
 !endif
 
 ; -------------------------------------------------------------------------
@@ -288,12 +294,25 @@
 !macroend
 
 ; =========================================================================
+; LAYERS 2 & 3 live inside customHeader, and the placement is load-bearing:
+; electron-builder includes THIS FILE before common.nsh, but customHeader is
+; inserted into installer.nsi AFTER common.nsh. Functions compile where they
+; are inserted, and these reference ${APP_EXECUTABLE_FILENAME} /
+; ${UNINSTALL_FILENAME}, which common.nsh defines. Compiled at include time
+; instead, NSIS leaves the unknown ${...} as LITERAL TEXT — no error — and
+; the guard would look for a file literally named ${APP_EXECUTABLE_FILENAME},
+; never find it, and refuse every legitimate upgrade. Macros (the AGNT_*
+; family above) are immune: their bodies expand at !insertmacro time.
+; =========================================================================
+!macro customHeader
+
+; -------------------------------------------------------------------------
 ; LAYER 2 — .onVerifyInstDir
 ;
 ; NSIS calls this every time the directory-page selection changes; Abort
 ; greys out Next. Silent installs never show the page, so this guard is
 ; UI-only — layer 1 covers whatever a silent install targets.
-; =========================================================================
+; -------------------------------------------------------------------------
 Function .onVerifyInstDir
   !insertmacro AGNT_DIR_IS_ACCEPTABLE "$INSTDIR"
   ${If} $R9 == "no"
@@ -301,7 +320,7 @@ Function .onVerifyInstDir
   ${EndIf}
 FunctionEnd
 
-; =========================================================================
+; -------------------------------------------------------------------------
 ; LAYER 3 — the rescue page.
 ;
 ; Runs immediately after the directory page (customPageAfterChangeDir slot).
@@ -317,7 +336,7 @@ FunctionEnd
 ;
 ; Decline flow: a second, sterner confirmation, then Quit (nothing has been
 ; touched at that point) or proceed with informed consent.
-; =========================================================================
+; -------------------------------------------------------------------------
 Var agntRescueDest
 
 Function agntRescuePagePre
@@ -374,6 +393,8 @@ Function agntRescuePagePre
   agnt_rescue_proceed:
   Abort
 FunctionEnd
+
+!macroend
 
 !macro customPageAfterChangeDir
   Page custom agntRescuePagePre
