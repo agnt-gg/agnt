@@ -87,10 +87,25 @@ async function saveWorkspaceRoot(rootPath) {
 }
 
 /**
- * Ensure workspace root directory exists
+ * Ensure workspace root directory exists.
+ *
+ * With ONE exception: a root inside the install directory is never re-created.
+ *
+ * That exception is the difference between a user seeing "my folder is gone"
+ * and "my folder is empty". After the updater erased $INSTDIR, the very next
+ * tree load called this function, which cheerfully mkdir'd the folder back
+ * into existence — so the user opened a real, present, empty directory and
+ * concluded AGNT had wiped his files in place. Re-creating the folder destroys
+ * the only evidence of what actually happened and makes the product look like
+ * it corrupts data.
+ *
+ * If the directory still exists this changes nothing (mkdir on an existing
+ * path is a no-op anyway). It only bites when the folder is ALREADY gone,
+ * which is exactly the case where we must not paper over it.
  */
 async function ensureWorkspaceRoot() {
   const root = await getWorkspaceRoot();
+  if (describeUnsafeRoot(root)) return root;
   try {
     await fs.mkdir(root, { recursive: true });
   } catch (err) {

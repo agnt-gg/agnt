@@ -43,6 +43,30 @@
       </div>
     </div>
 
+    <!-- Doomed-workspace warning.
+         Shown when the configured workspace root lives inside AGNT's install
+         directory, which a Windows/macOS/Linux update erases wholesale. The
+         picker refuses to create this situation now, but installs configured
+         before that guard existed are already in it and lose everything on
+         their next update — this banner is the only thing standing between
+         them and that. -->
+    <div v-if="unsafeRoot" class="unsafe-root-banner">
+      <i class="fas fa-exclamation-triangle"></i>
+      <div class="unsafe-root-body">
+        <strong>Your files are at risk</strong>
+        <p>
+          This workspace is inside AGNT's install folder. Installing an AGNT update
+          erases that folder and everything in it — permanently.
+        </p>
+        <p class="unsafe-root-path">{{ unsafeRoot.workspaceRoot }}</p>
+        <button class="unsafe-root-fix" @click="moveWorkspaceToDefault" :disabled="movingWorkspace">
+          {{ movingWorkspace ? 'Switching…' : 'Use the safe default folder' }}
+        </button>
+        <p v-if="unsafeRootError" class="unsafe-root-error">{{ unsafeRootError }}</p>
+        <p class="unsafe-root-note">Your existing files stay where they are — copy them across before you update.</p>
+      </div>
+    </div>
+
     <!-- Search bar -->
     <div class="search-bar">
       <i class="fas fa-search search-icon"></i>
@@ -317,6 +341,14 @@ export default {
       error: '',
       saving: false,
     });
+
+    // Non-null when the backend reports the configured workspace root sits
+    // inside the install directory. Shape: { code, message, workspaceRoot,
+    // installRoot } — see backend/src/utils/installDirGuard.js.
+    const unsafeRoot = ref(null);
+    const defaultRoot = ref('');
+    const movingWorkspace = ref(false);
+    const unsafeRootError = ref('');
 
     // ── Context menu (singleton for the whole tree) ──
     // Holding state here instead of inside each TreeNode is what makes right-
@@ -825,9 +857,38 @@ export default {
       try {
         const data = await getSettings();
         workspaceRoot.value = data.workspaceRoot || data.defaultRoot || '';
+        defaultRoot.value = data.defaultRoot || '';
+        unsafeRoot.value = data.unsafeRoot || null;
       } catch (err) {
         console.warn('[FileTreePanel] Failed to load workspace root:', err);
         workspaceRoot.value = '';
+        unsafeRoot.value = null;
+      }
+    };
+
+    // One-click escape from a workspace the updater will delete. Switches the
+    // configured root to the default; it deliberately does NOT move or copy
+    // the user's files, because relocating someone's data without asking is
+    // its own kind of loss. The banner says so.
+    const moveWorkspaceToDefault = async () => {
+      const target = defaultRoot.value;
+      if (!target) {
+        unsafeRootError.value = 'No default folder available.';
+        return;
+      }
+      movingWorkspace.value = true;
+      unsafeRootError.value = '';
+      try {
+        await updateSettings(target);
+        workspaceRoot.value = target;
+        unsafeRoot.value = null;
+        Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
+        Object.keys(expandedDirs).forEach((key) => delete expandedDirs[key]);
+        await fetchRootTree();
+      } catch (err) {
+        unsafeRootError.value = err.message || 'Failed to switch workspace folder.';
+      } finally {
+        movingWorkspace.value = false;
       }
     };
 
@@ -839,6 +900,8 @@ export default {
         settingsDialog.defaultRoot = data.defaultRoot;
         // Also keep the top-level ref fresh in case it was edited externally.
         workspaceRoot.value = data.workspaceRoot || data.defaultRoot || '';
+        defaultRoot.value = data.defaultRoot || '';
+        unsafeRoot.value = data.unsafeRoot || null;
       } catch {
         settingsDialog.workspaceRoot = '';
         settingsDialog.defaultRoot = '';
@@ -859,6 +922,9 @@ export default {
       try {
         await updateSettings(settingsDialog.workspaceRoot.trim());
         workspaceRoot.value = settingsDialog.workspaceRoot.trim();
+        // The server only accepts a safe root, so a successful save clears the
+        // warning without a second round trip.
+        unsafeRoot.value = null;
         settingsDialog.show = false;
         // Clear tree cache and reload from new root
         Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
@@ -1008,6 +1074,10 @@ export default {
       resultIconClass,
       resultParentPath,
       highlightMatch,
+      unsafeRoot,
+      movingWorkspace,
+      unsafeRootError,
+      moveWorkspaceToDefault,
       deleteConfirm,
       settingsDialog,
       toggleDir,
@@ -1210,6 +1280,75 @@ export default {
 
 .item-cancel-btn:hover {
   color: var(--color-red);
+}
+
+.unsafe-root-banner {
+  display: flex;
+  gap: 10px;
+  margin: 8px 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-red);
+  border-radius: var(--border-radius-md, 8px);
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.unsafe-root-banner > i {
+  color: var(--color-red);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.unsafe-root-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.unsafe-root-body strong {
+  color: var(--color-red);
+}
+
+.unsafe-root-body p {
+  margin: 0;
+}
+
+.unsafe-root-path {
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+  opacity: 0.85;
+}
+
+.unsafe-root-fix {
+  align-self: flex-start;
+  padding: 5px 10px;
+  border: 1px solid var(--color-red);
+  border-radius: var(--border-radius-sm, 6px);
+  background: transparent;
+  color: var(--color-red);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.unsafe-root-fix:hover:not(:disabled) {
+  background: var(--color-red);
+  color: var(--color-bg, #000);
+}
+
+.unsafe-root-fix:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.unsafe-root-error {
+  color: var(--color-red);
+}
+
+.unsafe-root-note {
+  opacity: 0.75;
 }
 
 .search-bar {
