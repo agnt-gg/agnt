@@ -1,0 +1,29 @@
+<Configuration>
+  <!--
+    AGNT installer data-safety matrix, in a disposable VM.
+
+    Stage a folder on the host (default used by prepare step:
+    %APPDATA%\AGNT\projects\sandbox-gate) containing:
+      AGNT-OLD.exe    - pre-guard build (e.g. 0.5.10, blind uninstaller)
+      AGNT-NEW.exe    - the build under test
+      run-matrix.cmd  - copied from this directory
+      results\        - empty; the sandbox writes verdicts here
+
+    Then:  WindowsSandbox.exe matrix.wsb
+    Poll   results\DONE.txt on the host; read results\log.txt.
+    Close the sandbox window afterwards - everything inside evaporates.
+
+    NOTE: HostFolder must be an absolute path; edit it if your staging
+    folder differs. MappedFolder is read-write so results can flow back.
+  -->
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\Studio\AppData\Roaming\AGNT\projects\sandbox-gate</HostFolder>
+      <SandboxFolder>C:\gate</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>cmd.exe /c C:\gate\run-matrix.cmd</Command>
+  </LogonCommand>
+</Configuration>

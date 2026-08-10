@@ -5,9 +5,15 @@ import path from 'path';
 import multer from 'multer';
 import { authenticateToken } from './Middleware.js';
 import { requireAuthMedia } from '../utils/authGuard.js';
-import PathManager from '../utils/PathManager.js';
 import { prepareWrite } from '../utils/lineEndings.js';
 import { describeUnsafeRoot } from '../utils/installDirGuard.js';
+import {
+  DEFAULT_WORKSPACE_ROOT,
+  getWorkspaceRoot,
+  saveWorkspaceRoot,
+  ensureWorkspaceRoot,
+  warnIfWorkspaceUnsafe,
+} from '../utils/workspaceRoot.js';
 
 const router = express.Router();
 
@@ -17,10 +23,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
 });
-
-// Default workspace root and settings file live alongside other app data
-const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
-const SETTINGS_FILE = PathManager.getPath('code-settings.json');
 
 // Hard cap for the GET /file *text* preview. Files above this are reported as
 // `{ noPreview: true, reason: 'too_large' }` so the frontend can short-circuit
@@ -55,66 +57,6 @@ async function isBinaryFile(absPath) {
 }
 
 /**
- * Get the current workspace root from settings
- */
-async function getWorkspaceRoot() {
-  try {
-    const raw = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    const settings = JSON.parse(raw);
-    if (settings.workspaceRoot) {
-      return path.resolve(settings.workspaceRoot);
-    }
-  } catch {
-    // Settings file doesn't exist or is invalid — use default
-  }
-  return DEFAULT_WORKSPACE_ROOT;
-}
-
-/**
- * Save workspace root to settings
- */
-async function saveWorkspaceRoot(rootPath) {
-  let settings = {};
-  try {
-    const raw = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    settings = JSON.parse(raw);
-  } catch {
-    // Start fresh
-  }
-  settings.workspaceRoot = rootPath;
-  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
-}
-
-/**
- * Ensure workspace root directory exists.
- *
- * With ONE exception: a root inside the install directory is never re-created.
- *
- * That exception is the difference between a user seeing "my folder is gone"
- * and "my folder is empty". After the updater erased $INSTDIR, the very next
- * tree load called this function, which cheerfully mkdir'd the folder back
- * into existence — so the user opened a real, present, empty directory and
- * concluded AGNT had wiped his files in place. Re-creating the folder destroys
- * the only evidence of what actually happened and makes the product look like
- * it corrupts data.
- *
- * If the directory still exists this changes nothing (mkdir on an existing
- * path is a no-op anyway). It only bites when the folder is ALREADY gone,
- * which is exactly the case where we must not paper over it.
- */
-async function ensureWorkspaceRoot() {
-  const root = await getWorkspaceRoot();
-  if (describeUnsafeRoot(root)) return root;
-  try {
-    await fs.mkdir(root, { recursive: true });
-  } catch (err) {
-    // Already exists or other non-fatal error
-  }
-  return root;
-}
-
-/**
  * Resolve a user-supplied path.
  *
  * - Absolute paths are allowed anywhere on the filesystem (intentional —
@@ -137,36 +79,9 @@ function validatePath(inputPath, workspaceRoot) {
   return resolved;
 }
 
-/**
- * Shout, once, at startup if the CONFIGURED workspace root is already inside
- * the install directory.
- *
- * The picker now refuses to create this situation, but installs that predate
- * the guard are already in it and lose everything on their next update. They
- * cannot be fixed silently — the folder is the user's, and moving someone's
- * files without asking is its own kind of data loss — so the loudest thing we
- * can do without touching their disk is say so on every boot and flag it on
- * the settings endpoint the UI already calls.
- */
-async function warnIfWorkspaceUnsafe() {
-  try {
-    const unsafe = describeUnsafeRoot(await getWorkspaceRoot());
-    if (!unsafe) return;
-    console.warn(
-      '\n' +
-        '='.repeat(72) + '\n' +
-        '  WARNING: your workspace folder will be DELETED by the next update.\n' +
-        `  Workspace: ${unsafe.workspaceRoot}\n` +
-        `  AGNT install: ${unsafe.installRoot}\n` +
-        '  Installing an AGNT update erases the install directory and\n' +
-        '  everything inside it. Move your work and pick a different\n' +
-        '  workspace folder BEFORE you install another update.\n' +
-        '='.repeat(72) + '\n',
-    );
-  } catch {
-    // Never let a diagnostic take the backend down.
-  }
-}
+// Boot-time warning for workspaces the updater would delete. Lives in
+// utils/workspaceRoot.js; invoked here because this module is loaded once
+// per process, which makes it the natural once-per-boot hook.
 warnIfWorkspaceUnsafe();
 
 // GET /api/filesystem/settings
@@ -223,7 +138,20 @@ router.get('/tree', authenticateToken, async (req, res) => {
     const relDir = req.query.dir || '';
     const absDir = validatePath(relDir, root);
 
-    const entries = await fs.readdir(absDir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await fs.readdir(absDir, { withFileTypes: true });
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        // The workspace root itself can legitimately be absent: when it sits
+        // inside the install directory, ensureWorkspaceRoot deliberately does
+        // NOT re-create it after an update erased it (doing so is what made
+        // that data loss look like corruption). An empty listing plus a flag
+        // is the truthful answer; the banner from /settings explains why.
+        return res.json({ items: [], root: relDir || '/', missingRoot: true });
+      }
+      throw err;
+    }
     const items = entries
       .filter((e) => !e.name.startsWith('.'))
       .map((e) => ({
