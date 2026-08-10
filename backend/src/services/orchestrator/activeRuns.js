@@ -34,6 +34,14 @@
  * The whole buffer is freed when the run ends and its retention window lapses.
  */
 
+// The ONLY import in this file, and it earns its place: the replay log below
+// is the sole record of a turn until conversation_logs is written at turn END,
+// so a process that dies mid-turn used to destroy the answer outright rather
+// than merely losing the socket. runJournal mirrors the log to disk. It cannot
+// resume generation — the provider connection lives in this process — and its
+// header is explicit about that.
+import { journalRun, discardJournal } from './runJournal.js';
+
 /** Live runs, keyed by conversationId. */
 const runs = new Map();
 
@@ -145,6 +153,10 @@ export function publish(run, eventName, data) {
   if (!run || run.ended) return;
 
   appendToLog(run, eventName, data);
+
+  // Throttled, best-effort, never throws. Deliberately after appendToLog so a
+  // snapshot can only ever describe a log the in-memory copy already has.
+  journalRun(run);
 
   if (run.subscribers.size === 0) return;
   const frame = `event: ${eventName}\ndata: ${safeStringify(data)}\n\n`;
@@ -321,6 +333,13 @@ function finalizeRun(run, status) {
   run.endedAt = Date.now();
   run.endStatus = run.cancelled ? 'cancelled' : status;
 
+  // The turn is over, so its answer is already durable somewhere better:
+  // OrchestratorService writes conversation_logs AND the saved transcript
+  // before it calls endRun. Keeping the journal past this point would only buy
+  // a pointless recovery pass on the next boot. (Recovery is idempotent, so
+  // losing this race is harmless either way.)
+  discardJournal(run.conversationId);
+
   for (const res of run.subscribers) {
     try {
       writeFrame(res, 'run_ended', { conversationId: run.conversationId, status: run.endStatus });
@@ -358,6 +377,63 @@ export function getRunStatus(conversationId, userId) {
   };
 }
 
+/**
+ * Every run this user currently owns.
+ *
+ * WHY A LIST ENDPOINT HAS TO EXIST:
+ *
+ * Every other function here is keyed by conversationId — you can only ask
+ * about a run whose id you already hold. The only place that id was recorded
+ * is `inflightRuns.js`, which writes it to localStorage. localStorage is
+ * per-browser-profile, so the tab that STARTED a run could find it again, and
+ * nothing else could: not a second browser, not the Mac app. The run itself
+ * was alive and reattachable the whole time (that is the invariant at the top
+ * of this file) — it was simply undiscoverable from anywhere else.
+ *
+ * This is the missing question: "what is running for ME?", asked with no prior
+ * knowledge. Ended-but-retained runs are included and flagged rather than
+ * hidden, because a client that arrives inside RETAIN_ENDED_MS still wants the
+ * tail — the same reason the retention window exists at all.
+ *
+ * Deliberately NOT included: the replay log, the abort controller, the
+ * subscriber set. This answers "which conversations are live", and reattaching
+ * to one is a separate, explicit request.
+ */
+export function listRunsForUser(userId) {
+  if (userId == null) return [];
+  const out = [];
+  for (const run of runs.values()) {
+    if (run.userId == null || String(run.userId) !== String(userId)) continue;
+    out.push({
+      conversationId: run.conversationId,
+      chatType: run.chatType,
+      active: !run.ended,
+      ended: run.ended,
+      status: run.endStatus,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      truncated: run.truncated,
+      userMessage: run.userMessage,
+    });
+  }
+  // Newest first: when a client shows "still running", the most recent turn is
+  // the one the user is most likely looking for.
+  out.sort((a, b) => b.startedAt - a.startedAt);
+  return out;
+}
+
+/**
+ * Every live run, for the shutdown flush.
+ *
+ * SIGTERM is the COMMON restart — `launchctl kickstart -k`, systemd, Ctrl-C, an
+ * app quit — and it is not a crash: the process still exists and can save what
+ * it has. Handing the runs out lets the shutdown path journal them in full
+ * rather than leaving whatever the last throttled snapshot caught.
+ */
+export function liveRuns() {
+  return [...runs.values()].filter((run) => !run.ended);
+}
+
 /** Test/introspection helper. */
 export function _runCount() {
   return runs.size;
@@ -378,4 +454,6 @@ export default {
   cancelRun,
   endRun,
   getRunStatus,
+  listRunsForUser,
+  liveRuns,
 };

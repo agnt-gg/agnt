@@ -106,6 +106,25 @@ export const RealtimeEvents = {
   CHAT_MESSAGE_END: 'chat:message_end',
   CHAT_USER_MESSAGE: 'chat:user_message',
 
+  // Chat RUN LIFECYCLE — not chat CONTENT.
+  //
+  // The chat:* events above mirror a turn's content as it streams, which only
+  // helps a client that was already watching when the turn began: they carry no
+  // replay, so a client that arrives mid-run has missed chat:message_start and
+  // every delta before it connected.
+  //
+  // This announces that a run EXISTS. A client hearing it reattaches over the
+  // SSE replay path (GET /orchestrator/runs/:id/stream), which hands back the
+  // whole turn from conversation_started onward. One tiny event per turn buys
+  // what the delta fire-hose structurally cannot: a client that opened late,
+  // or was looking at another conversation, still picks the run up in full and
+  // without a reload.
+  //
+  // Carries `originClientId` so the client that STARTED the run can recognise
+  // and ignore its own announcement — see the header of
+  // frontend/src/services/clientId.js for why timing cannot be relied on here.
+  RUN_STARTED: 'run:started',
+
   // Autonomous AI Messages (AI-initiated without user trigger)
   AUTONOMOUS_MESSAGE_START: 'chat:autonomous_message_start',
   AUTONOMOUS_CONTENT_DELTA: 'chat:autonomous_content_delta',

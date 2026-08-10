@@ -6,6 +6,7 @@
 // AbortController wiring so containers can stay focused on UI concerns.
 
 import { API_CONFIG } from '@/tt.config.js';
+import { getClientId } from './clientId.js';
 
 const ENDPOINTS = {
   orchestrator: '/orchestrator/chat',
@@ -66,6 +67,10 @@ export async function streamChat({
   const token = localStorage.getItem('token');
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Lets the server stamp the run:started announcement with who started it, so
+  // this client can ignore its own. See clientId.js for why the conversation id
+  // cannot serve that purpose.
+  headers['X-AGNT-Client-Id'] = getClientId();
 
   const bodyFields = {
     messages,
@@ -230,6 +235,34 @@ export async function fetchRunStatus(conversationId) {
     return await response.json();
   } catch {
     return { active: false, known: false };
+  }
+}
+
+/**
+ * Every run the server currently holds for this user.
+ *
+ * The counterpart to fetchRunStatus: that one confirms a conversation you can
+ * already name, this one tells you which conversations exist to ask about. It
+ * is the only way a client can learn about a turn it did not start itself —
+ * the localStorage marker that used to be the sole record is per-browser, so
+ * a run begun in one browser was invisible to every other client.
+ *
+ * Returns [] on any failure: resume is an enhancement layered on top of a
+ * working chat, and it must never be the reason boot fails.
+ *
+ * @returns {Promise<Array<{conversationId:string, chatType:string, active:boolean,
+ *   ended:boolean, status:string|null, startedAt:number, channelKey:string|null,
+ *   title:string|null, outputId:string|null}>>}
+ */
+export async function fetchActiveRuns() {
+  try {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/runs`, { headers: authHeaders() });
+    if (!response.ok) return [];
+    const json = await response.json().catch(() => null);
+    return Array.isArray(json?.runs) ? json.runs : [];
+  } catch (e) {
+    console.warn('chatService.fetchActiveRuns failed:', e?.message || e);
+    return [];
   }
 }
 

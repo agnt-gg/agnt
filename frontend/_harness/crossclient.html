@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  Verification-only entrypoint for tests/e2e/cross-client-runs.spec.js.
+
+  Lives here for the same reason shelf.html does: _harness/ is where an
+  entrypoint goes when it exists to be measured rather than shipped. It is not
+  referenced by index.html, has no route, and is never part of a production
+  build — vite.config.js builds src/main.js alone.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AGNT cross-client run harness</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./crossclient.js"></script>
+  </body>
+</html>

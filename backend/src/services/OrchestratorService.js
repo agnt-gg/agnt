@@ -40,6 +40,7 @@ import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
+import { persistTurnTranscript } from './orchestrator/persistTurnTranscript.js';
 import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
@@ -1114,6 +1115,36 @@ async function universalChatHandler(req, res, context = {}) {
       return null;
     })(),
   });
+
+  // Tell this user's OTHER clients that a turn now exists to attach to.
+  //
+  // Everything else about resume is pull-based: a client discovers runs when it
+  // boots (GET /orchestrator/runs) or when it reconnects. A client that was
+  // already open and idle does neither, so a task started in one browser stayed
+  // invisible in another until someone reloaded it. This is the push half.
+  //
+  // Deliberately announces EXISTENCE, not content: the receiver reattaches over
+  // the SSE replay path and gets the whole turn. The chat:* delta mirror below
+  // cannot do that — it has no replay, so a client that arrives mid-run has
+  // already missed the beginning.
+  //
+  // Emitted right after the run is registered and BEFORE the first event, so
+  // there is no window in which a run is attachable but unannounced.
+  //
+  // originClientId is what stops the SENDER from attaching to its own run. For
+  // a new conversation the sender's local slot is still keyed by a temp id at
+  // this instant, so it cannot recognise the announcement by conversation id,
+  // and MIGRATE_CONVERSATION_ID would then overwrite its own live slot with the
+  // reattached one. Identity is carried explicitly rather than inferred from
+  // the order two transports happen to deliver in.
+  if (userId) {
+    broadcastToUser(userId, RealtimeEvents.RUN_STARTED, {
+      conversationId,
+      chatType,
+      startedAt: activeRun?.startedAt || Date.now(),
+      originClientId: req?.headers?.['x-agnt-client-id'] || null,
+    });
+  }
 
   // --- unfirehose/1.0 integration ---
   let sendEvent = rawSendEvent;
@@ -3679,6 +3710,31 @@ IMPORTANT: The image data is already available in the system context. You don't 
     if (logRaceResult === '__log_write_timeout__') {
       console.warn(`Conversation-log write for ${conversationId} exceeded ${LOG_WRITE_TIMEOUT_MS}ms — run already finalized; leaving the write to land in the background.`);
     }
+
+    // Mirror the finished turn into the conversation's SAVED row.
+    //
+    // Everything above persists the run for the system: conversation_logs for
+    // the model's own history, the execution record for the trace. None of it
+    // updates what the user sees in their conversation list — that row has
+    // exactly one writer, an HTTP endpoint a client must call. When the last
+    // client went away mid-answer, nothing ever called it again, so a complete
+    // answer on disk still showed as a truncated one on screen.
+    //
+    // `messages` is the sanitized provider history written to full_history on
+    // the line above, which is byte-for-byte what a reconnecting client
+    // receives from GET /orchestrator/conversations/:id — so this projects the
+    // same input through the same conversion the client would have applied.
+    //
+    // Fire-and-forget, and update-only: see persistTurnTranscript.js. The turn
+    // is already complete and already durable; mirroring it must never be able
+    // to delay or fail the response.
+    persistTurnTranscript({ conversationId, userId, providerMessages: messages })
+      .then((result) => {
+        if (result.written) console.log(`[TurnTranscript] Updated saved transcript for ${conversationId}`);
+      })
+      .catch((err) => {
+        console.warn('[TurnTranscript] Unexpected failure (turn unaffected):', err?.message || err);
+      });
 
     // Store conversation context for autonomous messages
     // This allows async tools to trigger AI responses later

@@ -1,47 +1,26 @@
-import { test, expect, _electron as electron } from '@playwright/test';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { loginUser, mockAgents } from './fixtures/auth.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/**
+ * The agents list renders what the API returned.
+ *
+ * Assertion unchanged from the Electron version. What changed is how the app
+ * is launched (see fixtures/appFixture.js) and how the sidebar is addressed:
+ * `.primary-nav-button` / `.secondary-nav-button` belong to a navigation
+ * component that CanvasScreen replaced, so those selectors had been matching
+ * nothing since long before anyone noticed.
+ */
+import { test, expect, gotoApp } from './fixtures/appFixture.js';
+import { mockAgents } from './fixtures/auth.js';
 
 test.describe('Agents Feature', () => {
-  let electronApp;
-  let window;
+  test('can navigate to agents and see the list @ci', async ({ appPage }) => {
+    // Registered BEFORE the app boots: the screen fetches on mount, and a mock
+    // installed after that races a request already in flight.
+    await mockAgents(appPage);
+    await gotoApp(appPage, '/');
 
-  test.beforeEach(async ({}, testInfo) => {
-    const port = 3333 + testInfo.workerIndex;
-    const mainScriptPath = path.join(__dirname, '../../main.js');
-    electronApp = await electron.launch({
-      args: [mainScriptPath],
-      env: { ...process.env, NODE_ENV: 'development', PORT: port.toString() },
-    });
-    window = await electronApp.firstWindow();
-    await window.waitForLoadState('domcontentloaded');
+    await appPage.locator('[data-tour-id="sidebar.agents"]').click();
+    await appPage.waitForURL('**/agents');
 
-    await mockAgents(window);
-    await loginUser(window);
-    await window.reload();
-    await window.waitForLoadState('domcontentloaded');
-  });
-
-  test.afterEach(async () => {
-    if (electronApp) {
-      await electronApp.close();
-    }
-  });
-
-  test('can navigate to agents and see the list', async () => {
-    // Navigate to Agents via secondary nav
-    // Primary: Assets -> Agents
-    await window.locator('.primary-nav-button').filter({ hasText: 'Assets' }).click();
-    await window.locator('.secondary-nav-button').filter({ hasText: 'Agents' }).click();
-    await window.waitForURL('**/agents');
-
-    // Verify Agent List
-    // We expect the mocked agents to be present
-    await expect(window.getByText('Test Agent 1')).toBeVisible();
-    await expect(window.getByText('Test Agent 2')).toBeVisible();
+    await expect(appPage.getByText('Test Agent 1')).toBeVisible();
+    await expect(appPage.getByText('Test Agent 2')).toBeVisible();
   });
 });

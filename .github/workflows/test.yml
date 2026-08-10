@@ -101,6 +101,116 @@ jobs:
       - name: Build frontend
         run: npm --prefix frontend run build
 
+  # The fifth gate, and the only one that runs a BROWSER.
+  #
+  # WHY IT EARNS A JOB
+  # ──────────────────
+  # The four jobs above mock, stub or read source. That is the right shape for
+  # almost everything, and it has a blind spot with a name: a run:started
+  # announcement was attached to correctly and then LOGGED from a promise that
+  # only settles when the run ends — so attaching to a ten-minute task printed
+  # nothing for ten minutes. Every one of the 3,600 unit tests passed. Nothing
+  # that mocks a store can see that, because nothing there has a clock, a
+  # console and a second tab. This suite has all three, and caught it on its
+  # first real run.
+  #
+  # WHY `--grep @ci` AND NOT `npm run test:e2e`
+  # ───────────────────────────────────────────
+  # tests/e2e holds eleven specs and ONE of them still cannot run here.
+  # Verified by reading what it actually does, not by its name:
+  #   async-tools          → spawns `npm start` (the whole Electron app), then
+  #                          sends "roll me a dice every minute for the next
+  #                          hour" and waits for an assistant reply and tool
+  #                          cards. That needs a REAL MODEL, which is slow,
+  #                          costly and nondeterministic — none of which a gate
+  #                          can carry. Its CSS selectors are all still valid;
+  #                          the model is the blocker. It also hardcodes
+  #                          localhost:3333, so running it on a developer's
+  #                          machine drives their live install.
+  # And ONE test is ungated on purpose rather than for lack of capability:
+  # workflows.spec.js's 'can create a new workflow' is skipped, because it is
+  # simply wrong about how creation works today — it only ever "passed" by not
+  # finding the button at all.
+  #
+  # (settings and tools used to be here too: they asserted that a thing
+  # labelled X was visible after clicking the thing labelled X, which the
+  # sidebar button itself satisfies. Measured, 'Settings' and 'Tools' appear as
+  # text on all four screens sampled, so neither check could go red. Both now
+  # assert something screen-specific and behavioural, and are gated.)
+  #
+  # Running the whole directory would therefore be permanently red, and this
+  # workflow exists precisely because a permanently-red job teaches everyone to
+  # ignore the ✗ (see the header, and the node-test job).
+  #
+  # The selector is a TAG rather than a filename so the gate extends itself: a
+  # future headless suite is covered by tagging @ci, not by remembering to edit
+  # this file. See the tag contract in cross-client-runs.spec.js for what a
+  # suite must be true of to claim it. When one of the nine above becomes
+  # runnable, tag it and it joins this job automatically.
+  #
+  # The obvious objection to selecting by tag is that a typo silently selects
+  # NOTHING and the gate goes green having run zero tests — the worst possible
+  # failure for a check. It cannot happen here: `playwright test --grep` with no
+  # matches prints "Error: No tests found" and exits 1. Verified, not assumed.
+  cross-client:
+    name: Browser suite (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Same --ignore-scripts reasoning as the backend job, and the same
+      # exception: the harness backend mounts the REAL OrchestratorRoutes, whose
+      # import chain loads backend/src/models/database at module scope. Without
+      # the binding every route module fails to load and the browser sees a dead
+      # server — a failure that looks like a product bug and is not.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build the sqlite3 native binding
+        run: npm rebuild sqlite3
+      - name: Verify native bindings load
+        run: node -e "require('sqlite3'); console.log('sqlite3 binding OK')"
+
+      # Two different frontends are needed, for two different reasons.
+      #
+      # The cross-client harness page is served by VITE and imports real
+      # frontend modules, so it needs vue, vuex, socket.io-client and
+      # @vitejs/plugin-vue from the frontend tree.
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci --ignore-scripts
+
+      # The UI specs (app, navigation, agents, chat, workflows) drive the REAL
+      # app, which backend/server.js serves from frontend/dist. Without this
+      # the backend starts in "backend-only mode" and every one of them fails
+      # on a blank page — so the fixture checks for dist and says exactly that
+      # rather than letting them time out mysteriously.
+      - name: Build the frontend the UI specs drive
+        run: npm --prefix frontend run build
+
+      # Explicit, because nothing else fetches a browser: root postinstall sets
+      # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1, and --ignore-scripts skips
+      # postinstall entirely. Chromium only — no spec here uses another engine,
+      # and the other two would be a download this job never opens.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the tagged browser suite
+        run: npx playwright test --grep @ci
+
+      # A browser failure that cannot be reproduced locally is worth very little
+      # without its trace. playwright.config.js already records one on the first
+      # retry and a screenshot on failure; this is what carries them off the
+      # runner. Only on failure, so a green run uploads nothing.
+      - name: Upload traces and screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-suite-playwright-traces
+          path: test-results/
+          retention-days: 7
+
   # NOT a gate yet — this job reports; it does not block.
   #
   # tests/unit/** uses the node:test runner rather than vitest, so it was never

@@ -28,8 +28,15 @@ function restoreEnv(key, previous) {
 }
 
 test.use({
-  // Prefer system Chrome when Playwright's bundled headless shell is missing.
-  channel: process.env.PW_CHANNEL || 'chrome',
+  // Bundled Chromium by default; PW_CHANNEL opts into a system browser.
+  //
+  // This used to default to 'chrome', which meant the spec could only run on a
+  // machine with Google Chrome installed at a specific path -- it failed with
+  // "Chromium distribution 'chrome' is not found" on any bare runner, and that
+  // was the ONLY thing keeping it out of CI. `npx playwright install chromium`
+  // is what CI has, so that is what the default should be. A `||` cannot
+  // express "undefined", hence the conditional spread.
+  ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
 });
 
 test.describe('Mobile lite pairing smoke', () => {
@@ -106,7 +113,7 @@ test.describe('Mobile lite pairing smoke', () => {
     _resetRateLimits();
   });
 
-  test('pair claim lands on /m/chat Annie shell', async ({ page }) => {
+  test('pair claim lands on /m/chat Annie shell @ci', async ({ page }) => {
     const mintToken = fakeJwt({ id: 'u1', email: 'a@b.c', name: 'Ada' });
 
     const mint = await fetch(`${base}/api/pairing/code`, {
