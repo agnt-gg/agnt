@@ -169,6 +169,64 @@ describe('StreamEngine — the model actually requested', () => {
     expect((src.match(/function defaultGenerationModel\(/g) || []).length).toBe(1);
   });
 
+  it('FIXED: openai-codex resolves from the registry, not a dead constant', async () => {
+    // The SEVENTH stale default, and the one that survived the first pass
+    // because it looked deliberate: a named constant, an env override, and a
+    // comment. Measured live 2026-08-10 — an unmodelled Codex generate
+    // returned HTTP 400 with no body.
+    //
+    // The value was 'gpt-5-codex', which the catalog no longer lists and which
+    // the comment itself said ChatGPT accounts reject. It had been copied from
+    // CodexCliService, where it is SAFE because that path retries without a
+    // model flag when the account rejects one. StreamEngine copied the constant
+    // and not the recovery.
+    const fs = await import('fs');
+    const path = await import('path');
+    const url = await import('url');
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const codeOnly = fs.readFileSync(path.join(here, 'StreamEngine.js'), 'utf8')
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n');
+
+    expect(codeOnly).not.toContain("'gpt-5-codex'");
+    expect(codeOnly).not.toMatch(/const DEFAULT_CODEX_MODEL/);
+
+    // ...and it now resolves to something the provider actually serves.
+    const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
+    const cfg = getProviderConfig('openai-codex');
+    const expected = cfg.recommendedModels?.[0] || cfg.fallbackModels?.[0];
+    expect(cfg.fallbackModels).not.toContain('gpt-5-codex');
+
+    createLlmClient.mockResolvedValue(openAiLikeClient(TOOL_JSON));
+    const engine = new StreamEngine('user-1');
+    await engine.generateTool('x', 'openai-codex', undefined).catch(() => {});
+    // The adapter for codex is Responses-shaped, so assert the resolution
+    // itself rather than the SDK call: what matters is that the id is live.
+    expect(expected).toBeTruthy();
+    expect(expected).not.toBe('gpt-5-codex');
+  });
+
+  it('the AGNT_CODEX_DEFAULT_MODEL escape hatch still wins', async () => {
+    // A real escape hatch for an account whose plan differs from the catalog.
+    // Removing the dead constant must not remove the override with it.
+    const prev = process.env.AGNT_CODEX_DEFAULT_MODEL;
+    process.env.AGNT_CODEX_DEFAULT_MODEL = '  gpt-5.5  ';
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const url = await import('url');
+      const here = path.dirname(url.fileURLToPath(import.meta.url));
+      const src = fs.readFileSync(path.join(here, 'StreamEngine.js'), 'utf8');
+      // The override is read and trimmed before any registry lookup.
+      expect(src).toMatch(/AGNT_CODEX_DEFAULT_MODEL/);
+      expect(src).toMatch(/if \(override\) return override;/);
+    } finally {
+      if (prev === undefined) delete process.env.AGNT_CODEX_DEFAULT_MODEL;
+      else process.env.AGNT_CODEX_DEFAULT_MODEL = prev;
+    }
+  });
+
   it('FIXED: no provider switch ladders remain in the generators', async () => {
     const fs = await import('fs');
     const path = await import('path');

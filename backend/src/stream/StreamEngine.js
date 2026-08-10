@@ -11,14 +11,6 @@ import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
 
-// Default model for the 'openai-codex' provider when no model is specified.
-// ChatGPT-backed Codex accounts reject 'gpt-5-codex', so this is overridable
-// via AGNT_CODEX_DEFAULT_MODEL (e.g. 'gpt-5.5'). Kept in sync with
-// CodexCliService.getDefaultModel().
-const DEFAULT_CODEX_MODEL =
-  (typeof process.env.AGNT_CODEX_DEFAULT_MODEL === 'string' && process.env.AGNT_CODEX_DEFAULT_MODEL.trim()) ||
-  'gpt-5-codex';
-
 /**
  * The model to use when a caller does not name one.
  *
@@ -33,13 +25,32 @@ const DEFAULT_CODEX_MODEL =
  * refreshed from the vendor, so asking it is both correct today and correct
  * after the next model launch — which a hardcoded map can never be.
  *
- * Two providers keep an explicit answer:
- *   openai-codex — DEFAULT_CODEX_MODEL is env-overridable and deliberately
- *                  differs from the public OpenAI catalog.
- *   local        — not in the registry; it is whatever the user is running.
+ * OPENAI-CODEX WAS THE SEVENTH STALE DEFAULT, and it survived the first pass
+ * because it looked deliberate: a named constant with an env override and a
+ * comment. Measured live 2026-08-10 — an unmodelled Codex generate returned
+ * HTTP 400 with no body.
+ *
+ * The constant was `gpt-5-codex`, which the catalog no longer lists at all and
+ * which the comment itself said ChatGPT-backed accounts reject. It had been
+ * copied from CodexCliService, where it IS safe: that path detects the
+ * "model is not supported" error and retries with no model flag, letting the
+ * CLI fall back to the account's own default. StreamEngine copied the constant
+ * and not the recovery, so here the same value is simply a dead id.
+ *
+ * The env override is kept — it is a real escape hatch for an account whose
+ * plan differs — but the fallback is now the registry, like every other
+ * provider.
+ *
+ * `local` keeps an explicit answer because it is not in the registry: it is
+ * whatever the user happens to be running.
  */
 function defaultGenerationModel(providerKey) {
-  if (providerKey === 'openai-codex') return DEFAULT_CODEX_MODEL;
+  if (providerKey === 'openai-codex') {
+    const override = typeof process.env.AGNT_CODEX_DEFAULT_MODEL === 'string'
+      ? process.env.AGNT_CODEX_DEFAULT_MODEL.trim()
+      : '';
+    if (override) return override;
+  }
   if (providerKey === 'local') return 'llama-3.2-1b-instruct';
   const cfg = getProviderConfig(providerKey);
   return cfg?.recommendedModels?.[0] || cfg?.fallbackModels?.[0] || null;
