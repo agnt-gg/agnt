@@ -34,7 +34,9 @@ vi.mock('../../../utils/PathManager.js', () => ({
 }));
 
 const { default: action } = await import('./ai-browser-use.js');
-const { registerSurface, _resetSurfaces } = await import('../../../services/browserSurfaces.js');
+const {
+  registerSurface, getActiveSurface, _resetSurfaces,
+} = await import('../../../services/browserSurfaces.js');
 
 const CDP = 'ws://127.0.0.1:51234/tok3n-value';
 const chat = (provider, extra = {}) => ({ userId: 'u1', provider, ...extra });
@@ -137,13 +139,31 @@ describe('the model comes from the conversation too', () => {
 });
 
 describe('the browser comes from the canvas', () => {
+  // These assert IDENTITY — which browser a turn owns. Whether that browser is
+  // still listening is a separate question, proved against a real socket in
+  // services/browserSurfaces.test.js. Passing an explicit probe keeps a
+  // liveness change from silently turning these green for the wrong reason.
+  const alive = () => true;
+
   it('adopts the exact Browser widget captured by the chat turn', async () => {
     registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
     registerSurface('u1', 'w_b', { workspaceId: 'ws_b', cdpUrl: 'ws://127.0.0.1:4444/other' });
     const engine = chat('Gemini', {
       workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
     });
-    expect(await action.resolveSurface({}, engine, 'u1', 50)).toBe(CDP);
+    expect(await action.resolveSurface({}, engine, 'u1', 50, alive)).toBe(CDP);
+  });
+
+  it('launches instead of handing back a browser that has closed', async () => {
+    // The reported failure: a registry entry outlived its bridge, so the run
+    // died on "[WinError 1225] The remote computer refused the network
+    // connection" with zero steps taken. Now an unreachable surface resolves
+    // to nothing, and the run proceeds in a browser that exists.
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
+    const engine = chat('Gemini', {
+      workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
+    });
+    expect(await action.resolveSurface({}, engine, 'u1', 50, () => false)).toBe('');
   });
 
   it('does not let another workspace steal the turn', async () => {
@@ -151,25 +171,25 @@ describe('the browser comes from the canvas', () => {
     const engine = chat('Gemini', {
       workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
     });
-    expect(await action.resolveSurface({}, engine, 'u1', 50)).toBe('');
+    expect(await action.resolveSurface({}, engine, 'u1', 50, alive)).toBe('');
   });
 
   it('never adopts another user\'s window', async () => {
     registerSurface('u2', 'w_1', { cdpUrl: CDP });
-    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50)).toBe('');
+    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe('');
   });
 
   it('launches its own browser when no window is open', async () => {
     // Chat outside a workspace, or a non-desktop client. Launching is the
     // honest fallback — refusing would make the tool unusable off-canvas.
-    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50)).toBe('');
+    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe('');
   });
 
   it('leaves the visible browser alone during a workflow run', async () => {
     registerSurface('u1', 'w_1', { cdpUrl: CDP });
     // A background automation seizing the window the user is reading is worse
     // than it launching one of its own.
-    expect(await action.resolveSurface({}, workflow(), 'u1', 50)).toBe('');
+    expect(await action.resolveSurface({}, workflow(), 'u1', 50, alive)).toBe('');
   });
 
   it('opens a separate window only when explicitly asked', async () => {
@@ -183,8 +203,8 @@ describe('the browser comes from the canvas', () => {
       workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
     });
 
-    expect(await action.resolveSurface({}, engine, 'u1', 50)).toBe(CDP);
-    expect(await action.resolveSurface({ externalWindow: 'true' }, engine, 'u1', 50)).toBe('');
+    expect(await action.resolveSurface({}, engine, 'u1', 50, alive)).toBe(CDP);
+    expect(await action.resolveSurface({ externalWindow: 'true' }, engine, 'u1', 50, alive)).toBe('');
   });
 
   it('lets an explicit external-window request beat plumbing', async () => {
@@ -196,6 +216,7 @@ describe('the browser comes from the canvas', () => {
       chat('Gemini'),
       'u1',
       50,
+      alive,
     )).toBe('');
   });
 
@@ -204,7 +225,7 @@ describe('the browser comes from the canvas', () => {
     const engine = chat('Gemini', { workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' } });
     // A checkbox arrives as the STRING 'false' when cleared, which is truthy.
     for (const off of [undefined, '', 'false', false]) {
-      expect(await action.resolveSurface({ externalWindow: off }, engine, 'u1', 50)).toBe(CDP);
+      expect(await action.resolveSurface({ externalWindow: off }, engine, 'u1', 50, alive)).toBe(CDP);
     }
   });
 
@@ -219,6 +240,33 @@ describe('the browser comes from the canvas', () => {
     );
     expect(config.cdpUrl).toBeNull();
     expect(config.browser).toEqual({ headless: true, allowed_domains: ['example.com'] });
+  });
+
+  it('forgets a browser that refused the connection, so a retry works', async () => {
+    // The probe closes almost all of this, but a window can still close between
+    // the probe and the attach. Without the prune, every later turn would be
+    // handed the same refused socket and the user would be stuck.
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
+
+    const guidance = action.describeLostSurface(
+      'Failed to establish CDP connection to browser: [WinError 1225] The remote computer refused the network connection',
+      CDP,
+      'u1',
+    );
+
+    expect(guidance).toMatch(/no longer open/);
+    expect(guidance).toMatch(/run the task again/);
+    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe('');
+  });
+
+  it('does not blame the browser for an unrelated failure', () => {
+    // Mislabelling a quota error as a dead window would send the user to fix
+    // the wrong thing, and would drop a perfectly good surface on the way.
+    registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
+    expect(action.describeLostSurface('429 RESOURCE_EXHAUSTED', CDP, 'u1')).toBeNull();
+    expect(action.describeLostSurface('Insufficient Balance', CDP, 'u1')).toBeNull();
+    // ...and the surface it was NOT about is still there.
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a' }).instanceId).toBe('w_a');
   });
 
   it('honours an explicitly supplied surface', async () => {

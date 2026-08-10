@@ -8,7 +8,7 @@ import AuthManager from '../../../services/auth/AuthManager.js';
 import PathManager from '../../../utils/PathManager.js';
 import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
 import { mintGatewayToken, revokeGatewayToken } from '../../../services/ai/localGatewayTokens.js';
-import { waitForSurface } from '../../../services/browserSurfaces.js';
+import { waitForSurface, forgetSurfaceByUrl } from '../../../services/browserSurfaces.js';
 import {
   ROUTE,
   resolveBrowserUseProvider,
@@ -208,7 +208,8 @@ class AIBrowserUse extends BaseAction {
         // A model the account cannot call is the most likely first failure and
         // the least self-explanatory, so name the fix rather than relaying a
         // raw vendor 400.
-        const guidance = describeModelAvailabilityError(outcome.error, providerLabel);
+        const guidance = describeModelAvailabilityError(outcome.error, providerLabel)
+          || this.describeLostSurface(outcome.error, resolved.cdpUrl, userId);
         return this.formatOutput({
           success: false,
           error: guidance || outcome.error || 'The browser agent failed without reporting a reason.',
@@ -328,7 +329,7 @@ class AIBrowserUse extends BaseAction {
    * honestly say "unless the user asks for an external window". A rule in the
    * description with no lever behind it is just a sentence.
    */
-  async resolveSurface(params, workflowEngine, userId, waitMs = 8000) {
+  async resolveSurface(params, workflowEngine, userId, waitMs = 8000, probe = undefined) {
     // Checked FIRST, ahead of cdpUrl: "give me a separate window" is a human
     // instruction, while cdpUrl is plumbing. Honouring the plumbing over the
     // person would be the wrong way round — and the two only ever disagree
@@ -346,7 +347,9 @@ class AIBrowserUse extends BaseAction {
 
     const workspaceId = workflowEngine?.workspaceState?.id || null;
     const instanceId = workflowEngine?.workspaceState?.browserInstanceId || null;
-    const surface = await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
+    const surface = probe
+      ? await waitForSurface(userId, { workspaceId, instanceId }, waitMs, 200, probe)
+      : await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
     if (surface) return surface.cdpUrl;
 
     // No window to drive — chat outside a workspace, or the desktop app is not
@@ -355,6 +358,32 @@ class AIBrowserUse extends BaseAction {
       `[Browser Agent] no browser surface is open for ${instanceId || workspaceId || 'this chat'}; launching one instead.`,
     );
     return '';
+  }
+
+  /**
+   * Recognise "the browser we attached to is gone" and make the run recoverable.
+   *
+   * The registry probes before handing an endpoint out, so this is the narrow
+   * race where a browser dies between the probe and the attach — a window closed
+   * mid-turn, a renderer reloaded. Forgetting the surface here is what makes the
+   * obvious next move ("try again") actually work, instead of failing on the
+   * same refused socket forever.
+   *
+   * @returns {string|null} Guidance, or null when this is a different failure.
+   */
+  describeLostSurface(message, cdpUrl, userId) {
+    const text = String(message || '');
+    // ECONNREFUSED reads as WinError 1225 on Windows and ECONNREFUSED elsewhere;
+    // browser-use wraps both in its own "Failed to establish CDP connection".
+    if (!/Failed to establish CDP connection|ECONNREFUSED|WinError 1225|refused the network connection/i.test(text)) {
+      return null;
+    }
+    if (!cdpUrl) return null;
+
+    forgetSurfaceByUrl(userId, cdpUrl);
+    return 'The browser window this task was driving is no longer open, so the connection was refused. '
+      + 'It has been forgotten — run the task again and it will use the Browser widget that is open now, '
+      + 'or open a fresh one.';
   }
 
   // ── provider → browser-use LLM spec ──────────────────────────────────────

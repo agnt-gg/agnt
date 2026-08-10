@@ -39,6 +39,14 @@ const pageTitle = ref('');
 const unavailable = ref('');
 let webContentsId = null;
 let cdpUrl = null;
+let heartbeat = null;
+
+// The backend registry is in memory, so a backend restart forgets every browser
+// that is currently open. This widget is the only thing that still knows this
+// surface exists, so it re-states the fact rather than assuming one
+// announcement lasts forever — without it, a chat after a backend restart finds
+// no browser and opens a separate window the user never asked for.
+const HEARTBEAT_MS = 20000;
 
 /**
  * Tell the conversation what this window is showing, so the chat can answer
@@ -100,6 +108,8 @@ async function openBridge() {
     if (result?.ok) {
       cdpUrl = result.cdpUrl;
       syncPage();
+      clearInterval(heartbeat);
+      heartbeat = setInterval(announce, HEARTBEAT_MS);
     } else {
       unavailable.value = result?.error || 'Could not open a browser bridge.';
     }
@@ -122,8 +132,11 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  clearInterval(heartbeat);
   // Withdraw the surface first: a registry entry pointing at a bridge that is
-  // about to close would send the next chat turn to a dead socket.
+  // about to close would send the next chat turn to a dead socket. This is a
+  // best-effort courtesy, not the guarantee — a reload or a crash never runs
+  // it, which is why the backend proves liveness before using an entry.
   if (props.widgetInstanceId) {
     fetch(`${API_CONFIG.BASE_URL}/browser-agent/surface/${props.widgetInstanceId}`, {
       method: 'DELETE',
