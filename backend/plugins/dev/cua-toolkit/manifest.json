@@ -1,11 +1,15 @@
 {
   "name": "cua-toolkit",
   "displayName": "Cua Computer-Use Toolkit",
-  "version": "0.3.5",
-  "description": "Autonomous desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua). Lets agents see windows, read accessibility trees + screenshots, click elements by index, type text, and run a full autonomous goal loop - all in the background without stealing your cursor or focus. Self-contained: cua-setup action=ensure installs the driver + starts the daemon in one call, and every tool auto-starts the daemon on demand.",
+  "version": "0.5.0",
+  "description": "Background desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua, verified live against 0.19.3 — \"computer-use 2.0\"). Agents drive real Windows apps WITHOUT touching your mouse or stealing focus: input routes through the accessibility layer while the driver paints its own session-coloured cursor overlay. cua-act runs a full observe→reason→act→MEASURE loop using whatever AI provider/model you have selected in chat. Deterministic verify_state postconditions replace screenshot guesswork, invoke_menu resolves native menus instead of clicking blind, and paste_text reaches editors that expose no ValuePattern.",
   "author": "Annie (AGNT)",
   "icon": "terminal",
   "homepage": "https://github.com/trycua/cua",
+  "permissions": {
+    "capabilities": ["network", "filesystem", "env-access", "dynamic-import", "spawn-process"],
+    "domains": ["localhost", "raw.githubusercontent.com", "cua.ai", "github.com", "objects.githubusercontent.com"]
+  },
   "tools": [
     {
       "type": "cua-setup",
@@ -15,97 +19,128 @@
         "category": "utility",
         "type": "cua-setup",
         "icon": "settings",
-        "description": "Install, verify, and manage the Cua Driver. ensure=ONE-CALL bootstrap (install if missing + start daemon + doctor) - run this first and you are done. Other actions: status, doctor (Session-0 check), install, serve, stop, version.",
+        "description": "Install, verify, update and diagnose the Cua Driver. ensure=ONE-CALL bootstrap (install if missing + start daemon + health probe + update check) — run this first and you are done. Also: status, doctor (environment + Session-0 check), health (end-to-end probe that exercises real capture/UIA/input paths), permissions, config (read or write persistent driver settings), tools (full driver surface), install, update, serve, stop, version.",
         "parameters": {
           "action": {
             "type": "string",
             "inputType": "select",
             "required": true,
-            "options": [
-              "ensure",
-              "status",
-              "doctor",
-              "install",
-              "serve",
-              "stop",
-              "version"
-            ],
+            "options": ["ensure", "status", "doctor", "health", "permissions", "config", "tools", "install", "update", "serve", "stop", "version"],
             "default": "ensure",
-            "description": "ensure=ONE-CALL bootstrap (install if missing + start daemon + doctor health/Session-0 probe); status=check install+daemon; doctor=full health; install=installer only; serve=start daemon; stop=stop daemon; version=print driver version."
+            "description": "ensure=one-call bootstrap; status=install+daemon; doctor=environment report + Session-0 check; health=end-to-end diagnostics that actually exercise capture/UIA/input; permissions=Windows permission check; config=read all settings (omit key) or write one (key+value, confirm=true); tools=list every driver tool; install/update/serve/stop/version=lifecycle."
+          },
+          "key": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "action=config only. Config key to write, e.g. max_image_dimension (controls how far snapshots are downscaled, which decides whether small text is legible without a zoom). Omit to read the whole config."
+          },
+          "value": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "action=config only. New value for key. Numbers and true/false are coerced automatically."
           },
           "confirm": {
             "type": "string",
             "inputType": "select",
             "required": false,
-            "options": [
-              "false",
-              "true"
-            ],
+            "options": ["false", "true"],
             "default": "false",
-            "description": "Required true for ensure/install/serve/stop (may install software / change state)."
+            "description": "Required true for ensure/install/update/serve/stop and for writing config (these install software or change persistent state)."
           }
         },
         "outputs": {
-          "success": {
-            "type": "boolean",
-            "description": "True when the requested action completed (and, for ensure, the session is interactive)."
-          },
-          "installed": {
-            "type": "boolean",
-            "description": "Whether the cua-driver binary is currently installed and resolvable."
-          },
-          "version": {
+          "success": { "type": "boolean", "description": "True when the requested action completed (and, for ensure, the session is interactive)." },
+          "installed": { "type": "boolean", "description": "Whether the cua-driver binary is installed and resolvable." },
+          "version": { "type": "string", "description": "Installed cua-driver version." },
+          "latestVersion": { "type": "string", "description": "Latest cua-driver release on GitHub (ensure action)." },
+          "updateAvailable": { "type": "boolean", "description": "True when a newer driver release exists — run action=update." },
+          "versionBefore": { "type": "string", "description": "Driver version before an update ran." },
+          "binaryPath": { "type": "string", "description": "Resolved path to the cua-driver binary." },
+          "daemon": { "type": "object", "description": "Daemon state: { running: boolean }." },
+          "daemonRunning": { "type": "boolean", "description": "Whether the daemon is running." },
+          "daemonStarted": { "type": "boolean", "description": "Whether serve started the daemon." },
+          "stopped": { "type": "boolean", "description": "Whether stop succeeded." },
+          "session0Warning": { "type": "boolean", "description": "True when the driver sits in Windows Session 0 (no interactive desktop) — every window tool will return empty." },
+          "session0Hint": { "type": "string", "description": "Remediation guidance when session0Warning is true." },
+          "report": { "type": "string", "description": "Full doctor / health / permissions / config report." },
+          "permissions": { "type": "object", "description": "Structured permission check (action=permissions)." },
+          "config": { "type": "object", "description": "Persistent driver config (action=config with no key)." },
+          "tools": { "type": "array", "description": "Every tool the installed driver exposes: { name, description } (action=tools)." },
+          "toolCount": { "type": "number", "description": "Number of driver tools available." },
+          "installerOutput": { "type": "string", "description": "Tail of installer output (install/update)." },
+          "steps": { "type": "array", "description": "Ordered bootstrap steps executed (ensure)." },
+          "hint": { "type": "string", "description": "Next-step guidance." },
+          "error": { "type": "string", "description": "Error message when success=false." }
+        }
+      }
+    },
+    {
+      "type": "cua-session",
+      "entryPoint": "./cua-session.js",
+      "schema": {
+        "title": "Cua Session (Agent Cursor & Capture Scope)",
+        "category": "utility",
+        "type": "cua-session",
+        "icon": "user",
+        "description": "Declare a named session for one agent run. This is what gives the run its OWN colour-coded cursor overlay — the driver animates that overlay to each target while your physical mouse never moves — and its capture policy. capture_scope=auto starts window-only and keeps desktop-wide capture LOCKED until you escalate explicitly. Escalation is PERMANENT for that session id. cua-act manages a session automatically; use this tool when you are driving with cua-input by hand and want the cursor and one consistent policy across calls.",
+        "parameters": {
+          "action": {
             "type": "string",
-            "description": "Installed cua-driver version (null when not installed)."
+            "inputType": "select",
+            "required": true,
+            "options": ["start", "state", "escalate", "end", "cursor_on", "cursor_off", "cursor_theme"],
+            "default": "start",
+            "description": "start=declare (idempotent; refreshes idle TTL); state=read capture policy and effective scope; escalate=unlock desktop scope PERMANENTLY for this id (confirm=true); end=remove cursor, stop recording, clear per-session config; cursor_on/cursor_off=toggle the overlay; cursor_theme=select a preinstalled theme."
           },
-          "binaryPath": {
+          "session": {
             "type": "string",
-            "description": "Resolved path to the cua-driver binary (status action)."
+            "inputType": "text",
+            "required": true,
+            "description": "Stable id for this run, e.g. \"invoice-run-1\". The cursor colour is derived from it, so concurrent runs must use different ids to stay visually distinct."
           },
-          "daemon": {
-            "type": "object",
-            "description": "Daemon state for status action: { running: boolean }."
-          },
-          "daemonRunning": {
-            "type": "boolean",
-            "description": "Whether the cua-driver daemon is running (ensure action)."
-          },
-          "daemonStarted": {
-            "type": "boolean",
-            "description": "Whether the serve action successfully started the daemon."
-          },
-          "stopped": {
-            "type": "boolean",
-            "description": "Whether the stop action successfully stopped the daemon."
-          },
-          "session0Warning": {
-            "type": "boolean",
-            "description": "True when the driver is in Windows Session 0 (no interactive desktop) — window tools will return empty."
-          },
-          "session0Hint": {
+          "captureScope": {
             "type": "string",
-            "description": "Remediation guidance when session0Warning is true."
+            "inputType": "select",
+            "required": false,
+            "options": ["auto", "window", "desktop"],
+            "default": "auto",
+            "description": "action=start only, and IMMUTABLE for the life of the session. auto=window-only until you escalate (recommended); window=strict window-only forever; desktop=full-screen capture from the outset."
           },
-          "report": {
+          "reason": {
             "type": "string",
-            "description": "Full driver doctor/health report (doctor and ensure actions)."
+            "inputType": "select",
+            "required": false,
+            "options": ["ax_tree_pixel_mismatch", "background_delivery_failed", "foreground_ineffective", "no_window_target", "other"],
+            "default": "other",
+            "description": "action=escalate only. Why the window ladder was insufficient."
           },
-          "installerOutput": {
+          "detail": { "type": "string", "inputType": "text", "required": false, "description": "action=escalate only. Short diagnostic note (max 200 chars). Never put secrets or page content here." },
+          "themeId": { "type": "string", "inputType": "text", "required": false, "description": "Preinstalled cursor theme id (action=cursor_theme, or an initial theme on start). Theme files and inline animation data are never accepted through an agent tool." },
+          "confirm": {
             "type": "string",
-            "description": "Tail of the installer output (install action)."
-          },
-          "steps": {
-            "type": "array",
-            "description": "Ordered bootstrap steps the tool executed (ensure action)."
-          },
-          "hint": {
-            "type": "string",
-            "description": "Next-step guidance for the caller."
-          },
-          "error": {
-            "type": "string",
-            "description": "Error message when success=false (null on success)."
+            "inputType": "select",
+            "required": false,
+            "options": ["false", "true"],
+            "default": "false",
+            "description": "Required true for action=escalate, because escalation permanently disables every window-scoped tool for that session id."
           }
+        },
+        "outputs": {
+          "success": { "type": "boolean", "description": "True when the session operation succeeded." },
+          "action": { "type": "string", "description": "Echoed action." },
+          "session": { "type": "string", "description": "Echoed session id." },
+          "captureScope": { "type": "string", "description": "Declared capture policy (auto | window | desktop)." },
+          "effectiveScope": { "type": "string", "description": "Scope actually in force right now — 'window' until an auto session is escalated." },
+          "desktopUnlocked": { "type": "boolean", "description": "Whether desktop-wide capture and screen-absolute actions are permitted." },
+          "escalationReason": { "type": "string", "description": "Recorded reason if this session was escalated." },
+          "active": { "type": "boolean", "description": "Whether the session is live." },
+          "revived": { "type": "boolean", "description": "True when start re-attached to an existing session rather than creating one." },
+          "themeId": { "type": "string", "description": "Cursor theme applied." },
+          "result": { "type": "object", "description": "Raw driver response." },
+          "hint": { "type": "string", "description": "Next-step guidance." },
+          "error": { "type": "string", "description": "Error message when success=false." }
         }
       }
     },
@@ -113,44 +148,46 @@
       "type": "cua-windows",
       "entryPoint": "./cua-windows.js",
       "schema": {
-        "title": "Cua List Windows",
+        "title": "Cua List Windows & Apps",
         "category": "utility",
         "type": "cua-windows",
         "icon": "grid",
-        "description": "Read-only. Enumerate all open desktop windows the driver can see, returning each window's pid, windowId, title, and app. Safe - no clicking. Auto-starts the daemon if it is down. Use a window's pid/windowId with cua-observe or cua-act.",
+        "description": "Read-only discovery. include=windows (default) enumerates every open top-level window with pid, windowId, title, app, bounds and on-screen state — the answer to \"what can I drive?\". include=apps lists apps INSTALLED as well as running, each with a launchPath you can hand straight to cua-input action=launch_app — the answer to \"is X installed?\". Safe, no clicking. Auto-starts the daemon if it is down.",
         "parameters": {
+          "include": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "options": ["windows", "apps", "both"],
+            "default": "windows",
+            "description": "windows=open windows only; apps=installed + running applications; both=one call for each."
+          },
           "filter": {
             "type": "string",
             "inputType": "text",
             "required": false,
-            "description": "Optional case-insensitive substring to filter windows by title or app name (e.g. 'chrome', 'notepad')."
+            "description": "Case-insensitive substring matched against window title / app name (e.g. 'chrome', 'calculator')."
+          },
+          "runningOnly": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "options": ["true", "false"],
+            "default": "true",
+            "description": "include=apps only. false also returns installed-but-not-running apps (a much longer list)."
           }
         },
         "outputs": {
-          "success": {
-            "type": "boolean",
-            "description": "True when list_windows ran successfully."
-          },
-          "count": {
-            "type": "number",
-            "description": "Number of windows returned (after the optional filter)."
-          },
-          "windows": {
-            "type": "array",
-            "description": "Array of window descriptors: { pid, windowId, title, app, raw }. Use pid+windowId with cua-observe / cua-input / cua-act."
-          },
-          "warning": {
-            "type": "string",
-            "description": "Set when the result is empty — usually indicates Windows Session 0 (non-interactive driver)."
-          },
-          "hint": {
-            "type": "string",
-            "description": "Suggested next step (e.g. call cua-observe with a chosen pid/windowId)."
-          },
-          "bootstrap": {
-            "type": "array",
-            "description": "Ordered self-heal steps the tool ran to bring the daemon up (empty when nothing was needed)."
-          }
+          "success": { "type": "boolean", "description": "True when enumeration succeeded." },
+          "count": { "type": "number", "description": "Number of windows returned after filtering." },
+          "windows": { "type": "array", "description": "{ pid, windowId, title, app, bounds, onScreen, zIndex }. Use pid+windowId with cua-observe / cua-input / cua-act." },
+          "minimizedCount": { "type": "number", "description": "How many returned windows are off-screen (usually minimized). A minimized window CANNOT be observed — restore it first." },
+          "apps": { "type": "array", "description": "{ name, pid, running, active, kind, launchPath, lastUsed } (include=apps/both)." },
+          "appCount": { "type": "number", "description": "Number of apps returned." },
+          "runningAppCount": { "type": "number", "description": "How many of those are currently running." },
+          "warning": { "type": "string", "description": "Set when the window list is empty — usually Windows Session 0 (non-interactive driver)." },
+          "hint": { "type": "string", "description": "Suggested next step." },
+          "bootstrap": { "type": "array", "description": "Self-heal steps run to bring the daemon up (empty when nothing was needed)." }
         }
       }
     },
@@ -158,97 +195,64 @@
       "type": "cua-observe",
       "entryPoint": "./cua-observe.js",
       "schema": {
-        "title": "Cua Observe Window",
+        "title": "Cua Observe (Window / Desktop / Zoom / Verify)",
         "category": "utility",
         "type": "cua-observe",
         "icon": "image",
-        "description": "Read-only. Capture a window's state: accessibility tree (every interactive element with its index) plus an optional screenshot rendered inline. This is the 'see the screen' call that feeds the autonomous loop. No clicks performed. Auto-starts the daemon if down.",
+        "description": "Read-only perception, four ways. mode=window (default): one app window — structured elements each carrying a per-snapshot element token, plus accessibility-tree markdown, plus a screenshot rendered inline (you always get BOTH; there is no capture mode to pick). mode=verify: DETERMINISTIC postcondition check against real window state — the honest way to ask \"did that actually work?\", because a successful action often reports only effect=unverifiable. mode=zoom: native-resolution crop for reading small text. mode=desktop: full-display capture (desktop-scope sessions only). Element tokens go STALE after the next snapshot of the same window — observe, act, re-observe.",
         "parameters": {
-          "pid": {
-            "type": "number",
-            "inputType": "number",
-            "required": true,
-            "description": "Target process id (from cua-windows)."
-          },
-          "windowId": {
-            "type": "number",
-            "inputType": "number",
-            "required": true,
-            "description": "Target window id (from cua-windows)."
-          },
-          "captureMode": {
+          "mode": {
             "type": "string",
             "inputType": "select",
             "required": false,
-            "options": [
-              "som",
-              "ax",
-              "vision"
-            ],
-            "default": "som",
-            "description": "som=tree+screenshot (default, best for reasoning); ax=tree only (cheap, no capture); vision=screenshot only (pixel-grounded)."
+            "options": ["window", "verify", "zoom", "desktop"],
+            "default": "window",
+            "description": "window=elements + tree + screenshot; verify=measure predicates against real state (needs expect or expectLabel); zoom=full-resolution crop (needs x1,y1,x2,y2); desktop=whole-screen capture, requires an escalated or desktop-scope session."
           },
-          "showImage": {
-            "type": "string",
-            "inputType": "select",
-            "required": false,
-            "options": [
-              "true",
-              "false"
-            ],
-            "default": "true",
-            "description": "If true and a screenshot was captured, render it inline in chat."
-          }
+          "pid": { "type": "number", "inputType": "number", "required": false, "description": "Target process id (from cua-windows). Required for every mode except desktop." },
+          "windowId": { "type": "number", "inputType": "number", "required": false, "description": "Target window id (from cua-windows). Required for every mode except desktop." },
+          "session": { "type": "string", "inputType": "text", "required": false, "description": "Session id from cua-session, so this observation shares the run's cursor and capture policy." },
+          "expectLabel": { "type": "string", "inputType": "text", "required": false, "description": "mode=verify shorthand: passes when some element's label contains this text (e.g. \"Display is 7\"). Covers most checks." },
+          "expect": { "type": "string", "inputType": "text", "required": false, "description": "mode=verify, full form: JSON array of 1-8 predicates AND-ed together, e.g. [{\"element\":{\"selector\":{\"role\":\"Button\",\"label_contains\":\"Save\"},\"enabled\":true}}]. Note element.exists only accepts true — absence cannot be proven." },
+          "stableSamples": { "type": "number", "inputType": "number", "required": false, "default": 1, "description": "mode=verify: consecutive satisfied samples required before returning success (1-5). Raise it for UI that flickers mid-update." },
+          "timeoutMs": { "type": "number", "inputType": "number", "required": false, "default": 4000, "description": "mode=verify: bounded wait for the predicate to become true (0-10000). 0 takes a single sample." },
+          "x1": { "type": "number", "inputType": "number", "required": false, "description": "mode=zoom: left edge, in the same pixel space as the mode=window screenshot." },
+          "y1": { "type": "number", "inputType": "number", "required": false, "description": "mode=zoom: top edge." },
+          "x2": { "type": "number", "inputType": "number", "required": false, "description": "mode=zoom: right edge. Region max width 500px; 20% padding is added on every side automatically." },
+          "y2": { "type": "number", "inputType": "number", "required": false, "description": "mode=zoom: bottom edge." },
+          "query": { "type": "string", "inputType": "text", "required": false, "description": "mode=window: case-insensitive substring that projects the tree to matching elements plus their ancestors, preserving indices and tokens. Essential for huge Electron/browser trees." },
+          "maxElements": { "type": "number", "inputType": "number", "required": false, "description": "mode=window: cap on UIA nodes walked (default 5000). Lower it for 10k+ element web apps to bound output size." },
+          "treeOnly": { "type": "string", "inputType": "select", "required": false, "options": ["false", "true"], "default": "false", "description": "mode=window: skip the screen grab and return the tree only. A PERFORMANCE knob for re-indexing before an element action — not a modality choice." },
+          "showImage": { "type": "string", "inputType": "select", "required": false, "options": ["true", "false"], "default": "true", "description": "Render the captured image inline in chat." },
+          "captureMode": { "type": "string", "inputType": "select", "required": false, "options": ["som", "ax", "vision"], "description": "DEPRECATED, kept so older calls keep working. The driver always returns tree AND screenshot; only 'ax' still means anything here (maps to treeOnly)." }
         },
         "outputs": {
-          "success": {
-            "type": "boolean",
-            "description": "True when the window state was captured."
-          },
-          "pid": {
-            "type": "number",
-            "description": "The pid that was observed."
-          },
-          "windowId": {
-            "type": "number",
-            "description": "The window id that was observed."
-          },
-          "captureMode": {
-            "type": "string",
-            "description": "Capture mode actually used: som | ax | vision."
-          },
-          "elementCount": {
-            "type": "number",
-            "description": "Number of interactive elements detected in the accessibility tree."
-          },
-          "elements": {
-            "type": "array",
-            "description": "Structured element list: each entry is { index, role, name, value }. Pass `index` to cua-input action=click."
-          },
-          "treeMarkdown": {
-            "type": "string",
-            "description": "Human-readable accessibility tree, with [element_index N] markers — good for LLM reasoning."
-          },
-          "hasScreenshot": {
-            "type": "boolean",
-            "description": "Whether a screenshot was captured (false for ax-only mode)."
-          },
-          "imageHtml": {
-            "type": "string",
-            "description": "Inline <img> tag with the screenshot embedded as a data URL (null when no screenshot)."
-          },
-          "hint": {
-            "type": "string",
-            "description": "Suggested next step (e.g. how to act on an element)."
-          },
-          "bootstrap": {
-            "type": "array",
-            "description": "Ordered self-heal steps the tool ran to bring the daemon up (empty when nothing was needed)."
-          },
-          "rawKeys": {
-            "type": "array",
-            "description": "Keys present in the underlying driver response (debugging aid)."
-          }
+          "success": { "type": "boolean", "description": "True when the observation succeeded — for mode=verify, true only when the predicates are SATISFIED." },
+          "mode": { "type": "string", "description": "Which observation was performed." },
+          "pid": { "type": "number", "description": "Observed pid." },
+          "windowId": { "type": "number", "description": "Observed window id." },
+          "snapshotId": { "type": "string", "description": "Per-snapshot handle (s########). Needed alongside elementIndex; element tokens embed it already." },
+          "elementCount": { "type": "number", "description": "Interactive elements returned." },
+          "totalElementCount": { "type": "number", "description": "Total elements before query projection / truncation." },
+          "elementsComplete": { "type": "boolean", "description": "False when the walk was truncated by maxElements." },
+          "elements": { "type": "array", "description": "{ index, token, role, label, value, enabled, selected, frame:{x,y,w,h}, parentIndex, depth }. Pass token to cua-input as elementToken." },
+          "treeMarkdown": { "type": "string", "description": "Human-readable accessibility tree with element index markers." },
+          "hasScreenshot": { "type": "boolean", "description": "Whether an image was captured." },
+          "imageHtml": { "type": "string", "description": "Inline <img> with the capture embedded as a data URL." },
+          "degraded": { "type": "boolean", "description": "True when the accessibility walk came back empty — a non-AX surface (Electron, canvas). Act by pixel off the screenshot in the same response." },
+          "degradedReason": { "type": "string", "description": "Why the observation was degraded." },
+          "escalation": { "type": "string", "description": "The driver's own recommendation when observation was imperfect, usually 'px'." },
+          "status": { "type": "string", "description": "mode=verify: satisfied | unsatisfied | unknown. UNKNOWN NEVER IMPLIES SUCCESS." },
+          "satisfied": { "type": "boolean", "description": "mode=verify: whether every predicate held." },
+          "stable": { "type": "boolean", "description": "mode=verify: whether the result held across the required consecutive samples." },
+          "predicates": { "type": "array", "description": "mode=verify: per-predicate { index, status, unknownReason, observed } — observed shows the real element the driver found." },
+          "samples": { "type": "number", "description": "mode=verify: samples taken." },
+          "elapsedMs": { "type": "number", "description": "mode=verify: time spent measuring." },
+          "screenSize": { "type": "object", "description": "mode=desktop: true screen size, so screen-absolute pixel picks land exactly." },
+          "region": { "type": "object", "description": "mode=zoom: the region that was cropped." },
+          "warning": { "type": "string", "description": "Set when the window is minimized (unobservable) or the surface is degraded." },
+          "hint": { "type": "string", "description": "Suggested next step." },
+          "bootstrap": { "type": "array", "description": "Self-heal steps run to bring the daemon up." }
         }
       }
     },
@@ -256,102 +260,82 @@
       "type": "cua-input",
       "entryPoint": "./cua-input.js",
       "schema": {
-        "title": "Cua Input (Click / Type / Hotkey)",
+        "title": "Cua Input (Click / Type / Menu / Keys / Clipboard)",
         "category": "action",
         "type": "cua-input",
         "icon": "connect",
-        "description": "Low-level primitive input on a real window. action=click clicks an element by its index (from cua-observe); type types text; hotkey presses a key combo; launch_app opens an app. Background dispatch - does NOT steal cursor/focus. Requires confirm=true.",
+        "description": "Primitive input on a real window with background delivery — no cursor warp, no focus steal, no window raise. Element actions target elements via elementToken from the LATEST cua-observe snapshot (preferred) or elementIndex+snapshotId, or window-local x/y pixels for canvas surfaces. Highlights: invoke_menu resolves a native menu path through the accessibility API and fails closed instead of clicking blind; paste_text writes the clipboard and sends Ctrl+V, which reaches editors exposing no ValuePattern (Windows 11 Notepad); set_window_frame moves/resizes with verified read-back. Every response reports the driver's closed action facts (effect/route/escalation) — note that effect=unverifiable means the driver will not overclaim, NOT that the action failed. Requires confirm=true.",
         "parameters": {
           "action": {
             "type": "string",
             "inputType": "select",
             "required": true,
-            "options": [
-              "click",
-              "type",
-              "hotkey",
-              "launch_app"
-            ],
+            "options": ["click", "double_click", "right_click", "type", "paste_text", "press_key", "hotkey", "scroll", "set_value", "drag", "invoke_menu", "clipboard_read", "clipboard_write", "set_window_frame", "launch_app", "bring_to_front", "kill_app"],
             "default": "click",
-            "description": "click=click element index; type=type_text; hotkey=key combo; launch_app=open app by name/id."
+            "description": "click/double_click/right_click=element or pixel click; type=insert text (element-addressed routes through UIA ValuePattern, required for XAML/WinUI3 apps); paste_text=clipboard + Ctrl+V, the reliable path for editors that refuse programmatic text; press_key=one key; hotkey=combination like ctrl+s; scroll=direction+amount; set_value=atomic whole-value write (dropdowns, checkboxes, sliders); drag=x,y→x2,y2; invoke_menu=native menu path, never a blind click; clipboard_read/clipboard_write; set_window_frame=move/resize one window; launch_app=open an app, URL, path or AUMID without stealing focus; bring_to_front=persistent focus proxy (also restores a minimized window); kill_app=terminate (only processes this driver launched)."
           },
-          "pid": {
-            "type": "number",
-            "inputType": "number",
-            "required": false,
-            "description": "Target pid (required for click/type/hotkey)."
-          },
-          "windowId": {
-            "type": "number",
-            "inputType": "number",
-            "required": false,
-            "description": "Target window id (required for click/type/hotkey)."
-          },
-          "elementIndex": {
-            "type": "number",
-            "inputType": "number",
-            "required": false,
-            "description": "Element index to click (action=click). Get it from cua-observe."
-          },
-          "text": {
+          "pid": { "type": "number", "inputType": "number", "required": false, "description": "Target pid (required for most actions; from cua-windows)." },
+          "windowId": { "type": "number", "inputType": "number", "required": false, "description": "Target window id. Pass it whenever the app owns more than one window — the driver refuses with ambiguous_window_target rather than guessing." },
+          "session": { "type": "string", "inputType": "text", "required": false, "description": "Session id from cua-session: gives this action the run's cursor overlay and capture policy." },
+          "elementToken": { "type": "string", "inputType": "text", "required": false, "description": "Per-snapshot element handle from cua-observe elements[].token — the PREFERRED way to target an element. Goes stale after the next snapshot of that window." },
+          "elementIndex": { "type": "number", "inputType": "number", "required": false, "description": "Element index from cua-observe. Requires snapshotId alongside it — the driver fails closed on bare indices. Prefer elementToken." },
+          "snapshotId": { "type": "string", "inputType": "text", "required": false, "description": "Snapshot handle from cua-observe (required with elementIndex)." },
+          "text": { "type": "string", "inputType": "text", "required": false, "description": "Text to type or paste; key name for press_key; \"ctrl+s\" for hotkey; \"File > Save As\" for invoke_menu; app name / AUMID / path / URL for launch_app; clipboard contents for clipboard_write." },
+          "menuPath": { "type": "array", "inputType": "text", "required": false, "description": "invoke_menu, structured form: [\"File\",\"Save As...\"]. Labels are case-sensitive after trimming and must be immediate children at each level." },
+          "keys": { "type": "array", "inputType": "text", "required": false, "description": "hotkey, structured form: [\"ctrl\",\"shift\",\"t\"]. Modifiers first, exactly one non-modifier last." },
+          "modifiers": { "type": "array", "inputType": "text", "required": false, "description": "press_key: modifier names held during the key (ctrl/shift/alt/win)." },
+          "value": { "type": "string", "inputType": "text", "required": false, "description": "Value to write (action=set_value)." },
+          "x": { "type": "number", "inputType": "number", "required": false, "description": "Window-local screenshot pixel X (pixel click, type/hotkey focus point, drag start, window frame X)." },
+          "y": { "type": "number", "inputType": "number", "required": false, "description": "Window-local screenshot pixel Y." },
+          "x2": { "type": "number", "inputType": "number", "required": false, "description": "Drag end X." },
+          "y2": { "type": "number", "inputType": "number", "required": false, "description": "Drag end Y." },
+          "width": { "type": "number", "inputType": "number", "required": false, "description": "set_window_frame: new width." },
+          "height": { "type": "number", "inputType": "number", "required": false, "description": "set_window_frame: new height." },
+          "direction": { "type": "string", "inputType": "select", "required": false, "options": ["down", "up", "left", "right"], "default": "down", "description": "Scroll direction." },
+          "amount": { "type": "number", "inputType": "number", "required": false, "default": 3, "description": "Scroll ticks 1-50." },
+          "by": { "type": "string", "inputType": "select", "required": false, "options": ["line", "page"], "default": "line", "description": "Scroll granularity." },
+          "scope": { "type": "string", "inputType": "select", "required": false, "options": ["window", "desktop"], "default": "window", "description": "desktop sends the action with screen-absolute coordinates and no pid/windowId — only valid in an escalated or desktop-scope session." },
+          "restoreClipboard": { "type": "string", "inputType": "select", "required": false, "options": ["false", "true"], "default": "false", "description": "action=paste_text: put the user's previous clipboard text back after pasting." },
+          "deliveryMode": {
             "type": "string",
-            "inputType": "text",
+            "inputType": "select",
             "required": false,
-            "description": "Text to type (action=type), key combo like 'ctrl+s' (action=hotkey), or app name/bundle id (action=launch_app)."
+            "options": ["background", "foreground"],
+            "description": "Leave unset. background (the default) never fronts, raises or warps the cursor. Pass foreground ONLY after the driver itself reported that background delivery cannot land — fronting on a guess steals the user's focus and is a bug, not a shortcut."
           },
           "confirm": {
             "type": "string",
             "inputType": "select",
             "required": true,
-            "options": [
-              "false",
-              "true"
-            ],
+            "options": ["false", "true"],
             "default": "false",
-            "description": "Safety gate. Must be true to actually dispatch input to your desktop."
+            "description": "Safety gate. Must be true to dispatch real input to your desktop."
           }
         },
         "outputs": {
-          "success": {
-            "type": "boolean",
-            "description": "True when the input action was dispatched without driver error."
-          },
-          "dispatched": {
-            "type": "boolean",
-            "description": "Whether real input was actually sent (false when blocked by confirm=false or validation)."
-          },
-          "action": {
-            "type": "string",
-            "description": "Echoed input action: click | type | hotkey | launch_app."
-          },
-          "target": {
-            "type": "object",
-            "description": "{ pid, windowId } targeted (null for launch_app)."
-          },
-          "elementIndex": {
-            "type": "number",
-            "description": "Element index that was clicked (action=click only)."
-          },
-          "text": {
-            "type": "string",
-            "description": "Echoed text payload — typed text, hotkey combo, or launched app name (action-dependent)."
-          },
-          "result": {
-            "type": "object",
-            "description": "Parsed driver response for the dispatched input."
-          },
-          "raw": {
-            "type": "string",
-            "description": "Raw driver stdout/stderr (debugging aid)."
-          },
-          "hint": {
-            "type": "string",
-            "description": "Suggested follow-up (typically re-observe to verify the effect)."
-          },
-          "error": {
-            "type": "string",
-            "description": "Error message when success=false (null on success)."
-          }
+          "success": { "type": "boolean", "description": "True when the action was dispatched and not refused." },
+          "dispatched": { "type": "boolean", "description": "Whether real input was sent." },
+          "action": { "type": "string", "description": "Echoed action." },
+          "target": { "type": "object", "description": "{ pid, windowId } targeted." },
+          "effect": { "type": "string", "description": "confirmed | partial | unverifiable | suspected_noop | refused. IMPORTANT: unverifiable means the driver cannot PROVE the effect — it is not a failure. Verify with cua-observe mode=verify." },
+          "route": { "type": "string", "description": "accessibility | synthetic_events | global_input | dom | trusted_input — which channel delivered the input." },
+          "deliveryMode": { "type": "string", "description": "background or foreground, as actually used." },
+          "refused": { "type": "boolean", "description": "True when the driver deliberately did not deliver." },
+          "code": { "type": "string", "description": "Closed refusal code, e.g. stale_element_token, ambiguous_window_target, menu_path_unavailable, desktop_escalation_required." },
+          "escalation": { "type": "string", "description": "The driver's instruction for what to try next: pixel | foreground | page | session. Never auto-retried." },
+          "escalationReason": { "type": "string", "description": "Why the escalation was suggested." },
+          "clipboardText": { "type": "string", "description": "Clipboard contents (action=clipboard_read)." },
+          "clipboardReplaced": { "type": "boolean", "description": "True when paste_text overwrote the user's clipboard." },
+          "clipboardRestored": { "type": "boolean", "description": "True when the previous clipboard text was put back." },
+          "launchedPid": { "type": "number", "description": "pid of the app that was launched (action=launch_app)." },
+          "windows": { "type": "array", "description": "Windows the launched app already owns." },
+          "landedOnTarget": { "type": "boolean", "description": "action=bring_to_front: whether Windows actually allowed the foreground swap." },
+          "menuPath": { "type": "array", "description": "Menu path that was resolved." },
+          "result": { "type": "object", "description": "Parsed driver response." },
+          "raw": { "type": "string", "description": "Raw driver output (debugging aid, truncated)." },
+          "summary": { "type": "string", "description": "One-line human-readable outcome." },
+          "hint": { "type": "string", "description": "Concrete next step derived from the driver's own verdict." },
+          "error": { "type": "string", "description": "Error message when success=false." }
         }
       }
     },
@@ -363,125 +347,43 @@
         "category": "action",
         "type": "cua-act",
         "icon": "loop",
-        "description": "High-level autonomous loop. Give a natural-language goal and a target window; the tool observes (tree+screenshot) and returns the current state plus a structured plan for the calling agent to drive the observe/reason/act/verify loop. maxSteps caps actions. dryRun returns the plan without executing. Requires confirm=true to execute real input.",
+        "description": "FULLY AUTONOMOUS computer-use loop. Give a natural-language goal and a target window; the tool runs observe→reason→act→MEASURE itself, reasoning with your SESSION-DEFAULT AI provider/model (whatever is selected in chat — every AGNT provider works, including the OAuth/CLI ones). It declares its own driver session, so a coloured agent cursor shows the work while your real mouse never moves, and ends that session even on abort. Each step takes a fresh snapshot, the model picks ONE action as JSON, the driver dispatches in the background, and any postcondition the model states is MEASURED against real window state rather than eyeballed. Set successContains and 'done' will be REJECTED until the driver can actually prove it. Stops on done/fail/maxSteps/refusal-stall. dryRun=true previews the first action without dispatching.",
         "parameters": {
-          "goal": {
-            "type": "string",
-            "inputType": "text",
-            "required": true,
-            "description": "Natural-language objective, e.g. 'open the File menu and click Save As'."
-          },
-          "pid": {
-            "type": "number",
-            "inputType": "number",
-            "required": true,
-            "description": "Target pid (from cua-windows)."
-          },
-          "windowId": {
-            "type": "number",
-            "inputType": "number",
-            "required": true,
-            "description": "Target window id (from cua-windows)."
-          },
-          "maxSteps": {
-            "type": "number",
-            "inputType": "number",
-            "required": false,
-            "default": 8,
-            "minimum": 1,
-            "maximum": 50,
-            "description": "Maximum input actions before stopping."
-          },
-          "dryRun": {
-            "type": "string",
-            "inputType": "select",
-            "required": false,
-            "options": [
-              "true",
-              "false"
-            ],
-            "default": "true",
-            "description": "If true, return the observed state + planned first action WITHOUT executing (safe planning mode)."
-          },
-          "confirm": {
-            "type": "string",
-            "inputType": "select",
-            "required": true,
-            "options": [
-              "false",
-              "true"
-            ],
-            "default": "false",
-            "description": "Safety gate. Must be true (and dryRun=false) to actually drive the desktop."
-          }
+          "goal": { "type": "string", "inputType": "text", "required": true, "description": "Natural-language objective, e.g. 'compute 7 times 6 and leave the result on screen'." },
+          "pid": { "type": "number", "inputType": "number", "required": true, "description": "Target pid (from cua-windows)." },
+          "windowId": { "type": "number", "inputType": "number", "required": true, "description": "Target window id (from cua-windows)." },
+          "successContains": { "type": "string", "inputType": "text", "required": false, "description": "STRONGLY RECOMMENDED. Text that must appear in some element's label once the goal is genuinely achieved (e.g. \"Display is 42\"). The driver measures it against real state, and the agent's claim of completion is rejected until it holds. This is what turns \"the model thinks it worked\" into proof." },
+          "maxSteps": { "type": "number", "inputType": "number", "required": false, "default": 12, "minimum": 1, "maximum": 50, "description": "Maximum loop iterations (each = one snapshot + one model decision + one action)." },
+          "stepDelayMs": { "type": "number", "inputType": "number", "required": false, "default": 600, "description": "Pause after each action so the UI settles before the verification snapshot (0-10000)." },
+          "showCursor": { "type": "string", "inputType": "select", "required": false, "options": ["true", "false"], "default": "true", "description": "Declare a driver session so the run gets its own animated cursor overlay. This never moves your physical pointer; false runs cursor-less with nothing to watch." },
+          "session": { "type": "string", "inputType": "text", "required": false, "description": "Reuse a specific session id (e.g. one you started with cua-session). Defaults to a unique id per run so concurrent runs stay visually distinct." },
+          "dryRun": { "type": "string", "inputType": "select", "required": false, "options": ["false", "true"], "default": "false", "description": "If true: one observe + one model decision, returned WITHOUT dispatching any input (safe preview)." },
+          "provider": { "type": "string", "inputType": "text", "required": false, "description": "Fallback AI provider when there is NO session context (workflows/API). From chat the session's provider is authoritative and this is ignored." },
+          "model": { "type": "string", "inputType": "text", "required": false, "description": "Fallback model when there is no session context." },
+          "confirm": { "type": "string", "inputType": "select", "required": true, "options": ["false", "true"], "default": "false", "description": "Safety gate. Must be true (with dryRun=false) to actually drive the desktop." }
         },
         "outputs": {
-          "success": {
-            "type": "boolean",
-            "description": "True when the window state was observed and a plan was produced."
-          },
-          "goal": {
-            "type": "string",
-            "description": "Echoed natural-language objective."
-          },
-          "pid": {
-            "type": "number",
-            "description": "The pid that was observed/targeted."
-          },
-          "windowId": {
-            "type": "number",
-            "description": "The window id that was observed/targeted."
-          },
-          "dryRun": {
-            "type": "boolean",
-            "description": "Whether this call was a dry run (planning only, no input dispatched)."
-          },
-          "canExecute": {
-            "type": "boolean",
-            "description": "True when dryRun=false AND confirm=true — cua-input may now drive the desktop."
-          },
-          "elementCount": {
-            "type": "number",
-            "description": "Number of interactive elements detected in the accessibility tree."
-          },
-          "elements": {
-            "type": "array",
-            "description": "Structured element list: { index, role, name, value }."
-          },
-          "treeMarkdown": {
-            "type": "string",
-            "description": "Human-readable accessibility tree with [element_index N] markers."
-          },
-          "hasScreenshot": {
-            "type": "boolean",
-            "description": "Whether a screenshot was captured for this observation."
-          },
-          "imageHtml": {
-            "type": "string",
-            "description": "Inline <img> tag with the screenshot embedded as a data URL."
-          },
-          "plan": {
-            "type": "object",
-            "description": "Structured plan envelope: { goal, target, maxSteps, mode, elementsAvailable, instructionsForAgent }. Drives the observe/reason/act/verify loop."
-          },
-          "note": {
-            "type": "string",
-            "description": "Human-readable status note describing the current mode (dry-run / live / blocked)."
-          },
-          "bootstrap": {
-            "type": "array",
-            "description": "Ordered self-heal steps the tool ran to bring the daemon up (empty when nothing was needed)."
-          }
+          "success": { "type": "boolean", "description": "True when the goal completed (or the dry-run preview succeeded)." },
+          "status": { "type": "string", "description": "completed | failed | max_steps | dry_run | blocked | error." },
+          "goal": { "type": "string", "description": "Echoed objective." },
+          "pid": { "type": "number", "description": "Target pid." },
+          "windowId": { "type": "number", "description": "Target window id." },
+          "session": { "type": "string", "description": "Driver session id that owned the cursor for this run (null when showCursor=false)." },
+          "cursorShown": { "type": "boolean", "description": "Whether the agent cursor overlay was active." },
+          "provider": { "type": "string", "description": "AI provider that drove the loop." },
+          "model": { "type": "string", "description": "Model that drove the loop." },
+          "providerSource": { "type": "string", "description": "'session default' when the chat selection drove it, 'params/fallback' otherwise." },
+          "stepsTaken": { "type": "number", "description": "Loop iterations executed." },
+          "steps": { "type": "array", "description": "Full transcript: { step, action, detail, reason, snapshotId, effect, route, outcome, verified } per iteration." },
+          "goalVerified": { "type": "object", "description": "Independent final measurement of successContains against real window state — computed regardless of what the agent claimed." },
+          "foregroundEscalated": { "type": "boolean", "description": "True if any step had to escalate to foreground delivery (a brief focus swap)." },
+          "summary": { "type": "string", "description": "Final summary — what was accomplished or why it stopped." },
+          "imageHtml": { "type": "string", "description": "Inline <img> of the FINAL window state." },
+          "note": { "type": "string", "description": "Human-readable status line." },
+          "bootstrap": { "type": "array", "description": "Self-heal steps run to bring the daemon up." },
+          "error": { "type": "string", "description": "Error message when status=error/blocked." }
         }
       }
     }
-  ],
-  "permissions": {
-    "capabilities": [
-      "env-access",
-      "filesystem",
-      "spawn-process"
-    ],
-    "domains": []
-  }
+  ]
 }

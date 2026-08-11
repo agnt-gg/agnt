@@ -1,8 +1,8 @@
 {
   "name": "cua-toolkit",
-  "version": "0.3.4",
+  "version": "0.5.0",
   "type": "module",
-  "description": "AGNT plugin: autonomous desktop computer-use via the Cua Driver. Auto-installs the native driver on plugin install.",
+  "description": "AGNT plugin: background desktop computer-use via the Cua Driver 0.19.x. Drives real Windows apps without touching your mouse or stealing focus. Auto-installs the native driver on plugin install.",
   "main": "cua-setup.js",
   "license": "MIT",
   "scripts": {

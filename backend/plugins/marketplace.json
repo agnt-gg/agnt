@@ -1490,20 +1490,23 @@
       "name": "cua-toolkit",
       "displayName": "Cua Computer-Use Toolkit",
       "icon": "terminal",
-      "version": "0.3.5",
-      "description": "Autonomous desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua). Lets agents see windows, read accessibility trees + screenshots, click elements by index, type text, and run a full autonomous goal loop — all in the background without stealing your cursor or focus. Self-contained: cua-setup action=ensure installs the driver + starts the daemon in one call.",
+      "version": "0.5.0",
+      "description": "Background desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua, verified live against 0.19.3 — \"computer-use 2.0\"). Agents drive real Windows apps WITHOUT touching your mouse or stealing focus: input routes through the accessibility layer while the driver paints its own session-coloured cursor overlay. cua-act runs a full observe→reason→act→MEASURE loop using whatever AI provider/model you have selected in chat. Deterministic verify_state postconditions replace screenshot guesswork, invoke_menu resolves native menus instead of clicking blind, and paste_text reaches editors that expose no ValuePattern.",
       "author": "Annie (AGNT)",
       "homepage": "https://github.com/trycua/cua",
       "downloadUrl": "file://marketplace-default/cua-toolkit.agnt",
-      "size": 13184,
+      "size": 48129,
       "tags": [
         "cua",
         "computer-use",
         "desktop",
         "automation",
         "accessibility",
-        "screenshot",
-        "autonomous"
+        "background",
+        "no-focus-steal",
+        "agent-cursor",
+        "verification",
+        "windows"
       ],
       "category": "utility",
       "tools": [
@@ -1511,49 +1514,64 @@
           "type": "cua-setup",
           "schema": {
             "title": "Cua Setup & Doctor",
-            "description": "Install, verify, and manage the Cua Driver. ensure=ONE-CALL bootstrap (install if missing + start daemon + doctor). Other actions: status, doctor, install, serve, stop, version."
+            "description": "Install, verify, update and diagnose the Cua Driver. ensure=ONE-CALL bootstrap (install if missing + start daemon + health probe + update check) — run this first and you are done. Also: status, doctor (environment + Session-0 check), health (end-to-end probe that exercises real capture/UIA/input paths), permissions, config (read or write persistent driver settings), tools (full driver surface), install, update, serve, stop, version."
+          }
+        },
+        {
+          "type": "cua-session",
+          "schema": {
+            "title": "Cua Session (Agent Cursor & Capture Scope)",
+            "description": "Declare a named session for one agent run. This is what gives the run its OWN colour-coded cursor overlay — the driver animates that overlay to each target while your physical mouse never moves — and its capture policy. capture_scope=auto starts window-only and keeps desktop-wide capture LOCKED until you escalate explicitly. Escalation is PERMANENT for that session id. cua-act manages a session automatically; use this tool when you are driving with cua-input by hand and want the cursor and one consistent policy across calls."
           }
         },
         {
           "type": "cua-windows",
           "schema": {
-            "title": "Cua List Windows",
-            "description": "Read-only. Enumerate open desktop windows the driver can see, returning each window's pid, windowId, title, and app."
+            "title": "Cua List Windows & Apps",
+            "description": "Read-only discovery. include=windows (default) enumerates every open top-level window with pid, windowId, title, app, bounds and on-screen state — the answer to \"what can I drive?\". include=apps lists apps INSTALLED as well as running, each with a launchPath you can hand straight to cua-input action=launch_app — the answer to \"is X installed?\". Safe, no clicking. Auto-starts the daemon if it is down."
           }
         },
         {
           "type": "cua-observe",
           "schema": {
-            "title": "Cua Observe Window",
-            "description": "Read-only. Capture a window's accessibility tree (every interactive element with its index) plus an inline screenshot. Feeds the autonomous loop."
+            "title": "Cua Observe (Window / Desktop / Zoom / Verify)",
+            "description": "Read-only perception, four ways. mode=window (default): one app window — structured elements each carrying a per-snapshot element token, plus accessibility-tree markdown, plus a screenshot rendered inline (you always get BOTH; there is no capture mode to pick). mode=verify: DETERMINISTIC postcondition check against real window state — the honest way to ask \"did that actually work?\", because a successful action often reports only effect=unverifiable. mode=zoom: native-resolution crop for reading small text. mode=desktop: full-display capture (desktop-scope sessions only). Element tokens go STALE after the next snapshot of the same window — observe, act, re-observe."
           }
         },
         {
           "type": "cua-input",
           "schema": {
-            "title": "Cua Input (Click / Type / Hotkey)",
-            "description": "Low-level primitive input on a real window: click by element index, type text, press hotkeys, launch apps. Background dispatch — does not steal cursor/focus. Requires confirm=true."
+            "title": "Cua Input (Click / Type / Menu / Keys / Clipboard)",
+            "description": "Primitive input on a real window with background delivery — no cursor warp, no focus steal, no window raise. Element actions target elements via elementToken from the LATEST cua-observe snapshot (preferred) or elementIndex+snapshotId, or window-local x/y pixels for canvas surfaces. Highlights: invoke_menu resolves a native menu path through the accessibility API and fails closed instead of clicking blind; paste_text writes the clipboard and sends Ctrl+V, which reaches editors exposing no ValuePattern (Windows 11 Notepad); set_window_frame moves/resizes with verified read-back. Every response reports the driver's closed action facts (effect/route/escalation) — note that effect=unverifiable means the driver will not overclaim, NOT that the action failed. Requires confirm=true."
           }
         },
         {
           "type": "cua-act",
           "schema": {
             "title": "Cua Autonomous Act",
-            "description": "High-level autonomous loop. Give a natural-language goal and a target window; tool observes and returns a structured plan for the agent to drive the observe/reason/act/verify loop. dryRun by default; requires confirm=true to execute."
+            "description": "FULLY AUTONOMOUS computer-use loop. Give a natural-language goal and a target window; the tool runs observe→reason→act→MEASURE itself, reasoning with your SESSION-DEFAULT AI provider/model (whatever is selected in chat — every AGNT provider works, including the OAuth/CLI ones). It declares its own driver session, so a coloured agent cursor shows the work while your real mouse never moves, and ends that session even on abort. Each step takes a fresh snapshot, the model picks ONE action as JSON, the driver dispatches in the background, and any postcondition the model states is MEASURED against real window state rather than eyeballed. Set successContains and 'done' will be REJECTED until the driver can actually prove it. Stops on done/fail/maxSteps/refusal-stall. dryRun=true previews the first action without dispatching."
           }
         }
       ],
-      "integrity": "sha256-T96cCkPuKw+m+41Rk0ijRSwk/KzCT7gA+PDYfWiF7jk=",
+      "integrity": "sha256-wWjUH1P14wJ/fs9MoKgu056Te7xllOhpuutx60cX5GY=",
       "trustTier": "official",
       "declaredPermissions": [
+        "domain:cua.ai",
+        "domain:github.com",
+        "domain:localhost",
+        "domain:objects.githubusercontent.com",
+        "domain:raw.githubusercontent.com",
+        "dynamic-import",
         "env-access",
         "filesystem",
+        "network",
         "spawn-process"
       ],
       "detectedCapabilities": [
         "filesystem",
         "spawn-process",
-        "env-access"
+        "env-access",
+        "network"
       ]
     },
     {

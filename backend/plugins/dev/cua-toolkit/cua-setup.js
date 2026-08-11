@@ -1,7 +1,7 @@
 // cua-setup.js — install, verify, and manage the Cua Driver daemon.
 import {
-  asBool, resolveDriverPath, runDriver, detectSession0,
-  ensureReady, isInstalled, installDriver, startDaemon, isDaemonRunning,
+  asBool, resolveDriverPath, runDriver, detectSession0, parseDriverJson,
+  ensureReady, isInstalled, installDriver, startDaemon, isDaemonRunning, callTool,
 } from './lib/driver.js';
 
 class CuaSetup {
@@ -26,10 +26,14 @@ class CuaSetup {
           const docText = `${doc.stdout}\n${doc.stderr}`;
           const session0 = detectSession0(docText);
           const ver = await runDriver('--version', null, { timeoutMs: 8000 });
+          const upd = await runDriver('check_for_update', {}, { timeoutMs: 15000 });
+          const updJson = (() => { try { return JSON.parse(upd.stdout); } catch { return null; } })();
           return {
             success: !session0,
             installed: true,
             version: ver.ok ? ver.stdout.trim() : null,
+            latestVersion: updJson?.latest_version || null,
+            updateAvailable: updJson?.update_available === true,
             daemonRunning: boot.daemonRunning,
             session0Warning: session0,
             steps: boot.steps,
@@ -82,6 +86,27 @@ class CuaSetup {
           };
         }
 
+        // Update = stop daemon → run installer (idempotent, pulls latest release) → restart daemon.
+        case 'update': {
+          if (!confirm) return { success: false, error: 'Refusing to update driver without confirm=true.' };
+          if (!isInstalled()) return { success: false, error: 'Not installed. Run action="ensure" (confirm=true) instead.' };
+          const before = await runDriver('--version', null, { timeoutMs: 8000 });
+          await runDriver('stop', null, { timeoutMs: 8000 });
+          const ins = await installDriver();
+          await startDaemon();
+          const after = await runDriver('--version', null, { timeoutMs: 10000 });
+          const running = await isDaemonRunning();
+          return {
+            success: ins.ok && after.ok,
+            installed: isInstalled(),
+            versionBefore: before.ok ? before.stdout.trim() : null,
+            version: after.ok ? after.stdout.trim() : null,
+            daemonRunning: running,
+            installerOutput: ins.output.slice(-2500),
+            hint: running ? 'Driver updated and daemon restarted.' : 'Driver updated but daemon did not confirm running — run action="serve".',
+          };
+        }
+
         case 'install': {
           if (!confirm) return { success: false, error: 'Refusing to run installer without confirm=true.' };
           const ins = await installDriver();
@@ -110,8 +135,63 @@ class CuaSetup {
           return { success: r.ok, stopped: r.ok, raw: r.stdout || r.stderr };
         }
 
+        // ── 0.19 diagnostics ──────────────────────────────────────────────
+        // health_report is a single-call end-to-end probe (capture, UIA walk,
+        // input routing, browser endpoints) — strictly more than `doctor`,
+        // which only reports the environment.
+        case 'health': {
+          const o = await callTool('health_report', {}, { timeoutMs: 90000 });
+          return {
+            success: !o.refused && o.parsed,
+            report: o.json ? JSON.stringify(o.json, null, 2) : o.raw,
+            result: o.json,
+            error: o.refused ? o.summary : null,
+            hint: 'Use this when a tool behaves oddly — it exercises the real paths rather than just describing the environment like action="doctor".',
+          };
+        }
+
+        case 'permissions': {
+          const o = await callTool('check_permissions', {}, { timeoutMs: 30000 });
+          return {
+            success: !o.refused,
+            permissions: o.json,
+            report: o.json ? JSON.stringify(o.json, null, 2) : o.raw,
+            error: o.refused ? o.summary : null,
+            hint: 'Windows has no TCC equivalent: normal use needs no elevation. Elevation only matters for a system-wide autostart task, and UIAccess only for foreground escalation on stubborn legacy apps.',
+          };
+        }
+
+        // Persistent driver config (e.g. max_image_dimension, which downscales
+        // snapshots before encoding and therefore decides whether small text is
+        // legible without a zoom).
+        case 'config': {
+          const key = String(params?.key || '').trim();
+          const value = params?.value;
+          if (!key) {
+            const o = await callTool('get_config', {}, { timeoutMs: 15000 });
+            return { success: !o.refused, config: o.json, report: o.json ? JSON.stringify(o.json, null, 2) : o.raw, error: o.refused ? o.summary : null };
+          }
+          if (value === undefined || value === '') return { success: false, error: 'Pass value to set a config key, or omit key to read the whole config.' };
+          if (!confirm) return { success: false, error: 'Writing persistent driver config requires confirm=true — it affects every future run, not just this one.' };
+          const num = Number(value);
+          const coerced = String(value) === 'true' ? true : String(value) === 'false' ? false : (Number.isFinite(num) && String(num) === String(value).trim() ? num : String(value));
+          const o = await callTool('set_config', { key, value: coerced }, { timeoutMs: 15000 });
+          return { success: !o.refused, key, value: coerced, result: o.json, error: o.refused ? o.summary : null };
+        }
+
+        case 'tools': {
+          const r = await runDriver('list-tools', null, { timeoutMs: 20000 });
+          const lines = (r.stdout || '').split(/\r?\n/).filter(Boolean);
+          return {
+            success: r.ok,
+            toolCount: lines.length,
+            tools: lines.map((l) => { const i = l.indexOf(':'); return i > 0 ? { name: l.slice(0, i), description: l.slice(i + 1).trim() } : { name: l, description: '' }; }),
+            hint: 'The full driver surface. This plugin wraps the desktop-automation subset; the browser_* family is deliberately not wrapped — AGNT drives browsers through its own Browser Agent.',
+          };
+        }
+
         default:
-          return { success: false, error: `Unknown action: ${action}` };
+          return { success: false, error: `Unknown action: ${action}. Valid: ensure, status, doctor, health, permissions, config, tools, install, update, serve, stop, version.` };
       }
     } catch (e) {
       return { success: false, error: e?.message || String(e) };
