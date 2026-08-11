@@ -29,7 +29,20 @@ import GrokBuildCliSessionManager from '../ai/GrokBuildCliSessionManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
 import CodexCliSessionManager from '../ai/CodexCliSessionManager.js';
 import CursorCliService from '../ai/CursorCliService.js';
+import { getProvidersWithCapability } from '../ai/providerConfigs.js';
+import { getImageGenProviders } from '../ai/ProviderRegistry.js';
 import jwt from 'jsonwebtoken';
+
+/**
+ * Providers that can generate images, from the registry.
+ *
+ * Computed once at module load so the tool SCHEMA the model sees and the
+ * runtime check in the handler cannot disagree. They previously did: the enum
+ * offered 'openai-codex', which supportsImageGeneration() denies, so the model
+ * could pick a provider that was guaranteed to be rejected — and the tool
+ * description advertised it in prose too.
+ */
+const IMAGE_GEN_PROVIDER_KEYS = getImageGenProviders().map((p) => p.provider);
 import ParameterResolver from '../../workflow/ParameterResolver.js';
 import CustomToolModel from '../../models/CustomToolModel.js';
 import { runCustomTool, isCustomToolSuccess, toToolSchema } from './customToolRunner.js';
@@ -4198,12 +4211,22 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
       try {
         const normalizedProvider = resolvedProvider.toLowerCase();
-        // Providers `generate-with-ai-llm.handleVision` knows how to dispatch.
-        const supportedProviders = [
-          'openai', 'openai-codex', 'anthropic', 'claude-code',
-          'gemini', 'gemini-cli', 'antigravity', 'grokai', 'groq', 'deepseek', 'kimi', 'kimi-code',
-          'openrouter', 'togetherai', 'zai', 'minimax', 'local',
-        ];
+        // WHO CAN DO VISION IS A REGISTRY QUESTION.
+        //
+        // This was a hand-maintained array, and it had drifted: measured
+        // 2026-08-11 it was wrong in 6 of 17 entries. It BLOCKED cerebras and
+        // chutes, which declare vision, and ALLOWED deepseek, minimax and
+        // local, which do not — so a capable provider was refused outright
+        // while three incapable ones were sent an image and failed at the API
+        // with a far less useful error.
+        //
+        // Gated at the PROVIDER level rather than per-model on purpose:
+        // supportsVision(provider, model) returns false for a model the
+        // registry has not learned yet, so gating on it would block a
+        // brand-new vision model on its launch day. The provider's own API is
+        // the right thing to reject an incapable model, and it says so
+        // precisely.
+        const supportedProviders = getProvidersWithCapability('vision').map((p) => p.key);
         if (!supportedProviders.includes(normalizedProvider)) {
           return JSON.stringify({
             success: false,
@@ -4329,14 +4352,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             },
             provider: {
               type: 'string',
-              enum: ['gemini', 'grokai', 'openai', 'openai-codex'],
+              enum: IMAGE_GEN_PROVIDER_KEYS,
               description:
-                "AI provider to use for image generation. Options: 'gemini' (Google), 'grokai' (Grok), 'openai' or 'openai-codex' (DALL-E). If not specified, defaults to 'openai'.",
+                `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
             },
             model: {
               type: 'string',
               description:
-                "Specific model to use. OpenAI: 'dall-e-3'. Gemini: 'nano-banana-pro-preview'. Grok: 'grok-4-1-fast-reasoning'. If not specified, uses provider's default model.",
+                "Specific image model. If omitted, the provider's current default is used. The handler validates this against the provider's live model list, so naming a model that no longer exists is reported rather than silently substituted.",
             },
             numberOfImages: {
               type: 'number',

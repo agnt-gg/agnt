@@ -32,9 +32,12 @@ const BACKEND_SRC = path.resolve(__dirname, '../../');
 /**
  * A direct TEXT-GENERATION call against a provider SDK.
  *
- * Image generation is deliberately excluded: it is a genuinely different API
- * with no chat semantics, no prompt cache and no tool loop, so routing it
- * through a chat adapter would buy nothing.
+ * Image generation is excluded from THIS rule — it is a genuinely different
+ * API with no chat semantics, no prompt cache and no tool loop, so routing it
+ * through a chat adapter would buy nothing. It gets its own containment rule
+ * below instead of no rule at all, which is what it had before: the exclusion
+ * was read as "unaudited", and the image path accumulated a private provider
+ * table, a hardcoded base URL and a model id that ignored the user's choice.
  */
 const DIRECT_TEXT_CALL = new RegExp([
   // OpenAI-compatible, Anthropic, and the Responses API.
@@ -111,6 +114,72 @@ function scan() {
   walk(BACKEND_SRC);
   return { offenders, seen };
 }
+
+/**
+ * A direct IMAGE-GENERATION call against a provider SDK.
+ *
+ * Deliberately narrow: `.images.generate(` / `.images.edit(` and Gemini's
+ * image path. The point is not to forbid these — something must call them —
+ * but to keep them in ONE file, so the next image provider is added beside the
+ * others instead of in a fresh copy that misses the registry lookups.
+ */
+const DIRECT_IMAGE_CALL =
+  /\b\w+\s*\.\s*images\s*\.\s*(?:generate|edit|createVariation)\s*\(/;
+
+/** Files allowed to call an image endpoint directly. */
+const IMAGE_ALLOWED = new Map([
+  [
+    'tools/library/actions/generate-with-ai-llm.js',
+    'THE image boundary. handleImageGeneration dispatches via IMAGE_ROUTES, whose '
+    + 'keys are pinned equal to the registry\'s image-capable providers. The '
+    + 'orchestrator\'s generate_image and analyze_image tools both delegate here '
+    + 'rather than reimplementing it.',
+  ],
+]);
+
+function scanImages() {
+  const offenders = [];
+  const seen = new Set();
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', 'dist', '.git'].includes(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.js$/.test(entry.name) || /\.(test|spec)\.js$/.test(entry.name)) continue;
+      const rel = path.relative(BACKEND_SRC, full).replace(/\\/g, '/');
+      fs.readFileSync(full, 'utf8').split('\n').forEach((line, i) => {
+        if (!DIRECT_IMAGE_CALL.test(line)) return;
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        seen.add(rel);
+        if (!IMAGE_ALLOWED.has(rel)) offenders.push(`${rel}:${i + 1}  ${line.trim().slice(0, 90)}`);
+      });
+    }
+  };
+  walk(BACKEND_SRC);
+  return { offenders, seen };
+}
+
+describe('image generation calls are contained', () => {
+  const { offenders, seen } = scanImages();
+
+  it('ANTI-VACUITY: the image detector finds the known call site', () => {
+    expect(seen.has('tools/library/actions/generate-with-ai-llm.js')).toBe(true);
+  });
+
+  it('no unlisted module calls an image endpoint directly', () => {
+    expect(
+      offenders,
+      'Add it to generate-with-ai-llm.js IMAGE_ROUTES. A second image implementation '
+      + 'misses the registry model/default lookups, which is how grok image generation '
+      + 'came to ignore the requested model entirely.'
+    ).toEqual([]);
+  });
+
+  it('the image allow-list has no stale entries', () => {
+    const stale = [...IMAGE_ALLOWED.keys()].filter((f) => !seen.has(f));
+    expect(stale, 'remove these — they no longer call an image endpoint').toEqual([]);
+  });
+});
 
 describe('provider SDK calls are contained', () => {
   const { offenders, seen } = scan();

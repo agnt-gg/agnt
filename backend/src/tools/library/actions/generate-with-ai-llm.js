@@ -9,158 +9,49 @@ import GeminiCliAuthManager from '../../../services/auth/GeminiCliAuthManager.js
 import AntigravityAuthManager from '../../../services/auth/AntigravityAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
-import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels } from '../../../services/ai/providerConfigs.js';
+import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
+import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
 
-const PROVIDER_CONFIG = {
-  deepseek: {
-    baseURL: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-chat',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  gemini: {
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/',
-    defaultModel: 'gemini-1.5-flash',
-    supportsVision: true,
-    supportsImageGen: true,
-    supportsImageEdit: true,
-    imageModels: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'nano-banana-pro-preview'],
-  },
-  // Gemini CLI / Antigravity go through the cloudcode-pa OAuth gateway via
-  // createLlmClient + createLlmAdapter (PRD-107) — never PROVIDER_CONFIG.baseURL.
-  // Neither supports image generation (the gateway serves text/vision only);
-  // supportsImageGen: false makes handleImageGeneration reject them cleanly.
-  'gemini-cli': {
-    defaultModel: 'gemini-2.5-pro',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  antigravity: {
-    defaultModel: 'gemini-3.5-flash-low',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  grokai: {
-    baseURL: 'https://api.x.ai/v1/',
-    defaultModel: 'grok-beta',
-    supportsVision: true,
-    supportsImageGen: true,
-    supportsImageEdit: false,
-    imageModels: ['grok-2-image'],
-  },
-  groq: {
-    baseURL: 'https://api.groq.com/openai/v1',
-    defaultModel: 'mixtral-8x7b-32768',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  local: {
-    baseURL: 'http://127.0.0.1:1234/v1',
-    defaultModel: 'llama-3.2-1b-instruct',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  togetherai: {
-    baseURL: 'https://api.together.xyz/v1',
-    defaultModel: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  openai: {
-    baseURL: undefined,
-    defaultModel: 'gpt-4o-mini',
-    supportsVision: true,
-    supportsImageGen: true,
-    supportsImageEdit: true,
-    imageModels: ['dall-e-2', 'dall-e-3', 'gpt-image-1'],
-  },
-  'openai-codex': {
-    // Codex never goes through PROVIDER_CONFIG.baseURL — it must use
-    // createLlmClient + createLlmAdapter so the OAuth token, ChatGPT-Account-ID
-    // header, and CodexResponsesAdapter are all in play. baseURL/defaultModel
-    // are intentionally omitted so any callsite that tries to use them throws.
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  // Subscription CLI transports (local grok / cursor-agent processes). Like
-  // codex, they must come from createLlmClient — there is no HTTP path at all.
-  // Text-only: the CLIs accept no image input.
-  'grok-build': {
-    supportsVision: false,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  'cursor-cli': {
-    supportsVision: false,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  anthropic: {
-    baseURL: undefined,
-    defaultModel: 'claude-3-5-sonnet-20240620',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  'claude-code': {
-    baseURL: undefined,
-    defaultModel: 'claude-sonnet-4-5-20250929',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  cerebras: {
-    baseURL: 'https://api.cerebras.ai/v1',
-    defaultModel: 'llama-3.3-70b',
-    supportsVision: false,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  openrouter: {
-    baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-3.5-turbo',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  kimi: {
-    baseURL: 'https://api.moonshot.ai/v1',
-    defaultModel: 'kimi-k2.5',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  minimax: {
-    baseURL: 'https://api.minimax.io/v1',
-    defaultModel: 'MiniMax-M2.1',
-    supportsVision: false,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  zai: {
-    baseURL: 'https://api.z.ai/api/paas/v4',
-    defaultModel: 'GLM-4.7',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-  // Fallback if provider is missing or doesn't match any key above
-  default: {
-    baseURL: undefined,
-    defaultModel: 'gpt-4o-mini',
-    supportsVision: true,
-    supportsImageGen: false,
-    supportsImageEdit: false,
-  },
-};
+/**
+ * Provider facts come from the registry. This file used to carry its own copy.
+ *
+ * A 150-line PROVIDER_CONFIG table lived here with baseURLs, default models,
+ * vision flags and image-model lists for twenty providers. It was a duplicate
+ * of services/ai/providerConfigs.js, and it had drifted — measured 2026-08-11:
+ *
+ *   - 6 stale default models (groq mixtral-8x7b-32768, cerebras llama-3.3-70b,
+ *     openrouter openai/gpt-3.5-turbo, zai GLM-4.7, togetherai Mixtral-8x7B,
+ *     local llama-3.2-1b) naming models their provider no longer lists;
+ *   - 4 wrong capability flags — it BLOCKED vision on cerebras and cursor-cli,
+ *     which support it, and ADVERTISED vision on deepseek and local, which do
+ *     not;
+ *   - stale image model lists (grok-2-image, dall-e-2, nano-banana-pro-preview);
+ *   - kimi-code and chutes missing entirely, so they fell through to a default
+ *     of gpt-4o-mini pointed at api.openai.com.
+ *
+ * Every image and vision defect in the audit descended from this one table.
+ * The registry is refreshed from the vendors and is what chat already uses, so
+ * asking it is both correct today and correct after the next model launch.
+ *
+ * baseURLs come from buildBaseURLs() specifically, rather than reading
+ * getProviderConfig().baseURL: that helper is what LlmService itself uses and
+ * it supplies `local`, which has no registry entry of its own. Verified
+ * against the deleted table before removal — the only differences were a
+ * trailing slash and deepseek's optional /v1 suffix, both accepted by the SDK.
+ */
+const BASE_URLS = buildBaseURLs();
+
+/** The provider's current default model, per the registry. */
+function providerDefaultModel(providerKey) {
+  const cfg = getProviderConfig(providerKey);
+  return cfg?.recommendedModels?.[0] || cfg?.fallbackModels?.[0] || null;
+}
+
+/** The provider's current default IMAGE model, per the registry. */
+function imageDefaultModel(providerKey) {
+  return ProviderRegistry.getImageGenCapabilities(providerKey)?.defaultModel || null;
+}
 
 class GenerateWithAiLlm extends BaseAction {
   static schema = {
@@ -620,29 +511,38 @@ class GenerateWithAiLlm extends BaseAction {
     };
   }
 
+  /**
+   * Which generator serves each image-capable provider.
+   *
+   * Same shape as PROVIDER_ROUTES above, and for the same reason: a switch is
+   * a second place to forget a provider. The set of KEYS here must match the
+   * registry's image-capable providers exactly — pinned by a test, so adding
+   * one to the registry without implementing it fails loudly instead of
+   * throwing "not implemented" at whoever picked it in the UI.
+   */
+  static IMAGE_ROUTES = {
+    openai: 'generateImageWithOpenAI',
+    gemini: 'generateImageWithGemini',
+    grokai: 'generateImageWithGrok',
+  };
+
   async handleImageGeneration(params) {
     const provider = params.provider.toLowerCase();
-    const providerInfo = PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.default;
 
-    if (!providerInfo.supportsImageGen) {
-      throw new Error(`Provider ${params.provider} does not support image generation. Supported providers: OpenAI, Gemini, Grok`);
+    // The REGISTRY decides who can generate images. The local table this used
+    // to consult listed stale image models and disagreed with the catalog the
+    // orchestrator validates against, so a user could pick a provider the tool
+    // advertised and have it rejected here.
+    if (!ProviderRegistry.supportsImageGeneration(provider)) {
+      const supported = ProviderRegistry.getImageGenProviders().map((p) => p.name || p.provider).join(', ');
+      throw new Error(`Provider ${params.provider} does not support image generation. Supported providers: ${supported}`);
     }
 
-    let response;
-
-    switch (provider) {
-      case 'openai':
-        response = await this.generateImageWithOpenAI(params);
-        break;
-      case 'gemini':
-        response = await this.generateImageWithGemini(params);
-        break;
-      case 'grokai':
-        response = await this.generateImageWithGrok(params);
-        break;
-      default:
-        throw new Error(`Image generation not implemented for provider: ${params.provider}`);
+    const method = GenerateWithAiLlm.IMAGE_ROUTES[provider];
+    if (!method) {
+      throw new Error(`Image generation not implemented for provider: ${params.provider}`);
     }
+    const response = await this[method](params);
 
     const images = response.generatedImages || [];
 
@@ -667,7 +567,7 @@ class GenerateWithAiLlm extends BaseAction {
     // mirrors the SDK surface: models.generateContent → { text, usageMetadata }.
     const provider = params.provider.toLowerCase();
     const client = await createLlmClient(provider, params.userId);
-    const model = params.model || PROVIDER_CONFIG[provider]?.defaultModel || 'gemini-2.5-pro';
+    const model = params.model || providerDefaultModel(provider) || 'gemini-2.5-pro';
 
     const parts = [{ text: params.prompt }];
     const imageData = this.processImageData(params);
@@ -897,12 +797,11 @@ class GenerateWithAiLlm extends BaseAction {
 
   async generateWithOpenAiLike(params) {
     const providerKey = params.provider.toLowerCase();
-    const providerInfo = PROVIDER_CONFIG[providerKey] || PROVIDER_CONFIG.default;
     const sharedConfig = getProviderConfig(providerKey);
     const defaultHeaders = sharedConfig?.sdkOptions?.defaultHeaders;
     const openai = new OpenAI({
       apiKey: params.apiKey,
-      baseURL: providerInfo.baseURL,
+      baseURL: BASE_URLS[providerKey],
       ...(defaultHeaders ? { defaultHeaders } : {}),
     });
 
@@ -927,7 +826,7 @@ class GenerateWithAiLlm extends BaseAction {
     }
 
     const messages = [{ role: 'user', content: messageContent }];
-    const currentModel = params.model || providerInfo.defaultModel;
+    const currentModel = params.model || providerDefaultModel(providerKey);
     const maxTokens = Number(params.maxTokens) || resolveMaxOutputTokens(providerKey, currentModel);
     // Include "gpt-4o-mini" in the mini models list
     const isMiniModel = ['o1-mini', 'o3-mini', 'gpt-4o-mini'].includes(currentModel) && providerKey === 'openai';
@@ -1114,7 +1013,10 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       const genAI = new GoogleGenerativeAI(params.apiKey);
-      const modelName = params.model || 'gemini-2.0-flash-exp';
+      // Registry default, not a literal. The previous fallback was
+      // 'gemini-2.0-flash-exp', which the catalog no longer lists — the same
+      // class of stale hardcoded default as the seven found in StreamEngine.
+      const modelName = params.model || imageDefaultModel('gemini');
       const prompt = params.imagePrompt;
 
       // Build generation config
@@ -1200,12 +1102,25 @@ class GenerateWithAiLlm extends BaseAction {
 
     const openai = new OpenAI({
       apiKey: params.apiKey,
-      baseURL: 'https://api.x.ai/v1',
+      // From the registry, not a literal. This was the twelfth hardcoded copy
+      // of an xAI base URL in the codebase.
+      baseURL: BASE_URLS.grokai,
     });
+
+    // HONOUR THE REQUESTED MODEL.
+    //
+    // This used to send a hardcoded 'grok-2-image' and ignore params.model
+    // entirely — while the orchestrator's generate_image tool validated the
+    // user's choice against the registry's live model list and accepted it.
+    // Validation that the implementation then discards is worse than no
+    // validation: it reports success for a request that was never made.
+    // Measured 2026-08-11: the registry lists grok-imagine-image-pro and
+    // grok-imagine-image; grok-2-image is not among them.
+    const model = params.model || imageDefaultModel('grokai');
 
     try {
       const response = await openai.images.generate({
-        model: 'grok-2-image',
+        model,
         prompt: params.imagePrompt,
         n: Number(params.numberOfImages) || 1,
         response_format: params.responseFormat || 'b64_json',
@@ -1226,7 +1141,7 @@ class GenerateWithAiLlm extends BaseAction {
         generatedImages: images,
         revisedPrompt: revisedPrompt,
         imageMetadata: {
-          model: 'grok-2-image',
+          model,
           count: images.length,
           format: params.responseFormat || 'b64_json',
         },
@@ -1263,11 +1178,12 @@ class GenerateWithAiLlm extends BaseAction {
         if (!params.imagePrompt) {
           throw new Error('Image prompt is required for image generation');
         }
-        // Validate provider supports image generation
-        const providerKey = params.provider.toLowerCase();
-        const providerInfo = PROVIDER_CONFIG[providerKey] || PROVIDER_CONFIG.default;
-        if (!providerInfo.supportsImageGen) {
-          throw new Error(`Provider ${params.provider} does not support image generation. Supported providers: OpenAI, Gemini, Grok`);
+        // Validate provider supports image generation — against the registry,
+        // the same source handleImageGeneration and the orchestrator's
+        // generate_image schema now use, so all three agree by construction.
+        if (!ProviderRegistry.supportsImageGeneration(params.provider.toLowerCase())) {
+          const supported = ProviderRegistry.getImageGenProviders().map((p) => p.name || p.provider).join(', ');
+          throw new Error(`Provider ${params.provider} does not support image generation. Supported providers: ${supported}`);
         }
         break;
       default:
