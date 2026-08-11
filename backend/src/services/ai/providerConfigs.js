@@ -77,18 +77,32 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
+      // DALL-E IS GONE. Verified live 2026-08-11 against the account's own
+      // /v1/models: `dall-e-3` returns 400 "The model 'dall-e-3' does not
+      // exist", and the image models actually served are the gpt-image family.
+      // Image generation was therefore failing outright for every OpenAI user,
+      // with a misleading "Unknown parameter: 'response_format'" because that
+      // error surfaces before the model is validated.
+      //
+      // chatgpt-image-latest is deliberately omitted: it exists but returns
+      // 403 "your organization must be verified", so advertising it would
+      // offer a choice that cannot work.
       imageGen: {
-        models: ['dall-e-3'],
-        operations: ['generate', 'edit', 'variation'],
-        defaultModel: 'dall-e-3',
+        models: ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-2'],
+        operations: ['generate', 'edit'],
+        defaultModel: 'gpt-image-1',
         supportedSizes: {
-          'dall-e-2': ['256x256', '512x512', '1024x1024'],
-          'dall-e-3': ['1024x1024', '1792x1024', '1024x1792'],
+          'gpt-image-1': ['1024x1024', '1536x1024', '1024x1536', 'auto'],
+          'gpt-image-1-mini': ['1024x1024', '1536x1024', '1024x1536', 'auto'],
+          'gpt-image-1.5': ['1024x1024', '1536x1024', '1024x1536', 'auto'],
+          'gpt-image-2': ['1024x1024', '1536x1024', '1024x1536', 'auto'],
         },
-        supportedFormats: ['url', 'b64_json'],
+        // The gpt-image family ALWAYS returns base64 and rejects an explicit
+        // response_format, so there is no format to choose.
+        supportedFormats: ['b64_json'],
         maxImages: 10,
         supportsQuality: true,
-        supportsStyle: true,
+        supportsStyle: false,
       },
     },
     recommendedModels: ['gpt-5.6', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],

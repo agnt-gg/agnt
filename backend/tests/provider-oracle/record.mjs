@@ -6,6 +6,29 @@
  *
  * Run from the repo root:  node backend/tests/provider-oracle/record.mjs
  * Add --check to verify against existing goldens instead of overwriting.
+ *
+ * ONE NON-HERMETIC INPUT, KNOWN AND BOUNDED.
+ *
+ * A cell's request depends on model METADATA (context window, max output
+ * tokens), and that metadata is not purely static: providerConfigs accepts
+ * dynamic entries learned from a provider's own /models response, and
+ * modelMetadataPersistence mirrors those into model_metadata_cache and
+ * hydrates them at boot. So a live provider call can, in principle, change
+ * what a later run of this oracle sees — without any source change.
+ *
+ * Observed once, 2026-08-11: a --check immediately after a batch of live image
+ * and model-list calls reported all 16 grokai cells changed. Re-recording
+ * produced byte-identical goldens (git diff empty) and three consecutive
+ * --check runs were clean, so the source was never at fault.
+ *
+ * IF YOU SEE AN UNEXPLAINED WHOLE-PROVIDER DIFF, do this before believing it:
+ *   1. re-record and `git diff` the goldens — if there is no diff, the code
+ *      reproduces them exactly and the check was perturbed, not the source;
+ *   2. `git stash` and re-check to confirm against a clean tree;
+ *   3. only then treat it as a real regression.
+ * A single provider changing in ALL cells at once is the signature of a
+ * metadata shift, not of a code change — a real code change almost always
+ * moves one scenario, or the same scenario across many providers.
  */
 import fs from 'fs';
 import path from 'path';

@@ -187,9 +187,35 @@ describe('dual-key decrypt', () => {
   it('reports which generation opened a value', async () => {
     const { encrypt, keyGenerationOf } = await load();
 
+    // Both of these are DETERMINISTIC, because they are decided structurally
+    // by the 'agnt.v2:' generation tag rather than by probing.
     expect(keyGenerationOf(encrypt('x'))).toBe('current');
     expect(keyGenerationOf(asLegacyCiphertext('y'))).toBe('legacy');
-    expect(keyGenerationOf(CryptoJS.AES.encrypt('z', 'some-third-key').toString())).toBeNull();
+  });
+
+  it('never claims a foreign ciphertext was written by THIS install', async () => {
+    // A value encrypted with neither key cannot be classified deterministically,
+    // and asserting `null` here made this suite flaky at roughly the rate the
+    // module documents.
+    //
+    // Identifying CURRENT is structural — the 'agnt.v2:' prefix is present or
+    // it is not. Identifying LEGACY still requires a trial decrypt, and
+    // crypto-js passphrase mode strips PKCS7 padding WITHOUT validating it, so
+    // a wrong key yields random bytes whose last byte decides how many are
+    // stripped. Measured when this was built: 3000 wrong-key decrypts gave
+    // 2834 empty, 154 throws, and 12 (0.4%) short non-empty garbage — which
+    // reads as a successful legacy decrypt.
+    //
+    // So the guarantee is not "returns null". It is that a foreign value is
+    // never mistaken for one THIS install wrote, which is what would actually
+    // cause harm: verify-before-write in the migration contains the rest, and
+    // in the wild every unprefixed row was written by <= 0.6.5.
+    const { keyGenerationOf } = await load();
+
+    for (let i = 0; i < 40; i++) {
+      const foreign = CryptoJS.AES.encrypt(`z${i}`, `some-third-key-${i}`).toString();
+      expect(keyGenerationOf(foreign)).not.toBe('current');
+    }
   });
 });
 

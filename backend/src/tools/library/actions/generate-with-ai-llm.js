@@ -53,6 +53,24 @@ function imageDefaultModel(providerKey) {
   return ProviderRegistry.getImageGenCapabilities(providerKey)?.defaultModel || null;
 }
 
+/**
+ * The `response_format` field, only where the model still accepts one.
+ *
+ * OpenAI's gpt-image family ALWAYS returns base64 and rejects an explicit
+ * response_format with 400 "Unknown parameter". Sending it unconditionally is
+ * what made the failure look like a parameter bug when the real cause was that
+ * dall-e-3 had been delisted — the parameter error surfaces first.
+ *
+ * Driven by the registry's supportedFormats rather than a model-name test, so
+ * a future model that reinstates the choice needs no code change here.
+ */
+function openAiImageFormat(model, requested) {
+  const formats = ProviderRegistry.getImageGenCapabilities('openai')?.supportedFormats || [];
+  const choosable = formats.length > 1;
+  if (!choosable) return {};
+  return { response_format: requested || 'b64_json' };
+}
+
 class GenerateWithAiLlm extends BaseAction {
   static schema = {
     title: 'AI LLM Call',
@@ -916,7 +934,9 @@ class GenerateWithAiLlm extends BaseAction {
   async generateImageWithOpenAI(params) {
     const openai = new OpenAI({ apiKey: params.apiKey });
     const operation = params.imageOperation || 'Generate';
-    const model = params.model || 'dall-e-3';
+    // Registry default, not a literal. 'dall-e-3' no longer exists on the
+    // account — verified live 2026-08-11, it returns 400 "does not exist".
+    const model = params.model || imageDefaultModel('openai');
 
     let response;
 
@@ -928,10 +948,12 @@ class GenerateWithAiLlm extends BaseAction {
           prompt: params.imagePrompt,
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
-          response_format: params.responseFormat || 'b64_json',
+          ...openAiImageFormat(model, params.responseFormat),
         };
 
-        // Add DALL-E 3 specific parameters
+        // DALL-E 3 took quality/style in its own vocabulary ('standard'|'hd',
+        // 'vivid'|'natural'). The gpt-image family uses different values, so
+        // this stays gated rather than being widened.
         if (model === 'dall-e-3') {
           if (params.imageQuality) requestParams.quality = params.imageQuality;
           if (params.imageStyle) requestParams.style = params.imageStyle;
@@ -959,7 +981,7 @@ class GenerateWithAiLlm extends BaseAction {
           prompt: params.imagePrompt, // This is the edit instruction
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
-          response_format: params.responseFormat || 'b64_json',
+          ...openAiImageFormat(model, params.responseFormat),
         });
       } else if (operation === 'Variation') {
         // Image variation (DALL-E 2 only)
