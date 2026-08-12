@@ -290,9 +290,12 @@
           <button class="share-modal-close" @click="closeShareModal">&times;</button>
         </div>
 
-        <div v-if="isSharing" class="share-modal-loading">
+        <div v-if="isPreparingShare || isSharing" class="share-modal-loading">
           <div class="share-spinner"></div>
-          <p>Sharing your creation...</p>
+          <p v-if="isPreparingShare">Inspecting every local asset...</p>
+          <p v-else-if="shareProgress?.phase === 'validating'">Validating the deployed bundle...</p>
+          <p v-else>Uploading {{ shareProgress?.current || 0 }} / {{ shareProgress?.total || shareManifest?.totals.files || 0 }} files...</p>
+          <p v-if="shareProgress?.path" class="share-bundle-current">{{ shareProgress.path }}</p>
         </div>
 
         <div v-else-if="shareError" class="share-modal-error">
@@ -338,9 +341,20 @@
             <label for="shareTitle">Title</label>
             <input type="text" id="shareTitle" v-model="shareTitle" placeholder="My Creation" @keyup.enter="submitShare" />
           </div>
+          <div v-if="shareManifest" class="share-bundle-summary">
+            <strong>Complete creation bundle</strong>
+            <span>{{ shareManifest.totals.files }} files · {{ (shareManifest.totals.bytes / 1048576).toFixed(1) }} MB</span>
+            <label for="shareBundleRoot">Bundle root</label>
+            <div class="share-input">
+              <input id="shareBundleRoot" v-model="shareRootPath" placeholder="Workspace-relative directory" @keyup.enter="refreshShareManifest" />
+              <button class="share-copy-btn" @click="refreshShareManifest">Rescan</button>
+            </div>
+            <span>Entry: {{ shareManifest.entryPath }}</span>
+            <span v-if="shareManifest.excluded.length">{{ shareManifest.excluded.length }} unsafe/generated paths excluded</span>
+          </div>
           <div class="share-form-actions">
             <button class="share-cancel-btn" @click="closeShareModal">Cancel</button>
-            <button class="share-submit-btn" @click="submitShare" :disabled="!shareTitle.trim()">
+            <button class="share-submit-btn" @click="submitShare" :disabled="!shareTitle.trim() || !shareManifest">
               <span>Share</span>
             </button>
           </div>
@@ -368,6 +382,7 @@ import { getFile, getSettings, saveFile } from '@/services/fileSystemService.js'
 import { API_CONFIG } from '@/tt.config.js';
 import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
 import { injectArtifactPreviewBase } from '@/utils/artifactPreviewBase.js';
+import { dirtyOverrides, prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
 
@@ -836,7 +851,11 @@ export default {
     const copiedEmbed = ref(false);
     const shareLinkInput = ref(null);
     const shareEmbedInput = ref(null);
-    const CREATIONS_API_URL = 'https://agnt.gg/api/previews';
+    const shareManifest = ref(null);
+    const shareProgress = ref(null);
+    const shareRootPath = ref('');
+    const resumableBundleId = ref(null);
+    const isPreparingShare = ref(false);
 
     const shareEmbedCode = computed(() => {
       if (shareResult.value && shareResult.value.id) {
@@ -861,13 +880,35 @@ export default {
       emit('screen-change', 'WidgetForgeScreen');
     };
 
-    const openShareModal = () => {
+    const openShareModal = async () => {
       shareTitle.value = activeTab.value?.name || 'My Creation';
       shareError.value = null;
       shareResult.value = null;
+      shareManifest.value = null;
+      shareProgress.value = null;
+      shareRootPath.value = '';
+      resumableBundleId.value = null;
       copiedLink.value = false;
       copiedEmbed.value = false;
       showShareModal.value = true;
+      isPreparingShare.value = true;
+      try {
+        shareManifest.value = await prepareArtifactBundle(activeTab.value.path, store.state.userAuth?.token);
+        shareRootPath.value = shareManifest.value.rootPath;
+      } catch (error) {
+        shareError.value = error.message || 'Could not inspect this creation.';
+      } finally { isPreparingShare.value = false; }
+    };
+
+    const refreshShareManifest = async () => {
+      isPreparingShare.value = true;
+      shareError.value = null;
+      try {
+        shareManifest.value = await prepareArtifactBundle(activeTab.value.path, store.state.userAuth?.token, shareRootPath.value.trim());
+        shareRootPath.value = shareManifest.value.rootPath;
+        resumableBundleId.value = null;
+      } catch (error) { shareError.value = error.message || 'Could not inspect this bundle root.'; }
+      finally { isPreparingShare.value = false; }
     };
 
     const closeShareModal = () => {
@@ -876,31 +917,25 @@ export default {
       shareError.value = null;
       shareResult.value = null;
       isSharing.value = false;
+      isPreparingShare.value = false;
+      shareManifest.value = null;
+      shareProgress.value = null;
     };
 
     const submitShare = async () => {
-      if (!activeTab.value?.content || !shareTitle.value.trim()) return;
+      if (!activeTab.value?.content || !shareTitle.value.trim() || !shareManifest.value) return;
       isSharing.value = true;
       shareError.value = null;
       try {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = store.state.userAuth?.token;
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const response = await fetch(CREATIONS_API_URL, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            html: activeTab.value.content,
-            title: shareTitle.value.trim(),
-            source: 'desktop-app',
-          }),
+        const overrides = dirtyOverrides(openTabs.value, shareManifest.value.rootPath);
+        if (!overrides.some((item) => item.path === shareManifest.value.entryPath)) overrides.push({ path:shareManifest.value.entryPath, content:activeTab.value.content });
+        shareResult.value = await publishArtifactBundle({
+          title: shareTitle.value.trim(), manifest: shareManifest.value,
+          token: store.state.userAuth?.token, overrides,
+          bundleId: resumableBundleId.value,
+          onBundle: (id) => { resumableBundleId.value = id; },
+          onProgress: (progress) => { shareProgress.value = progress; },
         });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Failed to share (${response.status})`);
-        }
-        shareResult.value = await response.json();
       } catch (error) {
         shareError.value = error.message || 'Failed to share. Please try again.';
       } finally {
@@ -910,7 +945,7 @@ export default {
 
     const retryShare = () => {
       shareError.value = null;
-      submitShare();
+      if (shareManifest.value) submitShare(); else openShareModal();
     };
 
     const copyShareLink = async () => {
@@ -2328,9 +2363,14 @@ export default {
       // Share
       showShareModal,
       isSharing,
+      isPreparingShare,
       shareError,
       shareResult,
       shareTitle,
+      shareManifest,
+      shareProgress,
+      shareRootPath,
+      refreshShareManifest,
       shareEmbedCode,
       copiedLink,
       copiedEmbed,

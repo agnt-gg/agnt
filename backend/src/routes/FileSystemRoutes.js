@@ -7,6 +7,7 @@ import { authenticateToken } from './Middleware.js';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import { prepareWrite } from '../utils/lineEndings.js';
 import { describeUnsafeRoot } from '../utils/installDirGuard.js';
+import { buildArtifactManifest, resolveManifestFile } from '../services/artifactBundles/manifest.js';
 import {
   DEFAULT_WORKSPACE_ROOT,
   getWorkspaceRoot,
@@ -415,6 +416,42 @@ router.post('/rename', authenticateToken, async (req, res) => {
     console.error('FileSystem rename error:', error);
     if (error.code === 'ENOENT') return res.status(404).json({ error: 'Source not found' });
     res.status(error.message === 'Path traversal not allowed' ? 403 : 500).json({ error: error.message });
+  }
+});
+
+// POST /api/filesystem/publish-manifest { entryPath }
+// Scans the complete directory containing the HTML entry. Publishing a
+// directory rather than parsing references is what captures runtime-generated
+// URLs, workers, modules, fonts, WASM and model sidecars correctly.
+router.post('/publish-manifest', authenticateToken, async (req, res) => {
+  try {
+    const workspaceRoot = await getWorkspaceRoot();
+    const manifest = await buildArtifactManifest({ workspaceRoot, entryPath: req.body?.entryPath, rootPath: req.body?.rootPath });
+    res.json(manifest);
+  } catch (error) {
+    console.error('[ArtifactBundles] Manifest failed:', error);
+    res.status(/required|Unsafe|exceeds|escapes|missing|excluded/.test(error.message) ? 400 : 500).json({ error: error.message });
+  }
+});
+
+// GET /api/filesystem/publish-file?rootPath=&path=
+// Streams one manifest file. Re-stat metadata lets the publisher detect a file
+// that changed after preflight instead of uploading bytes under a stale hash.
+router.get('/publish-file', authenticateToken, async (req, res) => {
+  try {
+    const workspaceRoot = await getWorkspaceRoot();
+    const absolutePath = resolveManifestFile(workspaceRoot, req.query.rootPath || '', req.query.path);
+    const stat = await fs.stat(absolutePath);
+    if (!stat.isFile()) return res.status(400).json({ error: 'path is not a file' });
+    const expectedSize = Number(req.query.expectedSize);
+    const expectedModifiedMs = Number(req.query.expectedModifiedMs);
+    if (stat.size !== expectedSize || Math.trunc(stat.mtimeMs) !== expectedModifiedMs) {
+      return res.status(409).json({ error: `${req.query.path} changed after preflight; review and retry` });
+    }
+    res.sendFile(absolutePath);
+  } catch (error) {
+    if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
+    res.status(/Unsafe|escapes|required/.test(error.message) ? 400 : 500).json({ error: error.message });
   }
 });
 
