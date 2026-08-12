@@ -23,6 +23,16 @@
  * shrink a richer saved copy, carry every column, leave the read watermark
  * alone. That also makes recovery IDEMPOTENT — running it twice, or running it
  * on a journal whose turn actually did finish, cannot damage anything.
+ *
+ * WHAT A JOURNAL IS NOT
+ * ─────────────────────
+ * A journal holds ONE TURN, not a conversation: the user's message and the
+ * answer that was in flight. The turn-end caller hands writeTranscript the
+ * whole history, so a full-row write is correct there and wrong here — the
+ * fragment would replace every earlier turn with itself, and substance alone
+ * does not notice because one long interrupted answer outscores several short
+ * earlier turns. So the write is made in `appendTurn` mode, which merges the
+ * turn into the saved transcript instead of standing in for it.
  */
 
 import { applyStreamEvent, createAssistantMessage } from './chatStreamReducer.mirror.js';
@@ -141,6 +151,8 @@ export async function recoverJournaledRuns({ now = Date.now() } = {}) {
         conversationId: journal.conversationId,
         userId: journal.userId,
         messages,
+        // One turn, not a conversation — merge it, do not stand in for it.
+        mode: 'appendTurn',
         logTag: 'RunRecovery',
       });
 
@@ -158,7 +170,8 @@ export async function recoverJournaledRuns({ now = Date.now() } = {}) {
         // Discarded once a DECISION has been reached — written or declined.
         // A journal that declined now will decline on the next boot too: the
         // reasons are all permanent (no_saved_row, not_a_transcript,
-        // saved_copy_is_richer), so keeping it would re-decide it forever.
+        // saved_copy_is_richer, would_drop_user_turns), so keeping it would
+        // re-decide it forever.
         await removeJournalFile(journal.file);
       } catch (err) {
         // Deliberately NOT deleted here. An exception is not a decision: at boot

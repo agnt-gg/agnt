@@ -33,6 +33,21 @@
  *    than real prose. `>=` matches the client's own reconcile in
  *    recoverInterruptedStream, so both paths resolve a tie the same way.
  *
+ * 2b. A MERGED FRAGMENT NEVER DROPS A USER TURN — a separate rule, and not
+ *    implied by (2). Substance is ONE number for the whole transcript, so it
+ *    cannot tell a long conversation from one long answer: a 16KB interrupted
+ *    answer scores higher than five short earlier turns and takes the row.
+ *    Shape is therefore checked on its own, stored's user turns having to be a
+ *    PREFIX of what is written — but only on the fragment path, because there
+ *    the input is a guess about where a turn belongs. On the turn-end path the
+ *    caller holds the authoritative history and a false refusal would freeze
+ *    the sidebar, i.e. re-create the bug in (1)'s paragraph.
+ *
+ * 2c. A CALLER SAYS WHAT IT IS HANDING OVER — see `mode` on writeTranscript.
+ *    A whole conversation and a single recovered turn are both "an array of
+ *    messages", and nothing in the array says which one it is. Guessing is
+ *    what made (2b) necessary.
+ *
  * 3. EVERY OTHER COLUMN IS CARRIED OVER, NOT DEFAULTED.
  *    ContentOutputModel.createOrUpdate is a full-row upsert: workflow_id,
  *    tool_id, is_shareable and title are assigned from `excluded`, so passing
@@ -54,19 +69,95 @@ import { deriveTitle, serializeTranscript, transcriptSubstance } from './transcr
 import { serverMessagesToUi } from './chatStreamReducer.mirror.js';
 
 /**
- * How much the client's already-saved copy actually says.
+ * The messages the client has already saved, or [] when the column will not
+ * parse.
  *
- * A row whose content will not parse scores 0, so a good projection replaces
- * it. That is the right direction: unparseable content renders as nothing at
- * all, and there is no reading in which keeping it beats replacing it.
+ * Treating unparseable content as empty is the right direction: it renders as
+ * nothing at all, and there is no reading in which keeping it beats replacing
+ * it. It also scores 0 substance, exactly as before.
  */
-function storedSubstance(rawContent) {
+function parseStoredMessages(rawContent) {
   try {
     const parsed = JSON.parse(rawContent);
-    return transcriptSubstance(Array.isArray(parsed?.messages) ? parsed.messages : []);
+    return Array.isArray(parsed?.messages) ? parsed.messages : [];
   } catch {
-    return 0;
+    return [];
   }
+}
+
+/**
+ * The sequence of things the USER said — a conversation's skeleton.
+ *
+ * Assistant turns are legitimately rewritten on every pass: merged across
+ * provider rows, compacted, re-projected. User turns are not. They are
+ * therefore the one part of a transcript a write can be held against.
+ */
+function userTurnKeys(messages) {
+  return (messages || [])
+    .filter((m) => m && m.role === 'user' && typeof m.content === 'string')
+    .map((m) => m.content.trim());
+}
+
+/**
+ * May `incoming` replace `stored` without losing anything the user said?
+ *
+ * The never-shrink rule below compares SUBSTANCE, which is one number for the
+ * whole transcript and therefore cannot tell "a longer conversation" from "one
+ * longer answer". A 16KB interrupted answer outscores five short earlier turns
+ * and takes the row — measured, not hypothesised. So substance alone is not
+ * enough: the SHAPE has to hold too, and the invariant is that stored's user
+ * turns are a PREFIX of incoming's.
+ *
+ * Exported because it is the invariant, not an implementation detail — a test
+ * that cannot state it cannot defend it.
+ */
+export function preservesUserTurns(stored, incoming) {
+  const before = userTurnKeys(stored);
+  const after = userTurnKeys(incoming);
+  if (before.length > after.length) return false;
+  return before.every((key, i) => key === after[i]);
+}
+
+/**
+ * Merge a recovered TURN into the transcript that is already saved.
+ *
+ * Recovery replays ONE turn out of a journal — the user's message and the
+ * answer that was in flight when the process died. That is a fragment, not a
+ * conversation, and a full-row write handed a fragment replaces everything
+ * else with it.
+ *
+ * Returns null when there is nothing worth adding, i.e. the saved copy already
+ * holds a better version of this same turn.
+ */
+export function mergeRecoveredTurn(stored, turn) {
+  if (!Array.isArray(turn) || turn.length === 0) return null;
+
+  const turnUser = turn.find((m) => m && m.role === 'user' && typeof m.content === 'string');
+  // Answer-only journal — nothing to anchor on, so it can only be appended.
+  if (!turnUser) return [...stored, ...turn];
+
+  // Match on what the user said. The journal's own message id is minted during
+  // recovery (`msg-user-recovered-<now>`) and so can never match a stored one.
+  const key = turnUser.content.trim();
+  let at = -1;
+  for (let i = stored.length - 1; i >= 0; i--) {
+    const m = stored[i];
+    if (m && m.role === 'user' && typeof m.content === 'string' && m.content.trim() === key) {
+      at = i;
+      break;
+    }
+  }
+
+  // The row never saw this turn — the client died before it autosaved.
+  if (at === -1) return [...stored, ...turn];
+
+  // The row has this turn already. Generation carried on after the client
+  // stopped listening, so the journal's copy is normally the longer one — but
+  // not always, and the TAIL is the only part the two disagree about, so the
+  // tail is what gets compared.
+  const storedTail = stored.slice(at);
+  if (transcriptSubstance(turn) < transcriptSubstance(storedTail)) return null;
+  return [...stored.slice(0, at), ...turn];
 }
 
 /**
@@ -79,15 +170,26 @@ function storedSubstance(rawContent) {
  * carry-every-column reasoning would drift, and the failure mode of drift here
  * is silently deleting somebody's conversation.
  *
+ * A caller must say WHICH of those two it is handing over, because they are
+ * not interchangeable and the difference is invisible from the array alone.
+ * Turn-end passes the whole conversation, which is always a superset of what
+ * is stored. Recovery passes one turn. The never-shrink rule was derived for
+ * the first case, and inheriting it silently for the second is what let a
+ * fragment take the row.
+ *
  * @param {object} args
  * @param {string} args.conversationId
  * @param {string} args.userId
  * @param {Array}  args.messages   UI-shaped messages, as the client renders them
+ * @param {'whole'|'appendTurn'} [args.mode]
+ *                                 'whole' — `messages` IS the conversation.
+ *                                 'appendTurn' — `messages` is a single turn to
+ *                                 be merged into what is already saved.
  * @param {string} [args.logTag]   prefix for log lines, so recovery is
  *                                 distinguishable from the normal path
  * @returns {Promise<{written: boolean, reason?: string, outputId?: string}>}
  */
-export async function writeTranscript({ conversationId, userId, messages, logTag = 'TurnTranscript' } = {}) {
+export async function writeTranscript({ conversationId, userId, messages, mode = 'whole', logTag = 'TurnTranscript' } = {}) {
   if (!conversationId || !userId) return { written: false, reason: 'not_identified' };
   if (!Array.isArray(messages) || messages.length === 0) return { written: false, reason: 'empty_projection' };
 
@@ -100,11 +202,38 @@ export async function writeTranscript({ conversationId, userId, messages, logTag
     if (!existing) return { written: false, reason: 'no_saved_row' };
     if (existing.content_type !== 'conversation') return { written: false, reason: 'not_a_transcript' };
 
-    // Existing title wins: deriving one here would rename a conversation the
-    // user may have named themselves.
-    const title = existing.title || deriveTitle(messages);
+    const stored = parseStoredMessages(existing.content);
 
-    if (transcriptSubstance(messages) < storedSubstance(existing.content)) {
+    // A fragment is merged onto what is already saved; a whole transcript
+    // stands on its own.
+    let incoming = messages;
+    if (mode === 'appendTurn') {
+      incoming = mergeRecoveredTurn(stored, messages);
+      if (!incoming) return { written: false, reason: 'saved_copy_is_richer' };
+
+      // Anchoring can still lose ground: when the journal's turn matches
+      // part-way UP a conversation that has since moved on, everything after
+      // the anchor is replaced by it. Reachable in practice — a journal whose
+      // write throws is deliberately kept and retried on a LATER boot, by
+      // which time the user may have carried on talking.
+      //
+      // Scoped to this path deliberately. In 'whole' mode the caller is the
+      // turn itself, holding the authoritative history, and a false refusal
+      // there would freeze the sidebar mid-answer — which is the very bug this
+      // file exists to fix. A guard whose failure mode is the original bug does
+      // not belong on that path.
+      if (!preservesUserTurns(stored, incoming)) {
+        return { written: false, reason: 'would_drop_user_turns' };
+      }
+    }
+
+    // Existing title wins: deriving one here would rename a conversation the
+    // user may have named themselves. Derived from the MERGED transcript, never
+    // from a fragment — a title is the first thing the user said in the
+    // conversation, not the first thing they said in the recovered turn.
+    const title = existing.title || deriveTitle(incoming);
+
+    if (transcriptSubstance(incoming) < transcriptSubstance(stored)) {
       return { written: false, reason: 'saved_copy_is_richer' };
     }
 
@@ -113,7 +242,7 @@ export async function writeTranscript({ conversationId, userId, messages, logTag
       userId,
       existing.workflow_id,
       existing.tool_id,
-      serializeTranscript({ conversationId, title, messages }),
+      serializeTranscript({ conversationId, title, messages: incoming }),
       !!existing.is_shareable,
       'conversation',
       conversationId,
