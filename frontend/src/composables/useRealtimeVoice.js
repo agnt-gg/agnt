@@ -45,10 +45,14 @@ import {
   buildFunctionOutput,
   buildResponseCreate,
   buildSpokenAside,
+  buildAudioInputItem,
+  buildUserTurnResponse,
   BridgeAction,
 } from '../voice/realtimeBridge.js';
 import { isFillerOnly, meaningfulTranscript } from '../voice/asrArtifacts.js';
 import { MIC_CONSTRAINTS } from '../voice/micConstraints.js';
+import { createPrerollBuffer } from '../voice/prerollBuffer.js';
+import { createConnectTimeline } from '../voice/connectTimeline.js';
 import { API_CONFIG } from '../../user.config.js';
 
 export const RealtimeState = Object.freeze({
@@ -73,6 +77,16 @@ const AGNT_CALL_TIMEOUT_MS = 180000;
 /** How many recent call_ids to remember for duplicate detection. */
 const MAX_TRACKED_CALLS = 200;
 
+/**
+ * How long after going live we wait for the server VAD before concluding the
+ * whole utterance happened inside the handshake window (see goLive). The VAD
+ * reacts to live speech well inside a second, so silence for this long after
+ * the pre-roll was injected means no live audio is coming and the turn must
+ * be closed by us. Short enough that a recovered first sentence still feels
+ * answered, long enough that the VAD is never raced on a user mid-breath.
+ */
+const STRANDED_TURN_MS = 1200;
+
 export function useRealtimeVoice(options = {}) {
   const {
     onRunAgnt = async () => 'AGNT is not connected on this surface.',
@@ -92,6 +106,12 @@ export function useRealtimeVoice(options = {}) {
      * property nobody is testing.
      */
     sendFrame = null,
+    /**
+     * Pre-roll factory, injectable for tests (jsdom has no AudioContext).
+     * Production is the real ring over the live mic stream — the mechanism
+     * that lets the recorder record the past on THIS transport too.
+     */
+    createPreroll = createPrerollBuffer,
   } = options;
 
   const state = ref(RealtimeState.IDLE);
@@ -105,6 +125,18 @@ export function useRealtimeVoice(options = {}) {
   let dc = null;
   let micStream = null;
   let audioEl = null;
+  /** The audio transceiver. Its sender carries NO track until goLive(). */
+  let micTx = null;
+  /** Ring recording the mic during the handshake. See prerollBuffer.js. */
+  let preroll = null;
+  /** Resolves {ok, stream|err} when getUserMedia settles; null under the test seam. */
+  let micReady = null;
+  /** goLive() acts once per session; READY re-fires on session.updated. */
+  let wentLive = false;
+  /** Closes a turn whose whole utterance predates the wire. See goLive(). */
+  let strandedTimer = null;
+  /** Handshake stopwatch — one structured timing line per connect. */
+  let timeline = null;
   /** Bumped on stop(); async continuations check it before touching anything. */
   let generation = 0;
 
@@ -218,6 +250,13 @@ export function useRealtimeVoice(options = {}) {
   function clearTurnBuffers() {
     pendingUserText = '';
     pendingAssistantText = '';
+  }
+
+  function clearStrandedTimer() {
+    if (strandedTimer) {
+      clearTimeout(strandedTimer);
+      strandedTimer = null;
+    }
   }
 
   /** Send the next queued sentence, if the session is free to speak. */
@@ -416,7 +455,7 @@ export function useRealtimeVoice(options = {}) {
     for (const action of interpretEvent(event)) {
       switch (action.type) {
         case BridgeAction.READY:
-          if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+          void goLive(gen);
           break;
 
         case BridgeAction.USER_INTERRUPTED:
@@ -436,6 +475,9 @@ export function useRealtimeVoice(options = {}) {
           speechEpoch += 1;
           // The user is speaking: fund exactly one run for this utterance.
           utteranceCredit = 1;
+          // The live VAD heard them — it owns the turn now, so a pre-roll
+          // stranded closer would be a second opinion. See goLive().
+          clearStrandedTimer();
           speakQueue.length = 0;
           pendingNarrations = 0;
           narrating = false;
@@ -526,6 +568,124 @@ export function useRealtimeVoice(options = {}) {
     }
   }
 
+  /**
+   * True only when the OS will open the mic without asking. jsdom and older
+   * runtimes have no permissions API; treating that as "not granted" costs
+   * one serial device-open — the safe direction to be wrong in.
+   */
+  async function micPermissionGranted() {
+    try {
+      const status = await navigator.permissions.query({ name: 'microphone' });
+      return status.state === 'granted';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The moment the session is live: hand over the pre-roll, THEN attach the
+   * live track, THEN say we are listening.
+   *
+   * ORDER IS THE FIX. RTP starts at replaceTrack and not a frame before, so
+   * the ring covers exactly the audio the track never carried — one
+   * continuous timeline with a single boundary, no gap and no overlap.
+   * Attach-then-inject would race the server VAD against our own send and
+   * could deliver the same syllables twice.
+   */
+  async function goLive(gen) {
+    if (gen !== generation) return;
+    if (wentLive) {
+      // session.updated re-fires READY; going live is a once-per-session act.
+      if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+      return;
+    }
+    wentLive = true;
+
+    // Driven through the test seam (or a future transport) with no peer
+    // connection: nothing to attach, the old behaviour stands.
+    if (!micReady || !micTx) {
+      if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+      return;
+    }
+
+    const mic = await micReady;
+    if (gen !== generation) return;
+    if (!mic.ok) {
+      error.value =
+        mic.err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
+      stop();
+      return;
+    }
+    timeline?.mark('session_ready');
+
+    let clip = null;
+    try {
+      clip = preroll ? preroll.harvest() : null;
+    } catch {
+      clip = null; // losing the pre-roll must not lose the session
+    }
+    if (clip?.hadSpeech && clip.base64) {
+      send(buildAudioInputItem(clip.base64));
+      timeline?.mark('preroll_sent');
+      /**
+       * If the sentence FINISHED before the wire was up, no live audio
+       * follows, the server VAD never fires, and the injected item would sit
+       * in the conversation unanswered forever. Close the turn ourselves —
+       * but only when the ring's tail was silent: a tail still in speech
+       * means the words continue onto the live track and the server VAD owns
+       * the turn (speech_started also cancels this timer, belt to braces).
+       */
+      if (clip.endedInSilence) {
+        strandedTimer = setTimeout(() => {
+          strandedTimer = null;
+          if (gen !== generation) return;
+          // The user really did speak — our own VAD confirmed it in the ring
+          // — so this funds one run, on exactly the grounds speech_started
+          // grants credit for a live utterance.
+          utteranceCredit = 1;
+          send(buildUserTurnResponse());
+        }, STRANDED_TURN_MS);
+      }
+    }
+
+    try {
+      await micTx.sender.replaceTrack(mic.stream.getAudioTracks()[0]);
+    } catch {
+      /* stop() raced us; the generation check below settles it */
+    }
+    if (gen !== generation) return;
+    timeline?.mark('track_live');
+
+    try {
+      preroll?.close();
+    } catch {
+      /* already closed */
+    }
+    preroll = null;
+
+    if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+    reportTimeline();
+  }
+
+  /** One line per connect: console for this machine, POST for error.log. */
+  function reportTimeline() {
+    if (!timeline) return;
+    const total = timeline.totalMs();
+    const line = timeline.summary();
+    const marks = timeline.durations();
+    timeline = null;
+    console.info(`[voice] realtime connect ${total}ms: ${line}`);
+    try {
+      fetch(`${API_CONFIG.BASE_URL}/speech/realtime/timing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ surface, totalMs: total, marks }),
+      }).catch(() => {});
+    } catch {
+      /* diagnostics must never break the session */
+    }
+  }
+
   // ---- lifecycle ---------------------------------------------------------
 
   async function start() {
@@ -534,17 +694,72 @@ export function useRealtimeVoice(options = {}) {
     unavailable.value = false;
     state.value = RealtimeState.CONNECTING;
     const gen = ++generation;
+    timeline = createConnectTimeline();
 
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
-    } catch (err) {
-      error.value =
-        err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
-      state.value = RealtimeState.IDLE;
-      return false;
+    /**
+     * THE MIC OPENS IN PARALLEL WITH THE HANDSHAKE, NOT BEFORE IT.
+     *
+     * getUserMedia is a cold device open — hundreds of milliseconds — and it
+     * used to gate the offer serially. The SDP exchange does not need the
+     * microphone (the m-line below is created with no track), so when
+     * permission is already granted the two run concurrently and the slower
+     * one sets the pace instead of the sum.
+     *
+     * When permission has NOT been granted, the OS prompt can block
+     * getUserMedia indefinitely — racing that against a billed realtime
+     * session would leave the session open, on the clock, while the user
+     * reads a permission dialog. First-ever use stays serial.
+     */
+    const openMic = () =>
+      navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS).then(
+        (stream) => ({ ok: true, stream }),
+        (err) => ({ ok: false, err })
+      );
+
+    let micPromise;
+    if (await micPermissionGranted()) {
+      micPromise = openMic();
+    } else {
+      const mic = await openMic();
+      if (!mic.ok) {
+        error.value =
+          mic.err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
+        state.value = RealtimeState.IDLE;
+        return false;
+      }
+      micPromise = Promise.resolve(mic);
     }
 
+    /**
+     * The moment the mic exists it starts recording into the pre-roll ring.
+     * The transceiver below carries NO track during the handshake, so this
+     * ring is the only place words spoken before the session is live survive
+     * — recovering them is goLive()'s first act.
+     */
+    micReady = micPromise.then((mic) => {
+      if (mic.ok && gen === generation) {
+        micStream = mic.stream;
+        timeline?.mark('mic_open');
+        try {
+          preroll = createPreroll ? createPreroll(mic.stream) : null;
+        } catch {
+          preroll = null; // a start without pre-roll is degraded, not failed
+        }
+      } else if (mic.ok) {
+        // stop() won the race; a stream nobody owns must not stay hot.
+        try {
+          mic.stream.getTracks().forEach((t) => t.stop());
+        } catch {
+          /* best effort */
+        }
+      }
+      return mic;
+    });
+
     pc = new RTCPeerConnection();
+    pc.addEventListener('connectionstatechange', () => {
+      if (pc?.connectionState === 'connected') timeline?.mark('ice_connected');
+    });
 
     // Model audio arrives as a remote track; an <audio> element plays it.
     audioEl = document.createElement('audio');
@@ -553,12 +768,19 @@ export function useRealtimeVoice(options = {}) {
       audioEl.srcObject = e.streams[0];
     };
 
-    pc.addTrack(micStream.getTracks()[0]);
+    /**
+     * An m-line with NO track: the offer/answer completes without the
+     * microphone, and — the actual first-word fix — audio starts flowing at
+     * a moment WE choose (goLive's replaceTrack), after the pre-roll has
+     * been handed over, not whenever DTLS happens to finish.
+     */
+    micTx = pc.addTransceiver('audio', { direction: 'sendrecv' });
     dc = pc.createDataChannel('oai-events');
     dc.addEventListener('message', (e) => handleMessage(e.data, gen));
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    timeline.mark('offer_ready');
 
     let res;
     try {
@@ -575,6 +797,7 @@ export function useRealtimeVoice(options = {}) {
       stop();
       return false;
     }
+    timeline?.mark('sdp_answered');
 
     // The route answers with JSON (not SDP) when the account has no usable
     // OpenAI credential — a normal state, and the caller falls back to the
@@ -599,6 +822,7 @@ export function useRealtimeVoice(options = {}) {
     const answer = { type: 'answer', sdp: await res.text() };
     if (gen !== generation) return false; // stopped mid-handshake
     await pc.setRemoteDescription(answer);
+    timeline?.mark('remote_set');
 
     return true;
   }
@@ -628,6 +852,17 @@ export function useRealtimeVoice(options = {}) {
         /* already torn down */
       }
     }
+    clearStrandedTimer();
+    try {
+      preroll?.close();
+    } catch {
+      /* already closed */
+    }
+    preroll = null;
+    micReady = null;
+    micTx = null;
+    wentLive = false;
+    timeline = null;
     dc = null;
     pc = null;
     micStream = null;

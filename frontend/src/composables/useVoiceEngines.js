@@ -63,7 +63,15 @@ import { claimVoiceFloor, releaseVoiceFloor } from '../voice/voiceFloor.js';
  * running.
  */
 const REALTIME_STATE_AS_CASCADE = Object.freeze({
-  connecting: 'thinking',
+  /**
+   * NOT mapped to 'thinking'. Amber-thinking means "she heard you and is
+   * working"; during the handshake she cannot hear anything yet — the mic
+   * track is not attached until the session is live. Painting the two the
+   * same invited the user to start talking into a dead microphone, which is
+   * exactly the window where first words used to die. The hosts render
+   * 'connecting' as its own state ("Connecting…", blue, slow pulse).
+   */
+  connecting: 'connecting',
   working: 'thinking',
   listening: 'listening',
   speaking: 'speaking',

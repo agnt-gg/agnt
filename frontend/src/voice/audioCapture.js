@@ -79,8 +79,15 @@ export const DEFAULT_CAPTURE_CONFIG = Object.freeze({
   maxUtteranceMs: 120000,
 });
 
-/** Float PCM in [-1,1] to 16-bit signed, clipped rather than wrapped. */
-function toInt16(input) {
+/**
+ * Float PCM in [-1,1] to 16-bit signed, clipped rather than wrapped.
+ *
+ * Exported: prerollBuffer.js converts its ring with THIS function rather than
+ * a copy. Duplicated per-sample math across capture paths is exactly how the
+ * mic-constraint bugs shipped (see micConstraints.js header) — one definition,
+ * every consumer.
+ */
+export function toInt16(input) {
   const out = new Int16Array(input.length);
   for (let i = 0; i < input.length; i++) {
     const s = input[i] < -1 ? -1 : input[i] > 1 ? 1 : input[i];

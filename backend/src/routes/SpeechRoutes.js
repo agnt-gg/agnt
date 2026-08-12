@@ -274,4 +274,30 @@ router.get('/realtime/status', requireAuthHeader, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/speech/realtime/timing
+ * One structured line per realtime connect, from the client's stopwatch.
+ *
+ * The handshake is a chain of serial steps (mic, SDP exchange, ICE,
+ * session.created) and "voice takes seconds to start" is unactionable without
+ * knowing which step ate them. Only the CLIENT can see the whole chain, so it
+ * measures (voice/connectTimeline.js); this route exists because the client's
+ * console dies with its window and error.log is where this install's history
+ * lives.
+ *
+ * Diagnostics only: it never fails the caller, accepts nothing but short
+ * names and numbers, and writes exactly one line.
+ */
+router.post('/realtime/timing', requireAuthHeader, express.json({ limit: '8kb' }), (req, res) => {
+  const marks = Array.isArray(req.body?.marks) ? req.body.marks : [];
+  const line = marks
+    .filter((m) => m && typeof m.name === 'string' && Number.isFinite(m.stepMs))
+    .map((m) => `${m.name.slice(0, 32)}+${Math.round(m.stepMs)}ms`)
+    .join(' ');
+  const total = Number.isFinite(req.body?.totalMs) ? Math.round(req.body.totalMs) : '?';
+  const surface = typeof req.body?.surface === 'string' ? req.body.surface.slice(0, 32) : 'chat';
+  console.info(`[speech] realtime connect (${surface}) total=${total}ms ${line}`);
+  res.json({ success: true });
+});
+
 export default router;

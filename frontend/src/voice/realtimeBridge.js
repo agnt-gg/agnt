@@ -288,11 +288,66 @@ export function buildSpokenAside(text) {
   };
 }
 
+/**
+ * The audio spoken BEFORE the connection existed, delivered as history.
+ *
+ * WebRTC starts carrying microphone audio only once ICE + DTLS are up and a
+ * track is attached — anything said during the handshake never reaches the
+ * wire. The runtime buffers that audio locally (prerollBuffer.js) and hands
+ * it over here, as a user message item, the moment the session is live and
+ * BEFORE the live track is attached, so the ring and the track form one
+ * continuous timeline.
+ *
+ * An item create does NOT trigger a response — only response.create or the
+ * server VAD does — so this is safe to send unconditionally: if the user is
+ * still talking into the now-live track, the pre-roll is context for the
+ * turn the server VAD is already assembling; if they finished before the
+ * wire was up, buildUserTurnResponse() closes the stranded turn.
+ *
+ * `audio` is base64 PCM16 mono at the session's declared input rate (24kHz —
+ * realtimeVoiceService.buildSessionConfig and prerollBuffer agree on this by
+ * construction).
+ */
+export function buildAudioInputItem(base64Audio) {
+  return {
+    type: 'conversation.item.create',
+    item: {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_audio', audio: base64Audio }],
+    },
+  };
+}
+
+/**
+ * Close a turn the server's VAD never saw.
+ *
+ * When the WHOLE utterance happened inside the handshake window, the only
+ * audio the server will ever hold for it is the injected pre-roll item: no
+ * live speech follows, `input_audio_buffer.speech_started` never fires, and
+ * without this the recovered words would sit in the conversation unanswered
+ * forever.
+ *
+ * DELIBERATELY BARE — the exact opposite of buildResponseCreate, for the
+ * opposite reason. That response exists to SPEAK an answer that already
+ * exists, so it strips the tools (a speaking response must not act). This one
+ * stands in for the response the server's own VAD would have created had the
+ * utterance arrived on the live track: it must inherit the session's tools
+ * (run_agnt) and the session's text-only modality, or the recovered first
+ * sentence would be answered from the model's own knowledge — the one thing
+ * the session instructions forbid.
+ */
+export function buildUserTurnResponse() {
+  return { type: 'response.create' };
+}
+
 export default {
   interpretEvent,
   buildFunctionOutput,
   buildResponseCreate,
   buildSpokenAside,
+  buildAudioInputItem,
+  buildUserTurnResponse,
   BridgeAction,
   AGNT_TOOL_NAME,
 };

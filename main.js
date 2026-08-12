@@ -1188,6 +1188,27 @@ function createWindow(opts = {}) {
     app.dock.setIcon(iconPath);
   }
 
+  /**
+   * WebRTC candidate policy: the default-route interface only.
+   *
+   * The natural-voice session (frontend useRealtimeVoice.js — the app's only
+   * RTCPeerConnection) negotiates ICE against OpenAI. Chromium's default
+   * offers host candidates from EVERY adapter, and a dev/power-user Windows
+   * box carries plenty that cannot reach the internet — WSL and Hyper-V
+   * vSwitches, APIPA stubs, VPN overlays. Each dead pairing burns STUN
+   * retransmit timers (~500ms initial RTO, backing off, in priority order)
+   * before the one interface with a default route gets its turn, which the
+   * user experiences as seconds of "Connecting…" before the mic goes live.
+   *
+   * 'default_public_interface_only' restricts gathering to the interface the
+   * OS already routes traffic through — the only candidate that was ever
+   * going to work — and stops WebRTC advertising every private LAN address,
+   * which is the setting privacy-hardened browsers ship anyway. If a second
+   * WebRTC consumer that needs LAN candidates ever appears, this policy is
+   * the first thing to revisit.
+   */
+  mainWindow.webContents.setWebRTCIPHandlingPolicy('default_public_interface_only');
+
   // This allowlist gates EVERY privileged capability Chromium asks about, not
   // just the microphone it was originally written for. A permission that is
   // absent is denied SILENTLY: requestFullscreen() never settles, no

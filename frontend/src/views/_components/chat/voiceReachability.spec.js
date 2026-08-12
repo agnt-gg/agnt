@@ -576,7 +576,7 @@ describe('the voice button looks like the control it sits beside', () => {
 
   it('active states tint the circle rather than removing it', () => {
     const src = fs.readFileSync(BASE_SCREEN, 'utf8');
-    for (const state of ['voice-on', 'voice-listening,\n.chat-voice-button.voice-reopen', 'voice-thinking', 'voice-speaking']) {
+    for (const state of ['voice-on', 'voice-connecting', 'voice-listening,\n.chat-voice-button.voice-reopen', 'voice-thinking', 'voice-speaking']) {
       const block = ruleFor(src, `.chat-voice-button.${state}`);
       expect(block, state).toBeTruthy();
       expect(declared(block, 'background'), `${state} background`).toMatch(/^rgba\(var\(--\w+-rgb\), 0\.2\)$/);

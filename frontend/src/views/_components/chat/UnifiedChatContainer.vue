@@ -69,6 +69,7 @@
           <template v-if="voiceError">{{ voiceError }}</template>
           <template v-else-if="voiceState === 'listening'">{{ voicePartial || 'Listening…' }}</template>
           <template v-else-if="voiceState === 'reopen'">{{ voicePartial || 'Listening…' }}</template>
+          <template v-else-if="voiceState === 'connecting'">Connecting…</template>
           <template v-else-if="voiceState === 'thinking'">Thinking…</template>
           <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
           <template v-else>Voice ready</template>
@@ -862,6 +863,17 @@ export default {
   color: var(--color-blue);
 }
 
+/*
+ * Connecting is NOT thinking. Amber means "she heard you and is working";
+ * during the handshake she cannot hear anything yet, and painting the two the
+ * same invited the user to talk into a dead microphone. Blue = engaged but
+ * not yet listening; green stays the only "talk now" signal.
+ */
+.chat-voice-btn.voice-connecting {
+  background: rgba(var(--blue-rgb), 0.2);
+  color: var(--color-blue);
+}
+
 .chat-voice-btn.voice-listening,
 .chat-voice-btn.voice-reopen {
   background: rgba(var(--green-rgb), 0.2);
@@ -925,6 +937,12 @@ export default {
 
 .voice-status-strip.voice-reopen .voice-dot {
   background: var(--status-green-text);
+}
+
+/* Slow blue pulse: alive, not yet listening. Distinct from speaking's 0.7s. */
+.voice-status-strip.voice-connecting .voice-dot {
+  background: var(--status-blue-text);
+  animation: voice-pulse 2s ease-in-out infinite;
 }
 
 .voice-status-strip.voice-thinking .voice-dot {
