@@ -678,6 +678,15 @@ export function useRealtimeSync() {
       window.dispatchEvent(new CustomEvent('autonomy-applied', { detail: data }));
     });
 
+    // A skill was forged from a recurring chat procedure (ChatSkillForge).
+    // Refresh the catalog so the new capability is present without a reload,
+    // and re-broadcast as a window event so any surface can render a receipt.
+    socket.on('evolution:skill_forged', (data) => {
+      console.log('[Realtime] Skill forged from chat:', data);
+      store.dispatch('skills/fetchSkills').catch(() => {});
+      window.dispatchEvent(new CustomEvent('skill-forged', { detail: data }));
+    });
+
     // Scheduler / mutation events (best-effort; backend may emit later)
     socket.on('schedule:fired', (data) => {
       console.log('[Realtime] Schedule fired:', data);

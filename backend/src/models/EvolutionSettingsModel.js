@@ -9,6 +9,10 @@ const DEFAULT_SETTINGS = {
     tool_rollup: true,
   },
   autoApplyMemory: true,
+  // Forge skills from recurring chat procedures. ON by default: unlike insight
+  // extraction this costs nothing until the same procedure has been repeated
+  // three times, and a learning system nobody can find does not learn.
+  chatSkillForge: true,
   // PRD-091 Layer 4: autonomy router. Off by default — user opts in.
   autonomy: {
     enabled: false,

@@ -1,4 +1,5 @@
 import InsightEngine from './InsightEngine.js';
+import ChatSkillForge from './ChatSkillForge.js';
 import EvolutionSettingsModel from '../../models/EvolutionSettingsModel.js';
 import { broadcastToUser } from '../../utils/realtimeSync.js';
 
@@ -12,6 +13,15 @@ class InsightTriggers {
    * Fire-and-forget — never affects chat execution.
    */
   static async onChatCompleted(executionId, userId, context = {}) {
+    // Skill forging runs BEFORE — and independently of — the insight master
+    // switch. Insight extraction pays an LLM call on every single turn, which is
+    // why it is opt-in; forging only ever fires on the third repetition of the
+    // same procedure, so it costs nothing until it is earned. Putting it behind
+    // the same default-off switch would reproduce the exact complaint it exists
+    // to fix: chat that visibly never learns.
+    ChatSkillForge.onChatCompleted(executionId, userId, context)
+      .catch((err) => console.error('[InsightTriggers] Chat skill forge failed (non-critical):', err.message));
+
     try {
       // Check if agent_chat insights are enabled
       if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'agent_chat')) {

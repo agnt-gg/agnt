@@ -83,6 +83,47 @@ export function workflowSignature(execution, nodeExecutions = []) {
   ].join('|'));
 }
 
+/**
+ * Deterministic procedure signature for a chat turn.
+ *
+ * WHY A CHAT NEEDS ONE. Skill evolution has only ever been reachable from a
+ * Goal, because SES needs a fitness number and a goal evaluation is the only
+ * fitness number in the system. A chat turn has none. But "is this worth
+ * turning into a skill?" does not actually need a score — it needs evidence of
+ * REUSE, and reuse is a count. The third time a turn has the same shape it is a
+ * procedure, not an occurrence; that is what this hash makes countable.
+ *
+ * The shape is the SORTED MULTISET OF TOOL NAMES plus the agent. Sorted for the
+ * same reason workflowSignature sorts — the model may reorder independent calls
+ * between runs and that is not a different procedure. The multiset is preserved
+ * rather than de-duplicated because "read three files then edit one" is a
+ * genuinely different procedure from "read one file then edit one".
+ *
+ * Tool ARGUMENTS are deliberately excluded. They carry the specifics — this
+ * repo, that host, yesterday's date — and including them would make every turn
+ * novel by construction, which is the exact trap that durations are for
+ * workflowSignature. Excluding them is also what makes the gate generalise:
+ * three homelab sessions against three different machines collapse to one
+ * signature, which is precisely the procedure worth writing down.
+ *
+ * The cost of being coarse is a possible collision between two unrelated tasks
+ * that happen to use the same tools. That produces an over-general skill, not a
+ * wrong one, and the LLM judge downstream still has to agree the trace is
+ * reusable before anything is written.
+ *
+ * @param {object} execution      execution details (AgentExecutionModel shape)
+ * @param {Array}  toolExecutions tool calls belonging to that execution
+ */
+export function chatSignature(execution, toolExecutions = []) {
+  const tools = toolExecutions
+    .map((t) => t?.toolName || t?.tool_name || 'unknown')
+    .sort();
+  return hash([
+    `agent=${execution?.agentId || execution?.agent_id || 'orchestrator'}`,
+    `tools=${tools.join(',')}`,
+  ].join('|'));
+}
+
 const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
   db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row || null)));
 });
@@ -149,4 +190,4 @@ export async function shouldExtract({ userId, sourceType, scopeId, signature, no
   }
 }
 
-export default { shouldExtract, workflowSignature, EXTRACTION_COOLDOWN_MS };
+export default { shouldExtract, workflowSignature, chatSignature, EXTRACTION_COOLDOWN_MS };

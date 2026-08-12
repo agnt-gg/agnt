@@ -87,6 +87,61 @@ class TraceAnalyzer {
   }
 
   /**
+   * Analyze a RECURRING chat turn and propose a reusable skill.
+   *
+   * Deliberately the same judge, the same rubric and the same output contract as
+   * analyzeTrace — only the gathering differs. Goals and chats disagree about
+   * what a trace looks like, not about what makes one worth learning from, so
+   * forking the prompt would have meant two rubrics drifting apart for no gain.
+   *
+   * The fitness signal a goal supplies through its evaluator is replaced here by
+   * RECURRENCE: the caller only reaches this method once the same tool-shape has
+   * been seen `occurrences` times (see ExtractionGate.chatSignature). That count
+   * is passed into the prompt as evidence, because "I have watched you do this
+   * three times" is a stronger argument for writing a procedure down than any
+   * single trace's self-assessed quality.
+   *
+   * @param {object} details        AgentExecutionModel.getExecutionDetails shape
+   * @param {string} userId
+   * @param {object} opts           { occurrences, conversationLog, provider, model }
+   * @returns {Object|null} TraceAnalysis, same shape as analyzeTrace
+   */
+  static async analyzeChatTrace(details, userId, opts = {}) {
+    const { occurrences = 0, conversationLog = null, provider = null, model = null } = opts;
+    try {
+      if (!details) return null;
+      const toolExecutions = details.toolExecutions || [];
+      console.log(`[TraceAnalyzer] Analyzing recurring chat procedure ${details.id} (seen ${occurrences}x)`);
+
+      // Reuse the chat trace builder rather than growing a second one. It already
+      // truncates tool payloads and folds in the user's own messages, which are
+      // what tell the judge what the procedure is FOR — a tool list alone reads
+      // as "read a file, edit a file" for every task in the product.
+      const InsightEngine = (await import('../evolution/InsightEngine.js')).default;
+      const chatTrace = InsightEngine._buildChatTrace(details, toolExecutions, conversationLog);
+
+      const traceDoc = `=== RECURRENCE EVIDENCE ===
+This exact tool-call shape has now been observed ${occurrences} times for this user.
+The trace below is the most recent instance and is REPRESENTATIVE, not unique.
+Judge transferability on the procedure it demonstrates, not on this run's subject matter.
+
+${chatTrace}`;
+
+      const analysis = await this._llmJudgeAnalysis(traceDoc, userId, true, provider, model);
+      if (!analysis) {
+        console.log('[TraceAnalyzer] LLM judge returned no usable analysis for chat trace');
+        return null;
+      }
+
+      console.log(`[TraceAnalyzer] Chat analysis complete — quality: ${analysis.traceQuality}, candidate: ${analysis.skillCandidate?.shouldGenerate ? 'yes' : 'no'}`);
+      return analysis;
+    } catch (error) {
+      console.error('[TraceAnalyzer] Error analyzing chat trace:', error);
+      return null;
+    }
+  }
+
+  /**
    * Build structured trace document from execution data.
    * @private
    */

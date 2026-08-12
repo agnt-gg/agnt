@@ -1,7 +1,14 @@
 import db from './database/index.js';
 
 const DEFAULT_SETTINGS = {
-  autoAnalyze: false,
+  // ON by default. This flag gates skill evolution on goal completion, and the
+  // only component that ever rendered a toggle for it (screens/SkillForge) was
+  // orphaned when SkillForge was folded into the Skills screen — no route, no
+  // import, no reference. Defaulting it off therefore meant "permanently off for
+  // every user, unreachable except by hand-POSTing /skillforge/settings", which
+  // is indistinguishable from the feature not existing. The guards below
+  // (minScore, minTasks, minConfidence) are the real safety net.
+  autoAnalyze: true,
   abTestTimeBudgetMs: 300000,
   minConfidence: 0.7,
   minDelta: 2.0,

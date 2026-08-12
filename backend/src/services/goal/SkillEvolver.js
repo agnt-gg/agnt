@@ -25,7 +25,12 @@ class SkillEvolver {
   /**
    * Primary entry point. Evolve a skill from a trace analysis.
    * @param {Object} traceAnalysis - Output from TraceAnalyzer
-   * @param {string} sourceGoalId - The goal that produced this trace
+   * @param {string} sourceGoalId - What produced this trace: a goal id, or a
+   *   non-goal ref like `chat:<executionId>` from ChatSkillForge. A non-goal ref
+   *   is deliberately supported without special-casing — GoalModel.findOne
+   *   returns nothing for it, so _runABTest declines through its existing guard
+   *   and the skill lands as a draft, which is the correct outcome for a trace
+   *   that cannot be re-run against a baseline.
    * @param {string} userId - Owner
    * @returns {Object} EvolutionResult { action, delta, skillId, skillName, version, ... }
    */
@@ -35,7 +40,7 @@ class SkillEvolver {
       return { action: 'skipped', reason: 'No skill candidate in trace analysis' };
     }
 
-    console.log(`[SkillEvolver] Evolving skill "${candidate.name}" from goal ${sourceGoalId}`);
+    console.log(`[SkillEvolver] Evolving skill "${candidate.name}" from ${sourceGoalId}`);
 
     try {
       // Check for existing similar skill
