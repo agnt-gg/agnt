@@ -30,6 +30,7 @@ import os from 'os';
 let journal;
 let TMP;
 let DIR;
+let blockedDirBackup = null;
 const savedEnv = {};
 
 /** Poll until `probe` is truthy — never a bare sleep, which makes flaky gates. */
@@ -64,6 +65,44 @@ const makeRun = (conversationId, extra = {}) => ({
 
 const journalFor = async (id) => (await journal.listJournals()).find((j) => j.conversationId === id);
 
+/**
+ * Make JOURNAL_DIR unusable on every supported OS.
+ *
+ * chmod is not a write barrier on Windows, especially for the owning user.
+ * A regular file at the directory path is: mkdir/readdir/write all fail with
+ * ENOTDIR/EEXIST. If a journal already exists, move the directory aside first
+ * so we can also prove a failed write did not change the last good snapshot.
+ */
+async function blockJournalWrites() {
+  blockedDirBackup = `${DIR}.write-blocked`;
+  await fsp.rm(blockedDirBackup, { recursive: true, force: true });
+  try {
+    await fsp.rename(DIR, blockedDirBackup);
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
+    blockedDirBackup = null;
+  }
+  await fsp.writeFile(DIR, 'journal directory deliberately blocked by test');
+}
+
+async function restoreJournalWrites() {
+  await fsp.rm(DIR, { recursive: true, force: true });
+  if (blockedDirBackup) {
+    await fsp.rename(blockedDirBackup, DIR);
+    blockedDirBackup = null;
+  }
+}
+
+async function journalForInDirectory(dir, id) {
+  const names = await fsp.readdir(dir);
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const parsed = JSON.parse(await fsp.readFile(path.join(dir, name), 'utf8'));
+    if (parsed.conversationId === id) return parsed;
+  }
+  return undefined;
+}
+
 beforeAll(async () => {
   TMP = await fsp.mkdtemp(path.join(os.tmpdir(), 'agnt-hb-'));
   for (const k of ['AGNT_HOME', 'USER_DATA_PATH', 'DOCKER_CONTAINER']) savedEnv[k] = process.env[k];
@@ -86,14 +125,15 @@ afterAll(async () => {
 
 beforeEach(async () => {
   journal._resetForTests();
+  await restoreJournalWrites();
   await fsp.rm(DIR, { recursive: true, force: true }).catch(() => {});
 });
 
-afterEach(() => {
+afterEach(async () => {
   journal.stopJournalHeartbeat();
-  // Never leave a directory unwritable behind — the next test would fail for
-  // a reason that has nothing to do with what it is checking.
-  try { fs.chmodSync(DIR, 0o700); } catch { /* may not exist */ }
+  // Never leave the blocker behind — the next test would fail for a reason
+  // that has nothing to do with what it is checking.
+  await restoreJournalWrites();
 });
 
 describe('what the heartbeat is FOR: retrying a write that failed', () => {
@@ -102,15 +142,14 @@ describe('what the heartbeat is FOR: retrying a write that failed', () => {
     // which nothing publishes. Before the heartbeat this run stayed uninsured
     // until the turn produced its next event — potentially minutes later.
     const run = makeRun('hb-retry');
-    await fsp.mkdir(DIR, { recursive: true });
-    await fsp.chmod(DIR, 0o500); // writes fail
+    await blockJournalWrites();
 
     journal.journalRun(run);
     await new Promise((r) => setTimeout(r, 3200)); // let the throttled write fail
     expect(await journalFor('hb-retry')).toBeUndefined();
 
     // The disk recovers. No new event will ever arrive.
-    await fsp.chmod(DIR, 0o700);
+    await restoreJournalWrites();
     journal.startJournalHeartbeat(() => [run], { intervalMs: 50 });
 
     const found = await until(() => journalFor('hb-retry'), { what: 'the heartbeat to retry' });
@@ -119,8 +158,7 @@ describe('what the heartbeat is FOR: retrying a write that failed', () => {
 
   it('keeps retrying while the failure persists, then succeeds', async () => {
     const run = makeRun('hb-persistent');
-    await fsp.mkdir(DIR, { recursive: true });
-    await fsp.chmod(DIR, 0o500);
+    await blockJournalWrites();
 
     journal.journalRun(run);
     journal.startJournalHeartbeat(() => [run], { intervalMs: 40 });
@@ -129,7 +167,7 @@ describe('what the heartbeat is FOR: retrying a write that failed', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(await journalFor('hb-persistent')).toBeUndefined();
 
-    await fsp.chmod(DIR, 0o700);
+    await restoreJournalWrites();
     const found = await until(() => journalFor('hb-persistent'), { what: 'recovery once writable' });
     expect(found.conversationId).toBe('hb-persistent');
   }, 20000);
@@ -161,15 +199,16 @@ describe('what the heartbeat must NOT do: churn', () => {
     journal.flushAllSync([run]);
     expect((await journalFor('hb-cycle')).events).toHaveLength(3);
 
-    await fsp.chmod(DIR, 0o500); // the next write will fail
+    await blockJournalWrites(); // the next write will fail
     run.events.push({ eventName: 'content_delta', data: { assistantMessageId: 'a1', delta: ' more' } });
     journal.journalRun(run);
     await new Promise((r) => setTimeout(r, 3200)); // throttle fires and fails
 
-    // Still the three-event version: the failed write changed nothing.
-    expect((await journalFor('hb-cycle')).events).toHaveLength(3);
+    // Still the three-event version: the failed write changed nothing. While
+    // blocked, the last good directory is parked beside the blocker file.
+    expect((await journalForInDirectory(blockedDirBackup, 'hb-cycle')).events).toHaveLength(3);
 
-    await fsp.chmod(DIR, 0o700);
+    await restoreJournalWrites();
     journal.startJournalHeartbeat(() => [run], { intervalMs: 40 });
 
     const found = await until(
