@@ -364,9 +364,10 @@ import 'highlight.js/styles/atom-one-dark.css';
 import draggable from 'vuedraggable';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import { getFile, saveFile } from '@/services/fileSystemService.js';
+import { getFile, getSettings, saveFile } from '@/services/fileSystemService.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
+import { injectArtifactPreviewBase } from '@/utils/artifactPreviewBase.js';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
 
@@ -740,6 +741,7 @@ export default {
     const openTabs = ref([]);
     const activeTabPath = ref(null);
     const tabsScrollRef = ref(null);
+    const workspaceRoot = ref('');
 
     // Translate vertical wheel to horizontal scroll on the tab strip
     const handleTabsWheel = (e) => {
@@ -1556,6 +1558,11 @@ export default {
           el.setAttribute('style', rewriteCss(el.getAttribute('style')));
         });
 
+        // srcdoc has no directory of its own. Static attributes above can be
+        // rewritten, but JavaScript-created URLs (slideshows, lazy images,
+        // dynamic imports) only resolve correctly when the document has a
+        // real base anchored to this HTML file's directory.
+        injectArtifactPreviewBase(doc, workspaceRoot.value, htmlPath);
         injectConsoleShim(doc);
 
         return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
@@ -2214,10 +2221,19 @@ export default {
       }
     };
 
-    onMounted(() => {
+    onMounted(async () => {
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('code-file-written', handleFileWritten);
       window.addEventListener('message', handlePreviewMessage);
+      try {
+        const settings = await getSettings();
+        workspaceRoot.value = settings.workspaceRoot || '';
+        // The first preview may have rendered before settings returned. Reload
+        // once so runtime-created relative assets receive the new base URL.
+        nextTick(() => updatePreview());
+      } catch (error) {
+        console.error('[Artifacts] Failed to load workspace root for HTML preview:', error);
+      }
     });
 
     onUnmounted(() => {
