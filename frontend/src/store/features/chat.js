@@ -11,7 +11,7 @@ import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
 import { dispatchGlobalFrontendEvent } from '@/services/globalFrontendEvents.js';
-import { isOwnAnnouncement } from '@/services/clientId.js';
+import { getClientId, isOwnAnnouncement } from '@/services/clientId.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -922,6 +922,20 @@ export default {
       const conv = state.conversations[conversationId];
       if (!conv) return;
       if (message && message.role && message.content !== undefined) {
+        /**
+         * AN ID THIS SLOT ALREADY HOLDS IS A REPEAT, NOT A MESSAGE.
+         *
+         * Three deliverers can hand this mutation the same assistant message
+         * — the live SSE stream, a reattach replay, and the socket mirror —
+         * and all three carry the same assistantMessageId. Identity stamping
+         * keeps them apart at the door, but any path that arrives unlabelled
+         * used to mint a second, empty copy of a message that was already
+         * streaming (observed live: same id twice in one saved transcript,
+         * one garbled by both writers, one blank). A fresh message always
+         * carries a fresh id, so refusing a repeat cannot lose real content.
+         * Messages with no id at all are never treated as repeats.
+         */
+        if (message.id && conv.messages.some((m) => m.id === message.id)) return;
         conv.messages.push(message);
         // Unread is no longer marked here — the autosave that follows an
         // assistant message bumps updated_at, and unread derives from that.
@@ -1470,6 +1484,23 @@ export default {
       try {
         let body;
         const headers = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        /**
+         * SAY WHO IS SENDING, OR EVERY ECHO GUARD IS BLIND.
+         *
+         * The server stamps run:started and every chat:* mirror broadcast with
+         * this id, and both receiving guards (adoptAnnouncedRun,
+         * handleRealtimeChatEvent) treat an UNSTAMPED event as someone else's
+         * — deliberately, because never showing another device's turn is worse
+         * than a duplicate (clientId.js). chatService.streamChat always sent
+         * this header; this hand-built request did not, so the sender's own
+         * announcement came back unlabelled, the client adopted its own run,
+         * and the SSE replay raced the live stream into one slot — the
+         * duplicated first answer of every new conversation.
+         */
+        headers['X-AGNT-Client-Id'] = getClientId();
         const normalizedReasoningValue = typeof reasoningValue === 'string' && reasoningValue.trim()
           ? reasoningValue.trim().toLowerCase()
           : 'default';
@@ -1477,9 +1508,6 @@ export default {
           normalizedReasoningValue !== 'off' &&
           normalizedReasoningValue !== 'none';
         const effectiveReasoningEnabled = reasoningEnabled || derivedReasoningEnabled;
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
 
         // (resolvedAgentId computed above, before history rendering)
 
@@ -2614,6 +2642,9 @@ export default {
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
+        // Same contract as sendMessage: an unstamped turn cannot be recognised
+        // as our own when it is announced back to us. See the comment there.
+        headers['X-AGNT-Client-Id'] = getClientId();
         const normalizedReasoningValue = typeof reasoningValue === 'string' && reasoningValue.trim()
           ? reasoningValue.trim().toLowerCase()
           : (rootState.aiProvider?.reasoningValue || 'default');
