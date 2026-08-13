@@ -713,6 +713,30 @@ async function universalChatHandler(req, res, context = {}) {
   const authToken = req.headers.authorization;
   const files = req.files || []; // Multer files
 
+  /**
+   * WHO SENT THIS TURN — read once, stamped on everything broadcast about it.
+   *
+   * Every event this handler puts in the user's socket room reaches the sender
+   * too, and the sender is ALREADY receiving the turn down the SSE connection
+   * it opened. It therefore has to recognise its own echo and drop it, and
+   * conversation id cannot tell it: on the first message of a new conversation
+   * the sender's slot is still keyed by a temp id until `conversation_started`
+   * arrives over SSE, while the socket already carries the real one. The two
+   * transports are unordered, so the sender is asked "is this yours?" about an
+   * id it has not learned yet, and the honest answer is no.
+   *
+   * Identity is carried explicitly instead. The full reasoning, including why
+   * this cannot be inferred from delivery order, is in
+   * frontend/src/services/clientId.js.
+   *
+   * One binding rather than a lookup per call site: this started as an inline
+   * read on the run announcement alone, and the delta mirror below — same
+   * audience, same echo, same fix — went unstamped, which duplicated the first
+   * assistant message of every new conversation. A single source cannot be
+   * half-applied.
+   */
+  const originClientId = req?.headers?.['x-agnt-client-id'] || null;
+
   // Multipart bodies (used when files are attached) arrive with every field as
   // a string. The downstream destructure expects `messages`, `pageContext`,
   // `pageState`, `agentContext`, etc. as objects/arrays, so decode any field
@@ -1086,6 +1110,7 @@ async function universalChatHandler(req, res, context = {}) {
           ...data,
           conversationId,
           chatType,
+          originClientId,
           timestamp: Date.now(),
         });
       }
@@ -1142,7 +1167,7 @@ async function universalChatHandler(req, res, context = {}) {
       conversationId,
       chatType,
       startedAt: activeRun?.startedAt || Date.now(),
-      originClientId: req?.headers?.['x-agnt-client-id'] || null,
+      originClientId,
     });
   }
 
@@ -1619,6 +1644,7 @@ async function universalChatHandler(req, res, context = {}) {
           conversationId,
           chatType,
           message: lastUserMessage,
+          originClientId,
           timestamp: Date.now(),
         });
       }

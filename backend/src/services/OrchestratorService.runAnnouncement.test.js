@@ -54,7 +54,13 @@ describe('announcing a started run', () => {
     // Without the origin, the sender cannot recognise its own announcement for
     // a NEW conversation (its slot is still keyed by a temp id), reattaches to
     // itself, and MIGRATE_CONVERSATION_ID then overwrites its own live slot.
-    expect(payload).toMatch(/originClientId:\s*req\?\.headers\?\.\['x-agnt-client-id'\]/);
+    //
+    // Read from the handler-wide `originClientId` binding rather than inline:
+    // the delta mirror needs the identical value for the identical reason, and
+    // an inline read here left that one unstamped. The binding's derivation
+    // from the header is pinned in OrchestratorService.mirrorEcho.test.js.
+    expect(payload).toMatch(/originClientId,/);
+    expect(CODE).toMatch(/const originClientId = req\?\.headers\?\.\['x-agnt-client-id'\] \|\| null;/);
   });
 
   it('does not announce for an unidentified user', () => {

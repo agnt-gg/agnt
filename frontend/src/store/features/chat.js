@@ -11,6 +11,7 @@ import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
 import { dispatchGlobalFrontendEvent } from '@/services/globalFrontendEvents.js';
+import { isOwnAnnouncement } from '@/services/clientId.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -2759,6 +2760,35 @@ export default {
      */
     handleRealtimeChatEvent({ commit, state, dispatch }, eventData) {
       const { type, conversationId, assistantMessageId } = eventData;
+
+      /**
+       * YOUR OWN ECHO IS NOT ANOTHER TAB.
+       *
+       * This handler exists to apply turns that happened somewhere else. The
+       * server broadcasts to the whole user room, so the sender receives its
+       * own turn here as well — while already streaming it over SSE. Applied
+       * twice, it renders twice, and neither mutation is idempotent.
+       *
+       * IDENTITY, NOT ID, AND FIRST. The ownership check below asks whether
+       * the named conversation is streaming HERE, which is unanswerable on the
+       * first message of a new conversation: this client's slot is still keyed
+       * by a temp id until `conversation_started` arrives over SSE, while this
+       * event already carries the server's real id. `state.conversations[id]`
+       * is undefined, the guard cannot fire, and ENSURE_CONVERSATION below
+       * builds a SECOND slot for a turn that is already being written — which
+       * duplicated the first answer of every new chat, and left
+       * MIGRATE_CONVERSATION_ID renaming the temp slot onto an id that was
+       * already taken.
+       *
+       * The id guard stays: it covers the reattach window, where the events
+       * are legitimately someone else's and ownership is about a claim rather
+       * than an origin.
+       *
+       * An unstamped event is deliberately treated as NOT ours — see
+       * clientId.js. Showing a turn twice is recoverable; never showing it is
+       * not.
+       */
+      if (isOwnAnnouncement(eventData.originClientId)) return;
 
       const isAutonomousEvent = type && type.startsWith('autonomous_');
       const isAsyncToolEvent = type && type.startsWith('async_tool_');
