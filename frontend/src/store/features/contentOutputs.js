@@ -288,7 +288,25 @@ export default {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
-        if (!response.ok) {
+        /**
+         * ALREADY GONE IS THE OUTCOME WE WANTED.
+         *
+         * DELETE's postcondition is "this resource does not exist". A 404 says
+         * it does not exist, so the postcondition holds and there is nothing to
+         * report. Treating it as a failure is not merely pedantic — the caller
+         * rolls back on rejection, so a row the server does not have gets put
+         * straight back into the sidebar, and every retry repeats it. That is a
+         * chat which cannot be opened and cannot be removed, surviving until a
+         * reload.
+         *
+         * Observed live: a conversation with a conversation_logs row but no
+         * content_outputs row answered 404 forever.
+         *
+         * Only 404 is forgiven. A 500, a 403, or a network fault all leave the
+         * row in place, so those must still reject and let the caller restore
+         * it — hiding a chat that still exists would be the opposite lie.
+         */
+        if (!response.ok && response.status !== 404) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
