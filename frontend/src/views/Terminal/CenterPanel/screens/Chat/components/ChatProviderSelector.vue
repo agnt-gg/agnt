@@ -11,29 +11,6 @@
       </div>
 
       <div class="dropdown-content">
-        <!--
-          MODE — the tri-state that was missing.
-
-          "Default" was previously unreachable: every send pinned a concrete
-          pair, so a chat given a model could never be handed back to the
-          global setting. Dynamic routing needs that same absent state, so one
-          control delivers both.
-        -->
-        <div class="routing-mode-row" role="radiogroup" aria-label="Model selection mode">
-          <button
-            v-for="opt in modeOptions"
-            :key="opt.value"
-            class="routing-mode-btn"
-            :class="{ active: activeMode === opt.value }"
-            role="radio"
-            :aria-checked="activeMode === opt.value ? 'true' : 'false'"
-            @click="selectMode(opt.value)"
-          >
-            <i :class="opt.icon"></i>
-            <span>{{ opt.label }}</span>
-          </button>
-        </div>
-
         <div v-if="activeMode === 'default'" class="routing-mode-note">
           Following your global setting:
           <strong>{{ globalProviderDisplayName }}</strong>
@@ -125,9 +102,14 @@
           <span class="warning-text">{{ toolSupportWarning }}</span>
         </div>
 
-        </template>
+        <!--
+          Custom Provider Actions Row — INSIDE the pinned block.
 
-        <!-- Custom Provider Actions Row -->
+          Adding, editing or deleting a provider only means anything when you
+          are choosing one by hand. In Default and Dynamic the user has
+          explicitly said "I am not picking", so a provider-management row
+          there is an action with no visible consequence.
+        -->
         <div class="custom-provider-row">
           <Tooltip text="Add Custom Provider" width="auto">
             <button @click="openCustomProviderDialog" class="btn-add-custom">
@@ -149,6 +131,37 @@
               </button>
             </Tooltip>
           </div>
+        </div>
+        </template>
+
+        <!--
+          MODE — the tri-state that was missing, and the last thing in the
+          panel by design.
+
+          "Default" was previously unreachable: every send pinned a concrete
+          pair, so a chat given a model could never be handed back to the
+          global setting. Dynamic routing needs that same absent state, so one
+          control delivers both.
+
+          It sits at the BOTTOM because the popup is anchored by its
+          bottom-right corner: the row nearest that corner is the one that
+          holds still while the panel above it grows and shrinks with the
+          selected mode. Ordering it first put the control furthest from the
+          fixed edge, so it was the part that appeared to move most.
+        -->
+        <div class="routing-mode-row" role="radiogroup" aria-label="Model selection mode">
+          <button
+            v-for="opt in modeOptions"
+            :key="opt.value"
+            class="routing-mode-btn"
+            :class="{ active: activeMode === opt.value }"
+            role="radio"
+            :aria-checked="activeMode === opt.value ? 'true' : 'false'"
+            @click="selectMode(opt.value)"
+          >
+            <i :class="opt.icon"></i>
+            <span>{{ opt.label }}</span>
+          </button>
         </div>
       </div>
     </div>
