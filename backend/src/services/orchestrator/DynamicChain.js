@@ -78,6 +78,16 @@ export const LATENCY_WEIGHT = 0.08;
 export const MIN_QUALITY_SPREAD = 0.02;
 
 /**
+ * How much cheaper "free" is than the cheapest paid option, on the log scale.
+ *
+ * A subscription seat has zero marginal cost, and log(0) is undefined, so free
+ * needs a floor. Making it one order of magnitude below the cheapest paid model
+ * says the true thing — free is decisively better, not infinitely better — and
+ * keeps it from swamping the scale the way a literal zero would.
+ */
+export const FREE_FLOOR_RATIO = 0.1;
+
+/**
  * Explore budget for models we have never measured.
  *
  * A router that only ever picks what it has already measured can never learn
@@ -204,7 +214,7 @@ export function estimateQualityPrior(candidate) {
 /**
  * Score every eligible candidate.
  *
- * TWO NORMALISATION RULES, AND THE SECOND ONE IS THE SUBTLE PART:
+ * THREE NORMALISATION RULES. THE THIRD ONE IS THE ONE THAT BITES.
  *
  * 1. Cost and switch-cost are BOTH DOLLARS, so they are added into one
  *    effective cost BEFORE normalising. Normalising them separately (the
@@ -215,8 +225,24 @@ export function estimateQualityPrior(candidate) {
  *    small price gap — which is the entire point of having the term.
  *
  * 2. Quality is normalised across the pool too, so both sides of the trade-off
- *    are scale-free and the same weights behave identically whether the pool
- *    spans $0.05 or $75 per million tokens.
+ *    are scale-free.
+ *
+ * 3. COST IS NORMALISED ON A LOG SCALE, because price is multiplicative.
+ *
+ *    Measured on the real 33-model pool this ships against: turn costs span
+ *    226x ($0.00106 to $0.24). Under LINEAR min-max the eight cheapest models
+ *    — themselves a 5x price range — all compressed into 0.0000..0.0173, i.e.
+ *    1.7% of the scale, while their quality differences used the full 0..1.
+ *    The single expensive outlier set the scale and flattened everything the
+ *    router actually chooses between, so λ had nothing left to weigh and
+ *    "Save money" returned the same model as "Best quality". A dial that does
+ *    not move is worse than no dial: it reports a choice the user did not get.
+ *
+ *    Log normalisation states the right invariant — doubling the price feels
+ *    the same at $0.001 and at $0.10 — and gives those same eight models
+ *    0.0000..0.2928. Only a live pool exposes this; every pool small enough to
+ *    write by hand in a unit test behaves identically under both transforms,
+ *    which is exactly why this survived the unit suite.
  */
 export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session = {} } = {}) {
   const stakeWeight = Number.isFinite(intent.stakeWeight) ? intent.stakeWeight : 1.0;
@@ -242,9 +268,24 @@ export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session =
   const effectiveCosts = priced.map(
     (p) => (Number.isFinite(p.cost) ? p.cost : medianCost) + SWITCH_PENALTY_WEIGHT * p.switchCost
   );
-  const minCost = Math.min(...effectiveCosts);
   const maxCost = Math.max(...effectiveCosts);
-  const costSpan = maxCost - minCost || 1;
+
+  // Log scale, floored so a zero-cost subscription seat is representable.
+  //
+  // THE FLOOR IS CONDITIONAL, and that detail is load-bearing. Applying it
+  // unconditionally reserves the bottom of the scale for a "free" tier that may
+  // not exist, which pushes the cheapest PAID model up to ~0.30 and burns 30%
+  // of λ's leverage on empty space. Measured: with the floor always on, the
+  // real pool put its cheapest model at 0.298 and "Save money" still returned
+  // the same answer as "Best quality". Only widen the scale for free when there
+  // is actually something free to represent.
+  const positiveCosts = effectiveCosts.filter((c) => c > 0);
+  const cheapestPaid = positiveCosts.length ? Math.min(...positiveCosts) : 1;
+  const hasFreeCandidate = effectiveCosts.some((c) => c <= 0);
+  const costFloor = hasFreeCandidate ? cheapestPaid * FREE_FLOOR_RATIO : cheapestPaid;
+  const logSpan = maxCost > costFloor ? Math.log(maxCost / costFloor) : 0;
+  const normaliseCost = (c) =>
+    logSpan > 0 ? Math.log(Math.max(c, costFloor) / costFloor) / logSpan : 0;
 
   const qualities = priced.map((p) => p.quality + (p.qualityKnown ? 0 : EXPLORE_BONUS));
   const minQuality = Math.min(...qualities);
@@ -257,7 +298,7 @@ export function scoreCandidates(eligible, { intent = {}, lambda = 0.5, session =
 
   return priced
     .map((p, i) => {
-      const costNorm = (effectiveCosts[i] - minCost) / costSpan;
+      const costNorm = normaliseCost(effectiveCosts[i]);
       const qualityNorm = qualityIsDecisive ? (qualities[i] - minQuality) / qualitySpan : 0;
       const switchNorm = maxCost > 0 ? (SWITCH_PENALTY_WEIGHT * p.switchCost) / maxCost : 0;
       const latencyNorm = (Number.isFinite(p.candidate.latencyMs) ? p.candidate.latencyMs : 0) / maxLatency;
