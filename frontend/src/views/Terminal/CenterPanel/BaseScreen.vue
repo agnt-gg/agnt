@@ -146,7 +146,7 @@
               </button>
             </Tooltip>
             <Tooltip text="AI Provider Settings" width="auto">
-              <button v-if="!isStreaming" ref="providerSelectorButtonRef" @click="toggleProviderSelector" class="chat-provider-button">
+              <button v-if="!isStreaming" @click="toggleProviderSelector" class="chat-provider-button">
                 <i class="fas fa-robot"></i>
               </button>
             </Tooltip>
@@ -230,6 +230,7 @@
       <ChatProviderSelector
         v-if="isProviderSelectorOpen"
         :isOpen="isProviderSelectorOpen"
+        :clean-position="true"
         :channel-key="channelKey"
         :conversation-id="conversationId"
         :style="providerSelectorStyle"
@@ -239,7 +240,13 @@
 
     <!-- Tool Selector Dropdown -->
     <Teleport to="body">
-      <ChatToolSelector v-if="isToolSelectorOpen" :isOpen="isToolSelectorOpen" :channel-key="channelKey" @close="closeToolSelector" />
+      <ChatToolSelector
+        v-if="isToolSelectorOpen"
+        :isOpen="isToolSelectorOpen"
+        :channel-key="channelKey"
+        :style="toolSelectorStyle"
+        @close="closeToolSelector"
+      />
     </Teleport>
 
     <!-- Command Menu (@mentions, /commands, #references) -->
@@ -265,6 +272,7 @@ import LeftPanel from '../LeftPanel/LeftPanel.vue';
 import RightPanel from '../RightPanel/RightPanel.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import ChatProviderSelector from './screens/Chat/components/ChatProviderSelector.vue';
+import { useCornerAnchor, findVisibleAnchor } from '@/utils/cornerAnchor.js';
 import ChatToolSelector from './screens/Chat/components/ChatToolSelector.vue';
 // import PromoBanner from '@/views/_components/common/PromoBanner.vue';
 import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
@@ -537,11 +545,28 @@ export default {
 
     // --- Provider Selector State ---
     const isProviderSelectorOpen = ref(false);
-    const providerSelectorButtonRef = ref(null);
-    const providerSelectorStyle = ref({});
+
+    // Pinned to the bottom-right corner of the conversation canvas, NOT to the
+    // trigger button. The panel's height changes with the selected mode, so a
+    // top-anchored popup moved every time the mode changed; anchoring the
+    // corner keeps it still. Measuring the canvas also means the popup travels
+    // when a side panel opens or closes. See utils/cornerAnchor.js.
+    const { anchorStyle: providerSelectorStyle } = useCornerAnchor(
+      () => findVisibleAnchor('.conversation-canvas-wrapper'),
+      isProviderSelectorOpen,
+    );
 
     // --- Tool Selector State ---
     const isToolSelectorOpen = ref(false);
+
+    // Same corner as the provider popover above. Its stylesheet carries a
+    // hardcoded `bottom: 140px; right: 399px`, which is only correct on the
+    // window it was measured at; anchoring both to the canvas keeps the two
+    // popups from the same button row in the same place.
+    const { anchorStyle: toolSelectorStyle } = useCornerAnchor(
+      () => findVisibleAnchor('.conversation-canvas-wrapper'),
+      isToolSelectorOpen,
+    );
 
     // --- Streaming State ---
     // Mirror property (state.isStreaming) is kept in sync by SCOPED_SET_STREAMING
@@ -798,18 +823,8 @@ export default {
     };
 
     const toggleProviderSelector = () => {
+      // Positioning is handled by the corner anchor, which measures on open.
       isProviderSelectorOpen.value = !isProviderSelectorOpen.value;
-
-      if (isProviderSelectorOpen.value && providerSelectorButtonRef.value) {
-        // Calculate position for the dropdown
-        nextTick(() => {
-          const buttonRect = providerSelectorButtonRef.value.getBoundingClientRect();
-          providerSelectorStyle.value = {
-            top: `${buttonRect.top - 420}px`, // Position above the button
-            left: `${buttonRect.left}px`,
-          };
-        });
-      }
     };
 
     const closeProviderSelector = () => {
@@ -1593,12 +1608,12 @@ export default {
       onDrop,
       // Provider selector
       isProviderSelectorOpen,
-      providerSelectorButtonRef,
       providerSelectorStyle,
       toggleProviderSelector,
       closeProviderSelector,
       // Tool selector
       isToolSelectorOpen,
+      toolSelectorStyle,
       toggleToolSelector,
       closeToolSelector,
       // Command menu

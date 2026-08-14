@@ -11,7 +11,7 @@
       <i class="fas fa-cloud-upload-alt"></i>
       <span>Drop files to attach</span>
     </div>
-    <div class="chat-messages-area">
+    <div class="chat-messages-area" ref="chatMessagesAreaRef">
       <div class="chat-messages" ref="chatMessagesRef" @scroll.passive="scheduleScrollCapture">
         <div v-if="formattedMessages.length === 0" class="empty-state">
           <slot name="empty-state">
@@ -194,6 +194,7 @@ import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/Q
 import ChatInputBar from '@/views/_components/chat/ChatInputBar.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
 import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatProviderSelector.vue';
+import { useCornerAnchor } from '@/utils/cornerAnchor.js';
 import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatToolSelector.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -269,19 +270,19 @@ export default {
     const isProviderSelectorOpen = ref(false);
     const isToolSelectorOpen = ref(false);
 
-    // Hardcoded position for sidebar chat popovers. Matches the orchestrator
-    // chat's "bottom-right anchored, expand up-and-left" behaviour: bottom
-    // and left are pinned, the popup grows from that corner. Inline `auto`
-    // for top defeats the popover components' own top/bottom rules so they
-    // don't fight our anchor.
-    const popoverStyle = {
-      position: 'fixed',
-      top: 'auto',
-      right: '1592px',
-      bottom: '148px',
-      left: '96px',
-      margin: 0,
-    };
+    // Pinned to the bottom-right corner of this chat's message area.
+    //
+    // This was previously a hardcoded `right: 1592px; bottom: 148px`, which is
+    // only correct on the one window size it was measured at, and pinning both
+    // `left` and `right` stretched the popup between them. Measuring the
+    // container instead makes it correct at every size, and makes the popup
+    // travel when the panel is resized or a sidebar opens.
+    const chatMessagesAreaRef = ref(null);
+    const isAnyPopoverOpen = computed(() => isProviderSelectorOpen.value || isToolSelectorOpen.value);
+    const { anchorStyle: popoverStyle } = useCornerAnchor(
+      () => chatMessagesAreaRef.value,
+      isAnyPopoverOpen,
+    );
 
 
     const toggleProviderSelector = () => {
@@ -813,6 +814,7 @@ export default {
       isProviderSelectorOpen,
       isToolSelectorOpen,
       popoverStyle,
+      chatMessagesAreaRef,
       toggleProviderSelector,
       closeProviderSelector,
       toggleToolSelector,
