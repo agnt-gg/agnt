@@ -8,9 +8,39 @@
 // All reads and writes go through this module so the selectors, the send
 // pipeline, and the UnifiedChatContainer stay in sync. The shape is:
 //
-//   { [channelKey]: { provider?: string, model?: string, enabledTools?: string[] } }
+//   { [channelKey]: { mode?: string, provider?: string, model?: string, enabledTools?: string[] } }
 
 const STORAGE_KEY = 'agnt_chat_channel_configs';
+
+/**
+ * How a chat surface chooses its model.
+ *
+ *   'pinned'   this exact provider/model
+ *   'default'  follow the global setting (INCLUDING its routing mode)
+ *   'dynamic'  let Annie choose per request
+ *
+ * BEFORE THIS EXISTED, 'default' WAS UNREACHABLE. The send path always
+ * resolved a concrete provider/model pair, so "follow my global setting" was
+ * not a state the app could represent and a chat that had once been given a
+ * model could never be handed back. That is the papercut this field fixes;
+ * dynamic routing needs the same missing state, so one field buys both.
+ */
+export const CHAT_MODES = Object.freeze(['default', 'dynamic', 'pinned']);
+
+/**
+ * Resolve a channel's mode from its stored config.
+ *
+ * BACKWARD COMPATIBILITY: every config saved before this feature has a
+ * provider/model and no mode. Those users chose that model, so they read as
+ * 'pinned' and nothing about their chats changes. A channel with no config at
+ * all has expressed nothing, so it reads as 'default' — which is what makes
+ * the global toggle able to convert every untouched surface at once.
+ */
+export function resolveChannelMode(cfg) {
+  if (!cfg) return 'default';
+  if (CHAT_MODES.includes(cfg.mode)) return cfg.mode;
+  return cfg.provider && cfg.model ? 'pinned' : 'default';
+}
 
 // Sentinel stored in a channel's `enabledTools` meaning "the user wants
 // everything" — deliberately NOT an enumerated list. Enumerating the full
@@ -182,11 +212,28 @@ export function setChannelConfig(channelKey, patch) {
 }
 
 export function setChannelProvider(channelKey, provider) {
-  setChannelConfig(channelKey, { provider });
+  // Choosing a provider IS pinning one. Leaving the mode alone here would let
+  // a channel sit in 'default' while carrying a concrete pair, which is the
+  // ambiguous state this field exists to remove.
+  setChannelConfig(channelKey, { provider, mode: 'pinned' });
 }
 
 export function setChannelModel(channelKey, model) {
-  setChannelConfig(channelKey, { model });
+  setChannelConfig(channelKey, { model, mode: 'pinned' });
+}
+
+/**
+ * Set a channel's mode.
+ *
+ * The provider/model pair is PRESERVED, never cleared, when switching away
+ * from 'pinned'. Deleting it would mean a user who flips to Dynamic to try it
+ * out loses the model they had chosen and cannot get it back — so the mode
+ * would be a one-way door, exactly the complaint levelled at routers that
+ * take control away.
+ */
+export function setChannelMode(channelKey, mode) {
+  if (!CHAT_MODES.includes(mode)) return;
+  setChannelConfig(channelKey, { mode });
 }
 
 export function setChannelEnabledTools(channelKey, names) {
@@ -212,6 +259,26 @@ export function resolveChannelProviderModel(channelKey, aiProviderState) {
   return {
     provider: cfg.provider || aiProviderState?.selectedProvider || null,
     model: cfg.model || aiProviderState?.selectedModel || null,
+  };
+}
+
+/**
+ * What a channel should put on the wire.
+ *
+ * Only a PINNED channel sends a provider/model pair. 'default' and 'dynamic'
+ * send the mode and omit the pair entirely, which is what hands the decision
+ * to the server — reviving the resolution ladder for 'default' and invoking
+ * the router for 'dynamic'. Sending a pair alongside either would be read as a
+ * pin by the backend's backward-compatibility rule and silently defeat both.
+ */
+export function resolveChannelRouting(channelKey, aiProviderState) {
+  const cfg = getChannelConfig(channelKey);
+  const mode = resolveChannelMode(cfg);
+  if (mode !== 'pinned') return { mode, provider: null, model: null };
+  return {
+    mode,
+    provider: cfg?.provider || aiProviderState?.selectedProvider || null,
+    model: cfg?.model || aiProviderState?.selectedModel || null,
   };
 }
 

@@ -6,7 +6,7 @@
 import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
-import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
+import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { dispatchGlobalFrontendEvent, dispatchGlobalFrontendEvents } from '@/services/globalFrontendEvents.js';
@@ -953,8 +953,29 @@ export default {
       // default (see backend persistDefault guard) — otherwise using one tab
       // would silently rewrite the account-wide provider.
       const wsAi = resolveWorkspaceAiForChannel(channelKey);
-      const resolvedProvider = provider || wsAi?.provider || channelPM.provider;
-      const resolvedModel = model || (wsAi ? (wsAi.model || channelPM.model) : channelPM.model);
+
+      // ROUTING MODE for this channel: 'pinned' | 'default' | 'dynamic'.
+      //
+      // Only a PINNED channel puts a provider/model pair on the wire. The
+      // other two OMIT it, which is the whole mechanism: an absent pair is
+      // what lets the server resolve the account default ('default') or run
+      // the router ('dynamic'). Sending a pair alongside either mode would
+      // trip the backend's legacy-caller rule and be read as a pin.
+      //
+      // An explicit caller argument or a workspace override still wins — both
+      // are choices a human made for this turn, and routing never overrides
+      // those.
+      const channelRouting = resolveChannelRouting(channelKey, rootState.aiProvider);
+      const hasExplicitChoice = !!(provider || wsAi?.provider);
+      const deferToServer = !hasExplicitChoice && channelRouting.mode !== 'pinned';
+
+      const resolvedProvider = deferToServer
+        ? undefined
+        : (provider || wsAi?.provider || channelPM.provider);
+      const resolvedModel = deferToServer
+        ? undefined
+        : (model || (wsAi ? (wsAi.model || channelPM.model) : channelPM.model));
+      const resolvedRoutingMode = hasExplicitChoice ? 'pinned' : channelRouting.mode;
       const resolvedEnabledTools = resolveChannelEnabledTools(channelKey);
       const resolvedReasoningValue = rootState.aiProvider?.reasoningValue || 'default';
       const resolvedReasoningEnabled = rootState.aiProvider?.reasoningEnabled || false;
@@ -965,6 +986,7 @@ export default {
           messages: history,
           provider: resolvedProvider,
           model: resolvedModel,
+          routingMode: resolvedRoutingMode,
           // Turn-only when a workspace override is active: do not write this
           // provider back to the user's account-wide default.
           persistDefault: wsAi ? false : undefined,

@@ -730,10 +730,30 @@ export default {
       const raw = Number(localStorage.getItem('maxToolRounds'));
       return Number.isFinite(raw) && raw > 0 ? raw : 100;
     })(),
+    // Dynamic provider routing (account-wide). 'static' | 'dynamic'.
+    //
+    // Mirrored into localStorage so the chat selector can render the right
+    // mode on first paint instead of flickering through "static" while the
+    // settings fetch lands. loadUserSettings() reconciles with the backend,
+    // which remains the source of truth.
+    routingMode: localStorage.getItem('routingMode') === 'dynamic' ? 'dynamic' : 'static',
+    // 'save' | 'balanced' | 'quality' — one λ in the routing objective.
+    routingPolicy: ['save', 'balanced', 'quality'].includes(localStorage.getItem('routingPolicy'))
+      ? localStorage.getItem('routingPolicy')
+      : 'balanced',
     loadingModels: {},
     modelCache: {},
   },
   mutations: {
+    SET_ROUTING_MODE(state, mode) {
+      // Anything unrecognised means OFF. A typo must never enable routing.
+      state.routingMode = mode === 'dynamic' ? 'dynamic' : 'static';
+      localStorage.setItem('routingMode', state.routingMode);
+    },
+    SET_ROUTING_POLICY(state, policy) {
+      state.routingPolicy = ['save', 'balanced', 'quality'].includes(policy) ? policy : 'balanced';
+      localStorage.setItem('routingPolicy', state.routingPolicy);
+    },
     SET_SELECTED_PROVIDER(state, newProvider) {
       state.selectedProvider = newProvider;
 
@@ -959,6 +979,52 @@ export default {
       }
     },
 
+    /**
+     * Turn dynamic routing on or off account-wide.
+     *
+     * Committed locally FIRST so the toggle responds instantly, then synced.
+     * A failed sync is logged rather than silently reverted — but note the
+     * backend is the source of truth on next load, so a persistent failure
+     * self-corrects on reload instead of leaving the two disagreeing forever.
+     */
+    async setRoutingMode({ commit }, mode) {
+      const value = mode === 'dynamic' ? 'dynamic' : 'static';
+      commit('SET_ROUTING_MODE', value);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ routingMode: value }),
+        });
+        if (!response.ok) {
+          console.error('Failed to persist routing mode:', response.status, await response.text());
+        }
+      } catch (error) {
+        console.error('Failed to sync routing mode with backend:', error);
+      }
+    },
+
+    async setRoutingPolicy({ commit }, policy) {
+      const value = ['save', 'balanced', 'quality'].includes(policy) ? policy : 'balanced';
+      commit('SET_ROUTING_POLICY', value);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ routingPolicy: value }),
+        });
+        if (!response.ok) {
+          console.error('Failed to persist routing policy:', response.status, await response.text());
+        }
+      } catch (error) {
+        console.error('Failed to sync routing policy with backend:', error);
+      }
+    },
+
     async setAsyncToolsEnabled({ commit }, enabled) {
       const value = Boolean(enabled);
       commit('SET_ASYNC_TOOLS_ENABLED', value);
@@ -1109,6 +1175,14 @@ export default {
 
             if (settings.maxToolRounds !== undefined && Number.isFinite(Number(settings.maxToolRounds))) {
               commit('SET_MAX_TOOL_ROUNDS', Number(settings.maxToolRounds));
+            }
+
+            if (settings.routingMode !== undefined) {
+              commit('SET_ROUTING_MODE', settings.routingMode);
+            }
+
+            if (settings.routingPolicy !== undefined) {
+              commit('SET_ROUTING_POLICY', settings.routingPolicy);
             }
 
             if (provider) {

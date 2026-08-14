@@ -110,7 +110,9 @@ describe('setConversationAi / clearConversationAi actions', () => {
     const [url, opts] = global.fetch.mock.calls[0];
     expect(url).toBe(`http://localhost:3333/conversations/${CONV}/settings`);
     expect(opts.method).toBe('PATCH');
-    expect(JSON.parse(opts.body)).toEqual({ provider: 'anthropic', model: 'claude-x' });
+    // routingMode rides the same PATCH. null here means "this conversation has
+    // expressed no routing opinion", which is distinct from 'default'.
+    expect(JSON.parse(opts.body)).toEqual({ provider: 'anthropic', model: 'claude-x', routingMode: null });
   });
 
   it('skips the network for temp- ids (persisted later by the migration path)', async () => {
@@ -127,7 +129,7 @@ describe('setConversationAi / clearConversationAi actions', () => {
 
     expect(state.aiByConv[CONV]).toBeUndefined();
     const [, opts] = global.fetch.mock.calls[0];
-    expect(JSON.parse(opts.body)).toEqual({ provider: null, model: null });
+    expect(JSON.parse(opts.body)).toEqual({ provider: null, model: null, routingMode: null });
   });
 
   it('survives a failed PATCH without losing the Vuex state', async () => {
@@ -169,13 +171,53 @@ describe('send path resolves the conversation override', () => {
     expect(body.persistDefault).toBe(false);
   });
 
-  it('without an override the caller pair is used and persistDefault is omitted', async () => {
+  /**
+   * THE PAPERCUT THIS FIXES.
+   *
+   * Previously an un-pinned conversation still transmitted a concrete
+   * provider/model pair (whatever the global selection happened to be at send
+   * time). That made the server's agent → user → auto resolution ladder
+   * unreachable for chat turns, and made "follow my global setting" a state
+   * the app could not represent — so a chat that had ever been given a model
+   * could never be handed back.
+   *
+   * Now the pair is OMITTED and the mode is transmitted instead. The absence
+   * is the mechanism: it is what lets the server resolve the account default,
+   * or route dynamically when routing is on.
+   */
+  it('without a pin the pair is OMITTED and the mode is sent instead', async () => {
     mockEmptyStream();
 
     const body = await send();
 
-    expect(body.provider).toBe('global-provider');
-    expect(body.model).toBe('global-model');
+    expect(body.provider).toBeUndefined();
+    expect(body.model).toBeUndefined();
+    expect(body.routingMode).toBe('default');
     expect('persistDefault' in body).toBe(false);
+  });
+
+  it('a pinned conversation still transmits the pair AND says it is pinned', async () => {
+    // Regression guard for the invariant: routing never overrides a human
+    // choice. If the pair ever stopped being sent here, a pinned chat would
+    // silently start being routed.
+    mockEmptyStream();
+    chat.mutations.SET_CONV_AI(state, { conversationId: CONV, ai: { provider: 'pinned-p', model: 'pinned-m' } });
+
+    const body = await send();
+
+    expect(body.provider).toBe('pinned-p');
+    expect(body.model).toBe('pinned-m');
+    expect(body.routingMode).toBe('pinned');
+  });
+
+  it('a conversation set to dynamic sends dynamic and no pair', async () => {
+    mockEmptyStream();
+    chat.mutations.SET_CONV_ROUTING_MODE(state, { conversationId: CONV, mode: 'dynamic' });
+
+    const body = await send();
+
+    expect(body.routingMode).toBe('dynamic');
+    expect(body.provider).toBeUndefined();
+    expect(body.model).toBeUndefined();
   });
 });

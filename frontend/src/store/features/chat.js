@@ -404,6 +404,12 @@ export default {
     // time; persisted alongside skill/goal bindings in conversation_settings
     // so it survives reloads and follows the conversation across devices.
     aiByConv: {}, // { conversationId: { provider, model } }
+    // { conversationId: 'pinned'|'default'|'dynamic' }. Absent = the
+    // conversation has expressed nothing and inherits the account setting.
+    // Deliberately a SEPARATE map from aiByConv: that override is atomic
+    // (provider AND model or nothing), and folding a third field into it would
+    // make "clear the pin but keep the mode" impossible to express.
+    routingModeByConv: {},
     // /goal create flow flag: when true, the next submitted message creates a
     // new goal (POST /api/goals) and auto-attaches it instead of being chatted.
     goalCreateMode: false,
@@ -1204,6 +1210,23 @@ export default {
      * provider without a model (or vice versa) is meaningless at send time,
      * so anything less than both fields clears the entry.
      */
+    /**
+     * Set/clear a conversation's routing mode.
+     *
+     * Clearing (null) is distinct from 'default': it removes the row so the
+     * conversation goes back to having no opinion at all.
+     */
+    SET_CONV_ROUTING_MODE(state, { conversationId, mode }) {
+      if (!conversationId) return;
+      const next = { ...state.routingModeByConv };
+      if (mode === 'pinned' || mode === 'default' || mode === 'dynamic') {
+        next[conversationId] = mode;
+      } else {
+        delete next[conversationId];
+      }
+      state.routingModeByConv = next;
+    },
+
     SET_CONV_AI(state, { conversationId, ai }) {
       if (!conversationId) return;
       if (ai && ai.provider && ai.model) {
@@ -1242,6 +1265,16 @@ export default {
         delete next[oldId];
         next[newId] = ai;
         state.aiByConv = next;
+      }
+      // The routing mode is keyed by the same identity and has to make the
+      // same journey, or a chat set to Dynamic silently reverts the moment the
+      // temp id becomes a server UUID.
+      if (state.routingModeByConv?.[oldId]) {
+        const mode = state.routingModeByConv[oldId];
+        const next = { ...state.routingModeByConv };
+        delete next[oldId];
+        next[newId] = mode;
+        state.routingModeByConv = next;
       }
       // The reading position lives in localStorage rather than Vuex, but it is
       // keyed by the same conversation identity, so it has to follow the same
@@ -1450,8 +1483,27 @@ export default {
       // turn must NOT be written back as the account-wide default.
       const convAi = state.aiByConv[convId] || null;
       const hasConvAiOverride = !!(convAi && convAi.provider && convAi.model);
+
+      // ROUTING MODE for this conversation.
+      //
+      // A stored pair IS a pin (that is how every pre-routing conversation was
+      // saved), so it wins. Otherwise the conversation's own mode applies, and
+      // absent that we send 'default' — which is the fix for the papercut this
+      // whole field exists for: the orchestrator used to pin a concrete pair on
+      // EVERY send, so the server's agent→user→auto resolution ladder was
+      // unreachable and "follow my global setting" could not be expressed.
+      const convRoutingMode = hasConvAiOverride
+        ? 'pinned'
+        : (state.routingModeByConv?.[convId] || 'default');
+      const deferToServer = convRoutingMode !== 'pinned';
+
       const effectiveProvider = hasConvAiOverride ? convAi.provider : provider;
       const effectiveModel = hasConvAiOverride ? convAi.model : model;
+
+      // What actually goes on the wire. Omitting the pair is the mechanism
+      // that hands the choice to the server; sending it would be read as a pin.
+      const wireProvider = deferToServer ? undefined : effectiveProvider;
+      const wireModel = deferToServer ? undefined : effectiveModel;
 
       // Resolve the responding speaker BEFORE rendering history — the shared
       // transcript is rendered from that speaker's point of view (their own
@@ -1552,8 +1604,9 @@ export default {
           if (conv.conversationId && !conv.conversationId.startsWith('temp-')) {
             formData.append('conversationId', conv.conversationId);
           }
-          formData.append('provider', effectiveProvider);
-          formData.append('model', effectiveModel);
+          if (wireProvider) formData.append('provider', wireProvider);
+          if (wireModel) formData.append('model', wireModel);
+          formData.append('routingMode', convRoutingMode);
           if (hasConvAiOverride) {
             // Turn-only provider — the backend normalizes the string 'false'.
             formData.append('persistDefault', 'false');
@@ -1618,8 +1671,9 @@ export default {
             message: userInput,
             history: deduped,
             conversationId: conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
-            provider: effectiveProvider,
-            model: effectiveModel,
+            provider: wireProvider,
+            model: wireModel,
+            routingMode: convRoutingMode,
             persistDefault: hasConvAiOverride ? false : undefined,
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
@@ -3377,6 +3431,26 @@ export default {
     },
 
     /**
+     * Set this conversation's routing mode.
+     *
+     * Switching to 'default' or 'dynamic' CLEARS the pinned pair, because a
+     * stored pair is itself read as a pin on the next send — leaving it behind
+     * would make the new mode a no-op and look like the control is broken.
+     * Switching to 'pinned' with no pair is meaningless and is ignored; the
+     * model pickers set the pair and the mode together.
+     */
+    async setConversationRoutingMode({ commit, state, dispatch }, { conversationId, mode }) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId) return;
+      commit('SET_CONV_ROUTING_MODE', { conversationId: convId, mode });
+      if (mode === 'default' || mode === 'dynamic') {
+        commit('SET_CONV_AI', { conversationId: convId, ai: null });
+      }
+      if (convId.startsWith('temp-')) return;
+      await dispatch('persistConversationAi', { conversationId: convId });
+    },
+
+    /**
      * Write the conversation's current override state (or its absence) to the
      * backend. Kept separate so the temp→UUID migration path can reuse it.
      */
@@ -3391,7 +3465,11 @@ export default {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ provider: ai?.provider || null, model: ai?.model || null }),
+          body: JSON.stringify({
+            provider: ai?.provider || null,
+            model: ai?.model || null,
+            routingMode: state.routingModeByConv?.[conversationId] || null,
+          }),
         });
       } catch (e) {
         console.warn('[Chat] Failed to persist conversation AI override:', e);
@@ -3451,6 +3529,14 @@ export default {
         // is treated as unset rather than half-applied.
         if (data.provider && data.model) {
           commit('SET_CONV_AI', { conversationId, ai: { provider: data.provider, model: data.model } });
+        }
+
+        // Routing mode. Restored so reopening a saved chat shows the mode it
+        // was actually left in — without this the selector would read
+        // "Default" on a chat that is routing dynamically, which is worse than
+        // no indicator at all.
+        if (data.routingMode) {
+          commit('SET_CONV_ROUTING_MODE', { conversationId, mode: data.routingMode });
         }
       } catch (e) {
         console.warn('[Chat] Failed to load conversation context:', e);

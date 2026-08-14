@@ -21,7 +21,8 @@ vi.mock('@/services/chatService.js', () => ({
 }));
 vi.mock('@/services/inflightRuns.js', () => ({ markRunStarted: vi.fn(), markRunEnded: vi.fn() }));
 vi.mock('@/services/chatChannelConfig.js', () => ({
-  resolveChannelProviderModel: vi.fn(), resolveChannelEnabledTools: vi.fn(),
+  resolveChannelRouting: vi.fn(() => ({ mode: 'pinned', provider: 'p', model: 'm' })),
+  resolveChannelEnabledTools: vi.fn(),
 }));
 vi.mock('@/composables/useRealtimeSync.js', () => ({ emitSteer: vi.fn(), emitClearSteer: vi.fn() }));
 

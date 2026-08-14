@@ -36,6 +36,7 @@ vi.mock('@/services/chatService.js', () => ({
 }));
 vi.mock('@/services/chatChannelConfig.js', () => ({
   resolveChannelProviderModel: vi.fn(() => ({ provider: 'p', model: 'm' })),
+  resolveChannelRouting: vi.fn(() => ({ mode: 'pinned', provider: 'p', model: 'm' })),
   resolveChannelEnabledTools: vi.fn(() => []),
 }));
 vi.mock('@/composables/useRealtimeSync.js', () => ({
