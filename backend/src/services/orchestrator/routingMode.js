@@ -88,25 +88,49 @@ export function lambdaForPolicy(policy) {
 }
 
 /**
- * Parse the `routing_policy` column (TEXT holding JSON). Always returns a
- * usable object — a corrupt value must not break a turn, it must fall back to
- * the documented default.
+ * Parse a routing policy from any of the three shapes it legitimately arrives
+ * in, and always return something usable — a corrupt value must degrade to the
+ * documented default, never break a turn.
+ *
+ * THE THREE SHAPES, AND THE BUG THAT PROVED THE THIRD ONE MATTERS:
+ *   1. `'{"mode":"save"}'`  the raw routing_policy column
+ *   2. `{ mode: 'save' }`   an already-parsed object
+ *   3. `'save'`             A BARE POLICY NAME
+ *
+ * Shape 3 is not hypothetical or defensive — it is what the live call path
+ * actually passes. UserModel.getUserSettings deliberately returns the NAME
+ * (`parseRoutingPolicy(row).mode`) so the API and the frontend deal in
+ * 'save' | 'balanced' | 'quality' rather than in JSON. The orchestrator then
+ * feeds that name straight back in.
+ *
+ * The first version of this function only handled shapes 1 and 2: a bare name
+ * hit `JSON.parse('save')`, threw, and was silently swallowed as 'balanced'.
+ * The dial was therefore DEAD IN PRODUCTION — the user could pick "Save money"
+ * or "Best quality" and get identical routing, with no error anywhere. The
+ * unit tests all passed because they exercised a serialize→parse round trip
+ * and an object, i.e. the two shapes the real caller never sends.
+ *
+ * A silent fallback on a control the user can see is worse than a throw: it
+ * reports a choice that was never applied.
  *
  * @returns {{mode: string, lambda: number}}
  */
 export function parseRoutingPolicy(raw) {
+  const asPolicy = (mode) => ({ mode, lambda: POLICY_LAMBDA[mode] });
+
   let parsed = raw;
   if (typeof raw === 'string') {
     const trimmed = raw.trim();
-    if (!trimmed) return { mode: DEFAULT_POLICY, lambda: POLICY_LAMBDA[DEFAULT_POLICY] };
+    if (!trimmed) return asPolicy(DEFAULT_POLICY);
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      return { mode: DEFAULT_POLICY, lambda: POLICY_LAMBDA[DEFAULT_POLICY] };
+      // Not JSON. A bare policy name is legitimate; anything else normalises
+      // to the default, so garbage still cannot enable an unintended policy.
+      return asPolicy(normalizeRoutingPolicy(trimmed));
     }
   }
-  const mode = normalizeRoutingPolicy(parsed && typeof parsed === 'object' ? parsed.mode : parsed);
-  return { mode, lambda: POLICY_LAMBDA[mode] };
+  return asPolicy(normalizeRoutingPolicy(parsed && typeof parsed === 'object' ? parsed.mode : parsed));
 }
 
 /** Serialize a policy for storage. Invalid input collapses to the default. */

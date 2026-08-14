@@ -72,6 +72,59 @@ describe('normalizers refuse to invent a mode', () => {
   });
 });
 
+describe('THE FULL PRODUCTION HOP — the shape the real caller actually sends', () => {
+  /**
+   * THE BUG THIS PINS (found by live testing, invisible to the round-trip test
+   * above): the policy makes THREE hops, not one.
+   *
+   *   UI 'save'
+   *     -> serializeRoutingPolicy  -> column '{"mode":"save"}'
+   *     -> getUserSettings          -> returns the BARE NAME 'save'
+   *     -> OrchestratorService      -> parseRoutingPolicy('save')  <-- here
+   *
+   * The last hop feeds a bare NAME back in. The original parser only handled
+   * JSON and objects, so 'save' hit JSON.parse, threw, and was swallowed as
+   * 'balanced'. Every policy silently became balanced and nothing errored:
+   * "Save money" and "Best quality" returned the same model.
+   *
+   * Testing serialize->parse in isolation cannot catch this, because that pair
+   * is exactly the hop that was already correct.
+   */
+  const storeThenRead = (uiChoice) => {
+    const column = serializeRoutingPolicy(uiChoice);          // hop 1: write
+    const nameFromSettings = parseRoutingPolicy(column).mode;  // hop 2: getUserSettings
+    return parseRoutingPolicy(nameFromSettings);               // hop 3: orchestrator
+  };
+
+  it('every policy survives all three hops with its lambda intact', () => {
+    for (const policy of ['save', 'balanced', 'quality']) {
+      const final = storeThenRead(policy);
+      expect(final.mode, `${policy} did not survive the round trip`).toBe(policy);
+      expect(final.lambda).toBe(POLICY_LAMBDA[policy]);
+    }
+  });
+
+  it('the non-default policies really do arrive with a different lambda', () => {
+    // The actual symptom: identical routing regardless of the dial.
+    expect(storeThenRead('save').lambda).not.toBe(storeThenRead('quality').lambda);
+    expect(storeThenRead('save').lambda).not.toBe(POLICY_LAMBDA.balanced);
+    expect(storeThenRead('quality').lambda).not.toBe(POLICY_LAMBDA.balanced);
+  });
+
+  it('a bare name is accepted directly', () => {
+    expect(parseRoutingPolicy('save').lambda).toBe(POLICY_LAMBDA.save);
+    expect(parseRoutingPolicy('quality').lambda).toBe(POLICY_LAMBDA.quality);
+    expect(parseRoutingPolicy(' QUALITY ').lambda).toBe(POLICY_LAMBDA.quality);
+  });
+
+  it('a non-JSON string that is NOT a policy name still degrades to the default', () => {
+    // Accepting bare names must not become "accept anything".
+    for (const junk of ['cheapest', 'fast!!', '{not json', '42abc']) {
+      expect(parseRoutingPolicy(junk).mode).toBe('balanced');
+    }
+  });
+});
+
 describe('explicit pins are sacred', () => {
   it('a pinned request wins over a dynamic account', () => {
     const r = resolveRoutingMode({ requestMode: 'pinned', globalMode: 'dynamic' });
