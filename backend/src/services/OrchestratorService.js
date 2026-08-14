@@ -13,6 +13,8 @@ import { createLlmClient } from './ai/LlmService.js';
 const __failoverMemory = new Map();
 import { createLlmAdapter, requiresResponsesApi } from './orchestrator/llmAdapters.js';
 import { buildProviderChain, runWithFallback, createCustomProviderIdResolver } from './orchestrator/ProviderFallback.js';
+import { resolveRoutingMode, parseRoutingPolicy } from './orchestrator/routingMode.js';
+import { buildRoutedChain } from './orchestrator/DynamicRouter.js';
 import CustomOpenAIProviderService from './ai/CustomOpenAIProviderService.js';
 import { computeCacheSavings } from '../utils/cacheSavings.js';
 import { recordLlmCall } from './execution/LedgerRecorder.js';
@@ -50,6 +52,7 @@ import autonomousMessageService from './AutonomousMessageService.js';
 import { shouldTriggerAutonomousFollowup } from './orchestrator/autonomousFollowupConfig.js';
 import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
+import ConversationSettingsModel from '../models/ConversationSettingsModel.js';
 import SkillModel from '../models/SkillModel.js';
 import { buildSkillsContext } from './SkillService.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled, deriveProjectSlug as deriveUnfirehoseProjectSlug } from './unfirehose/UnfirehoseLogger.js';
@@ -838,6 +841,13 @@ async function universalChatHandler(req, res, context = {}) {
     reasoningValue: rawReasoningValue,
     reasoningEnabled: rawReasoningEnabled,
     enabledTools: rawEnabledTools,
+    // Dynamic routing. 'pinned' | 'default' | 'dynamic', or absent.
+    //
+    // ABSENT IS LOAD-BEARING: every caller that predates this feature omits it
+    // and names a provider/model pair instead, which resolveRoutingMode reads
+    // as a pin. That is what makes enabling routing safe for the public API,
+    // workflow nodes and tool calls without touching one of them.
+    routingMode: requestRoutingMode,
   } = req.body;
 
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
@@ -914,6 +924,42 @@ async function universalChatHandler(req, res, context = {}) {
   let normalizedProvider = resolvedProvider.toLowerCase();
   let model = resolvedModel;
 
+  // ── Dynamic provider routing: WHICH strategy governs this turn ───────────
+  //
+  // Resolved HERE, before the default write-back below, because a routed turn
+  // must never rewrite the account default with a provider the ROUTER chose.
+  // Persisting a transient choice as a permanent one is the documented cause
+  // of provider drift in this codebase (see ProviderFallback.js), and a router
+  // that re-pointed the default every turn would be that bug with a feature
+  // flag on it.
+  //
+  // Fails safe: any error leaves `mode: 'static'`, i.e. exactly today's path.
+  const requestHasPin = !!(provider && inputModel);
+  let __routing = { mode: 'static', source: 'request', pinned: requestHasPin };
+  let __routingSettings = null;
+  try {
+    const [convSettings, userSettingsForRouting, agentForRouting] = await Promise.all([
+      inputConversationId
+        ? ConversationSettingsModel.get(inputConversationId).catch(() => null)
+        : Promise.resolve(null),
+      UserModel.getUserSettings(userId).catch(() => null),
+      agentId && agentId !== 'agent-chat' && agentId !== 'orchestrator'
+        ? AgentModel.findOne(agentId).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    __routingSettings = { user: userSettingsForRouting, agent: agentForRouting };
+    __routing = resolveRoutingMode({
+      requestMode: requestRoutingMode,
+      requestHasPin,
+      conversationMode: convSettings?.routing_mode,
+      agentMode: agentForRouting?.routingMode,
+      globalMode: userSettingsForRouting?.routingMode,
+    });
+  } catch (e) {
+    console.warn('[Routing] Could not resolve routing mode (staying static):', e.message);
+  }
+  const __dynamicRouting = __routing.mode === 'dynamic';
+
   // Keep DB in sync with the provider/model the frontend is actually using,
   // so background processes (InsightEngine, etc.) always have current values.
   //
@@ -926,7 +972,10 @@ async function universalChatHandler(req, res, context = {}) {
   // FormData turns (file uploads) transmit persistDefault as the STRING
   // 'false', which is truthy — normalize both encodings before the guard.
   const persistDefaultNormalized = !(persistDefault === false || persistDefault === 'false');
-  if (persistDefaultNormalized && !workspaceHasAiOverride) {
+  // A dynamically-routed turn is a turn-only choice by definition. Writing it
+  // back would make one routed request silently redefine the account default
+  // for every other surface — including the background jobs that read it.
+  if (persistDefaultNormalized && !workspaceHasAiOverride && !__dynamicRouting) {
     UserModel.updateUserSettings(userId, {
       selectedProvider: resolvedProvider,
       selectedModel: model,
@@ -983,11 +1032,52 @@ async function universalChatHandler(req, res, context = {}) {
       }
     }
 
-    if (agentChain && agentChain.length > 1) {
+    // DYNAMIC ROUTING takes precedence over both static chains.
+    //
+    // The router returns the SAME shape buildProviderChain returns, so
+    // runWithFallback below is untouched and every safety property it already
+    // guarantees (cancellation is sacred, nothing is persisted, roll forward
+    // on exhausted retries) is inherited rather than reimplemented. Its 2nd
+    // and 3rd picks simply ARE the failover chain.
+    let dynamicChain = null;
+    if (__dynamicRouting) {
+      const routed = await buildRoutedChain({
+        userId,
+        authToken,
+        authManager: AuthManager,
+        conversationId: inputConversationId,
+        origin: chatType,
+        hintProvider: normalizedProvider,
+        hintModel: model,
+        policy: parseRoutingPolicy(__routingSettings?.user?.routingPolicy),
+        intentInput: {
+          hasImages: (files && files.length > 0),
+          hasTools: true,
+          reasoningWanted: reasoningEnabled,
+        },
+      });
+      if (routed && routed.chain.length > 0) {
+        dynamicChain = routed.chain;
+        // Re-point the turn at the routed tier BEFORE the client is built.
+        // Tier 0 reuses the outer client/adapter (see runTierStream), so this
+        // assignment is what actually makes the routed choice take effect.
+        normalizedProvider = String(dynamicChain[0].provider).toLowerCase();
+        model = dynamicChain[0].model || model;
+        console.log(
+          `[Chat] Dynamic routing (${routed.decision.policy}/${routed.decision.stake}): ` +
+          dynamicChain.map(t => `${t.provider}/${t.model || '(default model)'}`).join(' → ') +
+          ` — ${routed.decision.chosenReason}`
+        );
+      }
+    }
+
+    if (dynamicChain) {
+      providerChain = dynamicChain;
+    } else if (agentChain && agentChain.length > 1) {
       providerChain = agentChain;
       console.log('[Chat] Provider failover chain (agent):', providerChain.map(t => `${t.provider}/${t.model || '(default model)'}`).join(' → '));
     } else {
-      const fbSettings = await UserModel.getUserSettings(userId);
+      const fbSettings = __routingSettings?.user || await UserModel.getUserSettings(userId);
       if (fbSettings && fbSettings.fallbackEnabled) {
         providerChain = buildProviderChain({
           provider: normalizedProvider,

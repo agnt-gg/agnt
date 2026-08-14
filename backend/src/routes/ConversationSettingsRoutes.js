@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken } from './Middleware.js';
 import ConversationSettingsModel from '../models/ConversationSettingsModel.js';
+import { normalizeScopeRoutingMode } from '../services/orchestrator/routingMode.js';
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ router.get('/:id/settings', authenticateToken, async (req, res) => {
       activeGoalId: row?.active_goal_id || null,
       provider: row?.provider || null,
       model: row?.model || null,
+      routingMode: row?.routing_mode || null,
     });
   } catch (error) {
     console.error('[ConversationSettings] GET failed:', error);
@@ -28,14 +30,15 @@ router.get('/:id/settings', authenticateToken, async (req, res) => {
 /**
  * PATCH /api/conversations/:id/settings
  * Body: { activeSkillId?: string|null, activeGoalId?: string|null,
- *         provider?: string|null, model?: string|null }
+ *         provider?: string|null, model?: string|null,
+ *         routingMode?: 'pinned'|'default'|'dynamic'|null }
  * Pass `null` to detach/clear. Omit a field to leave it unchanged.
  */
 router.patch('/:id/settings', authenticateToken, async (req, res) => {
   try {
     const conversationId = req.params.id;
     const userId = req.user?.userId || null;
-    const { activeSkillId, activeGoalId, provider, model } = req.body || {};
+    const { activeSkillId, activeGoalId, provider, model, routingMode } = req.body || {};
 
     // Guard field types: an AI override is a non-empty string or an explicit
     // null (clear). Anything else (objects, numbers, '') is a caller bug —
@@ -50,6 +53,13 @@ router.patch('/:id/settings', authenticateToken, async (req, res) => {
       activeGoalId,
       provider: provider === undefined ? undefined : normalizeOverride(provider),
       model: model === undefined ? undefined : normalizeOverride(model),
+      // An unrecognised mode is stored as NULL rather than rejected: NULL is a
+      // meaningful state here ("this chat has no opinion"), so the malformed
+      // and the absent case have the same correct answer — inherit.
+      routingMode:
+        routingMode === undefined
+          ? undefined
+          : (routingMode === null ? null : normalizeScopeRoutingMode(routingMode)),
     });
 
     res.json({
@@ -58,6 +68,7 @@ router.patch('/:id/settings', authenticateToken, async (req, res) => {
       activeGoalId: updated.activeGoalId,
       provider: updated.provider,
       model: updated.model,
+      routingMode: updated.routingMode,
     });
   } catch (error) {
     console.error('[ConversationSettings] PATCH failed:', error);

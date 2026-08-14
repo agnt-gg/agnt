@@ -4,6 +4,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import { getCliProviderIds, getAuthEntry } from './auth/AuthDispatcher.js';
 import SecurityPolicyService from './security/SecurityPolicyService.js';
 import { isValidDeviceId, projectForDevice } from '../utils/userPreferences.js';
+import { GLOBAL_ROUTING_MODES, ROUTING_POLICIES } from './orchestrator/routingMode.js';
 
 async function _getLocalCliHealthProviders() {
   const ids = getCliProviderIds();
@@ -95,7 +96,7 @@ class UserService {
 
   async updateUserSettings(req, res) {
     try {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts } = req.body;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts, routingMode, routingPolicy } = req.body;
 
       if (
         selectedProvider === undefined &&
@@ -106,9 +107,11 @@ class UserService {
         maxToolRounds === undefined &&
         fallbackProviders === undefined &&
         fallbackEnabled === undefined &&
-        subscriptionCosts === undefined
+        subscriptionCosts === undefined &&
+        routingMode === undefined &&
+        routingPolicy === undefined
       ) {
-        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, or subscriptionCosts) is required' });
+        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts, routingMode, or routingPolicy) is required' });
       }
 
       if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 10000) {
@@ -155,6 +158,20 @@ class UserService {
         return res.status(400).json({ error: 'fallbackEnabled must be a boolean' });
       }
 
+      // Dynamic routing. Rejected LOUDLY rather than normalised silently: a
+      // typo'd mode that quietly became 'static' would look like the toggle is
+      // broken, and one that quietly became 'dynamic' would change where a
+      // user's data goes without them asking. The model layer normalises again
+      // on the way to the column, so a bad value can never reach storage even
+      // if some other caller skips this check.
+      if (routingMode !== undefined && !GLOBAL_ROUTING_MODES.includes(routingMode)) {
+        return res.status(400).json({ error: `routingMode must be one of: ${GLOBAL_ROUTING_MODES.join(', ')}` });
+      }
+
+      if (routingPolicy !== undefined && !ROUTING_POLICIES.includes(routingPolicy)) {
+        return res.status(400).json({ error: `routingPolicy must be one of: ${ROUTING_POLICIES.join(', ')}` });
+      }
+
       // What each flat-rate seat costs per month, as { providerKey: monthlyUsd }.
       // Only the SHAPE is checked here; the model drops non-finite, zero and
       // negative amounts, because a zero fee would become the denominator of
@@ -175,6 +192,8 @@ class UserService {
         fallbackProviders,
         fallbackEnabled,
         subscriptionCosts,
+        routingMode,
+        routingPolicy,
       });
 
       res.json({
@@ -190,6 +209,8 @@ class UserService {
           fallbackProviders,
           fallbackEnabled,
           subscriptionCosts,
+          routingMode,
+          routingPolicy,
         },
       });
     } catch (error) {

@@ -24,6 +24,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Group Routes](#group-routes)
 - [Layout Routes](#layout-routes)
 - [Ledger Routes](#ledger-routes)
+- [Routing Routes](#routing-routes)
 - [MCP Routes](#mcp-routes)
 - [Browser Agent Routes](#browser-agent-routes)
 - [Memory Routes](#memory-routes)
@@ -4055,6 +4056,75 @@ Cross-device persistence for the Workspaces page (canvas tabs). Backed by the ex
   "message": "Workspace deleted",
   "id": "ws_abc123"
 }
+```
+
+---
+
+## Routing Routes
+
+Base path: `/api/routing`
+
+Read API over **dynamic provider routing** — the decision log, not the switch. The routing mode itself is an ordinary user setting (`routingMode` / `routingPolicy` on `PUT /api/user/settings`); these endpoints only answer *what has the router been doing, and what did it save*.
+
+### How routing decides
+
+A turn is routed by the first scope that expresses an opinion — request, then conversation, then agent, then the account default. `pinned` means "use this exact model" and ends the search; `default` means "keep looking"; `dynamic` hands the choice to the router.
+
+A request that names a concrete `provider` **and** `model` without naming a `routingMode` is treated as pinned. That is deliberate and load-bearing: every integration written before this feature does exactly that, so enabling routing cannot silently relocate an existing API consumer's traffic.
+
+### Honest savings
+
+`savedUsd` sums `baseline − chosen` over decisions where **both** costs were known, and reports `unpricedDecisions` separately. A model with no published price contributes to the second number, never to the first — treating unknown as zero is how routing savings claims become unreproducible.
+
+### Get Routing Summary
+
+**GET** `/summary`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `hours` (query, optional): lookback window, default `24`, capped at 90 days
+  - `shadow` (query, optional): `1` for decisions that were computed but not executed; omit for all
+- **Response**:
+
+```json
+{
+  "decisions": 412,
+  "savedUsd": 9.86,
+  "predictedUsd": 2.14,
+  "unpricedDecisions": 3,
+  "distribution": [
+    { "provider": "anthropic", "model": "claude-haiku-4-5", "calls": 251, "share": 0.609 }
+  ]
+}
+```
+
+### Get Recent Routing Decisions
+
+**GET** `/recent`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): default `20`, max `200`
+- **Response**: array of decisions, newest first. Each carries the chosen tier **and** the baseline the account default would have used, so a decision can be graded after the fact rather than merely observed.
+
+```json
+[
+  {
+    "id": "…",
+    "origin": "orchestrator",
+    "mode": "dynamic",
+    "policy": "balanced",
+    "stake": "normal",
+    "verifiability": "subjective",
+    "chosen": { "provider": "anthropic", "model": "claude-haiku-4-5", "reason": "cache-warm" },
+    "baseline": { "provider": "openai", "model": "gpt-5.2" },
+    "predictedCostUsd": 0.0041,
+    "baselineCostUsd": 0.0192,
+    "candidatesConsidered": 14,
+    "shadow": false,
+    "ts": "2026-08-14 17:22:03"
+  }
+]
 ```
 
 ---
