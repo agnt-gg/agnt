@@ -332,6 +332,51 @@ class LlmCallModel {
     const row = await dbGet(`SELECT COUNT(*) AS n FROM llm_calls WHERE user_id = ?`, [userId]);
     return Number(row?.n) || 0;
   }
+
+  /**
+   * Per-model success rate and mean latency over a window — the ONLY measured
+   * quality signal dynamic routing consumes.
+   *
+   * Returns raw counts rather than a ratio on purpose: the caller decides the
+   * minimum sample size below which a model is treated as UNMEASURED and takes
+   * the explore path. Collapsing to a ratio here would hide the difference
+   * between "100% of 200 calls" and "100% of 1", and the second is noise that
+   * would pin the router to whatever it happened to try first.
+   */
+  static async reliabilityByModel(userId, { since = null } = {}) {
+    const where = ['user_id = ?'];
+    const params = [userId];
+    if (since) { where.push('ts >= ?'); params.push(since); }
+    return dbAll(
+      `SELECT provider, model,
+              COUNT(*) AS calls,
+              SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok_calls,
+              AVG(duration_ms) AS avg_duration_ms
+       FROM llm_calls
+       WHERE ${where.join(' AND ')} AND provider IS NOT NULL AND model IS NOT NULL
+       GROUP BY provider, model`,
+      params
+    );
+  }
+
+  /**
+   * The most recent call in a conversation — the cache-affinity probe.
+   *
+   * Which provider last served a conversation decides whether the next turn
+   * hits a warm prefix, and that is worth more than most model price gaps
+   * (measured here at 6.2x on one provider). Scoped by user as well as
+   * conversation so a shared conversation id can never leak another account's
+   * routing state.
+   */
+  static async lastCallForConversation(userId, conversationId) {
+    return dbGet(
+      `SELECT provider, model, input_tokens, cache_read_tokens, ts
+       FROM llm_calls
+       WHERE user_id = ? AND conversation_id = ?
+       ORDER BY ts DESC LIMIT 1`,
+      [userId, conversationId]
+    );
+  }
 }
 
 export default LlmCallModel;

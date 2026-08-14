@@ -13,7 +13,7 @@ class ConversationSettingsModel {
   static get(conversationId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT conversation_id, user_id, active_skill_id, active_goal_id, provider, model, created_at, updated_at
+        `SELECT conversation_id, user_id, active_skill_id, active_goal_id, provider, model, routing_mode, created_at, updated_at
          FROM conversation_settings WHERE conversation_id = ?`,
         [conversationId],
         (err, row) => {
@@ -29,12 +29,12 @@ class ConversationSettingsModel {
    * model). Pass `null` to clear a field. Omitted (`undefined`) fields
    * preserve their current value.
    */
-  static upsert({ conversationId, userId = null, activeSkillId, activeGoalId, provider, model }) {
+  static upsert({ conversationId, userId = null, activeSkillId, activeGoalId, provider, model, routingMode }) {
     return new Promise((resolve, reject) => {
       // Read current row, then INSERT OR REPLACE with merged values so a
       // partial PATCH doesn't wipe the unrelated fields.
       db.get(
-        `SELECT user_id, active_skill_id, active_goal_id, provider, model FROM conversation_settings WHERE conversation_id = ?`,
+        `SELECT user_id, active_skill_id, active_goal_id, provider, model, routing_mode FROM conversation_settings WHERE conversation_id = ?`,
         [conversationId],
         (err, existing) => {
           if (err) return reject(err);
@@ -48,18 +48,25 @@ class ConversationSettingsModel {
             provider === undefined ? existing?.provider || null : provider;
           const mergedModel =
             model === undefined ? existing?.model || null : model;
+          // 'pinned' | 'default' | 'dynamic'. NULL is not the same as a value
+          // the caller passed: it means this conversation has never expressed
+          // an opinion, which resolves to the account setting. That is why the
+          // column needed no backfill.
+          const mergedRoutingMode =
+            routingMode === undefined ? existing?.routing_mode || null : routingMode;
 
           db.run(
-            `INSERT INTO conversation_settings (conversation_id, user_id, active_skill_id, active_goal_id, provider, model, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            `INSERT INTO conversation_settings (conversation_id, user_id, active_skill_id, active_goal_id, provider, model, routing_mode, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
              ON CONFLICT(conversation_id) DO UPDATE SET
                user_id = COALESCE(excluded.user_id, conversation_settings.user_id),
                active_skill_id = excluded.active_skill_id,
                active_goal_id = excluded.active_goal_id,
                provider = excluded.provider,
                model = excluded.model,
+               routing_mode = excluded.routing_mode,
                updated_at = datetime('now')`,
-            [conversationId, mergedUserId, mergedSkill, mergedGoal, mergedProvider, mergedModel],
+            [conversationId, mergedUserId, mergedSkill, mergedGoal, mergedProvider, mergedModel, mergedRoutingMode],
             function (runErr) {
               if (runErr) return reject(runErr);
               resolve({
@@ -69,6 +76,7 @@ class ConversationSettingsModel {
                 activeGoalId: mergedGoal,
                 provider: mergedProvider,
                 model: mergedModel,
+                routingMode: mergedRoutingMode,
               });
             }
           );

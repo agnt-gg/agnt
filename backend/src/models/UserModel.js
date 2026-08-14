@@ -1,6 +1,11 @@
 import db from './database/index.js';
 import { parseFallbackChain, serializeFallbackChain } from '../services/orchestrator/fallbackChain.js';
 import {
+  normalizeGlobalRoutingMode,
+  parseRoutingPolicy,
+  serializeRoutingPolicy,
+} from '../services/orchestrator/routingMode.js';
+import {
   parsePreferences,
   mergePreferences,
   serializePreferences,
@@ -128,7 +133,7 @@ class UserModel {
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled, subscription_costs as subscriptionCosts
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds, fallback_providers as fallbackProviders, fallback_enabled as fallbackEnabled, subscription_costs as subscriptionCosts, routing_mode as routingMode, routing_policy as routingPolicy
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -163,6 +168,11 @@ class UserModel {
               // the user has not said, which is a normal state — every seat
               // figure still renders, just without a cost comparison.
               subscriptionCosts: parseSubscriptionCosts(row.subscriptionCosts),
+              // Dynamic routing. Legacy/NULL rows → 'static', i.e. exactly
+              // today's behaviour — the feature is opt-in and its OFF state is
+              // byte-identical to not having it.
+              routingMode: normalizeGlobalRoutingMode(row.routingMode),
+              routingPolicy: parseRoutingPolicy(row.routingPolicy).mode,
             });
           } else {
             // User not found, return defaults
@@ -176,6 +186,8 @@ class UserModel {
               fallbackProviders: [],
               fallbackEnabled: false,
               subscriptionCosts: {},
+              routingMode: 'static',
+              routingPolicy: 'balanced',
             });
           }
         }
@@ -185,7 +197,7 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts } = settings;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds, fallbackProviders, fallbackEnabled, subscriptionCosts, routingMode, routingPolicy } = settings;
 
       const fields = [];
       const params = [];
@@ -232,6 +244,18 @@ class UserModel {
       if (fallbackEnabled !== undefined) {
         fields.push('fallback_enabled = ?');
         params.push(fallbackEnabled ? 1 : 0);
+      }
+
+      if (routingMode !== undefined) {
+        // Normalised on the way in so an unrecognised value can never turn the
+        // router on by accident — anything unknown means 'static'.
+        fields.push('routing_mode = ?');
+        params.push(normalizeGlobalRoutingMode(routingMode));
+      }
+
+      if (routingPolicy !== undefined) {
+        fields.push('routing_policy = ?');
+        params.push(serializeRoutingPolicy(routingPolicy));
       }
 
       if (subscriptionCosts !== undefined) {

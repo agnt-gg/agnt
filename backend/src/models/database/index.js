@@ -573,6 +573,44 @@ function createTables() {
 
       createIndex(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
 
+      // Routing decision log — the router's own audit trail (2026-08-14).
+      //
+      // Separate from llm_calls on purpose. The ledger records what a call
+      // COST; this records what the router CHOSE, what it rejected, and what
+      // the account default WOULD have cost. Without the counterfactual there
+      // is no way to tell a good decision from a lucky one after the fact.
+      //
+      // It is also what makes shadow mode possible: `shadow = 1` marks a
+      // decision that was computed and recorded but NOT executed, so the
+      // router can be evaluated against real traffic before it is allowed to
+      // touch a single request.
+      db.run(
+        `CREATE TABLE IF NOT EXISTS routing_decisions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        conversation_id TEXT,
+        origin TEXT,
+        mode TEXT,
+        policy TEXT,
+        stake TEXT,
+        verifiability TEXT,
+        chosen_provider TEXT,
+        chosen_model TEXT,
+        chosen_reason TEXT,
+        baseline_provider TEXT,
+        baseline_model TEXT,
+        predicted_cost_usd REAL,
+        baseline_cost_usd REAL,
+        candidates_considered INTEGER,
+        shadow INTEGER DEFAULT 0,
+        chain TEXT,
+        ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`
+      );
+
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_routing_decisions_user_ts ON routing_decisions(user_id, ts)`);
+
       // Migration: per-conversation AI override (provider + model). NULL means
       // "inherit" — the conversation follows the global default. Lives here
       // rather than a new table because conversation_settings already models
@@ -580,6 +618,11 @@ function createTables() {
       const conversationAiColumns = [
         { table: 'conversation_settings', name: 'provider', type: 'TEXT' },
         { table: 'conversation_settings', name: 'model', type: 'TEXT' },
+        // Dynamic routing (2026-08-14): 'pinned' | 'default' | 'dynamic'.
+        // NULL means the conversation has never expressed an opinion, which
+        // resolves identically to 'default' — so every pre-existing row keeps
+        // its exact behaviour with no backfill. See routingMode.js.
+        { table: 'conversation_settings', name: 'routing_mode', type: 'TEXT' },
       ];
       conversationAiColumns.forEach((col) => {
         db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
@@ -1564,6 +1607,31 @@ function runMigrations() {
           console.log('✓ Added fallback_enabled column to users table');
         }
       });
+
+      // Migration: Dynamic provider routing (2026-08-14).
+      //
+      // routing_mode is the account-wide switch ('static' | 'dynamic') and
+      // DEFAULTS TO STATIC, so every existing row keeps today's behaviour and
+      // the feature is strictly opt-in. routing_policy holds {"mode":"..."} —
+      // the cost/quality dial, JSON so a second knob does not need a third
+      // column. agents.routing_mode lets one agent opt in independently of the
+      // account. fallback_providers/fallback_enabled are untouched: they remain
+      // the static path AND the instant rollback.
+      const routingColumns = [
+        { table: 'users', name: 'routing_mode', type: `TEXT DEFAULT 'static'` },
+        { table: 'users', name: 'routing_policy', type: 'TEXT' },
+        { table: 'agents', name: 'routing_mode', type: 'TEXT' },
+      ];
+      routingColumns.forEach((col) => {
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to ${col.table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to ${col.table} table`);
+          }
+        });
+      });
+
 
       // Migration: Add deleted_at column to agents and workflows for soft-delete (2026-04-12)
       // Preserves execution history (agent_executions, workflow_executions, tasks, etc.)
