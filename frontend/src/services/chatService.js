@@ -45,6 +45,16 @@ export async function streamChat({
   messages,
   provider,
   model,
+  // 'pinned' | 'default' | 'dynamic'. Absent means the caller is expressing no
+  // opinion, which the server reads as a pin when a provider/model pair is
+  // present — the backward-compatible path for every pre-routing caller.
+  routingMode,
+  // Turn-only provider: do not write it back as the account default. This was
+  // accepted by callers and then dropped on the floor here, so a workspace
+  // with its own provider silently rewrote the account-wide default on every
+  // send — the exact failure the flag exists to prevent. The legacy chat
+  // module has always transmitted it; only this transport lost it.
+  persistDefault,
   conversationId = null,
   pageContext = {},
   pageState = {},
@@ -85,6 +95,8 @@ export async function streamChat({
   }
   if (reasoningValue !== undefined) bodyFields.reasoningValue = reasoningValue;
   if (reasoningEnabled !== undefined) bodyFields.reasoningEnabled = reasoningEnabled;
+  if (routingMode !== undefined) bodyFields.routingMode = routingMode;
+  if (persistDefault !== undefined) bodyFields.persistDefault = persistDefault;
 
   let requestBody;
   const hasFiles = Array.isArray(files) && files.length > 0;
