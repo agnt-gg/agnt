@@ -1,19 +1,16 @@
 <template>
-  <!--
-    CARD 02 · FALLBACK — "if that one is down?"
-
-    Second in the order because it is the same question as card 01, one branch
-    over: which model, and then what if that model cannot answer. Touched a few
-    times a year, so it is expanded but not the hero.
-  -->
-  <SettingsCard num="02" title="Fallback" question="— if that one is down?">
-    <template #value>
-      <label class="fb-toggle" v-tooltip="enabled ? 'Failover enabled' : 'Failover disabled'">
-        <input type="checkbox" v-model="enabled" @change="markDirty" />
-        <span class="fb-toggle-label">{{ enabled ? 'Enabled' : 'Disabled' }}</span>
-        <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
-      </label>
-    </template>
+  <div class="fallback-providers">
+    <div class="section-header">
+      <div class="section-header-row">
+        <h3>Fallback AI Providers</h3>
+        <label class="fb-toggle" v-tooltip="enabled ? 'Failover enabled' : 'Failover disabled'">
+          <input type="checkbox" v-model="enabled" @change="markDirty" />
+          <span class="fb-toggle-label">{{ enabled ? 'Enabled' : 'Disabled' }}</span>
+          <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
+        </label>
+      </div>
+      <p class="subtitle">Tried in order when the model above is unavailable. Up to {{ MAX }} backups.</p>
+    </div>
 
     <!--
       With dynamic routing on, this list is no longer what runs. The router
@@ -81,8 +78,6 @@
         </button>
         <span v-else class="fb-max-note">Maximum of {{ MAX }} fallbacks reached.</span>
 
-        <span class="fb-order-note">Up to {{ MAX }} backups · tried in order</span>
-
         <span class="fb-actions-spacer"></span>
 
         <BaseButton
@@ -106,7 +101,7 @@
         <span>{{ statusMsg }}</span>
       </div>
     </div>
-  </SettingsCard>
+  </div>
 </template>
 
 <script>
@@ -114,7 +109,6 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import SettingsCard from '@/views/_components/common/SettingsCard.vue';
 import {
   AI_PROVIDERS_WITH_API,
   PROVIDER_DISPLAY_NAMES,
@@ -126,7 +120,7 @@ const MAX = 3;
 
 export default {
   name: 'FallbackProviders',
-  components: { BaseButton, CustomSelect, SettingsCard },
+  components: { BaseButton, CustomSelect },
   setup() {
     const store = useStore();
 
@@ -350,8 +344,44 @@ export default {
 </script>
 
 <style scoped>
-/* The card chrome (border, radius, padding, header) now comes from
-   SettingsCard, so this component styles only its own contents. */
+/* Verbatim .connectors-section — the section idiom every other block on this
+   page uses. Transparent and borderless is the house style, not an omission. */
+.fallback-providers {
+  background: transparent;
+  border: none;
+  padding: 24px;
+  transition: all 0.3s ease;
+  border-radius: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Verbatim .webhooks-header / .plugins-header and their h3 + .subtitle. */
+.section-header {
+  margin-bottom: 24px;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.5em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-light-med-navy);
+  font-size: 0.9em;
+}
 
 .fb-toggle {
   display: inline-flex;
@@ -467,8 +497,6 @@ export default {
 .fb-add:disabled { opacity: 0.4; cursor: not-allowed; }
 .fb-max-note { font-size: 0.85rem; color: var(--color-text-muted); }
 
-/* Says what the tier numbers mean, so the card needs no header subtitle. */
-.fb-order-note { font-size: 0.78em; color: var(--color-med-navy); }
 .fb-actions-spacer { flex: 1; }
 
 .fb-hint {

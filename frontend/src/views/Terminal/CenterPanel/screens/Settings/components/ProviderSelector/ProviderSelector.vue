@@ -15,13 +15,11 @@
     whenever routing was on. As a mode, they simply are not rendered. Two
     states, no explanation needed.
   -->
-  <SettingsCard num="01" title="Model" question="— which model answers?" hero>
-    <template #value>
-      <span class="model-head-value">
-        <span class="model-head-dot" :class="{ 'is-dynamic': isDynamic }"></span>
-        <span>{{ headValue }}</span>
-      </span>
-    </template>
+  <div class="provider-section">
+    <div class="section-header">
+      <h3>AI Model</h3>
+      <p class="subtitle">Used by Annie, agents, workflows and tools unless a chat pins its own.</p>
+    </div>
 
     <div class="mode-row" role="radiogroup" aria-label="How the model is chosen">
       <button
@@ -176,14 +174,13 @@
 
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
     <SimpleModal ref="simpleModal" />
-  </SettingsCard>
+  </div>
 </template>
 
 <script>
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import SettingsCard from '@/views/_components/common/SettingsCard.vue';
 import ProviderModelSearch from '@/components/common/ProviderModelSearch.vue';
 import CustomProviderDialog from './CustomProviderDialog.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
@@ -197,7 +194,6 @@ import { DEPLOYMENT_CONFIG, API_CONFIG } from '@/tt.config.js';
 export default {
   components: {
     CustomSelect,
-    SettingsCard,
     CustomProviderDialog,
     ProviderModelSearch,
     Tooltip,
@@ -598,20 +594,6 @@ export default {
     ];
 
     /**
-     * The card header always states the CURRENT ANSWER, so the page is readable
-     * without opening or scrolling anything.
-     */
-    const headValue = computed(() => {
-      if (isDynamic.value) {
-        const p = routingPolicies.find((x) => x.value === routingPolicy.value);
-        return `Annie chooses · ${p ? p.label : 'Balanced'}`;
-      }
-      const provider = PROVIDER_DISPLAY_NAMES[selectedProvider.value] || selectedProvider.value;
-      if (!provider) return 'Not set';
-      return selectedModel.value ? `${provider} · ${selectedModel.value}` : provider;
-    });
-
-    /**
      * Money is rendered from the ledger or not at all.
      *
      * Sub-cent amounts get four decimals rather than rounding to "$0.00" — a
@@ -667,7 +649,6 @@ export default {
       isDynamic,
       routingPolicies,
       routingStats,
-      headValue,
       setMode,
       selectPolicy,
       formatUsd,
@@ -706,21 +687,36 @@ export default {
 
 <style scoped>
 /* ── header value ─────────────────────────────────────────────────────── */
-.model-head-value {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--font-family-mono);
-  font-size: 0.72em;
-  color: var(--color-text-muted);
+/* Verbatim .connectors-section, the section idiom every other block on this
+   page uses. Transparent and borderless is the house style, not an omission. */
+.provider-section {
+  background: transparent;
+  border: none;
+  padding: 24px;
+  transition: all 0.3s ease;
+  border-radius: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.model-head-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-green);
-  flex: 0 0 auto;
+/* Verbatim .webhooks-header / .plugins-header and their h3 + .subtitle. */
+.section-header {
+  margin-bottom: 24px;
+}
+
+.section-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.5em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-light-med-navy);
+  font-size: 0.9em;
 }
 
 /* ── mode switch ──────────────────────────────────────────────────────── */

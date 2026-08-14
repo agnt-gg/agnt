@@ -32,7 +32,7 @@
           answer to "which model", so it lives inside 01 as a mode — putting it
           on top would place the rarest decision above the most common one.
         -->
-        <div class="provider-settings-stack">
+        <div class="connectors-grid">
           <ProviderSelector />
           <FallbackProviders />
           <ChatBehaviorSettings />
@@ -2545,18 +2545,6 @@ export default {
   max-width: 1048px;
   margin: 0 auto;
   align-items: flex-start;
-}
-
-/* The Default AI Provider page is a plain vertical stack of cards. It does not
-   use .connectors-grid / .connectors-section, whose 24px padding and grid
-   columns are for the multi-tile sections (OAuth, integrations) — applying
-   them here nested a padded box inside a padded card for no reason. */
-.provider-settings-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-  max-width: 1048px;
 }
 
 .content-header {

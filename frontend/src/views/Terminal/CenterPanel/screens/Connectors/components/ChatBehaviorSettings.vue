@@ -1,68 +1,53 @@
 <template>
   <div class="chat-behavior">
-    <!-- ── CARD 03 · INSTRUCTIONS ───────────────────────────────────── -->
-    <SettingsCard num="03" title="Instructions" question="— how should she behave?">
-      <template #value>
-        <span v-if="customInstructionsStatus === 'saving'" class="status-indicator saving">Saving…</span>
-        <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved">
-          <i class="fas fa-check"></i> Saved
-        </span>
-      </template>
-
-      <div class="custom-instructions-section">
-        <div class="custom-instructions-header">
-          <label for="custom-instructions-textarea">Custom system instructions</label>
-          <Tooltip
-            title="Applies system-wide"
-            text="These instructions are appended to Annie's system prompt in every orchestrator chat. Use this for persistent tone/style preferences, default context about you, or rules you want followed everywhere. Takes effect on new chats."
-            position="top"
-            width="320px"
-          >
-            <i class="fas fa-info-circle info-icon"></i>
-          </Tooltip>
-        </div>
-        <textarea
-          id="custom-instructions-textarea"
-          v-model="customInstructionsDraft"
-          class="custom-instructions-textarea"
-          rows="4"
-          maxlength="10000"
-          placeholder="e.g. Always respond concisely. I'm a senior engineer — skip the hand-holding. Prefer bullet points over prose."
-          @blur="saveCustomInstructions"
-        ></textarea>
-        <div class="custom-instructions-footer">
-          <span>Takes effect on new chats.</span>
-          <span class="char-count" :class="{ 'char-count-warn': customInstructionsDraft.length > 9000 }">
-            {{ customInstructionsDraft.length }} / 10000
+    <!-- Custom instructions -->
+    <div class="behavior-section">
+      <div class="section-header">
+        <div class="section-header-row">
+          <h3>Custom Instructions</h3>
+          <span v-if="customInstructionsStatus === 'saving'" class="status-indicator saving">Saving…</span>
+          <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved">
+            <i class="fas fa-check"></i> Saved
           </span>
         </div>
+        <p class="subtitle">Appended to Annie's system prompt in every orchestrator chat. Takes effect on new chats.</p>
       </div>
-    </SettingsCard>
+
+      <textarea
+        id="custom-instructions-textarea"
+        v-model="customInstructionsDraft"
+        class="custom-instructions-textarea"
+        rows="4"
+        maxlength="10000"
+        placeholder="e.g. Always respond concisely. I'm a senior engineer — skip the hand-holding. Prefer bullet points over prose."
+        @blur="saveCustomInstructions"
+      ></textarea>
+      <div class="custom-instructions-footer">
+        <span class="char-count" :class="{ 'char-count-warn': customInstructionsDraft.length > 9000 }">
+          {{ customInstructionsDraft.length }} / 10000
+        </span>
+      </div>
+    </div>
 
     <!--
-      ── CARD 04 · LIMITS & EXECUTION ────────────────────────────────
-      Collapsed by default because these are set once and then never touched,
-      and because none of them is actually about PROVIDERS — they govern every
-      chat surface in the app. They sit on this page for historical reasons.
+      Limits & execution.
 
-      Collapsed is not the same as hidden: all three values are printed in the
-      header, so you never have to open the drawer just to read a number.
+      None of these is actually about PROVIDERS — they govern every chat surface
+      in the app, and sit on this page only because that is where they were
+      added. Left here rather than moved, because moving them is a product
+      decision, not a styling one.
     -->
-    <SettingsCard
-      num="04"
-      title="Limits &amp; execution"
-      question="— guardrails you set once"
-      collapsible
-    >
-      <template #value>
-        <span class="limits-summary">{{ limitsSummary }}</span>
-      </template>
+    <div class="behavior-section">
+      <div class="section-header">
+        <h3>Limits &amp; Execution</h3>
+        <p class="subtitle">Guardrails applied to every chat, agent, workflow and tool run.</p>
+      </div>
 
       <div class="limits-rows">
         <!-- Async tool execution -->
         <div class="limits-row">
           <div class="limits-main">
-            <div class="async-tools-label">
+            <div class="limits-label">
               <span>Async tool execution</span>
               <span class="experimental-badge">Experimental</span>
               <Tooltip
@@ -72,7 +57,7 @@
                 <i class="fas fa-info-circle info-icon"></i>
               </Tooltip>
             </div>
-            <p class="async-tools-help">
+            <p class="limits-help">
               {{
                 asyncToolsEnabled
                   ? 'On — Annie can queue tools to run in the background and on a schedule.'
@@ -98,7 +83,7 @@
         <!-- Tool output limit -->
         <div class="limits-row">
           <div class="limits-main">
-            <div class="async-tools-label">
+            <div class="limits-label">
               <label for="tool-output-cap-input">Tool output limit</label>
               <Tooltip
                 title="Per-call cap on tool result size"
@@ -111,10 +96,10 @@
               <span v-if="toolOutputCapStatus === 'saving'" class="status-indicator saving">Saving…</span>
               <span v-else-if="toolOutputCapStatus === 'saved'" class="status-indicator saved"><i class="fas fa-check"></i> Saved</span>
             </div>
-            <p class="async-tools-help">Raise it if large file reads keep getting truncated.</p>
+            <p class="limits-help">Raise it if large file reads keep getting truncated.</p>
           </div>
           <div class="limits-control">
-            <div class="tool-output-cap-presets">
+            <div class="preset-chips">
               <button
                 v-for="preset in [50000, 100000, 200000, 400000]"
                 :key="preset"
@@ -136,14 +121,14 @@
               class="tool-output-cap-input"
               @blur="saveToolOutputCap"
             />
-            <span class="tool-output-cap-unit">chars (~{{ Math.round((Number(toolOutputCapDraft) || 0) / 4 / 1000) }}k tokens)</span>
+            <span class="limits-unit">chars (~{{ Math.round((Number(toolOutputCapDraft) || 0) / 4 / 1000) }}k tokens)</span>
           </div>
         </div>
 
         <!-- Max tool runs -->
         <div class="limits-row">
           <div class="limits-main">
-            <div class="async-tools-label">
+            <div class="limits-label">
               <label for="max-tool-rounds-input">Max tool runs</label>
               <Tooltip
                 title="Cap on tool-loop rounds per turn"
@@ -156,10 +141,10 @@
               <span v-if="maxToolRoundsStatus === 'saving'" class="status-indicator saving">Saving…</span>
               <span v-else-if="maxToolRoundsStatus === 'saved'" class="status-indicator saved"><i class="fas fa-check"></i> Saved</span>
             </div>
-            <p class="async-tools-help">Tool-loop rounds allowed in a single turn before the loop is forced to end.</p>
+            <p class="limits-help">Tool-loop rounds allowed in a single turn before the loop is forced to end.</p>
           </div>
           <div class="limits-control">
-            <div class="tool-output-cap-presets">
+            <div class="preset-chips">
               <button
                 v-for="preset in [25, 50, 100, 200]"
                 :key="preset"
@@ -181,22 +166,21 @@
               class="tool-output-cap-input"
               @blur="saveMaxToolRounds"
             />
-            <span class="tool-output-cap-unit">rounds per turn</span>
+            <span class="limits-unit">rounds per turn</span>
           </div>
         </div>
       </div>
-    </SettingsCard>
+    </div>
   </div>
 </template>
 
 <script>
 import { ref, computed, watch, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
-import SettingsCard from '@/views/_components/common/SettingsCard.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 /**
- * ChatBehaviorSettings — cards 03 (Instructions) and 04 (Limits & execution).
+ * ChatBehaviorSettings — the Custom Instructions and Limits sections.
  *
  * WHY THESE LEFT ProviderSelector
  * ───────────────────────────────
@@ -206,13 +190,13 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
  * to be added. Keeping them there forced one component to own four unrelated
  * concerns and made the page impossible to order by importance.
  *
- * Splitting them out is also what lets Connectors.vue render the cards in
- * frequency order — Model, Fallback, Instructions, Limits — because the
- * fallback card now sits BETWEEN the model pickers and these.
+ * Both sections use the page's existing section idiom verbatim
+ * (.connectors-section + .webhooks-header/h3 + .subtitle): transparent, no
+ * border, 24px padding.
  */
 export default {
   name: 'ChatBehaviorSettings',
-  components: { SettingsCard, Tooltip },
+  components: { Tooltip },
   setup() {
     const store = useStore();
 
@@ -335,19 +319,6 @@ export default {
       saveMaxToolRounds();
     };
 
-    /**
-     * All three values, printed in the collapsed header.
-     *
-     * This is what makes collapsing honest — the drawer hides the CONTROLS, not
-     * the information. Nobody should have to expand a section to find out what
-     * it is currently set to.
-     */
-    const limitsSummary = computed(() => {
-      const cap = Number(toolOutputCapDraft.value) || 0;
-      const capLabel = cap >= 1000 ? `${Math.round(cap / 1000)}k chars` : `${cap} chars`;
-      return `${capLabel} · ${Number(maxToolRoundsDraft.value) || 0} rounds · async ${asyncToolsEnabled.value ? 'on' : 'off'}`;
-    });
-
     onUnmounted(() => {
       clearTimeout(savedResetTimer);
       clearTimeout(toolOutputCapSavedResetTimer);
@@ -368,37 +339,59 @@ export default {
       maxToolRoundsStatus,
       saveMaxToolRounds,
       applyMaxToolRoundsPreset,
-      limitsSummary,
     };
   },
 };
 </script>
 
 <style scoped>
+/* Two sections, spaced by the same 16px the .connectors-grid uses. */
 .chat-behavior {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
 }
 
-/* ── card 03 · instructions ───────────────────────────────────────────── */
-.custom-instructions-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* Verbatim .connectors-section, the section idiom every other block on this
+   page uses. Transparent and borderless is the house style, not an omission. */
+.behavior-section {
+  background: transparent;
+  border: none;
+  padding: 24px;
+  transition: all 0.3s ease;
+  border-radius: 16px;
   width: 100%;
+  box-sizing: border-box;
 }
 
-.custom-instructions-header {
+/* Verbatim .webhooks-header / .plugins-header and their h3 + .subtitle. */
+.section-header {
+  margin-bottom: 24px;
+}
+
+.section-header-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.custom-instructions-header label {
-  font-weight: 500;
-  width: auto;
+.section-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.5em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-header-row h3 {
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-light-med-navy);
   font-size: 0.9em;
 }
 
@@ -413,6 +406,23 @@ export default {
   color: var(--color-primary);
 }
 
+/* One save-status idiom, shared by all three settings. */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75em;
+}
+
+.status-indicator.saving {
+  color: var(--color-med-navy);
+}
+
+.status-indicator.saved {
+  color: var(--color-green);
+}
+
+/* ── custom instructions ──────────────────────────────────────────────── */
 .custom-instructions-textarea {
   width: 100%;
   box-sizing: border-box;
@@ -441,8 +451,9 @@ export default {
 
 .custom-instructions-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  margin-top: 6px;
   font-size: 0.75em;
   color: var(--color-med-navy);
   min-height: 16px;
@@ -452,29 +463,7 @@ export default {
   color: var(--color-yellow);
 }
 
-/* One save-status idiom, shared by all three settings. */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.75em;
-}
-
-.status-indicator.saving {
-  color: var(--color-med-navy);
-}
-
-.status-indicator.saved {
-  color: var(--color-green);
-}
-
-/* ── card 04 · limits ─────────────────────────────────────────────────── */
-.limits-summary {
-  font-family: var(--font-family-mono);
-  font-size: 0.72em;
-  color: var(--color-text-muted);
-}
-
+/* ── limits ───────────────────────────────────────────────────────────── */
 .limits-rows {
   display: flex;
   flex-direction: column;
@@ -485,7 +474,7 @@ export default {
   align-items: center;
   gap: 16px;
   padding: 16px 0;
-  border-top: 1px solid var(--terminal-border-color);
+  border-top: 1px dashed var(--terminal-border-color);
 }
 
 .limits-row:first-child {
@@ -510,7 +499,7 @@ export default {
   justify-content: flex-end;
 }
 
-.async-tools-label {
+.limits-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -519,9 +508,17 @@ export default {
   font-size: 0.9em;
 }
 
-.async-tools-label label {
+.limits-label label {
   font-weight: 500;
   cursor: default;
+}
+
+.limits-help {
+  margin: 3px 0 0;
+  font-size: 0.75em;
+  color: var(--color-med-navy);
+  line-height: 1.4;
+  max-width: 62ch;
 }
 
 .experimental-badge {
@@ -578,14 +575,6 @@ export default {
   background: var(--color-white);
 }
 
-.async-tools-help {
-  margin: 3px 0 0;
-  font-size: 0.75em;
-  color: var(--color-med-navy);
-  line-height: 1.4;
-  max-width: 62ch;
-}
-
 .tool-output-cap-input {
   width: 140px;
   padding: 8px 10px;
@@ -603,13 +592,13 @@ export default {
   border-color: var(--color-primary);
 }
 
-.tool-output-cap-unit {
+.limits-unit {
   font-size: 0.8em;
   color: var(--color-med-navy);
   white-space: nowrap;
 }
 
-.tool-output-cap-presets {
+.preset-chips {
   display: inline-flex;
   gap: 6px;
   flex-wrap: wrap;
