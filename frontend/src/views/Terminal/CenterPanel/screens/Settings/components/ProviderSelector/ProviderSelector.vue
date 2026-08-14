@@ -1,85 +1,57 @@
 <template>
-  <div class="provider-selector-wrapper">
-    <!--
-      DYNAMIC PROVIDER ROUTING — one click.
+  <!--
+    CARD 01 · MODEL — "which model answers?"
 
-      Placed ABOVE the model pickers deliberately: when routing is on, those
-      pickers stop being the command and become the floor (what un-routable
-      work falls back to). Showing them first would imply the opposite.
-    -->
-    <div class="dyn-routing-card" :class="{ active: routingMode === 'dynamic' }">
-      <div class="dyn-routing-head">
-        <div class="dyn-routing-title">
-          <i class="fas fa-bolt"></i>
-          <span>Dynamic Provider Routing</span>
-        </div>
-        <label class="dyn-toggle" v-tooltip="routingMode === 'dynamic' ? 'Routing enabled' : 'Routing disabled'">
-          <input type="checkbox" :checked="routingMode === 'dynamic'" @change="toggleRouting" />
-          <span class="dyn-toggle-label">{{ routingMode === 'dynamic' ? 'Enabled' : 'Disabled' }}</span>
-          <span class="dyn-toggle-track"><span class="dyn-toggle-thumb"></span></span>
-        </label>
-      </div>
+    THE ONE IDEA IN THIS FILE
+    ─────────────────────────
+    Dynamic routing is NOT a separate section above the model pickers. It is the
+    second answer to the question this card already asks: either you name the
+    model, or Annie picks per request. Those are the same decision, so they are
+    one control with two modes.
 
-      <p class="dyn-routing-sub">
-        Annie picks the best model for every request — balancing cost, quality,
-        speed and availability, and reusing warm prompt caches instead of
-        throwing them away. Your pinned chats and agents keep their own models.
-      </p>
+    Making routing its own card put the rarest decision (set once, maybe never)
+    above the most common one (the reason anyone opens this page), and forced
+    the pickers to sprout a paragraph explaining they were no longer the command
+    whenever routing was on. As a mode, they simply are not rendered. Two
+    states, no explanation needed.
+  -->
+  <SettingsCard num="01" title="Model" question="— which model answers?" hero>
+    <template #value>
+      <span class="model-head-value">
+        <span class="model-head-dot" :class="{ 'is-dynamic': isDynamic }"></span>
+        <span>{{ headValue }}</span>
+      </span>
+    </template>
 
-      <div v-if="routingMode === 'dynamic'" class="dyn-routing-body">
-        <div class="dyn-policy-row" role="radiogroup" aria-label="Routing policy">
-          <button
-            v-for="p in routingPolicies"
-            :key="p.value"
-            class="dyn-policy-btn"
-            :class="{ active: routingPolicy === p.value }"
-            role="radio"
-            :aria-checked="routingPolicy === p.value ? 'true' : 'false'"
-            @click="selectPolicy(p.value)"
-          >
-            <span class="dyn-policy-label">{{ p.label }}</span>
-            <span class="dyn-policy-hint">{{ p.hint }}</span>
-          </button>
-        </div>
-
-        <div class="dyn-stats">
-          <template v-if="routingStats && routingStats.decisions > 0">
-            <div class="dyn-stats-line">
-              <strong>{{ routingStats.decisions }}</strong> requests routed ·
-              <strong>{{ formatUsd(routingStats.predictedUsd) }}</strong> spent ·
-              <strong class="dyn-saved">{{ formatUsd(routingStats.savedUsd) }}</strong> saved
-              <span class="dyn-window">(last 24h)</span>
-            </div>
-            <!--
-              Unpriced decisions are reported, never folded into the saving.
-              A savings figure that treats "we don't know" as "we saved it" is
-              the reason most routing claims cannot be reproduced.
-            -->
-            <div v-if="routingStats.unpricedDecisions > 0" class="dyn-stats-caveat">
-              {{ routingStats.unpricedDecisions }} decision(s) excluded — no published price for the model.
-            </div>
-            <div v-if="routingStats.distribution.length" class="dyn-dist">
-              <span v-for="d in routingStats.distribution.slice(0, 4)" :key="d.provider + d.model" class="dyn-dist-item">
-                {{ Math.round(d.share * 100) }}% {{ d.model }}
-              </span>
-            </div>
-          </template>
-          <div v-else class="dyn-stats-empty">
-            No routed requests yet. Send a message and the numbers appear here.
-          </div>
-        </div>
-      </div>
+    <div class="mode-row" role="radiogroup" aria-label="How the model is chosen">
+      <button
+        type="button"
+        class="mode-btn"
+        :class="{ active: !isDynamic }"
+        role="radio"
+        :aria-checked="!isDynamic ? 'true' : 'false'"
+        @click="setMode('static')"
+      >
+        <span class="mode-title"><i class="fas fa-thumbtack"></i>Specific model</span>
+        <span class="mode-hint">Always this exact provider and model.</span>
+      </button>
+      <button
+        type="button"
+        class="mode-btn"
+        :class="{ active: isDynamic }"
+        role="radio"
+        :aria-checked="isDynamic ? 'true' : 'false'"
+        @click="setMode('dynamic')"
+      >
+        <span class="mode-title"><i class="fas fa-bolt"></i>Let Annie choose</span>
+        <span class="mode-hint">Best model per request — cost, quality, speed, availability.</span>
+      </button>
     </div>
 
-    <h3>
-      Orchestrator AI Model
-      <span v-if="routingMode === 'dynamic'" class="provider-selector-subtext">
-        (Routing is on — this is now the FLOOR: what work falls back to when nothing better qualifies, and what un-measured providers are compared against)
-      </span>
-      <span v-else class="provider-selector-subtext"> (The AI model to use for Annie, AI orchestration, and generating agents, workflows, & tools) </span>
-    </h3>
-    <div class="provider-selector">
+    <!-- ── SPECIFIC ─────────────────────────────────────────────────── -->
+    <div v-if="!isDynamic" class="provider-selector">
       <ProviderModelSearch class="provider-selector-search" />
+
       <div class="provider-selector-main">
         <div class="selector-field">
           <label>AI Provider</label>
@@ -121,7 +93,6 @@
           </button>
         </Tooltip>
 
-        <!-- Edit/Delete buttons for custom providers -->
         <div v-if="isCustomProviderSelected" class="custom-provider-actions">
           <Tooltip text="Edit" width="auto">
             <button @click="editCurrentProvider" class="btn-edit-provider">
@@ -135,176 +106,84 @@
           </Tooltip>
         </div>
       </div>
-    </div>
 
-    <!-- Tool Support Warning -->
-    <div v-if="toolSupportWarning" class="tool-support-warning">
-      <i class="fas fa-exclamation-triangle"></i>
-      <span class="warning-text">{{ toolSupportWarning }}</span>
-    </div>
-
-    <!-- Custom System Instructions -->
-    <div class="custom-instructions-section">
-      <div class="custom-instructions-header">
-        <label for="custom-instructions-textarea">Custom System Instructions</label>
-        <Tooltip
-          title="Applies system-wide"
-          text="These instructions are appended to Annie's system prompt in every orchestrator chat. Use this for persistent tone/style preferences, default context about you, or rules you want followed everywhere. Takes effect on new chats."
-          position="top"
-          width="320px"
-        >
-          <i class="fas fa-info-circle info-icon"></i>
-        </Tooltip>
-      </div>
-      <textarea
-        id="custom-instructions-textarea"
-        v-model="customInstructionsDraft"
-        class="custom-instructions-textarea"
-        rows="4"
-        maxlength="10000"
-        placeholder="e.g. Always respond concisely. I'm a senior engineer — skip the hand-holding. Prefer bullet points over prose."
-        @blur="saveCustomInstructions"
-      ></textarea>
-      <div class="custom-instructions-footer">
-        <span class="char-count" :class="{ 'char-count-warn': customInstructionsDraft.length > 9000 }">
-          {{ customInstructionsDraft.length }} / 10000
-        </span>
-        <span v-if="customInstructionsStatus === 'saving'" class="status-indicator saving">Saving…</span>
-        <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved"> <i class="fas fa-check"></i> Saved </span>
+      <div v-if="toolSupportWarning" class="tool-support-warning">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span class="warning-text">{{ toolSupportWarning }}</span>
       </div>
     </div>
 
-    <!-- Async tool execution toggle (experimental, off by default) -->
-    <div class="async-tools-section">
-      <div class="async-tools-row">
-        <label for="async-tools-toggle" class="async-tools-label">
-          <span>Async tool execution</span>
-          <span class="experimental-badge">Experimental</span>
-          <Tooltip
-            title="Background &amp; scheduled tool calls (experimental)"
-            text="Off by default. When on, Annie can run tools in the background, schedule recurring tasks, and delay actions (e.g. 'do this in 15 seconds'). The capability is still being hardened — turn it on if you want to try it. With it off, every tool call runs synchronously, just like a normal chat. Takes effect on new chats."
-          >
-            <i class="fas fa-info-circle info-icon"></i>
-          </Tooltip>
-        </label>
+    <!-- ── DYNAMIC ──────────────────────────────────────────────────── -->
+    <div v-else class="routing-pane">
+      <div class="policy-row" role="radiogroup" aria-label="Routing policy">
         <button
-          id="async-tools-toggle"
+          v-for="p in routingPolicies"
+          :key="p.value"
           type="button"
-          role="switch"
-          class="async-tools-switch"
-          :class="{ 'is-on': asyncToolsEnabled }"
-          :aria-checked="asyncToolsEnabled"
-          @click="toggleAsyncTools"
+          class="policy-btn"
+          :class="{ active: routingPolicy === p.value }"
+          role="radio"
+          :aria-checked="routingPolicy === p.value ? 'true' : 'false'"
+          @click="selectPolicy(p.value)"
         >
-          <span class="switch-thumb" :class="{ 'is-on': asyncToolsEnabled }"></span>
+          <span class="policy-title">{{ p.label }}</span>
+          <span class="policy-hint">{{ p.hint }}</span>
         </button>
       </div>
-      <p class="async-tools-help">
-        {{ asyncToolsEnabled
-          ? 'On — Annie can queue tools to run in the background and on a schedule. (Experimental capability.)'
-          : 'Off (default) — every tool call runs synchronously. No background tasks, no scheduled actions, no autonomous follow-ups.' }}
-      </p>
-    </div>
 
-    <!-- Tool output limit — per-call hard cap on tool result size returned to the LLM -->
-    <div class="tool-output-cap-section">
-      <div class="tool-output-cap-header">
-        <label for="tool-output-cap-input">Tool output limit</label>
-        <Tooltip
-          title="Per-call cap on tool result size"
-          text="Maximum characters of any single tool result returned to the LLM. Results above this size are replaced with a short JSON note telling Annie to narrow the query or paginate. Raise this if you keep hitting truncations on big reads — every ~4 characters is roughly 1 token, so 100k chars ≈ 28k tokens."
-          position="top"
-          width="340px"
-        >
-          <i class="fas fa-info-circle info-icon"></i>
-        </Tooltip>
-      </div>
-      <div class="tool-output-cap-controls">
-        <input
-          id="tool-output-cap-input"
-          v-model.number="toolOutputCapDraft"
-          type="number"
-          min="25000"
-          max="500000"
-          step="5000"
-          class="tool-output-cap-input"
-          @blur="saveToolOutputCap"
-        />
-        <span class="tool-output-cap-unit">chars (~{{ Math.round((Number(toolOutputCapDraft) || 0) / 4 / 1000) }}k tokens)</span>
-      </div>
-      <div class="tool-output-cap-footer">
-        <div class="tool-output-cap-presets">
-          <button
-            v-for="preset in [50000, 100000, 200000, 400000]"
-            :key="preset"
-            type="button"
-            class="preset-chip"
-            :class="{ active: Number(toolOutputCapDraft) === preset }"
-            @click="applyToolOutputCapPreset(preset)"
-          >
-            {{ preset / 1000 }}k
-          </button>
+      <div class="routing-stats">
+        <template v-if="routingStats && routingStats.decisions > 0">
+          <div class="stat">
+            <div class="stat-value">{{ routingStats.decisions }}</div>
+            <div class="stat-label">Routed · 24h</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">{{ formatUsd(routingStats.predictedUsd) }}</div>
+            <div class="stat-label">Spent</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value is-good">{{ formatUsd(routingStats.savedUsd) }}</div>
+            <div class="stat-label">Saved</div>
+          </div>
+          <span class="routing-stats-spacer"></span>
+          <div v-if="routingStats.distribution.length" class="routing-dist">
+            <span v-for="d in routingStats.distribution.slice(0, 4)" :key="d.provider + d.model" class="routing-dist-item">
+              {{ Math.round(d.share * 100) }}% {{ d.model }}
+            </span>
+          </div>
+          <!--
+            Unpriced decisions are reported, never folded into the saving. A
+            figure that treats "we don't know" as "we saved it" is why most
+            routing savings claims cannot be reproduced.
+          -->
+          <div v-if="routingStats.unpricedDecisions > 0" class="routing-stats-caveat">
+            {{ routingStats.unpricedDecisions }} decision(s) excluded — no published price for the model.
+          </div>
+        </template>
+        <div v-else class="routing-stats-empty">
+          No routed requests yet. Send a message and the numbers appear here.
         </div>
-        <span v-if="toolOutputCapStatus === 'saving'" class="status-indicator saving">Saving…</span>
-        <span v-else-if="toolOutputCapStatus === 'saved'" class="status-indicator saved"><i class="fas fa-check"></i> Saved</span>
+      </div>
+
+      <div class="pin-note">
+        <i class="fas fa-thumbtack"></i>
+        <span class="pin-note-text">
+          <b>Pinned chats and agents keep their own models.</b>
+          Routing only fills the slot where Annie was about to guess — it never overrides a choice you made.
+        </span>
       </div>
     </div>
 
-    <!-- Max tool runs — cap on tool-loop rounds per chat turn -->
-    <div class="tool-output-cap-section">
-      <div class="tool-output-cap-header">
-        <label for="max-tool-rounds-input">Max tool runs</label>
-        <Tooltip
-          title="Cap on tool-loop rounds per turn"
-          text="Maximum number of tool execution rounds Annie can run in a single turn before the loop is forced to end. Raise this for long autonomous tasks; lower it to fail fast on runaway loops. Applies to every chat (orchestrator, agent, workflow, widget, plugin tool, goal, artifact). Default 100."
-          position="top"
-          width="340px"
-        >
-          <i class="fas fa-info-circle info-icon"></i>
-        </Tooltip>
-      </div>
-      <div class="tool-output-cap-controls">
-        <input
-          id="max-tool-rounds-input"
-          v-model.number="maxToolRoundsDraft"
-          type="number"
-          min="1"
-          max="999999"
-          step="5"
-          class="tool-output-cap-input"
-          @blur="saveMaxToolRounds"
-        />
-        <span class="tool-output-cap-unit">rounds per turn</span>
-      </div>
-      <div class="tool-output-cap-footer">
-        <div class="tool-output-cap-presets">
-          <button
-            v-for="preset in [25, 50, 100, 200]"
-            :key="preset"
-            type="button"
-            class="preset-chip"
-            :class="{ active: Number(maxToolRoundsDraft) === preset }"
-            @click="applyMaxToolRoundsPreset(preset)"
-          >
-            {{ preset }}
-          </button>
-        </div>
-        <span v-if="maxToolRoundsStatus === 'saving'" class="status-indicator saving">Saving…</span>
-        <span v-else-if="maxToolRoundsStatus === 'saved'" class="status-indicator saved"><i class="fas fa-check"></i> Saved</span>
-      </div>
-    </div>
-
-    <!-- Custom Provider Dialog -->
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
-
     <SimpleModal ref="simpleModal" />
-  </div>
+  </SettingsCard>
 </template>
 
 <script>
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import SettingsCard from '@/views/_components/common/SettingsCard.vue';
 import ProviderModelSearch from '@/components/common/ProviderModelSearch.vue';
 import CustomProviderDialog from './CustomProviderDialog.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
@@ -318,6 +197,7 @@ import { DEPLOYMENT_CONFIG, API_CONFIG } from '@/tt.config.js';
 export default {
   components: {
     CustomSelect,
+    SettingsCard,
     CustomProviderDialog,
     ProviderModelSearch,
     Tooltip,
@@ -380,137 +260,6 @@ export default {
       },
     });
 
-    // Custom system instructions — edited locally, persisted on blur
-    const customInstructionsDraft = ref(store.state.aiProvider.customInstructions || '');
-    const customInstructionsStatus = ref(''); // '' | 'saving' | 'saved'
-    let savedResetTimer = null;
-
-    // Keep local draft in sync if the store value changes (e.g. after loadUserSettings)
-    watch(
-      () => store.state.aiProvider.customInstructions,
-      (val) => {
-        if (document.activeElement?.id !== 'custom-instructions-textarea') {
-          customInstructionsDraft.value = val || '';
-        }
-      },
-    );
-
-    // Async tool execution toggle — reflects the per-user capability gate.
-    // On = Annie sees the async control params on every tool and the prompt
-    // section that teaches her how to use them. Off = both vanish from the
-    // request, so the LLM can't queue async or recurring tool calls.
-    const asyncToolsEnabled = computed(() => store.state.aiProvider.asyncToolsEnabled !== false);
-    const toggleAsyncTools = () => {
-      store.dispatch('aiProvider/setAsyncToolsEnabled', !asyncToolsEnabled.value);
-    };
-
-    // Tool output cap — edited locally, persisted on blur/preset-click.
-    const toolOutputCapDraft = ref(store.state.aiProvider.toolOutputCap || 100000);
-    const toolOutputCapStatus = ref('');
-    let toolOutputCapSavedResetTimer = null;
-
-    watch(
-      () => store.state.aiProvider.toolOutputCap,
-      (val) => {
-        if (document.activeElement?.id !== 'tool-output-cap-input') {
-          toolOutputCapDraft.value = val || 100000;
-        }
-      },
-    );
-
-    const saveToolOutputCap = async () => {
-      const raw = Number(toolOutputCapDraft.value);
-      const next = Number.isFinite(raw)
-        ? Math.max(25000, Math.min(500000, Math.round(raw)))
-        : 100000;
-      toolOutputCapDraft.value = next;
-      if (next === store.state.aiProvider.toolOutputCap) return;
-
-      toolOutputCapStatus.value = 'saving';
-      try {
-        await store.dispatch('aiProvider/setToolOutputCap', next);
-        toolOutputCapStatus.value = 'saved';
-        clearTimeout(toolOutputCapSavedResetTimer);
-        toolOutputCapSavedResetTimer = setTimeout(() => {
-          if (toolOutputCapStatus.value === 'saved') toolOutputCapStatus.value = '';
-        }, 2000);
-      } catch (error) {
-        console.error('Failed to save tool output cap:', error);
-        toolOutputCapStatus.value = '';
-      }
-    };
-
-    const applyToolOutputCapPreset = (value) => {
-      toolOutputCapDraft.value = value;
-      saveToolOutputCap();
-    };
-
-    // Max tool runs — same shape as toolOutputCap above.
-    const maxToolRoundsDraft = ref(store.state.aiProvider.maxToolRounds || 100);
-    const maxToolRoundsStatus = ref('');
-    let maxToolRoundsSavedResetTimer = null;
-
-    watch(
-      () => store.state.aiProvider.maxToolRounds,
-      (val) => {
-        if (document.activeElement?.id !== 'max-tool-rounds-input') {
-          maxToolRoundsDraft.value = val || 100;
-        }
-      },
-    );
-
-    const saveMaxToolRounds = async () => {
-      const raw = Number(maxToolRoundsDraft.value);
-      const next = Number.isFinite(raw)
-        ? Math.max(1, Math.min(999999, Math.round(raw)))
-        : 100;
-      maxToolRoundsDraft.value = next;
-      if (next === store.state.aiProvider.maxToolRounds) return;
-
-      maxToolRoundsStatus.value = 'saving';
-      try {
-        await store.dispatch('aiProvider/setMaxToolRounds', next);
-        maxToolRoundsStatus.value = 'saved';
-        clearTimeout(maxToolRoundsSavedResetTimer);
-        maxToolRoundsSavedResetTimer = setTimeout(() => {
-          if (maxToolRoundsStatus.value === 'saved') maxToolRoundsStatus.value = '';
-        }, 2000);
-      } catch (error) {
-        console.error('Failed to save max tool rounds:', error);
-        maxToolRoundsStatus.value = '';
-      }
-    };
-
-    const applyMaxToolRoundsPreset = (value) => {
-      maxToolRoundsDraft.value = value;
-      saveMaxToolRounds();
-    };
-
-    const saveCustomInstructions = async () => {
-      const next = (customInstructionsDraft.value || '').trim();
-      const current = (store.state.aiProvider.customInstructions || '').trim();
-      if (next === current) return;
-
-      customInstructionsStatus.value = 'saving';
-      try {
-        await store.dispatch('aiProvider/setCustomInstructions', next);
-        customInstructionsStatus.value = 'saved';
-        clearTimeout(savedResetTimer);
-        savedResetTimer = setTimeout(() => {
-          if (customInstructionsStatus.value === 'saved') customInstructionsStatus.value = '';
-        }, 2000);
-      } catch (error) {
-        console.error('Failed to save custom instructions:', error);
-        customInstructionsStatus.value = '';
-      }
-    };
-
-    onUnmounted(() => {
-      clearTimeout(savedResetTimer);
-      clearTimeout(toolOutputCapSavedResetTimer);
-      clearTimeout(maxToolRoundsSavedResetTimer);
-    });
-
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
     const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
     const selectedReasoningControl = computed(() => {
@@ -546,8 +295,8 @@ export default {
       }));
 
       // Custom providers (always enabled)
-      const customProviders = store.state.aiProvider.customProviders || [];
-      const customOptions = customProviders.map((provider) => ({
+      const custom = store.state.aiProvider.customProviders || [];
+      const customOptions = custom.map((provider) => ({
         label: `${provider.provider_name} (Custom)`,
         value: provider.id,
         disabled: false,
@@ -839,13 +588,28 @@ export default {
     // ── Dynamic provider routing ──────────────────────────────────────
     const routingMode = computed(() => store.state.aiProvider.routingMode || 'static');
     const routingPolicy = computed(() => store.state.aiProvider.routingPolicy || 'balanced');
+    const isDynamic = computed(() => routingMode.value === 'dynamic');
     const routingStats = ref(null);
 
     const routingPolicies = [
       { value: 'save', label: 'Save money', hint: 'Cheapest model that can do the job' },
-      { value: 'balanced', label: 'Balanced', hint: 'Default — cost and quality weighed evenly' },
+      { value: 'balanced', label: 'Balanced', hint: 'Cost and quality weighed evenly' },
       { value: 'quality', label: 'Best quality', hint: 'Prefer the strongest capable model' },
     ];
+
+    /**
+     * The card header always states the CURRENT ANSWER, so the page is readable
+     * without opening or scrolling anything.
+     */
+    const headValue = computed(() => {
+      if (isDynamic.value) {
+        const p = routingPolicies.find((x) => x.value === routingPolicy.value);
+        return `Annie chooses · ${p ? p.label : 'Balanced'}`;
+      }
+      const provider = PROVIDER_DISPLAY_NAMES[selectedProvider.value] || selectedProvider.value;
+      if (!provider) return 'Not set';
+      return selectedModel.value ? `${provider} · ${selectedModel.value}` : provider;
+    });
 
     /**
      * Money is rendered from the ledger or not at all.
@@ -876,8 +640,9 @@ export default {
       }
     };
 
-    const toggleRouting = async (event) => {
-      const next = event?.target?.checked ? 'dynamic' : 'static';
+    const setMode = async (mode) => {
+      const next = mode === 'dynamic' ? 'dynamic' : 'static';
+      if (next === routingMode.value) return;
       await store.dispatch('aiProvider/setRoutingMode', next);
       if (next === 'dynamic') await loadRoutingStats();
       else routingStats.value = null;
@@ -889,14 +654,21 @@ export default {
     };
 
     onMounted(loadRoutingStats);
-    watch(routingMode, (m) => { if (m === 'dynamic') loadRoutingStats(); });
+    watch(routingMode, (m) => {
+      if (m === 'dynamic') loadRoutingStats();
+      // Returning to the specific pane re-mounts the CustomSelects, which start
+      // empty until they are told what is selected.
+      else updateCustomSelects();
+    });
 
     return {
       routingMode,
       routingPolicy,
+      isDynamic,
       routingPolicies,
       routingStats,
-      toggleRouting,
+      headValue,
+      setMode,
       selectPolicy,
       formatUsd,
       providers,
@@ -927,224 +699,83 @@ export default {
       deleteCurrentProvider,
       toolSupportWarning,
       PROVIDER_DISPLAY_NAMES,
-      customInstructionsDraft,
-      customInstructionsStatus,
-      saveCustomInstructions,
-      asyncToolsEnabled,
-      toggleAsyncTools,
-      toolOutputCapDraft,
-      toolOutputCapStatus,
-      saveToolOutputCap,
-      applyToolOutputCapPreset,
-      maxToolRoundsDraft,
-      maxToolRoundsStatus,
-      saveMaxToolRounds,
-      applyMaxToolRoundsPreset,
     };
   },
 };
 </script>
 
 <style scoped>
-/* ── Dynamic provider routing card ─────────────────────────────────────── */
-.dyn-routing-card {
-  padding: 16px 18px;
-  background: var(--surface-raised);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
-  border-radius: 10px;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.dyn-routing-card.active {
-  border-color: var(--color-accent, #4a9eff);
-  background: color-mix(in srgb, var(--color-accent, #4a9eff) 6%, transparent);
-}
-
-.dyn-routing-head {
+/* ── header value ─────────────────────────────────────────────────────── */
+.model-head-value {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 7px;
+  font-family: var(--font-family-mono);
+  font-size: 0.72em;
+  color: var(--color-text-muted);
 }
 
-.dyn-routing-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.dyn-routing-title i {
-  color: var(--color-accent, #4a9eff);
-}
-
-.dyn-routing-sub {
-  margin: 8px 0 0;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--color-text-secondary);
-  max-width: 68ch;
-}
-
-.dyn-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-
-.dyn-toggle input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.dyn-toggle-label {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.dyn-toggle-track {
-  position: relative;
-  width: 38px;
-  height: 21px;
-  border-radius: 999px;
-  background: var(--surface-active);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
-  transition: background 0.18s ease, border-color 0.18s ease;
-}
-
-.dyn-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 15px;
-  height: 15px;
+.model-head-dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--color-text-secondary);
-  transition: transform 0.18s ease, background 0.18s ease;
+  background: var(--color-green);
+  flex: 0 0 auto;
 }
 
-.dyn-toggle input:checked + .dyn-toggle-label,
-.dyn-toggle input:checked ~ .dyn-toggle-label {
-  color: var(--color-text-primary);
-}
-
-.dyn-toggle input:checked ~ .dyn-toggle-track {
-  background: var(--color-accent, #4a9eff);
-  border-color: var(--color-accent, #4a9eff);
-}
-
-.dyn-toggle input:checked ~ .dyn-toggle-track .dyn-toggle-thumb {
-  transform: translateX(17px);
-  background: var(--surface-canvas);
-}
-
-.dyn-routing-body {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.07));
-}
-
-.dyn-policy-row {
+/* ── mode switch ──────────────────────────────────────────────────────── */
+.mode-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
 }
 
-.dyn-policy-btn {
+.mode-btn {
   display: flex;
   flex-direction: column;
+  gap: 4px;
   align-items: flex-start;
-  gap: 3px;
-  padding: 9px 11px;
-  background: var(--surface-hover);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
-  border-radius: 7px;
-  cursor: pointer;
   text-align: left;
+  padding: 12px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.dyn-policy-btn:hover {
-  border-color: var(--color-accent, #4a9eff);
+.mode-btn:hover {
+  border-color: var(--color-light-med-navy);
 }
 
-.dyn-policy-btn.active {
-  border-color: var(--color-accent, #4a9eff);
-  background: color-mix(in srgb, var(--color-accent, #4a9eff) 12%, transparent);
+.mode-btn.active {
+  border-color: var(--color-green);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
-.dyn-policy-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.dyn-policy-hint {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--color-text-secondary);
-}
-
-.dyn-stats {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.dyn-stats-line strong {
-  color: var(--color-text-primary);
-  font-weight: 600;
-}
-
-.dyn-saved {
-  color: var(--color-green, #4ade80) !important;
-}
-
-.dyn-window {
-  opacity: 0.6;
-  margin-left: 4px;
-}
-
-.dyn-stats-caveat {
-  margin-top: 4px;
-  font-size: 11px;
-  opacity: 0.75;
-}
-
-.dyn-dist {
-  margin-top: 7px;
+.mode-title {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: var(--color-text);
 }
 
-.dyn-dist-item {
-  padding: 2px 8px;
-  background: var(--surface-hover);
-  border-radius: 999px;
-  font-size: 11px;
+.mode-title i {
+  font-size: 0.8em;
+  color: var(--color-green);
 }
 
-.dyn-stats-empty {
-  opacity: 0.7;
-  font-size: 11.5px;
+.mode-hint {
+  font-size: 0.75em;
+  line-height: 1.45;
+  color: var(--color-med-navy);
 }
 
-.provider-selector-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  align-items: flex-start;
-  width: 100%;
-  gap: 12px;
-}
+/* ── specific pane ────────────────────────────────────────────────────── */
 .provider-selector {
   display: flex;
   flex-direction: column;
@@ -1216,23 +847,13 @@ export default {
   min-width: 0;
 }
 
-.provider-selector-subtext {
-  font-size: 14px;
-  opacity: 0.5;
-  margin-left: 8px;
-  font-weight: 400;
-}
-.provider-message {
-  color: var(--color-primary);
-  font-style: italic;
-}
-
 .btn-add-provider {
   padding: 6px 12px;
   background: transparent;
   color: var(--color-green);
   border: 1px dashed rgba(var(--green-rgb), 0.4);
   border-radius: 5px;
+  font-family: inherit;
   font-size: 0.8em;
   font-weight: 500;
   cursor: pointer;
@@ -1254,7 +875,7 @@ export default {
 }
 
 .custom-provider-actions {
-  display: inline-flex;
+  display: flex;
   gap: 6px;
   align-items: center;
 }
@@ -1262,8 +883,10 @@ export default {
 .btn-edit-provider,
 .btn-delete-provider {
   padding: 5px 8px;
-  border: none;
+  border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
+  background: transparent;
+  color: var(--color-med-navy);
   font-size: 0.8em;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1272,333 +895,180 @@ export default {
   justify-content: center;
 }
 
-.btn-edit-provider {
-  background: transparent;
-  color: var(--color-med-navy);
-  border: 1px solid var(--terminal-border-color);
-}
-
 .btn-edit-provider:hover {
   background: rgba(127, 129, 147, 0.15);
   color: var(--color-light-med-navy);
   border-color: var(--color-light-med-navy);
 }
 
-.btn-delete-provider {
-  background: transparent;
-  color: var(--color-med-navy);
-  border: 1px solid var(--terminal-border-color);
-}
-
 .btn-delete-provider:hover {
-  background: rgba(255, 107, 107, 0.15);
+  background: rgba(254, 78, 78, 0.15);
   color: var(--color-red);
-  border-color: rgba(255, 107, 107, 0.5);
+  border-color: rgba(254, 78, 78, 0.5);
 }
 
-.btn-edit-provider i,
-.btn-delete-provider i {
-  font-size: 0.85em;
-}
-
-/* Tool Support Warning */
 .tool-support-warning {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 10px 14px;
-  background: rgba(255, 193, 7, 0.1);
-  border: 1px solid rgba(255, 193, 7, 0.3);
+  background: rgba(255, 215, 0, 0.08);
+  border: 1px solid rgba(255, 215, 0, 0.3);
   border-radius: 6px;
   font-size: 0.85em;
-  margin-top: 4px;
 }
 
 .tool-support-warning i {
   color: var(--color-yellow);
-  font-size: 1em;
   flex-shrink: 0;
   margin-top: 2px;
 }
 
-.tool-support-warning .warning-text {
-  color: var(--color-yellow);
-  line-height: 1.4;
+.warning-text {
+  color: var(--color-text-muted);
+  line-height: 1.45;
 }
 
-/* Custom System Instructions */
-.custom-instructions-section {
+/* ── dynamic pane ─────────────────────────────────────────────────────── */
+.routing-pane {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  margin-top: 4px;
+  gap: 16px;
 }
 
-.custom-instructions-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.custom-instructions-header label {
-  font-weight: 500;
-  width: auto;
-}
-
-.custom-instructions-header .info-icon {
-  color: var(--color-med-navy);
-  font-size: 0.95em;
-  cursor: help;
-  transition: color 0.15s ease;
-}
-
-.custom-instructions-header .info-icon:hover {
-  color: var(--color-primary);
-}
-
-.custom-instructions-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 12px;
-  background: var(--color-darker-0);
-  color: var(--color-text, inherit);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 5px;
-  font-family: inherit;
-  font-size: 0.9em;
-  line-height: 1.5;
-  resize: vertical;
-  min-height: 96px;
-  transition: border-color 0.15s ease;
-}
-
-.custom-instructions-textarea:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.custom-instructions-textarea::placeholder {
-  color: var(--color-med-navy);
-  opacity: 0.7;
-}
-
-.custom-instructions-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.75em;
-  color: var(--color-med-navy);
-  min-height: 16px;
-}
-
-.char-count-warn {
-  color: var(--color-yellow);
-}
-
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.status-indicator.saving {
-  color: var(--color-med-navy);
-  opacity: 0.7;
-}
-
-.status-indicator.saved {
-  color: var(--color-green);
-}
-
-/* Async tool execution toggle */
-.async-tools-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  margin-top: 4px;
-}
-
-.async-tools-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.async-tools-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  cursor: default;
-}
-
-.experimental-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  font-size: 0.7em;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-yellow);
-  border: 1px solid var(--color-yellow);
-  border-radius: 999px;
-  background: rgba(255, 215, 0, 0.08);
-  line-height: 1;
-}
-
-.async-tools-label .info-icon {
-  color: var(--color-med-navy);
-  font-size: 0.95em;
-  cursor: help;
-  transition: color 0.15s ease;
-}
-
-.async-tools-label .info-icon:hover {
-  color: var(--color-primary);
-}
-
-.async-tools-switch {
-  position: relative;
-  width: 38px;
-  height: 22px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 11px;
-  background: var(--terminal-background-color, transparent);
-  cursor: pointer;
-  padding: 0;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.async-tools-switch:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.async-tools-switch.is-on {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
-}
-
-.switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--color-med-navy);
-  transition: transform 0.18s ease, background-color 0.18s ease;
-}
-
-.switch-thumb.is-on {
-  transform: translateX(16px);
-  background: var(--color-white, #fff);
-}
-
-.async-tools-help {
-  margin: 0;
-  font-size: 0.75em;
-  color: var(--color-med-navy);
-  line-height: 1.4;
-}
-
-/* Tool output limit */
-.tool-output-cap-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  margin-top: 4px;
-}
-
-.tool-output-cap-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tool-output-cap-header label {
-  font-weight: 500;
-  width: auto;
-}
-
-.tool-output-cap-header .info-icon {
-  color: var(--color-med-navy);
-  font-size: 0.95em;
-  cursor: help;
-  transition: color 0.15s ease;
-}
-
-.tool-output-cap-header .info-icon:hover {
-  color: var(--color-primary);
-}
-
-.tool-output-cap-controls {
-  display: flex;
-  align-items: center;
+.policy-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  flex-wrap: wrap;
 }
 
-.tool-output-cap-input {
-  width: 140px;
-  padding: 8px 10px;
-  background: var(--color-darker-0);
-  color: var(--color-text, inherit);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 5px;
-  font-family: inherit;
-  font-size: 0.9em;
-  transition: border-color 0.15s ease;
-}
-
-.tool-output-cap-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.tool-output-cap-unit {
-  font-size: 0.8em;
-  color: var(--color-med-navy);
-}
-
-.tool-output-cap-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.tool-output-cap-presets {
-  display: inline-flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.preset-chip {
-  padding: 4px 10px;
-  background: transparent;
-  color: var(--color-med-navy);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 999px;
-  font-size: 0.75em;
+.policy-btn {
+  padding: 11px 13px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  text-align: left;
+  font-family: inherit;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.preset-chip:hover {
-  color: var(--color-light-med-navy);
+.policy-btn:hover {
   border-color: var(--color-light-med-navy);
 }
 
-.preset-chip.active {
-  background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+.policy-btn.active {
   border-color: var(--color-green);
+  background: rgba(var(--green-rgb), 0.1);
+}
+
+.policy-title {
+  display: block;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.policy-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.72em;
+  line-height: 1.4;
+  color: var(--color-med-navy);
+}
+
+.routing-stats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+}
+
+.stat-value {
+  font-family: var(--font-family-mono);
+  font-size: 1.05em;
+  color: var(--color-text);
+}
+
+.stat-value.is-good {
+  color: var(--color-green);
+}
+
+.stat-label {
+  margin-top: 2px;
+  font-size: 0.68em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-dull);
+}
+
+.routing-stats-spacer {
+  flex: 1;
+}
+
+.routing-dist {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.routing-dist-item {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  font-family: var(--font-family-mono);
+  font-size: 0.68em;
+  color: var(--color-med-navy);
+}
+
+.routing-stats-caveat {
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid var(--terminal-border-color);
+  font-size: 0.7em;
+  color: var(--color-text-dull);
+}
+
+.routing-stats-empty {
+  font-size: 0.78em;
+  color: var(--color-med-navy);
+}
+
+.pin-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(var(--green-rgb), 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  border-radius: 6px;
+  font-size: 0.85em;
+}
+
+.pin-note i {
+  color: var(--color-green);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pin-note-text {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.pin-note-text b {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .mode-row,
+  .policy-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

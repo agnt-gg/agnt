@@ -16,14 +16,26 @@
         <div class="content-header">
           <h2 class="content-title">Default AI Provider</h2>
           <p class="content-subtitle">
-            Choose your default AI service provider and model. This will be the provider and model used by Annie throughout the app.
+            The model Annie uses everywhere she isn't told otherwise — and what happens when it's unavailable.
           </p>
         </div>
-        <div class="connectors-grid">
-          <div class="connectors-section full-width">
-            <ProviderSelector />
-            <FallbackProviders />
-          </div>
+        <!--
+          ORDERED BY HOW OFTEN EACH ONE IS ACTUALLY TOUCHED, not by how new or
+          interesting the feature is:
+
+            01 Model        daily          ← the reason anyone opens this page
+            02 Fallback     a few × / year
+            03 Instructions monthly
+            04 Limits       once, ever     ← collapsed, values shown in header
+
+          Dynamic routing is deliberately NOT a fifth card. It is the second
+          answer to "which model", so it lives inside 01 as a mode — putting it
+          on top would place the rarest decision above the most common one.
+        -->
+        <div class="provider-settings-stack">
+          <ProviderSelector />
+          <FallbackProviders />
+          <ChatBehaviorSettings />
         </div>
       </div>
 
@@ -844,6 +856,7 @@ import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import ProviderSelector from '../Settings/components/ProviderSelector/ProviderSelector.vue';
 import FallbackProviders from './components/FallbackProviders.vue';
+import ChatBehaviorSettings from './components/ChatBehaviorSettings.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
@@ -868,6 +881,7 @@ export default {
     PopupTutorial,
     ProviderSelector,
     FallbackProviders,
+    ChatBehaviorSettings,
     ResourcesSection,
     Webhooks,
     EmailServer,
@@ -2531,6 +2545,18 @@ export default {
   max-width: 1048px;
   margin: 0 auto;
   align-items: flex-start;
+}
+
+/* The Default AI Provider page is a plain vertical stack of cards. It does not
+   use .connectors-grid / .connectors-section, whose 24px padding and grid
+   columns are for the multi-tile sections (OAuth, integrations) — applying
+   them here nested a padded box inside a padded card for no reason. */
+.provider-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 1048px;
 }
 
 .content-header {

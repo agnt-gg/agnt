@@ -1,20 +1,19 @@
 <template>
-  <div class="fallback-providers">
-    <!-- Header: title left + toggle right on ONE row, subtitle full-width below -->
-    <div class="fb-header">
-      <div class="fb-title-row">
-        <h2 class="fb-title">Fallback AI Providers</h2>
-        <label class="fb-toggle" v-tooltip="enabled ? 'Failover enabled' : 'Failover disabled'">
-          <input type="checkbox" v-model="enabled" @change="markDirty" />
-          <span class="fb-toggle-label">{{ enabled ? 'Enabled' : 'Disabled' }}</span>
-          <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
-        </label>
-      </div>
-      <p class="fb-subtitle">
-        If your default provider is unavailable, Annie automatically retries these
-        in order — up to three backups. Used only when the default fails.
-      </p>
-    </div>
+  <!--
+    CARD 02 · FALLBACK — "if that one is down?"
+
+    Second in the order because it is the same question as card 01, one branch
+    over: which model, and then what if that model cannot answer. Touched a few
+    times a year, so it is expanded but not the hero.
+  -->
+  <SettingsCard num="02" title="Fallback" question="— if that one is down?">
+    <template #value>
+      <label class="fb-toggle" v-tooltip="enabled ? 'Failover enabled' : 'Failover disabled'">
+        <input type="checkbox" v-model="enabled" @change="markDirty" />
+        <span class="fb-toggle-label">{{ enabled ? 'Enabled' : 'Disabled' }}</span>
+        <span class="fb-toggle-track"><span class="fb-toggle-thumb"></span></span>
+      </label>
+    </template>
 
     <!--
       With dynamic routing on, this list is no longer what runs. The router
@@ -82,6 +81,10 @@
         </button>
         <span v-else class="fb-max-note">Maximum of {{ MAX }} fallbacks reached.</span>
 
+        <span class="fb-order-note">Up to {{ MAX }} backups · tried in order</span>
+
+        <span class="fb-actions-spacer"></span>
+
         <BaseButton
           variant="primary"
           size="small"
@@ -103,7 +106,7 @@
         <span>{{ statusMsg }}</span>
       </div>
     </div>
-  </div>
+  </SettingsCard>
 </template>
 
 <script>
@@ -111,6 +114,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import SettingsCard from '@/views/_components/common/SettingsCard.vue';
 import {
   AI_PROVIDERS_WITH_API,
   PROVIDER_DISPLAY_NAMES,
@@ -122,7 +126,7 @@ const MAX = 3;
 
 export default {
   name: 'FallbackProviders',
-  components: { BaseButton, CustomSelect },
+  components: { BaseButton, CustomSelect, SettingsCard },
   setup() {
     const store = useStore();
 
@@ -346,40 +350,8 @@ export default {
 </script>
 
 <style scoped>
-.fallback-providers {
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 12px;
-  padding: 20px;
-  margin-top: 24px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.fb-header { margin-bottom: 16px; }
-.fb-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-}
-.fb-title {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.3;
-  /* Take the full row so the toggle is pushed flush to the right edge. */
-  flex: 1;
-  white-space: nowrap;
-}
-.fb-subtitle {
-  margin: 6px 0 0 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--color-text-muted);
-  max-width: 68ch;
-}
+/* The card chrome (border, radius, padding, header) now comes from
+   SettingsCard, so this component styles only its own contents. */
 
 .fb-toggle {
   display: inline-flex;
@@ -424,16 +396,21 @@ export default {
 .fb-body { transition: opacity 0.2s ease; }
 .fb-body.fb-disabled { opacity: 0.5; pointer-events: none; }
 
+/* Same green idiom as .fb-tier and .preset-chip. The earlier version used
+   `var(--color-accent, #4a9eff)`: --color-accent IS a real alias for
+   --color-primary, so it resolved to green and the blue fallback never fired —
+   but a reader had no way to know that, and a hardcoded blue sitting in the
+   source of a green product is a trap for the next person. */
 .fb-managed {
   display: flex; align-items: flex-start; gap: 11px;
-  padding: 12px 14px; margin-bottom: 4px;
-  background: color-mix(in srgb, var(--color-accent, #4a9eff) 8%, transparent);
-  border: 1px solid var(--color-accent, #4a9eff);
+  padding: 12px 14px; margin-bottom: 12px;
+  background: rgba(var(--green-rgb), 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.45);
   border-radius: 8px;
 }
-.fb-managed i { color: var(--color-accent, #4a9eff); margin-top: 2px; }
-.fb-managed strong { display: block; font-size: 13px; color: var(--color-text-primary); }
-.fb-managed p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--color-text-secondary); }
+.fb-managed i { color: var(--color-green); margin-top: 2px; }
+.fb-managed strong { display: block; font-size: 0.85em; font-weight: 600; color: var(--color-text); }
+.fb-managed p { margin: 4px 0 0; font-size: 0.78em; line-height: 1.5; color: var(--color-text-muted); }
 
 .fb-empty {
   display: flex; flex-direction: column; align-items: center;
@@ -472,7 +449,7 @@ export default {
 .fb-remove:hover { color: var(--color-red); background: rgba(255,107,107,0.1); }
 
 .fb-actions {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; flex-wrap: wrap;
   gap: 12px; margin-top: 12px;
   padding-top: 12px; border-top: 1px solid var(--terminal-border-color);
   min-width: 0;
@@ -489,6 +466,10 @@ export default {
 .fb-add:hover:not(:disabled) { border-color: var(--color-green); color: var(--color-green); }
 .fb-add:disabled { opacity: 0.4; cursor: not-allowed; }
 .fb-max-note { font-size: 0.85rem; color: var(--color-text-muted); }
+
+/* Says what the tier numbers mean, so the card needs no header subtitle. */
+.fb-order-note { font-size: 0.78em; color: var(--color-med-navy); }
+.fb-actions-spacer { flex: 1; }
 
 .fb-hint {
   margin: 12px 0 0 0;
