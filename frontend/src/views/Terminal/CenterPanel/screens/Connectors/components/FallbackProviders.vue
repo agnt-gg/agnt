@@ -16,7 +16,30 @@
       </p>
     </div>
 
-    <div class="fb-body" :class="{ 'fb-disabled': !enabled }">
+    <!--
+      With dynamic routing on, this list is no longer what runs. The router
+      ranks every eligible provider per request and its 2nd and 3rd choices
+      BECOME the failover chain, recomputed against live health each turn.
+
+      The saved rows are shown read-only rather than hidden or deleted: they
+      are still the exact configuration that returns the moment routing is
+      switched off, and silently discarding a user's hand-built chain to enable
+      a feature would be unforgivable. Leaving them EDITABLE would be the
+      other failure — a control that appears to work and changes nothing.
+    -->
+    <div v-if="routingMode === 'dynamic'" class="fb-managed">
+      <i class="fas fa-bolt"></i>
+      <div>
+        <strong>Managed by Annie</strong>
+        <p>
+          Dynamic Provider Routing is on, so the failover chain is chosen per
+          request instead of from this list. Your saved backups are kept and
+          take effect again as soon as routing is turned off.
+        </p>
+      </div>
+    </div>
+
+    <div class="fb-body" :class="{ 'fb-disabled': !enabled || routingMode === 'dynamic' }">
       <div v-if="rows.length === 0" class="fb-empty">
         <i class="fas fa-layer-group"></i>
         <p>No fallback providers configured. Add one to protect against outages.</p>
@@ -104,6 +127,9 @@ export default {
     const store = useStore();
 
     const enabled = ref(false);
+    // 'static' | 'dynamic'. When dynamic, this list is superseded by the
+    // router's own ranking and is shown read-only rather than removed.
+    const routingMode = ref('static');
     const rows = ref([]); // [{ provider: <displayName>, model: <id|''> }]
     const dirty = ref(false);
     const saving = ref(false);
@@ -239,6 +265,7 @@ export default {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         enabled.value = !!data.fallbackEnabled;
+        routingMode.value = data.routingMode === 'dynamic' ? 'dynamic' : 'static';
         const list = Array.isArray(data.fallbackProviders) ? data.fallbackProviders : [];
         rows.value = list.slice(0, MAX).map((e) => ({
           provider: e.provider || '',
@@ -309,7 +336,7 @@ export default {
 
     return {
       MAX,
-      enabled, rows, dirty, saving, statusMsg, statusOk,
+      enabled, routingMode, rows, dirty, saving, statusMsg, statusOk,
       connectableProviders, modelsFor, providerOptionsFor, modelOptionsFor, hasCandidates,
       modelPlaceholderFor, isCustomProviderId,
       markDirty, addRow, removeRow, onProviderChange, onModelChange, save,
@@ -396,6 +423,17 @@ export default {
 
 .fb-body { transition: opacity 0.2s ease; }
 .fb-body.fb-disabled { opacity: 0.5; pointer-events: none; }
+
+.fb-managed {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 12px 14px; margin-bottom: 4px;
+  background: color-mix(in srgb, var(--color-accent, #4a9eff) 8%, transparent);
+  border: 1px solid var(--color-accent, #4a9eff);
+  border-radius: 8px;
+}
+.fb-managed i { color: var(--color-accent, #4a9eff); margin-top: 2px; }
+.fb-managed strong { display: block; font-size: 13px; color: var(--color-text-primary); }
+.fb-managed p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--color-text-secondary); }
 
 .fb-empty {
   display: flex; flex-direction: column; align-items: center;

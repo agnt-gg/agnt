@@ -1,8 +1,82 @@
 <template>
   <div class="provider-selector-wrapper">
+    <!--
+      DYNAMIC PROVIDER ROUTING — one click.
+
+      Placed ABOVE the model pickers deliberately: when routing is on, those
+      pickers stop being the command and become the floor (what un-routable
+      work falls back to). Showing them first would imply the opposite.
+    -->
+    <div class="dyn-routing-card" :class="{ active: routingMode === 'dynamic' }">
+      <div class="dyn-routing-head">
+        <div class="dyn-routing-title">
+          <i class="fas fa-bolt"></i>
+          <span>Dynamic Provider Routing</span>
+        </div>
+        <label class="dyn-toggle" v-tooltip="routingMode === 'dynamic' ? 'Routing enabled' : 'Routing disabled'">
+          <input type="checkbox" :checked="routingMode === 'dynamic'" @change="toggleRouting" />
+          <span class="dyn-toggle-label">{{ routingMode === 'dynamic' ? 'Enabled' : 'Disabled' }}</span>
+          <span class="dyn-toggle-track"><span class="dyn-toggle-thumb"></span></span>
+        </label>
+      </div>
+
+      <p class="dyn-routing-sub">
+        Annie picks the best model for every request — balancing cost, quality,
+        speed and availability, and reusing warm prompt caches instead of
+        throwing them away. Your pinned chats and agents keep their own models.
+      </p>
+
+      <div v-if="routingMode === 'dynamic'" class="dyn-routing-body">
+        <div class="dyn-policy-row" role="radiogroup" aria-label="Routing policy">
+          <button
+            v-for="p in routingPolicies"
+            :key="p.value"
+            class="dyn-policy-btn"
+            :class="{ active: routingPolicy === p.value }"
+            role="radio"
+            :aria-checked="routingPolicy === p.value ? 'true' : 'false'"
+            @click="selectPolicy(p.value)"
+          >
+            <span class="dyn-policy-label">{{ p.label }}</span>
+            <span class="dyn-policy-hint">{{ p.hint }}</span>
+          </button>
+        </div>
+
+        <div class="dyn-stats">
+          <template v-if="routingStats && routingStats.decisions > 0">
+            <div class="dyn-stats-line">
+              <strong>{{ routingStats.decisions }}</strong> requests routed ·
+              <strong>{{ formatUsd(routingStats.predictedUsd) }}</strong> spent ·
+              <strong class="dyn-saved">{{ formatUsd(routingStats.savedUsd) }}</strong> saved
+              <span class="dyn-window">(last 24h)</span>
+            </div>
+            <!--
+              Unpriced decisions are reported, never folded into the saving.
+              A savings figure that treats "we don't know" as "we saved it" is
+              the reason most routing claims cannot be reproduced.
+            -->
+            <div v-if="routingStats.unpricedDecisions > 0" class="dyn-stats-caveat">
+              {{ routingStats.unpricedDecisions }} decision(s) excluded — no published price for the model.
+            </div>
+            <div v-if="routingStats.distribution.length" class="dyn-dist">
+              <span v-for="d in routingStats.distribution.slice(0, 4)" :key="d.provider + d.model" class="dyn-dist-item">
+                {{ Math.round(d.share * 100) }}% {{ d.model }}
+              </span>
+            </div>
+          </template>
+          <div v-else class="dyn-stats-empty">
+            No routed requests yet. Send a message and the numbers appear here.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <h3>
       Orchestrator AI Model
-      <span class="provider-selector-subtext"> (The AI model to use for Annie, AI orchestration, and generating agents, workflows, & tools) </span>
+      <span v-if="routingMode === 'dynamic'" class="provider-selector-subtext">
+        (Routing is on — this is now the FLOOR: what work falls back to when nothing better qualifies, and what un-measured providers are compared against)
+      </span>
+      <span v-else class="provider-selector-subtext"> (The AI model to use for Annie, AI orchestration, and generating agents, workflows, & tools) </span>
     </h3>
     <div class="provider-selector">
       <ProviderModelSearch class="provider-selector-search" />
@@ -239,7 +313,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { DEPLOYMENT_CONFIG, API_CONFIG } from '@/tt.config.js';
 
 export default {
   components: {
@@ -762,7 +836,69 @@ export default {
       await store.dispatch('aiProvider/fetchCustomProviders');
     });
 
+    // ── Dynamic provider routing ──────────────────────────────────────
+    const routingMode = computed(() => store.state.aiProvider.routingMode || 'static');
+    const routingPolicy = computed(() => store.state.aiProvider.routingPolicy || 'balanced');
+    const routingStats = ref(null);
+
+    const routingPolicies = [
+      { value: 'save', label: 'Save money', hint: 'Cheapest model that can do the job' },
+      { value: 'balanced', label: 'Balanced', hint: 'Default — cost and quality weighed evenly' },
+      { value: 'quality', label: 'Best quality', hint: 'Prefer the strongest capable model' },
+    ];
+
+    /**
+     * Money is rendered from the ledger or not at all.
+     *
+     * Sub-cent amounts get four decimals rather than rounding to "$0.00" — a
+     * real saving displayed as zero is indistinguishable from a broken feature.
+     */
+    const formatUsd = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      if (n !== 0 && Math.abs(n) < 0.01) return `$${n.toFixed(4)}`;
+      return `$${n.toFixed(2)}`;
+    };
+
+    const loadRoutingStats = async () => {
+      if (routingMode.value !== 'dynamic') return;
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch(`${API_CONFIG.BASE_URL}/routing/summary?hours=24`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        routingStats.value = await res.json();
+      } catch (e) {
+        // The panel simply shows nothing rather than a fabricated figure.
+        console.warn('[Routing] Could not load summary:', e);
+      }
+    };
+
+    const toggleRouting = async (event) => {
+      const next = event?.target?.checked ? 'dynamic' : 'static';
+      await store.dispatch('aiProvider/setRoutingMode', next);
+      if (next === 'dynamic') await loadRoutingStats();
+      else routingStats.value = null;
+    };
+
+    const selectPolicy = async (value) => {
+      if (value === routingPolicy.value) return;
+      await store.dispatch('aiProvider/setRoutingPolicy', value);
+    };
+
+    onMounted(loadRoutingStats);
+    watch(routingMode, (m) => { if (m === 'dynamic') loadRoutingStats(); });
+
     return {
+      routingMode,
+      routingPolicy,
+      routingPolicies,
+      routingStats,
+      toggleRouting,
+      selectPolicy,
+      formatUsd,
       providers,
       customProviders,
       selectedProvider,
@@ -810,6 +946,197 @@ export default {
 </script>
 
 <style scoped>
+/* ── Dynamic provider routing card ─────────────────────────────────────── */
+.dyn-routing-card {
+  padding: 16px 18px;
+  background: var(--surface-raised);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.dyn-routing-card.active {
+  border-color: var(--color-accent, #4a9eff);
+  background: color-mix(in srgb, var(--color-accent, #4a9eff) 6%, transparent);
+}
+
+.dyn-routing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dyn-routing-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.dyn-routing-title i {
+  color: var(--color-accent, #4a9eff);
+}
+
+.dyn-routing-sub {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  max-width: 68ch;
+}
+
+.dyn-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.dyn-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.dyn-toggle-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.dyn-toggle-track {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.dyn-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.dyn-toggle input:checked + .dyn-toggle-label,
+.dyn-toggle input:checked ~ .dyn-toggle-label {
+  color: var(--color-text-primary);
+}
+
+.dyn-toggle input:checked ~ .dyn-toggle-track {
+  background: var(--color-accent, #4a9eff);
+  border-color: var(--color-accent, #4a9eff);
+}
+
+.dyn-toggle input:checked ~ .dyn-toggle-track .dyn-toggle-thumb {
+  transform: translateX(17px);
+  background: var(--surface-canvas);
+}
+
+.dyn-routing-body {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.07));
+}
+
+.dyn-policy-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.dyn-policy-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 9px 11px;
+  background: var(--surface-hover);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dyn-policy-btn:hover {
+  border-color: var(--color-accent, #4a9eff);
+}
+
+.dyn-policy-btn.active {
+  border-color: var(--color-accent, #4a9eff);
+  background: color-mix(in srgb, var(--color-accent, #4a9eff) 12%, transparent);
+}
+
+.dyn-policy-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.dyn-policy-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.dyn-stats {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.dyn-stats-line strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.dyn-saved {
+  color: var(--color-green, #4ade80) !important;
+}
+
+.dyn-window {
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+.dyn-stats-caveat {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.dyn-dist {
+  margin-top: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dyn-dist-item {
+  padding: 2px 8px;
+  background: var(--surface-hover);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.dyn-stats-empty {
+  opacity: 0.7;
+  font-size: 11.5px;
+}
+
 .provider-selector-wrapper {
   display: flex;
   flex-direction: column;

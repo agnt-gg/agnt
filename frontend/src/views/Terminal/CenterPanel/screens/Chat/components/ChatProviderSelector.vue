@@ -11,6 +11,48 @@
       </div>
 
       <div class="dropdown-content">
+        <!--
+          MODE — the tri-state that was missing.
+
+          "Default" was previously unreachable: every send pinned a concrete
+          pair, so a chat given a model could never be handed back to the
+          global setting. Dynamic routing needs that same absent state, so one
+          control delivers both.
+        -->
+        <div class="routing-mode-row" role="radiogroup" aria-label="Model selection mode">
+          <button
+            v-for="opt in modeOptions"
+            :key="opt.value"
+            class="routing-mode-btn"
+            :class="{ active: activeMode === opt.value }"
+            role="radio"
+            :aria-checked="activeMode === opt.value ? 'true' : 'false'"
+            @click="selectMode(opt.value)"
+          >
+            <i :class="opt.icon"></i>
+            <span>{{ opt.label }}</span>
+          </button>
+        </div>
+
+        <div v-if="activeMode === 'default'" class="routing-mode-note">
+          Following your global setting:
+          <strong>{{ globalProviderDisplayName }}</strong>
+          <span v-if="globalModel"> · {{ globalModel }}</span>
+          <div v-if="globalRoutingMode === 'dynamic'" class="routing-mode-sub">
+            <i class="fas fa-bolt"></i> Global routing is Dynamic, so this chat routes too.
+          </div>
+        </div>
+
+        <div v-else-if="activeMode === 'dynamic'" class="routing-mode-note">
+          Annie picks the best model for each request — balancing cost, quality,
+          speed and availability.
+          <div class="routing-mode-sub">
+            <i class="fas fa-thumbtack"></i> Pinned chats and agents keep their own models.
+          </div>
+        </div>
+
+        <!-- Everything below is the PINNED experience, unchanged. -->
+        <template v-if="activeMode === 'pinned'">
         <!-- Current Selection Display -->
         <div class="current-selection">
           <div class="selection-label">Current:</div>
@@ -83,6 +125,8 @@
           <span class="warning-text">{{ toolSupportWarning }}</span>
         </div>
 
+        </template>
+
         <!-- Custom Provider Actions Row -->
         <div class="custom-provider-row">
           <Tooltip text="Add Custom Provider" width="auto">
@@ -129,7 +173,13 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
-import { getChannelConfig, setChannelProvider, setChannelModel } from '@/services/chatChannelConfig.js';
+import {
+  getChannelConfig,
+  setChannelProvider,
+  setChannelModel,
+  setChannelMode,
+  resolveChannelMode,
+} from '@/services/chatChannelConfig.js';
 
 export default {
   name: 'ChatProviderSelector',
@@ -372,6 +422,64 @@ export default {
     const resetConversationAi = () => {
       if (!props.conversationId) return;
       store.dispatch('chat/clearConversationAi', { conversationId: props.conversationId });
+    };
+
+    // ── ROUTING MODE ──────────────────────────────────────────────────
+    // Channel config lives in localStorage, which Vue cannot observe. This
+    // counter is the reactivity handle for it.
+    const channelModeTick = ref(0);
+
+    const modeOptions = [
+      { value: 'default', label: 'Default', icon: 'fas fa-globe' },
+      { value: 'dynamic', label: 'Dynamic', icon: 'fas fa-bolt' },
+      { value: 'pinned', label: 'Specific', icon: 'fas fa-thumbtack' },
+    ];
+
+    const globalRoutingMode = computed(() => store.state.aiProvider?.routingMode || 'static');
+    const globalModel = computed(() => store.state.aiProvider?.selectedModel || '');
+    const globalProviderDisplayName = computed(() => {
+      const p = store.state.aiProvider?.selectedProvider;
+      return p ? (PROVIDER_DISPLAY_NAMES[p] || p) : 'Not set';
+    });
+
+    /**
+     * Which mode this surface is in.
+     *
+     * Conversation scope and channel scope are read from their own stores. In
+     * BOTH, an existing provider/model pair means 'pinned' — that is how every
+     * chat saved before this control existed was stored, and treating those as
+     * anything else would silently move a model the user deliberately chose.
+     */
+    const activeMode = computed(() => {
+      if (props.conversationId) {
+        if (scopedAi.value) return 'pinned';
+        return store.state.chat?.routingModeByConv?.[props.conversationId] || 'default';
+      }
+      if (props.channelKey) {
+        channelModeTick.value; // eslint-disable-line no-unused-expressions -- reactivity dependency
+        return resolveChannelMode(getChannelConfig(props.channelKey));
+      }
+      // The global settings surface has no scope of its own; it always edits a
+      // concrete pair.
+      return 'pinned';
+    });
+
+    const selectMode = (mode) => {
+      if (mode === activeMode.value) return;
+      if (props.conversationId) {
+        store.dispatch('chat/setConversationRoutingMode', {
+          conversationId: props.conversationId,
+          mode,
+        });
+        return;
+      }
+      if (props.channelKey) {
+        setChannelMode(props.channelKey, mode);
+        // localStorage writes are invisible to Vue's reactivity, so nudge the
+        // computed. Without this the buttons do not move until the panel is
+        // reopened, which reads as a dead control.
+        channelModeTick.value += 1;
+      }
     };
 
     // Restore the channel's saved provider/model into Vuex so the rest of the
@@ -642,6 +750,12 @@ export default {
       handleModelSelected,
       handleSearchSelected,
       resetConversationAi,
+      modeOptions,
+      activeMode,
+      selectMode,
+      globalRoutingMode,
+      globalModel,
+      globalProviderDisplayName,
       scopedAi,
       closeDropdown,
       isDialogOpen,
@@ -663,6 +777,75 @@ export default {
 .chat-provider-selector {
   position: fixed;
   z-index: 10000;
+}
+
+/* Routing mode selector — Default / Dynamic / Specific */
+.routing-mode-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-hover);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+}
+
+.routing-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.routing-mode-btn i {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.routing-mode-btn:hover {
+  background: var(--surface-active);
+  color: var(--color-text-primary);
+}
+
+.routing-mode-btn.active {
+  background: var(--color-accent, #4a9eff);
+  color: var(--surface-canvas);
+}
+
+.routing-mode-note {
+  padding: 9px 11px;
+  background: var(--surface-hover);
+  border-left: 2px solid var(--color-accent, #4a9eff);
+  border-radius: 4px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.routing-mode-note strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.routing-mode-sub {
+  margin-top: 5px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.routing-mode-sub i {
+  margin-right: 4px;
+  color: var(--color-accent, #4a9eff);
 }
 
 /* Conversation-scoped override indicator */
