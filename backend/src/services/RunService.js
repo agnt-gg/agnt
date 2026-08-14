@@ -4,6 +4,30 @@ import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 
+/**
+ * How many messages an INCOMING conversation payload carries.
+ *
+ * Returns null for "I cannot tell" — not a number. Every caller must treat
+ * null as unknown and decline to judge, because the one thing worse than
+ * failing to spot a truncation is inventing a count of 0 for a payload we
+ * merely failed to parse and calling every save a truncation.
+ *
+ * The payload is the serializeTranscript() shape: an object with `messages`.
+ * A bare array is accepted too — older clients sent that, and refusing to
+ * count a shape we can plainly see would leave those saves unguarded.
+ */
+function countTranscriptMessages(content) {
+  if (typeof content !== 'string' || content.length === 0) return null;
+  try {
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed)) return parsed.length;
+    if (parsed && Array.isArray(parsed.messages)) return parsed.messages.length;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 class RunService {
   // Health check method
   healthCheck(req, res) {
@@ -58,7 +82,7 @@ class RunService {
     try {
       // Saves never mark read — the read watermark moves only via the
       // explicit read PATCH (the email model). See ContentOutputModel.
-      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey } = req.body;
+      const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey, allowTruncate } = req.body;
       const userId = req.user.userId;
 
       // WHICH ROW DOES THIS SAVE BELONG TO?
@@ -78,6 +102,7 @@ class RunService {
       // Identity lookups only — neither read the content column (see
       // ContentOutputModel.findIdentityById).
       let existingOutput = id ? await ContentOutputModel.findIdentityById(id) : null;
+      let adoptedByConversation = false;
 
       // Ownership is checked BEFORE adopting: a row belonging to someone else
       // is not a row we may write to, and falling through to the conversation
@@ -86,10 +111,64 @@ class RunService {
       if (existingOutput && existingOutput.user_id !== userId) existingOutput = null;
       else if (!existingOutput && conversationId) {
         existingOutput = await ContentOutputModel.findMetaByConversationId(conversationId, userId);
+        // Remember HOW we found it. Adoption is the dangerous provenance:
+        // see the truncation guard below.
+        if (existingOutput) adoptedByConversation = true;
       }
 
       const isNewOutput = !existingOutput;
       const outputId = isNewOutput ? generateUUID() : existingOutput.id;
+
+      // ── BLIND-ADOPT TRUNCATION GUARD ──────────────────────────────────
+      //
+      // THE INCIDENT THIS PREVENTS (measured, 2026-08-14): a 404-message
+      // conversation was replaced on disk by a 4-message one. The user
+      // reloaded and his afternoon's work was gone from the UI.
+      //
+      // The mechanism is adoption above, which is otherwise correct — keying
+      // on the conversation is what stopped three clients minting three
+      // sidebar rows for one chat. But it hands WRITE access to a row the
+      // caller has never READ. A client that reloads with an empty transcript
+      // still knows its conversationId, so its first autosave adopts the full
+      // row and overwrites it with whatever little it happens to hold.
+      //
+      // Naming the row by `id` is the client's proof it loaded that row:
+      // savedOutputId is only ever set by a save it made or a load it did.
+      // So the rule is narrow and mechanical:
+      //
+      //     a caller that did NOT name the row may not SHRINK it.
+      //
+      // Shrinking on purpose (clearing, editing an earlier message and
+      // re-running from there) is still allowed — those callers hold the id,
+      // and anything else can pass allowTruncate explicitly.
+      //
+      // Unknown counts (non-JSON content, legacy rows) do NOT trigger the
+      // guard: it must never block a save it cannot actually reason about.
+      if (adoptedByConversation && !allowTruncate && contentType === 'conversation') {
+        const stored = await ContentOutputModel.transcriptStatsById(outputId);
+        const incoming = countTranscriptMessages(content);
+
+        if (stored && stored.messageCount !== null && incoming !== null && incoming < stored.messageCount) {
+          console.error(
+            `[ContentOutput] REFUSED a truncating blind write to ${outputId} `
+            + `(conversation ${conversationId}): stored ${stored.messageCount} messages, `
+            + `incoming ${incoming}. The caller never loaded this row. Content left intact.`
+          );
+          // 409, not 500: the request is well-formed, the state says no. The
+          // stored row is returned so the client can reconcile to the truth
+          // instead of retrying the same destructive write forever.
+          return res.status(409).json({
+            error: 'transcript_truncation_refused',
+            message:
+              'This save would have shortened a conversation the client has not loaded. '
+              + 'The stored transcript was kept. Reload the conversation before saving it.',
+            id: outputId,
+            storedMessageCount: stored.messageCount,
+            incomingMessageCount: incoming,
+            output: await ContentOutputModel.findMetaById(outputId),
+          });
+        }
+      }
 
       await ContentOutputModel.createOrUpdate(
         outputId,

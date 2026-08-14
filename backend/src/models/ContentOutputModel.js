@@ -427,6 +427,52 @@ class ContentOutputModel {
       });
     });
   }
+
+  /**
+   * How much transcript a row currently holds — WITHOUT transferring it.
+   *
+   * The save path needs to know "am I about to make this conversation
+   * smaller?", and it needs to know it on every ~5s autosave. Reading the
+   * content column to count messages would pull a multi-MB string off disk
+   * and through the driver every time, which is exactly the cost
+   * findMetaByConversationId was written to avoid.
+   *
+   * json_array_length() counts inside SQLite and returns one integer.
+   * LENGTH() likewise. Neither materialises the blob in JS.
+   *
+   * Returns null message_count for anything that is not a JSON object with a
+   * `messages` array (html outputs, legacy rows, corrupt content). Null means
+   * UNKNOWN, and callers must treat unknown as "cannot judge" rather than as
+   * zero — a guard that reads "corrupt" as "empty" would authorise the very
+   * overwrite it exists to prevent.
+   */
+  static transcriptStatsById(id) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT
+           id,
+           LENGTH(COALESCE(content, ''))                                    AS content_length,
+           CASE WHEN json_valid(content)
+                THEN json_array_length(json_extract(content, '$.messages'))
+                ELSE NULL END                                              AS message_count
+         FROM content_outputs WHERE id = ?`,
+        [id],
+        (err, row) => {
+          if (err) reject(err);
+          else if (!row) resolve(null);
+          else resolve({
+            id: row.id,
+            contentLength: row.content_length || 0,
+            // json_array_length yields NULL when the path is absent, which the
+            // driver surfaces as null/undefined — normalise both to null.
+            messageCount: row.message_count === null || row.message_count === undefined
+              ? null
+              : Number(row.message_count),
+          });
+        }
+      );
+    });
+  }
 }
 
 export default ContentOutputModel;

@@ -5,7 +5,7 @@ import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
-import { serializeTranscript } from '@/services/conversationTranscript.js';
+import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
@@ -2298,6 +2298,49 @@ export default {
     },
 
     /**
+     * Adopt the server's stored transcript after it refused a truncating save.
+     *
+     * Runs when this tab holds FEWER messages than the row on disk — the
+     * reload-into-an-empty-transcript case. The stored copy is the history;
+     * ours is a fragment of it. So stored messages come first and anything we
+     * hold that the server has never seen (the turn in flight right now) is
+     * appended by id, never dropped.
+     *
+     * Adopting the outputId matters as much as the messages: once this
+     * conversation names its row, later saves are no longer blind adoptions,
+     * so the guard stops firing and normal saving resumes.
+     */
+    async reconcileTruncatedConversation({ commit, state }, { conversationId, outputId }) {
+      const token = localStorage.getItem('token');
+      if (!token || !outputId) return;
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${outputId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`Could not fetch stored transcript: ${response.status}`);
+
+      const row = await response.json();
+      const stored = parseTranscript(row.content ?? row.output?.content);
+      if (!stored || !Array.isArray(stored.messages) || stored.messages.length === 0) return;
+
+      const local = state.conversations[conversationId]?.messages || [];
+      const storedIds = new Set(stored.messages.map((m) => m.id).filter(Boolean));
+      // Keep only what the stored copy genuinely lacks. Messages without an id
+      // cannot be matched, so they are treated as ours and kept — losing a
+      // live message to de-duplication would repeat the bug we are fixing.
+      const unsaved = local.filter((m) => !m.id || !storedIds.has(m.id));
+
+      commit('SCOPED_SET_MESSAGES', { conversationId, messages: [...stored.messages, ...unsaved] });
+      commit('SCOPED_SET_SAVED_OUTPUT_ID', { conversationId, id: outputId });
+      if (row.title) commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId, title: row.title });
+
+      console.log(
+        `[Chat] Restored ${stored.messages.length} stored messages for ${conversationId}`
+        + `${unsaved.length ? ` and kept ${unsaved.length} unsaved` : ''}.`
+      );
+    },
+
+    /**
      * Autosave conversation with debouncing.
      * Accepts optional conversationId to save a background conversation.
      */
@@ -2429,6 +2472,43 @@ export default {
             title: conversationTitle,
           }),
         });
+
+        // ── THE SERVER REFUSED TO SHRINK THIS CONVERSATION ─────────────────
+        //
+        // 409 means this tab tried to overwrite a stored transcript that is
+        // LONGER than the one it holds, without ever having loaded it. The
+        // server kept its copy — nothing was lost — and we are now the side
+        // that is wrong.
+        //
+        // So repair ourselves rather than retrying: pull the stored
+        // transcript in and adopt it. This is what turns the guard from a
+        // refusal into a recovery — a tab that reloaded into a short
+        // transcript visibly gets its history back instead of quietly
+        // continuing with a truncated one.
+        if (response.status === 409) {
+          const refusal = await response.json().catch(() => ({}));
+          console.warn(
+            `[Autosave] Server refused a truncating save for ${convId}: `
+            + `stored ${refusal.storedMessageCount} messages vs our ${refusal.incomingMessageCount}. `
+            + 'Reloading the stored transcript.'
+          );
+          if (conv) {
+            commit('SCOPED_SET_IS_SAVING', { conversationId: convId, value: false });
+            commit('SCOPED_SET_SAVE_STATUS', { conversationId: convId, status: null });
+          } else {
+            commit('SET_IS_SAVING', false);
+            commit('SET_SAVE_STATUS', null);
+          }
+          if (refusal.id) {
+            // Naming the row is also what re-arms normal saving: once we hold
+            // its id, later saves are no longer blind adoptions.
+            dispatch('reconcileTruncatedConversation', {
+              conversationId: convId,
+              outputId: refusal.id,
+            }).catch((e) => console.error('[Autosave] Reconcile failed:', e));
+          }
+          return;
+        }
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
