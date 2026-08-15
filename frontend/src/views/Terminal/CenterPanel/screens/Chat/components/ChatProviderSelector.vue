@@ -839,17 +839,23 @@ export default {
   color: var(--color-light-med-navy);
 }
 
-/* The app's active-chip idiom, verbatim from .preset-chip.active and .fb-tier:
-   a green tint, green text, green border. Not a solid accent fill. */
+/* --color-primary, NOT --color-green: green is the raw brand colour and stays
+   green in all eight themes, so an accent built on it ignores the theme
+   entirely. --color-primary is redeclared by every theme (pink, orange,
+   purple, nord blue...) and is what --color-accent was aliasing to anyway.
+
+   --on-fill-accent, not --surface-canvas, for the text: six themes alias that
+   name to their own canvas, so it is near-WHITE in light/rose — white on pink.
+   Same pairing MarketplaceShelf and Marketplace use on a primary fill. */
 .routing-mode-btn.active {
-  background: rgba(var(--green-rgb), 0.12);
-  color: var(--color-green);
+  background: var(--color-primary);
+  color: var(--on-fill-accent);
 }
 
 .routing-mode-note {
   padding: 9px 11px;
   background: var(--color-darker-0);
-  border-left: 2px solid var(--color-green);
+  border-left: 2px solid var(--color-primary);
   border-radius: 4px;
   font-size: 11.5px;
   line-height: 1.5;
@@ -869,7 +875,7 @@ export default {
 
 .routing-mode-sub i {
   margin-right: 4px;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 /* Conversation-scoped override indicator */
