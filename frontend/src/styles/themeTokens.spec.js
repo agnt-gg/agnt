@@ -198,6 +198,89 @@ describe('theme tokens: unapproved names stay deleted', () => {
   });
 });
 
+/* ────────── check 1c: --color-border does not follow the theme ────────── */
+describe('theme tokens: --color-border is not the border colour', () => {
+  /**
+   * --color-border IS declared, so check 1 above passes it — but it is
+   * declared ONLY in themes/_core.css, and no theme file overrides it. It
+   * therefore resolves to core's --color-light-navy in dark, cyberpunk, ember,
+   * hacker, light, midnight, nord and rose alike: one fixed grey pretending to
+   * be eight themes.
+   *
+   * Its sibling --terminal-border-color is redeclared by every one of those
+   * files. That is what makes it the app's border, and it is already the
+   * approved spelling in check 1b.
+   *
+   * WHY THIS NEEDS ITS OWN GUARD
+   * The name is a trap rather than a typo. It greps well, it is a real
+   * declared token so nothing errors, and it renders a plausible border in
+   * whichever theme the author happens to have open — so the wrong colour
+   * ships silently and only shows up when someone switches themes. It cannot
+   * go on the BANNED list in 1b, because that list forbids DECLARING the name
+   * too and _core.css legitimately declares this one.
+   */
+  const TOKEN = '--color-border';
+  const reference = new RegExp(`var\\(\\s*${TOKEN}(?![A-Za-z0-9_-])`);
+  const declaration = new RegExp(`${TOKEN}\\s*:(?![A-Za-z0-9_-])`);
+
+  const overridingThemes = fs.readdirSync(THEMES)
+    .filter((f) => f.endsWith('.css') && f !== '_core.css')
+    .filter((f) => declaration.test(stripComments(fs.readFileSync(path.join(THEMES, f), 'utf8'))));
+
+  const users = [];
+  for (const f of ALL_FILES) {
+    if (/^styles\//.test(rel(f))) continue; // the declaration itself is fine
+    blankComments(styleText(f)).split('\n').forEach((line, i) => {
+      if (reference.test(line)) users.push(`  ${rel(f)}:${i + 1}  ${line.trim().slice(0, 70)}`);
+    });
+  }
+
+  /**
+   * FROZEN BASELINE. Three component usages predate this guard. Lower it when
+   * you fix some; never raise it. Same ratchet as check 3 — a guard that opens
+   * red is a guard that gets deleted.
+   */
+  const BASELINE = 3;
+
+  it(`no MORE than the ${BASELINE} known component usages`, () => {
+    expect(
+      users.length,
+      `A component started using ${TOKEN}. It is declared once in themes/_core.css and\n`
+      + `overridden by NO theme, so it paints the same colour in all eight themes.\n\n`
+      + `  hairline border  ->  var(--terminal-border-color)\n`
+      + `  recessed fill    ->  var(--color-darker-0)\n\n`
+      + `Usages:\n${users.join('\n')}\n`
+    ).toBeLessThanOrEqual(BASELINE);
+  });
+
+  it('the baseline is not stale (ratchet it down when it drops)', () => {
+    expect(
+      users.length,
+      `${TOKEN} usages dropped to ${users.length}. Lower BASELINE in this file to match.`
+    ).toBeGreaterThan(BASELINE - 2);
+  });
+
+  it('no theme overrides it — DELETE THIS GUARD if one ever does', () => {
+    // The whole premise is that this token cannot follow the theme. The moment
+    // every theme declares it, that stops being true and this check becomes
+    // false gatekeeping, which is worse than no check at all.
+    expect(
+      overridingThemes,
+      `${TOKEN} is now overridden by ${overridingThemes.join(', ')}. If EVERY theme declares it, `
+      + 'it is a real theme token: delete this describe block.'
+    ).toEqual([]);
+  });
+
+  it('the scan can actually see a usage (anti-vacuity)', () => {
+    expect(reference.test('  border: 1px solid var(--color-border, rgba(255,255,255,.08));')).toBe(true);
+    expect(reference.test('  border: 1px solid var( --color-border );')).toBe(true);
+    expect(reference.test('  border: 1px solid var(--terminal-border-color);')).toBe(false);
+    // Must not fire on a longer name that merely starts the same way.
+    expect(reference.test('  color: var(--color-border-hover);')).toBe(false);
+    expect(ALL_FILES.length).toBeGreaterThan(100);
+  });
+});
+
 /* ─────────────────── check 2: fills are paired with a label ─────────────────── */
 describe('theme tokens: every fill ships with its on-fill companion', () => {
   const semantic = stripComments(fs.readFileSync(path.join(THEMES, '_semantic.css'), 'utf8'));

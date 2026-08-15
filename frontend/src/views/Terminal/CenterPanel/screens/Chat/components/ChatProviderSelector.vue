@@ -792,14 +792,24 @@ export default {
   z-index: 10000;
 }
 
-/* Routing mode selector — Default / Dynamic / Specific */
+/* Routing mode selector — Default / Dynamic / Specific.
+
+   Uses this component's own idiom: --color-darker-0 for a recessed surface and
+   --terminal-border-color for a border, the same pair .dropdown-header and
+   .provider-dropdown already use a few rules below.
+
+   NOT --color-border: it is declared once, in themes/_core.css, and NO theme
+   overrides it — so it stays core's --color-light-navy in dark, cyberpunk,
+   ember, hacker, light, midnight, nord and rose alike. That is the wrong-
+   coloured border. --terminal-border-color is the token every theme redefines,
+   which is what makes it the app's border. */
 .routing-mode-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   padding: 3px;
-  background: var(--surface-hover);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
 
@@ -812,7 +822,7 @@ export default {
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: var(--color-text-secondary);
+  color: var(--color-med-navy);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -826,27 +836,28 @@ export default {
 }
 
 .routing-mode-btn:hover {
-  background: var(--surface-active);
-  color: var(--color-text-primary);
+  color: var(--color-light-med-navy);
 }
 
+/* The app's active-chip idiom, verbatim from .preset-chip.active and .fb-tier:
+   a green tint, green text, green border. Not a solid accent fill. */
 .routing-mode-btn.active {
-  background: var(--color-accent, #4a9eff);
-  color: var(--surface-canvas);
+  background: rgba(var(--green-rgb), 0.12);
+  color: var(--color-green);
 }
 
 .routing-mode-note {
   padding: 9px 11px;
-  background: var(--surface-hover);
-  border-left: 2px solid var(--color-accent, #4a9eff);
+  background: var(--color-darker-0);
+  border-left: 2px solid var(--color-green);
   border-radius: 4px;
   font-size: 11.5px;
   line-height: 1.5;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
 }
 
 .routing-mode-note strong {
-  color: var(--color-text-primary);
+  color: var(--color-text);
   font-weight: 600;
 }
 
@@ -858,7 +869,7 @@ export default {
 
 .routing-mode-sub i {
   margin-right: 4px;
-  color: var(--color-accent, #4a9eff);
+  color: var(--color-green);
 }
 
 /* Conversation-scoped override indicator */
