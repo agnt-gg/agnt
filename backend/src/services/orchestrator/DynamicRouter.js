@@ -14,7 +14,11 @@ import { buildDynamicChain, estimateCost } from './DynamicChain.js';
 import { collectCandidates, getSessionAffinity } from './routingCandidates.js';
 import { parseRoutingPolicy } from './routingMode.js';
 import RoutingDecisionModel from '../../models/RoutingDecisionModel.js';
-import { getModelMetadata } from '../ai/providerConfigs.js';
+import {
+  getModelMetadata,
+  isSubscriptionProvider,
+  notionalSeatCostPer1M,
+} from '../ai/providerConfigs.js';
 
 /**
  * What the account default would have cost for this same turn.
@@ -25,10 +29,20 @@ import { getModelMetadata } from '../ai/providerConfigs.js';
  */
 function baselineCost(provider, model, intent) {
   const meta = getModelMetadata(provider, model) || {};
+  // Subscription seats must use their NOTIONAL rate on both sides of the
+  // savings comparison, or the router claims fictional savings whenever the
+  // account default is itself a seat. A user with a Claude-Code default and
+  // dynamic routing sending a turn to a Kimi seat has saved SEAT-QUOTA on the
+  // more constrained plan — that is real but small — and if the baseline
+  // uses Anthropic's $6/M metered rate it books $5.40/M of "savings" that
+  // never existed.
+  const subscription = isSubscriptionProvider(provider);
   return estimateCost(
     {
       provider,
       model,
+      subscription,
+      notionalCostPer1M: subscription ? notionalSeatCostPer1M(provider) : null,
       inputCostPer1M: Number.isFinite(meta.inputCostPer1M) ? meta.inputCostPer1M : null,
       outputCostPer1M: Number.isFinite(meta.outputCostPer1M) ? meta.outputCostPer1M : null,
     },

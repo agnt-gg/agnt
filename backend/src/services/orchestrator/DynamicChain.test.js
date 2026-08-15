@@ -100,12 +100,91 @@ describe('COST — unknown is never zero', () => {
     expect(m.costKnown).toBe(false);
   });
 
-  it('a subscription seat prices at zero marginal cost, and says so', () => {
-    const seat = { ...dear, provider: 'claude-code', model: 'seat', subscription: true };
-    expect(estimateCost(seat, { contextTokens: 5000 })).toBe(0);
-    const scored = scoreCandidates([seat, dear], { intent: intentOf(), lambda: 0.5 });
-    expect(scored[0].provider).toBe('claude-code');
-    expect(scored[0].reason).toBe('included in plan');
+  it('a subscription seat with a notional rate prices at that rate, not zero', () => {
+    // The seat has zero MARGINAL dollars per call (that is what the ledger
+    // records) but the ROUTER treats the seat as an opportunity cost, or it
+    // routes every turn to the seat and burns its weekly quota as if it were
+    // free. See SUBSCRIPTION_NOTIONAL_USD_PER_1M in providerConfigs.js.
+    const seat = {
+      ...dear, provider: 'claude-code', model: 'seat',
+      subscription: true, notionalCostPer1M: 0.60,
+    };
+    // 5000 in + 800 out (DEFAULT_OUTPUT_TOKENS) * $0.60/M = 0.00348
+    const c = estimateCost(seat, { contextTokens: 5000 });
+    expect(c).toBeCloseTo((5000 + 800) / 1e6 * 0.60, 8);
+    expect(c).toBeGreaterThan(0);
+  });
+
+  it('a free-tier seat still prices at zero (gemini-cli, antigravity)', () => {
+    // Zero is a real number and wins comparisons — which is correct for a
+    // genuinely free tier. This is distinct from an UNKNOWN seat, which must
+    // return null and take the unknown-cost path.
+    const free = {
+      ...dear, provider: 'gemini-cli', model: 'gemini-2.5-pro',
+      subscription: true, notionalCostPer1M: 0,
+    };
+    expect(estimateCost(free, { contextTokens: 5000 })).toBe(0);
+  });
+
+  it('an UNKNOWN seat returns null, not zero — never re-introduce the bug', () => {
+    // The safe default for a seat we haven't priced yet (e.g. grok-build,
+    // whose xAI plan publishes no accounting). Zero would put every unknown
+    // seat back into "infinitely cheaper than everything" — which is the
+    // exact bug the notional-rate table exists to prevent. Null puts it on
+    // the unknown-cost path (pool median), which lets a metered competitor
+    // beat it on price.
+    const unpricedSeat = {
+      ...dear, provider: 'grok-build', model: 'seat',
+      subscription: true, notionalCostPer1M: null,
+    };
+    expect(estimateCost(unpricedSeat, { contextTokens: 5000 })).toBeNull();
+  });
+
+  it('the reason string names the seat\'s economics honestly', () => {
+    const paid = { ...cheap, provider: 'claude-code', model: 's', subscription: true, notionalCostPer1M: 0.60 };
+    const free = { ...cheap, provider: 'gemini-cli', model: 'g', subscription: true, notionalCostPer1M: 0 };
+
+    // Paid seat beats a metered competitor and says why + at what rate.
+    const paidScored = scoreCandidates([paid, dear], { intent: intentOf(), lambda: 0.5 });
+    expect(paidScored[0].provider).toBe('claude-code');
+    expect(paidScored[0].reason).toBe('included in plan (~$0.60/M notional)');
+
+    // Free seat gets its own reason, because "free tier" is a routing fact.
+    const freeScored = scoreCandidates([free, dear], { intent: intentOf(), lambda: 0.5 });
+    expect(freeScored[0].provider).toBe('gemini-cli');
+    expect(freeScored[0].reason).toBe('included in plan (free tier)');
+  });
+
+  it('THE DIAL: a metered model can now BEAT a seat when quality matters', () => {
+    // The regression this notional cost fixes. Before: a seat priced at $0
+    // dominated every metered model at every λ, so all three policy modes
+    // returned the same answer whenever a seat was in the pool. After: the
+    // seat's notional rate ($0.60/M for Claude Code) puts it back into a real
+    // trade-off with metered options.
+    //
+    // Setup: a Claude-Code seat vs a cheap-but-weaker metered model vs a
+    // strong metered model. Under "quality" (λ=0.2, stake=high) the frontier
+    // metered model should win despite costing real dollars, because seat
+    // notional isn't infinite savings anymore.
+    const seat = { ...cheap, provider: 'claude-code', model: 'seat-sonnet', subscription: true, notionalCostPer1M: 0.60, reasoning: false };
+    const strong = { ...dear, provider: 'openai', model: 'gpt-5', reasoning: true, contextWindow: 400000 };
+    const highStake = classifyIntent({ origin: 'goal_eval', contextTokens: 10000 });
+
+    const quality = scoreCandidates([seat, strong], { intent: highStake, lambda: 0.2 });
+    expect(quality[0].provider).toBe('openai');
+
+    // And under "save money" (λ=0.85) the seat still wins on price — the
+    // notional rate is cheap, just not free.
+    const save = scoreCandidates([seat, strong], { intent: intentOf(), lambda: 0.85 });
+    expect(save[0].provider).toBe('claude-code');
+  });
+
+  it('a seat with no notional field falls to the unknown path, not to zero', () => {
+    // Belt and braces: even if routingCandidates ever forgets to attach
+    // notionalCostPer1M, the router must NOT re-award "infinite savings" to
+    // the seat. It must fall through to the unknown-cost path.
+    const legacySeat = { ...cheap, provider: 'kimi-code', model: 'seat', subscription: true };
+    expect(estimateCost(legacySeat, { contextTokens: 5000 })).toBeNull();
   });
 });
 

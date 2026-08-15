@@ -150,21 +150,38 @@ export function selectEligible(candidates, intent = {}) {
  * free would win every comparison it entered. Callers put unpriced models on
  * the "unknown" path instead.
  *
- * Subscription providers (a flat-rate seat) genuinely have ~0 marginal cost
- * per call, which is a real and valuable routing fact rather than a modelling
- * shortcut — so they price at 0 and are marked so the reason string can say
- * "included in plan" rather than implying the model is free.
+ * Subscription seats price at their NOTIONAL rate (candidate.notionalCostPer1M),
+ * not at zero. Marginal dollars are genuinely zero, and the LEDGER records
+ * them as such (is_notional=1), but the ROUTER needs an OPPORTUNITY COST or
+ * it will pile every turn onto a seat until its weekly quota burns out. A
+ * seat that is truly free (gemini-cli, antigravity: unpaid tiers) stays at 0.
+ * A seat with an UNKNOWN rate returns null and takes the unknown-cost path
+ * (median of the pool) — the safe default that never re-introduces the
+ * "$0 for seats" bug for a provider we merely forgot to price. See
+ * SUBSCRIPTION_NOTIONAL_USD_PER_1M in providerConfigs.js for the sourced
+ * per-plan numbers.
  */
 export function estimateCost(candidate, intent = {}) {
-  if (candidate.subscription) return 0;
-  const inRate = candidate.inputCostPer1M;
-  const outRate = candidate.outputCostPer1M;
-  if (!Number.isFinite(inRate) || !Number.isFinite(outRate)) return null;
-
   const inTokens = intent.contextTokens > 0 ? intent.contextTokens : 2000;
   const outTokens = Number.isFinite(intent.outputTokens) && intent.outputTokens > 0
     ? intent.outputTokens
     : DEFAULT_OUTPUT_TOKENS;
+
+  if (candidate.subscription) {
+    // Single blended rate applied to in+out tokens deliberately: the number
+    // is an OPPORTUNITY COST FLOOR, not a reconstruction of the vendor's
+    // per-direction metering. Nathan's research produced one rate per plan,
+    // not an in/out split, and pretending we have that split would be a
+    // precision the source data does not support.
+    const rate = candidate.notionalCostPer1M;
+    if (rate === null || rate === undefined) return null;   // unknown seat → unknown cost
+    if (!Number.isFinite(rate) || rate <= 0) return 0;      // truly free tier
+    return ((inTokens + outTokens) / 1e6) * rate;
+  }
+
+  const inRate = candidate.inputCostPer1M;
+  const outRate = candidate.outputCostPer1M;
+  if (!Number.isFinite(inRate) || !Number.isFinite(outRate)) return null;
 
   return (inTokens / 1e6) * inRate + (outTokens / 1e6) * outRate;
 }
@@ -331,7 +348,16 @@ function explainChoice(p, { costNorm, switchNorm, lambda, intent, session }) {
       session.cachedTokens > 0) {
     return 'cache-warm';
   }
-  if (c.subscription) return 'included in plan';
+  if (c.subscription) {
+    const rate = c.notionalCostPer1M;
+    if (rate === null || rate === undefined) return 'included in plan';
+    if (!Number.isFinite(rate) || rate <= 0) return 'included in plan (free tier)';
+    // Reason strings surface in the failover SSE event and the routing log,
+    // so naming the notional rate is what makes the choice legible: "included
+    // in plan (~$0.6/M notional)" reads as an economic decision, not a lucky
+    // guess. Formatted to one decimal so the number stays compact.
+    return `included in plan (~$${rate.toFixed(2)}/M notional)`;
+  }
   if (intent.stake === 'high') return 'high stake — quality first';
   if (intent.stake === 'low') return 'low stake — cheapest capable';
   if (!p.qualityKnown) return 'unmeasured — sampling';

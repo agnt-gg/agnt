@@ -21,6 +21,7 @@ import {
   getAllModelMetadata,
   getCacheEconomics,
   isSubscriptionProvider,
+  notionalSeatCostPer1M,
   providerSupportsTools,
   getProviderConfig,
 } from '../ai/providerConfigs.js';
@@ -176,6 +177,11 @@ export async function collectCandidates({
     if (!cfg) continue;
 
     const subscription = isSubscriptionProvider(lower);
+    // The notional $/M is what the ROUTER pretends this seat costs, so it
+    // stops routing every turn to a subscription and burning weekly quotas as
+    // if they were free. Null means UNKNOWN cost — not zero — for a seat we
+    // haven't priced (see SUBSCRIPTION_NOTIONAL_USD_PER_1M).
+    const seatNotional = subscription ? notionalSeatCostPer1M(lower) : null;
     const toolsOk = providerSupportsTools(lower);
 
     for (const model of modelsForProvider(lower, modelsPerProvider)) {
@@ -198,6 +204,10 @@ export async function collectCandidates({
         credentialed: true,
         healthy: true,
         subscription,
+        // Only set on subscription seats. Metered candidates leave this
+        // undefined so estimateCost falls through to the normal in/out
+        // metered path.
+        notionalCostPer1M: seatNotional,
 
         inputCostPer1M: Number.isFinite(meta.inputCostPer1M) ? meta.inputCostPer1M : null,
         outputCostPer1M: Number.isFinite(meta.outputCostPer1M) ? meta.outputCostPer1M : null,

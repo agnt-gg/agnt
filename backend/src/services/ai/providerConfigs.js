@@ -2278,6 +2278,94 @@ export function isSubscriptionProvider(providerKey) {
 }
 
 /**
+ * Notional $/M-tokens the ROUTER pretends a subscription seat costs.
+ *
+ * WHY THIS EXISTS
+ * A seat has zero marginal dollars per call — that is the whole point of a
+ * subscription — so DynamicChain.estimateCost used to return exactly 0 for
+ * them. The router then treated any connected seat as INFINITELY cheaper than
+ * any metered model, which was economically correct on the dollar axis and
+ * catastrophic on every other axis: every call piled onto Claude Code and
+ * Kimi Code until their weekly quotas burned out, background insight jobs
+ * ate a Sonnet 4.5 seat that could have been paid $0.001 on Groq, and the
+ * three policy modes (save / balanced / quality) converged to the same
+ * answer whenever a seat was in the pool because "$0" dominates the cost
+ * term at every λ.
+ *
+ * A notional floor treats a seat as ROUGHLY 10× CHEAPER THAN ITS OWN METERED
+ * API — which is what heavy users measurably get out of these plans in the
+ * worst case (throttled, cap-hitting scenarios), and what the plans are
+ * priced against. Not free, just cheap. That single change restores the
+ * policy dial and stops the router from treating every seat quota as
+ * inexhaustible.
+ *
+ * WHAT THIS IS NOT
+ * The LEDGER (LlmCallModel + LedgerRecorder) continues to record $0 charged
+ * for seat calls and mark them `is_notional=1`. Actual money spent is zero,
+ * lying about that would break every cost dashboard, and the notional-vs-
+ * charged split already exists in the schema for exactly this reason. This
+ * table is a routing HEURISTIC, applied only inside estimateCost during
+ * scoring; it never crosses into the recorded ledger.
+ *
+ * NUMBERS: worst-case effective $/M tokens computed from each plan's
+ * ADVERTISED throughput ceiling (weekly hours × sustained tok/sec, or weekly
+ * request cap × avg-turn size, whichever the vendor publishes). Chosen at the
+ * pessimistic end deliberately: an overstated seat cost tells the router to
+ * spend metered dollars needlessly; an understated one tells it seats are
+ * free again, which is where we started. Sources per row:
+ *
+ *   claude-code : 40-80 hrs Sonnet/wk (Pro) at ~50-100 tok/sec sustained
+ *                 → $0.30-$0.60/M worst-case
+ *                 support.anthropic.com/en/articles/11145838
+ *   openai-codex: 50-150 msgs/5h (Plus) at ~12k tok/turn
+ *                 → $0.20-$0.40/M worst-case
+ *                 help.openai.com/en/articles/11369540
+ *   kimi-code   : ~2048 req/wk ($20 tier) at ~5k tok/turn
+ *                 → $0.03-$0.10/M worst-case
+ *                 moonshot.ai kimi-for-coding + apidog.com/blog/kimi-for-coding
+ *   gemini-cli  : 1000 req/day free, no monetary quota
+ *                 → literally $0 (real free tier, not a paid seat)
+ *   antigravity : Google DeepMind free preview, same posture as gemini-cli
+ *                 → literally $0
+ *   cursor-cli  : $20 Cursor Pro seat, amortised across typical usage
+ *                 → ~$0.50/M
+ *   grok-build  : xAI publishes NO usage accounting whatsoever
+ *                 → left null so the router treats its cost as UNKNOWN rather
+ *                 than confidently free. Router's unknown-cost path routes it
+ *                 at pool median, which is the correct handling for
+ *                 "we do not know how much this costs"
+ *
+ * A seat NOT in this map (an unknown future addition) falls back to null,
+ * which routes at the unknown-cost floor, not at zero. That is the safe
+ * default: never re-introduce the "$0 for seats" bug for a provider we
+ * simply forgot to price.
+ */
+export const SUBSCRIPTION_NOTIONAL_USD_PER_1M = new Map([
+  ['claude-code', 0.60],
+  ['openai-codex', 0.40],
+  ['kimi-code', 0.10],
+  ['gemini-cli', 0.00],
+  ['antigravity', 0.00],
+  ['cursor-cli', 0.50],
+  ['grok-build', null],
+]);
+
+/**
+ * The notional $/M for a subscription seat, or `null` if the provider is not a
+ * known seat OR the seat is deliberately unpriced (grok-build).
+ *
+ * Callers must distinguish null (unknown) from 0 (genuinely free) — the router
+ * scores them differently. Zero is a real number that wins a comparison; null
+ * is "I cannot say" and takes the unknown-cost path.
+ */
+export function notionalSeatCostPer1M(providerKey) {
+  const key = String(providerKey || '').toLowerCase();
+  if (!SUBSCRIPTION_NOTIONAL_USD_PER_1M.has(key)) return null;
+  const v = SUBSCRIPTION_NOTIONAL_USD_PER_1M.get(key);
+  return Number.isFinite(v) ? v : null;
+}
+
+/**
  * Whether a provider's chat transport can carry tool/function schemas at all.
  *
  * Defaults PERMISSIVE (true) for unknown providers and for providers that
