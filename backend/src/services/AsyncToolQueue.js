@@ -97,8 +97,15 @@ class AsyncToolQueue {
 
   /**
    * Enqueue an async tool for background execution
+   *
+   * `options.chatType` names the SURFACE the tool was called from (orchestrator,
+   * agent, widget, workflow, tool, goal). It is carried onto every broadcast
+   * below for the same reason the streaming chat events carry it: these events
+   * are broadcast to the user's whole room, and without the surface tag a
+   * widget's async tool is indistinguishable from a main-chat one and gets
+   * applied to the main chat store.
    */
-  enqueue(toolCallId, conversationId, userId, functionName, functionArgs, assistantMessageId, callbacks, executeFunction) {
+  enqueue(toolCallId, conversationId, userId, functionName, functionArgs, assistantMessageId, callbacks, executeFunction, { chatType = null } = {}) {
     const executionId = randomUUID();
     const abortController = new AbortController();
 
@@ -107,6 +114,7 @@ class AsyncToolQueue {
       toolCallId,
       conversationId,
       userId,
+      chatType,
       functionName,
       functionArgs,
       assistantMessageId,
@@ -130,6 +138,7 @@ class AsyncToolQueue {
       executionId,
       toolCallId,
       conversationId,
+      chatType,
       functionName,
       functionArgs,
       timestamp: Date.now(),
@@ -167,6 +176,7 @@ class AsyncToolQueue {
       executionId,
       toolCallId: execution.toolCallId,
       conversationId: execution.conversationId,
+      chatType: execution.chatType,
       functionName: execution.functionName,
       timestamp: Date.now(),
     });
@@ -200,6 +210,7 @@ class AsyncToolQueue {
           executionId,
           toolCallId: execution.toolCallId,
           conversationId: execution.conversationId,
+          chatType: execution.chatType,
           assistantMessageId: execution.assistantMessageId,
           functionName: execution.functionName,
           result,
@@ -224,6 +235,7 @@ class AsyncToolQueue {
         executionId,
         toolCallId: execution.toolCallId,
         conversationId: execution.conversationId,
+        chatType: execution.chatType,
         assistantMessageId: execution.assistantMessageId,
         functionName: execution.functionName,
         error: execution.error,
@@ -399,6 +411,7 @@ class AsyncToolQueue {
       executionId,
       toolCallId: execution.toolCallId,
       conversationId: execution.conversationId,
+      chatType: execution.chatType,
       assistantMessageId: execution.assistantMessageId,
       functionName: execution.functionName,
       result: execution.result,
@@ -421,6 +434,7 @@ class AsyncToolQueue {
       executionId,
       toolCallId: execution.toolCallId,
       conversationId: execution.conversationId,
+      chatType: execution.chatType,
       functionName: execution.functionName,
       progress: progressData,
       timestamp: Date.now(),
@@ -472,6 +486,7 @@ class AsyncToolQueue {
       executionId,
       toolCallId: execution.toolCallId,
       conversationId: execution.conversationId,
+      chatType: execution.chatType,
       assistantMessageId: execution.assistantMessageId,
       functionName: execution.functionName,
       error: 'Cancelled by user',

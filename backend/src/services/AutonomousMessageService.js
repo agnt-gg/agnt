@@ -214,9 +214,15 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       // Generate truly unique assistant message ID (avoid duplicates from rapid callbacks)
       const assistantMessageId = `msg-auto-${Date.now()}-${randomUUID().substring(0, 8)}`;
 
-      // Broadcast autonomous message start
+      // Broadcast autonomous message start.
+      //
+      // chatType names the SURFACE this conversation belongs to (stored with
+      // the context by OrchestratorService). These broadcasts reach the user's
+      // whole room, so without it an autonomous follow-up for a widget or goal
+      // chat is indistinguishable from a main-chat one on arrival.
       broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_START, {
         conversationId,
+        chatType: context.chatType || null,
         assistantMessageId,
         timestamp: Date.now(),
       });
@@ -281,6 +287,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         if (chunk.type === 'content') {
           broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_CONTENT_DELTA, {
             conversationId,
+            chatType: context.chatType || null,
             assistantMessageId,
             delta: chunk.delta,
             accumulated: chunk.accumulated,
@@ -443,6 +450,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         // Still broadcast end so frontend clears "thinking" indicator
         broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_END, {
           conversationId,
+          chatType: context.chatType || null,
           assistantMessageId,
           content: '',
           isEmpty: true, // Flag for frontend to not display
@@ -456,6 +464,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       // Broadcast autonomous message end
       broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_END, {
         conversationId,
+        chatType: context.chatType || null,
         assistantMessageId,
         content: responseMessage.content,
         timestamp: Date.now(),
@@ -514,6 +523,7 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       // Broadcast error to user
       broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_END, {
         conversationId,
+        chatType: context.chatType || null,
         error: error.message || String(error),
         timestamp: Date.now(),
       });

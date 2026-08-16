@@ -530,8 +530,21 @@ export function useRealtimeSync() {
       });
     });
 
-    // Autonomous AI message events (AI-initiated without user trigger)
+    // Autonomous AI message events (AI-initiated without user trigger).
+    //
+    // SAME SURFACE FILTER AS THE STREAMING EVENTS ABOVE. These reach the user's
+    // whole room, and the main chat store is the only listener, so an untagged
+    // widget/workflow/goal follow-up used to be applied to the main chat.
+    //
+    // DELIBERATELY NOT FILTERED BY originClientId, unlike the chat:* mirrors.
+    // Those are a socket COPY of a turn the sender is already receiving over
+    // SSE, so the sender must drop them. These have no SSE counterpart at all
+    // — the async queue and the autonomous loop outlive the request that
+    // started them and broadcast only over the socket — so the originating
+    // client is the one client that MUST apply them. Stamping an origin here
+    // would make a tab discard its own async-tool cards and follow-ups.
     socket.on('chat:autonomous_message_start', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Autonomous message started:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'autonomous_message_start',
@@ -540,6 +553,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:autonomous_content_delta', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Autonomous content delta:', data.delta);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'autonomous_content_delta',
@@ -548,6 +562,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:autonomous_message_end', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Autonomous message ended:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'autonomous_message_end',
@@ -557,6 +572,7 @@ export function useRealtimeSync() {
 
     // Async tool execution events
     socket.on('chat:async_tool_queued', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Async tool queued:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'async_tool_queued',
@@ -565,6 +581,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:async_tool_started', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Async tool started:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'async_tool_started',
@@ -573,6 +590,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:async_tool_progress', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Async tool progress:', data.progress);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'async_tool_progress',
@@ -581,6 +599,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:async_tool_completed', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Async tool completed:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'async_tool_completed',
@@ -589,6 +608,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:async_tool_failed', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Async tool failed:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'async_tool_failed',

@@ -2868,7 +2868,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
             async (args, onProgress) => {
               console.log(`[AsyncTool] Executing ${functionName} for ${chatType} chat (autonomous follow-up: ${wantsAutonomousFollowup ? 'on' : 'off'})`);
               return await executeTool(functionName, args, authToken, conversationContext);
-            }
+            },
+            // The surface this tool was called from. Its broadcasts go to the
+            // user's whole room, so without it a widget/workflow/goal async
+            // tool is indistinguishable from a main-chat one on arrival.
+            { chatType }
           );
 
           // Return immediate response indicating tool was queued

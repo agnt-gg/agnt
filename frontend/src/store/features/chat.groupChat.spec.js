@@ -452,7 +452,24 @@ describe('Chat.vue sequential mention dispatch', () => {
     expect(sendIdx).toBeGreaterThan(-1);
     const dispatchBlock = code.slice(sendIdx, sendIdx + 800);
     expect(dispatchBlock).not.toContain('Promise.all');
-    expect(dispatchBlock).toMatch(/for \(const agent of agents\) \{\s*await store\.dispatch\('chat\/startStreamingConversation'/);
+    // The contract is AWAIT INSIDE THE LOOP — each agent's turn finishes before
+    // the next begins, so every participant hears the ones before it. The
+    // dispatch's return value may be captured (it carries the conversation
+    // address forward, see below); what may never come back is a fan-out.
+    expect(dispatchBlock).toMatch(
+      /for \(const agent of agents\) \{\s*(?:\w+\s*=\s*)?await store\.dispatch\('chat\/startStreamingConversation'/,
+    );
+  });
+
+  it('the sequence carries its conversation address instead of re-reading the active one', () => {
+    // A WRITE MUST CARRY ITS ADDRESS. Re-resolving `activeConversationId`
+    // between turns let a chat switch mid-sequence redirect the remaining
+    // agents into whatever the user had just opened — the same defect the
+    // floor-dispatch fix documents in chat.js.
+    const sendIdx = code.indexOf('const agents = mentionedAgents && mentionedAgents.length > 0');
+    const dispatchBlock = code.slice(sendIdx, sendIdx + 800);
+    expect(dispatchBlock).toMatch(/conversationId:\s*sendConvId/);
+    expect(dispatchBlock).toMatch(/sendConvId\s*=\s*await store\.dispatch/);
   });
 
   it('the floor state + roster are wired into the template', () => {

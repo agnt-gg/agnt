@@ -1283,8 +1283,13 @@ export default {
       // them against identical snapshots: N parallel answers that could not
       // reference each other, which is not a conversation.
       const agents = mentionedAgents && mentionedAgents.length > 0 ? mentionedAgents : [null];
+      // The address for this whole send, threaded across the sequence. Each
+      // turn returns the conversation it actually wrote to (a new chat's temp
+      // id is renamed mid-stream), so agent N+1 goes where agent N went — even
+      // if the user switched chats while agent N was still answering.
+      let sendConvId = store.state.chat.activeConversationId;
       for (const agent of agents) {
-        await store.dispatch('chat/startStreamingConversation', {
+        sendConvId = await store.dispatch('chat/startStreamingConversation', {
           userInput: input,
           files: files,
           provider: store.state.aiProvider.selectedProvider,
@@ -1292,6 +1297,7 @@ export default {
           reasoningValue: store.state.aiProvider.reasoningValue,
           reasoningEnabled: store.state.aiProvider.reasoningEnabled,
           mentionedAgent: agent,
+          conversationId: sendConvId,
         });
       }
     };
@@ -1315,8 +1321,10 @@ export default {
 
       nextTick(() => scrollToBottom());
 
-      // Resend from this point
+      // Resend from this point, into the conversation we truncated — not
+      // whichever one is active by the time this dispatch runs.
       await store.dispatch('chat/startStreamingConversation', {
+        conversationId: convId,
         userInput: newContent,
         provider: store.state.aiProvider.selectedProvider,
         model: store.state.aiProvider.selectedModel,

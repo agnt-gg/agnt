@@ -123,15 +123,31 @@ const messageStates = ref({});
 const suggestions = ref([...initialSuggestions]);
 const isLoadingSuggestions = ref(false);
 
-// Get messages from unified chat store
-const chatMessages = computed(() => store.state.chat.messages);
+/**
+ * THIS AGENT'S conversation slot — the address this tab reads and writes.
+ *
+ * Everything below used to go through the flat mirror (store.state.chat.messages
+ * / .isStreaming / .imageCache), which tracks `activeConversationId` — i.e. the
+ * chat on SCREEN, not this agent. Whenever the active id drifted, the tab
+ * rendered another conversation's transcript and committed this agent's
+ * messages into it.
+ */
+const agentConversationId = computed(() =>
+  store.getters['chat/agentConversationId'](props.selectedAgent?.id) || null);
 
-// Image cache and data cache from Vuex store
-const imageCache = computed(() => store.state.chat.imageCache);
-const dataCache = computed(() => store.state.chat.dataCache);
+const agentConversation = computed(() => {
+  const id = agentConversationId.value;
+  return (id && store.state.chat.conversations[id]) || null;
+});
 
-// Processing state from store
-const isProcessing = computed(() => store.state.chat.isStreaming);
+const chatMessages = computed(() => agentConversation.value?.messages || []);
+
+// Image cache and data cache, scoped to this agent's conversation
+const imageCache = computed(() => agentConversation.value?.imageCache || new Map());
+const dataCache = computed(() => agentConversation.value?.dataCache || new Map());
+
+// Processing state, scoped to this agent's conversation
+const isProcessing = computed(() => agentConversation.value?.isStreaming === true);
 
 // ---- voice ------------------------------------------------------------
 //
@@ -264,15 +280,20 @@ watch(
       });
 
       // If no messages, add welcome message (store action handles this, but double-check)
-      if (chatMessages.value.length === 0) {
-        const welcomeMessage = {
-          id: generateMessageId(),
-          role: 'assistant',
-          content: `Hi! I'm **${agent.name}**. ${agent.description || 'How can I help you today?'}`,
-          timestamp: Date.now(),
-          metadata: ['Status: Online', `Type: ${agent.category || 'Specialist'}`],
-        };
-        store.commit('chat/ADD_MESSAGE', welcomeMessage);
+      // Addressed to the agent's slot — ADD_MESSAGE writes the flat mirror,
+      // which is whatever conversation is on screen.
+      const convId = agentConversationId.value;
+      if (convId && chatMessages.value.length === 0) {
+        store.commit('chat/SCOPED_ADD_MESSAGE', {
+          conversationId: convId,
+          message: {
+            id: generateMessageId(),
+            role: 'assistant',
+            content: `Hi! I'm **${agent.name}**. ${agent.description || 'How can I help you today?'}`,
+            timestamp: Date.now(),
+            metadata: ['Status: Online', `Type: ${agent.category || 'Specialist'}`],
+          },
+        });
       }
 
       nextTick(scrollChatToBottom);
@@ -301,14 +322,22 @@ const sendChatMessage = async () => {
 
   const messageToSend = chatInput.value.trim();
 
-  // Add user message to store
+  // The address for this whole send. Captured ONCE, before any await, so the
+  // turn cannot follow the user's eyes into another conversation mid-flight.
+  const convId = agentConversationId.value;
+  if (!convId) {
+    console.warn('[AgentChat] No conversation slot for agent; ignoring send');
+    return;
+  }
+
+  // Add user message to this agent's conversation
   const userMessage = {
     id: generateMessageId(),
     role: 'user',
     content: messageToSend,
     timestamp: Date.now(),
   };
-  store.commit('chat/ADD_MESSAGE', userMessage);
+  store.commit('chat/SCOPED_ADD_MESSAGE', { conversationId: convId, message: userMessage });
   emit('add-terminal-line', `[Chat] You: ${userMessage.content}`);
 
   chatInput.value = '';
@@ -325,6 +354,7 @@ const sendChatMessage = async () => {
     userInput: messageToSend,
     provider,
     model,
+    conversationId: convId,
   });
 };
 

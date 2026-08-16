@@ -51,6 +51,69 @@ const MAX_TOOL_RESULT_CHARS = 2000; // Cap tool results in history to avoid huge
 const FLOOR_TURN_BUDGET = 6;
 
 /**
+ * Which conversation slot does a realtime (socket) chat event belong to?
+ *
+ * A WRITE MUST CARRY ITS ADDRESS. This is the same rule startStreamingConversation
+ * already documents for floor dispatches, and its absence here was a live
+ * cross-chat bleed: an event that NAMED a conversation this client had no slot
+ * for used to be re-addressed to `activeConversationId` — i.e. delivered to
+ * whatever the user happened to be looking at. With an agent chat on screen,
+ * the orchestrator's deltas, tool cards and async-tool results were committed
+ * into the agent's transcript.
+ *
+ * The rules, in order:
+ *
+ *   1. A NAMED conversation is the address, and is never overridden. If the
+ *      slot exists we use it; if it does not and this is the first event of a
+ *      turn, we create it (that is how another tab's new conversation appears
+ *      here). Otherwise we DROP: a mid-turn event for an unknown conversation
+ *      means we missed the start, and the only correct recovery is the SSE
+ *      replay that run:started / runResume.js performs — which delivers the
+ *      turn from `conversation_started` onward rather than from the middle.
+ *
+ *   2. An UNNAMED event is degenerate (no address at all). It may only apply
+ *      to the conversation on screen, and only if that slot really exists.
+ *
+ * Never returns a conversation the caller did not ask for. Pure, so the
+ * routing rule is asserted directly instead of inferred from commit spies.
+ *
+ * @returns {{conversationId: string, create: boolean}|null} null = drop the event.
+ */
+export function resolveRealtimeTarget({ conversations = {}, activeConversationId = null } = {}, { type, conversationId } = {}) {
+  const isTurnStart = type === 'message_start'
+    || type === 'user_message'
+    || type === 'autonomous_message_start';
+
+  if (conversationId) {
+    if (conversations[conversationId]) return { conversationId, create: false };
+    if (isTurnStart) return { conversationId, create: true };
+    return null;
+  }
+
+  if (activeConversationId && conversations[activeConversationId]) {
+    return { conversationId: activeConversationId, create: false };
+  }
+  return null;
+}
+
+/**
+ * The live conversation slot for an agent, derived from the slots themselves.
+ *
+ * Agent conversations are created as `agent-<agentId>` but are RENAMED to the
+ * server's UUID by MIGRATE_CONVERSATION_ID as soon as `conversation_started`
+ * arrives, so the construct-the-id-again approach silently starts a brand new
+ * empty chat from the second turn onward. `conv.agentId` survives that rename
+ * (the whole object is moved), which makes it the durable address.
+ *
+ * Pure, and O(open conversations) — a handful.
+ */
+export function findAgentConversationId(conversations = {}, agentId) {
+  if (!agentId) return null;
+  const match = Object.keys(conversations).find((id) => conversations[id]?.agentId === agentId);
+  return match || null;
+}
+
+/**
  * Classify who a stored message belongs to. Attribution derives from fields
  * that already persist: role 'user' = the human (unless a speaker tag says
  * otherwise — e.g. none today), assistant with agentId/agentName = that
@@ -788,22 +851,29 @@ export default {
       state.currentAgentAvatar = null;
     },
     SAVE_AGENT_CONVERSATION(state, { agentId }) {
-      // Save current conversation state to agent cache before switching
-      if (agentId && state.messages.length > 0) {
-        // LRU eviction - remove oldest agent conversation if cache is full
-        const conversationKeys = Object.keys(state.agentConversations);
-        if (conversationKeys.length >= MAX_AGENT_CONVERSATIONS) {
-          // Remove the oldest (first) conversation
-          delete state.agentConversations[conversationKeys[0]];
-        }
-        state.agentConversations[agentId] = {
-          messages: [...state.messages],
-          conversationId: state.currentConversationId,
-          savedOutputId: state.savedOutputId,
-          imageCache: new Map(state.imageCache),
-          dataCache: new Map(state.dataCache),
-        };
+      if (!agentId) return;
+
+      // Read the AGENT'S OWN slot, never the flat mirror. The mirror follows
+      // activeConversationId, so whenever that had drifted this cached some
+      // OTHER conversation's messages under this agent's key — and handed them
+      // back on the next switch, as that agent's history.
+      const convId = findAgentConversationId(state.conversations, agentId);
+      const conv = convId ? state.conversations[convId] : null;
+      if (!conv || conv.messages.length === 0) return;
+
+      // LRU eviction - remove oldest agent conversation if cache is full
+      const conversationKeys = Object.keys(state.agentConversations);
+      if (conversationKeys.length >= MAX_AGENT_CONVERSATIONS) {
+        // Remove the oldest (first) conversation
+        delete state.agentConversations[conversationKeys[0]];
       }
+      state.agentConversations[agentId] = {
+        messages: [...conv.messages],
+        conversationId: conv.conversationId,
+        savedOutputId: conv.savedOutputId,
+        imageCache: new Map(conv.imageCache),
+        dataCache: new Map(conv.dataCache),
+      };
     },
     LOAD_AGENT_CONVERSATION(state, { agentId }) {
       // Load conversation from agent cache
@@ -1334,6 +1404,14 @@ export default {
       avatar: state.currentAgentAvatar,
     }),
     hasAgentConversation: (state) => (agentId) => !!state.agentConversations[agentId],
+    /**
+     * The conversation slot that belongs to an agent, or null.
+     *
+     * The address an agent-chat surface should read AND write, instead of
+     * `activeConversationId` / the flat mirror — both of which follow the
+     * screen rather than the agent.
+     */
+    agentConversationId: (state) => (agentId) => findAgentConversationId(state.conversations, agentId),
     // Concurrent conversation getters
     activeConversation: (state) => state.conversations[state.activeConversationId] || null,
     isAnyConversationStreaming: (state, getters) =>
@@ -1429,6 +1507,12 @@ export default {
     /**
      * Start a streaming conversation that persists across screen changes.
      * Supports multiple concurrent streams — each conversation gets its own slot.
+     *
+     * RETURNS the conversation id this turn was written to, AFTER any
+     * temp-id → server-id migration. Callers that fire several turns in a row
+     * (multi-agent @ mentions) must thread it into the next call: re-reading
+     * `activeConversationId` between turns lets a chat switch mid-sequence
+     * redirect the remaining agents into whatever the user opened.
      */
     async startStreamingConversation(
       { commit, state, dispatch, rootState },
@@ -1448,7 +1532,7 @@ export default {
       const existingConv = state.conversations[convId];
       if (existingConv && existingConv.isStreaming && !mentionedAgent) {
         console.warn('[Chat] This conversation is already streaming, ignoring new request');
-        return;
+        return convId;
       }
 
       // Ensure conversation slot exists
@@ -1850,6 +1934,9 @@ export default {
         });
 
         await processStream();
+        // The id AFTER migration — `conversation_started` renames a temp slot
+        // to the server's real id partway through this stream.
+        return activeConvId;
       } catch (error) {
         console.error('Error starting stream:', error);
         commit('SCOPED_SET_STREAMING', { conversationId: capturedConvId, value: false });
@@ -1868,6 +1955,7 @@ export default {
             metadata: ['Error'],
           },
         });
+        return capturedConvId;
       }
     },
 
@@ -2640,15 +2728,27 @@ export default {
      * Uses per-conversation slots so agent chats persist independently.
      */
     switchToAgentChat({ commit, state, dispatch }, { agentId, agentName, agentAvatar }) {
-      if (state.currentAgentId === agentId) return;
+      // The agent's LIVE slot. `agent-<id>` is only its birth name: the server
+      // renames the slot to a real conversation id on the first turn
+      // (MIGRATE_CONVERSATION_ID). Reconstructing the birth name instead of
+      // looking the slot up opened a fresh EMPTY chat on every re-entry after
+      // turn one.
+      const agentConvId = findAgentConversationId(state.conversations, agentId) || `agent-${agentId}`;
+
+      // Already on this agent AND already pointed at its slot.
+      //
+      // The second half is not redundant. activeConversationId can drift while
+      // currentAgentId still names this agent (a reattach adopting a
+      // conversation, a KeepAlive remount on a route that never runs Chat.vue's
+      // initializeScreen guard). Returning early on the agent id alone then
+      // left every following write — and the outbound history — addressed to
+      // whatever conversation had drifted in.
+      if (state.currentAgentId === agentId && state.activeConversationId === agentConvId) return;
 
       // Save the current main conversation ID before switching to agent chat
       if (!state.currentAgentId && state.activeConversationId) {
         state.savedMainConversationId = state.activeConversationId;
       }
-
-      // Use a stable conversation ID for each agent
-      const agentConvId = `agent-${agentId}`;
 
       // Ensure the agent conversation slot exists
       commit('ENSURE_CONVERSATION', agentConvId);
@@ -2736,9 +2836,19 @@ export default {
      */
     async startAgentStreamingConversation(
       { commit, state, dispatch, rootState },
-      { agentId, userInput, files = [], provider, model, reasoningValue, reasoningEnabled },
+      { agentId, userInput, files = [], provider, model, reasoningValue, reasoningEnabled, conversationId = null },
     ) {
-      let convId = state.activeConversationId || `agent-${agentId}-${Date.now()}`;
+      // A WRITE MUST CARRY ITS ADDRESS — the same rule startStreamingConversation
+      // documents for floor dispatches. An explicit conversationId wins; failing
+      // that we resolve the AGENT'S slot, never "whatever is on screen".
+      //
+      // Reading activeConversationId first sent the agent's turn into the main
+      // conversation whenever that id had drifted, and — because the outbound
+      // history is built from the target slot's messages below — handed the
+      // ORCHESTRATOR'S transcript to the agent as its own context.
+      let convId = conversationId
+        || findAgentConversationId(state.conversations, agentId)
+        || `agent-${agentId}`;
 
       const existingConv = state.conversations[convId];
       if (existingConv && existingConv.isStreaming) {
@@ -2747,6 +2857,18 @@ export default {
       }
 
       commit('ENSURE_CONVERSATION', convId);
+      // Stamp ownership so the slot stays findable by agent after the server
+      // renames it, including when this action created it without a prior
+      // switchToAgentChat.
+      const slot = state.conversations[convId];
+      if (slot && !slot.agentId) {
+        commit('SCOPED_SET_AGENT', {
+          conversationId: convId,
+          agentId,
+          agentName: slot.agentName || null,
+          agentAvatar: slot.agentAvatar || null,
+        });
+      }
       if (!state.activeConversationId) {
         commit('SET_ACTIVE_CONVERSATION', convId);
       }
@@ -2958,11 +3080,21 @@ export default {
       const isAutonomousEvent = type && type.startsWith('autonomous_');
       const isAsyncToolEvent = type && type.startsWith('async_tool_');
 
-      // Find which conversation this event belongs to
-      let targetConvId = conversationId || state.activeConversationId;
+      // WHICH CONVERSATION IS THIS FOR?
+      //
+      // Answered by an explicit rule that can only ever name the conversation
+      // the EVENT named (resolveRealtimeTarget). An event we cannot address is
+      // DROPPED — never redirected onto whatever chat is on screen, which is
+      // how orchestrator turns used to end up inside agent transcripts.
+      const target = resolveRealtimeTarget(state, eventData);
+      if (!target) {
+        console.log('[Realtime Chat] Dropping unaddressable event:', type, 'conversation:', conversationId);
+        return;
+      }
+      const targetConvId = target.conversationId;
 
       // Check if the target conversation is actively streaming via SSE in this tab
-      const targetConv = targetConvId ? state.conversations[targetConvId] : null;
+      const targetConv = state.conversations[targetConvId] || null;
       // isReattaching counts as owned too. The replay about to arrive covers
       // this turn from its first event, so anything applied here in the
       // meantime is content the replay will deliver a second time.
@@ -2971,94 +3103,67 @@ export default {
         return;
       }
 
-      // Ensure conversation slot exists for new conversations from other tabs
-      if (conversationId && (type === 'message_start' || type === 'user_message' || type === 'autonomous_message_start')) {
-        commit('ENSURE_CONVERSATION', conversationId);
-        targetConvId = conversationId;
-
-        // If no conversation is active, adopt this one
+      // A turn beginning in another tab is the one legitimate way a
+      // conversation this client has never seen arrives. Only a turn START may
+      // create a slot; mid-turn events for an unknown conversation were already
+      // dropped above, because the SSE replay (runResume.js) is the only
+      // recovery that delivers such a turn from its beginning.
+      if (target.create) {
+        commit('ENSURE_CONVERSATION', targetConvId);
         if (!state.activeConversationId) {
-          commit('SET_ACTIVE_CONVERSATION', conversationId);
-        }
-      }
-
-      // For non-start events, verify conversation exists
-      if (targetConvId && !state.conversations[targetConvId]) {
-        // Try to find the conversation by checking active conversation
-        if (state.activeConversationId && state.conversations[state.activeConversationId]) {
-          targetConvId = state.activeConversationId;
-        } else {
-          console.log('[Realtime Chat] Ignoring event for unknown conversation:', conversationId);
-          return;
+          commit('SET_ACTIVE_CONVERSATION', targetConvId);
         }
       }
 
       console.log('[Realtime Chat] Processing event:', type, 'for conversation:', targetConvId);
 
-      // Use scoped mutations when we have a conversation slot
-      const useScoped = targetConvId && state.conversations[targetConvId];
+      // Every write below is addressed to targetConvId. There is deliberately
+      // no unscoped fallback: the flat mirror mutations write to whichever
+      // conversation is active, which is precisely the bleed this action had.
 
       switch (type) {
         case 'user_message': {
           const userMsg = eventData.message;
-          const convMessages = useScoped ? state.conversations[targetConvId].messages : state.messages;
+          const convMessages = state.conversations[targetConvId].messages;
           if (userMsg && !convMessages.find((m) => m.content === userMsg.content && m.role === 'user')) {
-            const msg = {
-              id: `msg-user-${Date.now()}`,
-              role: 'user',
-              content: userMsg.content,
-              timestamp: eventData.timestamp || Date.now(),
-            };
-            if (useScoped) {
-              commit('SCOPED_ADD_MESSAGE', { conversationId: targetConvId, message: msg });
-            } else {
-              commit('ADD_MESSAGE', msg);
-            }
+            commit('SCOPED_ADD_MESSAGE', {
+              conversationId: targetConvId,
+              message: {
+                id: `msg-user-${Date.now()}`,
+                role: 'user',
+                content: userMsg.content,
+                timestamp: eventData.timestamp || Date.now(),
+              },
+            });
           }
           break;
         }
 
         case 'message_start':
-          if (useScoped) {
-            commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: true });
-            if (!state.conversations[targetConvId].messages.find((m) => m.id === assistantMessageId)) {
-              commit('SCOPED_ADD_MESSAGE', {
-                conversationId: targetConvId,
-                message: { id: assistantMessageId, role: 'assistant', content: '', timestamp: eventData.timestamp || Date.now() },
-              });
-            }
-          } else {
-            commit('SET_REMOTE_STREAMING', true);
-            if (!state.messages.find((m) => m.id === assistantMessageId)) {
-              commit('ADD_MESSAGE', { id: assistantMessageId, role: 'assistant', content: '', timestamp: eventData.timestamp || Date.now() });
-            }
+          commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: true });
+          if (!state.conversations[targetConvId].messages.find((m) => m.id === assistantMessageId)) {
+            commit('SCOPED_ADD_MESSAGE', {
+              conversationId: targetConvId,
+              message: { id: assistantMessageId, role: 'assistant', content: '', timestamp: eventData.timestamp || Date.now() },
+            });
           }
           break;
 
         case 'content_delta':
-          if (useScoped) {
-            commit('SCOPED_APPEND_MESSAGE_CONTENT', { conversationId: targetConvId, messageId: assistantMessageId, delta: eventData.delta });
-          } else {
-            commit('APPEND_MESSAGE_CONTENT', { messageId: assistantMessageId, delta: eventData.delta });
-          }
+          commit('SCOPED_APPEND_MESSAGE_CONTENT', { conversationId: targetConvId, messageId: assistantMessageId, delta: eventData.delta });
           break;
 
         case 'reasoning_delta':
-          if (useScoped) {
-            commit('SCOPED_APPEND_MESSAGE_REASONING', { conversationId: targetConvId, messageId: assistantMessageId, delta: eventData.delta });
-          } else {
-            commit('APPEND_MESSAGE_REASONING', { messageId: assistantMessageId, delta: eventData.delta });
-          }
+          commit('SCOPED_APPEND_MESSAGE_REASONING', { conversationId: targetConvId, messageId: assistantMessageId, delta: eventData.delta });
           break;
 
         case 'tool_start':
           if (eventData.toolCall) {
-            const tc = { id: eventData.toolCall.id, name: eventData.toolCall.name, args: eventData.toolCall.args, status: 'running' };
-            if (useScoped) {
-              commit('SCOPED_ADD_TOOL_CALL', { conversationId: targetConvId, messageId: assistantMessageId, toolCall: tc });
-            } else {
-              commit('ADD_TOOL_CALL', { messageId: assistantMessageId, toolCall: tc });
-            }
+            commit('SCOPED_ADD_TOOL_CALL', {
+              conversationId: targetConvId,
+              messageId: assistantMessageId,
+              toolCall: { id: eventData.toolCall.id, name: eventData.toolCall.name, args: eventData.toolCall.args, status: 'running' },
+            });
           }
           break;
 
@@ -3071,58 +3176,35 @@ export default {
               error: eventData.toolCall.error,
               status: eventData.toolCall.error ? 'error' : 'completed',
             };
-            if (useScoped) {
-              commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
-            } else {
-              commit('UPDATE_TOOL_CALL_RESULT', payload);
-            }
+            commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
           }
           break;
 
         case 'message_end':
-          if (useScoped) {
-            commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: false });
-          } else {
-            commit('SET_REMOTE_STREAMING', false);
-          }
+          commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: false });
           break;
 
         case 'autonomous_message_start': {
           console.log('[Realtime Chat] Autonomous message started');
-          const convMessages = useScoped ? state.conversations[targetConvId].messages : state.messages;
+          const convMessages = state.conversations[targetConvId].messages;
           if (!convMessages.find((m) => m.id === assistantMessageId)) {
-            const msg = { id: assistantMessageId, role: 'assistant', content: '', timestamp: eventData.timestamp || Date.now(), autonomous: true };
-            if (useScoped) {
-              commit('SCOPED_ADD_MESSAGE', { conversationId: targetConvId, message: msg });
-              commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: true });
-            } else {
-              commit('ADD_MESSAGE', msg);
-              commit('SET_REMOTE_STREAMING', true);
-            }
+            commit('SCOPED_ADD_MESSAGE', {
+              conversationId: targetConvId,
+              message: { id: assistantMessageId, role: 'assistant', content: '', timestamp: eventData.timestamp || Date.now(), autonomous: true },
+            });
+            commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: true });
           }
           break;
         }
 
         case 'autonomous_content_delta':
-          if (useScoped) {
-            commit('SCOPED_APPEND_MESSAGE_CONTENT', { conversationId: targetConvId, messageId: assistantMessageId, delta: eventData.delta });
-          } else {
-            commit('APPEND_MESSAGE_CONTENT', { messageId: assistantMessageId, delta: eventData.delta });
-          }
+          commit('SCOPED_APPEND_MESSAGE_CONTENT', { conversationId: targetConvId, messageId: assistantMessageId, delta: eventData.delta });
           break;
 
         case 'autonomous_message_end':
-          if (useScoped) {
-            commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: false });
-          } else {
-            commit('SET_REMOTE_STREAMING', false);
-          }
+          commit('SCOPED_SET_REMOTE_STREAMING', { conversationId: targetConvId, value: false });
           if (eventData.isEmpty && assistantMessageId) {
-            if (useScoped) {
-              commit('SCOPED_REMOVE_MESSAGE', { conversationId: targetConvId, messageId: assistantMessageId });
-            } else {
-              commit('REMOVE_MESSAGE', assistantMessageId);
-            }
+            commit('SCOPED_REMOVE_MESSAGE', { conversationId: targetConvId, messageId: assistantMessageId });
           }
           // Only autosave if this conversation already has a savedOutputId.
           // Without one, autosave would create a duplicate content output.
@@ -3137,17 +3219,10 @@ export default {
 
         case 'async_tool_queued':
           if (eventData.executionId) {
-            if (useScoped) {
-              commit('SCOPED_ADD_ACTIVE_ASYNC_TOOL', {
-                conversationId: targetConvId, executionId: eventData.executionId,
-                toolName: eventData.functionName, messageId: assistantMessageId, toolCallId: eventData.toolCallId,
-              });
-            } else {
-              commit('ADD_ACTIVE_ASYNC_TOOL', {
-                executionId: eventData.executionId, toolName: eventData.functionName,
-                messageId: assistantMessageId, toolCallId: eventData.toolCallId,
-              });
-            }
+            commit('SCOPED_ADD_ACTIVE_ASYNC_TOOL', {
+              conversationId: targetConvId, executionId: eventData.executionId,
+              toolName: eventData.functionName, messageId: assistantMessageId, toolCallId: eventData.toolCallId,
+            });
           }
           break;
 
@@ -3158,11 +3233,7 @@ export default {
               result: { success: true, status: 'running', executionId: eventData.executionId, message: `${eventData.functionName} is now executing...` },
               status: 'running',
             };
-            if (useScoped) {
-              commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
-            } else {
-              commit('UPDATE_TOOL_CALL_RESULT', payload);
-            }
+            commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
           }
           break;
 
@@ -3171,11 +3242,7 @@ export default {
 
         case 'async_tool_completed':
           if (eventData.executionId) {
-            if (useScoped) {
-              commit('SCOPED_REMOVE_ACTIVE_ASYNC_TOOL', { conversationId: targetConvId, executionId: eventData.executionId });
-            } else {
-              commit('REMOVE_ACTIVE_ASYNC_TOOL', eventData.executionId);
-            }
+            commit('SCOPED_REMOVE_ACTIVE_ASYNC_TOOL', { conversationId: targetConvId, executionId: eventData.executionId });
           }
           if (eventData.toolCallId) {
             const payload = {
@@ -3183,21 +3250,13 @@ export default {
               result: { success: true, status: 'completed', executionId: eventData.executionId, result: eventData.result, duration: eventData.duration },
               status: 'completed',
             };
-            if (useScoped) {
-              commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
-            } else {
-              commit('UPDATE_TOOL_CALL_RESULT', payload);
-            }
+            commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
           }
           break;
 
         case 'async_tool_failed':
           if (eventData.executionId) {
-            if (useScoped) {
-              commit('SCOPED_REMOVE_ACTIVE_ASYNC_TOOL', { conversationId: targetConvId, executionId: eventData.executionId });
-            } else {
-              commit('REMOVE_ACTIVE_ASYNC_TOOL', eventData.executionId);
-            }
+            commit('SCOPED_REMOVE_ACTIVE_ASYNC_TOOL', { conversationId: targetConvId, executionId: eventData.executionId });
           }
           if (eventData.toolCallId) {
             const payload = {
@@ -3205,11 +3264,7 @@ export default {
               result: { success: false, status: 'failed', executionId: eventData.executionId, error: eventData.error },
               error: eventData.error, status: 'failed',
             };
-            if (useScoped) {
-              commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
-            } else {
-              commit('UPDATE_TOOL_CALL_RESULT', payload);
-            }
+            commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
           }
           break;
 
