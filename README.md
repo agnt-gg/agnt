@@ -393,8 +393,8 @@ PORT=3333 npm run dev
 ## ⭐ Star history
 
 <p align="center">
-  <a href="https://star-history.com/#agnt-gg/agnt&Date">
-    <img src="https://api.star-history.com/svg?repos=agnt-gg/agnt&type=Date" alt="Star History Chart" width="100%">
+  <a href="https://star-history.dera.page/#agnt-gg/agnt&Date">
+    <img src="https://star-history.dera.page/svg?repos=agnt-gg/agnt&type=Date" alt="Star History Chart" width="100%">
   </a>
 </p>
 
