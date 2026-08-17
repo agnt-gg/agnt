@@ -258,6 +258,31 @@ describe('editing someone else\'s skill', () => {
   });
 });
 
+describe('a malformed update payload', () => {
+  // Raised in review of #68. Pre-existing: `skill.name` threw a TypeError into
+  // the catch, so a client error was reported as a server fault.
+  it('is a 400, not a 500', async () => {
+    await seed('s-bad', OWNER);
+    const res = await call('PUT', '/api/skills/s-bad', { as: OWNER, body: {} });
+    expect(res.status).toBe(400);
+  });
+
+  it('is still a 403 for a stranger — authorisation is decided first', async () => {
+    await seed('s-bad2', OWNER);
+    const res = await call('PUT', '/api/skills/s-bad2', { as: INTRUDER, body: {} });
+    expect(res.status).toBe(403);
+  });
+
+  it('leaves no trace on the row', async () => {
+    await seed('s-bad3', OWNER);
+    await run("UPDATE skills SET source_plugin = 'pdf-plugin', is_user_modified = 0 WHERE id = 's-bad3'");
+
+    expect((await call('PUT', '/api/skills/s-bad3', { as: OWNER, body: {} })).status).toBe(400);
+
+    expect((await row('s-bad3')).is_user_modified).toBe(0);
+  });
+});
+
 describe('deleting someone else\'s skill', () => {
   it('lets the owner delete', async () => {
     await seed('s-del', OWNER);

@@ -286,6 +286,18 @@ You have the above skills assigned. Follow the instructions defined in each skil
       if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
       const existing = auth.skill;
 
+      // A malformed body is the caller's mistake, not a server fault. Without
+      // this, `skill.name` below threw a TypeError into the catch and the route
+      // answered 500 — which hides a client error among real failures. createSkill
+      // already guards exactly this; updateSkill did not.
+      //
+      // Placed after authorisation, so a stranger learns nothing about their
+      // payload for a row they cannot touch, and before the PRD-057 stamp, so a
+      // rejected request still leaves no trace on the row.
+      if (!skill || typeof skill !== 'object' || Array.isArray(skill)) {
+        return res.status(400).json({ error: 'Request body must contain a skill object' });
+      }
+
       // PRD-057: mark plugin-installed skills as user-modified on UI updates
       if (existing.source_plugin) {
         await new Promise((resolve) => {
