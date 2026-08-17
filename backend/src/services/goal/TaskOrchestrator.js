@@ -4,7 +4,7 @@ import GoalIterationModel from '../../models/GoalIterationModel.js';
 import AgentTaskMatcher from './AgentTaskMatcher.js';
 import LlmExecutionService from '../ai/LlmExecutionService.js';
 import { raceWithAbort, GoalCancelledError, isCancellationError } from '../../utils/abortUtils.js';
-import { getAvailableToolSchemas } from '../orchestrator/tools.js';
+import { buildAgentRuntime } from '../orchestrator/agentRuntime.js';
 import GoalEvaluator from './GoalEvaluator.js';
 import GoalProcessor from './GoalProcessor.js';
 import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
@@ -366,18 +366,6 @@ Begin working on this task now.`;
     console.log(`[TaskOrchestrator] Sending task to agent ${agent.name} via chat`);
 
     try {
-      // Get agent's tools
-      const agentTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : JSON.parse(agent.tools || '[]');
-
-      // Get all available tool schemas
-      const allToolSchemas = await getAvailableToolSchemas();
-
-      // Filter to only tools assigned to this agent
-      const availableTools = allToolSchemas.filter((toolSchema) => agentTools.includes(toolSchema.function.name));
-
-      // Build system prompt using LlmExecutionService
-      const systemPrompt = await LlmExecutionService.buildAgentSystemPrompt(agent, availableTools);
-
       // Prepare messages
       const messages = [{ role: 'user', content: taskMessage }];
 
@@ -414,6 +402,21 @@ Begin working on this task now.`;
       }
 
       console.log(`[TaskOrchestrator] Executing with provider: ${provider}, model: ${model}`);
+
+      // SAME RUNTIME AS THE AGENT CHAT. This block previously filtered
+      // getAvailableToolSchemas() — called with no userId, so Tool Forge
+      // tools were absent entirely (issue #64) — by assignedTools alone,
+      // ignoring toolAccessMode, the agent defaults and the universal
+      // primitives. The prompt then told the agent to call activate_skill
+      // and save_agent_memory, neither of which was in its schema list.
+      // Resolved after provider/model so the prompt's block gates see the
+      // provider that will actually serve the turn.
+      const { systemPrompt, toolSchemas: availableTools } = await buildAgentRuntime({
+        agentId: agent.id,
+        userId,
+        latestUserMessage: taskMessage,
+        provider,
+      });
 
       // Execute with tools using LlmExecutionService
       // CRITICAL FIX: Pass userId in context so tools can access OAuth tokens

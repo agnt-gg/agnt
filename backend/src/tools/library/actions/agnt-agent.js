@@ -3,6 +3,7 @@ import AgentService from '../../../services/AgentService.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 import { executeTool } from '../../../services/orchestrator/tools.js';
+import { buildAgentRuntime } from '../../../services/orchestrator/agentRuntime.js';
 import { randomUUID } from 'crypto';
 
 /**
@@ -125,9 +126,10 @@ class AgentTool extends BaseAction {
 
       const userId = workflowEngine.userId;
 
-      // Use AgentService to get the full agent context (system prompt, skills, tools)
-      // This is the same path used by the orchestrator agent chat
-      const { agentContext, provider: agentProvider, model: agentModel, error, status } = await AgentService._getAgentContext(params.agentId, userId);
+      // Ownership gate + the agent's own provider/model. The runtime itself
+      // (prompt, tools, skills, memory) is assembled by buildAgentRuntime
+      // below — see the note there.
+      const { provider: agentProvider, model: agentModel, error } = await AgentService._getAgentContext(params.agentId, userId);
       if (error) {
         return { success: false, error };
       }
@@ -154,13 +156,26 @@ class AgentTool extends BaseAction {
         console.log(`Using global provider/model for agent: ${provider}/${model}`);
       }
 
-      const agentToolSchemas = agentContext.availableTools || [];
+      // FULL RUNTIME, NOT A PERSONA STRING.
+      //
+      // This used to be `agentContext.availableTools` plus a bare
+      // `agentContext.systemPrompt`, which gave the agent its persona and
+      // nothing else — no skills catalog, no memory, no platform guidance,
+      // and (before the userId fix in AgentService) no custom tools. The
+      // agent chat surface assembles all of that; a workflow-run agent is
+      // the SAME agent and must get the same thing. See agentRuntime.js.
+      const { systemPrompt, toolSchemas: agentToolSchemas } = await buildAgentRuntime({
+        agentId: params.agentId,
+        userId,
+        latestUserMessage: params.message,
+        provider,
+      });
 
       // Prepare messages with system prompt and conversation history
       const priorHistory = normalizeConversationHistory(params.conversationHistory);
 
       const messages = [
-        { role: 'system', content: agentContext.systemPrompt },
+        { role: 'system', content: systemPrompt },
         ...priorHistory,
         {
           role: 'user',

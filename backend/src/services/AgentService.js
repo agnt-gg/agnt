@@ -247,9 +247,15 @@ class AgentService {
 
     const assignedTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : [];
 
-    // Get ALL available tools (same as orchestrator)
+    // Get ALL available tools (same as orchestrator).
+    //
+    // userId IS NOT OPTIONAL. getAvailableToolSchemas only loads the user's
+    // Tool Forge (custom) tools when it is supplied; without it every
+    // custom tool in assignedTools misses the lookup below, logs a warn, and
+    // availableTools comes back empty — issue #64. It was in scope all along
+    // (the ownership check two lines up uses it).
     const { getAvailableToolSchemas } = await import('./orchestrator/tools.js');
-    const allAvailableTools = await getAvailableToolSchemas();
+    const allAvailableTools = await getAvailableToolSchemas({ userId });
 
     // Filter to only tools assigned to this agent
     const availableTools = [];

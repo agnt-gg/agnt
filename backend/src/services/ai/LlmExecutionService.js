@@ -1,8 +1,6 @@
 import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { executeTool } from '../orchestrator/tools.js';
-import { loadWorkspaceContextSection } from '../orchestrator/workspaceContext.js';
-import { getPlatformContextSection } from '../orchestrator/system-prompts/platform-context.js';
 import { manageContext } from '../../utils/contextManager.js';
 import { recordLlmCall } from '../execution/LedgerRecorder.js';
 import { raceWithAbort } from '../../utils/abortUtils.js';
@@ -542,34 +540,18 @@ class LlmExecutionService {
   }
 
   /**
-   * Build a system prompt for agent task execution
-   * @param {Object} agent - Agent configuration
-   * @param {Array} toolSchemas - Available tool schemas
-   * @returns {string} System prompt
+   * NOTE: buildAgentSystemPrompt() lived here and was deleted.
+   *
+   * It was the goal system's private, second agent-prompt builder — a
+   * persona line, a workspace path and a flat tool list. It had no skills
+   * catalog, no memory, and no platform guidance, so a goal-run agent was a
+   * strictly smaller thing than the same agent in chat. That divergence is
+   * the mechanism behind issue #64, and leaving a working-looking builder
+   * here is an invitation to recreate it.
+   *
+   * Saved-agent prompts come from ONE place now:
+   * orchestrator/agentRuntime.js → buildAgentRuntime().
    */
-  async buildAgentSystemPrompt(agent, toolSchemas) {
-    const currentDate = new Date().toString();
-    const workspaceSection = await loadWorkspaceContextSection();
-    const platformSection = getPlatformContextSection();
-
-    return `Current date and time: ${currentDate}
-
-You are an AI assistant named '${agent.name}'.
-${agent.description}
-
-You are executing a task as part of a larger goal. Use your assigned tools to complete the task effectively.
-${workspaceSection ? `\n${workspaceSection}\n` : ''}
-${platformSection}
-
-AVAILABLE TOOLS:
-${toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n')}
-
-IMPORTANT:
-- Focus on completing the specific task assigned to you
-- Use your tools strategically to gather information and produce results
-- Provide clear, structured output that can be used by subsequent tasks
-- If you need to save data for later use, use the file_operations tool — place files under the workspace path above unless the user explicitly named a different location`;
-  }
 }
 
 export default new LlmExecutionService();
