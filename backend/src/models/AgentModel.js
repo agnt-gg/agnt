@@ -38,18 +38,74 @@ class AgentModel {
       // Only 'open' and 'restricted' are valid; anything else falls back to
       // the safe default so a malformed payload can't widen tool access.
       const accessMode = toolAccessMode === 'open' ? 'open' : 'restricted';
+      /**
+       * UPSERT, not INSERT OR REPLACE.
+       *
+       * `INSERT OR REPLACE` resolves a conflict by DELETING the existing row and
+       * inserting a new one, so every column the statement does not name reverts
+       * to its schema DEFAULT. This statement names the columns a caller supplies;
+       * the five it does not are the row's provenance, which no payload carries:
+       * created_at, deleted_at, insight_version, source_plugin, is_user_modified.
+       * Editing an agent silently reset its creation date, orphaned it from the
+       * plugin that installed it, zeroed the evolution counter, and undeleted it.
+       *
+       * Two features were disabled outright by that, each defeated by the save
+       * that was supposed to precede them:
+       *   - AgentService's `UPDATE ... SET is_user_modified = 1 WHERE id = ? AND
+       *     source_plugin IS NOT NULL` matched nothing, because source_plugin had
+       *     just been nulled.
+       *   - AgentApplicator's `insight_version = COALESCE(insight_version,0) + 1`
+       *     always produced 1, because the save had just zeroed it.
+       *
+       * Naming the missing five would fix today and rot tomorrow: `agents` has
+       * gained columns by migration repeatedly, and each new one silently joins
+       * the forgotten set. ON CONFLICT DO UPDATE touches ONLY the columns listed
+       * below, so an unnamed column is preserved by construction.
+       *
+       * created_by is deliberately absent from the SET list: an edit must not
+       * transfer ownership. AgentService already forks to a new id when the editor
+       * is not the owner, and importAgent always mints a fresh UUID, so no caller
+       * needs it to change on update.
+       *
+       * Guarded by AgentModel.provenance.test.js, whose last test enumerates the
+       * live schema and fails when a new column is neither written nor preserved.
+       */
       db.run(
-        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, tool_access_mode, fallback_providers, fallback_enabled, routing_mode, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, tool_access_mode, fallback_providers, fallback_enabled, routing_mode, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET
+             name = excluded.name,
+             description = excluded.description,
+             status = excluded.status,
+             icon = excluded.icon,
+             category = excluded.category,
+             tools = excluded.tools,
+             workflows = excluded.workflows,
+             provider = excluded.provider,
+             model = excluded.model,
+             last_active = excluded.last_active,
+             success_rate = excluded.success_rate,
+             system_prompt = excluded.system_prompt,
+             skills = excluded.skills,
+             tool_access_mode = excluded.tool_access_mode,
+             fallback_providers = excluded.fallback_providers,
+             fallback_enabled = excluded.fallback_enabled,
+             routing_mode = excluded.routing_mode,
+             updated_at = CURRENT_TIMESTAMP`,
         [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate, systemPrompt, skillsJson, accessMode, fallbackProvidersJson, fallbackEnabledInt, routingModeValue],
         function (err) {
           if (err) {
             reject(err);
           } else {
-            // Update agent_resources with proper defaults
+            // Same reasoning as above: reset_period and last_reset live on this
+            // row and are not part of the payload, so the write must not clear
+            // them just because it has nothing to say about them.
             db.run(
-              `INSERT OR REPLACE INTO agent_resources (agent_id, credit_limit, credits_used)
-                   VALUES (?, ?, ?)`,
+              `INSERT INTO agent_resources (agent_id, credit_limit, credits_used)
+                   VALUES (?, ?, ?)
+               ON CONFLICT(agent_id) DO UPDATE SET
+                   credit_limit = excluded.credit_limit,
+                   credits_used = excluded.credits_used`,
               [id, creditLimit, creditsUsed],
               (err) => {
                 if (err) reject(err);
