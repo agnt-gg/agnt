@@ -206,7 +206,11 @@ class MCPDiscovery {
           cwd: server.transport.cwd,
           env: this._substituteEnvVarsInObject(server.transport.env || {}),
         };
-      } else if (server.transport.type === 'http' || server.transport.type === 'http-post') {
+      } else if (
+        server.transport.type === 'http'
+        || server.transport.type === 'http-post'
+        || server.transport.type === 'streamable-http'
+      ) {
         normalized.transport = server.transport.type;
 
         // Handle both formats: direct headers or requestInit.headers
@@ -218,7 +222,10 @@ class MCPDiscovery {
         }
 
         normalized.http = {
-          endpoint: this._substituteEnvVars(server.transport.endpoint),
+          // `url` is the key every other MCP client uses for remote servers
+          // (Claude, Cursor, Codex all document `url`). Accept it as an alias
+          // so a config copied from any of their docs works here unchanged.
+          endpoint: this._substituteEnvVars(server.transport.endpoint || server.transport.url),
           headers: this._substituteEnvVarsInObject(headers),
         };
       }
@@ -235,12 +242,27 @@ class MCPDiscovery {
           env: server.env || {},
         };
       } else if (server.endpoint || server.url) {
-        normalized.transport = 'http';
+        // A bare `url` with no transport block is the shorthand every remote
+        // MCP server's docs use. Those servers speak Streamable HTTP, not the
+        // legacy SSE dialect, so default accordingly.
+        normalized.transport = server.url && !server.endpoint ? 'streamable-http' : 'http';
         normalized.http = {
           endpoint: server.endpoint || server.url,
           headers: server.headers || {},
         };
       }
+    }
+
+    // OAuth marker. Credentials themselves live in MCPOAuthService's 0600
+    // token store, never in mcp.json — this only records that the server
+    // needs bearer auth and which identity to look up.
+    if (server.auth) {
+      normalized.auth = {
+        type: server.auth.type || 'oauth2',
+        // Defaults to the server name; overridable so two servers can share
+        // one authorization (e.g. a client and freelancer view of one API).
+        identity: server.auth.identity || server.name,
+      };
     }
 
     // Add roots if present

@@ -183,9 +183,28 @@ class MCPService {
       const transportOptions = {};
       let transportType = server.transport.type;
 
-      if (server.transport.type === 'http') {
-        transportOptions.endpoint = server.transport.endpoint;
-        transportType = 'http';
+      if (['http', 'http-post', 'streamable-http'].includes(server.transport.type)) {
+        transportOptions.endpoint = server.transport.endpoint || server.transport.url;
+        // Headers were silently dropped here, so any remote server needing an
+        // API key or bearer token reported "no tools" instead of "401".
+        transportOptions.headers = server.transport.headers
+          || server.transport.requestInit?.headers
+          || {};
+        transportType = server.transport.type;
+
+        if (server.auth?.type === 'oauth2') {
+          const { default: MCPOAuthService } = await import('./MCPOAuthService.js');
+          const provider = MCPOAuthService.authProviderFor(server.auth.identity || server.name);
+          if (!provider) {
+            return res.status(409).json({
+              success: false,
+              error: `"${server.name}" requires OAuth but is not connected yet.`,
+              needsAuth: true,
+            });
+          }
+          transportOptions.getAuthHeader = provider.getAuthHeader;
+          transportOptions.onUnauthorized = provider.onUnauthorized;
+        }
       } else if (server.transport.type === 'stdio') {
         transportOptions.command = server.transport.command;
         transportOptions.args = server.transport.args || [];
@@ -339,21 +358,40 @@ class MCPService {
       return { valid: false, error: 'Transport configuration is required' };
     }
 
-    if (!config.transport.type || !['http', 'stdio'].includes(config.transport.type)) {
-      return { valid: false, error: 'Transport type must be "http" or "stdio"' };
+    // `http-post` was always supported by MCPClient but rejected here, so it
+    // could never actually be configured. `streamable-http` is the transport
+    // modern remote servers use.
+    const REMOTE_TRANSPORTS = ['http', 'http-post', 'streamable-http'];
+    const ALL_TRANSPORTS = [...REMOTE_TRANSPORTS, 'stdio'];
+
+    if (!config.transport.type || !ALL_TRANSPORTS.includes(config.transport.type)) {
+      return { valid: false, error: `Transport type must be one of: ${ALL_TRANSPORTS.join(', ')}` };
     }
 
     // Validate based on transport type
-    if (config.transport.type === 'http') {
-      if (!config.transport.endpoint || typeof config.transport.endpoint !== 'string') {
-        return { valid: false, error: 'HTTP transport requires an endpoint URL' };
+    if (REMOTE_TRANSPORTS.includes(config.transport.type)) {
+      // `url` is the key the rest of the MCP ecosystem documents; accept both.
+      const endpoint = config.transport.endpoint || config.transport.url;
+      if (!endpoint || typeof endpoint !== 'string') {
+        return { valid: false, error: 'Remote transports require an endpoint (or url)' };
       }
 
-      // Basic URL validation
+      let parsed;
       try {
-        new URL(config.transport.endpoint);
+        parsed = new URL(endpoint);
       } catch {
         return { valid: false, error: 'Invalid endpoint URL' };
+      }
+
+      // A bearer token over cleartext is a credential handed to the network.
+      // Loopback is exempt because it never leaves the machine.
+      const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname);
+      if (config.auth && parsed.protocol !== 'https:' && !isLoopback) {
+        return { valid: false, error: 'OAuth-protected servers must use https (or loopback)' };
+      }
+
+      if (config.auth && config.auth.type !== 'oauth2') {
+        return { valid: false, error: 'Only auth.type "oauth2" is supported' };
       }
     } else if (config.transport.type === 'stdio') {
       if (!config.transport.command || typeof config.transport.command !== 'string') {

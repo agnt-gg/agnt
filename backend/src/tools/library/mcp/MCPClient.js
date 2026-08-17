@@ -1,11 +1,18 @@
 import HTTPTransport from './transports/HTTPTransport.js';
 import STDIOTransport from './transports/STDIOTransport.js';
 import POSTTransport from './transports/POSTTransport.js';
+import StreamableHTTPTransport from './transports/StreamableHTTPTransport.js';
 
 /**
  * MCP Client - Full-featured Model Context Protocol client
- * Supports HTTP/SSE, POST-only HTTP, and STDIO transports
+ * Supports Streamable HTTP, HTTP/SSE, POST-only HTTP, and STDIO transports
  */
+
+// Older stdio servers only speak the 2024-11-05 revision, so that stays the
+// default. Streamable HTTP did not exist until 2025-03-26, so any server
+// reachable over it necessarily understands the newer revision.
+const LEGACY_PROTOCOL_VERSION = '2024-11-05';
+const STREAMABLE_PROTOCOL_VERSION = '2025-06-18';
 class MCPClient {
   constructor(options = {}) {
     this.transport = null;
@@ -30,6 +37,8 @@ class MCPClient {
       this.transport = new HTTPTransport(this.transportOptions);
     } else if (this.transportType === 'http-post') {
       this.transport = new POSTTransport(this.transportOptions);
+    } else if (this.transportType === 'streamable-http') {
+      this.transport = new StreamableHTTPTransport(this.transportOptions);
     } else if (this.transportType === 'stdio') {
       this.transport = new STDIOTransport(this.transportOptions);
     } else {
@@ -46,7 +55,9 @@ class MCPClient {
         jsonrpc: '2.0',
         method: 'initialize',
         params: {
-          protocolVersion: '2024-11-05',
+          protocolVersion: this.transportType === 'streamable-http'
+            ? STREAMABLE_PROTOCOL_VERSION
+            : LEGACY_PROTOCOL_VERSION,
           capabilities: {
             roots: {
               listChanged: true,

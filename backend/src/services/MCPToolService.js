@@ -46,6 +46,7 @@ import fs from 'fs';
 import path from 'path';
 import MCPDiscovery from '../tools/library/mcp/MCPDiscovery.js';
 import MCPClient from '../tools/library/mcp/MCPClient.js';
+import MCPOAuthService from './MCPOAuthService.js';
 import PathManager from '../utils/PathManager.js';
 
 const TOOL_NAME_PREFIX = 'mcp__';
@@ -325,11 +326,34 @@ class MCPToolService {
       clientName: 'AGNT-MCP-Client',
       roots: serverConfig.roots || [],
     };
-    if (serverConfig.transport === 'http' || serverConfig.transport === 'http-post') {
+    if (
+      serverConfig.transport === 'http'
+      || serverConfig.transport === 'http-post'
+      || serverConfig.transport === 'streamable-http'
+    ) {
       opts.transportOptions = {
         endpoint: serverConfig.http?.endpoint,
         headers: serverConfig.http?.headers || {},
       };
+
+      // Attach bearer auth for OAuth-protected servers. The token is fetched
+      // per request rather than baked into a header map, so a long-lived
+      // session survives an access token expiring underneath it.
+      if (serverConfig.auth?.type === 'oauth2') {
+        const identity = serverConfig.auth.identity || serverConfig.name;
+        const provider = MCPOAuthService.authProviderFor(identity);
+        if (provider) {
+          opts.transportOptions.getAuthHeader = provider.getAuthHeader;
+          opts.transportOptions.onUnauthorized = provider.onUnauthorized;
+        } else {
+          // Not connected yet. Surface a name the user can act on instead of
+          // letting them read a bare 401 out of a log.
+          throw new Error(
+            `MCP server "${serverConfig.name}" requires OAuth but is not connected. ` +
+            'Connect it on the MCP page.',
+          );
+        }
+      }
     } else if (serverConfig.transport === 'stdio') {
       opts.transportOptions = {
         command: serverConfig.stdio?.command,

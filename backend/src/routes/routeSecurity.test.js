@@ -55,6 +55,9 @@ const PUBLIC_ROUTES = new Map([
   // --- device pairing ---
   ['PairingRoutes.js :: POST /claim', 'The 128-bit single-use code IS the credential. Rate-limited to 10/min; codes expire in 120s and are consumed atomically.'],
 
+  // --- OAuth redirect targets (no AGNT session exists on the inbound hop) ---
+  ['MCPRoutes.js :: GET /oauth/callback', 'OAuth 2.1 redirect from a remote MCP provider. Arrives from the provider\'s domain in a plain browser hop that carries no AGNT session, so it cannot be token-guarded. The 192-bit CSPRNG `state` IS the credential: it is minted server-side per authorization, held in memory only, consumed atomically before validation (one attempt), expires in 10 minutes, and an unknown or stale value is refused before any token exchange. Same contract as PairingRoutes POST /claim.'],
+
   // --- public catalogues: vendor metadata and schema shapes, no user data ---
   ['PluginRoutes.js :: GET /marketplace', 'Public plugin catalogue mirror. Same data the marketplace website serves.'],
   ['PluginRoutes.js :: GET /installed', 'Installed plugin names/versions. No source, no secrets.'],
