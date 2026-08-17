@@ -196,11 +196,49 @@ You have the above skills assigned. Follow the instructions defined in each skil
     }
   }
 
+  /**
+   * Fetch a skill and decide whether this requester may act on it.
+   *
+   * SkillModel.findAll already states the ownership rule in SQL —
+   * `WHERE user_id = ? OR is_builtin = 1` — so the list endpoint has always
+   * been scoped. The by-id routes reached for findById (`WHERE id = ?`) and
+   * never compared the owner to the caller, so the rule was declared in one
+   * query and ignored in four handlers. This applies the rule findAll already
+   * declares; it does not invent a new policy.
+   *
+   * The check lives here rather than in findById because eight internal callers
+   * legitimately fetch a skill by id with no requester in scope at all
+   * (OrchestratorService, SkillEvolver x3, chatConfigs, PluginBundler,
+   * EvalDatasetService, ExperimentService). Scoping the model method would
+   * break every one of them.
+   *
+   * Reads honour the built-in exception exactly as findAll grants it — a skill
+   * that is listable must not be unreadable. Writes do not: a row everyone can
+   * see must not be a row anyone can edit, or one user's change silently
+   * rewrites what every other user sees.
+   *
+   * 404 and 403 are kept distinct, matching AgentRoutes' export check and
+   * ContractRoutes: absent and forbidden are different answers.
+   */
+  static async _authorize(id, userId, { write = false } = {}) {
+    const skill = await SkillModel.findById(id);
+    if (!skill) return { ok: false, status: 404, error: 'Skill not found' };
+    if (skill.user_id === userId) return { ok: true, skill };
+    if (!write && skill.is_builtin) return { ok: true, skill };
+    return {
+      ok: false,
+      status: 403,
+      error: write
+        ? 'You do not have permission to modify this skill'
+        : 'You do not have permission to view this skill',
+    };
+  }
+
   async getSkill(req, res) {
     try {
-      const skill = await SkillModel.findById(req.params.id);
-      if (!skill) return res.status(404).json({ error: 'Skill not found' });
-      res.json({ skill });
+      const auth = await SkillService._authorize(req.params.id, req.user.userId);
+      if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+      res.json({ skill: auth.skill });
     } catch (error) {
       console.error('Error fetching skill:', error);
       res.status(500).json({ error: 'Failed to fetch skill' });
@@ -242,8 +280,11 @@ You have the above skills assigned. Follow the instructions defined in each skil
       const { id } = req.params;
       const { skill } = req.body;
 
-      const existing = await SkillModel.findById(id);
-      if (!existing) return res.status(404).json({ error: 'Skill not found' });
+      // Before anything else, including the PRD-057 stamp below: a refused
+      // request must leave no trace on the row at all.
+      const auth = await SkillService._authorize(id, userId, { write: true });
+      if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+      const existing = auth.skill;
 
       // PRD-057: mark plugin-installed skills as user-modified on UI updates
       if (existing.source_plugin) {
@@ -287,8 +328,9 @@ You have the above skills assigned. Follow the instructions defined in each skil
    */
   async exportSkillMd(req, res) {
     try {
-      const skill = await SkillModel.findById(req.params.id);
-      if (!skill) return res.status(404).json({ error: 'Skill not found' });
+      const auth = await SkillService._authorize(req.params.id, req.user.userId);
+      if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+      const skill = auth.skill;
 
       const content = serializeSkillMd(skill);
 
@@ -335,6 +377,12 @@ You have the above skills assigned. Follow the instructions defined in each skil
     try {
       const userId = req.user.userId;
       const { id } = req.params;
+      // SkillModel.delete is scoped too — this is deliberate belt-and-braces.
+      // The check here is what makes a stranger's delete answer 403; the scope
+      // in the model is what protects every other caller of that method.
+      const auth = await SkillService._authorize(id, userId, { write: true });
+      if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+
       const changes = await SkillModel.delete(id, userId);
       if (changes === 0) return res.status(404).json({ error: 'Skill not found' });
       res.json({ message: 'Skill deleted' });

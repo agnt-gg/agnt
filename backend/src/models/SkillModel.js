@@ -117,11 +117,26 @@ class SkillModel {
     });
   }
 
+  /**
+   * Delete a skill the caller owns.
+   *
+   * This has always taken (id, userId) and, until now, never used userId — the
+   * statement was `DELETE FROM skills WHERE id = ?`, so it deleted anybody's
+   * row. SkillService.deleteSkill reads `changes === 0` as "not yours" and
+   * answers 404, which is only sound if the statement is scoped; unscoped, it
+   * returned 1 for any caller and the 404 branch could only mean "no such row".
+   * A hard DELETE with no soft-delete column to recover from, unlike
+   * AgentModel.delete, which is both scoped and soft.
+   *
+   * Scoping it here makes the signature honest for every caller, present and
+   * future. SkillEvolver (the only other caller) deletes a draft it created
+   * itself under the same userId, so this is a no-op for it.
+   */
   static delete(id, userId) {
     return new Promise((resolve, reject) => {
       db.run(
-        `DELETE FROM skills WHERE id = ?`,
-        [id],
+        `DELETE FROM skills WHERE id = ? AND user_id = ?`,
+        [id, userId],
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
