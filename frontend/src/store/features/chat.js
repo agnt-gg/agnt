@@ -2835,8 +2835,34 @@ export default {
      * Uses the agent-specific endpoint. Supports concurrent streams.
      */
     async startAgentStreamingConversation(
-      { commit, state, dispatch, rootState },
-      { agentId, userInput, files = [], provider, model, reasoningValue, reasoningEnabled, conversationId = null },
+      { commit, state, dispatch },
+      {
+        agentId,
+        userInput,
+        files = [],
+        // THE WIRE PIN. Null means "this surface has no opinion" and the pair is
+        // OMITTED from the request entirely — see the body below, where the
+        // absence is the mechanism.
+        provider = null,
+        model = null,
+        // 'pinned' | 'dynamic', or null for "say nothing".
+        routingMode = null,
+        /**
+         * FORMATTING ONLY — never reaches the wire as a routing choice.
+         *
+         * buildChatHistory uses a provider name for exactly one decision:
+         * whether to replay `reasoning_content` (deepseek / kimi / zai keep it,
+         * everyone else drops it). A wrong guess here costs one dropped
+         * reasoning block; a wrong guess in `provider` above answers the user
+         * on a model they did not choose. They are different questions, so they
+         * are different parameters, and this one may fall back to a global
+         * selection while the pin above may not.
+         */
+        historyProvider = null,
+        reasoningValue = null,
+        reasoningEnabled = false,
+        conversationId = null,
+      },
     ) {
       // A WRITE MUST CARRY ITS ADDRESS — the same rule startStreamingConversation
       // documents for floor dispatches. An explicit conversationId wins; failing
@@ -2879,7 +2905,7 @@ export default {
       // Dedicated agent conversation: the agent is the viewer, and every
       // assistant turn here is the agent's own (assumeOwnAssistant covers
       // messages persisted before agent attribution existed).
-      const chatHistory = buildChatHistory(conv.messages, provider, { id: agentId, name: conv.agentName || null }, { assumeOwnAssistant: true });
+      const chatHistory = buildChatHistory(conv.messages, historyProvider || provider, { id: agentId, name: conv.agentName || null }, { assumeOwnAssistant: true });
 
       // Remove duplicate trailing user message if it matches what we're about to send
       const deduped = chatHistory.length > 0 &&
@@ -2901,21 +2927,60 @@ export default {
         // Same contract as sendMessage: an unstamped turn cannot be recognised
         // as our own when it is announced back to us. See the comment there.
         headers['X-AGNT-Client-Id'] = getClientId();
+        // NO GLOBAL FALLBACK. These read `rootState.aiProvider` until now — the
+        // MAIN CHAT's composer toggles. An agent chat has no reasoning control
+        // of its own, so it was silently inheriting another surface's setting;
+        // turning reasoning on to think through one orchestrator question then
+        // billed every agent turn for it. With no control, the honest answer is
+        // the provider default.
         const normalizedReasoningValue = typeof reasoningValue === 'string' && reasoningValue.trim()
           ? reasoningValue.trim().toLowerCase()
-          : (rootState.aiProvider?.reasoningValue || 'default');
-        const effectiveReasoningEnabled = reasoningEnabled === true || rootState.aiProvider?.reasoningEnabled === true;
+          : 'default';
+        const effectiveReasoningEnabled = reasoningEnabled === true;
 
         // Spoken turns ask for a two-register answer. This endpoint funnels
         // into universalChatHandler like every other chat, so voiceMode reaches
         // the prompt builder the same way here as it does in the main chat.
         const isVoiceTurn = consumeVoiceTurn(userInput);
 
+        /**
+         * OMITTING THE PAIR IS THE MECHANISM, NOT AN OVERSIGHT.
+         *
+         * This used to send `selectedProvider`/`selectedModel` — the MAIN
+         * CHAT's model popover — on every agent turn. Two bugs fell out of it:
+         *
+         *   1. The main chat's picker chose the agent's model.
+         *   2. `requestHasPin = !!(provider && model)` was therefore ALWAYS
+         *      true, so resolveRoutingMode read every agent turn as an explicit
+         *      pin. `agents.routing_mode` was unreachable and "Let Annie
+         *      choose" could never apply to an agent chat.
+         *
+         * Send nothing and the server resolves it properly: AgentService
+         * injects the agent's OWN provider/model before the handler runs, so an
+         * agent that names a pair still reads as pinned (its owner chose it),
+         * and an agent that names none falls through the ladder to the account
+         * default with its routing mode intact.
+         *
+         * JSON.stringify drops `undefined` keys, so these vanish from the body.
+         */
         const body = JSON.stringify({
           message: userInput,
           history: deduped,
-          provider: provider,
-          model: model,
+          provider: provider || undefined,
+          model: model || undefined,
+          routingMode: routingMode || undefined,
+          /**
+           * AN AGENT TURN MAY NOT REDEFINE THE ACCOUNT DEFAULT.
+           *
+           * The handler's write-back keeps users.selected_provider in step with
+           * "what the frontend is actually using" — correct for the main chat,
+           * where the value came from the user's own picker. Here the resolved
+           * provider is the AGENT'S, so chatting with a Claude agent rewrote the
+           * account default to Claude and the main chat came back on it. That is
+           * the reverse half of the same bleed, and the direction that visibly
+           * moves the selector.
+           */
+          persistDefault: false,
           reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
           reasoningEnabled: effectiveReasoningEnabled || undefined,
           voiceMode: isVoiceTurn || undefined,

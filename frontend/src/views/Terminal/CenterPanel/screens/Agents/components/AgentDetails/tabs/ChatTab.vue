@@ -93,6 +93,7 @@ import MessageItem from '../../../../Chat/components/MessageItem.vue';
 import ProcessingState from '../../../../Chat/components/ProcessingState.vue';
 import QuickActions from '../../../../Chat/components/QuickActions.vue';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
+import { resolveChannelRouting } from '@/services/chatChannelConfig.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const initialSuggestions = [
@@ -122,6 +123,20 @@ const messageStates = ref({});
 
 const suggestions = ref([...initialSuggestions]);
 const isLoadingSuggestions = ref(false);
+
+/**
+ * THIS AGENT'S CHANNEL — its own AI configuration, separate from every other
+ * chat surface.
+ *
+ * This tab is the last chat in the app that read `store.state.aiProvider`
+ * directly. That store IS the orchestrator's model popover, so the main chat's
+ * picker silently chose the agent's model, and (via the handler's default
+ * write-back) an agent's own model came back the other way and redefined the
+ * account-wide default. Every other surface routes through chatChannelConfig
+ * with its own key; this one now does too.
+ */
+const agentChannelKey = computed(() =>
+  (props.selectedAgent?.id ? `agent:${props.selectedAgent.id}` : null));
 
 /**
  * THIS AGENT'S conversation slot — the address this tab reads and writes.
@@ -344,16 +359,35 @@ const sendChatMessage = async () => {
   await nextTick();
   scrollChatToBottom();
 
-  // Get provider and model from agent config or use global defaults from store
-  const provider = props.selectedAgent.provider || store.state.aiProvider.selectedProvider;
-  const model = props.selectedAgent.model || store.state.aiProvider.selectedModel;
+  /**
+   * WHAT THIS CHANNEL PUTS ON THE WIRE.
+   *
+   * Only a channel the user has explicitly PINNED sends a provider/model pair.
+   * Otherwise both are omitted and the server resolves the turn: AgentService
+   * injects the agent's OWN provider/model before the handler runs, so an agent
+   * that names a pair still reads as a pin, and one that names none falls
+   * through the ladder to the account default.
+   *
+   * `mode === 'default'` is sent as NOTHING rather than as the string
+   * 'default'. That is not a shortcut — a request that names a mode suppresses
+   * the backward-compatibility rule in resolveRoutingMode, and this is the one
+   * endpoint whose pin is injected server-side. Saying "default" out loud here
+   * would therefore let a global 'dynamic' setting re-route an agent whose
+   * owner had chosen a specific model, which is the one thing dynamic routing
+   * promises never to do.
+   */
+  const routing = resolveChannelRouting(agentChannelKey.value, store.state.aiProvider);
 
-  // Use the unified store action for agent streaming
   await store.dispatch('chat/startAgentStreamingConversation', {
     agentId: props.selectedAgent.id,
     userInput: messageToSend,
-    provider,
-    model,
+    provider: routing.provider,
+    model: routing.model,
+    routingMode: routing.mode === 'default' ? null : routing.mode,
+    // Formatting only — decides whether reasoning_content is replayed. A guess
+    // is fine here and wrong-model is not, which is why it is a separate
+    // argument from the pin above.
+    historyProvider: props.selectedAgent.provider || store.state.aiProvider.selectedProvider,
     conversationId: convId,
   });
 };
@@ -395,6 +429,15 @@ const updateSuggestions = async () => {
   isLoadingSuggestions.value = true;
   const token = localStorage.getItem('token');
 
+  // Suggestions are a cosmetic side call on a non-streaming endpoint that never
+  // reaches the default write-back, so a concrete pair here is safe — it just
+  // must not be the ORCHESTRATOR'S pair.
+  const channelRouting = resolveChannelRouting(agentChannelKey.value, store.state.aiProvider);
+  const suggestionRouting = {
+    provider: channelRouting.provider || props.selectedAgent.provider || store.state.aiProvider.selectedProvider,
+    model: channelRouting.model || props.selectedAgent.model || store.state.aiProvider.selectedModel,
+  };
+
   try {
     const recentHistory = chatMessages.value.slice(-10).map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
@@ -421,8 +464,11 @@ const updateSuggestions = async () => {
         history: recentHistory,
         lastUserMessage,
         lastAssistantMessage,
-        provider: store.state.aiProvider.selectedProvider,
-        model: store.state.aiProvider.selectedModel,
+        // AGENT FIRST. handleSuggestions 400s without a concrete pair, so this
+        // one call cannot omit it — but it can stop reaching for the main
+        // chat's picker before the agent's own configuration.
+        provider: suggestionRouting.provider,
+        model: suggestionRouting.model,
       }),
     });
 

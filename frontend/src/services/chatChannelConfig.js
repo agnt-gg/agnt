@@ -150,12 +150,35 @@ function channelType(channelKey) {
 }
 
 /**
+ * The AgentForge authoring channel — "help me build an agent", Annie's persona,
+ * the agent-management tool group.
+ *
+ * TWO DIFFERENT SURFACES SHARE THE `agent:` PREFIX and they want opposite tool
+ * sets. `agent:agent-chat` is the BUILDER. `agent:<uuid>` is a conversation
+ * WITH a saved agent, whose tools are the ones its owner assigned to it.
+ */
+export const AGENT_FORGE_CHANNEL_KEY = 'agent:agent-chat';
+
+/** Is this a chat WITH a saved agent (rather than the AgentForge builder)? */
+export function isSavedAgentChannel(channelKey) {
+  return channelType(channelKey) === 'agent' && channelKey !== AGENT_FORGE_CHANNEL_KEY;
+}
+
+/**
  * Returns the default enabled-tool list for a fresh channel, or null if the
  * channel type doesn't have a curated default (orchestrator + unknown types
  * fall back to "everything available", which the caller signals by returning
  * null rather than an empty array — empty would mean "tools disabled").
  */
 export function getDefaultEnabledTools(channelKey) {
+  // A saved agent's tools are its OWN assignedTools, resolved server-side from
+  // the agent record. Handing it the AgentForge specialty set would be actively
+  // destructive rather than merely wrong: the backend applies enabledTools as an
+  // INTERSECTION over an agent's allowed set (chatConfigs.js
+  // getSavedAgentToolSchemas, restricted mode), so a list of agent-AUTHORING
+  // tools would leave a saved agent with nothing but the universal primitives.
+  // Silently — the tools simply would not be offered.
+  if (isSavedAgentChannel(channelKey)) return null;
   const type = channelType(channelKey);
   return SIDEBAR_DEFAULTS[type] || null;
 }
@@ -297,6 +320,13 @@ export function resolveChannelEnabledTools(channelKey) {
   const specialty = getSpecialtyToolNames(channelKey) || [];
 
   const cfg = getChannelConfig(channelKey);
+
+  // A saved-agent chat has no client-side tool opinion unless the user has
+  // explicitly saved one here. `undefined` means "say nothing", which lets the
+  // agent's assignedTools stand; falling through to the legacy global list
+  // below would apply the ORCHESTRATOR's saved selection as a whitelist over
+  // somebody else's agent.
+  if (isSavedAgentChannel(channelKey) && !(cfg && cfg.enabledTools)) return undefined;
   if (cfg && cfg.enabledTools === AUTO_ENABLED_TOOLS) {
     // Explicit "all tools" choice. Do NOT fall through to the legacy global
     // list — undefined tells the backend to use its lazy discovery default.

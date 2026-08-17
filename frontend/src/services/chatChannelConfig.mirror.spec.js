@@ -29,7 +29,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getSpecialtyToolNames, resolveChannelEnabledTools } from './chatChannelConfig.js';
+import {
+  getSpecialtyToolNames,
+  resolveChannelEnabledTools,
+  isSavedAgentChannel,
+  AGENT_FORGE_CHANNEL_KEY,
+} from './chatChannelConfig.js';
 
 /** Walk up until the backend file is found, so this works from any vitest root. */
 function findBackendToolSelector() {
@@ -68,13 +73,21 @@ function parseBackendToolGroups() {
   return groups;
 }
 
-/** Channel type -> the backend group whose tools that surface must be able to call. */
+/**
+ * A REPRESENTATIVE channel key -> the backend group that surface must reach.
+ *
+ * Keyed by a real channel key rather than by bare type because the `agent:`
+ * prefix covers two different surfaces: `agent:agent-chat` is the AgentForge
+ * BUILDER (which needs the agent-management tools) while `agent:<uuid>` is a
+ * chat WITH a saved agent (whose tools come from its own assignedTools, and
+ * which must NOT be handed the authoring set — see isSavedAgentChannel).
+ */
 const CHANNEL_TO_BACKEND_GROUP = {
-  agent: 'agent_management',
-  workflow: 'workflow_authoring',
-  tool: 'tool_authoring',
-  widget: 'widget_authoring',
-  artifact: 'artifact_code',
+  [AGENT_FORGE_CHANNEL_KEY]: 'agent_management',
+  'workflow:some-id': 'workflow_authoring',
+  'tool:some-id': 'tool_authoring',
+  'widget:some-id': 'widget_authoring',
+  'artifact:some-id': 'artifact_code',
 };
 
 describe('frontend channel defaults mirror the backend tool groups', () => {
@@ -90,14 +103,14 @@ describe('frontend channel defaults mirror the backend tool groups', () => {
     }
   });
 
-  for (const [channelType, backendGroup] of Object.entries(CHANNEL_TO_BACKEND_GROUP)) {
-    it(`${channelType} chat can call every tool in ${backendGroup}`, () => {
-      const specialty = getSpecialtyToolNames(`${channelType}:some-id`) || [];
+  for (const [channelKey, backendGroup] of Object.entries(CHANNEL_TO_BACKEND_GROUP)) {
+    it(`${channelKey} can call every tool in ${backendGroup}`, () => {
+      const specialty = getSpecialtyToolNames(channelKey) || [];
       const missing = (groups[backendGroup] || []).filter((t) => !specialty.includes(t));
       expect(
         missing,
         `${missing.join(', ')} exist in backend group "${backendGroup}" but are absent from ` +
-        `SIDEBAR_DEFAULTS.${channelType}, so they are unreachable from that chat surface`,
+        `the specialty set for "${channelKey}", so they are unreachable from that chat surface`,
       ).toEqual([]);
     });
   }
@@ -105,6 +118,54 @@ describe('frontend channel defaults mirror the backend tool groups', () => {
   it('specifically covers the tools that rotted before', () => {
     expect(getSpecialtyToolNames('artifact:s1')).toEqual(expect.arrayContaining(['grep_files', 'glob_files']));
     expect(getSpecialtyToolNames('widget:w1')).toEqual(expect.arrayContaining(['list_widgets']));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The `agent:` prefix is TWO surfaces, and conflating them silently disarms an
+// agent. The backend intersects enabledTools with the agent's allowed set
+// (chatConfigs.js getSavedAgentToolSchemas, restricted mode), so sending the
+// AgentForge authoring list for `agent:<uuid>` would leave that agent holding
+// only the universal primitives — no error, the tools just are not offered.
+// ---------------------------------------------------------------------------
+
+describe('a saved-agent chat is not the AgentForge builder', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('classifies the two channels apart', () => {
+    expect(isSavedAgentChannel('agent:0e8d-uuid')).toBe(true);
+    expect(isSavedAgentChannel(AGENT_FORGE_CHANNEL_KEY)).toBe(false);
+    expect(isSavedAgentChannel('workflow:w1')).toBe(false);
+    expect(isSavedAgentChannel(null)).toBe(false);
+  });
+
+  it('gives a saved agent NO specialty set', () => {
+    expect(getSpecialtyToolNames('agent:0e8d-uuid')).toBeNull();
+  });
+
+  it('says nothing at all about a saved agent\'s tools', () => {
+    // undefined = "no client opinion" = the agent's own assignedTools stand.
+    expect(resolveChannelEnabledTools('agent:0e8d-uuid')).toBeUndefined();
+  });
+
+  it('does not leak the orchestrator\'s legacy global list onto a saved agent', () => {
+    localStorage.setItem('agnt_enabled_tools', JSON.stringify(['execute_shell_command']));
+    expect(resolveChannelEnabledTools('agent:0e8d-uuid')).toBeUndefined();
+    // NEGATIVE CONTROL: that legacy list is still honoured where it belongs.
+    expect(resolveChannelEnabledTools('orchestrator:default')).toEqual(['execute_shell_command']);
+  });
+
+  it('still honours a list the user explicitly saved for this agent', () => {
+    localStorage.setItem(
+      'agnt_chat_channel_configs',
+      JSON.stringify({ 'agent:0e8d-uuid': { enabledTools: ['web_search'] } }),
+    );
+    expect(resolveChannelEnabledTools('agent:0e8d-uuid')).toEqual(['web_search']);
+  });
+
+  it('leaves the AgentForge builder fully armed', () => {
+    expect(resolveChannelEnabledTools(AGENT_FORGE_CHANNEL_KEY))
+      .toEqual(expect.arrayContaining(['generate_agent', 'modify_agent', 'list_agents']));
   });
 });
 
