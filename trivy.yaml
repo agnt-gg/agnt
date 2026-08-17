@@ -1,0 +1,18 @@
+# Trivy configuration for the AGNT repository.
+# Auto-loaded by Trivy when run from the repository root.
+#
+# backend/plugins/dev/sentinel-plugin/_selftest/vulnapp is the test fixture for
+# the Sentinel security-scanning plugin: an intentionally vulnerable sample app
+# that exists so the scanner has something to find. It carries a known-CRITICAL
+# lodash pin, outdated express/mysql pins, placeholder credentials, and planted
+# SQL/command-injection and XSS sinks. Every one is deliberate.
+#
+# Nothing in that directory is built, bundled, installed, published, imported or
+# executed by AGNT. Scanning it yields findings that are technically correct and
+# operationally meaningless, and "remediating" them deletes test coverage — an
+# upgrade of the lodash pin removes the suite's only CRITICAL finding.
+#
+# See that directory's README.md for the full inventory and expected baseline.
+scan:
+  skip-dirs:
+    - "backend/plugins/dev/sentinel-plugin/_selftest/vulnapp"
