@@ -105,9 +105,47 @@ class SkillModel {
         skill.allowedTools ?? skill.allowed_tools, '[]', true
       );
 
+      /**
+       * UPSERT, not INSERT OR REPLACE. See AgentModel.createOrUpdate for the
+       * full reasoning; the same defect lived here.
+       *
+       * `INSERT OR REPLACE` DELETEs the conflicting row and inserts a new one,
+       * so every column this statement does not name reverted to its schema
+       * DEFAULT: created_at, source_plugin and is_user_modified.
+       *
+       * That was worse here than a lost timestamp, because of the order
+       * SkillService.updateSkill uses — it sets the PRD-057 flag BEFORE it
+       * saves, so the save erased the flag it had just been told to set. The
+       * flag is what PluginAssetLoader._decideUpdate reads to decide whether a
+       * plugin upgrade may overwrite the row, so a user's edits to a
+       * plugin-installed skill were silently discarded by the next upgrade.
+       *
+       * user_id is deliberately absent from the SET list: an edit must not
+       * transfer ownership. SkillService.updateSkill looks the row up with an
+       * unscoped findById and passes the REQUESTER's id, so rewriting user_id
+       * handed the row to whoever edited it. (The remaining authorization gap —
+       * that a non-owner can edit the contents at all — belongs to
+       * SkillService, not here.)
+       *
+       * Guarded by SkillModel.provenance.test.js, whose last test enumerates the
+       * live schema and fails when a new column is unaccounted for.
+       */
       db.run(
-        `INSERT OR REPLACE INTO skills (id, user_id, name, description, instructions, license, compatibility, metadata, allowed_tools, icon, category, is_builtin, slug, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        `INSERT INTO skills (id, user_id, name, description, instructions, license, compatibility, metadata, allowed_tools, icon, category, is_builtin, slug, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+             name = excluded.name,
+             description = excluded.description,
+             instructions = excluded.instructions,
+             license = excluded.license,
+             compatibility = excluded.compatibility,
+             metadata = excluded.metadata,
+             allowed_tools = excluded.allowed_tools,
+             icon = excluded.icon,
+             category = excluded.category,
+             is_builtin = excluded.is_builtin,
+             slug = excluded.slug,
+             updated_at = datetime('now')`,
         [id, userId, name, description, instructions, license, compatibility, metadata, allowedTools, icon, category, isBuiltin, slug],
         function (err) {
           if (err) reject(err);
