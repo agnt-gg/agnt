@@ -30,31 +30,18 @@
       <div class="search-wrapper">
         <BaseInput v-model="searchQuery" placeholder="Search plugins..." :clearable="true" />
       </div>
-      <div class="controls-group">
-        <BaseSelect
-          v-model="statusFilter"
-          :options="[
-            { value: 'all', label: 'All' },
-            { value: 'installed', label: 'Installed' },
-            { value: 'available', label: 'Available' },
-          ]"
-        />
-        <BaseButton variant="primary" class="refresh-btn" @click="manualRefresh" :disabled="isLoading">
-          <i class="fas fa-sync" :class="{ 'fa-spin': isLoading }"></i> Refresh
-        </BaseButton>
-      </div>
     </div>
 
     <!-- Tabs - Only for PRO -->
     <div v-if="isPro" class="tabs">
       <button class="tab" :class="{ active: activeTab === 'installed' }" @click="activeTab = 'installed'">
-        <i class="fas fa-check-circle"></i> Installed ({{ installedPlugins.length }})
+        <i class="fas fa-check-circle"></i> Installed ({{ installedPlugins.length }})<!--
+        The only badge left on this screen, and it counts one thing: updates
+        held back because they asked for more than the installed version had.
+        --><span v-if="reviewCount > 0" class="review-count">{{ reviewCount }}</span>
       </button>
       <button class="tab" :class="{ active: activeTab === 'marketplace' }" @click="activeTab = 'marketplace'">
         <i class="fas fa-store"></i> Marketplace ({{ marketplacePlugins.length }})
-      </button>
-      <button class="tab" :class="{ active: activeTab === 'updates' }" @click="((activeTab = 'updates'), loadUpdates())">
-        <i class="fas fa-arrow-circle-up"></i> Updates<span v-if="availableUpdateCount > 0" class="updates-count">{{ availableUpdateCount }}</span>
       </button>
       <button class="tab" :class="{ active: activeTab === 'builder' }" @click="activeTab = 'builder'">
         <i class="fas fa-magic"></i> Build Plugin
@@ -141,7 +128,37 @@
               </Tooltip>
             </div>
             <div class="plugin-status">
-              <span class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
+              <!-- At most one chip, and it is only actionable for a refused update. -->
+              <button
+                v-if="pluginNotices[plugin.name]?.needsReview"
+                class="notice-chip review"
+                :disabled="updatingName === plugin.name"
+                @click.stop="reviewUpdate(plugin)"
+              >
+                <i class="fas fa-shield-alt"></i>
+                {{ updatingName === plugin.name ? 'Updating…' : 'Update needs review' }}
+              </button>
+              <span
+                v-else-if="pluginNotices[plugin.name]"
+                class="notice-chip"
+                :class="pluginNotices[plugin.name].kind"
+                v-tooltip="pluginNotices[plugin.name].detail"
+              >
+                <i :class="pluginNotices[plugin.name].icon"></i> {{ pluginNotices[plugin.name].label }}
+              </span>
+              <span v-else class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
+
+              <div class="card-menu" v-click-outside="() => closeMenu(plugin.name)">
+                <button class="card-menu-btn" aria-label="More actions" @click.stop="toggleMenu(plugin.name)">
+                  <i class="fas fa-ellipsis-h"></i>
+                </button>
+                <div v-if="openMenuFor === plugin.name" class="card-menu-items">
+                  <button class="card-menu-item" @click.stop="togglePin(plugin)">
+                    <i class="fas" :class="isPinned(plugin) ? 'fa-unlock' : 'fa-thumbtack'"></i>
+                    {{ isPinned(plugin) ? 'Allow automatic updates' : 'Pin to v' + plugin.version }}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -227,62 +244,6 @@
     </div>
 
     <!-- Plugin Builder Tab -->
-    <!-- Updates Tab (trust system W8) -->
-    <div v-else-if="activeTab === 'updates'" class="plugins-list">
-      <div class="updates-toolbar">
-        <BaseButton variant="primary" @click="loadUpdates" :disabled="checkingUpdates">
-          <i class="fas fa-sync" :class="{ 'fa-spin': checkingUpdates }"></i> Check for Updates
-        </BaseButton>
-        <label class="auto-check-toggle">
-          <input type="checkbox" :checked="updateSettings.autoCheck" @change="toggleAutoCheck($event.target.checked)" />
-          Check automatically (daily)
-        </label>
-      </div>
-
-      <!-- What the background scheduler did while nobody was looking. -->
-      <div v-if="updateStatusHighlights.length" class="update-status-panel">
-        <div class="update-status-when">Last automatic check: {{ formatCheckedAt(updateStatus.checkedAt) }}</div>
-        <div v-for="row in updateStatusHighlights" :key="row.key" class="update-status-row" :class="row.severity">
-          <i :class="row.icon"></i><span>{{ row.text }}</span>
-        </div>
-      </div>
-
-      <div v-if="updatesList.length === 0 && !checkingUpdates" class="empty-state">
-        <p>Everything is up to date.</p>
-      </div>
-
-      <div v-else class="plugins-grid">
-        <div v-for="u in updatesList" :key="u.name" class="plugin-card" :class="{ 'update-available': u.updateAvailable }">
-          <div class="plugin-header">
-            <div class="plugin-info">
-              <h3 class="plugin-name">{{ u.name }}</h3>
-              <span class="plugin-version">
-                v{{ u.installed }}
-                <template v-if="u.updateAvailable"> → <b class="latest-version">v{{ u.latest }}</b></template>
-              </span>
-            </div>
-            <div class="plugin-status">
-              <span v-if="u.updateAvailable" class="status-badge update">Update available</span>
-              <span v-else-if="u.status === 'unknown-version'" class="status-badge unknown" v-tooltip="u.reason">unknown version</span>
-              <span v-else class="status-badge installed"><i class="fas fa-check"></i> {{ u.status }}</span>
-            </div>
-          </div>
-          <div class="update-actions">
-            <BaseButton v-if="u.updateAvailable" variant="primary" :disabled="updatingName === u.name" @click="updateOne(u)">
-              <i class="fas fa-arrow-circle-up" :class="{ 'fa-spin': updatingName === u.name }"></i>
-              {{ updatingName === u.name ? 'Updating…' : 'Update' }}
-            </BaseButton>
-            <BaseSelect
-              class="policy-select"
-              :model-value="pluginPolicy(u.name)"
-              :options="policyOptions"
-              @update:model-value="(v) => setPolicy(u.name, v)"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div v-else-if="activeTab === 'builder'" class="plugins-list">
       <PluginBuilder @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
     </div>
@@ -466,8 +427,37 @@ import { checkPluginVersionPublishable } from '@/utils/pluginVersion.js';
 import { apiFetch } from '@/utils/apiFetch.js';
 import { useLicense } from '@/composables/useLicense';
 
+/** Close an open card menu on any click that lands outside it. */
+const clickOutside = {
+  beforeMount(el, binding) {
+    el.__clickOutside__ = (event) => {
+      if (!(el === event.target || el.contains(event.target))) binding.value(event);
+    };
+    document.addEventListener('click', el.__clickOutside__);
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el.__clickOutside__);
+    delete el.__clickOutside__;
+  },
+};
+
+/**
+ * SimpleModal renders `message` with v-html, and a permission string is not
+ * ours: normalizePermissions() passes any string in a plugin's manifest
+ * through verbatim, including `domain:<anything>`. The consent dialog is the
+ * one place a refused update still gets to put text on screen, so it is the
+ * one place that must not let that text become markup.
+ */
+function escapeHtml(value) {
+  return String(value).replace(
+    /[&<>"']/g,
+    (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch],
+  );
+}
+
 export default {
   name: 'Plugins',
+  directives: { clickOutside },
   components: {
     BaseInput,
     BaseSelect,
@@ -483,7 +473,6 @@ export default {
     const store = useStore();
     const modalRef = ref(null);
     const searchQuery = ref('');
-    const statusFilter = ref('all');
     const isLoading = ref(false);
     const installedPlugins = ref([]);
     const marketplacePlugins = ref([]);
@@ -604,11 +593,6 @@ export default {
         const q = searchQuery.value.toLowerCase();
         plugins = plugins.filter((p) => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
       }
-      if (statusFilter.value === 'installed') {
-        plugins = plugins.filter((p) => isPluginInstalled(p.name));
-      } else if (statusFilter.value === 'available') {
-        plugins = plugins.filter((p) => !isPluginInstalled(p.name));
-      }
       // Sort alphabetically by display name
       plugins.sort((a, b) => {
         const nameA = (a.displayName || a.name).toLowerCase();
@@ -639,89 +623,91 @@ export default {
         .join(' ');
     }
 
-    // ============ trust system W8: Updates tab state & actions ============
-    const updatesList = ref([]);
-    const checkingUpdates = ref(false);
-    const updatingName = ref(null);
-    const updateSettings = ref({ autoCheck: false, intervalHours: 24 });
-    // The last background pass, from update-status.json. Null until one has run.
+    // ============ Updates: silent by default, one interrupt ============
+    //
+    // Updating is infrastructure, not a decision. The background scheduler
+    // applies anything that does not widen a plugin's powers, and the
+    // permission-diff gate refuses anything that does — so the refusal is the
+    // only event worth a human. Everything else is a chip on the card the
+    // plugin already occupies.
+    //
+    // What used to be here: an Updates tab, a "Check for Updates" button, a
+    // "Check automatically (daily)" checkbox and an auto/notify/pinned
+    // dropdown on every row — 2 + 2N controls, none of which asked a question
+    // the user could answer better than the program could.
     const updateStatus = ref(null);
-    const availableUpdateCount = computed(() => updatesList.value.filter((u) => u.updateAvailable).length);
+    const updatingName = ref(null);
+    const openMenuFor = ref(null);
 
     /**
-     * What the last background pass did that the plugin list alone cannot say.
+     * At most ONE chip per installed plugin, ranked.
      *
-     * Deliberately NOT every entry in the summary: a plugin the scheduler
-     * merely noticed an update for is already a card below, and repeating it
-     * here would train the user to ignore this panel. Only the three things
-     * that happened *without* them are worth a row — an install that went
-     * ahead, an install that was refused for wanting new permissions, and an
-     * error.
-     *
-     * Plain text, never v-html: every string here interpolates a plugin name
-     * and an error message that originate off this machine.
+     * A card has room for exactly one fact, and "this needs your decision"
+     * outranks "this changed on its own", which outranks "this is frozen".
+     * Assignment therefore runs lowest priority first and lets later writes win.
      */
-    const updateStatusHighlights = computed(() => {
-      const status = updateStatus.value;
-      if (!status) return [];
-      const rows = [];
+    const pluginNotices = computed(() => {
+      const status = updateStatus.value || {};
+      const notices = {};
 
-      for (const blocked of status.blockedOnConsent || []) {
-        const added = (blocked.permissionDiff?.added || []).join(', ');
-        rows.push({
-          key: `blocked-${blocked.name}`,
-          severity: 'blocked',
-          icon: 'fas fa-shield-alt',
-          text: added
-            ? `${blocked.name} was NOT auto-updated — the new version requests ${added}. Nothing was installed; update it below to review and consent.`
-            : `${blocked.name} was NOT auto-updated — the new version requests permissions the installed one does not have. Nothing was installed.`,
-        });
+      for (const plugin of installedPlugins.value) {
+        if (plugin.updatePolicy === 'pinned') {
+          notices[plugin.name] = {
+            kind: 'pinned',
+            icon: 'fas fa-thumbtack',
+            label: 'Pinned',
+            detail: `Staying on v${plugin.version}. Updates are not applied.`,
+          };
+        }
       }
 
-      for (const updated of status.autoUpdated || []) {
-        rows.push({
-          key: `auto-${updated.name}`,
-          severity: 'auto',
+      for (const entry of status.autoUpdated || []) {
+        notices[entry.name] = {
+          kind: 'updated',
           icon: 'fas fa-check-circle',
-          text: `${updated.name} was updated automatically to v${updated.version}.`,
-        });
+          label: `Updated to v${entry.version}`,
+          detail: 'Applied automatically because it requested nothing new.',
+        };
       }
 
-      for (const entry of status.notified || []) {
-        if (!entry.error) continue; // a plain notify is already a card below
-        rows.push({
-          key: `failed-${entry.name}`,
-          severity: 'blocked',
+      // `failed` was `notified` before the notify policy was removed. Only its
+      // error entries ever carried anything, so old status files still read.
+      const failures = [...(status.failed || []), ...(status.notified || []).filter((n) => n && n.error)];
+      for (const entry of failures) {
+        notices[entry.name] = {
+          kind: 'failed',
           icon: 'fas fa-exclamation-triangle',
-          text: `${entry.name} could not be updated: ${entry.error}`,
-        });
+          label: 'Update failed',
+          detail: String(entry.error || 'Unknown error'),
+        };
       }
 
-      return rows;
+      for (const entry of status.blockedOnConsent || []) {
+        const added = (entry.permissionDiff?.added || []).join(', ');
+        notices[entry.name] = {
+          kind: 'review',
+          icon: 'fas fa-shield-alt',
+          label: 'Update needs review',
+          needsReview: true,
+          detail: added
+            ? `The new version requests ${added}. Nothing was installed.`
+            : 'The new version requests permissions the installed one does not have. Nothing was installed.',
+        };
+      }
+
+      return notices;
     });
 
-    function formatCheckedAt(iso) {
-      const when = new Date(iso);
-      return Number.isNaN(when.getTime()) ? 'unknown' : when.toLocaleString();
-    }
-    // Auto-update policy choices: auto = install updates that add no new
-    // permissions; notify = list here only; pinned = never update.
-    const policyOptions = [
-      { value: 'notify', label: 'notify' },
-      { value: 'auto', label: 'auto' },
-      { value: 'pinned', label: 'pinned' },
-    ];
-
-    function pluginPolicy(name) {
-      return installedPlugins.value.find((p) => p.name === name)?.updatePolicy || 'notify';
-    }
+    // Scoped to plugins that are actually installed, so a stale status entry
+    // for something since removed cannot advertise work that no longer exists.
+    const reviewCount = computed(
+      () => installedPlugins.value.filter((p) => pluginNotices.value[p.name]?.needsReview).length,
+    );
 
     /**
-     * Fetched on its own rather than inside the Promise.all below, because a
-     * client can outlive the server it talks to: against a backend without
-     * this route the response is a 404 whose body is not JSON, and folding
-     * that into the batch would take the whole Updates tab down to hide a
-     * banner. A missing summary is not an error — it means no pass has run.
+     * The last background pass. A missing summary is not an error — it means
+     * no pass has run — and a client can outlive the server it talks to, so a
+     * 404 whose body is not JSON must not throw here.
      */
     async function loadUpdateStatus() {
       try {
@@ -734,65 +720,60 @@ export default {
       }
     }
 
-    async function loadUpdates() {
-      checkingUpdates.value = true;
-      try {
-        const [uResp, sResp] = await Promise.all([
-          apiFetch(`${API_CONFIG.BASE_URL}/plugins/updates`),
-          apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`),
-        ]);
-        const uData = await uResp.json();
-        if (uData.success) updatesList.value = uData.updates || [];
-        const sData = await sResp.json();
-        if (sData.success) updateSettings.value = sData.settings;
-      } catch (err) {
-        console.error('[Plugins] loadUpdates failed:', err);
-      } finally {
-        checkingUpdates.value = false;
-      }
-      await loadUpdateStatus();
+    function isPinned(plugin) {
+      return plugin.updatePolicy === 'pinned';
     }
 
-    async function toggleAutoCheck(enabled) {
-      try {
-        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`, {
-          method: 'POST',
-          body: JSON.stringify({ autoCheck: enabled }),
-        });
-        const data = await resp.json();
-        if (data.success) updateSettings.value = data.settings;
-      } catch (err) {
-        console.error('[Plugins] toggleAutoCheck failed:', err);
-      }
+    function toggleMenu(name) {
+      openMenuFor.value = openMenuFor.value === name ? null : name;
     }
 
-    async function setPolicy(name, policy) {
+    function closeMenu(name) {
+      if (openMenuFor.value === name) openMenuFor.value = null;
+    }
+
+    /**
+     * Pinning is what earns the right to update silently: someone who cannot
+     * tolerate a version moving under them has somewhere to say so. It lives
+     * in the overflow menu because almost nobody needs it.
+     */
+    async function togglePin(plugin) {
+      openMenuFor.value = null;
+      const policy = isPinned(plugin) ? 'auto' : 'pinned';
       try {
-        await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-policy/${encodeURIComponent(name)}`, {
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-policy/${encodeURIComponent(plugin.name)}`, {
           method: 'POST',
           body: JSON.stringify({ policy }),
         });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error || 'unknown error');
         await fetchInstalledPlugins();
       } catch (err) {
-        console.error('[Plugins] setPolicy failed:', err);
+        emit('show-alert', 'Error', `Could not change the update setting: ${err.message}`);
       }
     }
 
-    async function updateOne(u, acceptedPermissions = false) {
-      updatingName.value = u.name;
+    /**
+     * The one interrupt.
+     *
+     * Reached only from a card whose update was refused for asking more than
+     * the installed version had — everything else applied itself. Re-POSTs
+     * without consent first so the diff on screen is the server's current
+     * answer rather than a possibly-stale line from the status file.
+     */
+    async function reviewUpdate(plugin, acceptedPermissions = false) {
+      updatingName.value = plugin.name;
       try {
-        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update/${encodeURIComponent(u.name)}`, {
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update/${encodeURIComponent(plugin.name)}`, {
           method: 'POST',
           body: JSON.stringify({ acceptedPermissions }),
         });
         const data = await resp.json();
 
         if (data.requiresConsent) {
-          // The permission-diff gate fired — an update can never gain powers
-          // without explicit re-consent.
-          const added = data.permissionDiff?.added || [];
+          const added = (data.permissionDiff?.added || []).map(escapeHtml);
           const confirmed = await modalRef.value.showModal({
-            title: `"${u.name}" update requests new permissions`,
+            title: `"${plugin.name}" update requests new permissions`,
             message:
               `This update adds capabilities the currently installed version does not have:<br><br>` +
               `<b>${added.join('</b><br><b>')}</b><br><br>` +
@@ -804,14 +785,14 @@ export default {
           });
           if (confirmed) {
             updatingName.value = null;
-            return updateOne(u, true);
+            return reviewUpdate(plugin, true);
           }
           return;
         }
 
         if (data.success) {
-          emit('show-alert', 'Success', `"${u.name}" updated to v${data.version}${data.trustTier ? ` · ${data.trustTier}` : ''}`);
-          await Promise.all([loadUpdates(), fetchInstalledPlugins()]);
+          emit('show-alert', 'Success', `"${plugin.name}" updated to v${data.version}${data.trustTier ? ` · ${data.trustTier}` : ''}`);
+          await Promise.all([fetchInstalledPlugins(), loadUpdateStatus()]);
         } else {
           emit('show-alert', 'Error', `Update failed: ${data.error}`);
         }
@@ -982,31 +963,18 @@ export default {
       }
     }
 
-    async function refreshPlugins(showFeedback = false) {
-      // Always show loading when explicitly refreshing
+    async function refreshPlugins() {
       isLoading.value = true;
-
       try {
-        // Run fetches in background
         await Promise.all([
           fetchInstalledPlugins(),
           fetchMarketplacePlugins(),
           store.dispatch('marketplace/fetchMyPurchases'),
           store.dispatch('marketplace/fetchMyInstalls'),
         ]);
-
-        // Show success feedback if manually triggered
-        if (showFeedback) {
-          emit('show-alert', 'Success', 'Plugins refreshed successfully!');
-        }
       } finally {
         isLoading.value = false;
       }
-    }
-
-    // Wrapper for manual refresh with feedback
-    function manualRefresh() {
-      refreshPlugins(true);
     }
 
     // trust system Layer 1: human-readable capability labels for the
@@ -1552,6 +1520,9 @@ export default {
       console.log('[Plugins] Received plugin-installed event, refreshing...');
       try {
         await fetchInstalledPlugins();
+        // A background auto-update broadcasts this too, so the chip that
+        // reports it has to be re-read here, not only at mount.
+        await loadUpdateStatus();
         await store.dispatch('tools/refreshAllTools');
         console.log(
           '[Plugins] Refresh complete, installed plugins:',
@@ -1585,11 +1556,9 @@ export default {
         refreshPlugins();
         // Needed before the Publish tab can tell create from update.
         fetchMyPublishedPlugins();
-        // The count badge lives ON the Updates tab. Without this it was always
-        // 0 until you clicked that tab, so the only signal that an update
-        // existed was gated behind the action it was meant to prompt. Cheap:
-        // refreshPlugins() already fetches the marketplace registry twice.
-        loadUpdates();
+        // Drives the review badge — the only thing on this screen still
+        // allowed to ask for attention.
+        loadUpdateStatus();
       }
 
       // Listen for realtime plugin events
@@ -1607,7 +1576,6 @@ export default {
       emit,
       modalRef,
       searchQuery,
-      statusFilter,
       activeTab,
       isLoading,
       installedPlugins,
@@ -1629,25 +1597,21 @@ export default {
       versionCanPublish,
       versionBlockReason,
       isPluginInstalled,
-      getDisplayName,      trustTierLabel,
+      getDisplayName,
+      trustTierLabel,
       trustTooltipText,
-      updatesList,
-      checkingUpdates,
       updatingName,
-      updateSettings,
       updateStatus,
-      updateStatusHighlights,
-      formatCheckedAt,
-      availableUpdateCount,
-      policyOptions,
-      pluginPolicy,
-      loadUpdates,
-      toggleAutoCheck,
-      setPolicy,
-      updateOne,
+      pluginNotices,
+      reviewCount,
+      reviewUpdate,
+      isPinned,
+      togglePin,
+      openMenuFor,
+      toggleMenu,
+      closeMenu,
       formatSize,
       refreshPlugins,
-      manualRefresh,
       installPlugin,
       confirmUninstall,
       selectPlugin,
@@ -1763,31 +1727,6 @@ export default {
 
 .search-wrapper {
   flex: 1;
-}
-
-.controls-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.controls-group :deep(.form-field) {
-  width: auto !important;
-  min-width: fit-content !important;
-}
-
-.controls-group :deep(.custom-select) {
-  width: 100% !important;
-  min-width: 100px !important;
-}
-
-.controls-group :deep(.selected) {
-  white-space: nowrap;
-  padding-right: 28px;
-  width: 100% !important;
-  display: flex;
-  justify-content: space-between;
-  gap: 0;
 }
 
 .tabs {
@@ -1931,61 +1870,11 @@ button.base-button.primary.refresh {
   background: rgba(127, 129, 147, 0.15);
   padding: 2px 8px;
   border-radius: 4px;
-}/* trust system W8: Updates tab */
-.updates-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
 }
 
-.auto-check-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.85em;
-  opacity: 0.85;
-  cursor: pointer;
-}
-
-.update-status-panel {
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-}
-
-.update-status-when {
-  font-size: 0.75em;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.6;
-  margin-bottom: 8px;
-}
-
-.update-status-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 0.85em;
-  line-height: 1.5;
-  padding: 3px 0;
-}
-
-.update-status-row i {
-  margin-top: 3px;
-}
-
-.update-status-row.blocked i {
-  color: var(--color-yellow);
-}
-
-.update-status-row.auto i {
-  color: var(--color-green);
-}
-
-.updates-count {
-  background: var(--color-green);
+/* Updates surface: one chip per card, and the overflow that holds the pin. */
+.review-count {
+  background: var(--color-yellow);
   color: var(--color-bg, #111);
   border-radius: 10px;
   padding: 0 7px;
@@ -1994,35 +1883,103 @@ button.base-button.primary.refresh {
   font-weight: 700;
 }
 
-.plugin-card.update-available {
-  border-color: var(--color-green);
+.notice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75em;
+  padding: 3px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  background: rgba(127, 129, 147, 0.15);
+  color: var(--color-text-muted);
 }
 
-.latest-version {
-  color: var(--color-green);
+.notice-chip.review {
+  color: var(--color-yellow);
+  background: color-mix(in srgb, var(--color-yellow) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-yellow) 45%, transparent);
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.status-badge.update {
+.notice-chip.review:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-yellow) 26%, transparent);
+}
+
+.notice-chip.review:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.notice-chip.updated {
   color: var(--color-green);
   background: color-mix(in srgb, var(--color-green) 12%, transparent);
-}
-
-.status-badge.unknown {
-  color: var(--color-yellow);
-  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
   cursor: help;
 }
 
-.update-actions {
+.notice-chip.failed {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  cursor: help;
+}
+
+.notice-chip.pinned {
+  cursor: help;
+}
+
+.card-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.card-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.card-menu-btn:hover {
+  color: var(--color-text);
+  background: rgba(127, 129, 147, 0.18);
+}
+
+.card-menu-items {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 195px;
+  padding: 4px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  background: var(--color-darker-0);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.card-menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text);
+  font-size: 0.85em;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.policy-select {
-  min-width: 110px;
-  max-width: 140px;
+.card-menu-item:hover {
+  background: rgba(127, 129, 147, 0.18);
 }
 
 /* trust system Layer 6: trust tier badge (display-only — never affects loading) */
