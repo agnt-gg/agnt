@@ -1958,7 +1958,10 @@ button.base-button.primary.refresh {
   padding: 4px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
-  background: var(--color-darker-0);
+  /* A floating layer must OCCLUDE what it covers. --color-darker-0 is a 10%
+     tint meant for recessed wells, so it let the card read straight through
+     the menu. --color-popup is the surface token for anything that floats. */
+  background: var(--color-popup);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 

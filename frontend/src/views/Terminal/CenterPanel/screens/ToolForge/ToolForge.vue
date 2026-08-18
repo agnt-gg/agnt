@@ -300,7 +300,7 @@ export default {
 }
 
 .terminal-modal-content {
-  background: var(--color-background);
+  background: var(--color-popup);
   border: 1px solid var(--color-primary);
   border-radius: 4px;
   padding: 24px;

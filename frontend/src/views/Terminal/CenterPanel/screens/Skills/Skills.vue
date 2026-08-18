@@ -1723,7 +1723,7 @@ onMounted(() => {
   z-index: 9999;
 }
 .modal-content {
-  background: var(--terminal-bg);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: 540px;

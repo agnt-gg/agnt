@@ -1733,7 +1733,7 @@ ${execution.log}
 }
 
 .modal-content {
-  background: var(--color-darker-0);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: 90%;

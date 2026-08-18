@@ -195,7 +195,7 @@ export default {
 }
 
 .modal-content {
-  background: var(--color-dark-navy, #01052a);
+  background: var(--color-popup);
   color: var(--color-light-green, #9fef00);
   padding: 20px 40px;
   border-radius: 8px;
@@ -204,7 +204,6 @@ export default {
 }
 
 body.light .modal-content {
-  background: #f0f0f0;
   color: #333;
   border: 1px solid var(--terminal-border-color);
 }

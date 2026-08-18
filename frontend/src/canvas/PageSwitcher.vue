@@ -259,7 +259,7 @@ export default {
 .ps-ctx-menu {
   position: fixed;
   z-index: 3000;
-  background: var(--color-darker-0, #0a0a14);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);

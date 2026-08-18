@@ -282,14 +282,13 @@ body.dark .menu-divider {
 .submenu-dropdown {
   position: relative;
   width: 100%;
-  background: rgba(17, 27, 117, 0.03);
+  background: var(--color-popup);
   border-radius: 4px;
   padding: 4px 0;
   margin-top: 4px;
 }
 
 body.dark .submenu-dropdown {
-  background: #1a1a2e;
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }

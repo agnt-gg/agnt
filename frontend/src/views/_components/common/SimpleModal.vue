@@ -126,6 +126,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  /* The scrim stays a black wash: a backdrop's job is to darken what is
+     behind it, which is the opposite of a surface. */
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
@@ -135,7 +137,10 @@ export default {
 
 .modal-content {
   display: flex;
-  background-color: white;
+  /* Both theme families already override this with a surface token, so the
+     literal was invisible until someone removed one of those rules — at which
+     point every modal in the app would have gone white. */
+  background-color: var(--color-popup);
   padding: 20px;
   border-radius: 16px;
   max-width: 400px;

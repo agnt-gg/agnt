@@ -394,7 +394,7 @@ export default {
 }
 
 .modal-content {
-  background: var(--color-navy);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   width: 100%;

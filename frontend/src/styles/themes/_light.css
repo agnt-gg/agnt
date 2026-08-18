@@ -331,8 +331,11 @@ body:not(.dark) #editor-panel {
 
 /* ═══════════════════ MODALS ═══════════════════ */
 
+/* --color-popup, not --surface-raised: a modal floats, and every theme
+   declares --color-popup for exactly that. Pointing light at a different token
+   than dark is how the two drift. */
 body:not(.dark) .modal-content {
-  background-color: var(--surface-raised);
+  background-color: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
 }
 

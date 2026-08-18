@@ -212,7 +212,7 @@ export default {
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--color-dark-navy);
+  background: var(--color-popup);
   border: 1px solid var(--color-green);
   border-top: none;
   border-radius: 0 0 4px 4px;

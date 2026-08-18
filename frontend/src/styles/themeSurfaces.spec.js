@@ -614,3 +614,155 @@ describe('theme surfaces: neutrals stay on their own side of mid-lightness', () 
     expect(saturation(clean)).toBeGreaterThan(0.9);
   });
 });
+
+/* ═══════════════════════════════════════════════════════════════ GUARD: POPUPS
+ *
+ * A FLOATING PANEL IS PAINTED WITH --color-popup.
+ *
+ * WHY (2026-08-18, reported by Nathan)
+ * ────────────────────────────────────
+ * The plugin card's overflow menu was `background: var(--color-darker-0)`.
+ * That token is rgba(0, 0, 0, 0.1) — a tint for RECESSED wells, which the
+ * field guard above exists to enforce. Painted onto a menu that floats over a
+ * card, a 10% wash does not occlude anything: the card's title and buttons
+ * read straight through the menu items.
+ *
+ * The same mistake was sitting in the canvas page-switcher's context menu
+ * (`position: fixed` + --color-darker-0) and in the workflow designer's
+ * submenu (a 3% wash, patched back to visibility by a `body.dark` rule that
+ * hardcoded #1a1a2e — so it looked fine in dark and was a ghost in light).
+ *
+ * ─── THE DISTINCTION THAT MATTERS ──────────────────────────────────────────
+ * Three kinds of surface, three different jobs, and they are not
+ * interchangeable:
+ *
+ *   well / field / hover   --color-darker-* — MUST composite, because it does
+ *                          not know what it is sitting on.
+ *   floating panel         --color-popup — MUST occlude, because its whole
+ *                          purpose is to sit above something else.
+ *   scrim / backdrop       a black wash — MUST darken, which is the opposite
+ *                          of a surface.
+ *
+ * A single token per job is what keeps eight themes agreeing. Every theme
+ * declares --color-popup; picking anything else (--terminal-bg, --color-navy,
+ * white, #1a1a2e) is how a modal ends up looking right in the one theme its
+ * author had open.
+ *
+ * ─── WHAT IS NOT A FLOATING PANEL ──────────────────────────────────────────
+ * Parts INSIDE a popup — its header band, its items, its footer — sit on an
+ * already-opaque surface, so a tint there is correct and is excluded by name.
+ * Backdrops are excluded: they are supposed to be a dark wash.
+ */
+/**
+ * The panel, by the TAIL of its class name.
+ *
+ * Tail rather than substring, because one letter separates the two cases:
+ * `.card-menu-items` IS the floating panel, `.card-menu-item` is one row
+ * inside it, and `.dropdown-header` is a band inside it. A substring match
+ * cannot tell those apart; the last segment can. Anything else — a
+ * `-wrapper`, a `-container`, a `-trigger` — is scenery around the panel and
+ * falls out for free without a blacklist to maintain.
+ */
+const PANEL_TAIL = /(^|-)(menu-items|modal-content|menu|dropdown|popover|popup|submenu|flyout)$/i;
+
+/** Floating panels that are opaque on purpose. Every entry needs a reason. */
+const POPUP_EXEMPT = [
+  {
+    // Under a custom wallpaper theme.js sets --color-background to
+    // `transparent`, and this popover floats over live widget content, so it
+    // forces full opacity through --color-background-rgb. --color-popup is
+    // 0.95 and would let that content bleed through the labels.
+    match: /\.ws-ai-popover\b/,
+    reason: 'documented: must be FULLY opaque over live widget content',
+  },
+];
+
+describe('theme surfaces: a floating panel occludes what it covers', () => {
+  const subjectOf = (sel) => sel.trim().split(/[\s>+~]+/).pop() || '';
+  const classesOf = (subject) => [...subject.matchAll(/[.#]([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
+
+  const isFloatingPanel = (sel) => {
+    const subject = subjectOf(sel);
+    if (/::/.test(subject)) return false;
+    if (STATE.test(subject) || SCRIM.test(subject)) return false;
+    return classesOf(subject).some((name) => PANEL_TAIL.test(name));
+  };
+
+  /** @returns {{file: string, sel: string, raw: string}[]} */
+  function floatingFills() {
+    const found = [];
+    for (const file of FILES) {
+      const css = blank(styleText(file));
+      for (const rule of rulesOf(css)) {
+        if (!rule.sel.split(',').some(isFloatingPanel)) continue;
+        for (const m of rule.body.matchAll(/(?:^|[;{])\s*background(?:-color)?\s*:\s*([^;}]+)/gi)) {
+          const raw = m[1].replace(/!important/i, '').trim();
+          if (/gradient|url\(|^(transparent|none|inherit|unset|initial)\b/i.test(raw)) continue;
+          found.push({ file: rel(file), sel: rule.sel.replace(/\s+/g, ' ').slice(0, 62), raw });
+        }
+      }
+    }
+    return found;
+  }
+
+  it('every floating panel is filled with --color-popup', () => {
+    const bad = floatingFills()
+      .filter((f) => !/--color-popup/.test(f.raw))
+      .filter((f) => !POPUP_EXEMPT.some((e) => e.match.test(f.sel)))
+      .map((f) => `  ${f.file}\n      ${f.sel}  ->  background: ${f.raw}`);
+
+    expect(
+      bad.join('\n') || 'clean',
+      'A menu / dropdown / popover / modal panel is not painted with --color-popup.\n'
+      + 'A floating layer has to OCCLUDE the content it covers, so its fill must be\n'
+      + 'a surface, not a tint and not a one-theme literal:\n\n'
+      + '  var(--color-darker-*)  a 10% wash -- the layer underneath reads through it\n'
+      + '  var(--terminal-bg), var(--color-navy), #1a1a2e, white\n'
+      + '                         correct in ONE theme, wrong in the other seven\n\n'
+      + 'Use `background: var(--color-popup)`. Every theme declares it.\n'
+      + 'A part INSIDE a popup (its header, items, footer) may be tinted and is\n'
+      + 'excluded by name. A genuinely-opaque-on-purpose panel goes in\n'
+      + 'POPUP_EXEMPT above, WITH the reason.\n',
+    ).toBe('clean');
+  });
+
+  it('is actually looking at popups (anti-vacuity)', () => {
+    const fills = floatingFills();
+    expect(fills.length, 'no floating panels found — the predicate is broken').toBeGreaterThan(20);
+    // and it must be finding real ones, not just the exempt handful
+    expect(fills.filter((f) => /--color-popup/.test(f.raw)).length).toBeGreaterThan(15);
+  });
+
+  it('every exemption is still a real exemption (no stale entries)', () => {
+    const fills = floatingFills();
+    for (const entry of POPUP_EXEMPT) {
+      const hit = fills.find((f) => entry.match.test(f.sel));
+      expect(hit, `stale POPUP_EXEMPT entry: ${entry.match} matches nothing`).toBeTruthy();
+      expect(
+        /--color-popup/.test(hit.raw),
+        `POPUP_EXEMPT entry ${entry.match} now uses --color-popup — delete the exemption`,
+      ).toBe(false);
+    }
+  });
+
+  it('rejects the exact bug it was written for (negative control)', () => {
+    // The reported value: a recessed-well tint on a floating menu.
+    const tint = resolve('var(--color-darker-0)', MAPS.dark);
+    expect(tint.a).toBeLessThan(0.2); // it cannot hide anything
+    const surface = resolve('var(--color-popup)', MAPS.dark);
+    expect(surface.a).toBeGreaterThan(0.9); // it can
+    // ...in BOTH families, which is the whole reason it is one token.
+    expect(resolve('var(--color-popup)', MAPS.light).a).toBeGreaterThan(0.9);
+
+    // The predicate itself: the panel is caught, its parts are not.
+    expect(isFloatingPanel('.card-menu-items')).toBe(true);
+    expect(isFloatingPanel('.ps-ctx-menu')).toBe(true);
+    expect(isFloatingPanel('.modal-content')).toBe(true);
+    expect(isFloatingPanel('body.dark .submenu-dropdown')).toBe(true);
+    expect(isFloatingPanel('.dropdown-header')).toBe(false);
+    expect(isFloatingPanel('.card-menu-item')).toBe(false);
+    expect(isFloatingPanel('.modal-overlay')).toBe(false);
+    expect(isFloatingPanel('.menu-items::-webkit-scrollbar')).toBe(false);
+    expect(isFloatingPanel('.dropdown-menu:hover')).toBe(false);
+  });
+});

@@ -1753,7 +1753,7 @@ export default {
 }
 
 .modal-content {
-  background: var(--color-darker-0, #1a1a2e);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color, rgba(var(--green-rgb), 0.2));
   border-radius: 12px;
   width: 90%;
