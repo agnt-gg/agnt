@@ -67,6 +67,29 @@ class UpdateScheduler {
   }
 
   /**
+   * The last pass's summary, or null if a pass has never run.
+   *
+   * tick() has always written this file and nothing has ever read it back, so
+   * the two facts only it records were unobservable: what was updated without
+   * the user asking, and — the one that matters — what was REFUSED because the
+   * new version wanted permissions the installed one did not have. That second
+   * one is a security-relevant event about a plugin already on the machine,
+   * and its entire audience was a console.warn.
+   *
+   * Returns null rather than throwing on a missing or corrupt file: "no pass
+   * has run" and "the file is unreadable" are both correctly rendered as
+   * "nothing to report", and neither should fail the request.
+   */
+  async getStatus() {
+    try {
+      const parsed = JSON.parse(await fs.readFile(this.statusPath, 'utf-8'));
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * One scheduler pass. Returns a summary (also persisted to statusPath):
    * { checkedAt, updatesAvailable, autoUpdated, blockedOnConsent, notified }
    */

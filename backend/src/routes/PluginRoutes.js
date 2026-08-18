@@ -1143,6 +1143,29 @@ router.post('/update-settings', requireAuthHeader, async (req, res) => {
 });
 
 /**
+ * GET /api/plugins/update-status
+ * The last background pass's summary: { checkedAt, updatesAvailable,
+ * autoUpdated, blockedOnConsent, notified }, or status: null if the scheduler
+ * has never run.
+ *
+ * The scheduler wrote this file from the day it shipped; no route served it
+ * and no client read it. So `notify` — the DEFAULT policy — notified nobody,
+ * and an auto-update refused for requesting new permissions was reported only
+ * to a console nobody tails. This is the endpoint that makes those visible.
+ */
+router.get('/update-status', requireAuthHeader, async (req, res) => {
+  try {
+    if (!PluginInstaller.updateScheduler) {
+      const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
+      PluginInstaller.updateScheduler = new UpdateScheduler(PluginInstaller);
+    }
+    res.json({ success: true, status: await PluginInstaller.updateScheduler.getStatus() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/plugins/update-policy/:name  { policy: 'auto'|'notify'|'pinned' }
  * Per-plugin auto-update policy, stored on the registry entry (merge
  * semantics preserve it across installs/updates).
