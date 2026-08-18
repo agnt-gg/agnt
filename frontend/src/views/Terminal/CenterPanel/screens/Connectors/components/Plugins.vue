@@ -239,6 +239,14 @@
         </label>
       </div>
 
+      <!-- What the background scheduler did while nobody was looking. -->
+      <div v-if="updateStatusHighlights.length" class="update-status-panel">
+        <div class="update-status-when">Last automatic check: {{ formatCheckedAt(updateStatus.checkedAt) }}</div>
+        <div v-for="row in updateStatusHighlights" :key="row.key" class="update-status-row" :class="row.severity">
+          <i :class="row.icon"></i><span>{{ row.text }}</span>
+        </div>
+      </div>
+
       <div v-if="updatesList.length === 0 && !checkingUpdates" class="empty-state">
         <p>Everything is up to date.</p>
       </div>
@@ -636,7 +644,66 @@ export default {
     const checkingUpdates = ref(false);
     const updatingName = ref(null);
     const updateSettings = ref({ autoCheck: false, intervalHours: 24 });
+    // The last background pass, from update-status.json. Null until one has run.
+    const updateStatus = ref(null);
     const availableUpdateCount = computed(() => updatesList.value.filter((u) => u.updateAvailable).length);
+
+    /**
+     * What the last background pass did that the plugin list alone cannot say.
+     *
+     * Deliberately NOT every entry in the summary: a plugin the scheduler
+     * merely noticed an update for is already a card below, and repeating it
+     * here would train the user to ignore this panel. Only the three things
+     * that happened *without* them are worth a row — an install that went
+     * ahead, an install that was refused for wanting new permissions, and an
+     * error.
+     *
+     * Plain text, never v-html: every string here interpolates a plugin name
+     * and an error message that originate off this machine.
+     */
+    const updateStatusHighlights = computed(() => {
+      const status = updateStatus.value;
+      if (!status) return [];
+      const rows = [];
+
+      for (const blocked of status.blockedOnConsent || []) {
+        const added = (blocked.permissionDiff?.added || []).join(', ');
+        rows.push({
+          key: `blocked-${blocked.name}`,
+          severity: 'blocked',
+          icon: 'fas fa-shield-alt',
+          text: added
+            ? `${blocked.name} was NOT auto-updated — the new version requests ${added}. Nothing was installed; update it below to review and consent.`
+            : `${blocked.name} was NOT auto-updated — the new version requests permissions the installed one does not have. Nothing was installed.`,
+        });
+      }
+
+      for (const updated of status.autoUpdated || []) {
+        rows.push({
+          key: `auto-${updated.name}`,
+          severity: 'auto',
+          icon: 'fas fa-check-circle',
+          text: `${updated.name} was updated automatically to v${updated.version}.`,
+        });
+      }
+
+      for (const entry of status.notified || []) {
+        if (!entry.error) continue; // a plain notify is already a card below
+        rows.push({
+          key: `failed-${entry.name}`,
+          severity: 'blocked',
+          icon: 'fas fa-exclamation-triangle',
+          text: `${entry.name} could not be updated: ${entry.error}`,
+        });
+      }
+
+      return rows;
+    });
+
+    function formatCheckedAt(iso) {
+      const when = new Date(iso);
+      return Number.isNaN(when.getTime()) ? 'unknown' : when.toLocaleString();
+    }
     // Auto-update policy choices: auto = install updates that add no new
     // permissions; notify = list here only; pinned = never update.
     const policyOptions = [
@@ -647,6 +714,24 @@ export default {
 
     function pluginPolicy(name) {
       return installedPlugins.value.find((p) => p.name === name)?.updatePolicy || 'notify';
+    }
+
+    /**
+     * Fetched on its own rather than inside the Promise.all below, because a
+     * client can outlive the server it talks to: against a backend without
+     * this route the response is a 404 whose body is not JSON, and folding
+     * that into the batch would take the whole Updates tab down to hide a
+     * banner. A missing summary is not an error — it means no pass has run.
+     */
+    async function loadUpdateStatus() {
+      try {
+        const resp = await apiFetch(`${API_CONFIG.BASE_URL}/plugins/update-status`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.success) updateStatus.value = data.status;
+      } catch (err) {
+        console.warn('[Plugins] update status unavailable:', err.message);
+      }
     }
 
     async function loadUpdates() {
@@ -665,6 +750,7 @@ export default {
       } finally {
         checkingUpdates.value = false;
       }
+      await loadUpdateStatus();
     }
 
     async function toggleAutoCheck(enabled) {
@@ -1499,6 +1585,11 @@ export default {
         refreshPlugins();
         // Needed before the Publish tab can tell create from update.
         fetchMyPublishedPlugins();
+        // The count badge lives ON the Updates tab. Without this it was always
+        // 0 until you clicked that tab, so the only signal that an update
+        // existed was gated behind the action it was meant to prompt. Cheap:
+        // refreshPlugins() already fetches the marketplace registry twice.
+        loadUpdates();
       }
 
       // Listen for realtime plugin events
@@ -1544,6 +1635,9 @@ export default {
       checkingUpdates,
       updatingName,
       updateSettings,
+      updateStatus,
+      updateStatusHighlights,
+      formatCheckedAt,
       availableUpdateCount,
       policyOptions,
       pluginPolicy,
@@ -1852,6 +1946,42 @@ button.base-button.primary.refresh {
   font-size: 0.85em;
   opacity: 0.85;
   cursor: pointer;
+}
+
+.update-status-panel {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.update-status-when {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.update-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85em;
+  line-height: 1.5;
+  padding: 3px 0;
+}
+
+.update-status-row i {
+  margin-top: 3px;
+}
+
+.update-status-row.blocked i {
+  color: var(--color-yellow);
+}
+
+.update-status-row.auto i {
+  color: var(--color-green);
 }
 
 .updates-count {
