@@ -149,8 +149,9 @@ class PluginInstaller {
       // installed before the trust system existed (no-op afterwards)
       await this.backfillTrustMetadata();
 
-      // trust system W8: background update checks — default OFF; no-op unless the
-      // user enables autoCheck in update-settings.
+      // Background update checks. Runs by default: an update that widens a
+      // plugin's permissions is refused by the diff gate, so what applies
+      // silently is only ever an update that asked for nothing new.
       try {
         const { default: UpdateScheduler } = await import('./UpdateScheduler.js');
         this.updateScheduler = new UpdateScheduler(this);

@@ -7,8 +7,7 @@ import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
 import PluginAssetLoader from '../plugins/PluginAssetLoader.js';
 import { bundleSelection } from '../plugins/PluginBundler.js';
-import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
-import { reloadPluginTools as reloadOrchestratorPluginTools } from '../services/orchestrator/tools.js';
+import reloadAllPlugins from '../plugins/reloadAllPlugins.js';
 import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
 import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
@@ -20,54 +19,6 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 /**
- * Helper function to reload plugins across all processes
- * Ensures all reloads complete before returning
- * @returns {Promise<{success: boolean, mainProcess: boolean, orchestrator: boolean, workflowProcess: boolean}>}
- */
-async function reloadAllPlugins() {
-  const results = {
-    success: true,
-    mainProcess: false,
-    orchestrator: false,
-    workflowProcess: false,
-  };
-
-  // Reload main process plugin manager
-  try {
-    await PluginManager.reload();
-    results.mainProcess = true;
-    console.log('[PluginRoutes] Main process plugin reload: success');
-  } catch (error) {
-    console.error('[PluginRoutes] Main process plugin reload failed:', error.message);
-    results.success = false;
-  }
-
-  // Reload orchestrator and workflow process in parallel, but wait for both
-  const [orchestratorResult, workflowResult] = await Promise.allSettled([
-    reloadOrchestratorPluginTools(),
-    WorkflowProcessBridge.reloadPlugins(),
-  ]);
-
-  // Process orchestrator result
-  if (orchestratorResult.status === 'fulfilled') {
-    results.orchestrator = true;
-    console.log('[PluginRoutes] Orchestrator plugin reload: success', orchestratorResult.value);
-  } else {
-    console.warn('[PluginRoutes] Orchestrator plugin reload failed:', orchestratorResult.reason?.message);
-  }
-
-  // Process workflow result
-  if (workflowResult.status === 'fulfilled') {
-    results.workflowProcess = true;
-    console.log('[PluginRoutes] Workflow process plugin reload: success', workflowResult.value);
-  } else {
-    console.warn('[PluginRoutes] Workflow process plugin reload failed:', workflowResult.reason?.message);
-  }
-
-  return results;
-}
-
-/**
  * Plugin API Routes
  *
  * Provides endpoints for managing plugins:
@@ -75,6 +26,10 @@ async function reloadAllPlugins() {
  * - List available plugins from marketplace
  * - Install/uninstall plugins
  * - Get plugin details
+ *
+ * reloadAllPlugins() used to be defined here, which meant only an HTTP request
+ * could reach it. It now lives in ../plugins/reloadAllPlugins.js so the
+ * background update scheduler can reload the running processes too.
  */
 
 // ============================================================================
@@ -1112,35 +1067,13 @@ router.post('/install-github', requireAuthHeader, async (req, res) => {
 });
 
 // ============================================================================
-// UPDATE SETTINGS & POLICY (trust system W8)
+// UPDATE STATUS & POLICY
 // ============================================================================
 
-/** GET /api/plugins/update-settings */
-router.get('/update-settings', requireAuthHeader, async (req, res) => {
-  try {
-    if (!PluginInstaller.updateScheduler) {
-      const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
-      PluginInstaller.updateScheduler = new UpdateScheduler(PluginInstaller);
-    }
-    res.json({ success: true, settings: await PluginInstaller.updateScheduler.getSettings() });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/** POST /api/plugins/update-settings  { autoCheck?, intervalHours? } */
-router.post('/update-settings', requireAuthHeader, async (req, res) => {
-  try {
-    if (!PluginInstaller.updateScheduler) {
-      const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
-      PluginInstaller.updateScheduler = new UpdateScheduler(PluginInstaller);
-    }
-    const settings = await PluginInstaller.updateScheduler.setSettings(req.body || {});
-    res.json({ success: true, settings });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// There is deliberately no route for update-settings. Whether to check for
+// updates is not a question a user can answer better than the program can, so
+// the scheduler simply runs. update-settings.json remains as a file-only
+// escape hatch; exposing it over HTTP is what put a checkbox on the screen.
 
 /**
  * GET /api/plugins/update-status
@@ -1166,16 +1099,22 @@ router.get('/update-status', requireAuthHeader, async (req, res) => {
 });
 
 /**
- * POST /api/plugins/update-policy/:name  { policy: 'auto'|'notify'|'pinned' }
- * Per-plugin auto-update policy, stored on the registry entry (merge
- * semantics preserve it across installs/updates).
+ * POST /api/plugins/update-policy/:name  { policy: 'auto'|'pinned' }
+ * Per-plugin update policy, stored on the registry entry (merge semantics
+ * preserve it across installs/updates).
+ *
+ * Binary on purpose. The third value, 'notify', asked the user to choose
+ * between two kinds of silence — it recorded the finding to a file nothing
+ * read — and it was the default, which is why nothing ever updated. 'pinned'
+ * is the only opt-out, and it now lives in a per-plugin overflow menu instead
+ * of a dropdown on every row.
  */
 router.post('/update-policy/:name', requireAuthHeader, async (req, res) => {
   try {
     const { name } = req.params;
     const { policy } = req.body || {};
-    if (!['auto', 'notify', 'pinned'].includes(policy)) {
-      return res.status(400).json({ success: false, error: "policy must be 'auto', 'notify', or 'pinned'" });
+    if (!['auto', 'pinned'].includes(policy)) {
+      return res.status(400).json({ success: false, error: "policy must be 'auto' or 'pinned'" });
     }
     const fsp = await import('fs/promises');
     const registry = JSON.parse(await fsp.readFile(PluginInstaller.registryPath, 'utf-8'));

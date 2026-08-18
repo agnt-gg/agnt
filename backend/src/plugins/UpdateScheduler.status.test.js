@@ -1,32 +1,25 @@
 /**
- * The scheduler's summary was write-only.
+ * Updates apply themselves; exactly one thing reaches the user.
  *
  * WHY THIS EXISTS
  * ---------------
- * `tick()` ends with:
+ * This scheduler used to default to OFF, with a per-plugin policy of
+ * "auto" | "notify" | "pinned" where "notify" — the DEFAULT — recorded its
+ * finding to update-status.json, a file that no route served and no client
+ * read. Three switches, all wired to "do nothing".
  *
- *     await fs.writeFile(this.statusPath, JSON.stringify(summary, null, 2))
+ * It now runs by default and takes every update that is not pinned. The thing
+ * that makes that safe rather than reckless is a single invariant:
  *
- * and that was the end of the road. Repository-wide, the only thing that ever
- * touched `update-status.json` again was a test asserting the file exists.
- * No method read it, no route served it, no client fetched it.
+ *     an auto-update calls updatePlugin() WITHOUT acceptedPermissions
  *
- * That made two facts unobservable to the person who owns the machine:
+ * so the permission-diff gate refuses anything that would widen a plugin's
+ * powers, changes nothing on disk, and records the refusal. Silence is
+ * therefore only ever granted to an update that asked for nothing new. If that
+ * invariant breaks, deleting the UI controls was the wrong call — so it is
+ * asserted here from several directions.
  *
- *   - `notified` — which is what the DEFAULT policy produces. A plugin under
- *     `notify` has an update, the scheduler dutifully records it, and the
- *     record is never shown to anyone. The default policy notified nobody.
- *
- *   - `blockedOnConsent` — an auto-update that was REFUSED because the new
- *     version asked for permissions the installed one did not have. That is a
- *     security-relevant event about code already on the machine, and its whole
- *     audience was a `console.warn` in a log nobody tails.
- *
- * `getStatus()` is the read side. These tests pin the round trip: what tick()
- * decided is what a caller can later read back, including the permission diff
- * that explains the refusal.
- *
- * The scheduler only ever touches its installer through `registryPath`,
+ * The scheduler only touches its installer through `registryPath`,
  * `checkForUpdates()` and `updatePlugin()`, so a stub installer exercises the
  * real code path with no filesystem beyond a temp dir and no network at all.
  */
@@ -39,11 +32,6 @@ import UpdateScheduler from './UpdateScheduler.js';
 
 let TMP;
 
-/**
- * @param registry  contents of registry.json — carries each plugin's updatePolicy
- * @param updates   what checkForUpdates() reports
- * @param onUpdate  stands in for updatePlugin(); receives the plugin name
- */
 function stubInstaller({ registry = { plugins: [] }, updates = [], onUpdate } = {}) {
   const calls = [];
   return {
@@ -60,6 +48,20 @@ function stubInstaller({ registry = { plugins: [] }, updates = [], onUpdate } = 
   };
 }
 
+/**
+ * A scheduler whose live-activation step is recorded instead of performed.
+ * The real one reloads the plugin manager, the orchestrator registry and the
+ * forked workflow child — none of which belong in a unit test.
+ */
+function makeScheduler(installer) {
+  const scheduler = new UpdateScheduler(installer);
+  scheduler.activated = [];
+  scheduler.activateUpdate = async (name, version) => {
+    scheduler.activated.push({ name, version });
+  };
+  return scheduler;
+}
+
 beforeEach(async () => {
   TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'agnt-update-status-'));
 });
@@ -68,51 +70,101 @@ afterEach(async () => {
   await fs.rm(TMP, { recursive: true, force: true });
 });
 
-describe('UpdateScheduler.getStatus', () => {
-  it('reports null before any pass has run', async () => {
-    const scheduler = new UpdateScheduler(stubInstaller());
-    expect(await scheduler.getStatus()).toBeNull();
+describe('the scheduler runs by default', () => {
+  it('starts with no settings file at all', async () => {
+    const scheduler = makeScheduler(stubInstaller());
+    await expect(scheduler.start()).resolves.toBe(true);
+    scheduler.stop();
   });
 
-  it('reports null for an unreadable file instead of throwing', async () => {
-    // A half-written file after a crash must render as "nothing to report",
-    // not as a 500 on the route that serves it.
-    const scheduler = new UpdateScheduler(stubInstaller());
-    await fs.writeFile(scheduler.statusPath, '{"checkedAt": "2026-');
-    await expect(scheduler.getStatus()).resolves.toBeNull();
+  it('defaults to checking every 6 hours', async () => {
+    const scheduler = makeScheduler(stubInstaller());
+    await expect(scheduler.getSettings()).resolves.toEqual({ autoCheck: true, intervalHours: 6 });
   });
 
-  it('reports null for valid JSON that is not an object', async () => {
-    const scheduler = new UpdateScheduler(stubInstaller());
-    await fs.writeFile(scheduler.statusPath, 'null');
-    expect(await scheduler.getStatus()).toBeNull();
+  it('honours autoCheck:false in the file-only escape hatch', async () => {
+    // There is deliberately no UI and no route for this. It exists so a power
+    // user is not trapped, not as a question to put on screen.
+    const scheduler = makeScheduler(stubInstaller());
+    await fs.writeFile(scheduler.settingsPath, JSON.stringify({ autoCheck: false }));
+    await expect(scheduler.start()).resolves.toBe(false);
   });
 
-  it('reads back what the notify policy recorded — the default policy is now observable', async () => {
+  it('never holds the process open', async () => {
+    // Now that this starts on every boot, a timer that keeps the event loop
+    // alive would hang every short-lived process that touches the installer.
+    const scheduler = makeScheduler(stubInstaller());
+    await scheduler.start();
+    expect(scheduler.timer.hasRef()).toBe(false);
+    expect(scheduler.bootTimer.hasRef()).toBe(false);
+    scheduler.stop();
+  });
+
+  it('stop() clears the boot timer as well as the interval', async () => {
+    const scheduler = makeScheduler(stubInstaller());
+    await scheduler.start();
+    scheduler.stop();
+    expect(scheduler.timer).toBeNull();
+    expect(scheduler.bootTimer).toBeNull();
+  });
+});
+
+describe('what a pass does', () => {
+  it('updates a plugin with no policy at all — the default is now to update', async () => {
+    const installer = stubInstaller({
+      registry: { plugins: [{ name: 'weather' }] },
+      updates: [{ name: 'weather', installed: '1.0.0', latest: '1.4.0', updateAvailable: true }],
+      onUpdate: () => ({ success: true, version: '1.4.0' }),
+    });
+    await installer._writeRegistry();
+    const scheduler = makeScheduler(installer);
+
+    const summary = await scheduler.tick();
+
+    expect(summary.autoUpdated).toEqual([{ name: 'weather', version: '1.4.0' }]);
+    // THE INVARIANT: silence is only ever granted to an update that asked for
+    // nothing new, because consent is never pre-granted here.
+    expect(installer.calls[0].options).toEqual({ acceptedPermissions: false });
+  });
+
+  it('treats a legacy "notify" entry as the new default rather than as pinned', async () => {
+    // "notify" was the old default and it notified nobody, so nobody chose it
+    // for what it did. Reading it as "do not update" would preserve the bug.
     const installer = stubInstaller({
       registry: { plugins: [{ name: 'weather', updatePolicy: 'notify' }] },
       updates: [{ name: 'weather', installed: '1.0.0', latest: '1.4.0', updateAvailable: true }],
+      onUpdate: () => ({ success: true, version: '1.4.0' }),
     });
     await installer._writeRegistry();
-    const scheduler = new UpdateScheduler(installer);
+    const scheduler = makeScheduler(installer);
 
-    const written = await scheduler.tick();
-    const read = await scheduler.getStatus();
+    const summary = await scheduler.tick();
 
-    // The whole point: the read side sees exactly what the write side decided.
-    expect(read).toEqual(written);
-    expect(read.notified).toEqual([{ name: 'weather', installed: '1.0.0', latest: '1.4.0' }]);
-    expect(read.updatesAvailable).toBe(1);
-    // notify must not install anything.
-    expect(installer.calls).toEqual([]);
+    expect(summary.autoUpdated).toEqual([{ name: 'weather', version: '1.4.0' }]);
   });
 
-  it('reads back a refused auto-update WITH the permissions that caused the refusal', async () => {
-    // The escalation invariant in tick() is only useful if the user can find
-    // out it fired. Without the diff the row would say "something was blocked"
-    // and the user would have no basis to decide anything.
+  it('never reports or touches a pinned plugin', async () => {
     const installer = stubInstaller({
-      registry: { plugins: [{ name: 'scraper', updatePolicy: 'auto' }] },
+      registry: { plugins: [{ name: 'frozen', updatePolicy: 'pinned' }] },
+      updates: [{ name: 'frozen', installed: '1.0.0', latest: '9.9.9', updateAvailable: true }],
+    });
+    await installer._writeRegistry();
+    const scheduler = makeScheduler(installer);
+
+    const summary = await scheduler.tick();
+
+    expect([...summary.autoUpdated, ...summary.blockedOnConsent, ...summary.failed]).toEqual([]);
+    expect(installer.calls).toEqual([]);
+    expect(scheduler.activated).toEqual([]);
+    // Still counted: pinned means "do not act", not "do not see".
+    expect(summary.updatesAvailable).toBe(1);
+  });
+
+  it('refuses an escalating update and records WHICH permissions caused it', async () => {
+    // Without the diff the chip could only say "something was blocked", and
+    // the user would have no basis on which to decide anything.
+    const installer = stubInstaller({
+      registry: { plugins: [{ name: 'scraper' }] },
       updates: [{ name: 'scraper', installed: '1.0.0', latest: '2.0.0', updateAvailable: true }],
       onUpdate: () => ({
         success: false,
@@ -121,102 +173,169 @@ describe('UpdateScheduler.getStatus', () => {
       }),
     });
     await installer._writeRegistry();
-    const scheduler = new UpdateScheduler(installer);
+    const scheduler = makeScheduler(installer);
 
-    await scheduler.tick();
-    const read = await scheduler.getStatus();
+    const summary = await scheduler.tick();
 
-    expect(read.blockedOnConsent).toHaveLength(1);
-    expect(read.blockedOnConsent[0].name).toBe('scraper');
-    expect(read.blockedOnConsent[0].permissionDiff.added).toEqual(['filesystem', 'spawn-process']);
-    expect(read.autoUpdated).toEqual([]);
+    expect(summary.blockedOnConsent).toHaveLength(1);
+    expect(summary.blockedOnConsent[0].name).toBe('scraper');
+    expect(summary.blockedOnConsent[0].permissionDiff.added).toEqual(['filesystem', 'spawn-process']);
+    expect(summary.autoUpdated).toEqual([]);
+    // Nothing changed on disk, so nothing may be activated in the live process.
+    expect(scheduler.activated).toEqual([]);
   });
 
-  it('reads back a completed auto-update and its new version', async () => {
+  it('records a failure so a silently broken plugin is still visible', async () => {
     const installer = stubInstaller({
-      registry: { plugins: [{ name: 'notes', updatePolicy: 'auto' }] },
+      registry: { plugins: [{ name: 'flaky' }] },
+      updates: [{ name: 'flaky', installed: '1.0.0', latest: '1.2.0', updateAvailable: true }],
+      onUpdate: () => ({ success: false, error: 'download failed: 502' }),
+    });
+    await installer._writeRegistry();
+    const scheduler = makeScheduler(installer);
+
+    const summary = await scheduler.tick();
+
+    expect(summary.failed).toEqual([{ name: 'flaky', error: 'download failed: 502' }]);
+    expect(scheduler.activated).toEqual([]);
+  });
+
+  it('ignores a plugin that has no update', async () => {
+    const installer = stubInstaller({
+      registry: { plugins: [{ name: 'weather' }] },
+      updates: [{ name: 'weather', installed: '1.0.0', latest: '1.0.0', updateAvailable: false }],
+    });
+    await installer._writeRegistry();
+    const scheduler = makeScheduler(installer);
+
+    const summary = await scheduler.tick();
+
+    expect(summary.updatesAvailable).toBe(0);
+    expect(installer.calls).toEqual([]);
+  });
+});
+
+describe('a completed update is made live, not just written to disk', () => {
+  it('activates after a successful auto-update', async () => {
+    // updatePlugin() only changes the disk. The main process, the orchestrator
+    // and the forked workflow child each hold their own loaded copy, and the
+    // HTTP route reloads all three on the way out — a path this never takes.
+    // Without activation the registry says v1.1.0 while every execution still
+    // runs v1.0.0 until restart.
+    const installer = stubInstaller({
+      registry: { plugins: [{ name: 'notes' }] },
+      updates: [{ name: 'notes', installed: '1.0.0', latest: '1.1.0', updateAvailable: true }],
+      onUpdate: () => ({ success: true, version: '1.1.0' }),
+    });
+    await installer._writeRegistry();
+    const scheduler = makeScheduler(installer);
+
+    await scheduler.tick();
+
+    expect(scheduler.activated).toEqual([{ name: 'notes', version: '1.1.0' }]);
+  });
+
+  it('does not fail the pass when activation throws', async () => {
+    const installer = stubInstaller({
+      registry: { plugins: [{ name: 'notes' }] },
       updates: [{ name: 'notes', installed: '1.0.0', latest: '1.1.0', updateAvailable: true }],
       onUpdate: () => ({ success: true, version: '1.1.0' }),
     });
     await installer._writeRegistry();
     const scheduler = new UpdateScheduler(installer);
+    scheduler.activateUpdate = async () => {
+      throw new Error('workflow child is down');
+    };
 
-    await scheduler.tick();
-    const read = await scheduler.getStatus();
+    // The update already succeeded on disk. A reload failure is a degraded
+    // state to log, not a reason to lose the record of what happened.
+    const summary = await scheduler.tick();
+    expect(summary.autoUpdated).toEqual([{ name: 'notes', version: '1.1.0' }]);
+  });
+});
 
-    expect(read.autoUpdated).toEqual([{ name: 'notes', version: '1.1.0' }]);
-    // The invariant that makes unattended updates safe: no accepted permissions.
-    expect(installer.calls[0].options).toEqual({ acceptedPermissions: false });
+describe('UpdateScheduler.getStatus', () => {
+  it('reports null before any pass has run', async () => {
+    expect(await makeScheduler(stubInstaller()).getStatus()).toBeNull();
   });
 
-  it('reads back an update failure so a silently broken plugin is visible', async () => {
-    const installer = stubInstaller({
-      registry: { plugins: [{ name: 'flaky', updatePolicy: 'auto' }] },
-      updates: [{ name: 'flaky', installed: '1.0.0', latest: '1.2.0', updateAvailable: true }],
-      onUpdate: () => ({ success: false, error: 'download failed: 502' }),
-    });
-    await installer._writeRegistry();
-    const scheduler = new UpdateScheduler(installer);
-
-    await scheduler.tick();
-    const read = await scheduler.getStatus();
-
-    expect(read.notified).toEqual([{ name: 'flaky', error: 'download failed: 502' }]);
+  it('reports null for an unreadable file instead of throwing', async () => {
+    // A half-written file after a crash must read as "nothing to report", not
+    // as a 500 on the route that serves it.
+    const scheduler = makeScheduler(stubInstaller());
+    await fs.writeFile(scheduler.statusPath, '{"checkedAt": "2026-');
+    await expect(scheduler.getStatus()).resolves.toBeNull();
   });
 
-  it('never reports a pinned plugin, in any bucket', async () => {
+  it('reports null for valid JSON that is not an object', async () => {
+    const scheduler = makeScheduler(stubInstaller());
+    await fs.writeFile(scheduler.statusPath, 'null');
+    expect(await scheduler.getStatus()).toBeNull();
+  });
+
+  it('reads back exactly what the pass decided', async () => {
     const installer = stubInstaller({
-      registry: { plugins: [{ name: 'frozen', updatePolicy: 'pinned' }] },
-      updates: [{ name: 'frozen', installed: '1.0.0', latest: '9.9.9', updateAvailable: true }],
+      registry: { plugins: [{ name: 'weather' }] },
+      updates: [{ name: 'weather', installed: '1.0.0', latest: '1.4.0', updateAvailable: true }],
+      onUpdate: () => ({ success: true, version: '1.4.0' }),
     });
     await installer._writeRegistry();
-    const scheduler = new UpdateScheduler(installer);
+    const scheduler = makeScheduler(installer);
 
-    await scheduler.tick();
-    const read = await scheduler.getStatus();
-
-    const everyBucket = [...read.notified, ...read.autoUpdated, ...read.blockedOnConsent];
-    expect(everyBucket).toEqual([]);
-    expect(installer.calls).toEqual([]);
-    // Still counted as available — pinned means "do not act", not "do not see".
-    expect(read.updatesAvailable).toBe(1);
+    const written = await scheduler.tick();
+    expect(await scheduler.getStatus()).toEqual(written);
   });
 
   it('replaces the previous pass rather than accumulating', async () => {
     const installer = stubInstaller({
-      registry: { plugins: [{ name: 'weather', updatePolicy: 'notify' }] },
+      registry: { plugins: [{ name: 'weather' }] },
       updates: [{ name: 'weather', installed: '1.0.0', latest: '1.4.0', updateAvailable: true }],
+      onUpdate: () => ({ success: true, version: '1.4.0' }),
     });
     await installer._writeRegistry();
-    const scheduler = new UpdateScheduler(installer);
+    const scheduler = makeScheduler(installer);
 
     await scheduler.tick();
     const first = await scheduler.getStatus();
 
-    // Second pass: nothing to report anymore.
     installer.checkForUpdates = async () => ({ success: true, updates: [] });
     await scheduler.tick();
     const second = await scheduler.getStatus();
 
-    expect(second.notified).toEqual([]);
+    expect(second.autoUpdated).toEqual([]);
     expect(second.updatesAvailable).toBe(0);
     expect(second.checkedAt).not.toBe(first.checkedAt);
   });
 });
 
-describe('the route that serves it', () => {
-  // The handler is three lines and lives on a router that drags in the plugin
-  // manager, the workflow bridge and the orchestrator tool registry, so it is
-  // asserted at the source. What matters is that the endpoint exists, is
-  // behind the same auth guard as its neighbours, and answers from getStatus()
-  // rather than re-reading the file with its own copy of the path.
-  it('is registered, auth-guarded, and reads through getStatus()', async () => {
-    const source = await fs.readFile(path.join(import.meta.dirname, '..', 'routes', 'PluginRoutes.js'), 'utf-8');
+describe('the routes that back this', () => {
+  // These handlers are a few lines each and live on a router that drags in the
+  // plugin manager, the workflow bridge and the orchestrator tool registry, so
+  // they are asserted at the source.
+  let source;
 
+  beforeEach(async () => {
+    source = await fs.readFile(path.join(import.meta.dirname, '..', 'routes', 'PluginRoutes.js'), 'utf-8');
+  });
+
+  it('serves the status through getStatus(), behind auth', () => {
     const handler = /router\.get\('\/update-status',([\s\S]*?)\n\}\);/.exec(source);
     expect(handler, 'GET /update-status is not registered').not.toBeNull();
     expect(handler[1]).toMatch(/requireAuthHeader/);
     expect(handler[1]).toMatch(/updateScheduler\.getStatus\(\)/);
     expect(handler[1]).not.toMatch(/update-status\.json/);
+  });
+
+  it('exposes no update-settings route in either direction', () => {
+    // Whether to check for updates is not a question a user can answer better
+    // than the program can. A route here is what put a checkbox on screen.
+    expect(source).not.toMatch(/router\.(get|post)\('\/update-settings'/);
+  });
+
+  it('accepts only the binary policy', () => {
+    const handler = /router\.post\('\/update-policy\/:name',([\s\S]*?)\n\}\);/.exec(source);
+    expect(handler, 'POST /update-policy/:name is not registered').not.toBeNull();
+    expect(handler[1]).toMatch(/\['auto', 'pinned'\]/);
+    expect(handler[1]).not.toMatch(/'notify'/);
   });
 });

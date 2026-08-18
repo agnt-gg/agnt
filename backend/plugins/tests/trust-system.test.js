@@ -201,7 +201,16 @@ const realGetMarketplaceRegistry = installer.getMarketplaceRegistry.bind(install
 // === W8: UpdateScheduler ======================================================
 {
   const sched = new UpdateScheduler(installer);
-  // Registry: three plugins with three policies
+  // Record live activation instead of performing it: the real one reloads the
+  // plugin manager and the forked workflow child, neither of which belongs in
+  // a unit test.
+  const activated = [];
+  sched.activateUpdate = async (name, version) => {
+    activated.push({ name, version });
+  };
+
+  // signed-plugin keeps the LEGACY 'notify' value on purpose — that policy no
+  // longer exists and must now read as the default (update), not as pinned.
   const reg = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
   for (const [name, policy] of [['signed-plugin', 'notify'], ['gh-plugin', 'pinned']]) {
     const e = reg.plugins.find((p) => p.name === name);
@@ -235,12 +244,15 @@ const realGetMarketplaceRegistry = installer.getMarketplaceRegistry.bind(install
   installer.checkForUpdates = realCheck;
   installer.updatePlugin = realUpdate;
 
-  check('W8a notify policy → notified, not updated', summary.notified.some((n) => n.name === 'signed-plugin') && !calls.some((c) => c.name === 'signed-plugin'));
-  check('W8b pinned policy → untouched entirely', !calls.some((c) => c.name === 'gh-plugin') && !summary.notified.some((n) => n.name === 'gh-plugin'));
-  check('W8c auto policy → updated WITHOUT acceptedPermissions', summary.autoUpdated.some((a) => a.name === 'auto-plugin') && calls.find((c) => c.name === 'auto-plugin')?.opts?.acceptedPermissions === false);
-  check('W8d auto + escalation → blocked on consent, never granted', summary.blockedOnConsent.some((b) => b.name === 'esc-plugin'));
+  check('W8a legacy "notify" policy → reads as the default and UPDATES', summary.autoUpdated.some((a) => a.name === 'signed-plugin') && calls.some((c) => c.name === 'signed-plugin'));
+  check('W8b pinned policy → untouched entirely, the only opt-out', !calls.some((c) => c.name === 'gh-plugin') && !summary.autoUpdated.some((a) => a.name === 'gh-plugin') && !summary.failed.some((f) => f.name === 'gh-plugin'));
+  check('W8c update runs WITHOUT acceptedPermissions (the invariant)', summary.autoUpdated.some((a) => a.name === 'auto-plugin') && calls.every((c) => c.opts?.acceptedPermissions === false));
+  check('W8d escalation → blocked on consent, never granted', summary.blockedOnConsent.some((b) => b.name === 'esc-plugin'));
   check('W8e status file persisted', fs.existsSync(path.join(SANDBOX, 'plugins', 'update-status.json')));
-  check('W8f scheduler default OFF (autoCheck=false → start refuses)', (await sched.start()) === false);
+  check('W8f a completed update is activated in the running processes', activated.some((a) => a.name === 'auto-plugin'));
+  check('W8g a refused update is never activated', !activated.some((a) => a.name === 'esc-plugin'));
+  check('W8h scheduler runs by DEFAULT (no settings file → start succeeds)', (await sched.start()) === true);
+  sched.stop();
 }
 
 // === W1: remote transform maps server trust columns ==========================
