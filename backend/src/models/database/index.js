@@ -1632,6 +1632,65 @@ function runMigrations() {
         });
       });
 
+      // Migration: multi-node execution (2026-08-19).
+      //
+      // `tasks` is already a job queue in everything but name — it has status,
+      // order_index and dependencies — with exactly one thing missing: no way
+      // to say WHICH process is doing a row. One process needed no such column;
+      // two do, and without it both run the same task.
+      //
+      // claimed_by + claim_expires_at are a LEASE, not a lock. The distinction
+      // is the whole design: a lock held by a process that dies is held
+      // forever and needs an external reaper to break it, whereas a lease that
+      // is not renewed simply stops being valid. A crashed node therefore needs
+      // no heartbeat protocol, no liveness detector and no operator — its tasks
+      // become claimable again by the passage of time alone. Deliberately
+      // INTEGER epoch-millis rather than a DATETIME string, because the value
+      // is only ever compared against Date.now() and lexicographic comparison
+      // of ISO strings is a trap waiting for the first timezone-suffixed row.
+      //
+      // attempt_count exists so a task that kills its claimant cannot be
+      // retried forever by the rest of the fleet. Reclaiming an expired lease
+      // is indistinguishable from a first attempt without it: a task that
+      // reliably crashes whoever picks it up would circulate through every
+      // node, each one dying, permanently. The counter makes that terminal
+      // rather than infinite.
+      //
+      // node_id on the two ledger tables answers "where was this actually
+      // spent". It is NULL on every existing row and on every backfill, never
+      // 0 or 'local' — the same NULL-not-zero rule the ledger already lives by
+      // (see services/execution/LedgerRecorder.js). A historical row genuinely
+      // has no node attribution, and inventing one would make the fleet
+      // breakdown quietly wrong instead of visibly incomplete.
+      //
+      // Every column is additive and nullable, so code that predates this
+      // migration keeps working unchanged and a downgrade needs no data
+      // migration at all.
+      const clusterColumns = [
+        { table: 'tasks', name: 'claimed_by', type: 'TEXT' },
+        { table: 'tasks', name: 'claim_expires_at', type: 'INTEGER' },
+        { table: 'tasks', name: 'attempt_count', type: 'INTEGER DEFAULT 0' },
+        { table: 'llm_calls', name: 'node_id', type: 'TEXT' },
+        { table: 'agent_executions', name: 'node_id', type: 'TEXT' },
+      ];
+      clusterColumns.forEach((col) => {
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to ${col.table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to ${col.table} table`);
+          }
+        });
+      });
+
+      // The claim query's covering index: find the next claimable task without
+      // scanning every task ever created. Registered through createIndex() —
+      // NOT db.run — because it names claim_expires_at, a column that arrives
+      // in the migration directly above. Building it inline here would work on
+      // a fresh database and throw `no such column` on every upgrading install,
+      // which is the exact defect schemaOrder.test.js exists to prevent.
+      createIndex(`CREATE INDEX IF NOT EXISTS idx_tasks_claimable ON tasks(status, claim_expires_at)`);
+
 
       // Migration: Add deleted_at column to agents and workflows for soft-delete (2026-04-12)
       // Preserves execution history (agent_executions, workflow_executions, tasks, etc.)
