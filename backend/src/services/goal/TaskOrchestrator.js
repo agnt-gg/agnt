@@ -13,6 +13,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
+import { getNodeId } from '../cluster/nodeIdentity.js';
 import autonomousMessageService from '../AutonomousMessageService.js';
 import db from '../../models/database/index.js';
 import fs from 'fs/promises';
@@ -145,15 +146,31 @@ class TaskOrchestrator {
 
         if (tasksToExecute.length === 0) continue;
 
-        // Check dependencies for all tasks in this group
+        // Check dependencies for all tasks in this group, then take a claim on
+        // each one we intend to run.
+        //
+        // The claim is the ONLY thing standing between two nodes and running
+        // the same task twice, and it is deliberately here rather than inside
+        // executeTask: a task must be excluded from this group's batch before
+        // any work begins on it, not abandoned halfway through.
+        //
+        // On a single node this is inert. There is no contention, so every
+        // claim succeeds and executableTasks is exactly what it was before.
         const executableTasks = [];
         for (const task of tasksToExecute) {
           const canExecute = await TaskModel.canExecuteTask(task.id);
-          if (canExecute) {
-            executableTasks.push(task);
-          } else {
+          if (!canExecute) {
             console.log(`Task ${task.id} dependencies not met, skipping for now`);
+            continue;
           }
+          const claimed = await TaskModel.claim(task.id, getNodeId());
+          if (!claimed) {
+            // Someone else holds a live lease on it. Not an error, and not
+            // something to retry here — whoever holds it is running it.
+            console.log(`[TaskOrchestrator] Task ${task.id} is claimed by another node — skipping`);
+            continue;
+          }
+          executableTasks.push(task);
         }
 
         if (executableTasks.length === 0) continue;
@@ -243,8 +260,47 @@ class TaskOrchestrator {
       await this.handleGoalError(goalId, error);
     }
   }
+  /**
+   * Keep this node's claim on a task alive for as long as the task is running.
+   *
+   * WHY A TIMER AND NOT A PROGRESS HOOK
+   * ───────────────────────────────────
+   * The lease has to outlive the work, and the work is an agent turn: it can
+   * sit inside a single provider call for minutes and report nothing. Renewing
+   * from a progress callback would let the lease lapse during exactly the
+   * quiet stretch it exists to cover, and the reaper would then hand a
+   * *running* task to another node — turning a safety mechanism into the
+   * duplicate execution it was added to prevent.
+   *
+   * Renews at a third of the lease, so two consecutive missed ticks are still
+   * survivable. unref'd, so a pending renewal can never hold the process open.
+   *
+   * @returns {() => void} stop function; safe to call more than once
+   */
+  static _holdClaim(taskId, leaseMs = TaskModel.DEFAULT_LEASE_MS) {
+    const timer = setInterval(() => {
+      TaskModel.renewClaim(taskId, getNodeId(), leaseMs).catch((error) => {
+        // Never throw out of a timer — an unhandled rejection here would take
+        // down the process over a bookkeeping write.
+        console.warn(`[TaskOrchestrator] lease renewal failed for task ${taskId}: ${error.message}`);
+      });
+    }, Math.max(1000, Math.floor(leaseMs / 3)));
+    if (typeof timer.unref === 'function') timer.unref();
+
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+    };
+  }
+
   static async executeTask(task, userId, previousTaskOutputs = null, provider = null, model = null, signal = null) {
     console.log(`[TaskOrchestrator] Executing task: ${task.title} (ID: ${task.id})`);
+
+    // The caller already claimed this task; this keeps that claim from lapsing
+    // while the agent works. Stopped in the finally below, on every path.
+    const releaseLeaseTimer = this._holdClaim(task.id);
 
     try {
       // Step 1: Select and assign appropriate agent
@@ -311,6 +367,9 @@ class TaskOrchestrator {
         // Pause/stop/delete: leave the task resumable, never mark it failed.
         console.log(`[TaskOrchestrator] Task ${task.id} cancelled (${error.message}) — resetting to pending`);
         await TaskModel.updateStatus(task.id, 'pending', 0).catch(() => {});
+        // Hand the claim back now rather than making the whole fleet wait out
+        // a lease on a task this node has openly stopped working on.
+        await TaskModel.releaseClaim(task.id, getNodeId()).catch(() => {});
         broadcastToUser(userId, RealtimeEvents.GOAL_TASK_UPDATED, {
           goalId: task.goal_id,
           taskId: task.id,
@@ -322,6 +381,7 @@ class TaskOrchestrator {
       console.error(`[TaskOrchestrator] Error executing task ${task.id}:`, error);
       console.log(`[TaskOrchestrator] Marking task ${task.id} as failed due to error`);
       await TaskModel.updateStatus(task.id, 'failed');
+      await TaskModel.releaseClaim(task.id, getNodeId()).catch(() => {});
 
       // Broadcast task failed
       broadcastToUser(userId, RealtimeEvents.GOAL_TASK_UPDATED, {
@@ -333,6 +393,8 @@ class TaskOrchestrator {
       });
 
       throw error;
+    } finally {
+      releaseLeaseTimer();
     }
   }
   static prepareTaskMessage(task, previousTaskOutputs) {
