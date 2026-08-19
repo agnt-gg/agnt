@@ -240,17 +240,63 @@ class TaskModel {
   /**
    * Take (or re-take) the claim on one specific task.
    *
-   * Claimable when nobody holds it, when THIS node already holds it
-   * (re-entrant, so a retry inside one node is not a lost claim), or when the
-   * holder's lease has lapsed. A row with a holder but a NULL expiry is
-   * malformed — treated as claimable, because the alternative is a task that
-   * is unreachable forever.
+   * Claimable when nobody holds it, when the holder's lease has lapsed, or —
+   * in re-entrant mode only — when THIS node already holds it. A row with a
+   * holder but a NULL expiry is malformed and treated as claimable, because
+   * the alternative is a task that is unreachable forever.
    *
+   * ---------------------------------------------------------------------------
+   * WHY RE-ENTRANCY IS AN OPTION AND NOT A PROPERTY
+   * ---------------------------------------------------------------------------
+   * A node id identifies a MACHINE, not a process, and the two stop being the
+   * same thing the moment an operator does the thing the docs invite: copy one
+   * enrolment env block into a second container to add capacity. Both
+   * containers then present the same grant, so both are `node_abc`.
+   *
+   * With unconditional re-entrancy that is a double execution, and it was
+   * MEASURED, not theorised — a four-way live race against six tasks produced
+   * twelve claims and left every row at attempt_count = 2. Both processes
+   * shortlisted the same task, the first UPDATE took it, and the second matched
+   * `claimed_by = ?` against its own id and took it again. The guard that makes
+   * the claim safe was being satisfied by the claimant itself.
+   *
+   * The two callers genuinely want different answers:
+   *
+   *   PULL PATH (claimNext, cluster workers) — STRICT.
+   *     Concurrency is the entire point, and a second process sharing an id is
+   *     an ordinary deployment rather than a mistake. A live lease means
+   *     somebody is working, and "somebody" must include us.
+   *
+   *   LOCAL DISPATCH (TaskOrchestrator) — RE-ENTRANT.
+   *     One process, one goal loop, claims taken sequentially in a for-loop, so
+   *     there is no concurrent claimant to protect against. What re-entrancy
+   *     buys is RESUME: kill AGNT mid-task and restart it inside the lease
+   *     window and the goal picks up immediately instead of stalling until a
+   *     lease it owns expires.
+   *
+   * Default is re-entrant so the safe-but-blocking behaviour is never silently
+   * acquired by an existing caller; the path that needs strictness asks for it.
+   *
+   * @param {string} taskId
+   * @param {string} nodeId
+   * @param {number} [leaseMs]
+   * @param {object} [options]
+   * @param {boolean} [options.reentrant=true]  allow re-taking our own live claim
    * @returns {Promise<boolean>} true when this node now owns the task
    */
-  static claim(taskId, nodeId, leaseMs = TaskModel.DEFAULT_LEASE_MS) {
+  static claim(taskId, nodeId, leaseMs = TaskModel.DEFAULT_LEASE_MS, options = {}) {
+    const { reentrant = true } = options;
     const now = Date.now();
     const placeholders = TaskModel.CLAIMABLE_STATUSES.map(() => '?').join(', ');
+
+    // The ONLY difference between the two modes. Building the SQL rather than
+    // branching into two near-identical statements keeps the rest of the guard
+    // — status, expiry, malformed-row handling — impossible to fork by accident.
+    const ownClaim = reentrant ? 'OR claimed_by = ?' : '';
+    const params = reentrant
+      ? [nodeId, now + leaseMs, taskId, ...TaskModel.CLAIMABLE_STATUSES, nodeId, now]
+      : [nodeId, now + leaseMs, taskId, ...TaskModel.CLAIMABLE_STATUSES, now];
+
     return new Promise((resolve, reject) => {
       db.run(
         `UPDATE tasks
@@ -260,10 +306,10 @@ class TaskModel {
           WHERE id = ?
             AND status IN (${placeholders})
             AND (claimed_by IS NULL
-                 OR claimed_by = ?
+                 ${ownClaim}
                  OR claim_expires_at IS NULL
                  OR claim_expires_at < ?)`,
-        [nodeId, now + leaseMs, taskId, ...TaskModel.CLAIMABLE_STATUSES, nodeId, now],
+        params,
         function (err) {
           if (err) reject(err);
           else resolve(this.changes === 1);
@@ -342,7 +388,10 @@ class TaskModel {
       // would burn one of its attempts and hold it away from the node that
       // could legitimately run it later.
       if (!(await TaskModel.canExecuteTask(id))) continue;
-      if (await TaskModel.claim(id, nodeId, leaseMs)) {
+      // STRICT: see claim(). Two processes may legitimately share one node id
+      // (the same grant copied into a second container), and re-entrancy would
+      // let the second one take a task the first is already running.
+      if (await TaskModel.claim(id, nodeId, leaseMs, { reentrant: false })) {
         return TaskModel.findOne(id);
       }
     }

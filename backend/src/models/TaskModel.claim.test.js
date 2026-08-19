@@ -92,9 +92,30 @@ describe('claim — exactly one winner', () => {
     const taskId = await TaskModel.create(goalId, 're-entrant', 're-entrant');
 
     expect(await TaskModel.claim(taskId, NODE_A)).toBe(true);
-    // A retry inside one node must not look like a lost claim.
+    // A retry inside one node must not look like a lost claim. This is what
+    // lets a goal resume immediately after AGNT is killed and restarted inside
+    // the lease window, instead of stalling on a lease it owns itself.
     expect(await TaskModel.claim(taskId, NODE_A)).toBe(true);
     expect((await claimRow(taskId)).attempt_count).toBe(2);
+  });
+
+  it('REFUSES to re-take our own live claim in strict mode', async () => {
+    const goalId = await makeGoal();
+    const taskId = await TaskModel.create(goalId, 'strict', 'strict');
+
+    expect(await TaskModel.claim(taskId, NODE_A, 60000, { reentrant: false })).toBe(true);
+    expect(await TaskModel.claim(taskId, NODE_A, 60000, { reentrant: false })).toBe(false);
+    expect((await claimRow(taskId)).attempt_count, 'a refused claim must not burn an attempt').toBe(1);
+  });
+
+  it('strict mode still takes over a lease that has lapsed', async () => {
+    const goalId = await makeGoal();
+    const taskId = await TaskModel.create(goalId, 'strict expiry', '');
+
+    // Strictness must not cost the crash-recovery property: an EXPIRED lease is
+    // claimable by anyone, including its previous holder.
+    expect(await TaskModel.claim(taskId, NODE_A, -1000, { reentrant: false })).toBe(true);
+    expect(await TaskModel.claim(taskId, NODE_A, 60000, { reentrant: false })).toBe(true);
   });
 
   it('refuses a task that is already finished', async () => {
@@ -256,6 +277,50 @@ describe('claimNext — the pull side', () => {
 
     await TaskModel.updateStatus(blocker, 'completed', 100);
     expect((await TaskModel.claimNext(NODE_B, { goalId })).title).toBe('blocked');
+  });
+
+  it('REGRESSION: two processes sharing one node id cannot both take a task', async () => {
+    // MEASURED, not theorised. A four-way live race against six tasks (two
+    // grants, two poll loops each — i.e. one enrolment env block copied into a
+    // second container, exactly what the docs invite an operator to do)
+    // produced TWELVE claims and left every row at attempt_count = 2.
+    //
+    // Cause: claimNext used the re-entrant claim, so the second process matched
+    // `claimed_by = ?` against its OWN node id and re-took a task the first was
+    // already executing. The guard that makes a claim safe was being satisfied
+    // by the claimant itself.
+    const goalId = await makeGoal();
+    const taskId = await TaskModel.create(goalId, 'one task, one runner', '');
+
+    const [first, second] = await Promise.all([
+      TaskModel.claimNext(NODE_A, { goalId }),
+      TaskModel.claimNext(NODE_A, { goalId }),
+    ]);
+
+    const winners = [first, second].filter(Boolean);
+    expect(winners, 'the same node claimed one task twice').toHaveLength(1);
+    expect(winners[0].id).toBe(taskId);
+    expect((await claimRow(taskId)).attempt_count).toBe(1);
+  });
+
+  it('REGRESSION: a shared node id cannot drain a queue twice over', async () => {
+    const goalId = await makeGoal();
+    for (let i = 0; i < 5; i++) await TaskModel.create(goalId, `t${i}`, '', [], [], 0);
+
+    // Four concurrent pollers, ONE node id. Total hand-outs must equal the
+    // number of tasks, not the number of pollers times the number of tasks.
+    const drain = async () => {
+      const got = [];
+      for (;;) {
+        const task = await TaskModel.claimNext(NODE_A, { goalId });
+        if (!task) return got;
+        got.push(task.id);
+      }
+    };
+    const handedOut = (await Promise.all([drain(), drain(), drain(), drain()])).flat();
+
+    expect(handedOut).toHaveLength(5);
+    expect(new Set(handedOut).size).toBe(5);
   });
 
   it('stops handing out a task that keeps killing its claimant', async () => {
