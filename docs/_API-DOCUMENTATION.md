@@ -4134,95 +4134,611 @@ A request that names a concrete `provider` **and** `model` without naming a `rou
 
 Base path: `/api/cluster`
 
-Multi-node execution. One install is the **primary** — it owns the database, the
-sockets and the goal loop — and any number of **worker** nodes claim tasks from
-it over this API and execute them with their own agents and their own provider
-credentials.
+Multi-node execution. One AGNT install is the **primary** — it owns the
+database, the sockets, and the goal loop — and any number of **worker** nodes
+claim tasks from it over this API and execute them with their own agents and
+their own provider credentials.
 
-No database is shared. A worker never writes to the primary's SQLite file; it
-asks for a task, does the work locally, and posts the result back. That is why
-there is no shared-storage requirement, no Redis, and no distributed lock.
+**No database is shared.** A worker never writes to the primary's SQLite file;
+it asks for a task, does the work locally, and posts the result back. That is
+why there is no shared-storage requirement, no Redis, and no distributed lock.
 
-### Two credentials
-
-| Route | Caller | Credential |
-|---|---|---|
-| `POST /enroll`, `GET /nodes` | a signed-in operator | normal session token |
-| everything else | a worker node | a **node grant** minted by `/enroll` |
-
-Node grants are signed with `CLUSTER_SECRET` (its own per-install key, never
-`JWT_SECRET`) and carry the audience `agnt-cluster-node`. A session token
-cannot claim work and a node grant cannot reach the rest of the API.
-
-The node id lives **inside** the grant. A worker does not choose its own
-identity, so it cannot renew or release another node's claims.
-
-### Claims are leases, not locks
-
-A claim carries an expiry. A node that stops renewing stops owning, so a worker
-that crashes needs no heartbeat protocol and no operator — its task returns to
-the queue on its own once the lease lapses. `attempt_count` bounds how many
-times a task that kills its claimant may be retried.
-
-### Setting up a worker
-
-1. On the primary, as a signed-in user: `POST /api/cluster/enroll`.
-2. Copy the returned `env` block into the worker's environment.
-3. Start the worker. It polls, claims, executes and reports back.
-
-| Variable | Meaning |
-|---|---|
-| `AGNT_NODE_ROLE` | `worker` to enable the pull loop. Anything else (including unset or misspelled) means `primary`. |
-| `AGNT_CLUSTER_PRIMARY` | Base URL of the primary, e.g. `https://agnt.example.com` |
-| `AGNT_CLUSTER_TOKEN` | The grant from `/enroll` |
-| `AGNT_NODE_LABEL` | Optional display name. Defaults to the hostname. |
-| `AGNT_SPEND_LIMIT_USD` | Optional hard ceiling (per local day). No new work is admitted at or above it; work in flight always finishes. |
-| `AGNT_SPEND_SOFT_LIMIT_USD` | Optional warning threshold. Logs once per day and never stops anything. |
+**Zero config for single-machine installs.** Every AGNT install is a primary
+with no workers by default. Nothing polls, no extra queries run, and there is
+no new way to fail. The cluster code is inert until someone deliberately
+enrolls a worker.
 
 ---
 
-**POST** `/enroll`
+### Architecture
 
-- **Authentication**: Required
-- **Description**: Mint a node grant. The primary generates the node id; the response includes a copy-paste `env` block. The token is returned once and not stored.
-- **Body**: `{ "label": "hetzner-fsn1", "ttlDays": 90 }` (both optional)
-- **Response**: `{ success, nodeId, token, expiresAt, env }`
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    PRIMARY (your machine)                     │
+│                                                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────────────┐   │
+│  │ Goals DB │  │ Task     │  │  /api/cluster/*           │   │
+│  │ (SQLite) │  │ Queue    │  │  enroll / claim / renew / │   │
+│  │          │  │          │  │  complete / release        │   │
+│  └──────────┘  └──────────┘  └──────────────────────────┘   │
+│                     │                    ▲                    │
+│                     │ claim/complete     │ HTTP               │
+│                     ▼                    │                    │
+│           ┌─────────────────┐            │                    │
+│           │  LLM Ledger     │            │                    │
+│           │  (spend by node)│            │                    │
+│           └─────────────────┘            │                    │
+└──────────────────────────────────────────┼────────────────────┘
+                                           │
+              ┌────────────────────────────┼───────────────────┐
+              │                            │                   │
+     ┌────────┴─────────┐        ┌─────────┴────────┐         │
+     │  WORKER A         │        │  WORKER B         │        │
+     │  (Hetzner VPS)    │        │  (second laptop)  │        │
+     │                   │        │                   │        │
+     │  Own agents       │        │  Own agents       │        │
+     │  Own provider keys│        │  Own provider keys│        │
+     │  Own SQLite       │        │  Own SQLite       │        │
+     │  Own ENCRYPTION_  │        │  Own ENCRYPTION_  │        │
+     │    KEY            │        │    KEY            │        │
+     └───────────────────┘        └───────────────────┘        │
+              │                            │                   │
+              └────────────────────────────┴───────────────────┘
+```
 
-**GET** `/nodes`
+**Pull, not push.** Workers ask for work; the primary does not track what is
+alive or schedule assignments. Adding capacity is starting a container with two
+environment variables. Removing capacity is turning it off — the lease expires
+and the work returns to the queue on its own.
 
-- **Authentication**: Required
-- **Description**: Nodes this primary has heard from, most recent first, plus `self`. Observational only — the list is rebuilt from traffic and empties when the primary restarts.
-- **Response**: `{ success, self: { nodeId, role, label }, nodes: [...] }`
+---
 
-**GET** `/whoami`
+### Security Model
 
-- **Authentication**: Required (node grant)
-- **Description**: Lets a worker confirm its grant before it starts polling.
+#### Two credentials, two audiences
 
-**POST** `/claim`
+| Route | Caller | Credential | Middleware |
+|---|---|---|---|
+| `POST /enroll`, `GET /nodes` | Signed-in operator (human) | Normal session token (`Authorization: Bearer <session>`) | `authenticateToken` |
+| All other routes | Worker node (machine) | Node grant (`Authorization: Bearer <grant>`) | `authenticateClusterNode` |
 
-- **Authentication**: Required (node grant)
-- **Description**: Claim at most one task, scoped to the goals of the account the grant was issued to.
-- **Body**: `{ "goalId": "...", "leaseMs": 120000 }` (both optional)
-- **Response**: `200` with `{ task, goal, leaseMs }`, or **`204` when there is no work**, or **`429`** when a spend ceiling is refusing new work.
+#### Node grants
 
-**POST** `/renew`
+- Signed with `CLUSTER_SECRET` — a per-install key generated on first boot,
+  **never** `JWT_SECRET`. Reusing `JWT_SECRET` would mean a leak of either
+  credential compromises both, and a stolen user session could be replayed as a
+  node token.
+- Algorithm allowlist: `['HS256']` only. Without an explicit allowlist,
+  jsonwebtoken honours the `alg` header the token itself carries, including
+  `none`.
+- Audience: `agnt-cluster-node`. A session token cannot claim work; a node
+  grant cannot reach user routes.
+- The node id is **inside** the grant. A worker cannot choose its own identity,
+  so it cannot renew or release another node's claims.
+- Resolved via `secretResolver` cascade: `process.env` → keyfile
+  (`<dataDir>/secrets/CLUSTER_SECRET`) → CSPRNG on first boot (persisted with
+  exclusive-create `wx` flag so concurrent processes don't race).
 
-- **Authentication**: Required (node grant)
-- **Description**: Extend the lease on a task this node holds. Returns **`409 claim_lost`** — never 401 — if the claim has moved on; the grant is still valid, the claim is not.
-- **Body**: `{ "taskId": "...", "leaseMs": 120000 }`
+#### What a forged grant gets you
 
-**POST** `/release`
+- A grant forged with the user's `JWT_SECRET` → **401** (wrong secret entirely).
+- A grant forged with a guessed `CLUSTER_SECRET` → **401** (signature mismatch).
+- A valid session token on a node route → **401** (audience mismatch).
+- A valid node grant on a user route → **401** (middleware mismatch).
 
-- **Authentication**: Required (node grant)
-- **Description**: Hand a claim back immediately instead of waiting out the lease.
-- **Body**: `{ "taskId": "..." }`
+---
 
-**POST** `/complete`
+### Claims: Leases, Not Locks
 
-- **Authentication**: Required (node grant)
-- **Description**: Report the outcome. Ownership is re-checked at the write, so a node whose lease lapsed mid-task gets **`409 claim_lost`** rather than overwriting a fresher result. `spend` carries the ledger rows the worker measured locally; the primary re-prices them with its own catalogue and records them against the **worker's** node id, so fleet cost is visible in one place.
-- **Body**: `{ "taskId": "...", "status": "completed" | "failed", "result": {...}, "error": "...", "spend": [...] }`
+A claim carries an expiry (default 120 seconds). A node that stops renewing
+stops owning, so a worker that crashes needs no heartbeat protocol and no
+operator — its task returns to the queue on its own once the lease lapses.
+
+| Property | Guarantee |
+|---|---|
+| **Exactly-once execution** | Strict claims on the pull path — two processes sharing one node id cannot both take a task. Proven by a 4-way live race, not just unit tests. |
+| **Crash recovery** | Lease expires → task returns to `pending` → anyone takes it. |
+| **Retry bound** | `attempt_count` caps how many times a task that kills its claimant may be retried (default 3). |
+| **Owner-scoped renewal** | Only the holder can renew. Another node gets `409 claim_lost`, never `401` — the grant is valid, the claim is not. |
+| **Stale overwrite protection** | A node whose lease lapsed mid-task gets `409 claim_lost` on `/complete` rather than overwriting a fresher result. |
+
+#### Re-entrancy modes
+
+`TaskModel.claim()` accepts `{ reentrant: true | false }`:
+
+| Caller | Mode | Why |
+|---|---|---|
+| `claimNext` (pull path / workers) | **strict** (`reentrant: false`) | Two processes may legitimately share one node id (same grant in two containers). A live lease means somebody is working. |
+| `TaskOrchestrator` (local goal loop) | **re-entrant** (`reentrant: true`, default) | One process, sequential claims. Re-entrancy buys resume: kill AGNT mid-task, restart inside the lease window, and the goal picks up instead of stalling on a lease it owns. |
+
+---
+
+### Setting Up a Worker
+
+#### Step 1: Enrol on the primary
+
+From your running AGNT (the primary), as a signed-in user:
+
+```bash
+curl -X POST http://localhost:3333/api/cluster/enroll \
+  -H "Authorization: Bearer <your-session-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"label": "hetzner-fsn1"}'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "nodeId": "node_a1b2c3d4e5f6...",
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "expiresAt": "2026-11-17T12:00:00.000Z",
+  "env": {
+    "AGNT_NODE_ROLE": "worker",
+    "AGNT_CLUSTER_PRIMARY": "http://your-ip:3333",
+    "AGNT_CLUSTER_TOKEN": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+The token is returned **once** and not stored on the primary. Treat it like a
+password.
+
+#### Step 2: Start the worker
+
+Set the three env vars on the second machine and start AGNT normally:
+
+```bash
+# Docker
+docker run \
+  -e AGNT_NODE_ROLE=worker \
+  -e AGNT_CLUSTER_PRIMARY=http://your-ip:3333 \
+  -e AGNT_CLUSTER_TOKEN=eyJhbGciOiJIUzI1NiIs... \
+  agnt
+
+# Or from source (second laptop / VPS)
+export AGNT_NODE_ROLE=worker
+export AGNT_CLUSTER_PRIMARY=http://your-ip:3333
+export AGNT_CLUSTER_TOKEN=eyJhbGciOiJIUzI1NiIs...
+npm start
+
+# Or Windows cmd
+set AGNT_NODE_ROLE=worker
+set AGNT_CLUSTER_PRIMARY=http://your-ip:3333
+set AGNT_CLUSTER_TOKEN=eyJhbGciOiJIUzI1NiIs...
+npm start
+```
+
+The worker boots, sees `AGNT_NODE_ROLE=worker`, validates its grant against the
+primary via `GET /whoami`, and begins the pull loop: poll → claim → execute →
+report back.
+
+#### Step 3: Create a goal — tasks fan out automatically
+
+Create any goal on the primary (via the UI or API). The goal system breaks it
+into tasks. Your machine and every enrolled worker race to claim them. A task
+goes to whoever asks first.
+
+#### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `AGNT_NODE_ROLE` | Yes | `worker` to enable the pull loop. Anything else (including unset or misspelled) means `primary`. |
+| `AGNT_CLUSTER_PRIMARY` | Yes (workers) | Base URL of the primary, e.g. `http://192.168.1.50:3333` or `https://agnt.example.com` |
+| `AGNT_CLUSTER_TOKEN` | Yes (workers) | The node grant from `/enroll`. |
+| `AGNT_NODE_LABEL` | No | Display name in the fleet view. Defaults to `os.hostname()`. |
+| `AGNT_SPEND_LIMIT_USD` | No | Hard ceiling per local day. No new work is admitted at or above it; **work in flight always finishes** — a running task is never killed for a billing reason. |
+| `AGNT_SPEND_SOFT_LIMIT_USD` | No | Warning threshold. Logs once per day, never stops anything. |
+
+---
+
+### Spend Attribution & Admission
+
+Every LLM call a worker makes is reported in the `/complete` payload's `spend`
+array. The primary re-prices each row with its own cost catalogue and records
+it with the **worker's** `node_id` — so fleet cost breakdown is a single query
+against `llm_calls`.
+
+**Admission check:** at claim time, if `AGNT_SPEND_LIMIT_USD` is set, the
+primary sums today's spend and refuses new claims at or above the ceiling.
+Returns `429` with `code: "spend_ceiling_reached"`. This check **fails
+closed**: a limit that is configured but cannot be evaluated stops new claims,
+because a spend check that fails open risks a node with live provider
+credentials, no ceiling, and no observer.
+
+Contrast with `planEntitlements.js`, which **fails open** (unknown plan →
+entitled) — different question, opposite answer.
+
+---
+
+### Worker Pull Loop (ClusterWorker.js)
+
+The worker runs an indefinite loop:
+
+1. `POST /claim` → if `204`, backoff (jittered 2–10s so N workers don't
+   synchronise into a herd).
+2. Got a task → start a lease-renewal timer (every `leaseMs / 2`, so 60s by
+   default). If renewal returns `409 claim_lost`, abort the work.
+3. Execute the task using the worker's own agents and provider credentials.
+4. `POST /complete` with the result and the spend array.
+5. Loop.
+
+On grant expiry or repeated auth failures the worker stops polling and logs the
+reason. It does not retry — the operator re-enrols.
+
+---
+
+### Endpoints
+
+#### `POST /enroll`
+
+- **Auth**: Session token (operator)
+- **Description**: Mint a node grant. The primary generates the node id and
+  signs the grant with `CLUSTER_SECRET`. The token is returned once and not
+  stored.
+
+**Request body:**
+
+```json
+{
+  "label": "hetzner-fsn1",
+  "ttlDays": 90
+}
+```
+
+Both fields optional. `label` defaults to empty (the worker will use its
+hostname). `ttlDays` defaults to 90.
+
+**Response `200`:**
+
+```json
+{
+  "success": true,
+  "nodeId": "node_a1b2c3d4e5f6...",
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "expiresAt": "2026-11-17T12:00:00.000Z",
+  "env": {
+    "AGNT_NODE_ROLE": "worker",
+    "AGNT_CLUSTER_PRIMARY": "http://your-ip:3333",
+    "AGNT_CLUSTER_TOKEN": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+---
+
+#### `GET /nodes`
+
+- **Auth**: Session token (operator)
+- **Description**: Every node this primary has heard from, most recent first,
+  plus `self`. **Observational only** — the list is an in-memory map rebuilt
+  from traffic and empties when the primary restarts. Nothing decides anything
+  from it; enrolment is the grant, the claim is the permission, the lease is
+  the liveness signal.
+
+**Response `200`:**
+
+```json
+{
+  "success": true,
+  "self": {
+    "nodeId": "23cbd2e763cf07a7...",
+    "role": "primary",
+    "label": "DESKTOP-38VA1OR"
+  },
+  "nodes": [
+    {
+      "nodeId": "node_a1b2c3d4e5f6...",
+      "label": "hetzner-fsn1",
+      "userId": "<uuid>",
+      "lastSeen": "2026-08-19T14:30:00.000Z",
+      "stale": false,
+      "claims": 12,
+      "completions": 10,
+      "failures": 2
+    }
+  ]
+}
+```
+
+A node is marked `stale: true` if its last contact was >5 minutes ago.
+
+---
+
+#### `GET /whoami`
+
+- **Auth**: Node grant
+- **Description**: Lets a worker confirm its grant is valid before starting the
+  poll loop. The worker calls this on boot.
+
+**Response `200`:**
+
+```json
+{
+  "success": true,
+  "nodeId": "node_a1b2c3d4e5f6...",
+  "userId": "<uuid>",
+  "label": "hetzner-fsn1",
+  "role": "worker"
+}
+```
+
+**Response `401`:**
+
+```json
+{
+  "error": "Invalid or expired cluster node grant.",
+  "code": "cluster_grant_invalid"
+}
+```
+
+---
+
+#### `POST /claim`
+
+- **Auth**: Node grant
+- **Description**: Claim at most one task, scoped to the goals of the account
+  the grant was issued to. Uses **strict** (non-re-entrant) claiming so two
+  processes sharing one node id cannot both take the same task.
+
+**Request body:**
+
+```json
+{
+  "goalId": "<uuid>",
+  "leaseMs": 120000
+}
+```
+
+Both fields optional. Omit `goalId` to claim from any executing goal. `leaseMs`
+defaults to 120000 (2 minutes).
+
+**Response `200` (task claimed):**
+
+```json
+{
+  "success": true,
+  "task": {
+    "id": "<uuid>",
+    "goal_id": "<uuid>",
+    "title": "Research competitor X",
+    "description": "...",
+    "status": "running",
+    "order_index": 0,
+    "dependencies": "[]",
+    "required_tools": "[\"web_search\", \"web_scrape\"]",
+    "attempt_count": 1,
+    "claimed_by": "node_a1b2c3d4e5f6...",
+    "claim_expires_at": 1787312400000
+  },
+  "goal": {
+    "id": "<uuid>",
+    "title": "Competitive analysis",
+    "description": "...",
+    "success_criteria": "{...}"
+  },
+  "leaseMs": 120000
+}
+```
+
+**Response `204`** — No work available. The worker should backoff (jittered
+2–10 seconds).
+
+**Response `429`:**
+
+```json
+{
+  "error": "Spend ceiling reached for today.",
+  "code": "spend_ceiling_reached"
+}
+```
+
+---
+
+#### `POST /renew`
+
+- **Auth**: Node grant
+- **Description**: Extend the lease on a task this node holds. Workers call
+  this every `leaseMs / 2` while executing. If the claim has moved on (another
+  node took it after the lease lapsed), returns `409` — **never** `401`.
+
+**Request body:**
+
+```json
+{
+  "taskId": "<uuid>",
+  "leaseMs": 120000
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "success": true,
+  "expiresAt": 1787312520000
+}
+```
+
+**Response `409`:**
+
+```json
+{
+  "error": "This node no longer holds the claim on this task.",
+  "code": "claim_lost"
+}
+```
+
+When the worker receives `409 claim_lost`, it **aborts** the in-progress
+execution immediately — the task has been reassigned.
+
+---
+
+#### `POST /release`
+
+- **Auth**: Node grant
+- **Description**: Voluntarily hand a claim back instead of waiting out the
+  lease. Used when a worker knows it cannot complete a task (e.g. missing
+  provider credentials for the required model).
+
+**Request body:**
+
+```json
+{
+  "taskId": "<uuid>"
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+#### `POST /complete`
+
+- **Auth**: Node grant
+- **Description**: Report the outcome of an executed task. Ownership is
+  re-checked at write time, so a node whose lease lapsed mid-task gets
+  `409 claim_lost` rather than overwriting a fresher result.
+
+**Request body:**
+
+```json
+{
+  "taskId": "<uuid>",
+  "status": "completed",
+  "result": {
+    "content": "Competitor X has 45% market share...",
+    "artifacts": []
+  },
+  "spend": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "originId": "<goal-uuid>",
+      "input_tokens": 12500,
+      "output_tokens": 3200,
+      "status": "ok"
+    }
+  ]
+}
+```
+
+For failed tasks:
+
+```json
+{
+  "taskId": "<uuid>",
+  "status": "failed",
+  "error": "Provider returned 429: rate limit exceeded",
+  "spend": []
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "success": true
+}
+```
+
+**Response `409`:**
+
+```json
+{
+  "error": "This node no longer holds the claim on this task.",
+  "code": "claim_lost"
+}
+```
+
+**Spend handling:** the `spend` array carries the LLM call rows the worker
+measured locally. The primary re-prices each row with its own cost catalogue
+(so pricing is consistent fleet-wide) and records them in the `llm_calls` table
+with `node_id` set to the **worker's** node id. Fleet cost breakdown is then
+a single query:
+
+```sql
+SELECT node_id, SUM(cost_usd) AS total
+  FROM llm_calls
+ WHERE origin_id = '<goal-id>'
+ GROUP BY node_id;
+```
+
+---
+
+### Error Reference
+
+| Status | Code | Meaning | Action |
+|---|---|---|---|
+| `200` | — | Success | — |
+| `204` | — | No work available | Backoff 2–10s (jittered) |
+| `400` | `missing_task_id` | `taskId` not provided | Fix the request |
+| `401` | `cluster_grant_invalid` | Grant expired, wrong secret, wrong audience, or session token on a node route | Re-enrol on the primary |
+| `404` | `task_not_found` | Task id does not exist | Drop the reference |
+| `409` | `claim_lost` | This node no longer holds the claim (lease lapsed, another node took it) | Abort in-progress work; do NOT retry the same task |
+| `429` | `spend_ceiling_reached` | Daily spend limit hit | Backoff; wait for the next UTC day or raise `AGNT_SPEND_LIMIT_USD` |
+| `500` | — | Server error | Retry with backoff |
+
+---
+
+### Operational Guide
+
+#### Monitoring the fleet
+
+```bash
+# From the primary, as a signed-in user:
+curl -s http://localhost:3333/api/cluster/nodes \
+  -H "Authorization: Bearer <session>" | jq .
+```
+
+Shows `self` (the primary) and every worker that has talked to it since the
+last restart, with claim/completion/failure counts and staleness.
+
+#### Revoking a worker
+
+There is no explicit revocation endpoint. The grant has a TTL (default 90
+days). To cut a worker off immediately:
+
+1. Restart the primary — this rotates `CLUSTER_SECRET` if the keyfile is
+   deleted first (`<dataDir>/secrets/CLUSTER_SECRET`).
+2. Re-enrol any workers you want to keep.
+
+#### Scaling
+
+- **Add capacity:** enrol a new worker, start it. It begins pulling immediately.
+- **Remove capacity:** stop the worker. Its leased tasks return to the queue
+  after 120s (or sooner if `attempt_count` has been reached).
+- **Same grant, multiple containers:** works, but each container shares the
+  node id, so the strict claim ensures only one of them gets each task.
+
+#### Failure modes
+
+| Failure | Recovery |
+|---|---|
+| Worker crashes mid-task | Lease expires (120s) → task returns to queue → any node takes it |
+| Worker loses network | Same as crash — lease expiry is the only liveness signal |
+| Primary restarts | Fleet view empties (it's in-memory). Workers continue polling — their grants are still valid. No tasks are lost — they're in SQLite. |
+| Grant expires | Worker gets `401` on next poll → stops the loop → logs the reason. Operator re-enrols. |
+| Spend ceiling hit | `429` on `/claim` → worker backs off. In-flight work always completes. |
+
+#### Database columns added
+
+| Table | Column | Type | Description |
+|---|---|---|---|
+| `tasks` | `claimed_by` | TEXT | Node id of the current claimant, or NULL |
+| `tasks` | `claim_expires_at` | INTEGER | Epoch ms when the lease lapses |
+| `tasks` | `attempt_count` | INTEGER | How many times this task has been claimed |
+| `llm_calls` | `node_id` | TEXT | Which node made this LLM call |
+
+All columns are additive. Old code ignores them. A downgrade needs no data
+migration.
 
 ---
 
