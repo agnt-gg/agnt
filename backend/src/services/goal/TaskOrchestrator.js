@@ -14,6 +14,7 @@ import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { getNodeId } from '../cluster/nodeIdentity.js';
+import { checkSpendAdmission } from '../cluster/admission.js';
 import autonomousMessageService from '../AutonomousMessageService.js';
 import db from '../../models/database/index.js';
 import fs from 'fs/promises';
@@ -156,6 +157,27 @@ class TaskOrchestrator {
         //
         // On a single node this is inert. There is no contention, so every
         // claim succeeds and executableTasks is exactly what it was before.
+        //
+        // The budget gate is applied HERE too, not only on the cluster route.
+        // A ceiling that workers respect and the primary ignores is not a
+        // ceiling. Checked once per group rather than once per task: it is a
+        // spend limit, not a quota, and one reading per batch is both
+        // sufficient and cheaper. Returns admit:true immediately when no limit
+        // is configured, which is every install that has not asked for one.
+        const admission = await checkSpendAdmission(userId);
+        if (!admission.admit) {
+          // Stop admitting NEW work. Anything already running is untouched —
+          // killing a turn mid-flight for a billing reason destroys more value
+          // than the overage it prevents.
+          console.warn(
+            `[TaskOrchestrator] goal ${goalId} paused at the spend ceiling ` +
+              `(${admission.reason}, spent $${admission.spentUsd ?? '?'} of $${admission.hardLimitUsd ?? '?'})`
+          );
+          await GoalModel.updateStatus(goalId, 'paused');
+          broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, { id: goalId, status: 'paused' });
+          return;
+        }
+
         const executableTasks = [];
         for (const task of tasksToExecute) {
           const canExecute = await TaskModel.canExecuteTask(task.id);

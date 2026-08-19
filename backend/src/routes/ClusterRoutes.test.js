@@ -9,7 +9,7 @@
  * a claim that reaches across accounts, and a result posted by a node that has
  * already lost the task.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'http';
 
@@ -124,6 +124,7 @@ beforeEach(async () => {
   processTaskResult.mockClear();
   await dbRun(`DELETE FROM tasks`);
   await dbRun(`DELETE FROM goals`);
+  await dbRun(`DELETE FROM llm_calls`);
 });
 
 describe('every node route refuses an unauthenticated caller', () => {
@@ -296,6 +297,140 @@ describe('complete', () => {
     expect(status).toBe(409);
     expect(body.code).toBe('claim_lost');
     expect(processTaskResult).not.toHaveBeenCalled();
+  });
+});
+
+describe('fleet spend lands in the primary’s ledger', () => {
+  it('records a worker’s measured spend against the WORKER, not the primary', async () => {
+    const { token, nodeId } = await enrol(OWNER, 'spender');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'costly', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    await req('POST', '/api/cluster/complete', {
+      token,
+      body: {
+        taskId,
+        status: 'completed',
+        result: { content: 'done' },
+        spend: [
+          {
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-5-20250929',
+            originId: goalId,
+            input_tokens: 1000,
+            output_tokens: 500,
+            status: 'ok',
+          },
+        ],
+      },
+    });
+
+    const row = await dbGet(`SELECT node_id, cost_usd, origin, origin_id FROM llm_calls WHERE origin_id = ?`, [
+      goalId,
+    ]);
+
+    // Without this the fleet's spend sits in N sqlite files the operator never
+    // opens. Stamping the PRIMARY here instead would give a per-node breakdown
+    // that is uniform, plausible and wrong.
+    expect(row.node_id).toBe(nodeId);
+    expect(row.origin).toBe('goal_task');
+    // Priced by the PRIMARY's catalogue, so one ledger is one pricing table.
+    expect(row.cost_usd).toBeGreaterThan(0);
+  });
+
+  it('records spend for a task that failed', async () => {
+    const { token, nodeId } = await enrol(OWNER, 'failer');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'expensive failure', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    await req('POST', '/api/cluster/complete', {
+      token,
+      body: {
+        taskId,
+        status: 'failed',
+        error: 'provider exploded',
+        spend: [
+          {
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-5-20250929',
+            originId: goalId,
+            input_tokens: 800,
+            output_tokens: 0,
+            status: 'error',
+          },
+        ],
+      },
+    });
+
+    // Reporting cost only on success is how a fleet's most expensive failures
+    // become invisible.
+    const row = await dbGet(`SELECT node_id FROM llm_calls WHERE origin_id = ?`, [goalId]);
+    expect(row.node_id).toBe(nodeId);
+  });
+
+  it('a bad spend row never turns a completed task into a failed one', async () => {
+    const { token } = await enrol(OWNER, 'garbage');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'still completes', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    const { status } = await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'completed', result: { content: 'ok' }, spend: [{ nonsense: true }, null] },
+    });
+
+    expect(status).toBe(200);
+    expect((await dbGet(`SELECT status FROM tasks WHERE id = ?`, [taskId])).status).toBe('completed');
+  });
+});
+
+describe('the spend ceiling is enforced at the claim', () => {
+  afterEach(() => {
+    delete process.env.AGNT_SPEND_LIMIT_USD;
+  });
+
+  it('refuses new work with 429 once the hard limit is reached', async () => {
+    const { token } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    await TaskModel.create(goalId, 'too expensive to start', '');
+
+    process.env.AGNT_SPEND_LIMIT_USD = '0';
+
+    const { status, body } = await req('POST', '/api/cluster/claim', { token });
+
+    // 429, not 402/403: the window resets, so a worker that backs off and
+    // retries is correct. A permanent-sounding refusal makes workers give up
+    // on a ceiling that clears at midnight.
+    expect(status).toBe(429);
+    expect(body.code).toBe('hard_limit_reached');
+  });
+
+  it('leaves the task untouched — refusing to start is not failing', async () => {
+    const { token } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'untouched', '');
+
+    process.env.AGNT_SPEND_LIMIT_USD = '0';
+    await req('POST', '/api/cluster/claim', { token });
+
+    const row = await dbGet(`SELECT status, claimed_by, attempt_count FROM tasks WHERE id = ?`, [taskId]);
+    expect(row.status).toBe('pending');
+    expect(row.claimed_by).toBeNull();
+    expect(row.attempt_count, 'a refused claim must not burn an attempt').toBe(0);
+  });
+
+  it('admits again as soon as the limit is lifted', async () => {
+    const { token } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    await TaskModel.create(goalId, 'later', '');
+
+    process.env.AGNT_SPEND_LIMIT_USD = '0';
+    expect((await req('POST', '/api/cluster/claim', { token })).status).toBe(429);
+
+    delete process.env.AGNT_SPEND_LIMIT_USD;
+    expect((await req('POST', '/api/cluster/claim', { token })).status).toBe(200);
   });
 });
 

@@ -1,4 +1,5 @@
 import db from '../../models/database/index.js';
+import LlmCallModel from '../../models/LlmCallModel.js';
 import { getNodeLabel, isWorker } from './nodeIdentity.js';
 
 /**
@@ -115,6 +116,12 @@ async function runTask(assignment, userId) {
   }, Math.floor(LEASE_MS / 3));
   if (typeof renewal.unref === 'function') renewal.unref();
 
+  // Marks the start of this task's spend window. sqlite's CURRENT_TIMESTAMP is
+  // UTC 'YYYY-MM-DD HH:MM:SS', so the bound has to be written in exactly that
+  // shape or the comparison silently matches nothing and every task reports
+  // zero cost.
+  const spendSince = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
   try {
     const shaped = {
       id: task.id,
@@ -135,7 +142,14 @@ async function runTask(assignment, userId) {
       originId: task.goalId,
     });
 
-    await callPrimary('/complete', { body: { taskId: task.id, status: 'completed', result } });
+    await callPrimary('/complete', {
+      body: {
+        taskId: task.id,
+        status: 'completed',
+        result,
+        spend: await collectSpend(userId, task.goalId, spendSince),
+      },
+    });
     state.completed += 1;
     console.log(`[cluster/worker] completed ${task.id} (${task.title})`);
   } catch (error) {
@@ -146,10 +160,36 @@ async function runTask(assignment, userId) {
     // is handled by the lease, but a worker that KNOWS it failed should say so
     // — otherwise the task waits out a full lease for no reason.
     await callPrimary('/complete', {
-      body: { taskId: task.id, status: 'failed', error: error.message },
+      body: {
+        taskId: task.id,
+        status: 'failed',
+        error: error.message,
+        // A failed task still SPENT. Reporting cost only on success is how a
+        // fleet's most expensive failures become invisible.
+        spend: await collectSpend(userId, task.goalId, spendSince),
+      },
     }).catch(() => {});
   } finally {
     clearInterval(renewal);
+  }
+}
+
+/**
+ * What this task actually cost, read back from the rows this node's own
+ * execution already wrote.
+ *
+ * Measured, not re-derived: AGNT never models cost, it records what the
+ * provider reported, and a parallel estimate for remote work would be a second
+ * number that drifts from the first. Never throws — a task that ran must be
+ * reportable even when its bookkeeping cannot be read.
+ */
+async function collectSpend(userId, goalId, sinceIso) {
+  try {
+    const rows = await LlmCallModel.findByOriginSince(userId, 'goal_task', goalId, sinceIso);
+    return rows.map((row) => ({ ...row, originId: goalId }));
+  } catch (error) {
+    console.warn(`[cluster/worker] could not read local spend: ${error.message}`);
+    return [];
   }
 }
 
@@ -159,6 +199,15 @@ async function pollOnce(userId, consecutiveEmptyPolls) {
   const response = await callPrimary('/claim', { body: { leaseMs: LEASE_MS } });
 
   if (response.status === 204) return { worked: false, empty: consecutiveEmptyPolls + 1 };
+
+  if (response.status === 429) {
+    // The primary has hit its spend ceiling. This is "not now", not "never":
+    // the window resets, so back off on the normal curve and keep asking
+    // rather than exiting.
+    const detail = await response.json().catch(() => ({}));
+    console.warn(`[cluster/worker] primary is not admitting work (${detail.code || 'budget'})`);
+    return { worked: false, empty: consecutiveEmptyPolls + 1 };
+  }
 
   if (response.status === 401) {
     // A rejected grant will be rejected identically next second. Backing off

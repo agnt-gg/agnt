@@ -197,3 +197,53 @@ describe('GUARD 7 — no tool reports success for work it did not do', () => {
     expect(tools).toMatch(/AgentExecutionModel/);
   });
 });
+
+describe('GUARD 8 — spend says WHERE it happened, or says nothing', () => {
+  const recorderPath = path.join(SRC, 'services', 'execution', 'LedgerRecorder.js');
+
+  it('the live write stamps a node id', () => {
+    const recorder = CODE.get(recorderPath);
+    expect(recorder).toBeTruthy();
+
+    // Once more than one machine can spend money, a ledger with no node column
+    // populated answers "what did this cost" but not "which node cost it" —
+    // and the second question is the entire reason for running a fleet.
+    expect(recorder).toMatch(/nodeId:\s*nodeId\s*\|\|\s*getNodeId\(\)/);
+  });
+
+  it('nodeId is a parameter, not a hard-coded call to getNodeId at the write', () => {
+    const recorder = CODE.get(recorderPath);
+
+    // Same failure class GUARD 5 exists for. When a worker reports usage back,
+    // the PRIMARY writes the row — so a hard-coded getNodeId() there would
+    // file every worker's spend under the primary and make the breakdown
+    // uniform, plausible and wrong.
+    expect(recorder).toMatch(/\bnodeId = null,/);
+  });
+
+  it('neither backfill invents an attribution', () => {
+    const recorder = CODE.get(recorderPath);
+
+    // Historical rows predate multi-node execution. Stamping the machine that
+    // happened to run the backfill is fabrication in exactly the sense the
+    // backfill's own header forbids — the same reason cost_usd stays NULL
+    // rather than becoming 0.
+    const backfillSection = recorder.slice(recorder.indexOf('export async function backfillFromAgentExecutions'));
+    const explicitNulls = backfillSection.match(/nodeId:\s*null/g) || [];
+    expect(
+      explicitNulls.length,
+      'Each backfill must pass nodeId: null explicitly. Relying on the default\n' +
+        'would work today and break silently the moment the default changes.'
+    ).toBe(2);
+  });
+
+  it('the ledger table actually has somewhere to put it', () => {
+    const schema = CODE.get(path.join(SRC, 'models', 'database', 'index.js'));
+    expect(schema).toMatch(/table:\s*'llm_calls',\s*name:\s*'node_id'/);
+  });
+
+  it('ANTI-VACUITY: the detectors match the shapes they describe', () => {
+    expect(/nodeId:\s*nodeId\s*\|\|\s*getNodeId\(\)/.test('nodeId: nodeId || getNodeId(),')).toBe(true);
+    expect((('nodeId: null, x nodeId: null,').match(/nodeId:\s*null/g) || []).length).toBe(2);
+  });
+});

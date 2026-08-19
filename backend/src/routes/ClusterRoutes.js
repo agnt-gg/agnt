@@ -3,7 +3,9 @@ import express from 'express';
 import TaskModel from '../models/TaskModel.js';
 import GoalModel from '../models/GoalModel.js';
 import TaskOrchestrator from '../services/goal/TaskOrchestrator.js';
+import { recordLlmCall } from '../services/execution/LedgerRecorder.js';
 import { mintNodeToken, presentedToken, verifyNodeToken } from '../services/cluster/clusterToken.js';
+import { checkSpendAdmission } from '../services/cluster/admission.js';
 import { listNodes, touchNode } from '../services/cluster/nodeRegistry.js';
 import { describeNode } from '../services/cluster/nodeIdentity.js';
 import { authenticateToken } from './Middleware.js';
@@ -120,6 +122,23 @@ ClusterRoutes.post('/claim', authenticateClusterNode, async (req, res) => {
     const { nodeId, userId } = req.clusterNode;
     const { goalId = null, leaseMs } = req.body || {};
 
+    // The claim IS the meter. Refusing here stops NEW work while every task
+    // already in flight runs to completion — which is the only humane place to
+    // enforce a budget.
+    const admission = await checkSpendAdmission(userId);
+    if (!admission.admit) {
+      // 429, not 402 or 403: this is "not now", and a worker that backs off
+      // and retries is exactly the correct behaviour. A 4xx implying a
+      // permanent refusal would make workers give up on a ceiling that resets
+      // at midnight.
+      return res.status(429).json({
+        error: 'Spend ceiling reached — no new work is being admitted.',
+        code: admission.reason,
+        spentUsd: admission.spentUsd,
+        hardLimitUsd: admission.hardLimitUsd,
+      });
+    }
+
     const task = await TaskModel.claimNext(nodeId, {
       userId, // scoping lives in SQL — see TaskModel.claimNext
       goalId,
@@ -197,7 +216,7 @@ ClusterRoutes.post('/release', authenticateClusterNode, async (req, res) => {
  */
 ClusterRoutes.post('/complete', authenticateClusterNode, async (req, res) => {
   try {
-    const { taskId, status = 'completed', result = null, error = null } = req.body || {};
+    const { taskId, status = 'completed', result = null, error = null, spend = [] } = req.body || {};
     if (!taskId) return res.status(400).json({ error: 'taskId is required' });
 
     // Ownership is re-checked at the write, not assumed from the claim: a
@@ -217,11 +236,61 @@ ClusterRoutes.post('/complete', authenticateClusterNode, async (req, res) => {
       touchNode(req.clusterNode, 'fail');
     }
 
+    await recordWorkerSpend(req.clusterNode, taskId, spend);
+
     await TaskModel.releaseClaim(taskId, req.clusterNode.nodeId);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * Copy a worker's measured spend into the primary's ledger.
+ *
+ * WHY THE PRIMARY RECORDS SPEND IT DID NOT INCUR
+ * ─────────────────────────────────────────────
+ * A worker calls providers with its OWN credentials and writes its own ledger
+ * rows — into its own database, which the operator never looks at. Without
+ * this, fleet spend would be scattered across N sqlite files and the answer to
+ * "what is this costing me" would require logging into every node.
+ *
+ * The rows carry the WORKER's node id, not ours. Stamping the primary here
+ * would produce a per-node breakdown that is uniform, plausible and wrong —
+ * which is worse than not having one.
+ *
+ * Never throws. A bookkeeping failure must not turn a completed task into a
+ * failed one; that is the same rule LedgerRecorder itself lives by.
+ */
+async function recordWorkerSpend(node, taskId, spend) {
+  if (!Array.isArray(spend) || spend.length === 0) return;
+  for (const row of spend.slice(0, 200)) {
+    try {
+      await recordLlmCall({
+        userId: node.userId,
+        origin: 'goal_task',
+        originId: row.originId || null,
+        provider: row.provider,
+        model: row.model,
+        // Tokens travel, prices do not: the primary re-prices from its own
+        // catalogue so every figure in one ledger was produced by one pricing
+        // table. A worker with a stale catalogue cannot skew the total.
+        usage: {
+          inputTokens: row.input_tokens,
+          outputTokens: row.output_tokens,
+          cacheReadTokens: row.cache_read_tokens,
+          cacheCreation5mTokens: row.cache_write_5m_tokens,
+          cacheCreation1hTokens: row.cache_write_1h_tokens,
+        },
+        durationMs: row.duration_ms ?? null,
+        status: row.status || 'ok',
+        error: row.error || null,
+        nodeId: node.nodeId,
+      });
+    } catch (error) {
+      console.warn(`[cluster] could not record worker spend for task ${taskId}: ${error.message}`);
+    }
+  }
+}
 
 export default ClusterRoutes;

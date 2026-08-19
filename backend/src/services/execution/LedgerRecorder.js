@@ -1,5 +1,6 @@
 import { getModelCost, isSubscriptionProvider } from '../ai/providerConfigs.js';
 import LlmCallModel from '../../models/LlmCallModel.js';
+import { getNodeId } from '../cluster/nodeIdentity.js';
 
 /**
  * LedgerRecorder — the ONLY way an LLM call is recorded in AGNT (PRD-122).
@@ -106,6 +107,7 @@ export function normalizeUsage(usage = {}) {
  * @param {number} [p.durationMs]
  * @param {string} [p.status]        'ok' | 'error' | 'aborted'
  * @param {string} [p.error]
+ * @param {string} [p.nodeId]        which node spent this; defaults to us
  * @returns {Promise<string|null>}   row id, or null if nothing was recorded
  */
 export async function recordLlmCall({
@@ -122,6 +124,13 @@ export async function recordLlmCall({
   durationMs = null,
   status = 'ok',
   error = null,
+  // Defaulted rather than required, so every existing call site keeps working
+  // and is attributed to the process that made the call — which is the right
+  // answer for all of them. It is a PARAMETER because it will not always be:
+  // when a worker reports usage back to the primary, the primary is writing a
+  // row for spend that happened somewhere else, and stamping its own id there
+  // would file every worker's cost under the primary.
+  nodeId = null,
 }) {
   try {
     if (!userId || !provider || !model || !origin) return null;
@@ -160,6 +169,7 @@ export async function recordLlmCall({
       durationMs,
       status,
       error,
+      nodeId: nodeId || getNodeId(),
     });
 
     stats.recorded += 1;
@@ -259,6 +269,12 @@ export async function backfillFromAgentExecutions() {
         isNotional: isSubscriptionProvider(provider) ? 1 : 0,
         durationMs: Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null,
         status: ae.status === 'failed' ? 'error' : 'ok',
+        // Explicitly NULL, never this node's id. These rows predate multi-node
+        // execution entirely; stamping the machine that happened to run the
+        // backfill would invent an attribution and make a per-node cost
+        // breakdown confidently wrong rather than visibly incomplete. Same
+        // reasoning as costUsd above.
+        nodeId: null,
         ts: new Date(ae.start_time).toISOString().replace('T', ' ').slice(0, 19),
       });
       backfilled += 1;
@@ -380,6 +396,8 @@ export async function backfillFromNodeExecutions() {
         isNotional: isSubscriptionProvider(provider) ? 1 : 0,
         durationMs: Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null,
         status: ne.status === 'failed' ? 'error' : 'ok',
+        // NULL for the same reason as the agent-execution backfill above.
+        nodeId: null,
         ts: new Date(ne.start_time).toISOString().replace('T', ' ').slice(0, 19),
       });
       backfilled += 1;

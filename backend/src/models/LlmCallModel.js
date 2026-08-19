@@ -92,6 +92,10 @@ class LlmCallModel {
     durationMs = null,
     status = 'ok',
     error = null,
+    // WHERE the spend happened, once more than one node can spend. NULL is a
+    // real answer and the only honest one for a historical row — same rule as
+    // cost_usd: unknown must stay distinguishable from a stand-in.
+    nodeId = null,
     // Explicit timestamp, used ONLY by the one-time backfill so a run from
     // March lands in March. Live recording always omits it and gets the
     // database clock — COALESCE, because passing NULL to a column with a
@@ -106,18 +110,40 @@ class LlmCallModel {
          input_tokens, output_tokens, cache_read_tokens,
          cache_write_5m_tokens, cache_write_1h_tokens,
          cost_usd, uncached_cost_usd, is_notional,
-         duration_ms, status, error, ts
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))`,
+         duration_ms, status, error, node_id, ts
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))`,
       [
         id, userId, executionId, parentExecutionId, rootExecutionId,
         origin, originId, conversationId, provider, model,
         inputTokens | 0, outputTokens | 0, cacheReadTokens | 0,
         cacheCreation5mTokens | 0, cacheCreation1hTokens | 0,
         costUsd, uncachedCostUsd, isNotional ? 1 : 0,
-        durationMs, status, error, ts,
+        durationMs, status, error, nodeId, ts,
       ]
     );
     return id;
+  }
+
+  /**
+   * The rows this install wrote for one origin since a given instant.
+   *
+   * Exists for one caller: a worker node reporting what a task actually cost,
+   * so the primary's ledger can hold the whole fleet's spend.
+   *
+   * It returns MEASURED rows rather than a recomputed estimate on purpose.
+   * AGNT does not model cost anywhere — it records what the provider reported
+   * — and a second, parallel estimate for remote work would be a number that
+   * drifts from the one the same code already measured.
+   */
+  static async findByOriginSince(userId, origin, originId, sinceIso) {
+    return dbAll(
+      `SELECT provider, model, input_tokens, output_tokens, cache_read_tokens,
+              cache_write_5m_tokens, cache_write_1h_tokens, duration_ms, status, error
+         FROM llm_calls
+        WHERE user_id = ? AND origin = ? AND origin_id IS ? AND ts >= ?
+        ORDER BY ts`,
+      [userId, origin, originId, sinceIso]
+    );
   }
 
   /** SELECT list shared by every aggregate, so the triple can never drift. */
