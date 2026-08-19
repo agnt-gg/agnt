@@ -1,0 +1,316 @@
+/**
+ * HTTP contract for the cluster wire.
+ *
+ * The model tests prove the claim SQL and the token tests prove the grant.
+ * This proves the surface a worker actually talks to: real express routing,
+ * real status codes, real database, real grants.
+ *
+ * The assertions that matter most are the refusals — an unauthenticated claim,
+ * a claim that reaches across accounts, and a result posted by a node that has
+ * already lost the task.
+ */
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import express from 'express';
+import http from 'http';
+
+const OWNER = 'user-cluster-owner';
+const STRANGER = 'user-cluster-stranger';
+
+// The two operator routes are guarded by the app's normal session auth, which
+// is covered by Middleware.auth.test.js. Substitute a fixed identity so this
+// file is about the cluster contract.
+vi.mock('./Middleware.js', () => ({
+  authenticateToken: (req, _res, next) => {
+    const id = req.headers['x-test-user'] || OWNER;
+    req.user = { isAuthenticated: true, id, userId: id };
+    next();
+  },
+  authenticateTokenOptional: (req, _res, next) => next(),
+  sessionMiddleware: (req, _res, next) => next(),
+  getUserTokenFromSession: () => null,
+}));
+
+// A worker's result is written through TaskOrchestrator.processTaskResult so
+// local and remote execution produce the same output shape. Stub it to keep
+// this test on the wire rather than in the agent stack — and assert it is the
+// function that gets called.
+const processTaskResult = vi.fn(async (taskId) => {
+  const TaskModel = (await import('../models/TaskModel.js')).default;
+  await TaskModel.updateStatus(taskId, 'completed', 100);
+  return { content: 'ok' };
+});
+vi.mock('../services/goal/TaskOrchestrator.js', () => ({
+  default: { processTaskResult: (...args) => processTaskResult(...args) },
+}));
+
+let server;
+let baseUrl;
+let db;
+let TaskModel;
+let generateUUID;
+
+const req = async (method, path, { token, user, body } = {}) => {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (user) headers['x-test-user'] = user;
+  // fetch() throws outright on a GET/HEAD with a body, so the shared helper
+  // has to drop it rather than pass it through.
+  const sendsBody = body && !['GET', 'HEAD'].includes(method);
+  const res = await fetch(baseUrl + path, { method, headers, ...(sendsBody ? { body: JSON.stringify(body) } : {}) });
+  let parsed = null;
+  try {
+    parsed = await res.json();
+  } catch {
+    /* 204 and error bodies may be empty */
+  }
+  return { status: res.status, body: parsed };
+};
+
+const dbRun = (sql, params = []) =>
+  new Promise((resolve, reject) =>
+    db.run(sql, params, function (err) {
+      return err ? reject(err) : resolve(this);
+    })
+  );
+
+const dbGet = (sql, params = []) =>
+  new Promise((resolve, reject) => db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row))));
+
+async function seedGoal(userId, status = 'executing') {
+  const goalId = generateUUID();
+  await dbRun(`INSERT INTO goals (id, user_id, title, description, status) VALUES (?, ?, ?, ?, ?)`, [
+    goalId,
+    userId,
+    'cluster goal',
+    'cluster goal',
+    status,
+  ]);
+  return goalId;
+}
+
+/** Mint a grant the way an operator would: through the enrol endpoint. */
+async function enrol(userId, label = 'test-node') {
+  const { body } = await req('POST', '/api/cluster/enroll', { user: userId, body: { label } });
+  return body;
+}
+
+beforeAll(async () => {
+  const dbModule = await import('../models/database/index.js');
+  db = dbModule.default;
+  await dbModule.dbReady;
+
+  TaskModel = (await import('../models/TaskModel.js')).default;
+  generateUUID = (await import('../utils/generateUUID.js')).default;
+
+  for (const id of [OWNER, STRANGER]) {
+    await dbRun(`INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)`, [id, `${id}@test.local`, id]);
+  }
+
+  const { default: ClusterRoutes } = await import('./ClusterRoutes.js');
+  const app = express();
+  app.use(express.json());
+  app.use('/api/cluster', ClusterRoutes);
+
+  server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  baseUrl = `http://127.0.0.1:${server.address().port}`;
+});
+
+afterAll(async () => {
+  if (server) await new Promise((resolve) => server.close(resolve));
+});
+
+beforeEach(async () => {
+  processTaskResult.mockClear();
+  await dbRun(`DELETE FROM tasks`);
+  await dbRun(`DELETE FROM goals`);
+});
+
+describe('every node route refuses an unauthenticated caller', () => {
+  it.each([
+    ['POST', '/api/cluster/claim'],
+    ['POST', '/api/cluster/renew'],
+    ['POST', '/api/cluster/release'],
+    ['POST', '/api/cluster/complete'],
+    ['GET', '/api/cluster/whoami'],
+  ])('%s %s is 401 without a grant', async (method, path) => {
+    expect((await req(method, path, { body: {} })).status).toBe(401);
+  });
+
+  it('refuses a garbage grant', async () => {
+    const { status } = await req('GET', '/api/cluster/whoami', { token: 'not.a.token' });
+    expect(status).toBe(401);
+  });
+});
+
+describe('enrolment', () => {
+  it('returns a working grant and a copy-paste env block', async () => {
+    const enrolment = await enrol(OWNER, 'hetzner-fsn1');
+
+    expect(enrolment.nodeId).toMatch(/^node_/);
+    expect(enrolment.env.AGNT_NODE_ROLE).toBe('worker');
+    expect(enrolment.env.AGNT_CLUSTER_TOKEN).toBe(enrolment.token);
+    expect(enrolment.env.AGNT_CLUSTER_PRIMARY).toContain('127.0.0.1');
+
+    const who = await req('GET', '/api/cluster/whoami', { token: enrolment.token });
+    expect(who.status).toBe(200);
+    expect(who.body.nodeId).toBe(enrolment.nodeId);
+  });
+});
+
+describe('claim', () => {
+  it('is 204 — not 404, not an empty 200 — when the queue is empty', async () => {
+    const { token } = await enrol(OWNER);
+    await seedGoal(OWNER);
+
+    // "No content" is literally what happened, and it keeps a polling loop
+    // from having to tell an empty queue apart from an error.
+    expect((await req('POST', '/api/cluster/claim', { token })).status).toBe(204);
+  });
+
+  it('hands out a task with the goal context a worker needs', async () => {
+    const { token, nodeId } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'do the thing', 'in detail');
+
+    const { status, body } = await req('POST', '/api/cluster/claim', { token });
+
+    expect(status).toBe(200);
+    expect(body.task).toMatchObject({ id: taskId, goalId, title: 'do the thing' });
+    // A task title alone is not enough for an agent; the worker holds no goal
+    // state of its own.
+    expect(body.goal.title).toBe('cluster goal');
+
+    const row = await dbGet(`SELECT claimed_by FROM tasks WHERE id = ?`, [taskId]);
+    expect(row.claimed_by).toBe(nodeId);
+  });
+
+  it('never crosses accounts', async () => {
+    const stranger = await enrol(STRANGER);
+    const goalId = await seedGoal(OWNER);
+    await TaskModel.create(goalId, 'owner work', '');
+
+    // A grant is issued to ONE account. The join to goals.user_id is the only
+    // thing keeping a worker inside its owner's work.
+    expect((await req('POST', '/api/cluster/claim', { token: stranger.token })).status).toBe(204);
+  });
+
+  it('gives one task to one node', async () => {
+    const a = await enrol(OWNER, 'a');
+    const b = await enrol(OWNER, 'b');
+    const goalId = await seedGoal(OWNER);
+    await TaskModel.create(goalId, 'only once', '');
+
+    const first = await req('POST', '/api/cluster/claim', { token: a.token });
+    const second = await req('POST', '/api/cluster/claim', { token: b.token });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(204);
+  });
+});
+
+describe('renew', () => {
+  it('extends a lease this node holds', async () => {
+    const { token } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'renew me', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    expect((await req('POST', '/api/cluster/renew', { token, body: { taskId } })).status).toBe(200);
+  });
+
+  it('answers 409, not 401, when the claim is gone', async () => {
+    const a = await enrol(OWNER, 'a');
+    const b = await enrol(OWNER, 'b');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'not yours', '');
+    await req('POST', '/api/cluster/claim', { token: a.token });
+
+    // The grant is fine; the CLAIM is gone. A worker reading this as an auth
+    // failure would re-enrol instead of stopping work it no longer owns.
+    const { status, body } = await req('POST', '/api/cluster/renew', { token: b.token, body: { taskId } });
+    expect(status).toBe(409);
+    expect(body.code).toBe('claim_lost');
+  });
+
+  it('rejects a request with no taskId', async () => {
+    const { token } = await enrol(OWNER);
+    expect((await req('POST', '/api/cluster/renew', { token, body: {} })).status).toBe(400);
+  });
+});
+
+describe('complete', () => {
+  it('writes the result through the same path local execution uses', async () => {
+    const { token } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'finish me', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    const result = { content: 'done', tool_executions: [], usage: { input_tokens: 10 } };
+    const { status } = await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'completed', result },
+    });
+
+    expect(status).toBe(200);
+    // Two writers producing two output shapes for one column is how the goal
+    // evaluator ends up needing a special case per execution site.
+    expect(processTaskResult).toHaveBeenCalledWith(taskId, result);
+
+    const row = await dbGet(`SELECT status, claimed_by FROM tasks WHERE id = ?`, [taskId]);
+    expect(row.status).toBe('completed');
+    expect(row.claimed_by, 'a finished task must not stay claimed').toBeNull();
+  });
+
+  it('records a reported failure without waiting out the lease', async () => {
+    const { token } = await enrol(OWNER);
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'fail me', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'failed', error: 'provider exploded' },
+    });
+
+    const row = await dbGet(`SELECT status, error, claimed_by FROM tasks WHERE id = ?`, [taskId]);
+    expect(row.status).toBe('failed');
+    expect(row.error).toBe('provider exploded');
+    expect(row.claimed_by).toBeNull();
+  });
+
+  it('refuses a result from a node that has lost the claim', async () => {
+    const a = await enrol(OWNER, 'a');
+    const b = await enrol(OWNER, 'b');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'slow node', '');
+    await req('POST', '/api/cluster/claim', { token: a.token });
+
+    // A lease can lapse WHILE the work runs. Accepting this write anyway would
+    // let a slow node overwrite a fresher result.
+    const { status, body } = await req('POST', '/api/cluster/complete', {
+      token: b.token,
+      body: { taskId, status: 'completed', result: { content: 'stale' } },
+    });
+
+    expect(status).toBe(409);
+    expect(body.code).toBe('claim_lost');
+    expect(processTaskResult).not.toHaveBeenCalled();
+  });
+});
+
+describe('nodes', () => {
+  it('reports only the calling operator\u2019s nodes', async () => {
+    const mine = await enrol(OWNER, 'mine');
+    const theirs = await enrol(STRANGER, 'theirs');
+    await req('GET', '/api/cluster/whoami', { token: mine.token });
+    await req('GET', '/api/cluster/whoami', { token: theirs.token });
+
+    const { body } = await req('GET', '/api/cluster/nodes', { user: OWNER });
+    const ids = body.nodes.map((n) => n.nodeId);
+
+    expect(ids).toContain(mine.nodeId);
+    expect(ids).not.toContain(theirs.nodeId);
+    expect(body.self.role).toBe('primary');
+  });
+});

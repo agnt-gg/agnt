@@ -289,6 +289,7 @@ class TaskModel {
    * @param {object} [options]
    * @param {number} [options.leaseMs]
    * @param {string|null} [options.goalId]      restrict to one goal
+   * @param {string|null} [options.userId]      restrict to one owner's goals
    * @param {number} [options.maxAttempts=5]    poison-task ceiling
    * @param {number} [options.candidates=5]     shortlist size
    * @returns {Promise<object|null>}
@@ -297,10 +298,27 @@ class TaskModel {
     const {
       leaseMs = TaskModel.DEFAULT_LEASE_MS,
       goalId = null,
+      userId = null,
       maxAttempts = 5,
       candidates = 5,
     } = options;
     const now = Date.now();
+
+    // userId is scoping, not a filter of convenience: a node grant is issued
+    // to ONE account, and the join to goals.user_id is the only thing keeping
+    // a worker from picking up work that is not its owner's. Applied in SQL
+    // rather than after the fact so no code path can forget it.
+    const params = [maxAttempts, now];
+    let scope = '';
+    if (userId) {
+      scope += ' AND g.user_id = ?';
+      params.push(userId);
+    }
+    if (goalId) {
+      scope += ' AND t.goal_id = ?';
+      params.push(goalId);
+    }
+    params.push(candidates);
 
     const shortlist = await new Promise((resolve, reject) => {
       db.all(
@@ -311,10 +329,10 @@ class TaskModel {
             AND g.status = 'executing'
             AND COALESCE(t.attempt_count, 0) < ?
             AND (t.claimed_by IS NULL OR t.claim_expires_at IS NULL OR t.claim_expires_at < ?)
-            ${goalId ? 'AND t.goal_id = ?' : ''}
+            ${scope}
           ORDER BY t.order_index, t.created_at
           LIMIT ?`,
-        goalId ? [maxAttempts, now, goalId, candidates] : [maxAttempts, now, candidates],
+        params,
         (err, rows) => (err ? reject(err) : resolve(rows || []))
       );
     });

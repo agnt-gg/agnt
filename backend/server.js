@@ -74,6 +74,7 @@ import ScheduleRoutes from './src/routes/ScheduleRoutes.js';
 import SchedulerService from './src/services/scheduler/SchedulerService.js';
 import WalletRoutes from './src/routes/WalletRoutes.js';
 import LedgerRoutes from './src/routes/LedgerRoutes.js';
+import ClusterRoutes from './src/routes/ClusterRoutes.js';
 import ContractRoutes from './src/routes/ContractRoutes.js';
 import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
 import EvolutionCoreRoutes from './src/routes/EvolutionCoreRoutes.js';
@@ -252,6 +253,7 @@ app.use('/api/conversations', ConversationSettingsRoutes);
 app.use('/api/schedules', ScheduleRoutes);
 app.use('/api/wallets', WalletRoutes);
 app.use('/api/ledger', LedgerRoutes);
+app.use('/api/cluster', ClusterRoutes);
 app.use('/api/routing', RoutingRoutes);
 app.use('/api/contracts', ContractRoutes);
 app.use('/api/mutations', MutationHistoryRoutes);
@@ -290,6 +292,35 @@ dbReady.then(() => {
   SchedulerService.start().catch((err) => {
     console.error('[Scheduler] Failed to start:', err);
   });
+});
+
+// Multi-node: reclaim abandoned work, and start the pull loop on a worker.
+//
+// The reaper runs on EVERY install, including the overwhelming majority that
+// will only ever be one node. That is not waste — a claim whose lease lapsed
+// is exactly what this process leaves behind when it is killed mid-task, so
+// the reaper is what makes a task survive a crash of the app itself. It was
+// previously left 'running' forever and needed a manual reset.
+//
+// startClusterWorker() returns immediately unless AGNT_NODE_ROLE=worker, so
+// calling it unconditionally is safe and keeps the boot path free of a
+// second place that has to know what a role is.
+dbReady.then(async () => {
+  const TaskModel = (await import('./src/models/TaskModel.js')).default;
+  const { startClusterWorker } = await import('./src/services/cluster/ClusterWorker.js');
+
+  const reap = () =>
+    TaskModel.reapExpiredClaims()
+      .then((count) => {
+        if (count > 0) console.log(`[cluster] returned ${count} abandoned task(s) to the queue`);
+      })
+      .catch((err) => console.warn('[cluster] reaper failed (non-fatal):', err.message));
+
+  reap();
+  const reaper = setInterval(reap, 60000);
+  if (typeof reaper.unref === 'function') reaper.unref();
+
+  startClusterWorker().catch((err) => console.error('[cluster/worker] failed to start:', err.message));
 });
 
 // Restore turns that were still generating when the last process died.

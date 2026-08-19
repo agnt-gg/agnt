@@ -104,6 +104,14 @@ const GUARD_NAMES = new Set([
   // reason that matters — it rejects. Loopback-only, and 401s on a token it did
   // not mint. See routes/LlmGatewayRoutes.js.
   'authenticateGateway',
+  // Worker nodes present a grant this primary minted, not a user session: the
+  // caller is a machine and there is no browser, no cookie and no login to
+  // attach. Same situation as authenticateGateway, and it qualifies for the
+  // same reason — it REJECTS. A missing, forged, expired or wrong-audience
+  // grant is a 401 before the handler is reached, and the grant is signed with
+  // CLUSTER_SECRET, so it opens this router and nothing else in the API.
+  // See services/cluster/clusterToken.js.
+  'authenticateClusterNode',
 ]);
 
 // The permissive behaviour still exists, but a route must now opt into it by
