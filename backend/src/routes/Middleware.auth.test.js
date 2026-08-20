@@ -177,3 +177,67 @@ describe('authenticateTokenOptional is the deliberate opt-in', () => {
     expect(strict.req.allowAnonymous).toBeUndefined();
   });
 });
+
+describe('issuer delegation is INERT for every existing install', () => {
+  // A hosted tenant can be configured to ask api.agnt.gg whether a token is
+  // genuine, because it deliberately holds no copy of the issuer's signing key.
+  // Every OTHER install — every desktop, every self-hosted container — must be
+  // untouched by that code path.
+  //
+  // Asserting the 401 is not enough. The failure that would actually hurt is a
+  // desktop that starts phoning home on every expired token: same status code,
+  // new network dependency, new latency, new privacy surface, and no test would
+  // notice. So these assert the ABSENCE OF THE CALL.
+  let fetchSpy;
+
+  beforeEach(() => {
+    delete process.env.AGNT_AUTH_MODE;
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ isAuthenticated: true, user: { id: 'someone-else' } }),
+    });
+  });
+
+  afterEach(() => {
+    delete process.env.AGNT_AUTH_MODE;
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['a garbage token', 'not-a-jwt'],
+    ['a token signed with a foreign secret', jwt.sign({ id: 'u1' }, 'some-other-secret')],
+    ['an expired token', jwt.sign({ id: 'u1' }, SECRET, { expiresIn: -60 })],
+  ])('%s still 401s WITHOUT reaching the network', async (_label, token) => {
+    const { res, next } = await run(authenticateToken, { authorization: `Bearer ${token}` });
+
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
+    expect(
+      fetchSpy,
+      'a normal install must never call the issuer — this would be a silent network dependency on the auth path'
+    ).not.toHaveBeenCalled();
+  });
+
+  it('a valid local token is admitted with no network call and no changed shape', async () => {
+    const token = jwt.sign({ id: 'u-local', email: 'n@a.gg' }, SECRET, { expiresIn: '1h' });
+    const { req, next } = await run(authenticateToken, { authorization: `Bearer ${token}` });
+
+    expect(next).toHaveBeenCalled();
+    // auth_type is the tell: 'local' means it took the unchanged branch.
+    expect(req.user).toMatchObject({ isAuthenticated: true, id: 'u-local', auth_type: 'local' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ANTI-VACUITY: the branch DOES engage when a tenant opts in', async () => {
+    // Without this, every assertion above would still pass if the feature were
+    // deleted outright, and the suite would be guarding nothing.
+    process.env.AGNT_AUTH_MODE = 'verify-remote';
+    const foreign = jwt.sign({ id: 'u1' }, 'some-other-secret');
+
+    const { req, next } = await run(authenticateToken, { authorization: `Bearer ${foreign}` });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalled();
+    expect(req.user.auth_type).toBe('issuer-verified');
+  });
+});

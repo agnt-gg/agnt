@@ -5,6 +5,7 @@ import { getCliProviderIds, getAuthEntry } from './auth/AuthDispatcher.js';
 import SecurityPolicyService from './security/SecurityPolicyService.js';
 import { isValidDeviceId, projectForDevice } from '../utils/userPreferences.js';
 import { GLOBAL_ROUTING_MODES, ROUTING_POLICIES } from './orchestrator/routingMode.js';
+import { mintLocalToken } from './auth/localTokenIssuer.js';
 
 async function _getLocalCliHealthProviders() {
   const ids = getCliProviderIds();
@@ -539,14 +540,46 @@ class UserService {
       });
     }
 
-    res.json({
+    const body = {
       isAuthenticated: true,
       user: {
         id: req.user.id,
         email: req.user.email ?? null,
         auth_type: req.user.auth_type ?? 'local',
       },
-    });
+    };
+
+    // THE TOKEN EXCHANGE.
+    //
+    // `issuer-verified` means this request arrived with a CLOUD token that this
+    // install could not check itself, so Middleware asked api.agnt.gg. That
+    // answer is authoritative but asynchronous, and two other verification
+    // sites — utils/authGuard.js and utils/socketIdentity.js — are synchronous.
+    // Leaving the client on a cloud token would give it a working REST API and
+    // dead sockets, images and file URLs.
+    //
+    // So the verified identity is traded for a token minted here, which every
+    // site verifies synchronously against this install's own secret. The client
+    // stores it in place of the cloud token; nothing downstream changes.
+    //
+    // Only ever attached to a response that has ALREADY been authenticated, and
+    // only for the identity the issuer confirmed. See
+    // services/auth/localTokenIssuer.js.
+    if (req.user.auth_type === 'issuer-verified') {
+      const header = req.headers?.authorization || '';
+      const cloudToken = header.startsWith('Bearer ') ? header.slice(7) : null;
+      const minted = mintLocalToken({
+        userId: req.user.id,
+        email: req.user.email ?? null,
+        cloudToken,
+      });
+      if (minted) {
+        body.localToken = minted.token;
+        body.localTokenExpiresAt = minted.expiresAt;
+      }
+    }
+
+    res.json(body);
   }
 
   getTokenStatus(req, res) {

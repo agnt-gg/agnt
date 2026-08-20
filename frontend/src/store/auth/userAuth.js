@@ -438,6 +438,25 @@ export default {
           });
 
           if (response.data?.isAuthenticated && response.data.user) {
+            // THE TOKEN EXCHANGE.
+            //
+            // A hosted backend cannot hold the cloud's signing key (it is
+            // public, and that backend is on the open internet), so it verified
+            // this token by ASKING api.agnt.gg and handed back one it signed
+            // itself. Adopting it is what makes the rest of the app work: media
+            // URLs, file routes and the websocket handshake all verify
+            // synchronously against the backend's own secret and cannot wait on
+            // a remote call. Staying on the cloud token would leave the user
+            // signed in with dead sockets and broken images.
+            //
+            // Desktop never sends one, so this is inert there.
+            //
+            // Committed BEFORE the session state: SET_TOKEN resets it to
+            // UNKNOWN by design, so promoting to VALID has to come after.
+            if (response.data.localToken) {
+              commit('SET_TOKEN', response.data.localToken);
+            }
+
             commit('SET_USER', response.data.user);
             commit('CLEAR_AUTH_FAILURE');
             commit('SET_SESSION_STATE', SESSION.VALID);

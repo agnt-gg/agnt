@@ -194,6 +194,51 @@ class Middleware {
 
       next();
     } catch (err) {
+      // LOCAL VERIFICATION FAILED. On a normal install that is the end of it:
+      // this backend holds the issuer's signing key, so a signature it cannot
+      // verify is a signature that is wrong.
+      //
+      // A HOSTED TENANT IS DIFFERENT. It deliberately holds a random, private
+      // JWT_SECRET so that the published key is not sitting on an
+      // internet-facing box, which means a genuine cloud token ALWAYS fails
+      // here. Asking the issuer is not a fallback for a broken check — it is
+      // the only check that can succeed, and it inspects material this process
+      // does not have (the proof claim, keyed by a server-only secret).
+      //
+      // Opt-in via AGNT_AUTH_MODE=verify-remote, so desktop is bit-for-bit
+      // unchanged: it verifies locally and never makes this call.
+      const { isRemoteVerifyMode, verifyViaIssuer } = await import(
+        '../services/auth/remoteTokenVerifier.js'
+      );
+
+      if (isRemoteVerifyMode()) {
+        const remote = await verifyViaIssuer(token);
+        if (remote.ok) {
+          const userId = remote.user.id || remote.user.userId;
+          await this.syncRemoteUserToLocal({ ...remote.user, id: userId });
+
+          req.user = {
+            isAuthenticated: true,
+            id: userId,
+            userId,
+            email: remote.user.email,
+            auth_type: 'issuer-verified',
+          };
+
+          if (req.session) {
+            req.session.userToken = token;
+            req.session.userData = req.user;
+            req.session.lastActivity = Date.now();
+          }
+
+          // Same reason as the verified branch: the pollers, workflow nodes and
+          // plugins run with no request in scope and still need a credential to
+          // present to api.agnt.gg. See services/auth/sessionTokenCache.js.
+          rememberSessionToken(token, userId);
+          return next();
+        }
+      }
+
       req.user = { isAuthenticated: false };
 
       // Clear session data if token is invalid
