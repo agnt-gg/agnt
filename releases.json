@@ -660,7 +660,7 @@
       "title": "🔧 Platform Update - AGNT v0.3.3",
       "type": "patch",
       "features": [
-        { "name": "Auto-Update System", "status": "new" },
+        { "name": "Update Notifications", "status": "new" },
         { "name": "Version Check API", "status": "new" },
         { "name": "News Panel Updates", "status": "updated" }
       ],

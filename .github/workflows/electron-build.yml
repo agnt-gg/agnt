@@ -4,6 +4,9 @@ run-name: ${{ github.ref_name }}
 on:
   push:
     tags:
+      # Both spellings BUILD, and both must also RELEASE — see the release job.
+      # A bare `0.6.8` tag used to build three platforms and then publish
+      # nothing, because only the release job was gated on `refs/tags/v`.
       - 'v*.*.*'  # Supports v0.3.7
       - '*.*.*'   # Supports 0.3.7
   workflow_dispatch:
@@ -108,13 +111,22 @@ jobs:
             dist/AGNT*-${{ matrix.platform }}-*.AppImage
             dist/AGNT*-${{ matrix.platform }}-*.deb
             dist/AGNT*-${{ matrix.platform }}-*.rpm
+            # THE FEED. latest*.yml is what electron-updater reads to learn a
+            # new version exists and to verify the download's sha512; without
+            # it the installers are just files nobody is told about. The
+            # .blockmap beside each one is what makes an update a ~20-50 MB
+            # delta instead of a ~300 MB re-download.
+            dist/latest*.yml
+            dist/*.blockmap
           retention-days: 30
 
   release:
     name: Create GitHub Release
     needs: [build-electron-full]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Any version tag, with or without the v — the build job accepts both, and
+    # a tag that builds but never publishes is a release that silently is not one.
+    if: startsWith(github.ref, 'refs/tags/')
 
     steps:
       - name: Checkout repository
@@ -133,7 +145,10 @@ jobs:
         with:
           files: |
             artifacts/**/*
-          draft: true
+          # NOT a draft. electron-updater reads the repository's latest
+          # PUBLISHED release; a draft is invisible to it, so every client
+          # would keep reporting itself up to date no matter what shipped.
+          draft: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -742,6 +742,77 @@ ipcMain.handle('get-app-version', () => {
   return APP_VERSION;
 });
 
+// ─────────────────────────── Auto-update ────────────────────────────────────
+// AGNT could DETECT a new version and could not BECOME one: the banner opened a
+// browser at the downloads page and the user did five manual steps. So fixes
+// reached only the people who noticed, and old clients accumulated. The policy
+// (silent download everywhere, silent install everywhere except Windows, and
+// never a restart while a goal is executing) lives in electron/autoUpdate.js
+// with its reasoning; this is the wiring.
+
+/**
+ * How many goals are mid-execution RIGHT NOW.
+ *
+ * Read straight from the local database rather than the API because main holds
+ * no session token, and because the question is specifically about work THIS
+ * process would destroy. In remote mode the goals live on another machine and
+ * quitting here cannot touch them — the file below simply will not exist, which
+ * is the correct answer of zero.
+ *
+ * Never throws: the caller treats an unreadable database as "nothing running",
+ * because a permanently dead update button is worse than the bounded risk of a
+ * restart the user explicitly asked for.
+ */
+async function countExecutingGoals() {
+  const dbPath = path.join(app.getPath('userData'), 'Data', 'agnt.db');
+  if (!fs.existsSync(dbPath)) return 0;
+
+  const sqlite3 = (await import('sqlite3')).default;
+  return new Promise((resolve, reject) => {
+    // OPEN_READONLY so a stuck updater can never write to, lock or migrate the
+    // user's database. The backend owns that file.
+    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+      if (err) return reject(err);
+      db.get("SELECT COUNT(*) AS n FROM goals WHERE status = 'executing';", (qErr, row) => {
+        db.close();
+        if (qErr) return reject(qErr);
+        resolve(Number(row?.n) || 0);
+      });
+    });
+  });
+}
+
+let autoUpdaterHandle = null;
+
+async function armAutoUpdate() {
+  try {
+    const { autoUpdater } = await import('electron-updater');
+    const { initAutoUpdate } = await import('./electron/autoUpdate.js');
+
+    autoUpdaterHandle = autoUpdater;
+    const { enabled } = initAutoUpdate({
+      autoUpdater,
+      ipcMain,
+      getWindow: () => mainWindow,
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      countExecutingGoals,
+      log: (...a) => console.log(...a),
+    });
+    if (!enabled) return;
+
+    // Not at launch: the first seconds belong to the backend starting and the
+    // window painting, and an update check competing for that is a slower cold
+    // start in exchange for nothing.
+    const check = () => autoUpdater.checkForUpdates().catch(() => {});
+    setTimeout(check, 30_000);
+    setInterval(check, 6 * 60 * 60 * 1000);
+  } catch (err) {
+    // A missing or broken updater must never stop the app from starting.
+    console.log('[update] not armed:', err.message);
+  }
+}
+
 // Renderer diagnostics relay. The renderer is sandboxed with no fs access, so
 // window.onerror / unhandledrejection / Vue errorHandler reach disk via main.
 ipcMain.on('diagnostics:client-error', (_event, payload = {}) => {
@@ -1530,6 +1601,10 @@ app.on('ready', () => {
       appVersion: APP_VERSION,
     }),
   });
+
+  // Fire and forget: arming the updater must never be on the critical path to
+  // a window. It schedules its own first check 30s from now.
+  armAutoUpdate();
 
   // Serve agnt-file:///<absolute-path> by streaming the file from disk with
   // proper Range-request support so <video> seeking works.

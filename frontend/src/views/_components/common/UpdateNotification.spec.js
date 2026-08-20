@@ -484,6 +484,123 @@ describe('UpdateNotification', () => {
     });
   });
 
+  describe('desktop auto-update', () => {
+    /**
+     * The banner used to have exactly one job: send the user to a browser. Now
+     * the desktop build downloads the update itself, so the banner has to tell
+     * the difference between "go and fetch this" and "it is already here".
+     *
+     * Everything here is feature-detected on `electron.autoUpdate`, which
+     * browser and Docker users do not have — the tests above run without it and
+     * must keep passing unchanged, which is what proves the fallback survives.
+     */
+    let onDownloaded;
+    let onProgress;
+
+    const withAutoUpdate = (install = vi.fn().mockResolvedValue({ ok: true })) => {
+      mockElectron.autoUpdate = {
+        status: vi.fn().mockResolvedValue({ enabled: true }),
+        install,
+        onDownloaded: vi.fn((cb) => {
+          onDownloaded = cb;
+          return vi.fn();
+        }),
+        onProgress: vi.fn((cb) => {
+          onProgress = cb;
+          return vi.fn();
+        }),
+      };
+      return install;
+    };
+
+    it('shows progress while downloading, with nothing to click', async () => {
+      withAutoUpdate();
+      wrapper = createWrapper();
+      await flushPromises();
+
+      onProgress({ percent: 42 });
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.text()).toContain('Downloading Update');
+      expect(wrapper.text()).toContain('42%');
+      // A live button before the file exists is a button that fails.
+      expect(wrapper.find('.download-btn').exists()).toBe(false);
+    });
+
+    it('offers a RESTART once the update is downloaded, not a download', async () => {
+      withAutoUpdate();
+      wrapper = createWrapper();
+      await flushPromises();
+
+      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.find('.update-title').text()).toBe('Update Ready');
+      expect(wrapper.find('.download-btn').text()).toBe('Restart to update');
+    });
+
+    it('a ready update outranks an available one', async () => {
+      // Otherwise the user is sent to a browser to fetch a file already on disk.
+      mockElectron.checkForUpdates.mockResolvedValue({ updateAvailable: true, latestVersion: '2.0.0' });
+      withAutoUpdate();
+      wrapper = createWrapper();
+      await flushPromises();
+      expect(wrapper.find('.update-title').text()).toBe('Update Available');
+
+      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
+      await wrapper.vm.$nextTick();
+
+      // `find` would return whichever banner is first in the DOM, and during
+      // the leave transition that is still the OLD one — an assertion that
+      // fails for a reason unrelated to the behaviour under test.
+      const titles = wrapper.findAll('.update-title').map((t) => t.text());
+      expect(titles).toContain('Update Ready');
+      expect(wrapper.text()).toContain('Restart to update');
+    });
+
+    it('asks main to install when the button is pressed', async () => {
+      const install = withAutoUpdate();
+      wrapper = createWrapper();
+      await flushPromises();
+
+      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
+      await wrapper.vm.$nextTick();
+      await wrapper.find('.download-btn').trigger('click');
+      await flushPromises();
+
+      expect(install).toHaveBeenCalled();
+      // Never the browser: the file is already downloaded.
+      expect(mockElectron.openDownloadPage).not.toHaveBeenCalled();
+    });
+
+    it('explains a refusal the user can act on', async () => {
+      // Main refuses to restart while a goal is executing. Saying so turns a
+      // dead button into an instruction.
+      const install = vi.fn().mockResolvedValue({ ok: false, reason: 'goal-running', goals: 2 });
+      withAutoUpdate(install);
+      wrapper = createWrapper();
+      await flushPromises();
+
+      onDownloaded({ version: '2.0.0', needsExplicitInstall: true });
+      await wrapper.vm.$nextTick();
+      await wrapper.find('.download-btn').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('2 goals still running');
+      // Still pressable once the goals finish.
+      expect(wrapper.find('.download-btn').attributes('disabled')).toBeUndefined();
+    });
+
+    it('ANTI-VACUITY: without the bridge the old download banner is unchanged', async () => {
+      mockElectron.checkForUpdates.mockResolvedValue({ updateAvailable: true, latestVersion: '2.0.0' });
+      delete mockElectron.autoUpdate;
+      wrapper = createWrapper();
+      await flushPromises();
+
+      expect(wrapper.find('.download-btn').text()).toBe('Download');
+    });
+  });
+
   describe('Styling', () => {
     it('has correct CSS classes on banner', async () => {
       mockElectron.checkForUpdates.mockResolvedValue({

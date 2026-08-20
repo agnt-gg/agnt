@@ -122,6 +122,58 @@ Users can then:
   docker pull ghcr.io/agnt-gg/agnt:0.6.7
   ```
 
+## Auto-Update
+
+Every tagged release feeds the desktop auto-updater. `electron-builder` writes
+`latest.yml` (Windows), `latest-mac.yml` and `latest-linux.yml` beside the
+installers; those files ARE the feed, and CI uploads them to the GitHub Release
+alongside the `.blockmap` files that make an update a ~20-50 MB delta rather
+than a ~300 MB re-download.
+
+The client policy lives in `electron/autoUpdate.js`. In short: download silently
+everywhere; install on quit on macOS and Linux; wait for a click on Windows,
+which has no code-signing certificate yet. Never restart while a goal is
+executing.
+
+### Staged rollout — and the only kill switch
+
+`latest.yml` supports `stagingPercentage`. electron-updater hashes the machine
+GUID to decide whether a given install is in the wave, so a user does not flip
+in and out between checks.
+
+To roll out gradually, edit the release's `latest*.yml` after publishing:
+
+```yaml
+version: 0.6.8
+stagingPercentage: 10   # then 25, 50, 100
+files:
+  - url: AGNT-0.6.8-win-x64.exe
+    ...
+```
+
+**Setting it to `0` halts the rollout for everyone who has not already taken
+it** — no rebuild, no redeploy, effective on each client's next check. That is
+the entire recall mechanism, and it is the same shape as the fleet updater's
+`refused-not-newer` guard: the decision is a runtime property of the feed, not
+something baked into the release that carried the code.
+
+It does **not** help anyone who already updated. There is no downgrade path;
+rolling forward with a fix is the only remedy. That asymmetry is why the cloud
+fleet — where rollback is a retag and 15 seconds — is the proving ground for a
+release before it reaches desktops.
+
+### Watching adoption
+
+Every install already beacons its real version and platform to
+`agnt.gg/api/updates/check` on a timer (`main.js`, `UPDATE_CHECK_URL`). That is
+the signal to widen or halt a staged rollout.
+
+### The migration release
+
+The first build containing an updater cannot itself be auto-installed — every
+existing user installs it by hand once, via the banner that already exists.
+Only the release AFTER it updates automatically.
+
 ## Monitoring Builds
 
 ```bash

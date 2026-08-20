@@ -81,4 +81,31 @@ contextBridge.exposeInMainWorld('electron', {
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('update-available', (event, updateInfo) => callback(updateInfo));
   },
+
+  /**
+   * Auto-update (desktop only). Renderer code MUST feature-detect
+   * `window.electron?.autoUpdate` — browser and Docker users have no Electron
+   * bridge and keep the agnt.gg download banner instead.
+   *
+   * The update downloads itself in the background on every platform. macOS and
+   * Linux then install it when the app is quit; Windows waits for `install()`,
+   * because with no code-signing certificate the installer raises SmartScreen
+   * and a prompt cannot appear after a user has closed the app.
+   */
+  autoUpdate: {
+    // { enabled, platform, needsExplicitInstall }
+    status: () => ipcRenderer.invoke('update:status'),
+    // { ok: true } | { ok: false, reason: 'goal-running', goals } | { ok:false, reason:'not-packaged' }
+    install: () => ipcRenderer.invoke('update:install'),
+    onDownloaded: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('update:downloaded', h);
+      return () => ipcRenderer.removeListener('update:downloaded', h);
+    },
+    onProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('update:progress', h);
+      return () => ipcRenderer.removeListener('update:progress', h);
+    },
+  },
 });
