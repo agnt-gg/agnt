@@ -638,3 +638,83 @@ describe('a ChatGPT plan that is not entitled to realtime degrades quietly', () 
     expect(JSON.stringify(r)).not.toContain('super-secret-oauth');
   });
 });
+
+describe('a vanished route does not end the walk', () => {
+  /**
+   * THE OUTAGE THIS SUITE EXISTS FOR (2026-08-20)
+   * ---------------------------------------------
+   * OpenAI removed chatgpt.com/backend-api/codex/realtime/calls. A freshly
+   * refreshed, fully entitled subscription token got 404 {"detail":"Not Found"}
+   * — while api.openai.com/v1/realtime/calls accepted the SAME token in the
+   * same minute. But 404 was not in CREDENTIAL_FAILURE_STATUSES, so the walk
+   * treated it as "fails the same way everywhere" and returned, never trying
+   * the route that worked. Voice died with `provider-404` for every user.
+   *
+   * The attempt chain was BUILT for exactly this event — its own comment says
+   * "a lone exception is the thing most likely to be closed" — and a
+   * misclassified status routed around the insurance. A 404/405/410 is a
+   * property of the URL: it condemns neither the credential nor the offer, so
+   * it must advance the walk, and it must never be the surfaced error.
+   */
+  const answers = (...responses) => {
+    globalThis.fetch.mockReset();
+    for (const r of responses) {
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: r.status < 400,
+        status: r.status,
+        text: async () => r.body ?? '',
+      });
+    }
+  };
+  const route = () =>
+    globalThis.fetch.mock.calls.map(
+      (c) => `${new URL(c[0]).host} ${c[1].headers.Authorization.replace('Bearer ', '')}`,
+    );
+
+  it('the literal outage: codex route 404s, the platform route opens the session', async () => {
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 404, body: '{"detail":"Not Found"}' }, { status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+
+    expect(r).toEqual({ ok: true, sdp: 'answer' });
+    expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
+  });
+
+  it.each([404, 405, 410])('a %i advances to the next route instead of ending the walk', async (status) => {
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status, body: 'gone' }, { status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.ok).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('every route gone degrades to the cascade, never to a provider-404 error', async () => {
+    // A vanished vendor URL is not user-actionable. If the walk has nothing
+    // left, the user gets the cascade pipeline — the same quiet fallback as
+    // having no credential — not an error naming a URL they never chose.
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 404, body: 'gone' }, { status: 404, body: 'gone' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe('no-credentials');
+    expect(r.status).toBe(200);
+  });
+
+  it('ANTI-VACUITY: a 400 still ends the walk on the spot', async () => {
+    // If every status advanced, the suite above would pass with the
+    // distinction deleted. A malformed offer fails identically on every
+    // route, and retrying it is round trips to the same answer.
+    getValidAccessToken.mockResolvedValue(null);
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 400, body: 'invalid_offer' }, { status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r.reason).toBe('provider-400');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});

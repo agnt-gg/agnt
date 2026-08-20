@@ -68,6 +68,26 @@ import {
 const CREDENTIAL_FAILURE_STATUSES = new Set([401, 403, 429]);
 
 /**
+ * Provider statuses that mean "this ROUTE no longer exists" — a property of the
+ * URL, not of the credential and not of the offer.
+ *
+ * This class was missing, and it broke voice on 2026-08-20. OpenAI removed
+ * chatgpt.com/backend-api/codex/realtime/calls (404 {"detail":"Not Found"} on a
+ * freshly refreshed, entitled token), and because 404 was not 401/403/429 the
+ * code below treated it as "fails the same way everywhere" and returned —
+ * without ever trying api.openai.com/v1/realtime/calls, which accepted the very
+ * same token in the same minute (measured: 400 invalid_offer on a garbage SDP,
+ * i.e. authentication passed).
+ *
+ * The attempt-chain comment above literally predicts this event — "a lone
+ * exception is the thing most likely to be closed" — and the chain was built as
+ * the insurance. A misclassified 404 routed around the insurance. So: 404 (and
+ * its siblings 405 gone-verb and 410 gone-forever) advance to the NEXT ATTEMPT,
+ * on the same credential first, then the next credential.
+ */
+const ROUTE_FAILURE_STATUSES = new Set([404, 405, 410]);
+
+/**
  * The ways one credential can be spent on a Realtime session, best first.
  *
  * WHY A ChatGPT TOKEN HAS TWO
@@ -406,6 +426,18 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
         detail = (await res.text()).slice(0, 400);
       } catch {
         detail = '';
+      }
+
+      if (ROUTE_FAILURE_STATUSES.has(res.status)) {
+        // The ROUTE is gone — upstream moved or removed the endpoint. The same
+        // credential may be welcome at the next URL (measured on 2026-08-20:
+        // the codex route 404s while the platform route accepts the identical
+        // token), so this must not condemn the credential, and it must never be
+        // the surfaced error: a vanished vendor URL is not user-actionable.
+        console.warn(
+          `[speech] ${attempt.name} route not found (${res.status}); trying the next route.`,
+        );
+        continue;
       }
 
       if (!CREDENTIAL_FAILURE_STATUSES.has(res.status)) {
