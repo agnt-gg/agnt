@@ -25,7 +25,7 @@ if (isLiteBuild) {
   console.log('║   🪶 BUILDING AGNT LITE VARIANT      ║');
   console.log('╟────────────────────────────────────────╢');
   console.log('║  Excluding browser automation packages ║');
-  console.log('║  Expected size reduction: ~16MB        ║');
+  console.log('║  Web scraping is RETAINED              ║');
   console.log('╚════════════════════════════════════════╝');
   console.log('');
 }
@@ -163,7 +163,28 @@ export async function afterPack(context) {
 
   console.log('[Lite Build] Removing browser automation packages...');
 
-  // Packages to remove in lite mode
+  /**
+   * Packages Lite drops.
+   *
+   * `puppeteer-core` AND `@puppeteer` ARE DELIBERATELY ABSENT FROM THIS LIST.
+   *
+   * Lite removes BROWSER AUTOMATION — driving a page, clicking, typing. It does
+   * NOT remove WEB SCRAPING, which is a core tool every variant ships. Those are
+   * different capabilities that happen to share a library:
+   *
+   *   backend/src/tools/web-scrape.js              import puppeteer from 'puppeteer-core'
+   *   backend/src/services/webScrape.js            await import('puppeteer-core')
+   *   backend/src/services/WidgetDefinitionService.js  await import('puppeteer-core')
+   *
+   * Removing it here deleted a module three runtime files import, so Lite failed
+   * with `Cannot find module 'puppeteer-core'` the first time anyone scraped a
+   * page — at runtime, in a shipped build, not at install. `@puppeteer/browsers`
+   * is how puppeteer-core locates the user's Chrome, so it goes with it.
+   *
+   * Everything below is genuinely unimported. Most of it no longer ships in the
+   * full build either, so these entries are now no-ops kept only so a Lite build
+   * from an older tree still behaves.
+   */
   const packagesToRemove = [
     'puppeteer',
     'puppeteer-extra',
@@ -171,8 +192,6 @@ export async function afterPack(context) {
     'puppeteer-extra-plugin-user-data-dir',
     'puppeteer-extra-plugin-user-preferences',
     'puppeteer-extra-plugin',
-    'puppeteer-core',
-    '@puppeteer',
     'playwright',
     'playwright-core',
     '@playwright/test'

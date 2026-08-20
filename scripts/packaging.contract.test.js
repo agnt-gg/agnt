@@ -114,6 +114,29 @@ describe('things that are genuinely dead stay out', () => {
   });
 });
 
+describe('AGNT Lite still has web scraping', () => {
+  const afterPack = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-lite.js'), 'utf8');
+  const list = afterPack.slice(
+    afterPack.indexOf('const packagesToRemove'),
+    afterPack.indexOf('];', afterPack.indexOf('const packagesToRemove'))
+  );
+
+  // Lite removes BROWSER AUTOMATION. It must not remove WEB SCRAPING — those
+  // are different capabilities that share a library, and the Lite list used to
+  // delete a module three runtime files import.
+  it.each(['puppeteer-core', '@puppeteer'])('does not delete %s', (pkg) => {
+    expect(
+      list.includes(`'${pkg}'`),
+      `Lite removes ${pkg}, which web scraping imports — it will fail at runtime with ` +
+        `"Cannot find module 'puppeteer-core'" the first time anyone scrapes a page`
+    ).toBe(false);
+  });
+
+  it('ANTI-VACUITY: the list is real and still removes something', () => {
+    expect(list).toContain('playwright');
+  });
+});
+
 describe('locale trimming', () => {
   const afterPack = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-lite.js'), 'utf8');
 
