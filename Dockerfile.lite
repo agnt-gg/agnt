@@ -17,6 +17,13 @@ RUN npm install
 # Copy frontend source
 COPY frontend/ ./
 
+# The frontend build reaches OUTSIDE frontend/: `@llm` is a Vite alias onto
+# ../backend/src/services/ai/descriptor, the shared provider descriptor. WORKDIR
+# is /app/frontend, so it resolves to /app/backend/... and without this COPY the
+# build fails with `[vite:load-fallback] Could not load ... ENOENT`.
+# See Dockerfile for the full note.
+COPY backend/src/services/ai/descriptor /app/backend/src/services/ai/descriptor
+
 # Build frontend
 RUN npm run build
 

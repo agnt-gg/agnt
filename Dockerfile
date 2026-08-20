@@ -16,6 +16,32 @@ RUN npm install
 # Copy frontend source
 COPY frontend/ ./
 
+# The frontend build reaches OUTSIDE frontend/.
+#
+# `@llm` is a Vite alias onto ../backend/src/services/ai/descriptor — one shared
+# provider descriptor imported by both the backend and the frontend so the two
+# cannot disagree about which models can reason. That is the right call for the
+# desktop build, where electron-builder already ships the whole tree.
+#
+# In Docker it is not free: this stage copies only frontend/, so the alias
+# resolved to a path that does not exist and the build died with
+#
+#   [vite:load-fallback] Could not load
+#   /app/backend/src/services/ai/descriptor/reasoningPredicates.js
+#   (imported by src/store/app/aiProvider.js): ENOENT
+#
+# WORKDIR is /app/frontend, so the alias resolves to /app/backend/... — the
+# destination below is that exact path, not a convenience location.
+#
+# Deliberately narrow: only the descriptor directory, which
+# `descriptor.purity.test.js` already pins as isomorphic (no node builtins, no
+# backend-only imports). Copying backend/ wholesale would put server code in a
+# browser bundle's build context.
+#
+# If a future alias points somewhere new, add it here too — dockerAliasCoverage
+# .spec.js fails the build when an alias target is not copied into this stage.
+COPY backend/src/services/ai/descriptor /app/backend/src/services/ai/descriptor
+
 # Build frontend
 RUN npm run build
 
