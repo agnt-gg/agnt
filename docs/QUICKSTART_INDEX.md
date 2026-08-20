@@ -4,45 +4,27 @@ Choose your installation method and get AGNT running in under 5 minutes.
 
 ## 🚀 Choose Your Quick Start Guide
 
-### 🐳 Docker Installations (Server/Multi-Device)
-
-| Guide | Size | Browser | Best For |
-|-------|------|---------|----------|
-| **[Docker Full](QUICKSTART_DOCKER_FULL.md)** | ~1.5GB | ✅ Yes | Multi-device + browser automation |
-| **[Docker Lite](QUICKSTART_DOCKER_LITE.md)** | ~715MB | ❌ No | Multi-device, lightweight |
-
-### 💻 Electron Installations (Desktop Apps)
-
-| Guide | Size | Browser | Best For |
-|-------|------|---------|----------|
-| **[Electron Full](QUICKSTART_ELECTRON_FULL.md)** | ~348MB AppImage / ~253MB DEB | ✅ Yes | Single device + browser automation |
-| **[Electron Lite](QUICKSTART_ELECTRON_LITE.md)** | ~344MB AppImage / ~251MB DEB | ❌ No | Single device, no browser automation |
-
-### 🔀 Hybrid Mode (Best of Both Worlds)
-
-| Guide | Components | Best For |
-|-------|------------|----------|
+| Guide | Size | Best For |
+|-------|------|----------|
+| **[Docker](QUICKSTART_DOCKER.md)** | ~1.5GB | Multi-device, server, browser automation |
+| **[Electron](QUICKSTART_ELECTRON.md)** | ~348MB AppImage / ~253MB DEB | Single device, native desktop app |
 | **[Hybrid Mode](QUICKSTART_HYBRID.md)** | Docker + Electron + Web | Mix native apps + browser + shared backend |
+
+AGNT ships one build with the full feature set, including browser automation.
 
 ---
 
 ## 🤔 Which Guide Should I Use?
 
-### Start Here: Answer These Questions
-
 **Question 1: How many devices will you use?**
-- ☑️ **Multiple devices** (phone, laptop, tablet) → Use Docker guides
-- ☑️ **Just one device** → Use Electron guides
+- ☑️ **Multiple devices** (phone, laptop, tablet) → Use Docker
+- ☑️ **Just one device** → Use Electron
 
 **Question 2: Will you share with others?**
 - ☑️ **Yes** (family/team 2-10 people) → Use Docker or Hybrid
 - ☑️ **No** (just me) → Use Electron
 
-**Question 3: Do you need browser automation?**
-- ☑️ **Yes** (web scraping, screenshots) → Use Full version
-- ☑️ **No** → Use Lite version (smaller, faster)
-
-**Question 4: Do you want native desktop app + shared data?**
+**Question 3: Do you want a native desktop app + shared data?**
 - ☑️ **Yes** → Use Hybrid Mode
 - ☑️ **No** → Use Docker (browser only) or Electron (single device)
 
@@ -51,13 +33,13 @@ Choose your installation method and get AGNT running in under 5 minutes.
 ## 📋 Quick Decision Matrix
 
 ### Scenario 1: Just Me, One Computer
-→ **[Electron Full](QUICKSTART_ELECTRON_FULL.md)** or **[Electron Lite](QUICKSTART_ELECTRON_LITE.md)**
+→ **[Electron](QUICKSTART_ELECTRON.md)**
 
 ### Scenario 2: Just Me, Multiple Devices
-→ **[Docker Full](QUICKSTART_DOCKER_FULL.md)** or **[Docker Lite](QUICKSTART_DOCKER_LITE.md)**
+→ **[Docker](QUICKSTART_DOCKER.md)**
 
 ### Scenario 3: Family/Team (Browser Access Only)
-→ **[Docker Full](QUICKSTART_DOCKER_FULL.md)** or **[Docker Lite](QUICKSTART_DOCKER_LITE.md)**
+→ **[Docker](QUICKSTART_DOCKER.md)**
 
 ### Scenario 4: Family/Team (Some Want Native Apps)
 → **[Hybrid Mode](QUICKSTART_HYBRID.md)**
@@ -72,11 +54,10 @@ Choose your installation method and get AGNT running in under 5 minutes.
 All quickstart guides include:
 
 - ✅ **Prerequisites** - What you need before starting
-- ✅ **Installation** - Step-by-step setup (3 options each)
+- ✅ **Installation** - Step-by-step setup
 - ✅ **First Steps** - Getting started after install
 - ✅ **Common Commands** - Daily operations
 - ✅ **Data Location** - Where your data is stored
-- ✅ **Features Available** - What works in this mode
 - ✅ **Troubleshooting** - Common issues and fixes
 - ✅ **Next Steps** - Where to go from here
 
@@ -86,28 +67,14 @@ All quickstart guides include:
 
 ## 🔄 Can I Switch Later?
 
-**Yes!** You can switch between installation methods:
-
-### Docker Full ↔️ Docker Lite
-```bash
-# Stop current container
-docker stop agnt
-
-# Start other variant (uses same data)
-docker-compose -f docker-compose.lite.yml up -d
-```
-
-### Electron Full → Electron Lite
-1. Uninstall Electron Full
-2. Install Electron Lite
-3. Data location is the same (preserved)
+**Yes!** Data lives in the same place for every installation method, so
+switching is install-and-go.
 
 ### Electron → Docker (or vice versa)
 1. Export your data
-2. Install other variant
+2. Install the other method
 3. Import data
 
-Data lives in the same place for every variant, so switching is install-and-go.
 For a shared backend instead of a migration, see
 [Hybrid Mode](QUICKSTART_HYBRID.md).
 
@@ -122,7 +89,6 @@ After completing your quickstart:
 - **[Remote Access Topologies](REMOTE_ACCESS_TOPOLOGIES.md)** - Phone pairing + remote backend: LAN, Tailscale/VPN, cloud, reverse proxy
 - **[Plugin Development](../backend/plugins/README.md)** - Create plugins
 - **[API Documentation](_API-DOCUMENTATION.md)** - REST API reference
-- **[Lite Mode Guide](LITE_MODE.md)** - Understanding Lite mode
 - **[Electron vs Web](ELECTRON_VS_WEB.md)** - Desktop vs Docker
 
 ---
@@ -130,7 +96,6 @@ After completing your quickstart:
 ## 🆘 Need Help?
 
 - **Issues**: [GitHub Issues](https://github.com/agnt-gg/agnt/issues)
-- **Discord**: [Join community](https://discord.gg/agnt)
 - **Website**: [agnt.gg](https://agnt.gg)
 
 ---
@@ -142,9 +107,6 @@ After completing your quickstart:
 
 **GitHub Repository:**
 - [github.com/agnt-gg/agnt](https://github.com/agnt-gg/agnt)
-
-**Docker Hub:**
-- [hub.docker.com/r/agnt/agnt](https://hub.docker.com/r/agnt/agnt)
 
 ---
 

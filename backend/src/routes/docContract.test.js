@@ -323,7 +323,7 @@ describe('API documentation contract', () => {
 
     // Deployment files legitimately define names consumed by Docker, compose or
     // make rather than by our JavaScript, so they count as declarations too.
-    for (const f of ['docker-compose.yml', 'Dockerfile', 'Dockerfile.lite', '.env.example', 'Makefile']) {
+    for (const f of ['docker-compose.yml', 'Dockerfile', '.env.example', 'Makefile']) {
       const p = path.join(REPO, f);
       if (!fs.existsSync(p)) continue;
       const t = fs.readFileSync(p, 'utf8');

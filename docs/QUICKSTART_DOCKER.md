@@ -1,4 +1,4 @@
-# Docker Full - Quick Start Guide
+# Docker - Quick Start Guide
 
 Get AGNT running with **full browser automation** in under 5 minutes.
 
@@ -80,8 +80,8 @@ docker-compose up -d
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
-# Start Docker Full
-make run-full
+# Start AGNT
+make run
 
 # Or use docker-compose directly
 docker-compose up -d
@@ -200,7 +200,6 @@ netstat -tlnp | grep 3333
 - [README](../README.md) - Learn how to use AGNT
 - [Plugin Development](../backend/plugins/README.md) - Create custom plugins
 - [API Documentation](_API-DOCUMENTATION.md) - REST API reference
-- [Switch to Lite Mode](QUICKSTART_DOCKER_LITE.md) - Smaller image without browser
 
 ## Support
 

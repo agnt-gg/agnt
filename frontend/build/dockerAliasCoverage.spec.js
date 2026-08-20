@@ -44,7 +44,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_ROOT = path.resolve(HERE, '..');
 const REPO_ROOT = path.resolve(FRONTEND_ROOT, '..');
 
-const DOCKERFILES = ['Dockerfile', 'Dockerfile.lite'];
+const DOCKERFILES = ['Dockerfile'];
 
 /** Aliases whose target is not inside frontend/ — the ones Docker must be told about. */
 function externalAliases() {

@@ -325,7 +325,7 @@ All outputs saved to `dist/` (gitignored).
 
 ## Releasing a New Version
 
-AGNT uses **tag-driven releases**. Pushing a version tag triggers `.github/workflows/docker-build.yml` to build and publish multi-arch Docker images (Full + Lite) to `ghcr.io/agnt-gg/agnt`. Regular commits to `main` do **NOT** rebuild images — this is intentional to keep CI cheap and releases deliberate.
+AGNT uses **tag-driven releases**. Pushing a version tag triggers `.github/workflows/docker-build.yml` to build and publish a multi-arch Docker image to `ghcr.io/agnt-gg/agnt`. Regular commits to `main` do **NOT** rebuild images — this is intentional to keep CI cheap and releases deliberate.
 
 ### Release Commands
 
@@ -341,7 +341,7 @@ Each command runs `npm version <bump>` (updates `package.json`, commits, creates
 
 1. Commit all code changes first (`npm version` requires a clean working tree)
 2. Run the appropriate `npm run release:*` command
-3. Wait ~15 min for CI to build both variants (Full + Lite, multi-arch amd64 + arm64)
+3. Wait ~15 min for CI to build the multi-arch image (amd64 + arm64)
 4. Docker users can now pull the update:
 
    ```bash
@@ -353,9 +353,7 @@ Each command runs `npm version <bump>` (updates `package.json`, commits, creates
 
 ### Image Tags Published
 
-**Full variant:** `:latest`, `:full`, `:{version}`, `:{version}-full`, `:{major}.{minor}`, `:{major}.{minor}-full`, `:sha-{short}`
-
-**Lite variant:** `:lite`, `:{version}-lite`, `:{major}.{minor}-lite`, `:sha-lite-{short}`
+`:latest`, `:{version}`, `:{major}.{minor}`, `:sha-{short}`
 
 ### When NOT to release
 

@@ -157,64 +157,15 @@ npm run build:all
 - macOS → Can build for macOS and GNU/Linux
 - GNU/Linux → Can build for GNU/Linux and Windows (with Wine)
 
-### Build Lite Mode (Smaller Installers)
-
-AGNT supports building **Lite variants** that exclude browser automation packages.
-
-**What's removed in Lite:**
-- ❌ Puppeteer/Playwright libraries (~16MB uncompressed)
-- ❌ Browser automation features
-- ❌ Web scraping tools
-
-**What still works:**
-- ✅ AI agents and workflows
-- ✅ All API integrations
-- ✅ Plugins, image processing, email automation
-
-**Build commands:**
-
-```bash
-# Build Lite for current platform
-npm run build:lite
-
-# Build Lite for specific platforms
-npm run build:lite:win      # Windows Lite
-npm run build:lite:mac      # macOS Lite (x64 + ARM64)
-npm run build:lite:linux    # GNU/Linux Lite
-
-# Build Lite for all platforms
-npm run build:lite:all
-
-# Build BOTH Full and Lite (recommended for distribution)
-npm run build:both          # Current platform
-npm run build:both:win      # Windows both
-npm run build:both:mac      # macOS both
-npm run build:both:linux    # GNU/Linux both
-```
-
-**Build outputs (measured on v0.5.0, GNU/Linux):**
-
-**Full:**
-- `dist/AGNT-0.5.0-linux-x86_64.AppImage` (348MB)
-- `dist/AGNT-0.5.0-linux-amd64.deb` (253MB)
-
-**Lite:**
-- `dist/AGNT-Lite-0.5.0-linux-x86_64.AppImage` (344MB)
-- `dist/AGNT-Lite-0.5.0-linux-amd64.deb` (251MB)
-
-> **Note:** Size difference is modest (~2-4MB) because Chromium binaries are already excluded from both variants. Lite removes browser automation source code only.
-
 **Using Makefile (recommended):**
 
 ```bash
-make electron-build-both        # Current platform
-make electron-build-win-both    # Windows both
-make electron-build-mac-both    # macOS both
-make electron-build-linux-both  # GNU/Linux both
-make electron-build-all-both    # All platforms both
+make electron-build             # Current platform
+make electron-build-win         # Windows
+make electron-build-mac         # macOS
+make electron-build-linux       # GNU/Linux
+make electron-build-all         # All platforms
 ```
-
-See [Electron Lite Mode Guide](ELECTRON_LITE_MODE.md) for complete details.
 
 ## Development Mode
 

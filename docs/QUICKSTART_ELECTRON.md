@@ -1,4 +1,4 @@
-# Electron Full - Quick Start Guide
+# Electron - Quick Start Guide
 
 Get AGNT **native desktop app with browser automation** in under 5 minutes.
 
@@ -234,19 +234,11 @@ sudo apt install libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils
 sudo dnf install gtk3 libnotify nss libXScrnSaver libXtst xdg-utils
 ```
 
-## Switching to Lite Mode
-
-Want a smaller install without browser automation?
-
-1. Uninstall Electron Full
-2. Download and install [Electron Lite](QUICKSTART_ELECTRON_LITE.md)
-3. Your data is separate - backup first if needed
-
 ## Connecting to Remote Backend (Hybrid Mode)
 
 Want to use native app with shared Docker backend?
 
-1. Start Docker backend on server: [Docker Full Guide](QUICKSTART_DOCKER_FULL.md)
+1. Start Docker backend on server: [Docker Guide](QUICKSTART_DOCKER.md)
 2. Point the desktop app at it, either in the UI (**Settings → Configuration →
    Connection → Remote backend**) or with an environment variable:
    ```bash
@@ -264,7 +256,6 @@ See [Hybrid Mode Guide](QUICKSTART_HYBRID.md) for details.
 - [README](../README.md) - Learn how to use AGNT
 - [Plugin Development](../backend/plugins/README.md) - Create custom plugins
 - [Remote Access Topologies](REMOTE_ACCESS_TOPOLOGIES.md) - Reach AGNT from your phone or another machine
-- [Electron Lite](QUICKSTART_ELECTRON_LITE.md) - Smaller desktop install
 
 ## Support
 

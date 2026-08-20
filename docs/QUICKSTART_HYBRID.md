@@ -10,15 +10,15 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 - ✅ Mix and match: some use browser, some use native app
 - ✅ Shared data for family/team (2-10 users)
 - ✅ Maximum flexibility
-- 📦 Size: Docker (~1.5GB or 715MB) + optional Electron per user
-- 🌐 Ports: **3333** (Lite) or **3333** (Full)
+- 📦 Size: Docker (~1.5GB) + optional Electron per user
+- 🌐 Port: **3333**
 
 ## Prerequisites
 
 **Server (Docker backend):**
 - Docker 20.10+ or Docker Desktop (any OS: Windows, macOS, GNU/Linux, FreeBSD, etc.)
-- 2GB RAM (Full) or 1GB RAM (Lite)
-- 2GB disk (Full) or 1GB disk (Lite)
+- 2GB RAM
+- 2GB disk
 
 **Clients (optional Electron apps):**
 - Windows 10+, macOS 10.13+, or GNU/Linux
@@ -27,30 +27,21 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 
 ## Installation
 
-### Step 1: Choose Docker Backend
+### Step 1: The Docker Backend
 
-**Option A: Full (with browser automation)**
-- Image size: ~1.5GB
+- Image size: ~1.5GB (includes browser automation)
 - Port: 3333
-- See: [Docker Full Guide](QUICKSTART_DOCKER_FULL.md)
+- See: [Docker Guide](QUICKSTART_DOCKER.md)
 
-**Option B: Lite (without browser automation)**
-- Image size: ~715MB
-- Port: 3333
-- See: [Docker Lite Guide](QUICKSTART_DOCKER_LITE.md)
-
-### Step 2: Start Docker Backend
+### Step 2: Start the Docker Backend
 
 ```bash
 # Clone repository (on server)
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
-# Option A: Start Docker Full (port 3333)
-make run-full
-
-# Option B: Start Docker Lite (port 3333)
-make run-lite
+# Start AGNT (port 3333)
+make run
 ```
 
 ### Step 3: Access From Clients
@@ -61,8 +52,7 @@ Users can now access AGNT in **three ways**:
 
 **From same network:**
 ```
-http://SERVER_IP:3333    (Lite)
-http://SERVER_IP:3333   (Full)
+http://SERVER_IP:3333
 ```
 
 **From internet (with port forwarding):**
@@ -72,8 +62,7 @@ http://your-domain.com:3333
 
 #### Access Method 2: Native Desktop App (Optional)
 
-**Option A: Use Electron Full** (~348MB AppImage)
-1. Download from [agnt.gg/downloads](https://agnt.gg/downloads)
+1. Download from [agnt.gg/downloads](https://agnt.gg/downloads) (~348MB AppImage)
 2. Install on user's desktop
 3. Point it at the shared backend, either in the UI (**Settings → Configuration
    → Connection → Remote backend**) or with an environment variable:
@@ -81,12 +70,6 @@ http://your-domain.com:3333
    AGNT_REMOTE_URL=http://SERVER_IP:3333
    ```
 4. Launch AGNT
-
-**Option B: Use Electron Lite** (~344MB AppImage)
-1. Download Lite version
-2. Install on user's desktop
-3. Configure external backend (same as above)
-4. Launch AGNT Lite
 
 #### Access Method 3: Mobile Browser
 
@@ -102,29 +85,29 @@ Just open: `http://SERVER_IP:3333`
 
 ### Family Setup (3 users)
 
-**Server:** Raspberry Pi / NAS running Docker Lite (715MB)
+**Server:** Raspberry Pi / NAS running Docker (~1.5GB)
 - Port: 3333
 - Always on
 
 **User Access:**
-- Dad: Electron Full on Windows desktop (native app)
+- Dad: Electron on Windows desktop (native app)
 - Mom: Web browser on MacBook (no install)
 - Kid: Web browser on iPad (mobile access)
 
 ### Small Team Setup (5 users)
 
-**Server:** Cloud VPS running Docker Full (1.5GB)
+**Server:** Cloud VPS running Docker (~1.5GB)
 - Port: 3333 (or behind reverse proxy)
 - Domain: agnt.yourcompany.com
 
 **User Access:**
-- 2 developers: Electron Full (native apps, need browser automation)
+- 2 developers: Electron (native apps, need browser automation)
 - 2 designers: Web browser (Chrome/Firefox, no install needed)
 - 1 manager: Web browser on phone (mobile access)
 
 ### Remote Work Setup (10 users)
 
-**Server:** Local server with Docker Full
+**Server:** Local server with Docker
 - Port: 3333
 - VPN access for remote users
 
@@ -380,7 +363,7 @@ AGNT currently doesn't have built-in multi-user auth.
 - ✅ Good network connection
 
 ### Large teams (5-10)
-- ✅ Use Docker Full for all features
+- ✅ Use Docker for all features
 - ✅ 8GB+ RAM on server
 - ✅ Consider dedicated server
 - ✅ Monitor CPU/RAM usage
@@ -393,9 +376,8 @@ AGNT currently doesn't have built-in multi-user auth.
 
 ## Next Steps
 
-- [Docker Full Guide](QUICKSTART_DOCKER_FULL.md) - Setup backend
-- [Electron Full Guide](QUICKSTART_ELECTRON_FULL.md) - Install native apps
-- [Electron Lite Guide](QUICKSTART_ELECTRON_LITE.md) - Smaller client apps
+- [Docker Guide](QUICKSTART_DOCKER.md) - Setup backend
+- [Electron Guide](QUICKSTART_ELECTRON.md) - Install native apps
 - [Self-Hosting Guide](SELF_HOSTING.md) - Advanced configuration
 
 ## Support

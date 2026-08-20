@@ -30,46 +30,27 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 
 | Type | Size | Browser | Platform | Best For |
 |------|------|---------|----------|----------|
-| **🐳 Docker Full** | ~1.5GB | ✅ Yes | Server | Self-hosted, multi-device, browser automation |
-| **🐳 Docker Lite** | ~715MB | ❌ No | Server | Self-hosted, multi-device, lightweight |
-| **💻 Electron Full** | ~348MB (AppImage) | ✅ Yes | Desktop | Single device, native app, all features |
-| **💻 Electron Lite** | ~344MB (AppImage) | ❌ No | Desktop | Single device, native app |
-| **🔀 Hybrid Mode** | Docker + Electron | ✅/❌ | Both | Native apps + web app + shared backend |
+| **🐳 Docker** | ~1.5GB | ✅ Yes | Server | Self-hosted, multi-device, browser automation |
+| **💻 Electron** | ~348MB (AppImage) | ✅ Yes | Desktop | Single device, native app, all features |
+| **🔀 Hybrid Mode** | Docker + Electron | ✅ | Both | Native apps + web app + shared backend |
 
-### 🐳 Docker Installations (Server/Self-Hosted)
+### 🐳 Docker Installation (Server/Self-Hosted)
 
-**Docker Full (~1.5GB)**
+**Docker (~1.5GB)**
 - ✅ Complete web application accessible via browser
 - ✅ Chromium included for web scraping & browser automation
 - ✅ Multi-device access from any device on your network
 - ✅ Supports personal, family, or team use (2-10 concurrent users)
 - ✅ Production-ready with health checks
-- 🎯 **Use when:** Want multi-device access, need browser features, or running on server
 
-**Docker Lite (~715MB, 52% smaller)**
-- ✅ All core features (AI agents, workflows, plugins)
-- ✅ API integrations and image processing
-- ✅ Multi-device access from any device on your network
-- ✅ Supports personal, family, or team use (2-10 concurrent users)
-- ❌ No browser automation (Puppeteer/Playwright)
-- ❌ No web scraping tools
-- 🎯 **Use when:** Want multi-device access, don't need browser features, or want faster pulls
+### 💻 Electron Installation (Desktop App)
 
-### 💻 Electron Installations (Desktop Apps)
-
-**Electron Full (~348MB AppImage / ~253MB DEB)**
+**Electron (~348MB AppImage / ~253MB DEB)**
 - ✅ Native desktop application (Windows/macOS/GNU/Linux)
 - ✅ Browser automation included
 - ✅ Portable installer, easy updates
 - ✅ System tray integration
 - ✅ Single-device, single-user
-- 🎯 **Use when:** Single device use, want native app experience
-
-**Electron Lite (~344MB AppImage / ~251MB DEB)**
-- ✅ All core AGNT features
-- ✅ Single-device, single-user
-- ❌ No browser automation
-- 🎯 **Use when:** Single device use, don't need browser automation
 
 ### 🔀 Hybrid Mode (Electron + Web + Docker Backend)
 
@@ -119,35 +100,17 @@ See [Electron vs Web Guide](ELECTRON_VS_WEB.md) for detailed hybrid setup.
 
 ## 🤔 Which Installation Should I Choose?
 
-### Choose Docker Full if:
+### Choose Docker if:
 - ✅ You want to access AGNT from multiple devices (phone, laptop, tablet)
 - ✅ Personal use with multi-device access
 - ✅ Family sharing (2-5 people in household)
 - ✅ Small team collaboration (2-10 people)
-- ✅ You need web scraping or browser automation
 - ✅ You want 24/7 availability on a server
 
-### Choose Docker Lite if:
-- ✅ You want to access AGNT from multiple devices
-- ✅ Personal use with multi-device access
-- ✅ Family sharing (2-5 people in household)
-- ✅ Small team collaboration (2-10 people)
-- ✅ You don't need browser automation features
-- ✅ You want faster image pulls and deployments
-- ✅ Storage/bandwidth is limited
-
-### Choose Electron Full if:
+### Choose Electron if:
 - ✅ Single device, single user
 - ✅ You want a native desktop application
-- ✅ You need browser automation features
 - ✅ You want auto-updates and system integration
-- ✅ Don't need multi-device access
-
-### Choose Electron Lite if:
-- ✅ Single device, single user
-- ✅ You want a native desktop app
-- ✅ You don't need browser automation
-- ✅ You want the smallest download size
 - ✅ Don't need multi-device access
 
 ### Choose Hybrid Mode (Electron + Web + Docker) if:
@@ -168,12 +131,7 @@ See the Docker-specific sections below for complete setup instructions.
 
 **Quick Start:**
 ```bash
-# Docker Full (1.5GB, with browser)
 docker-compose up -d
-# Access at http://localhost:3333
-
-# Docker Lite (715MB, no browser)
-docker-compose -f docker-compose.lite.yml up -d
 # Access at http://localhost:3333
 ```
 
@@ -189,17 +147,11 @@ Visit [agnt.gg/downloads](https://agnt.gg/downloads) for pre-built installers.
 # Build frontend first
 cd frontend && npm run build && cd ..
 
-# Build Electron Full (with browser)
+# Build the desktop app
 npm run build              # Current platform
 npm run build:win          # Windows
 npm run build:mac          # macOS
 npm run build:linux        # GNU/Linux
-
-# Build Electron Lite (without browser)
-npm run build:lite         # Current platform
-npm run build:lite:win     # Windows
-npm run build:lite:mac     # macOS
-npm run build:lite:linux   # GNU/Linux
 
 # Output: dist/ folder with installers
 ```
@@ -208,8 +160,6 @@ npm run build:lite:linux   # GNU/Linux
 - **Windows**: `.exe` installer (NSIS)
 - **macOS**: `.dmg` and `.zip` (x64 + ARM64 universal)
 - **GNU/Linux**: `.AppImage`, `.deb`, `.rpm`
-
-See [Electron Lite Mode Guide](ELECTRON_LITE_MODE.md) for build details.
 
 ---
 
@@ -230,27 +180,19 @@ Docker containerization provides:
 - Docker Engine 20.10+ or Docker Desktop
 - Docker Compose (optional, but recommended)
 - At least 2GB of available RAM
-- 2GB of free disk space (for full version) or 1GB (for lite version)
+- 2GB of free disk space
 
-## 🐳 Docker Image Variants
+## 🐳 Docker Image
 
-Docker offers two image variants:
-
-### 🔋 Full Version (Default) - `agnt:latest`
-**Size:** ~1.5GB | **Dockerfile:** `Dockerfile`
+**`agnt:latest`** — Size: ~1.5GB | Dockerfile: `Dockerfile`
 
 **Includes:**
-- ✅ Chromium browser (Puppeteer/Playwright support)
+- ✅ Chromium browser (Puppeteer support)
 - ✅ Full browser automation capabilities
 - ✅ Web scraping tools
 - ✅ Screenshot generation
 - ✅ PDF rendering from HTML
-
-**Best for:**
-- Self-hosted/local deployments
-- When you need browser automation features
-- Development environments
-- Servers with sufficient disk space
+- ✅ All core AGNT features, AI agent workflows, plugin system, image processing
 
 **Quick start:**
 ```bash
@@ -259,57 +201,13 @@ docker-compose up -d
 docker build -t agnt:latest .
 ```
 
----
-
-### 🪶 Lite Version - `agnt:lite`
-**Size:** ~715MB (52% smaller) | **Dockerfile:** `Dockerfile.lite`
-
-**Includes:**
-- ✅ All core AGNT features
-- ✅ AI agent workflows
-- ✅ Plugin system
-- ✅ Image processing (without browser)
-- ❌ No Chromium (saves ~900MB)
-- ❌ No Puppeteer/Playwright browser automation
-
-**Best for:**
-- Cloud deployments (AWS, GCP, Azure)
-- Resource-constrained environments
-- When you don't need browser features
-- Faster deployments and image pulls
-
-**Quick start:**
-```bash
-docker-compose -f docker-compose.lite.yml up -d
-# or
-docker build -f Dockerfile.lite -t agnt:lite .
-```
-
----
-
-**Comparison Table:**
-
-| Feature | Full | Lite |
-|---------|------|------|
-| Image Size | ~1.5GB | ~715MB (52% smaller) |
-| Browser Automation | ✅ | ❌ |
-| Web Scraping | ✅ | ❌ |
-| AI Agents & Workflows | ✅ | ✅ |
-| Plugin System | ✅ | ✅ |
-| API Integrations | ✅ | ✅ |
-| Image Processing | ✅ | ✅ |
-| Memory Usage | ~1.2GB | ~700MB |
-
-**💡 Recommendation:** Start with **Lite** unless you specifically need browser automation. You can always switch to Full later if needed.
-
 ## Quick Start with Docker
 
-### Option 1: Pull Pre-built Images from GHCR (Recommended)
+### Option 1: Pull the Pre-built Image from GHCR (Recommended)
 
-**Full variant with browser automation (~1.5GB):**
 ```bash
 docker run -d \
-  --name agnt-full \
+  --name agnt \
   -p 3333:3333 \
   -v agnt-data:/app/data \
   -e NODE_ENV=production \
@@ -320,29 +218,11 @@ docker run -d \
 # Access at http://localhost:3333
 ```
 
-**Lite variant without browser automation (~715MB):**
-```bash
-docker run -d \
-  --name agnt-lite \
-  -p 3333:3333 \
-  -v agnt-data:/app/data \
-  -e NODE_ENV=production \
-  -e BASE_URL=http://localhost:3333 \
-  --restart unless-stopped \
-  ghcr.io/agnt-gg/agnt:lite
-
-# Access at http://localhost:3333
-```
-
 **Available GHCR tags:**
-- `ghcr.io/agnt-gg/agnt:latest` - Latest Full variant (main branch)
-- `ghcr.io/agnt-gg/agnt:full` - Latest Full variant (main branch)
-- `ghcr.io/agnt-gg/agnt:lite` - Latest Lite variant (main branch)
-- `ghcr.io/agnt-gg/agnt:v0.5.0` - Specific version (Full)
-- `ghcr.io/agnt-gg/agnt:v0.5.0-full` - Specific version (Full)
-- `ghcr.io/agnt-gg/agnt:v0.5.0-lite` - Specific version (Lite)
-- `ghcr.io/agnt-gg/agnt:0.5.0` - Specific version without 'v' prefix (Full)
-- `ghcr.io/agnt-gg/agnt:0.5.0-lite` - Specific version without 'v' prefix (Lite)
+- `ghcr.io/agnt-gg/agnt:latest` - latest release
+- `ghcr.io/agnt-gg/agnt:0.6.6` - specific version
+- `ghcr.io/agnt-gg/agnt:0.6` - latest patch on that minor line
+- `ghcr.io/agnt-gg/agnt:sha-abc1234` - specific commit
 
 ### Option 2: Build from Source (Advanced)
 
@@ -368,41 +248,15 @@ docker run -d \
 
 Access AGNT at `http://localhost:3333`
 
-### Option 3: Docker Compose with GHCR Images
+### Option 3: Docker Compose with GHCR Image
 
-**Using Full variant:**
 ```yaml
 version: '3.8'
 
 services:
-  agnt-full:
+  agnt:
     image: ghcr.io/agnt-gg/agnt:latest
-    container_name: agnt-full
-    ports:
-      - "3333:3333"
-    environment:
-      - NODE_ENV=production
-      - BASE_URL=http://localhost:3333
-      - REMOTE_URL=https://api.agnt.gg
-      - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-here}
-      - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
-    volumes:
-      - agnt-data:/app/data
-    restart: unless-stopped
-
-volumes:
-  agnt-data:
-```
-
-**Using Lite variant:**
-```yaml
-version: '3.8'
-
-services:
-  agnt-lite:
-    image: ghcr.io/agnt-gg/agnt:lite
-    container_name: agnt-lite
+    container_name: agnt
     ports:
       - "3333:3333"
     environment:
@@ -512,7 +366,6 @@ Configure AGNT by setting these environment variables:
 | `REMOTE_URL` | Remote API URL for sharing/webhooks | `https://api.agnt.gg` |
 | `WEBHOOK_URL` | Webhook endpoint URL | `http://localhost:3001` |
 | `FRONTEND_URL` | Frontend URL | `http://localhost:5173` |
-| `AGNT_LITE_MODE` | Disable browser automation features (Lite version) | `false` |
 | `AGNT_HOME` | Override the data directory location (see Data Directory below) | unset |
 | `USER_DATA_PATH` | Used by `docker-compose.yml` to point at the in-container mount | `/app/data` |
 | `BIND_HOST` | Which interface the backend binds. `127.0.0.1` means loopback-only, so a fresh install is never exposed to whatever network the machine joins. Set `0.0.0.0` for LAN/container use. Outranks the in-app Phone Access toggle. | `127.0.0.1` |
@@ -545,31 +398,6 @@ Resolution order:
 - **Direct-clone users (`npm start`):** no config needed — defaults to `~/.agnt/data`. Override with `AGNT_HOME` if you want a non-standard location.
 
 The migration shim copies an existing database from common legacy locations (older AGNT installs, system-wide installs in `%PROGRAMDATA%`, the buggy `C:\app\data` Windows fallback, etc.) into the canonical location on first launch — only when the canonical location is empty. See PRD-060 for the full list.
-
-### Lite Mode Configuration
-
-**`AGNT_LITE_MODE`** is automatically set to `true` in the Lite Docker image and disables browser automation features:
-
-- **When `true`**: Puppeteer/Playwright tools will return graceful error messages
-- **When `false`** (default): All features including browser automation are available
-- **Lite image**: Automatically sets this to `true` (Dockerfile.lite)
-- **Full image**: Defaults to `false` (Dockerfile)
-
-**What gets disabled in Lite Mode:**
-- ❌ Web scraping with Puppeteer/Playwright
-- ❌ Screenshot capture via browser
-- ❌ HTML to PDF conversion via browser
-- ❌ Browser-based form automation
-
-**What still works in Lite Mode:**
-- ✅ AI agents and workflows
-- ✅ All API integrations
-- ✅ Plugin system
-- ✅ Image processing (non-browser)
-- ✅ PDF reading
-- ✅ Email automation
-
-See [Lite Mode Developer Guide](LITE_MODE.md) for implementation details.
 
 ### Generating Secure Secrets
 
@@ -716,7 +544,7 @@ labels:
 
 ### Image Specifications
 
-**Full Version (`Dockerfile`):**
+**Docker image (`Dockerfile`):**
 - **Base**: Alpine GNU/Linux (minimal footprint)
 - **Runtime**: Node.js 20 LTS
 - **Browser**: Chromium (for Puppeteer/Playwright features)
@@ -731,24 +559,8 @@ labels:
 - ~80MB: Built Vue.js frontend
 - ~40MB: Alpine GNU/Linux base
 
-**Lite Version (`Dockerfile.lite`):**
-- **Base**: Alpine GNU/Linux (minimal footprint)
-- **Runtime**: Node.js 20 LTS
-- **Browser**: None (no Chromium)
-- **Image Size**: ~715MB (52% smaller)
-- **Architecture**: linux/amd64, linux/arm64
-
-**Size breakdown:**
-- ~315MB: Node.js dependencies (AI SDKs, image processing, no puppeteer)
-- ~180MB: Node.js 20 runtime
-- ~100MB: Backend source code and plugins
-- ~80MB: Built Vue.js frontend
-- ~40MB: Alpine GNU/Linux base
-- ~20MB: Graphics libraries (minimal, no browser)
-
 ### Build Commands
 
-**Full Version (with Chromium):**
 ```bash
 # Build for your current platform
 docker build -t agnt:latest .
@@ -759,19 +571,6 @@ docker build --platform linux/arm64 -t agnt:arm64 .
 
 # Multi-platform build (requires buildx)
 docker buildx build --platform linux/amd64,linux/arm64 -t agnt:latest .
-```
-
-**Lite Version (without Chromium):**
-```bash
-# Build for your current platform
-docker build -f Dockerfile.lite -t agnt:lite .
-
-# Build for specific platform
-docker build -f Dockerfile.lite --platform linux/amd64 -t agnt:lite-amd64 .
-docker build -f Dockerfile.lite --platform linux/arm64 -t agnt:lite-arm64 .
-
-# Multi-platform build (requires buildx)
-docker buildx build -f Dockerfile.lite --platform linux/amd64,linux/arm64 -t agnt:lite .
 ```
 
 ### Custom Build
@@ -791,20 +590,16 @@ FROM node:20-alpine AS frontend-builder
 ### If you installed from the registry (most users)
 
 ```bash
-sudo make update-full           # Full variant (port 3333)
-sudo make update-lite           # Lite variant (port 3333)
-sudo make update-both           # Both containers
+sudo make update                # pull the latest image and restart (port 3333)
 ```
 
-Each of these stops the running container (checkpointing the SQLite WAL), pulls the latest image from `ghcr.io/agnt-gg/agnt`, and starts the new container against your existing `~/.agnt/data/` directory.
+This stops the running container (checkpointing the SQLite WAL), pulls the latest image from `ghcr.io/agnt-gg/agnt`, and starts the new container against your existing `~/.agnt/data/` directory.
 
 ### If you installed from source (`git clone`)
 
 ```bash
 git pull
-sudo make update-full-local     # Full variant
-sudo make update-lite-local     # Lite variant
-sudo make update-both-local     # Both containers
+sudo make update-local          # rebuild from source and restart
 ```
 
 Same flow, but the image is rebuilt locally from the updated `Dockerfile` instead of pulled.
@@ -1023,60 +818,32 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 | **Data Sharing** | Yes (2-10 users) | No (single user) | Yes (2-10 users) |
 | **Devices** | Multi-device | Single device | Multi-device + mixed access |
 | **Platform** | Server (GNU/Linux/Mac/Win) | Desktop (Win/Mac/GNU/Linux) | Server + Any client |
-| **Size** | 1.5GB (full), 715MB (lite) | ~348MB (full), ~344MB (lite) | Docker + optional Electron |
+| **Size** | ~1.5GB | ~348MB (AppImage) | Docker + optional Electron |
 | **Updates** | Pull new image | Auto-update or reinstall | Update backend + clients |
 | **Network** | Requires open port | Runs locally | Requires network to backend |
 | **Best For** | Multi-device, sharing, always-on | Single device, native app | Flexibility: mix browsers + native apps |
-
-### Feature Comparison: Full vs Lite
-
-| Feature | Full | Lite |
-|---------|------|------|
-| **Image Size (Docker)** | ~1.5GB | ~715MB |
-| **Image Size (Electron)** | ~348MB (AppImage) | ~344MB (AppImage) |
-| **Browser Automation** | ✅ Puppeteer/Playwright | ❌ Disabled |
-| **Web Scraping** | ✅ Full support | ❌ Disabled |
-| **Screenshot Capture** | ✅ Browser-based | ❌ Disabled |
-| **AI Agents** | ✅ | ✅ |
-| **Workflows** | ✅ | ✅ |
-| **Plugins** | ✅ | ✅ |
-| **API Integrations** | ✅ | ✅ |
-| **Image Processing** | ✅ | ✅ (non-browser) |
-| **Email Automation** | ✅ | ✅ |
 
 ### Quick Decision Tree
 
 ```
 Want to share data with others (family/team)?
 ├─ Yes → Need native desktop UI for everyone?
-│   ├─ Yes → Hybrid Mode (Electron + Docker backend)
-│   │   └─ Need browser automation?
-│   │       ├─ Yes → Docker Full backend + Electron Full clients
-│   │       └─ No  → Docker Lite backend + Electron Lite clients
-│   │
-│   └─ No (browser access OK) → Choose Docker
-│       └─ Need browser automation?
-│           ├─ Yes → Docker Full (~1.5GB)
-│           └─ No  → Docker Lite (~715MB)
+│   ├─ Yes → Hybrid Mode (Electron clients + Docker backend)
+│   └─ No (browser access OK) → Docker (~1.5GB)
 │
-└─ No (just me, single device) → Choose Electron
-    └─ Need browser automation?
-        ├─ Yes → Electron Full (~348MB)
-        └─ No  → Electron Lite (~344MB)
+└─ No (just me, single device) → Electron (~348MB)
 ```
 
 **Key Questions:**
 1. **Sharing data?** Yes → Docker backend (or Hybrid)
 2. **Multiple devices for you?** Yes → Docker
 3. **Want native app UI?** Yes → Electron (or Hybrid)
-4. **Need browser automation?** Yes → Full version
 
 ---
 
 ## 🤔 Why Are Electron Installers So Much Smaller?
 
-**Electron Full: ~348MB vs Docker Full: ~1.5GB**
-**Electron Lite: ~344MB vs Docker Lite: ~715MB**
+**Electron: ~348MB vs Docker: ~1.5GB**
 
 ### No Downloads on First Run
 
@@ -1089,7 +856,7 @@ Docker images include:
 - 🐧 **Full OS layer** (Alpine GNU/Linux ~40MB)
 - 📦 **Uncompressed filesystem** with all system libraries
 - 🔧 **Runtime system dependencies** (cairo, pango, fonts, etc.)
-- 🌐 **System Chromium** (~650MB uncompressed in Docker Full)
+- 🌐 **System Chromium** (~650MB uncompressed in Docker)
 - 📚 **Multiple architecture binaries** (some dependencies include both x64/ARM)
 
 ### Why Electron Installers Are Smaller
@@ -1100,21 +867,11 @@ Electron installers benefit from:
 - ✂️ **Tree shaking** - electron-builder removes unused code
 - 🎯 **Platform-specific** - Only includes binaries for target OS
 - ⚡ **Built-in Chromium** - Electron includes optimized Chromium (not full system browser)
-
-### Electron Full vs Lite Difference
-
-**Electron Full (~348MB AppImage / ~253MB DEB):**
-- Includes puppeteer, puppeteer-extra, playwright packages
-- Browser automation capabilities
-
-**Electron Lite (~344MB AppImage / ~251MB DEB):**
-- No puppeteer/playwright packages (~16MB uncompressed removed)
-- Still has Electron's built-in Chromium for the UI
 - Just can't use it for automation/scraping
 
 > **Note:** The size difference between Full and Lite is modest (~2-4MB compressed) because Chromium browser binaries are already excluded from both builds. Lite only removes the browser automation source code and libraries.
 
-### Size Breakdown Example (Electron Full on GNU/Linux)
+### Size Breakdown Example (Electron on GNU/Linux)
 
 ```
 Electron runtime + Chromium:  ~250MB (AppImage)
@@ -1124,7 +881,7 @@ Frontend (built):             ~6MB
 Browser automation libs:      ~16MB (removed in Lite)
 Application code:             ~5MB
 ────────────────────────────────────
-Final AppImage:               ~348MB (Full) / ~344MB (Lite)
+Final AppImage:               ~348MB
 Final DEB:                    ~253MB (Full) / ~251MB (Lite)
 ```
 

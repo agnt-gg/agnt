@@ -11,7 +11,6 @@
   "scripts": {
     "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js",
     "start": "electron .",
-    "start:lite": "cross-env AGNT_LITE_MODE=true electron .",
     "test": "vitest run",
     "test:frontend": "npm --prefix frontend test",
     "test:node": "node --test \"tests/unit/**/*.test.js\"",
@@ -24,20 +23,11 @@
     "generate-icons": "node scripts/generate-icons.js",
     "prebuild": "npm run generate-icons",
     "rebuild": "electron-rebuild -f",
-    "build": "cross-env AGNT_BUILD_VARIANT= electron-builder",
-    "build:win": "cross-env AGNT_BUILD_VARIANT= electron-builder --win",
-    "build:mac": "cross-env AGNT_BUILD_VARIANT= electron-builder --mac",
-    "build:linux": "cross-env AGNT_BUILD_VARIANT= electron-builder --linux",
-    "build:all": "cross-env AGNT_BUILD_VARIANT= electron-builder -mwl",
-    "build:lite": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder",
-    "build:lite:win": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder --win",
-    "build:lite:mac": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder --mac",
-    "build:lite:linux": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder --linux",
-    "build:lite:all": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder -mwl",
-    "build:both": "npm run build && npm run build:lite",
-    "build:both:win": "npm run build:win && npm run build:lite:win",
-    "build:both:mac": "npm run build:mac && npm run build:lite:mac",
-    "build:both:linux": "npm run build:linux && npm run build:lite:linux",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl",
     "release:patch": "npm version patch && git push --follow-tags",
     "release:minor": "npm version minor && git push --follow-tags",
     "release:major": "npm version major && git push --follow-tags"
@@ -116,7 +106,7 @@
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
     "beforePack": "./scripts/prune-retired-assets.js",
-    "afterPack": "./scripts/electron-builder-lite.js",
+    "afterPack": "./scripts/electron-builder-hooks.js",
     "afterSign": "./scripts/notarize.js",
     "appId": "com.agnt.app",
     "productName": "AGNT",
@@ -134,7 +124,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -160,7 +150,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "identity": "AGNT GG, Inc. (56BD35UF2U)",
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
       "notarize": false
     },
     "linux": {
@@ -192,7 +182,7 @@
         "Icon": "agnt",
         "StartupWMClass": "AGNT"
       },
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -240,9 +230,6 @@
       "!backend/node_modules/**/*",
       "!backend/.env",
       "!backend/.env.*"
-    ],
-    "extraMetadata": {
-      "AGNT_LITE_MODE": "${env.AGNT_BUILD_VARIANT}"
-    }
+    ]
   }
 }

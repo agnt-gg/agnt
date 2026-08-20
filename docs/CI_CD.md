@@ -1,16 +1,13 @@
 # CI/CD Pipeline Documentation
 
-AGNT uses GitHub Actions to automate building and publishing all distribution variants.
+AGNT uses GitHub Actions to automate building and publishing distribution artifacts.
 
 ## Workflows
 
 ### 1. Docker Build (`docker-build.yml`)
 
-Builds and publishes Docker images to GitHub Container Registry (GHCR).
-
-**Variants:**
-- **Full** (~1.5GB) - With Chromium and browser automation
-- **Lite** (~715MB) - Without browser automation
+Builds and publishes a multi-arch Docker image to GitHub Container Registry (GHCR).
+The image includes Chromium for web scraping and browser automation (~1.5GB).
 
 **Triggers:**
 - Git tags matching `v*.*.*` or `*.*.*` (with or without 'v' prefix)
@@ -24,19 +21,11 @@ Builds and publishes Docker images to GitHub Container Registry (GHCR).
 
 **GitHub Container Registry Tags:**
 ```
-ghcr.io/agnt-gg/agnt:latest        # Full variant (main branch)
-ghcr.io/agnt-gg/agnt:full          # Full variant (main branch)
-ghcr.io/agnt-gg/agnt:lite          # Lite variant (main branch)
-ghcr.io/agnt-gg/agnt:0.5.0         # Version (Full)
-ghcr.io/agnt-gg/agnt:0.5.0-full    # Version (Full)
-ghcr.io/agnt-gg/agnt:0.5.0-lite    # Version (Lite)
-ghcr.io/agnt-gg/agnt:sha-abc1234   # Git SHA (Full)
-ghcr.io/agnt-gg/agnt:sha-lite-abc1234  # Git SHA (Lite)
+ghcr.io/agnt-gg/agnt:latest        # latest release
+ghcr.io/agnt-gg/agnt:0.6.6         # specific version
+ghcr.io/agnt-gg/agnt:0.6           # latest patch on that minor line
+ghcr.io/agnt-gg/agnt:sha-abc1234   # git SHA
 ```
-
-**Build Jobs:**
-- `build-full` - Builds Full variant with Chromium
-- `build-lite` - Builds Lite variant without browser automation
 
 **Secrets Required:**
 - `GITHUB_TOKEN` (automatic, no setup needed)
@@ -44,10 +33,6 @@ ghcr.io/agnt-gg/agnt:sha-lite-abc1234  # Git SHA (Lite)
 ### 2. Electron Build (`electron-build.yml`)
 
 Builds native desktop applications for all platforms.
-
-**Variants:**
-- **Full** (~348MB AppImage) - With browser automation
-- **Lite** (~344MB AppImage) - Without browser automation
 
 **Triggers:**
 - Git tags matching `v*.*.*` or `*.*.*` (with or without 'v' prefix)
@@ -60,319 +45,104 @@ Builds native desktop applications for all platforms.
 
 **Build Matrix:**
 
-| OS              | Platform | Outputs                          |
-|-----------------|----------|----------------------------------|
-| windows-latest  | win      | AGNT-*-win-x64.exe               |
-| macos-latest    | mac      | AGNT-*-mac-*.dmg, .zip           |
-| ubuntu-latest   | linux    | AGNT-*-linux-x64.AppImage, .deb, .rpm |
+| OS              | Platform | Outputs                                |
+|-----------------|----------|----------------------------------------|
+| windows-2022    | win      | AGNT-*-win-x64.exe                      |
+| macos-latest    | mac      | AGNT-*-mac-*.dmg, .zip                  |
+| ubuntu-latest   | linux    | AGNT-*-linux-x64.AppImage, .deb, .rpm  |
 
 **Build Jobs:**
-- `build-electron-full` - Builds Full variant for all platforms
-- `build-electron-lite` - Builds Lite variant for all platforms
-- `release` - Creates GitHub Release with all artifacts (tags only)
+- `build-electron-full` - Builds the desktop app for all platforms
+- `release` - Creates a GitHub Release with all artifacts (tags only)
+
+**macOS builds are signed and notarized** (Developer ID + notarytool via
+`scripts/notarize.js`). Secrets: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
 
 **Artifacts:**
 - Uploaded to GitHub Actions artifacts (30 day retention)
 - Attached to GitHub Releases (for tagged versions)
 
-**Secrets Required:**
-- `GITHUB_TOKEN` (automatic)
-
-## Workflow Outputs
-
-### Docker Builds
-
-**Tagged Release (v*.*.* or *.*.*):**
-- Builds and pushes to GitHub Container Registry (GHCR)
-- Tags with version numbers (e.g., `v0.5.0`, `0.5.0`, `v0.5.0-full`, `0.5.0-lite`)
-- Also tags `latest`, `full`, and `lite` for the newest version
-
-**Available at:**
-```
-ghcr.io/agnt-gg/agnt:latest        # Latest Full variant
-ghcr.io/agnt-gg/agnt:full          # Latest Full variant
-ghcr.io/agnt-gg/agnt:lite          # Latest Lite variant
-ghcr.io/agnt-gg/agnt:v0.5.0        # Specific version (Full)
-ghcr.io/agnt-gg/agnt:0.5.0         # Specific version without 'v' (Full)
-ghcr.io/agnt-gg/agnt:v0.5.0-lite   # Specific version (Lite)
-ghcr.io/agnt-gg/agnt:0.5.0-lite    # Specific version without 'v' (Lite)
-```
-
-### Electron Builds
-
-**Tagged Release (v*.*.* or *.*.*):**
-- Builds all variants for all platforms (6 total builds)
-- Uploads artifacts to GitHub Actions (30 days)
-- Creates draft GitHub Release with all installers
-- Auto-generates release notes
-
-**Build Artifacts:**
-- `electron-full-win` - Windows Full installer
-- `electron-lite-win` - Windows Lite installer
-- `electron-full-mac` - macOS Full installers (x64 + ARM64)
-- `electron-lite-mac` - macOS Lite installers (x64 + ARM64)
-- `electron-full-linux` - GNU/Linux Full packages
-- `electron-lite-linux` - GNU/Linux Lite packages
-
 ## Running Workflows Manually
 
-### Docker Build
-
 ```bash
-# Via GitHub CLI
+# Docker
 gh workflow run docker-build.yml
 
-# Via GitHub Web UI
-Actions → Build and Push Docker Images → Run workflow
-```
-
-### Electron Build
-
-```bash
-# Via GitHub CLI
+# Electron
 gh workflow run electron-build.yml
-
-# Via GitHub Web UI
-Actions → Build Electron Apps → Run workflow
 ```
+
+Or via the GitHub Web UI: **Actions → select workflow → Run workflow.**
 
 ## Local Testing
 
-### Test Docker Build Locally
+### Docker
 
 ```bash
-# Build Full variant
-docker build -f Dockerfile -t agnt:full .
-
-# Build Lite variant
-docker build -f Dockerfile.lite -t agnt:lite .
-
-# Or use Makefile
-make build-all
+docker build -f Dockerfile -t agnt:latest .
+# Or use the Makefile
+make build
 ```
 
-### Test Electron Build Locally
+### Electron
 
 ```bash
 # Build frontend
 cd frontend && npm run build && cd ..
 
-# Build Full variant (current platform)
+# Build for the current platform
 npm run build
 
-# Build Lite variant (current platform)
-npm run build:lite
-
-# Build specific platform
-npm run build:win          # Windows Full
-npm run build:lite:mac     # macOS Lite
-npm run build:linux        # GNU/Linux Full
+# Build a specific platform
+npm run build:win
+npm run build:mac
+npm run build:linux
 ```
-
-## Build Caching
-
-### Docker
-
-Uses GitHub Actions cache to speed up builds:
-- Separate caches for Full (`docker-full`) and Lite (`docker-lite`)
-- Caches Docker layers between builds
-- Significantly reduces build times on subsequent runs
-
-### Electron
-
-Uses npm cache to speed up dependency installation:
-- Caches `node_modules` based on `package-lock.json`
-- Separate caches per OS
 
 ## Release Process
 
-### 1. Automated Builds
-
-When you push a tag:
+Push a tag:
 
 ```bash
-# Tag a release
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.6.7
+git push origin v0.6.7
 ```
 
-Triggers:
-1. **Docker Build** - Builds and pushes Docker images with version tags
-2. **Electron Build** - Builds all installers and creates draft GitHub Release
+This triggers:
+1. **Docker Build** - builds and pushes the image with version tags
+2. **Electron Build** - builds all installers and creates a draft GitHub Release
 
-### 2. Manual Release Steps
-
-After GitHub Actions completes:
-
-1. Go to GitHub Releases
-2. Find the draft release
-3. Edit release notes if needed
-4. Publish the release
+After the run completes, edit the draft release notes if needed and publish.
 
 Users can then:
 - Download installers from GitHub Releases
-- Pull Docker images from Docker Hub:
+- Pull the Docker image:
   ```bash
-  docker pull ghcr.io/agnt-gg/agnt:0.5.0      # Full
-  docker pull ghcr.io/agnt-gg/agnt:0.5.0-lite # Lite
+  docker pull ghcr.io/agnt-gg/agnt:0.6.7
   ```
 
 ## Monitoring Builds
 
-### View Workflow Status
-
 ```bash
-# Via GitHub CLI
 gh run list
 gh run view <run-id>
 gh run watch
-
-# Via GitHub Web UI
-Actions tab → Select workflow → View runs
 ```
 
-### Build Logs
-
-- Available in GitHub Actions UI
-- Retained for 90 days
-- Download logs with: `gh run download <run-id>`
-
-## Troubleshooting
-
-### Docker Build Fails
-
-**Check Docker Hub credentials:**
-```bash
-gh secret list
-```
-
-Should show `DOCKERHUB_TOKEN`.
-
-**Variables:**
-```bash
-gh variable list
-```
-
-Should show `DOCKERHUB_USERNAME`.
-
-### Electron Build Fails
-
-**Platform-specific issues:**
-- **Windows**: Requires `windows-build-tools` (pre-installed on GitHub runners)
-- **macOS**: Builds both x64 and ARM64 (universal builds)
-- **GNU/Linux**: Requires build tools (pre-installed on GitHub runners)
-
-**Check Node.js version:**
-Workflow uses Node.js 20. If building locally, ensure same version:
-```bash
-node --version  # Should be v20.x.x
-```
-
-### Artifacts Not Found
-
-**Check artifact name:**
-```bash
-gh run view <run-id> --log
-```
-
-Look for "Upload artifacts" step.
-
-**Download artifacts:**
-```bash
-gh run download <run-id>
-```
-
-## Build Matrix Summary
-
-| Variant        | Docker | Electron | Platforms/Architectures          | Size        |
-|----------------|--------|----------|----------------------------------|-------------|
-| Full           | ✅     | ✅       | All                              | 1.5GB / ~348MB |
-| Lite           | ✅     | ✅       | All                              | 715MB / ~344MB |
-| **Docker**     | ✅     | -        | Any OS with Docker (amd64, arm64) | -          |
-| **Electron**   | -      | ✅       | Windows, macOS, GNU/Linux (native)   | -           |
-
-**Note:** Docker images run on any OS with Docker support (Windows, macOS, GNU/Linux, FreeBSD, etc.). Electron apps are native binaries for specific platforms.
-
-## Environment Variables
-
-### Docker Build
-
-```yaml
-DOCKER_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/agnt
-BUILD_DATE: ${{ github.event.head_commit.timestamp }}
-VCS_REF: ${{ github.sha }}
-VERSION: ${{ steps.meta.outputs.version }}
-```
-
-### Electron Build
-
-```yaml
-GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # For auto-update and code signing
-NODE_ENV: production
-```
+Build logs are available in the GitHub Actions UI and retained for 90 days.
 
 ## Security
 
-### Secrets Management
-
-**Never commit:**
-- Docker Hub tokens
-- Code signing certificates
-- API keys
-
-**Store as GitHub Secrets:**
-```bash
-gh secret set DOCKERHUB_TOKEN
-gh variable set DOCKERHUB_USERNAME
-```
-
-### Pull Request Builds
-
-- Pull requests from forks cannot access secrets
-- Docker images are built but not pushed
-- Electron builds run but don't sign code
-
-## Performance
-
-### Build Times
-
-| Workflow       | Platform | Time (approx) |
-|----------------|----------|---------------|
-| Docker Full    | Multi-arch | 15-20 min   |
-| Docker Lite    | Multi-arch | 10-15 min   |
-| Electron Full  | Windows  | 10-15 min   |
-| Electron Full  | macOS    | 12-18 min   |
-| Electron Full  | GNU/Linux    | 8-12 min    |
-| Electron Lite  | Windows  | 8-12 min    |
-| Electron Lite  | macOS    | 10-15 min   |
-| Electron Lite  | GNU/Linux    | 6-10 min    |
-
-**Total pipeline time (tagged release):** ~30-40 minutes (parallel execution)
-
-### Optimization Tips
-
-1. **Cache hit rate** - Minimize changes to Dockerfiles and package.json
-2. **Layer ordering** - Put frequently changing steps last
-3. **Parallel execution** - All builds run concurrently
-4. **Incremental builds** - Use GitHub Actions cache
-
-## Future Improvements
-
-- [ ] Code signing for macOS and Windows
-- [ ] Notarization for macOS
-- [ ] Auto-update server setup
-- [ ] Nightly builds
-- [ ] Beta/preview channels
-- [ ] Build performance metrics
-- [ ] Security scanning (Trivy, Snyk)
-- [ ] Dependency updates (Dependabot)
+- Never commit code-signing certificates or API keys — store them as GitHub Secrets.
+- Pull requests from forks cannot access secrets: Docker images are built but not
+  pushed, and Electron builds run but do not sign code.
 
 ## References
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Docker Build Push Action](https://github.com/docker/build-push-action)
 - [Electron Builder](https://www.electron.build/)
-- [electron-builder GitHub Actions](https://www.electron.build/configuration/publish#github-repository)
 
 ---
 

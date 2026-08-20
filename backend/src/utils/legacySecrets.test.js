@@ -227,10 +227,12 @@ describe('the shared JWT secret is present, so sessions can be verified', () => 
 
   it('does NOT default TRUST_REMOTE_AUTH on IN THE SHIPPED COMPOSE FILES either', () => {
     // The assertion above guarded the wrong file. secretsBootstrap.js never
-    // mentioned the flag — the default lived in the compose files, all four of
-    // which shipped `${TRUST_REMOTE_AUTH:-true}` beside BIND_HOST=0.0.0.0 and a
+    // mentioned the flag — the default lived in the compose file, which once
+    // shipped `${TRUST_REMOTE_AUTH:-true}` beside BIND_HOST=0.0.0.0 and a
     // published port. So every self-hosted container accepted ANY well-formed
     // JWT bearing a userId claim, with no signature check at all.
+    // (The Lite variant's compose files were removed in 2026-08; only
+    // docker-compose.yml remains.)
     //
     // A guard that scans a file the setting was never in reports success for a
     // property it cannot see. This scans the artefacts an operator actually
@@ -240,7 +242,7 @@ describe('the shared JWT secret is present, so sessions can be verified', () => 
       .filter((f) => /^docker-compose[\w.-]*\.ya?ml$/.test(f));
 
     // ANTI-VACUITY: a scanner that finds no files passes everything.
-    expect(composeFiles.length, 'no compose files found — scanner is vacuous').toBeGreaterThanOrEqual(3);
+    expect(composeFiles.length, 'no compose files found — scanner is vacuous').toBeGreaterThanOrEqual(1);
 
     const offenders = [];
     for (const file of composeFiles) {

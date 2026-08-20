@@ -2,7 +2,6 @@ import { JSDOM } from 'jsdom';
 import { fileURLToPath } from 'url';
 import { URL } from 'url';
 import { getBestChromePath, getChromeNotFoundMessage } from './chrome-detector.js';
-import { isLiteMode } from './liteModeHelper.js';
 
 /**
  * Scrapes a URL, aggressively cleans the DOM, extracts main content, all code snippets, and finds all links on the page.
@@ -10,16 +9,6 @@ import { isLiteMode } from './liteModeHelper.js';
  * @returns {Promise<{textContent: string, links: string[], codeContent: string}>} A promise that resolves to the text content, links, and all found code snippets.
  */
 async function scrape(url) {
-  // Check if browser automation is available (not in lite mode)
-  if (isLiteMode()) {
-    throw new Error(
-      'Web scraping is not available in AGNT Lite Mode. ' +
-      'Browser automation (Puppeteer) is disabled to reduce image size. ' +
-      'Please use the full AGNT image for web scraping features.'
-    );
-  }
-
-  // Dynamically import puppeteer-core (only loads if not in lite mode)
   const puppeteer = (await import('puppeteer-core')).default;
 
   // Get the best available Chrome executable path

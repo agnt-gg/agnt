@@ -25,7 +25,7 @@
  *
  * WHY DETECTION IS PER-FILE AND NEVER `os.EOL`
  * -------------------------------------------
- * AGNT runs on Windows, macOS, Linux, inside Docker (Dockerfile, Dockerfile.lite)
+ * AGNT runs on Windows, macOS, Linux, inside Docker
  * and against a remote backend over the Connection feature. In the last two the
  * process OS and the file's OS are routinely different: a Linux container
  * bind-mounting a Windows checkout has `os.EOL === '\n'` and CRLF files. The

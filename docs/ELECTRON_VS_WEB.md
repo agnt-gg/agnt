@@ -322,13 +322,11 @@ Output: `dist/` folder with installers
 ### Docker Images
 
 ```bash
-# Build images
-make build-full        # With Chromium (~1.5GB)
-make build-lite        # Without Chromium (~715MB)
+# Build the image
+make build            # With Chromium (~1.5GB)
 
-# Push to DockerHub
-docker push agnt/agnt:latest
-docker push agnt/agnt:lite
+# Push to GHCR
+docker push ghcr.io/agnt-gg/agnt:latest
 ```
 
 ---
@@ -433,10 +431,8 @@ Should see: `[Socket.IO] Client connected`
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Container config (full version) |
-| `docker-compose.lite.yml` | Container config (lite version) |
-| `Dockerfile` | How to build full image |
-| `Dockerfile.lite` | How to build lite image |
+| `docker-compose.yml` | Container config |
+| `Dockerfile` | How to build the image |
 
 ### Shared Code
 

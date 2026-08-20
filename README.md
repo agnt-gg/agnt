@@ -152,8 +152,7 @@ http://localhost:3333
 | Try AGNT locally                             | `npm install` then `npm start`               |
 | Develop the UI/backend                       | Vite dev server + Electron/backend           |
 | Run AGNT as a local server                   | Build frontend, then `npm start`             |
-| Self-host on a VPS, homelab, or Raspberry Pi | Docker Lite                                  |
-| Use browser automation                       | Docker Full                                  |
+| Self-host on a VPS, homelab, or Raspberry Pi | Docker                                       |
 | Build plugins                                | Clone repo + `backend/plugins/dev` templates |
 | Script AGNT from other tools                 | Local API at `http://localhost:3333/api`     |
 
@@ -252,7 +251,7 @@ Use Docker for an isolated self-hosted deployment.
 ```bash
 # Full image with browser automation, about 1.5GB
 docker run -d \
-  --name agnt-full \
+  --name agnt \
   -p 3333:3333 \
   -v agnt-data:/app/data \
   ghcr.io/agnt-gg/agnt:latest
@@ -260,49 +259,23 @@ docker run -d \
 # Visit http://localhost:3333
 ```
 
-```bash
-# Lite image without browser automation, about 715MB
-docker run -d \
-  --name agnt-lite \
-  -p 3333:3333 \
-  -v agnt-data:/app/data \
-  ghcr.io/agnt-gg/agnt:lite
-
-# Visit http://localhost:3333
-```
-
 Available tags:
 
-- `latest` / `full`: latest Full variant with browser automation
-- `lite`: latest Lite variant without browser automation
-- `0.6.6` / `0.6.6-full`: specific Full version
-- `0.6.6-lite`: specific Lite version
-- `0.6` / `0.6-lite`: latest patch on that minor line
+- `latest`: latest release with browser automation
+- `0.6.6`: specific version
+- `0.6`: latest patch on that minor line
 
-### 🏗️ Build Docker images from source
+### 🏗️ Build the Docker image from source
 
 ```bash
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
-# Full version
 docker-compose up -d
 
-# Lite version
-docker-compose -f docker-compose.lite.yml up -d
-
-# Run both variants side by side
-docker-compose -f docker-compose.both.yml up -d
-
 # Or use the Makefile
-make run-both
+make run
 ```
-
-### 🧪 Docker variants
-
-- 🔋 **Full**: includes Chromium support for web scraping and browser automation.
-- 🪶 **Lite**: smaller image without browser automation.
-- 🚀 **Both**: useful for testing Full and Lite side by side.
 
 📖 See [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup.
 
@@ -312,18 +285,18 @@ make run-both
 
 AGNT can run without the Electron desktop shell. In headless mode the Express backend serves the built Vue frontend and the local API from port `3333`, so you can run AGNT on a homelab box, a Raspberry Pi, a small cloud VM, or a low-cost VPS.
 
-For a typical $5 VPS or Raspberry Pi, use the Lite Docker image unless you need browser automation. Lite keeps agents, workflows, goals, plugins, providers, API integrations, file processing, image processing, and email automation, but omits bundled Chromium/Puppeteer/Playwright browser automation to reduce disk and memory use.
+AGNT ships one Docker image with the full feature set, including Chromium for web scraping and browser automation.
 
 Recommended small-server targets:
 
-| Target                     | Recommendation                                             |
-| -------------------------- | ---------------------------------------------------------- |
-| $5 VPS                     | 1-2 vCPU, 1-2GB RAM, Ubuntu 22.04/24.04, Lite image        |
-| Raspberry Pi 5             | 8GB RAM recommended, 64-bit OS, Lite image                 |
-| Raspberry Pi 4             | 4GB minimum, 8GB preferred, 64-bit OS, Lite image          |
-| Mini PC / NUC / old laptop | Lite or Full depending on RAM and browser automation needs |
+| Target                     | Recommendation                                    |
+| -------------------------- | ------------------------------------------------- |
+| VPS                        | 2 vCPU, 2GB RAM, Ubuntu 22.04/24.04               |
+| Raspberry Pi 5             | 8GB RAM recommended, 64-bit OS                    |
+| Raspberry Pi 4             | 4GB minimum, 8GB preferred, 64-bit OS             |
+| Mini PC / NUC / old laptop | 4GB+ RAM                                          |
 
-For Raspberry Pi, use a **64-bit OS** such as Raspberry Pi OS 64-bit or Ubuntu Server arm64. SSD storage is strongly preferred over a microSD card for always-on use. The Docker images are intended for multi-arch publishing; use `ghcr.io/agnt-gg/agnt:lite` on ARM64 devices when available.
+For Raspberry Pi, use a **64-bit OS** such as Raspberry Pi OS 64-bit or Ubuntu Server arm64. SSD storage is strongly preferred over a microSD card for always-on use. The image is multi-arch, so `ghcr.io/agnt-gg/agnt:latest` runs on ARM64 devices too.
 
 ```bash
 # On a fresh Ubuntu VPS, homelab server, or Raspberry Pi OS 64-bit install
@@ -332,26 +305,25 @@ sudo usermod -aG docker $USER
 newgrp docker
 
 # Create persistent data directories
-mkdir -p ~/.agnt/data ~/.agnt/logs/lite
+mkdir -p ~/.agnt/data ~/.agnt/logs
 
 # Generate production secrets
 export JWT_SECRET=$(openssl rand -base64 32)
 export SESSION_SECRET=$(openssl rand -base64 32)
 export ENCRYPTION_KEY=$(openssl rand -base64 32)
 
-# Run AGNT Lite headlessly on port 3333
+# Run AGNT headlessly on port 3333
 docker run -d \
   --name agnt \
   --restart unless-stopped \
   -p 3333:3333 \
   -e NODE_ENV=production \
-  -e AGNT_LITE_MODE=true \
   -e JWT_SECRET="$JWT_SECRET" \
   -e SESSION_SECRET="$SESSION_SECRET" \
   -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
   -v "$HOME/.agnt/data:/app/data" \
-  -v "$HOME/.agnt/logs/lite:/app/logs" \
-  ghcr.io/agnt-gg/agnt:lite
+  -v "$HOME/.agnt/logs:/app/logs" \
+  ghcr.io/agnt-gg/agnt:latest
 ```
 
 Then open:
@@ -360,21 +332,7 @@ Then open:
 http://YOUR_SERVER_IP:3333
 ```
 
-For public internet deployments, put AGNT behind HTTPS with a reverse proxy, Cloudflare Tunnel, Tailscale, or another access layer you control. Do not leave production secrets as `CHANGE_ME_IN_PRODUCTION`.
-
-If you need browser automation, use the Full image instead:
-
-```bash
-docker run -d \
-  --name agnt \
-  --restart unless-stopped \
-  -p 3333:3333 \
-  -v "$HOME/.agnt/data:/app/data" \
-  -v "$HOME/.agnt/logs/full:/app/logs" \
-  ghcr.io/agnt-gg/agnt:latest
-```
-
-The Full image is larger and is better suited to a VPS, mini PC, or Pi with more RAM and swap. On very small machines, add swap or use Lite.
+For public internet deployments, put AGNT behind HTTPS with a reverse proxy, Cloudflare Tunnel, Tailscale, or another access layer you control. Do not leave production secrets as `CHANGE_ME_IN_PRODUCTION`. On very small machines, add swap.
 
 You can also run headless from source:
 
@@ -735,25 +693,6 @@ npm run build:linux
 npm run build:all
 ```
 
-### 🪶 Lite desktop builds
-
-```bash
-npm run build:lite
-npm run build:lite:win
-npm run build:lite:mac
-npm run build:lite:linux
-
-# Build Full and Lite
-npm run build:both
-npm run build:both:win
-npm run build:both:mac
-npm run build:both:linux
-```
-
-Lite mode removes browser automation source code. Agents, workflows, API integrations, plugins, image processing, and email automation still work.
-
-📖 See [Electron Lite Mode Guide](docs/ELECTRON_LITE_MODE.md).
-
 ---
 
 ## 🚢 Releasing a new version
@@ -928,8 +867,6 @@ On startup, AGNT logs the resolved data path:
 | [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)          | Detailed build guide.                      |
 | [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup.                  |
 | [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment and hosting.             |
-| [🪶 Docker Lite Mode](docs/LITE_MODE.md)                      | Docker without browser automation.         |
-| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Desktop builds without browser automation. |
 | [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins.                   |
 | [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding.                  |
 | [🚀 CI/CD Pipelines](docs/CI_CD.md)                           | GitHub Actions workflows.                  |

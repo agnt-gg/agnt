@@ -1,7 +1,6 @@
 # Multi-stage build for AGNT - AI Agent Framework (FULL VERSION)
 # Using Node 20 LTS with Chromium for complete features
-# ~1.5GB image size - includes Puppeteer/Playwright browser automation
-# For lighter version without Chromium (~715MB), use Dockerfile.lite
+# ~1.5GB image size - includes Puppeteer browser automation
 # Stage 1: Build frontend
 FROM node:20-alpine AS frontend-builder
 

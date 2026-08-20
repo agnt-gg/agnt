@@ -114,31 +114,47 @@ describe('things that are genuinely dead stay out', () => {
   });
 });
 
-describe('AGNT Lite still has web scraping', () => {
-  const afterPack = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-lite.js'), 'utf8');
-  const list = afterPack.slice(
-    afterPack.indexOf('const packagesToRemove'),
-    afterPack.indexOf('];', afterPack.indexOf('const packagesToRemove'))
-  );
-
-  // Lite removes BROWSER AUTOMATION. It must not remove WEB SCRAPING — those
-  // are different capabilities that share a library, and the Lite list used to
-  // delete a module three runtime files import.
-  it.each(['puppeteer-core', '@puppeteer'])('does not delete %s', (pkg) => {
-    expect(
-      list.includes(`'${pkg}'`),
-      `Lite removes ${pkg}, which web scraping imports — it will fail at runtime with ` +
-        `"Cannot find module 'puppeteer-core'" the first time anyone scrapes a page`
-    ).toBe(false);
+describe('the Lite variant stays deleted', () => {
+  // AGNT Lite was removed in 2026-08: after the packaging slim-down its removal
+  // list saved ~0 MB, it had shipped one real bug (deleting puppeteer-core,
+  // which web scraping imports), and its second update feed — two variants
+  // both emitting latest.yml into one release — was the blocker on auto-update.
+  // One product, one artifact per platform, one feed. These pin the deletion so
+  // it cannot creep back through a convenience script or a copied config.
+  it('no lite build scripts', () => {
+    for (const name of Object.keys(pkg.scripts ?? {})) {
+      expect(name, `script "${name}" reintroduces a build variant`).not.toMatch(/lite|both/);
+    }
   });
 
-  it('ANTI-VACUITY: the list is real and still removes something', () => {
-    expect(list).toContain('playwright');
+  it('artifact names carry no variant slot', () => {
+    for (const platform of ['win', 'mac', 'linux']) {
+      expect(pkg.build?.[platform]?.artifactName ?? '').not.toContain('AGNT_BUILD_VARIANT');
+    }
+  });
+
+  it('no AGNT_LITE_MODE anywhere in the build config', () => {
+    expect(JSON.stringify(pkg.build)).not.toContain('AGNT_LITE_MODE');
+  });
+
+  it('the variant files are gone', () => {
+    for (const f of ['Dockerfile.lite', 'docker-compose.lite.yml', 'docker-compose.both.yml',
+                     'scripts/electron-builder-lite.js', 'backend/src/utils/liteModeHelper.js']) {
+      expect(fs.existsSync(path.join(REPO_ROOT, f)), `${f} is back`).toBe(false);
+    }
+  });
+
+  it('ANTI-VACUITY: mobile-lite — the unrelated Capacitor iOS shell — survives', () => {
+    // "lite" names three unrelated things in this repo. Deleting the BUILD
+    // VARIANT must not clip the mobile shell; if this ever fails, a cleanup
+    // matched the substring instead of the token.
+    expect(fs.existsSync(path.join(REPO_ROOT, 'mobile', 'mobile-lite', 'package.json'))).toBe(true);
+    expect(fs.readFileSync(path.join(REPO_ROOT, 'Makefile'), 'utf8')).toMatch(/mobile-lite-info:/);
   });
 });
 
 describe('locale trimming', () => {
-  const afterPack = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-lite.js'), 'utf8');
+  const afterPack = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-hooks.js'), 'utf8');
 
   it('keeps en-US, which Chromium cannot start without', () => {
     expect(afterPack).toMatch(/KEEP_LOCALES\s*=\s*new Set\(\[\s*'en-US'/);
