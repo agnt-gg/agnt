@@ -8,11 +8,36 @@ import GoldenStandardModel from '../models/GoldenStandardModel.js';
 import LlmCallModel from '../models/LlmCallModel.js';
 
 class GoalService {
-  healthCheck(req, res) {
+  /**
+   * Unauthenticated liveness probe, plus the one number the DESKTOP UPDATER
+   * needs before it will restart the app.
+   *
+   * WHY THE COUNT LIVES HERE. Electron's main process cannot read the database
+   * itself: requiring sqlite3 there aborts the process outright rather than
+   * throwing, so no try/catch can contain it — measured, not assumed. Main also
+   * holds no session token, so it cannot call an authenticated route. This
+   * endpoint already exists, already answers without auth, and reporting how
+   * much work is in flight is exactly what a health probe is for.
+   *
+   * A count of running goals carries no user data, which is what makes it safe
+   * to serve unauthenticated.
+   *
+   * The count NEVER fails the probe: liveness is the primary job here, and an
+   * update check is not worth turning a health endpoint red.
+   */
+  async healthCheck(req, res) {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    res.status(200).json({ status: 'OK' });
+
+    let executing = 0;
+    try {
+      executing = await GoalModel.countExecuting();
+    } catch {
+      executing = 0;
+    }
+
+    res.status(200).json({ status: 'OK', executing });
   }
   async createGoal(req, res) {
     try {

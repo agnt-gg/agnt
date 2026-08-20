@@ -17,6 +17,31 @@ class GoalModel {
       );
     });
   }
+  /**
+   * How many goals are mid-execution right now.
+   *
+   * Read by the desktop update interlock (electron/autoUpdate.js) before it
+   * will restart the app to install an update: a goal can run for forty
+   * minutes, and killing one to save an hour of staleness loses more than the
+   * update is worth.
+   *
+   * Deliberately counts across ALL users. The question is not "whose work is
+   * running" but "would quitting this process destroy work", and the answer is
+   * the same either way — a restart takes down every user's runs at once.
+   */
+  static countExecuting() {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(*) AS n FROM goals WHERE status = 'executing' AND deleted_at IS NULL`,
+        [],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(Number(row?.n) || 0);
+        },
+      );
+    });
+  }
+
   static findOne(id) {
     return new Promise((resolve, reject) => {
       db.get(`SELECT * FROM goals WHERE id = ?`, [id], (err, goal) => {

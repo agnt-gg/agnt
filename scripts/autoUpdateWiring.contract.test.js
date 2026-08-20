@@ -93,6 +93,33 @@ describe('Windows updates are possible without a code-signing certificate', () =
   });
 });
 
+describe('main must not load a native module to decide about updating', () => {
+  const main = fs.readFileSync(path.join(REPO_ROOT, 'main.js'), 'utf8');
+
+  it('does not require sqlite3 in the main process', () => {
+    // Requiring sqlite3 in Electron's main process ABORTS it — a native abort,
+    // not an exception, so the try/catch around the goal check cannot contain
+    // it. The first version of the update interlock did exactly this, which
+    // meant pressing "Restart to update" would have killed AGNT instead of
+    // updating it. Verified on Electron 33.4.11 against both the dev and the
+    // packaged build of the module.
+    expect(
+      /(?:await import|require)\(\s*['"]sqlite3['"]\s*\)/.test(main),
+      'main.js loads sqlite3 — this aborts the process; ask the backend over HTTP instead',
+    ).toBe(false);
+  });
+
+  it('asks the backend for the executing-goal count instead', () => {
+    expect(main).toMatch(/\/api\/goals\/health/);
+  });
+
+  it('ANTI-VACUITY: the interlock still exists', () => {
+    // If countExecutingGoals were deleted outright, the two rules above would
+    // pass while the protection was gone.
+    expect(main).toMatch(/countExecutingGoals/);
+  });
+});
+
 describe('the changelog does not claim what does not exist', () => {
   it('no longer advertises auto-update as a shipped v0.3.3 feature', () => {
     // releases.json listed "Auto-Update System" under v0.3.3 while the app

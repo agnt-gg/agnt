@@ -753,33 +753,37 @@ ipcMain.handle('get-app-version', () => {
 /**
  * How many goals are mid-execution RIGHT NOW.
  *
- * Read straight from the local database rather than the API because main holds
- * no session token, and because the question is specifically about work THIS
- * process would destroy. In remote mode the goals live on another machine and
- * quitting here cannot touch them — the file below simply will not exist, which
- * is the correct answer of zero.
+ * ASKED OVER HTTP, DELIBERATELY. The obvious implementation reads the SQLite
+ * file directly — and it cannot be used: requiring sqlite3 in the Electron MAIN
+ * process ABORTS it. Not an exception, a native abort, so the try/catch around
+ * this call could not contain it and pressing "Restart to update" would kill
+ * AGNT instead of updating it. Measured on Electron 33.4.11 (ABI 130) against
+ * both the dev and packaged builds of the module; the backend gets away with it
+ * only because it is a forked child, not the main process.
  *
- * Never throws: the caller treats an unreadable database as "nothing running",
- * because a permanently dead update button is worse than the bounded risk of a
- * restart the user explicitly asked for.
+ * `/api/goals/health` needs no token, which matters because main holds none.
+ *
+ * Never throws, and answers 0 whenever it cannot tell. A permanently dead
+ * update button is a worse failure than the bounded risk of a restart the user
+ * explicitly asked for.
  */
 async function countExecutingGoals() {
-  const dbPath = path.join(app.getPath('userData'), 'Data', 'agnt.db');
-  if (!fs.existsSync(dbPath)) return 0;
+  // In remote mode the goals live on another machine and quitting THIS app
+  // cannot destroy them, so there is nothing to protect.
+  if (isRemoteActive()) return 0;
 
-  const sqlite3 = (await import('sqlite3')).default;
-  return new Promise((resolve, reject) => {
-    // OPEN_READONLY so a stuck updater can never write to, lock or migrate the
-    // user's database. The backend owns that file.
-    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
-      if (err) return reject(err);
-      db.get("SELECT COUNT(*) AS n FROM goals WHERE status = 'executing';", (qErr, row) => {
-        db.close();
-        if (qErr) return reject(qErr);
-        resolve(Number(row?.n) || 0);
-      });
+  try {
+    const res = await fetch(`${localBackendUrl()}/api/goals/health`, {
+      signal: AbortSignal.timeout(3000),
     });
-  });
+    if (!res.ok) return 0;
+    const body = await res.json();
+    return Number(body?.executing) || 0;
+  } catch {
+    // Backend not up, not reachable, or too old to report the field — in every
+    // one of those cases there is no evidence of running work.
+    return 0;
+  }
 }
 
 let autoUpdaterHandle = null;
