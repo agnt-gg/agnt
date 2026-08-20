@@ -59,11 +59,62 @@ function findFakeDotAppDirs(dirPath, results = []) {
 }
 
 /**
+ * Locales AGNT actually ships in.
+ *
+ * Electron bundles a Chromium `.pak` per language — roughly fifty of them, about
+ * 38 MB. They drive Chromium's own surfaces: context menus, the print dialog,
+ * spellcheck labels. AGNT's interface has no i18n layer and is written in
+ * English throughout, so every other pack is weight that is never read.
+ *
+ * `electronLanguages` in the builder config covers macOS and Linux but NOT
+ * Windows, where the packs are loose files under `locales/`. Doing it here
+ * covers all three from one place, and keeps the rule and its reason together.
+ *
+ * en-US.pak is mandatory — Chromium fails to start without its default locale.
+ */
+const KEEP_LOCALES = new Set(['en-US']);
+
+/**
+ * Remove every Chromium locale pack except the ones named above.
+ *
+ * Deliberately conservative: it only ever touches files ending in `.pak` inside
+ * a directory literally named `locales`, so a mis-resolved path cannot delete
+ * anything else. A failure here is logged and ignored — a larger installer is
+ * not worth failing a release over.
+ */
+async function trimLocales(localesDir, log = console.log) {
+  if (!fs.existsSync(localesDir)) return 0;
+
+  let removed = 0;
+  let saved = 0;
+
+  for (const entry of fs.readdirSync(localesDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.pak')) continue;
+    if (KEEP_LOCALES.has(path.basename(entry.name, '.pak'))) continue;
+
+    const full = path.join(localesDir, entry.name);
+    try {
+      saved += fs.statSync(full).size;
+      fs.unlinkSync(full);
+      removed += 1;
+    } catch (error) {
+      log(`[locales] ⚠ could not remove ${entry.name}: ${error.message}`);
+    }
+  }
+
+  if (removed > 0) {
+    log(`[locales] removed ${removed} unused locale pack(s), saved ${formatBytes(saved)}`);
+  }
+  return saved;
+}
+
+/**
  * AfterPack hook - Called after app is packaged but before signing/installer
  *
- * Two responsibilities:
+ * Three responsibilities:
  * 1. (ALL builds) Rename fake .app directories so codesign doesn't choke
- * 2. (Lite builds) Remove browser automation packages
+ * 2. (ALL builds) Trim Chromium locale packs AGNT never reads
+ * 3. (Lite builds) Remove browser automation packages
  */
 export async function afterPack(context) {
   const appOutDir = context.appOutDir;
@@ -95,6 +146,14 @@ export async function afterPack(context) {
     if (fakeDotApps.length === 0) {
       console.log('[Code Signing Fix] No fake .app directories found — all clear.');
     }
+  }
+
+  // ── Trim Chromium locale packs (ALL builds) ───────────────────────────
+  // Windows/Linux keep them beside the executable; macOS keeps them inside the
+  // bundle's Resources. Both are checked, and a missing directory is a no-op.
+  await trimLocales(path.join(appOutDir, 'locales'));
+  if (context.packager.platform.name === 'mac') {
+    await trimLocales(path.join(appPath, 'locales'));
   }
 
   // ── Lite build: remove browser packages ───────────────────────────────

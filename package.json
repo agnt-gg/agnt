@@ -46,7 +46,6 @@
     "@agnt-gg/nope": "^0.1.4",
     "@anthropic-ai/sdk": "^0.16.1",
     "@cerebras/cerebras_cloud_sdk": "^1.59.0",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/genai": "^1.41.0",
     "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.6.0",
@@ -89,10 +88,7 @@
     "xxhash-wasm": "^1.1.0"
   },
   "optionalDependencies": {
-    "playwright": "^1.56.0",
-    "puppeteer": "^24.10.2",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-core": "^24.10.2"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
@@ -112,13 +108,8 @@
       "node_modules/@xenova/transformers/**/*",
       "node_modules/sqlite3/**/*",
       "node_modules/better-sqlite3/**/*",
-      "node_modules/puppeteer/**/*",
-      "node_modules/puppeteer-extra/**/*",
-      "node_modules/puppeteer-extra-plugin-stealth/**/*",
       "node_modules/puppeteer-core/**/*",
       "node_modules/@puppeteer/**/*",
-      "node_modules/playwright/**/*",
-      "node_modules/playwright-core/**/*",
       "backend/plugins/plugin-builds/**/*"
     ],
     "npmRebuild": false,
@@ -237,10 +228,14 @@
       "!node_modules/**/*.md",
       "!node_modules/**/.bin/**/*",
       "!node_modules/ffmpeg-static/**/*",
-      "!node_modules/puppeteer/.local-chromium/**/*",
-      "!node_modules/playwright/.local-browsers/**/*",
-      "!node_modules/playwright-core/.local-browsers/**/*",
+      "!node_modules/puppeteer-core/.local-chromium/**/*",
       "!node_modules/onnxruntime-node/bin/**/*",
+      "!**/*.js.map",
+      "!**/*.mjs.map",
+      "!**/*.cjs.map",
+      "!**/*.ts.map",
+      "!**/*.css.map",
+      "!node_modules/chromium-bidi/**/*",
       "!backend/.chrome/**/*",
       "!backend/node_modules/**/*",
       "!backend/.env",
