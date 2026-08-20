@@ -224,6 +224,54 @@ describe('the shared JWT secret is present, so sessions can be verified', () => 
 
     expect(code.filter((line) => /TRUST_REMOTE_AUTH/.test(line))).toEqual([]);
   });
+
+  it('does NOT default TRUST_REMOTE_AUTH on IN THE SHIPPED COMPOSE FILES either', () => {
+    // The assertion above guarded the wrong file. secretsBootstrap.js never
+    // mentioned the flag — the default lived in the compose files, all four of
+    // which shipped `${TRUST_REMOTE_AUTH:-true}` beside BIND_HOST=0.0.0.0 and a
+    // published port. So every self-hosted container accepted ANY well-formed
+    // JWT bearing a userId claim, with no signature check at all.
+    //
+    // A guard that scans a file the setting was never in reports success for a
+    // property it cannot see. This scans the artefacts an operator actually
+    // runs.
+    const composeFiles = fs
+      .readdirSync(REPO_ROOT)
+      .filter((f) => /^docker-compose[\w.-]*\.ya?ml$/.test(f));
+
+    // ANTI-VACUITY: a scanner that finds no files passes everything.
+    expect(composeFiles.length, 'no compose files found — scanner is vacuous').toBeGreaterThanOrEqual(3);
+
+    const offenders = [];
+    for (const file of composeFiles) {
+      const lines = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8').split(/\r?\n/);
+      lines.forEach((line, i) => {
+        if (/^\s*#/.test(line)) return; // prose about the flag is fine
+        // Matches `${TRUST_REMOTE_AUTH:-true}` and a bare `TRUST_REMOTE_AUTH=true`.
+        if (/TRUST_REMOTE_AUTH(:-|\s*=\s*)true/.test(line)) {
+          offenders.push(`${file}:${i + 1}  ${line.trim()}`);
+        }
+      });
+    }
+
+    expect(
+      offenders,
+      'A compose file defaults TRUST_REMOTE_AUTH on. That makes the backend\n' +
+        'jwt.decode() instead of jwt.verify(), so the signature is never checked\n' +
+        'and any well-formed JWT authenticates as whatever userId it names.\n' +
+        'It is only safe behind a proxy that has ALREADY verified the token and\n' +
+        'through which the port is exclusively reachable — a deployment the\n' +
+        'operator builds deliberately. Keep it opt-in:\n' +
+        '  TRUST_REMOTE_AUTH=true docker compose up -d'
+    ).toEqual([]);
+  });
+
+  it('ANTI-VACUITY: the compose detector matches the shape it describes', () => {
+    const detector = /TRUST_REMOTE_AUTH(:-|\s*=\s*)true/;
+    expect(detector.test('      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}')).toBe(true);
+    expect(detector.test('      - TRUST_REMOTE_AUTH=true')).toBe(true);
+    expect(detector.test('      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-false}')).toBe(false);
+  });
 });
 
 describe(`SUNSET GATE: remove the legacy key by ${REMOVE_BY}`, () => {

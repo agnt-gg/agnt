@@ -40,9 +40,13 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION_FULL}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION_FULL}
 
-      # Trust remote authentication (for semi-local mode)
-      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
-      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+      # Trust remote authentication (for semi-local mode) — OFF BY DEFAULT.
+      # When true, the backend jwt.decode()s instead of jwt.verify()ing: the
+      # signature is never checked, so any well-formed JWT with a userId claim
+      # authenticates as that user. Only safe behind a proxy that has already
+      # verified the token and through which the port is exclusively reachable.
+      # See docker-compose.yml for the full note.
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-false}
 
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
@@ -117,9 +121,13 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION_LITE}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION_LITE}
 
-      # Trust remote authentication (for semi-local mode)
-      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
-      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+      # Trust remote authentication (for semi-local mode) — OFF BY DEFAULT.
+      # When true, the backend jwt.decode()s instead of jwt.verify()ing: the
+      # signature is never checked, so any well-formed JWT with a userId claim
+      # authenticates as that user. Only safe behind a proxy that has already
+      # verified the token and through which the port is exclusively reachable.
+      # See docker-compose.yml for the full note.
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-false}
 
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}

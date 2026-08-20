@@ -50,9 +50,25 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION}
 
-      # Trust remote authentication (for semi-local mode)
-      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
-      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+      # Trust remote authentication (for semi-local mode) — OFF BY DEFAULT.
+      #
+      # When true, routes/Middleware.js calls jwt.decode() instead of
+      # jwt.verify(): the token's SIGNATURE IS NEVER CHECKED. Any well-formed
+      # JWT carrying a userId claim authenticates as that user. Combined with
+      # BIND_HOST=0.0.0.0 and a published port (both set below), that is an
+      # unauthenticated remote takeover of this install.
+      #
+      # It defaulted to `true`, which meant every self-hosted container shipped
+      # in that state. The flag is only safe behind a proxy that has ALREADY
+      # verified the token and cannot be bypassed — i.e. the container port is
+      # not reachable except through that proxy. That is a deployment the
+      # operator has to build deliberately, so it is now opt-in:
+      #
+      #   TRUST_REMOTE_AUTH=true docker compose up -d
+      #
+      # Left false, tokens are verified against JWT_SECRET, which is what
+      # 0.6.5 and every desktop install already do.
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-false}
 
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
