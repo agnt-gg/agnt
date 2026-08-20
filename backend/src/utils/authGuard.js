@@ -34,6 +34,8 @@
 
 import jwt from 'jsonwebtoken';
 
+import { verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
+
 /** Cookie name used for browser-issued media subresource requests. */
 export const MEDIA_COOKIE_NAME = 'agnt_media_token';
 
@@ -135,7 +137,25 @@ export function verifyAuthToken(token) {
     if (!user) return { ok: false, reason: 'no-subject' };
     return { ok: true, user };
   } catch (err) {
-    return { ok: false, reason: err?.name === 'TokenExpiredError' ? 'expired' : 'invalid' };
+    // An expired token is expired, full stop — never look further, or `exp`
+    // becomes bypassable.
+    if (err?.name === 'TokenExpiredError') return { ok: false, reason: 'expired' };
+
+    // A HOSTED INSTALL HOLDS NO COPY OF THE ISSUER'S SIGNING KEY, by design:
+    // that key is public and this process is on the open internet. So a
+    // perfectly genuine cloud token always fails the verify above, and this is
+    // the only way it can succeed.
+    //
+    // Not a weakening — the entry it reads exists only because api.agnt.gg
+    // already confirmed this exact token string, and the identity returned is
+    // the issuer's, not a local decode. See services/auth/remoteTokenVerifier.js.
+    const remote = verifiedUserSync(token);
+    if (remote) {
+      const user = toUser(remote, 'issuer-verified');
+      if (user) return { ok: true, user };
+    }
+
+    return { ok: false, reason: 'invalid' };
   }
 }
 

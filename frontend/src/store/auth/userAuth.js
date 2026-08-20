@@ -438,25 +438,19 @@ export default {
           });
 
           if (response.data?.isAuthenticated && response.data.user) {
-            // THE TOKEN EXCHANGE.
+            // THE STORED TOKEN IS NEVER SWAPPED HERE, AND THAT IS LOAD-BEARING.
             //
-            // A hosted backend cannot hold the cloud's signing key (it is
-            // public, and that backend is on the open internet), so it verified
-            // this token by ASKING api.agnt.gg and handed back one it signed
-            // itself. Adopting it is what makes the rest of the app work: media
-            // URLs, file routes and the websocket handshake all verify
-            // synchronously against the backend's own secret and cannot wait on
-            // a remote call. Staying on the cloud token would leave the user
-            // signed in with dead sockets and broken images.
+            // This one token is used against TWO authorities: the backend that
+            // serves the data, and api.agnt.gg for credits, subscription,
+            // referrals, licence, marketplace and connected apps. An earlier
+            // version of this branch replaced it with a token the local backend
+            // had minted for itself — which the cloud cannot verify. The user
+            // stayed signed in and silently lost every one of those, each
+            // surfacing as its own 401.
             //
-            // Desktop never sends one, so this is inert there.
-            //
-            // Committed BEFORE the session state: SET_TOKEN resets it to
-            // UNKNOWN by design, so promoting to VALID has to come after.
-            if (response.data.localToken) {
-              commit('SET_TOKEN', response.data.localToken);
-            }
-
+            // A hosted backend that cannot verify a cloud token now resolves it
+            // by asking the issuer, and shares that answer with its own
+            // synchronous auth paths. Nothing is required of the client.
             commit('SET_USER', response.data.user);
             commit('CLEAR_AUTH_FAILURE');
             commit('SET_SESSION_STATE', SESSION.VALID);

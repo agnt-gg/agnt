@@ -186,6 +186,56 @@ export async function verifyViaIssuer(token) {
 }
 
 /**
+ * Has THIS EXACT TOKEN already been confirmed genuine by the issuer?
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A SYNCHRONOUS READ EXISTS AT ALL
+ * ---------------------------------------------------------------------------
+ * A token is verified in three places in this backend, and two of them cannot
+ * await anything:
+ *
+ *   routes/Middleware.js        async  — every REST route
+ *   utils/authGuard.js          SYNC   — media, files, images, pairing, SSE
+ *   utils/socketIdentity.js     SYNC   — the websocket handshake
+ *
+ * The first attempt at this traded the cloud token for a locally-minted one so
+ * all three could verify locally. That worked, and broke something worse: the
+ * frontend keeps ONE token in localStorage and uses it against TWO authorities
+ * — this backend AND api.agnt.gg. Swapping it left every direct-to-cloud call
+ * (credits, subscription, referrals, license, marketplace, connected apps)
+ * holding a token the cloud cannot verify. The user stayed signed in and lost
+ * half the app.
+ *
+ * So the client keeps the cloud token, and the two synchronous sites read the
+ * answer the asynchronous one already obtained.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS IS A MEMO OF AN AUTHORITATIVE ANSWER, NOT A TRUST DECISION
+ * ---------------------------------------------------------------------------
+ * An entry exists only because `verifyViaIssuer` got `isAuthenticated: true`
+ * from api.agnt.gg for that exact token string, and it expires on the same TTL.
+ * Nothing here can create a positive; it can only report one. A token this
+ * process has never seen returns null, exactly as it should.
+ *
+ * The identity returned is the ISSUER'S, not a local decode of the payload —
+ * so a tampered claim cannot travel through this path even in principle.
+ *
+ * ORDERING. The cache is warm because the page cannot render without first
+ * calling GET /api/users/auth/status, which runs through Middleware. A media or
+ * socket request that somehow arrives first simply gets today's 401 and is
+ * retried after the session verifies — no worse than the current behaviour.
+ *
+ * @param {string} token
+ * @returns {object|null} the issuer-confirmed user, or null
+ */
+export function verifiedUserSync(token) {
+  if (typeof token !== 'string' || !token) return null;
+  const hit = cache.get(keyFor(token));
+  if (!hit || !hit.ok || Date.now() >= hit.expiresAt) return null;
+  return hit.user || null;
+}
+
+/**
  * Drop a token's cached answer.
  *
  * Called on sign-out so the 5-minute positive TTL does not keep a session alive

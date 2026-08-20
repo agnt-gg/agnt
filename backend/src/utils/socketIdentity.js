@@ -52,6 +52,8 @@
 
 import jwt from 'jsonwebtoken';
 
+import { verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
+
 /** Reasons a resolution can fail. Exported so tests + callers share one vocabulary. */
 export const SocketAuthFailure = {
   INVALID_TOKEN: 'invalid_token',
@@ -119,6 +121,19 @@ function verifyToken(token, env) {
       if (err?.name === 'TokenExpiredError') return { error: SocketAuthFailure.EXPIRED_TOKEN };
       // Otherwise fall through: it may be a remote-issued token.
     }
+  }
+
+  // A HOSTED INSTALL HOLDS NO COPY OF THE ISSUER'S SIGNING KEY, by design, so a
+  // genuine cloud token cannot pass the verify above. Read the answer the HTTP
+  // middleware already obtained from api.agnt.gg for this exact token.
+  //
+  // Placed before the trustRemote branch because it is STRICTLY STRONGER than
+  // it: that branch decodes without checking anything, this one requires the
+  // issuer to have said yes.
+  const confirmed = verifiedUserSync(token);
+  if (confirmed) {
+    const userId = extractUserId(confirmed);
+    if (userId) return { userId };
   }
 
   if (!trustRemote) return { error: SocketAuthFailure.INVALID_TOKEN };
