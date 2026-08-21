@@ -66,8 +66,12 @@ async function initializePlugins() {
     const installResult = await PluginInstaller.installAllPlugins();
     console.log('[WorkflowProcess] Plugin installation result:', installResult);
 
-    // Initialize plugin manager
-    await PluginManager.initialize();
+    // Initialize plugin manager. Pass the list PluginInstaller just validated —
+    // without it initialize() falls back to scanPlugins(), re-reading and
+    // re-parsing a manifest for every installed plugin that was checked moments
+    // ago. The parent process has always passed this (server.js initializePlugins);
+    // the child computed the same result and threw it away.
+    await PluginManager.initialize(installResult?.plugins);
     console.log('[WorkflowProcess] Plugin manager initialized');
 
     const stats = PluginManager.getStats();
