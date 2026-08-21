@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import db from "../models/database/index.js";
 import { resolveSecret } from "../utils/secretResolver.js";
 import { rememberSessionToken } from "../services/auth/sessionTokenCache.js";
+import { isPermittedUser, NOT_A_MEMBER } from "../services/auth/tenantOwnership.js";
 
 dotenv.config();
 
@@ -46,6 +47,35 @@ class Middleware {
   extractUserId(payload) {
     if (!payload) return null;
     return payload.id || payload.userId || payload.user_id || payload.sub || null;
+  }
+
+  /**
+   * A genuine token is not the same thing as permission to be HERE.
+   *
+   * All three branches below establish only that the caller is a real AGNT
+   * account. On a hosted tenant that was treated as permission, so any account
+   * — and signup is open — got a session on somebody else's paid instance.
+   * See services/auth/tenantOwnership.js.
+   *
+   * 403 AND NOT 401, deliberately. 401 means "your credential is bad, get a
+   * new one", and a client that believes that will re-authenticate forever
+   * against a token that is perfectly valid and will never be accepted here.
+   * 403 with a reason lets the UI say the true thing: right account, wrong
+   * instance.
+   *
+   * Every call site places this BEFORE syncRemoteUserToLocal. A refused caller
+   * must leave nothing behind — a local users row, or a poisoned single-slot
+   * session cache, are both effects a stranger should not be able to cause.
+   */
+  refuseNonMember(res, userId) {
+    if (isPermittedUser(userId)) return false;
+    console.warn(`[tenant] refused ${userId}: not a member of this instance`);
+    res.status(403).json({
+      success: false,
+      error: 'This AGNT instance belongs to another account.',
+      reason: NOT_A_MEMBER,
+    });
+    return true;
   }
   getSessionMiddleware() {
     return this.sessionMiddleware;
@@ -133,6 +163,8 @@ class Middleware {
         const userId = this.extractUserId(decoded);
 
         if (decoded && userId) {
+          if (this.refuseNonMember(res, userId)) return;
+
           // Sync user to local database (create or update)
           await this.syncRemoteUserToLocal(decoded);
 
@@ -168,6 +200,8 @@ class Middleware {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userId = this.extractUserId(decoded);
+      if (this.refuseNonMember(res, userId)) return;
+
       req.user = {
         isAuthenticated: true,
         id: userId,
@@ -215,6 +249,11 @@ class Middleware {
         const remote = await verifyViaIssuer(token);
         if (remote.ok) {
           const userId = remote.user.id || remote.user.userId;
+          // THE LIVE HOLE WAS HERE. The issuer confirms the token is genuine —
+          // it says that for every account it has ever issued — and this path
+          // read that as permission to use this instance.
+          if (this.refuseNonMember(res, userId)) return;
+
           await this.syncRemoteUserToLocal({ ...remote.user, id: userId });
 
           req.user = {

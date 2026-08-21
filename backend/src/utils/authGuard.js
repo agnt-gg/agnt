@@ -34,6 +34,7 @@
 
 import jwt from 'jsonwebtoken';
 
+import { isPermittedUser, NOT_A_MEMBER } from '../services/auth/tenantOwnership.js';
 import { verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
 
 /** Cookie name used for browser-issued media subresource requests. */
@@ -123,10 +124,17 @@ export function verifyAuthToken(token) {
     };
   };
 
+  // Genuine, and separately, allowed to be here. This path serves media, file,
+  // image, pairing and SSE routes plus the soft identity lookups in
+  // ModelRoutes/AuthRoutes — all of which would otherwise stay open to any
+  // account while the REST middleware was closed. One boundary, or none.
+  // See services/auth/tenantOwnership.js.
+  const admit = (user) => (isPermittedUser(user.id) ? { ok: true, user } : { ok: false, reason: NOT_A_MEMBER });
+
   if (process.env.TRUST_REMOTE_AUTH === 'true') {
     try {
       const user = toUser(jwt.decode(token), 'remote');
-      if (user) return { ok: true, user };
+      if (user) return admit(user);
     } catch {
       /* fall through to strict verification */
     }
@@ -135,7 +143,7 @@ export function verifyAuthToken(token) {
   try {
     const user = toUser(jwt.verify(token, process.env.JWT_SECRET), 'local');
     if (!user) return { ok: false, reason: 'no-subject' };
-    return { ok: true, user };
+    return admit(user);
   } catch (err) {
     // An expired token is expired, full stop — never look further, or `exp`
     // becomes bypassable.
@@ -152,7 +160,7 @@ export function verifyAuthToken(token) {
     const remote = verifiedUserSync(token);
     if (remote) {
       const user = toUser(remote, 'issuer-verified');
-      if (user) return { ok: true, user };
+      if (user) return admit(user);
     }
 
     return { ok: false, reason: 'invalid' };
@@ -170,9 +178,13 @@ export function requireAuth(opts = {}) {
     const token = extractToken(req, opts);
     const result = verifyAuthToken(token);
     if (!result.ok) {
-      return res.status(401).json({
+      // A non-member holds a perfectly good credential; it is simply not good
+      // HERE. Answering 401 would tell the client to go and get another one,
+      // which it would then present with the identical result, forever.
+      const notMember = result.reason === NOT_A_MEMBER;
+      return res.status(notMember ? 403 : 401).json({
         success: false,
-        error: 'Authentication required',
+        error: notMember ? 'This AGNT instance belongs to another account.' : 'Authentication required',
         reason: result.reason,
       });
     }

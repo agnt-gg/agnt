@@ -52,6 +52,7 @@
 
 import jwt from 'jsonwebtoken';
 
+import { isPermittedUser, NOT_A_MEMBER } from '../services/auth/tenantOwnership.js';
 import { verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
 
 /** Reasons a resolution can fail. Exported so tests + callers share one vocabulary. */
@@ -60,6 +61,9 @@ export const SocketAuthFailure = {
   EXPIRED_TOKEN: 'expired_token',
   TOKEN_REQUIRED: 'token_required',
   NO_IDENTITY: 'no_identity',
+  /* Genuine account, wrong instance. Shares the string the HTTP layer uses so
+   * one client-side handler covers both transports. */
+  NOT_A_MEMBER,
 };
 
 /** How the identity was established. `unverified_claim` is legacy-lenient only. */
@@ -176,6 +180,7 @@ export function resolveSocketIdentity(payload = {}, env = process.env) {
   if (token && !PLACEHOLDER_TOKENS.has(token)) {
     const result = verifyToken(token, env);
     if (result.error) return { ok: false, reason: result.error };
+    if (!isPermittedUser(result.userId)) return { ok: false, reason: NOT_A_MEMBER };
     return { ok: true, userId: result.userId, source: SocketIdentitySource.TOKEN, verified: true };
   }
 
@@ -184,6 +189,15 @@ export function resolveSocketIdentity(payload = {}, env = process.env) {
   }
 
   // Lenient: pre-upgrade client on a local desktop install.
+  //
+  // A hosted tenant is always strict (TRUST_REMOTE_AUTH / NODE_ENV=production),
+  // so this branch is unreachable there and an unverified claim can never
+  // become tenant access. Checked anyway rather than argued: if that inference
+  // is ever loosened, the socket must not silently become the way in.
+  if (claimedUserId && !isPermittedUser(claimedUserId)) {
+    return { ok: false, reason: NOT_A_MEMBER };
+  }
+
   if (claimedUserId) {
     return {
       ok: true,

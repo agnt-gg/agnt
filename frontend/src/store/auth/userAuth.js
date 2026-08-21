@@ -51,6 +51,23 @@ import { userFromJwt } from './jwt.js';
  * routes/Middleware.js.
  */
 
+/**
+ * A 403 that means "right account, wrong instance".
+ *
+ * A hosted AGNT instance belongs to one account (and, later, its team). Every
+ * other account is genuinely signed in and genuinely not welcome here, so the
+ * token is perfectly good — it works against the cloud and against their own
+ * instance. Clearing it would produce the same infinite login loop described
+ * above for plan denials: log out, log back in, present the identical valid
+ * token, get the identical 403.
+ *
+ * Marked by the server's own response shape rather than the status code. See
+ * backend/src/services/auth/tenantOwnership.js.
+ */
+function isWrongInstance(response) {
+  return response?.data?.reason === 'not_tenant_member';
+}
+
 /** A 403 that is about entitlement, not identity. Never clears the session. */
 function isPlanDenial(response) {
   const data = response?.data;
@@ -64,6 +81,9 @@ export function classifyAuthError(error) {
     const status = error.response.status;
     const detail = error.response.data?.error || null;
     if (status === 401) return { reason: 'http_401', status, detail, timestamp };
+    if (status === 403 && isWrongInstance(error.response)) {
+      return { reason: 'wrong_instance', status, detail, timestamp };
+    }
     if (status === 403 && isPlanDenial(error.response)) {
       return {
         reason: 'plan_denied',

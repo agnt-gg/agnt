@@ -13,6 +13,26 @@ import './src/config/secretsBootstrap.js';
 // MUST stay directly under dotenv: import hoisting means diagnostics are live
 // before any other module's top-level code can throw.
 import './src/diagnostics/bootstrap.js';
+
+// A HOSTED TENANT THAT NAMES NOBODY WOULD ADMIT EVERYONE, so it does not start.
+//
+// Deliberately fatal rather than degraded. The alternative readings of an empty
+// member list are both silent: treat it as "allow all" and one tenant.sh bug
+// quietly reopens cross-tenant access, treat it as "allow none" and a paying
+// customer is locked out of their own instance with no explanation. Exiting
+// makes the misconfiguration arrive as a container that dies and a
+// `tenant create` that fails its health poll, within seconds.
+//
+// Runs before the listener so a broken tenant never answers a request at all,
+// and cannot fire on a desktop install: only tenant.sh sets AGNT_TENANT_SLUG.
+// See src/services/auth/tenantOwnership.js.
+import { assertTenantBinding } from './src/services/auth/tenantOwnership.js';
+
+const tenantBinding = assertTenantBinding();
+if (!tenantBinding.ok) {
+  console.error(`[tenant] refusing to start: ${tenantBinding.reason}`);
+  process.exit(78); // EX_CONFIG
+}
 import cors from 'cors';
 import express from 'express';
 import compression from 'compression';
