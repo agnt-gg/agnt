@@ -96,7 +96,11 @@ async function _fetchCodexModelsFromUpstream(token) {
     const url = `https://chatgpt.com/backend-api/codex/models?client_version=${clientVersion}`;
     console.log(`[ModelRoutes] Fetching Codex models from ${url} (account: ${accountId || 'none'})`);
 
-    const res = await fetch(url, { headers });
+    // Bounded. prewarmCodexModels() fires this at boot with nobody awaiting it,
+    // so an unbounded fetch means a hung socket can sit open for the life of the
+    // process with no one to notice or cancel it. The catch below already
+    // degrades to `fallback`, which is the right answer for a timeout too.
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.warn(`[ModelRoutes] Codex models endpoint returned ${res.status}: ${body.slice(0, 200)}`);
