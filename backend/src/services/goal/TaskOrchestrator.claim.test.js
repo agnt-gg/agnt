@@ -73,6 +73,7 @@ beforeEach(() => {
 
 afterEach(() => {
   TaskOrchestrator.runningGoals.delete(GOAL);
+  delete process.env.AGNT_LOCAL_TASK_CONCURRENCY;
   vi.restoreAllMocks();
 });
 
@@ -127,6 +128,118 @@ describe('a claim gates dispatch', () => {
     await TaskOrchestrator.executeGoalTasks(GOAL, USER);
 
     expect(TaskModel.claim).not.toHaveBeenCalled();
+  });
+});
+
+describe('dispatch is bounded, and bounded dispatch strands nothing', () => {
+  /**
+   * Replaces the default executeTask stub with one that MEASURES how many
+   * tasks are genuinely in flight at once. Asserting on the ceiling any other
+   * way (counting calls, inspecting batches) would pass just as happily
+   * against an unbounded Promise.allSettled.
+   */
+  const measureConcurrency = () => {
+    const seen = { inFlight: 0, max: 0 };
+    TaskOrchestrator.executeTask.mockImplementation(async () => {
+      seen.inFlight += 1;
+      seen.max = Math.max(seen.max, seen.inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      seen.inFlight -= 1;
+      return { content: 'ok' };
+    });
+    return seen;
+  };
+
+  const sixSiblings = () => [0, 1, 2, 3, 4, 5].map((n) => task(`t${n}`, 0));
+
+  it('never runs more than the ceiling at once', async () => {
+    process.env.AGNT_LOCAL_TASK_CONCURRENCY = '2';
+    TaskModel.findByGoalId.mockResolvedValue(sixSiblings());
+    const seen = measureConcurrency();
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    expect(seen.max).toBeLessThanOrEqual(2);
+  });
+
+  it('still finishes every task in the group — a ceiling must not strand work', async () => {
+    // THE regression guard for this change. executeGoalTasks visits each
+    // order_index group exactly once, so a ceiling without the drain loop
+    // would silently abandon four of these six on a single-node install.
+    process.env.AGNT_LOCAL_TASK_CONCURRENCY = '2';
+    TaskModel.findByGoalId.mockResolvedValue(sixSiblings());
+    measureConcurrency();
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    expect(executedIds().sort()).toEqual(['t0', 't1', 't2', 't3', 't4', 't5']);
+  });
+
+  it('applies a sane default when nothing is configured', async () => {
+    TaskModel.findByGoalId.mockResolvedValue(sixSiblings());
+    const seen = measureConcurrency();
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    expect(seen.max).toBeLessThanOrEqual(4);
+    expect(executedIds()).toHaveLength(6);
+  });
+
+  it('leaves the tasks it did not take PENDING for the fleet', async () => {
+    // The point of the ceiling: unclaimed is the only state another node can
+    // take work from. Anything past the ceiling must not be claimed, and must
+    // not be marked failed either.
+    process.env.AGNT_LOCAL_TASK_CONCURRENCY = '2';
+    TaskModel.findByGoalId.mockResolvedValue(sixSiblings());
+    // Simulate a fleet that takes everything this node leaves behind.
+    const takenByFleet = new Set();
+    TaskModel.claim.mockImplementation(async (id) => {
+      if (takenByFleet.size >= 2) return false;
+      takenByFleet.add(id);
+      return true;
+    });
+    measureConcurrency();
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    expect(executedIds()).toHaveLength(2);
+    // A task another node is running is not this node's to fail.
+    expect(TaskModel.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('terminates when the whole group belongs to other nodes', async () => {
+    // A drain loop that retried lost claims would spin here forever.
+    process.env.AGNT_LOCAL_TASK_CONCURRENCY = '2';
+    TaskModel.findByGoalId.mockResolvedValue(sixSiblings());
+    TaskModel.claim.mockResolvedValue(false);
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    expect(TaskOrchestrator.executeTask).not.toHaveBeenCalled();
+  });
+
+  it('comes back for a task whose dependency an earlier wave satisfied', async () => {
+    // Previously a sibling blocked at the moment the group was visited was
+    // skipped for good. Draining in waves means the wave that unblocks it is
+    // followed by one that can run it.
+    TaskModel.findByGoalId.mockResolvedValue([task('t1', 0), task('t2', 0)]);
+    TaskModel.canExecuteTask.mockImplementation(async (id) => id === 't1' || executedIds().includes('t1'));
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    expect(executedIds()).toEqual(['t1', 't2']);
+  });
+
+  it('stops the goal when an entire wave fails', async () => {
+    process.env.AGNT_LOCAL_TASK_CONCURRENCY = '2';
+    TaskModel.findByGoalId.mockResolvedValue(sixSiblings());
+    TaskOrchestrator.executeTask.mockRejectedValue(new Error('provider exploded'));
+
+    await TaskOrchestrator.executeGoalTasks(GOAL, USER);
+
+    // Two attempted, both failed, and the drain does NOT go on to burn the
+    // remaining four against a provider that is evidently down.
+    expect(TaskOrchestrator.executeTask).toHaveBeenCalledTimes(2);
   });
 });
 

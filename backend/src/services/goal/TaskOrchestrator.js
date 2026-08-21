@@ -20,6 +20,52 @@ import db from '../../models/database/index.js';
 import fs from 'fs/promises';
 import path from 'path';
 
+/**
+ * How many tasks this node will run at once.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A CEILING AT ALL
+ * ---------------------------------------------------------------------------
+ * Two separate problems share this one number.
+ *
+ * The first is local: a group of sibling tasks used to be dispatched with an
+ * unbounded `Promise.allSettled`, so a goal with fifty tasks at the same
+ * order_index started fifty agent turns inside one process — fifty concurrent
+ * provider streams, fifty tool sandboxes, one event loop.
+ *
+ * The second is the fleet: those claims complete in single-digit milliseconds,
+ * while a worker polls on a multi-second interval. A primary that took the
+ * whole group therefore won every race by four orders of magnitude and left
+ * its workers idle — measured, with two healthy credentialed workers taking
+ * ZERO claims on a six-task goal. Adding nodes changed nothing, because the
+ * busiest machine in the cluster was also the greediest.
+ *
+ * Bounding the take fixes both: the primary runs a sane number itself and
+ * leaves the rest PENDING, which is precisely the state the pull design needs
+ * work to be in for anyone else to take it.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY UNCLAIMED WORK IS NOT STRANDED
+ * ---------------------------------------------------------------------------
+ * A ceiling alone would be a serious regression: `executeGoalTasks` visits
+ * each order_index group exactly once, so tasks left behind would simply never
+ * run on a single-node install. The group is therefore drained in WAVES — take
+ * up to N, run them, come back for whatever is still pending — until nothing
+ * claimable remains. A lone node still finishes every task in the group; it
+ * just stops doing all of them simultaneously.
+ *
+ * The default is small on purpose. Real goals put a handful of tasks at one
+ * order_index, so this changes nothing for them, and it caps the pathological
+ * case that nobody designed for.
+ */
+const DEFAULT_LOCAL_TASK_CONCURRENCY = 4;
+
+function localTaskConcurrency() {
+  const raw = Number(process.env.AGNT_LOCAL_TASK_CONCURRENCY);
+  if (!Number.isFinite(raw) || raw < 1) return DEFAULT_LOCAL_TASK_CONCURRENCY;
+  return Math.floor(raw);
+}
+
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
 
@@ -147,121 +193,163 @@ class TaskOrchestrator {
 
         if (tasksToExecute.length === 0) continue;
 
-        // Check dependencies for all tasks in this group, then take a claim on
-        // each one we intend to run.
+        // Dispatch this group in BOUNDED WAVES rather than all of it at once.
         //
-        // The claim is the ONLY thing standing between two nodes and running
-        // the same task twice, and it is deliberately here rather than inside
-        // executeTask: a task must be excluded from this group's batch before
-        // any work begins on it, not abandoned halfway through.
+        // localTaskConcurrency() above explains why the ceiling exists. This
+        // loop is what makes the ceiling SAFE: each group is visited exactly
+        // once by the outer loop, so simply claiming fewer tasks would strand
+        // the remainder forever on an install with nobody else to run them.
+        // Instead the group is drained — take up to N, run them, come back for
+        // whatever is still pending — until nothing claimable is left.
         //
-        // On a single node this is inert. There is no contention, so every
-        // claim succeeds and executableTasks is exactly what it was before.
-        //
-        // The budget gate is applied HERE too, not only on the cluster route.
-        // A ceiling that workers respect and the primary ignores is not a
-        // ceiling. Checked once per group rather than once per task: it is a
-        // spend limit, not a quota, and one reading per batch is both
-        // sufficient and cheaper. Returns admit:true immediately when no limit
-        // is configured, which is every install that has not asked for one.
-        const admission = await checkSpendAdmission(userId);
-        if (!admission.admit) {
-          // Stop admitting NEW work. Anything already running is untouched —
-          // killing a turn mid-flight for a billing reason destroys more value
-          // than the overage it prevents.
-          console.warn(
-            `[TaskOrchestrator] goal ${goalId} paused at the spend ceiling ` +
-              `(${admission.reason}, spent $${admission.spentUsd ?? '?'} of $${admission.hardLimitUsd ?? '?'})`
-          );
-          await GoalModel.updateStatus(goalId, 'paused');
-          broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, { id: goalId, status: 'paused' });
-          return;
-        }
+        // TERMINATION: every pass either claims at least one task, which
+        // strictly shrinks the queue because claimed tasks are not carried
+        // forward, or claims none and breaks. So the loop runs at most once
+        // per task in the group.
+        const waveSize = localTaskConcurrency();
+        let queue = tasksToExecute;
+        let stopGoal = false;
 
-        const executableTasks = [];
-        for (const task of tasksToExecute) {
-          const canExecute = await TaskModel.canExecuteTask(task.id);
-          if (!canExecute) {
-            console.log(`Task ${task.id} dependencies not met, skipping for now`);
-            continue;
-          }
-          const claimed = await TaskModel.claim(task.id, getNodeId());
-          if (!claimed) {
-            // Someone else holds a live lease on it. Not an error, and not
-            // something to retry here — whoever holds it is running it.
-            console.log(`[TaskOrchestrator] Task ${task.id} is claimed by another node — skipping`);
-            continue;
-          }
-          executableTasks.push(task);
-        }
-
-        if (executableTasks.length === 0) continue;
-
-        if (executableTasks.length === 1) {
-          // Single task — run directly
-          try {
-            const taskOutputs = await this.executeTask(executableTasks[0], userId, previousGroupOutputs, provider, model, signal);
-            if (taskOutputs) {
-              previousGroupOutputs = taskOutputs;
-              console.log(`[TaskOrchestrator] Task ${executableTasks[0].id} completed with outputs for next group`);
-            }
-          } catch (error) {
-            if (this._isCancellation(error)) {
-              console.log(`Goal ${goalId} cancelled during task ${executableTasks[0].id} — ending execution`);
-              return;
-            }
-            console.error(`Error executing task ${executableTasks[0].id}:`, error);
-            await TaskModel.updateStatus(executableTasks[0].id, 'failed');
-            break;
-          }
-        } else {
-          // Multiple tasks at same order_index — run in parallel
-          console.log(`[TaskOrchestrator] Running ${executableTasks.length} tasks in parallel (order_index: ${orderIndex})`);
-          const results = await Promise.allSettled(
-            executableTasks.map(task => this.executeTask(task, userId, previousGroupOutputs, provider, model, signal))
-          );
-
-          // Collect outputs from all parallel tasks
-          const groupOutputs = [];
-          let hasFailure = false;
-          let cancelled = false;
-          for (let i = 0; i < results.length; i++) {
-            const result = results[i];
-            if (result.status === 'fulfilled' && result.value) {
-              groupOutputs.push({
-                taskId: executableTasks[i].id,
-                taskTitle: executableTasks[i].title,
-                ...result.value,
-              });
-            } else if (result.status === 'rejected') {
-              if (this._isCancellation(result.reason)) {
-                cancelled = true;
-                continue;
-              }
-              console.error(`Error executing parallel task ${executableTasks[i].id}:`, result.reason);
-              await TaskModel.updateStatus(executableTasks[i].id, 'failed');
-              hasFailure = true;
-            }
-          }
-
-          if (cancelled) {
-            console.log(`Goal ${goalId} cancelled during parallel task execution — ending execution`);
+        while (queue.length > 0) {
+          // Re-checked per wave, not just per group: a wave can take minutes,
+          // and a goal stopped during one must not have another dispatched.
+          if (!this.runningGoals.has(goalId)) {
+            console.log(`Goal ${goalId} was stopped, ending execution`);
             return;
           }
 
-          // Merge parallel outputs for the next group
-          if (groupOutputs.length > 0) {
-            previousGroupOutputs = {
-              parallelResults: groupOutputs,
-              summary: groupOutputs.map(o => `[${o.taskTitle}]: ${typeof o.content === 'string' ? o.content.substring(0, 500) : 'completed'}`).join('\n\n'),
-            };
+          // The budget gate is applied HERE too, not only on the cluster route.
+          // A ceiling that workers respect and the primary ignores is not a
+          // ceiling. Checked once per WAVE rather than once per task: it is a
+          // spend limit, not a quota, and a wave is this node's unit of
+          // "starting new work". Returns admit:true immediately — with no query
+          // at all — when no limit is configured, which is every install that
+          // has not asked for one.
+          const admission = await checkSpendAdmission(userId);
+          if (!admission.admit) {
+            // Stop admitting NEW work. Anything already running is untouched —
+            // killing a turn mid-flight for a billing reason destroys more value
+            // than the overage it prevents.
+            console.warn(
+              `[TaskOrchestrator] goal ${goalId} paused at the spend ceiling ` +
+                `(${admission.reason}, spent $${admission.spentUsd ?? '?'} of $${admission.hardLimitUsd ?? '?'})`
+            );
+            await GoalModel.updateStatus(goalId, 'paused');
+            broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, { id: goalId, status: 'paused' });
+            return;
           }
 
-          if (hasFailure && groupOutputs.length === 0) {
-            // All parallel tasks failed — stop execution
-            break;
+          // Check dependencies for the tasks in this wave, then take a claim on
+          // each one we intend to run.
+          //
+          // The claim is the ONLY thing standing between two nodes and running
+          // the same task twice, and it is deliberately here rather than inside
+          // executeTask: a task must be excluded from this wave's batch before
+          // any work begins on it, not abandoned halfway through.
+          const executableTasks = [];
+          const deferred = [];
+          for (const task of queue) {
+            if (executableTasks.length >= waveSize) {
+              // Past this node's ceiling. Left PENDING and UNCLAIMED on
+              // purpose: pending is the only state another node can take work
+              // from, and this node comes back for it next wave if none does.
+              deferred.push(task);
+              continue;
+            }
+            const canExecute = await TaskModel.canExecuteTask(task.id);
+            if (!canExecute) {
+              // Deferred rather than dropped — an earlier wave of this same
+              // group may be exactly what satisfies the dependency.
+              console.log(`Task ${task.id} dependencies not met, skipping for now`);
+              deferred.push(task);
+              continue;
+            }
+            const claimed = await TaskModel.claim(task.id, getNodeId());
+            if (!claimed) {
+              // Someone else holds a live lease on it. Not an error, and not
+              // something to retry here — whoever holds it is running it.
+              console.log(`[TaskOrchestrator] Task ${task.id} is claimed by another node — skipping`);
+              continue;
+            }
+            executableTasks.push(task);
           }
+
+          // Nothing left this node can start: either the fleet holds the rest,
+          // or what remains is blocked on dependencies this group cannot meet.
+          if (executableTasks.length === 0) break;
+
+          if (executableTasks.length === 1) {
+            // Single task — run directly
+            try {
+              const taskOutputs = await this.executeTask(executableTasks[0], userId, previousGroupOutputs, provider, model, signal);
+              if (taskOutputs) {
+                previousGroupOutputs = taskOutputs;
+                console.log(`[TaskOrchestrator] Task ${executableTasks[0].id} completed with outputs for next group`);
+              }
+            } catch (error) {
+              if (this._isCancellation(error)) {
+                console.log(`Goal ${goalId} cancelled during task ${executableTasks[0].id} — ending execution`);
+                return;
+              }
+              console.error(`Error executing task ${executableTasks[0].id}:`, error);
+              await TaskModel.updateStatus(executableTasks[0].id, 'failed');
+              stopGoal = true;
+              break;
+            }
+          } else {
+            // Multiple tasks in this wave — run them in parallel
+            console.log(`[TaskOrchestrator] Running ${executableTasks.length} tasks in parallel (order_index: ${orderIndex})`);
+            const results = await Promise.allSettled(
+              executableTasks.map(task => this.executeTask(task, userId, previousGroupOutputs, provider, model, signal))
+            );
+
+            // Collect outputs from all parallel tasks
+            const groupOutputs = [];
+            let hasFailure = false;
+            let cancelled = false;
+            for (let i = 0; i < results.length; i++) {
+              const result = results[i];
+              if (result.status === 'fulfilled' && result.value) {
+                groupOutputs.push({
+                  taskId: executableTasks[i].id,
+                  taskTitle: executableTasks[i].title,
+                  ...result.value,
+                });
+              } else if (result.status === 'rejected') {
+                if (this._isCancellation(result.reason)) {
+                  cancelled = true;
+                  continue;
+                }
+                console.error(`Error executing parallel task ${executableTasks[i].id}:`, result.reason);
+                await TaskModel.updateStatus(executableTasks[i].id, 'failed');
+                hasFailure = true;
+              }
+            }
+
+            if (cancelled) {
+              console.log(`Goal ${goalId} cancelled during parallel task execution — ending execution`);
+              return;
+            }
+
+            // Merge parallel outputs for the next group
+            if (groupOutputs.length > 0) {
+              previousGroupOutputs = {
+                parallelResults: groupOutputs,
+                summary: groupOutputs.map(o => `[${o.taskTitle}]: ${typeof o.content === 'string' ? o.content.substring(0, 500) : 'completed'}`).join('\n\n'),
+              };
+            }
+
+            if (hasFailure && groupOutputs.length === 0) {
+              // Every task in this wave failed — stop execution
+              stopGoal = true;
+              break;
+            }
+          }
+
+          queue = deferred;
         }
+
+        if (stopGoal) break;
       }
 
       // Check if all tasks are complete
