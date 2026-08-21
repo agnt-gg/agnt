@@ -153,6 +153,83 @@ describe('the Lite variant stays deleted', () => {
   });
 });
 
+describe('the build config obeys electron-builder’s schema', () => {
+  // electron-builder validates `build` against a strict schema and rejects the
+  // WHOLE config on an unknown key, before doing any work. Two separate
+  // attempts to document decisions in place have been thrown out by it: a
+  // "_comment_" field, and verifyUpdateCodeSignature declared on `nsis` instead
+  // of `win`. It fails fast and loudly, which is the good case — but it fails
+  // at BUILD time, which is a slow way to learn.
+  const walk = (obj, trail = 'build') => {
+    const bad = [];
+    for (const [k, v] of Object.entries(obj ?? {})) {
+      if (k.startsWith('_')) bad.push(`${trail}.${k}`);
+      if (v && typeof v === 'object' && !Array.isArray(v)) bad.push(...walk(v, `${trail}.${k}`));
+    }
+    return bad;
+  };
+
+  it('carries no comment keys — JSON has no comments and the schema has no mercy', () => {
+    expect(
+      walk(pkg.build),
+      'put the reasoning in the script or the test that enforces it, not in the config',
+    ).toEqual([]);
+  });
+});
+
+describe('native modules must load inside ELECTRON, not just inside Node', () => {
+  // AGNT 0.6.6 shipped an installer that could not start: the backend died
+  // three seconds in with 0xC0000005 because sqlite3 was compiled for Node's
+  // runtime instead of Electron's. On Windows that is an access violation, not
+  // an exception, so nothing caught it and nothing logged it.
+  //
+  // It went unnoticed because the dev server forks REAL Node for the backend,
+  // where the same binary is perfectly fine. Only the packaged app uses
+  // utilityProcess, which is Electron.
+  const postinstall = pkg.scripts?.postinstall ?? '';
+
+  it('the repair script exists', () => {
+    expect(fs.existsSync(path.join(REPO_ROOT, 'scripts', 'rebuild-native-for-electron.js'))).toBe(true);
+  });
+
+  it('postinstall runs it', () => {
+    expect(postinstall).toMatch(/rebuild-native-for-electron\.js/);
+  });
+
+  it('it runs AFTER install-app-deps, which is what leaves them broken', () => {
+    // electron-builder's rebuild re-runs each package's own install script, and
+    // sqlite3's hardcodes `-r napi`, which overrides the Electron target. The
+    // repair has to come after that, or it just gets undone.
+    const deps = postinstall.indexOf('install-app-deps');
+    const repair = postinstall.indexOf('rebuild-native-for-electron');
+    expect(deps).toBeGreaterThanOrEqual(0);
+    expect(repair).toBeGreaterThan(deps);
+  });
+
+  it('electron-builder is NOT asked to rebuild at package time', () => {
+    // npmRebuild: true would re-run that same broken install script after the
+    // repair, undoing it. Measured, not assumed — that path produced a binary
+    // that aborts inside Electron.
+    expect(pkg.build?.npmRebuild).toBe(false);
+  });
+
+  it('the build REFUSES to finish if a native module cannot load', () => {
+    // The postinstall repair is best-effort by design (a machine with no C++
+    // toolchain must still be able to `npm install`). This is the part that is
+    // not optional: the afterPack hook loads every native module inside the
+    // packaged binary and throws if one aborts.
+    const hooks = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-hooks.js'), 'utf8');
+    expect(hooks).toMatch(/verifyNativeModules/);
+    expect(hooks).toMatch(/ELECTRON_RUN_AS_NODE/);
+    expect(hooks).toMatch(/throw new Error/);
+  });
+
+  it('ANTI-VACUITY: the hook is actually wired into the build', () => {
+    // Every assertion above would pass on a hook nothing ever calls.
+    expect(pkg.build?.afterPack).toMatch(/electron-builder-hooks/);
+  });
+});
+
 describe('locale trimming', () => {
   const afterPack = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'electron-builder-hooks.js'), 'utf8');
 

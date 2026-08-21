@@ -790,8 +790,28 @@ let autoUpdaterHandle = null;
 
 async function armAutoUpdate() {
   try {
-    const { autoUpdater } = await import('electron-updater');
+    // electron-updater is COMMONJS. A dynamic import of a CJS module puts the
+    // whole `module.exports` object on `.default`, so destructuring
+    // `{ autoUpdater }` off the namespace yields undefined — and the failure
+    // surfaces four lines later as the useless
+    //
+    //     [update] not armed: Cannot set properties of undefined
+    //                         (setting 'autoDownload')
+    //
+    // Node does add named exports for CJS when its static analysis can find
+    // them, which is exactly why this is easy to get wrong: it works for some
+    // packages and not others. electron-updater builds its exports at runtime,
+    // so the analysis finds nothing and only `.default` is populated.
+    //
+    // The unit tests could not catch this: they INJECT an autoUpdater to keep
+    // the policy testable without Electron, so the import line is the one piece
+    // of this file they never execute. autoUpdateInterop.test.js loads the real
+    // module for that reason.
+    const updaterModule = await import('electron-updater');
+    const autoUpdater = updaterModule.default?.autoUpdater ?? updaterModule.autoUpdater;
     const { initAutoUpdate } = await import('./electron/autoUpdate.js');
+
+    if (!autoUpdater) throw new Error('electron-updater exported no autoUpdater');
 
     autoUpdaterHandle = autoUpdater;
     const { enabled } = initAutoUpdate({

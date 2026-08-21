@@ -15,6 +15,7 @@
  * auto-update. One product, one artifact per platform, one feed.
  */
 
+import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -97,6 +98,180 @@ async function trimLocales(localesDir, log = console.log) {
 }
 
 /**
+ * Every top-level package under app.asar.unpacked that ships a .node binary.
+ *
+ * Derived from what is actually in the package rather than a hand-kept list, so
+ * a native dependency added later is covered without anyone remembering to add
+ * it here.
+ */
+function nativePackages(unpackedNodeModules) {
+  if (!fs.existsSync(unpackedNodeModules)) return [];
+
+  const hasNode = (dir) => {
+    const stack = [dir];
+    while (stack.length) {
+      const cur = stack.pop();
+      let entries;
+      try {
+        entries = fs.readdirSync(cur, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const e of entries) {
+        if (e.isDirectory()) stack.push(path.join(cur, e.name));
+        else if (e.name.endsWith('.node')) return true;
+      }
+    }
+    return false;
+  };
+
+  const found = [];
+  for (const entry of fs.readdirSync(unpackedNodeModules, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith('@')) {
+      const scope = path.join(unpackedNodeModules, entry.name);
+      for (const sub of fs.readdirSync(scope, { withFileTypes: true })) {
+        if (sub.isDirectory() && hasNode(path.join(scope, sub.name))) {
+          found.push(`${entry.name}/${sub.name}`);
+        }
+      }
+    } else if (hasNode(path.join(unpackedNodeModules, entry.name))) {
+      found.push(entry.name);
+    }
+  }
+  return found.sort();
+}
+
+/**
+ * Prove every native module actually LOADS inside the packaged app.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS GATE EXISTS
+ * ---------------------------------------------------------------------------
+ * AGNT 0.6.6 shipped an installer that could not start. The backend died three
+ * seconds in with 0xC0000005 and the window closed, on every machine that
+ * installed it. The cause was one native module compiled for Node's ABI instead
+ * of Electron's: on Windows such a module binds its imports against node.exe,
+ * and inside electron.exe that binding fails as an access violation — a hard
+ * abort, no exception, nothing a try/catch can see.
+ *
+ * Nothing in the build noticed, because every earlier check asked the wrong
+ * question. The file was present. Its size was right. It even exported
+ * napi_register_module_v1, so an "is it N-API?" test passed. And the developer
+ * machine ran fine, because a dev build forks REAL Node for the backend while a
+ * packaged build uses utilityProcess, which is Electron.
+ *
+ * The only question that distinguishes the two is "does it load in the thing we
+ * are about to ship", so that is the question this asks: it runs the packaged
+ * executable itself, as Node, and requires each module through app.asar exactly
+ * as the app will. Assert the end state, never the input that was meant to
+ * produce it.
+ *
+ * Each module gets its own process, because an ABI abort takes the process with
+ * it and would hide every module after it.
+ */
+async function verifyNativeModules(context, appOutDir, appPath) {
+  const platformName = context.packager.platform.name; // windows | mac | linux
+  const hostMatches =
+    (platformName === 'windows' && process.platform === 'win32') ||
+    (platformName === 'mac' && process.platform === 'darwin') ||
+    (platformName === 'linux' && process.platform === 'linux');
+
+  const unpacked = path.join(appPath, 'app.asar.unpacked', 'node_modules');
+  const modules = nativePackages(unpacked);
+
+  if (modules.length === 0) {
+    console.log('[native] no unpacked native modules to verify');
+    return;
+  }
+
+  if (!hostMatches) {
+    // Cross-building: the packaged binary cannot run here. Say so plainly
+    // rather than passing silently, because an unverified build is exactly what
+    // shipped 0.6.6.
+    console.log(
+      `[native] ⚠ cross-platform build (${platformName} on ${process.platform}) — ` +
+        `CANNOT verify ${modules.length} native module(s): ${modules.join(', ')}`,
+    );
+    return;
+  }
+
+  const productName = context.packager.appInfo.productFilename;
+  const exe =
+    platformName === 'windows'
+      ? path.join(appOutDir, `${productName}.exe`)
+      : platformName === 'mac'
+        ? path.join(appOutDir, `${productName}.app`, 'Contents', 'MacOS', productName)
+        : path.join(appOutDir, context.packager.executableName || productName.toLowerCase());
+
+  if (!fs.existsSync(exe)) {
+    console.log(`[native] ⚠ packaged executable not found at ${exe} — skipping verification`);
+    return;
+  }
+
+  // Can the probe run at all? If Electron cannot start here — a headless CI box
+  // missing shared libraries, say — every module would look broken and this gate
+  // would fail a perfectly good build. "Cannot verify" and "verified broken" are
+  // different answers and must not share an outcome.
+  const canProbe = spawnSync(exe, ['-e', 'process.exit(0)'], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 60000,
+    windowsHide: true,
+  });
+  if (canProbe.status !== 0) {
+    console.log(
+      `[native] ⚠ the packaged Electron will not start here ` +
+        `(${(canProbe.stderr || '').trim().split('\n')[0] || `exit ${canProbe.status}`}) — ` +
+        `CANNOT verify ${modules.length} native module(s)`,
+    );
+    return;
+  }
+
+  console.log(`[native] verifying ${modules.length} native module(s) inside the packaged app…`);
+
+  // Resolve through app.asar, not the unpacked directory: Electron redirects
+  // unpacked files transparently, so this is the exact path the app uses.
+  const asarModules = path.join(appPath, 'app.asar', 'node_modules').replace(/\\/g, '/');
+  const broken = [];
+
+  for (const mod of modules) {
+    const result = spawnSync(exe, ['-e', `require(${JSON.stringify(`${asarModules}/${mod}`)})`], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      encoding: 'utf8',
+      timeout: 60000,
+      windowsHide: true,
+    });
+
+    if (result.status === 0) {
+      console.log(`[native]   ok    ${mod}`);
+      continue;
+    }
+
+    // An ABI abort exits with a signal or an access-violation status and prints
+    // nothing. A genuine JS error prints a stack. Both are failures; the
+    // distinction only shapes the message.
+    const detail =
+      (result.stderr || '').trim().split('\n')[0] ||
+      `exited ${result.status ?? result.signal} with no output (native abort)`;
+    console.log(`[native]   FAIL  ${mod} — ${detail}`);
+    broken.push(`${mod}: ${detail}`);
+  }
+
+  if (broken.length > 0) {
+    throw new Error(
+      `[native] ${broken.length} native module(s) cannot load in the packaged app:\n` +
+        broken.map((b) => `  - ${b}`).join('\n') +
+        `\n\nThis build would install and then fail to start. On Windows the usual\n` +
+        `cause is a module compiled for Node's ABI rather than Electron's: check\n` +
+        `that build.npmRebuild is true and that the rebuild actually ran.`,
+    );
+  }
+
+  console.log(`[native] all ${modules.length} native module(s) load in the packaged app`);
+}
+
+/**
  * AfterPack hook - Called after app is packaged but before signing/installer
  */
 export async function afterPack(context) {
@@ -138,6 +313,11 @@ export async function afterPack(context) {
   if (context.packager.platform.name === 'mac') {
     await trimLocales(path.join(appPath, 'locales'));
   }
+
+  // ── Prove the app can actually start ──────────────────────────────────
+  // Deliberately last, and deliberately able to fail the build: shipping an
+  // installer whose backend aborts on launch is worse than shipping nothing.
+  await verifyNativeModules(context, appOutDir, appPath);
 }
 
 /**
