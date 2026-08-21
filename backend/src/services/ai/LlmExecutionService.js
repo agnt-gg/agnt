@@ -1,5 +1,6 @@
 import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { stripProviderIncompatibleTools } from '../orchestrator/providerToolCompat.js';
 import { executeTool } from '../orchestrator/tools.js';
 import { manageContext } from '../../utils/contextManager.js';
 import { recordLlmCall } from '../execution/LedgerRecorder.js';
@@ -182,7 +183,18 @@ class LlmExecutionService {
         uniqueToolMap.set(tool.function.name, tool);
       }
     }
-    const finalToolSchemas = Array.from(uniqueToolMap.values());
+    // Withhold tools this provider refuses to accept. Applied BEFORE
+    // manageContext so the token budget is computed over the list that is
+    // actually sent.
+    //
+    // These two methods serve the goal-task executor and the run_agent tool.
+    // The rule lived in OrchestratorService and not here, so on Claude Code
+    // every goal task came back as an API-error string while the chat beside
+    // it worked — see services/orchestrator/providerToolCompat.js.
+    const finalToolSchemas = stripProviderIncompatibleTools(
+      Array.from(uniqueToolMap.values()),
+      provider
+    );
 
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, provider);
@@ -403,7 +415,18 @@ class LlmExecutionService {
         uniqueToolMap.set(tool.function.name, tool);
       }
     }
-    const finalToolSchemas = Array.from(uniqueToolMap.values());
+    // Withhold tools this provider refuses to accept. Applied BEFORE
+    // manageContext so the token budget is computed over the list that is
+    // actually sent.
+    //
+    // These two methods serve the goal-task executor and the run_agent tool.
+    // The rule lived in OrchestratorService and not here, so on Claude Code
+    // every goal task came back as an API-error string while the chat beside
+    // it worked — see services/orchestrator/providerToolCompat.js.
+    const finalToolSchemas = stripProviderIncompatibleTools(
+      Array.from(uniqueToolMap.values()),
+      provider
+    );
 
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, provider);

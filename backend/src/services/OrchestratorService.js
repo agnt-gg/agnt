@@ -32,6 +32,7 @@ import {
   loadCalibrations,
 } from './orchestrator/calibrationStore.js';
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
+import { stripProviderIncompatibleTools } from './orchestrator/providerToolCompat.js';
 import { pickPageContext } from './orchestrator/pageContext.js';
 import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
 import log from '../utils/logger.js';
@@ -1858,12 +1859,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
     let finalToolSchemas = Array.from(uniqueToolMap.values());
 
-    // Claude Code OAuth: Anthropic's third-party-app classifier flags mcp_client's
-    // shape as a wrapper framework and routes the request to "extra usage" billing
-    // (returns 400 invalid_request_error). Strip it on this provider only.
-    if (normalizedProvider === 'claude-code') {
-      finalToolSchemas = finalToolSchemas.filter((t) => t.function?.name !== 'mcp_client');
-    }
+    // Withhold tools this provider refuses to accept. The rule lives in
+    // providerToolCompat because a SECOND list is built in
+    // LlmExecutionService, and when this was an inline filter here that second
+    // path never got it — which is why goal tasks failed on Claude Code while
+    // this one worked.
+    finalToolSchemas = stripProviderIncompatibleTools(finalToolSchemas, normalizedProvider);
 
     // Cap the tool surface to what this model can actually afford, leaving a
     // guaranteed reserve for the conversation itself.
