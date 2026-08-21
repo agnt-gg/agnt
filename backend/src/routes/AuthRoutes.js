@@ -13,10 +13,9 @@
  */
 
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import AuthManager from '../services/auth/AuthManager.js';
 import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
-import { requireAuthHeader } from '../utils/authGuard.js';
+import { extractToken, requireAuthHeader, verifyAuthToken } from '../utils/authGuard.js';
 
 const router = express.Router();
 
@@ -26,20 +25,27 @@ const PROVIDER_NOTIFY_EVENT = {
   deleted: RealtimeEvents.PROVIDER_DELETED,
 };
 
-// Soft user-id extraction: tries verify first (local-issued tokens), falls back
-// to decode (remote-issued tokens via api.agnt.gg). We do NOT 401 on failure —
-// env-sourced providers are install-global and worth returning to any caller.
+// Soft identity: a VERIFIED user id, or null. Deliberately never 401s —
+// env-sourced providers are install-global and worth returning to any caller,
+// so an anonymous request still gets a useful answer, just without the
+// per-user rows.
+//
+// This used to fall back to `jwt.decode` when verification failed, on the
+// reasoning that remote-issued tokens cannot be verified locally. The cost was
+// that the "user id" became whatever the caller typed, so a forged token
+// returned another user's connected-provider list. `verifyAuthToken` is the
+// routine every guarded route already uses, and it succeeds for a genuine
+// cloud token on a hosted tenant through the issuer-verified path — so the
+// decode fallback was buying a case that is already covered, at the price of
+// accepting anything at all.
+//
+// The token itself is returned even when no identity could be established:
+// getConnectedApps forwards it to the remote API, which does its own check.
 function extractUserIdSoft(req) {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token || token === 'null' || token === 'undefined') return { userId: null, token: null };
-  let decoded = null;
-  try { decoded = jwt.verify(token, process.env.JWT_SECRET); } catch { /* fall through */ }
-  if (!decoded) {
-    try { decoded = jwt.decode(token); } catch { /* fall through */ }
-  }
-  const userId = decoded?.id || decoded?.userId || decoded?.sub || null;
-  return { userId, token };
+  const token = extractToken(req);
+  if (!token) return { userId: null, token: null };
+  const result = verifyAuthToken(token);
+  return { userId: result.ok ? result.user.id : null, token };
 }
 
 // GET /api/auth/connected

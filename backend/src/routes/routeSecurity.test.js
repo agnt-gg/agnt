@@ -79,7 +79,10 @@ const PUBLIC_ROUTES = new Map([
   ['ModelRoutes.js :: GET /:provider/metadata', 'Context windows and pricing. Public vendor facts.'],
   ['ModelRoutes.js :: GET /:provider/metadata/:modelId', 'Context window and pricing for one model.'],
   ['ModelRoutes.js :: GET /provider-health', 'Provider reachability summary. No keys, no user data.'],
-  ['ModelRoutes.js :: POST /provider-health/check', 'Trigger a provider reachability probe.'],
+  // POST /provider-health/check is NOT here: it resolves every provider
+  // credential for a user id and calls out with each, so it now carries
+  // requireAuthHeader. Its GET sibling stays open because it only reads a
+  // cached summary.
   ['CustomProviderRoutes.js :: GET /templates', 'Static starter templates for custom providers (Mistral, etc). Ships with the app.'],
   ['AdminClientVersionRoutes.js :: GET /client-versions', 'Upstream CLI version numbers read from public registries.'],
   ['AdminClientVersionRoutes.js :: POST /client-versions/refresh', 'Refresh that public version cache.'],
@@ -277,32 +280,21 @@ describe('route security manifest', () => {
   // property guarded by nothing at all. A guarantee worth having belongs in the
   // build, not in a tool someone remembers to run.
   //
-  // TWO MODULES ARE DECLARED BELOW. They are TRACKED, NOT CLEARED — the
-  // justification says what the residual risk is, not that there isn't one.
-  // Both are pre-existing and both are currently masked by a larger problem:
-  // while SHARED_JWT_SECRET is published, `jwt.verify` accepts a forged token
-  // anyway, so the decode fallback adds nothing an attacker does not already
-  // have. That stops being true the moment token-proof enforcement lands and
-  // the shared secret is retired — at which point these become the residual
-  // hole, and this list is where someone will find them.
-  const JWT_DECODE_TOLERATED = new Map([
-    [
-      'AuthRoutes.js',
-      'extractUserIdSoft: verify first, decode as a FALLBACK for remote-issued ' +
-        'tokens. Soft by design — env-sourced providers are install-global and ' +
-        'returned to anonymous callers. RESIDUAL: a forged token yields another ' +
-        "user's CONNECTED-PROVIDER LIST (names only, no credentials). Re-evaluate " +
-        'when the shared JWT secret is retired.',
-    ],
-    [
-      'ModelRoutes.js',
-      'Three sites decode to get a userId used to look up that user\'s stored ' +
-        'provider key when listing models. RESIDUAL: higher than AuthRoutes — a ' +
-        "forged token could exercise another user's key. Masked today by the " +
-        'published shared secret. MUST be fixed before token-proof enforcement ' +
-        'is flipped, or it becomes the way in.',
-    ],
-  ]);
+  // THIS LIST IS NOW EMPTY, AND THAT IS THE POINT.
+  //
+  // It previously held AuthRoutes.js and ModelRoutes.js, both tolerated on the
+  // grounds that a published shared JWT secret made `jwt.verify` no stronger
+  // than `jwt.decode` — so the missing check gave an attacker nothing they did
+  // not already have. That entry also recorded the deadline: "MUST be fixed
+  // before token-proof enforcement is flipped, or it becomes the way in."
+  //
+  // Enforcement is being flipped, so both were fixed first. They now resolve
+  // identity through verifyAuthToken (utils/authGuard.js), the same routine
+  // every guarded route uses.
+  //
+  // The mechanism is kept rather than deleted: an empty allow-list is what
+  // makes the scan below a hard rule instead of a historical note.
+  const JWT_DECODE_TOLERATED = new Map([]);
 
   it('no route module extracts a user id from jwt.decode', async () => {
     const offenders = [];

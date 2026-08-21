@@ -23,7 +23,7 @@ import AntigravityAuthManager from '../services/auth/AntigravityAuthManager.js';
 import { isOAuthProvider, resolveOAuthApiKey } from '../services/auth/oauthProviderAuth.js';
 import { getClientVersion } from '../services/ai/clientVersions.js';
 import { persistLastModels, getLastSuccessfulModels } from '../services/ai/lastModelsCache.js';
-import jwt from 'jsonwebtoken';
+import { extractToken, requireAuthHeader, verifyAuthToken } from '../utils/authGuard.js';
 
 // ───────────────────────── PERSISTENT LAST-SUCCESSFUL MODEL CACHE ──────────────────────
 // Whenever an upstream fetch succeeds we persist the model list to disk so a
@@ -36,6 +36,39 @@ import jwt from 'jsonwebtoken';
 // last-successful fetch and survives upstream outages with real data.
 
 const router = express.Router();
+
+/**
+ * The user this request is actually from, or null.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY NOT jwt.decode
+ * ---------------------------------------------------------------------------
+ * Three sites in this file used `jwt.decode`, which parses a token WITHOUT
+ * checking its signature. The "user id" it returned was therefore whatever the
+ * caller typed — and it was handed straight to
+ * `AuthManager.getValidAccessToken` to resolve THAT user's stored provider
+ * credential and make an outbound call with it.
+ *
+ * That was survivable only while the shared JWT secret was published: a forged
+ * token passed `jwt.verify` anyway, so skipping the check bought an attacker
+ * nothing they did not already have. Token-proof enforcement removes that
+ * cover, at which point these three would have been the residual way in —
+ * routeSecurity.test.js said exactly that in the entry that used to tolerate
+ * them.
+ *
+ * `verifyAuthToken` is the same routine `requireAuth` uses, so a token accepted
+ * here rests on identical evidence to every guarded route: a valid local
+ * signature, or — on a hosted tenant, which deliberately holds no copy of the
+ * issuer's signing key — an identity api.agnt.gg itself already confirmed.
+ *
+ * Returns null instead of throwing, because two of the three callers
+ * legitimately continue without a user: `keyOptional` providers list their
+ * models with no credential at all.
+ */
+function verifiedUserId(req) {
+  const result = verifyAuthToken(extractToken(req));
+  return result.ok ? result.user.id : null;
+}
 
 // ─────────────────────────── AUTO-INSTANTIATE PROVIDER SERVICES ───────────────────────────
 // Instead of importing 14 individual provider singletons, we auto-create services from config.
@@ -442,24 +475,15 @@ router.get('/:provider/models', async (req, res) => {
             });
           }
         } else {
-          let userId = null;
-          try {
-            const token = authToken.split(' ')[1];
-            const payload = jwt.decode(token);
-            userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
-          } catch (e) {
-            if (!keyOptional) {
-              return res.status(401).json({
-                success: false,
-                error: 'Invalid authentication token',
-              });
-            }
-          }
+          // VERIFIED identity only — see verifiedUserId() above. A token that
+          // does not verify yields null, which is treated exactly like the
+          // no-token case: refused, unless this provider lists without a key.
+          const userId = verifiedUserId(req);
 
           if (!userId && !keyOptional) {
             return res.status(401).json({
               success: false,
-              error: 'Could not extract user ID from token',
+              error: 'Invalid authentication token',
             });
           }
 
@@ -590,18 +614,14 @@ router.post('/:provider/models/refresh', async (req, res) => {
           });
         }
       } else {
-        let userId = null;
-        try {
-          const token = authToken.split(' ')[1];
-          const payload = jwt.decode(token);
-          userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
-        } catch (e) {
-          if (!keyOptional) {
-            return res.status(401).json({
-              success: false,
-              error: 'Invalid authentication token',
-            });
-          }
+        // VERIFIED identity only — see verifiedUserId() above.
+        const userId = verifiedUserId(req);
+
+        if (!userId && !keyOptional) {
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid authentication token',
+          });
         }
 
         // Get API key for the user
@@ -778,23 +798,20 @@ router.get('/provider-health', async (req, res) => {
   }
 });
 
-router.post('/provider-health/check', async (req, res) => {
+// GUARDED, unlike its GET sibling, and the difference is what each one does.
+// The GET returns a cached reachability summary — no keys, no user data. This
+// one RESOLVES EVERY PROVIDER CREDENTIAL belonging to the caller's user id and
+// makes an outbound call with each of them. Reachable anonymously, and taking
+// that id from an unverified token, it was an oracle for which providers any
+// given user holds working keys on.
+//
+// Nothing in the UI calls it — verified by searching all of frontend/src — so
+// requiring a real credential costs no functionality.
+router.post('/provider-health/check', requireAuthHeader, async (req, res) => {
   try {
-    const authToken = req.headers.authorization;
-    let userId = null;
-
-    if (authToken && authToken.startsWith('Bearer ')) {
-      try {
-        const token = authToken.split(' ')[1];
-        const payload = jwt.decode(token);
-        userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
-      } catch (e) {
-        // Ignore
-      }
-    }
+    const userId = req.user.id;
 
     const results = await providerHealthCheck.checkAll(async (providerKey) => {
-      if (!userId) return null;
       return AuthManager.getValidAccessToken(userId, providerKey);
     });
 
