@@ -122,6 +122,17 @@ ClusterRoutes.post('/claim', authenticateClusterNode, async (req, res) => {
     const { nodeId, userId } = req.clusterNode;
     const { goalId = null, leaseMs } = req.body || {};
 
+    // Liveness is recorded BEFORE anything can return, because for a healthy
+    // worker the poll IS the heartbeat — asking for work is the only thing it
+    // does when there is none. Recording it after the empty-queue 204 meant a
+    // worker that had nothing to do never appeared in the fleet view at all,
+    // and one that went idle after working slowly aged into `stale: true`. The
+    // operator then cannot tell "alive, queue is empty" from "dead", and gets
+    // the wrong answer precisely when the queue is quiet, which is most of the
+    // time. A budget refusal below is also a live node, so this sits above
+    // that too. 'poll' touches lastSeen only — `claims` still counts claims.
+    touchNode(req.clusterNode, 'poll');
+
     // The claim IS the meter. Refusing here stops NEW work while every task
     // already in flight runs to completion — which is the only humane place to
     // enforce a budget.
@@ -219,6 +230,10 @@ ClusterRoutes.post('/complete', authenticateClusterNode, async (req, res) => {
     const { taskId, status = 'completed', result = null, error = null, spend = [] } = req.body || {};
     if (!taskId) return res.status(400).json({ error: 'taskId is required' });
 
+    // Read the owning goal before the row is mutated, so the completion check
+    // below has it regardless of what happens to the claim.
+    const taskRow = await TaskModel.findOne(taskId).catch(() => null);
+
     // Ownership is re-checked at the write, not assumed from the claim: a
     // lease can lapse WHILE the work runs, and another node may already have
     // taken over. Accepting this write anyway would let a slow node overwrite
@@ -240,10 +255,47 @@ ClusterRoutes.post('/complete', authenticateClusterNode, async (req, res) => {
 
     await TaskModel.releaseClaim(taskId, req.clusterNode.nodeId);
     res.json({ success: true });
+
+    // Deliberately AFTER the response and deliberately not awaited: finishing
+    // a goal runs an evaluation, which is an LLM call. Holding a worker's poll
+    // loop open for the length of somebody else's evaluation would idle the
+    // whole fleet behind one node's bookkeeping.
+    completeGoalIfFinished(taskRow?.goal_id);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * A goal finished by the FLEET has to finish the same way one finished locally
+ * does.
+ *
+ * The primary's dispatch loop checks for completion when it runs the last task
+ * itself, but it walks each order_index group exactly once and returns. When
+ * the last task is finished by a WORKER — minutes later, in another process —
+ * that loop is long gone, so nothing downstream would ever notice. The goal
+ * would sit in 'executing' forever with every one of its tasks complete: no
+ * evaluation, no auto-merge back to the conversation, no insight extraction.
+ *
+ * That gap is invisible until work actually leaves the primary, which is
+ * exactly what bounding the primary's own dispatch now makes routine.
+ *
+ * Never allowed to fail anything. The task result is already durably recorded
+ * by the time this runs; a bookkeeping error here must not be reported to the
+ * worker as a rejected result.
+ */
+async function completeGoalIfFinished(goalId) {
+  if (!goalId) return;
+  try {
+    // The autonomous loop owns its own completion — same carve-out the local
+    // path makes. Completing the goal underneath it would end the loop early.
+    if (TaskOrchestrator.runningGoals?.get(goalId)?.autonomous) return;
+    if (!(await TaskOrchestrator.checkGoalCompletion(goalId))) return;
+    await TaskOrchestrator.completeGoal(goalId);
+  } catch (err) {
+    console.error(`[cluster] goal ${goalId} finished but could not be completed: ${err.message}`);
+  }
+}
 
 /**
  * Copy a worker's measured spend into the primary's ledger.

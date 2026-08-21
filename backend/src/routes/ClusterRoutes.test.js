@@ -39,8 +39,25 @@ const processTaskResult = vi.fn(async (taskId) => {
   await TaskModel.updateStatus(taskId, 'completed', 100);
   return { content: 'ok' };
 });
+// Goal completion is the primary's job even when a WORKER finished the last
+// task. checkGoalCompletion mirrors the real implementation against the real
+// database so the assertions below are about the wire, not about a stub
+// agreeing with itself.
+const checkGoalCompletion = vi.fn(async (goalId) => {
+  const TaskModel = (await import('../models/TaskModel.js')).default;
+  const tasks = await TaskModel.findByGoalId(goalId);
+  return tasks.length > 0 && tasks.every((t) => t.status === 'completed');
+});
+const completeGoal = vi.fn(async () => {});
+const runningGoals = new Map();
+
 vi.mock('../services/goal/TaskOrchestrator.js', () => ({
-  default: { processTaskResult: (...args) => processTaskResult(...args) },
+  default: {
+    processTaskResult: (...args) => processTaskResult(...args),
+    checkGoalCompletion: (...args) => checkGoalCompletion(...args),
+    completeGoal: (...args) => completeGoal(...args),
+    runningGoals,
+  },
 }));
 
 let server;
@@ -122,6 +139,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   processTaskResult.mockClear();
+  checkGoalCompletion.mockClear();
+  completeGoal.mockClear();
+  runningGoals.clear();
   await dbRun(`DELETE FROM tasks`);
   await dbRun(`DELETE FROM goals`);
   await dbRun(`DELETE FROM llm_calls`);
@@ -207,6 +227,129 @@ describe('claim', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(204);
+  });
+});
+
+describe('a polling worker is a live worker', () => {
+  it('stays visible in the fleet view while the queue is empty', async () => {
+    const idle = await enrol(OWNER, 'idle-poller');
+    await seedGoal(OWNER);
+
+    expect((await req('POST', '/api/cluster/claim', { token: idle.token })).status).toBe(204);
+
+    const { body } = await req('GET', '/api/cluster/nodes', { user: OWNER });
+    const seen = body.nodes.find((n) => n.nodeId === idle.nodeId);
+
+    // For a healthy worker the poll IS the heartbeat: asking for work is the
+    // only thing it does when there is none. A node that never appears until
+    // it happens to win a task is indistinguishable from a dead one exactly
+    // when the queue is quiet, which is most of the time.
+    expect(seen, 'an idle worker that polled must appear in the fleet view').toBeDefined();
+    expect(seen.stale).toBe(false);
+    // ...but polling is not claiming.
+    expect(seen.claims).toBe(0);
+  });
+
+  it('stays visible even while the spend ceiling is refusing it work', async () => {
+    const idle = await enrol(OWNER, 'budget-blocked');
+    await seedGoal(OWNER);
+
+    process.env.AGNT_SPEND_LIMIT_USD = '0';
+    try {
+      expect((await req('POST', '/api/cluster/claim', { token: idle.token })).status).toBe(429);
+    } finally {
+      delete process.env.AGNT_SPEND_LIMIT_USD;
+    }
+
+    const { body } = await req('GET', '/api/cluster/nodes', { user: OWNER });
+    // A node being refused work is still a node that is up.
+    expect(body.nodes.find((n) => n.nodeId === idle.nodeId)).toBeDefined();
+  });
+});
+
+describe('a goal the FLEET finished still finishes', () => {
+  it('completes the goal when a worker reports the last task', async () => {
+    const { token } = await enrol(OWNER, 'finisher');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'the last one', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'completed', result: { content: 'done' } },
+    });
+
+    // The primary's dispatch loop walks each group once and returns, so when
+    // the last task lands minutes later from another machine there is nothing
+    // left to notice. Without this the goal sits in 'executing' forever with
+    // every task complete: no evaluation, no auto-merge, no insights.
+    await vi.waitFor(() => expect(completeGoal).toHaveBeenCalledWith(goalId));
+  });
+
+  it('does not complete a goal that still has work outstanding', async () => {
+    const { token } = await enrol(OWNER, 'partial');
+    const goalId = await seedGoal(OWNER);
+    const first = await TaskModel.create(goalId, 'first', '');
+    await TaskModel.create(goalId, 'second', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId: first, status: 'completed', result: { content: 'done' } },
+    });
+
+    await vi.waitFor(() => expect(checkGoalCompletion).toHaveBeenCalledWith(goalId));
+    expect(completeGoal).not.toHaveBeenCalled();
+  });
+
+  it('does not complete a goal on a reported failure', async () => {
+    const { token } = await enrol(OWNER, 'failer2');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'doomed', '');
+    await req('POST', '/api/cluster/claim', { token });
+
+    await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'failed', error: 'nope' },
+    });
+
+    await vi.waitFor(() => expect(checkGoalCompletion).toHaveBeenCalledWith(goalId));
+    expect(completeGoal).not.toHaveBeenCalled();
+  });
+
+  it('leaves an autonomous goal alone — the loop owns its own completion', async () => {
+    const { token } = await enrol(OWNER, 'autonomous');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'inside a loop', '');
+    runningGoals.set(goalId, { autonomous: true });
+    await req('POST', '/api/cluster/claim', { token });
+
+    const { status } = await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'completed', result: { content: 'done' } },
+    });
+
+    expect(status).toBe(200);
+    // Completing it underneath the autonomous loop would end that loop early.
+    expect(completeGoal).not.toHaveBeenCalled();
+  });
+
+  it('reports success to the worker even if completion bookkeeping throws', async () => {
+    const { token } = await enrol(OWNER, 'resilient');
+    const goalId = await seedGoal(OWNER);
+    const taskId = await TaskModel.create(goalId, 'recorded regardless', '');
+    await req('POST', '/api/cluster/claim', { token });
+    checkGoalCompletion.mockRejectedValueOnce(new Error('bookkeeping exploded'));
+
+    const { status } = await req('POST', '/api/cluster/complete', {
+      token,
+      body: { taskId, status: 'completed', result: { content: 'done' } },
+    });
+
+    // The result is already durably recorded. Telling the worker its result
+    // was rejected would make it retry work that is already done.
+    expect(status).toBe(200);
+    expect((await dbGet(`SELECT status FROM tasks WHERE id = ?`, [taskId])).status).toBe('completed');
   });
 });
 

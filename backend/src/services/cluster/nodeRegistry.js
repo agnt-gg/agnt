@@ -37,7 +37,12 @@ const MAX_TRACKED = 500;
  * @param {string} node.nodeId
  * @param {string} [node.userId]
  * @param {string} [node.label]
- * @param {'claim'|'renew'|'complete'|'fail'|'ping'} [event]
+ * @param {'poll'|'claim'|'renew'|'complete'|'fail'|'ping'} [event]
+ *   Only 'claim', 'complete' and 'fail' move a counter. Everything else
+ *   refreshes lastSeen and nothing more — which is the whole point of 'poll':
+ *   an idle worker asking for work is proving it is alive, not claiming
+ *   anything, and counting those asks as claims would make the fleet view lie
+ *   in the other direction.
  */
 export function touchNode({ nodeId, userId = null, label = '' } = {}, event = 'ping') {
   if (!nodeId) return null;
