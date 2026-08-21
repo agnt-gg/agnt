@@ -1,6 +1,7 @@
 import db from '../../models/database/index.js';
 import LlmCallModel from '../../models/LlmCallModel.js';
 import { getNodeLabel, isWorker } from './nodeIdentity.js';
+import { decodeGrantUnverified } from './clusterToken.js';
 
 /**
  * The pull loop: ask the primary for work, do it here, report back.
@@ -35,7 +36,35 @@ import { getNodeLabel, isWorker } from './nodeIdentity.js';
 
 /** Empty-queue backoff. Jittered so N workers do not synchronise into a herd. */
 const IDLE_MIN_MS = 2000;
-const IDLE_MAX_MS = 30000;
+
+/**
+ * How long an idle worker may sleep between polls.
+ *
+ * WHY THIS IS SECONDS AND NOT HALF A MINUTE
+ * ────────────────────────────────────────
+ * This ceiling is the wake-up latency of an idle fleet, and it was measured
+ * costing exactly that: with a 30s ceiling, the first task of a new goal waits
+ * up to half a minute on a completely free fleet, and whichever node happens
+ * to wake first drains a short burst on its own while the others are still
+ * asleep — the opposite of what the operator added them for.
+ *
+ * The polling cost this trades against is tiny and, unusually, exactly
+ * computable: one HTTP request per node per interval. A ten-node fleet at 5s
+ * is 120 requests a minute against a primary on the same host or LAN, which
+ * is less traffic than one page of the UI.
+ *
+ * Overridable because a fleet spread across a metered WAN link has a different
+ * answer, and that operator should not have to fork the file to say so.
+ */
+const DEFAULT_IDLE_MAX_MS = 5000;
+
+function idleMaxMs() {
+  const raw = Number(process.env.AGNT_WORKER_IDLE_MAX_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_IDLE_MAX_MS;
+  // Never below the floor: a "ceiling" under the minimum would inverse the
+  // curve and turn the backoff into a busy loop.
+  return Math.max(IDLE_MIN_MS, Math.floor(raw));
+}
 
 /** How long a claim is held before it must be renewed. */
 const LEASE_MS = 120000;
@@ -61,17 +90,79 @@ function config() {
 /**
  * The local user this worker executes as.
  *
- * A desktop backend has exactly one user row — the person running the app —
- * which is the same assumption sessionTokenCache asserts and the same one that
- * must be revisited before this is ever multi-tenant.
+ * ---------------------------------------------------------------------------
+ * WHY A WORKER PROVISIONS ITS OWN USER ROW
+ * ---------------------------------------------------------------------------
+ * This used to read the first row of `users` and give up when there was none,
+ * telling the operator to "sign in on this install first". That instruction
+ * cannot be carried out on the machine it is given to: a worker is headless by
+ * definition — no browser, no published port, nobody sitting in front of it —
+ * and the row it was waiting for is created by an interactive sign-in. The
+ * result was that a correctly-enrolled worker booted healthy, reached its
+ * primary, and then never polled, which made the enrolment env block this
+ * module tells operators to copy a set of instructions that could not work.
+ *
+ * The grant already carries the answer. `mintNodeToken` signs the userId, and
+ * the worker is holding that token before it ever polls, so the identity does
+ * not need to be discovered — only recorded. The worker is not DECIDING who it
+ * is; the primary already decided, and this writes that decision down locally
+ * so every `WHERE user_id = ?` on this node resolves.
+ *
+ * Resolution order, most authoritative first:
+ *   1. AGNT_CLUSTER_WORKER_USER_ID — an operator overriding on purpose.
+ *   2. the grant's userId — provisioned locally if absent.
+ *   3. the first local user — only when there is no readable grant at all.
+ *
+ * The grant deliberately outranks an existing local row. They are normally the
+ * same person, but when they differ the primary will only ever hand out work
+ * for the GRANT's account, and executing it as somebody else would resolve
+ * that somebody else's agents and provider credentials.
  */
-async function localUserId() {
-  if (process.env.AGNT_CLUSTER_WORKER_USER_ID) return process.env.AGNT_CLUSTER_WORKER_USER_ID;
+function userExists(userId) {
+  return new Promise((resolve, reject) => {
+    db.get(`SELECT id FROM users WHERE id = ?`, [userId], (err, row) => (err ? reject(err) : resolve(!!row)));
+  });
+}
+
+function firstLocalUserId() {
   return new Promise((resolve, reject) => {
     db.get(`SELECT id FROM users ORDER BY created_at LIMIT 1`, [], (err, row) =>
       err ? reject(err) : resolve(row?.id || null)
     );
   });
+}
+
+/**
+ * Record the account this node was enrolled for.
+ *
+ * INSERT OR IGNORE, and no email: the address is not in the grant, and
+ * inventing one risks colliding with the real sign-in that may follow on this
+ * install. sqlite permits many NULLs in a UNIQUE column, so an absent email is
+ * the honest representation of "not known here".
+ */
+function provisionUser(userId, label) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)`,
+      [userId, `cluster worker${label ? ` (${label})` : ''}`],
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+}
+
+async function localUserId() {
+  if (process.env.AGNT_CLUSTER_WORKER_USER_ID) return process.env.AGNT_CLUSTER_WORKER_USER_ID;
+
+  const grant = decodeGrantUnverified(config().token);
+  if (grant?.userId) {
+    if (!(await userExists(grant.userId))) {
+      await provisionUser(grant.userId, grant.label);
+      console.log(`[cluster/worker] provisioned local user ${grant.userId} from the enrolment grant`);
+    }
+    return grant.userId;
+  }
+
+  return firstLocalUserId();
 }
 
 async function callPrimary(path, { method = 'POST', body = null } = {}) {
@@ -86,7 +177,7 @@ async function callPrimary(path, { method = 'POST', body = null } = {}) {
 
 /** Jittered backoff. Doubling with a floor and a ceiling, never a fixed sleep. */
 function idleDelay(consecutiveEmptyPolls) {
-  const base = Math.min(IDLE_MAX_MS, IDLE_MIN_MS * 2 ** Math.min(consecutiveEmptyPolls, 5));
+  const base = Math.min(idleMaxMs(), IDLE_MIN_MS * 2 ** Math.min(consecutiveEmptyPolls, 5));
   return Math.floor(base / 2 + Math.random() * (base / 2));
 }
 
@@ -246,9 +337,20 @@ export async function startClusterWorker() {
     return { started: false, reason: 'missing primary or token' };
   }
 
-  const userId = await localUserId();
+  let userId = null;
+  try {
+    userId = await localUserId();
+  } catch (error) {
+    console.error(`[cluster/worker] could not resolve the local user: ${error.message}`);
+    return { started: false, reason: 'user resolution failed' };
+  }
   if (!userId) {
-    console.error('[cluster/worker] no local user row — cannot execute tasks. Sign in on this install first.');
+    // Only reachable when the grant cannot be read at all — a truncated or
+    // hand-edited token. The grant is the fix, not a sign-in.
+    console.error(
+      '[cluster/worker] AGNT_CLUSTER_TOKEN carries no userId and this install has no local user. ' +
+        'Re-mint the grant on the primary with POST /api/cluster/enroll.'
+    );
     return { started: false, reason: 'no local user' };
   }
 
@@ -269,7 +371,7 @@ export async function startClusterWorker() {
         // Fatal (a refused grant) backs off to the ceiling; everything else
         // uses the normal curve, because a primary that is restarting should
         // be waited for, not given up on.
-        await sleep(error.fatal ? IDLE_MAX_MS : idleDelay(++empty), () => state.stopping);
+        await sleep(error.fatal ? idleMaxMs() : idleDelay(++empty), () => state.stopping);
       }
     }
     state.running = false;

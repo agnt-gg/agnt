@@ -117,6 +117,39 @@ export function verifyNodeToken(token) {
   }
 }
 
+/**
+ * Read the identity out of a grant WITHOUT verifying its signature.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY AN UNVERIFIED READ IS THE CORRECT OPERATION HERE
+ * ---------------------------------------------------------------------------
+ * Verification needs CLUSTER_SECRET, which lives on the PRIMARY and is never
+ * distributed — that is the whole reason symmetric signing is safe for this
+ * credential. A worker therefore cannot verify its own grant, structurally,
+ * and never will be able to.
+ *
+ * That is fine, because this is not a trust decision. The token arrives in the
+ * worker's OWN environment, put there by the operator who starts the process;
+ * anyone able to set it already controls the machine. Nothing is granted by
+ * this function: the primary re-verifies the signature on every single
+ * request, so a forged userId buys an attacker one row in a local sqlite file
+ * that no primary will ever honour.
+ *
+ * Used for exactly one thing — a worker learning which account it was enrolled
+ * for, so it can execute as that account. NEVER call this on the primary, and
+ * never to authorise anything.
+ */
+export function decodeGrantUnverified(token) {
+  if (typeof token !== 'string' || token.length === 0) return null;
+  try {
+    const decoded = jwt.decode(token);
+    if (!decoded?.nodeId || !decoded?.userId) return null;
+    return { nodeId: decoded.nodeId, userId: decoded.userId, label: decoded.label || '' };
+  } catch {
+    return null;
+  }
+}
+
 /** Pull a bearer token without caring about header casing. */
 export function presentedToken(req) {
   const header = req?.headers?.authorization || '';
