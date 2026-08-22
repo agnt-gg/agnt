@@ -328,7 +328,9 @@ export function useProviderConnection(modalRef) {
       const normalizedId = resolveProviderKey(app.id) || app.id;
       const response = await fetch(
         `${API_CONFIG.REMOTE_URL}/auth/connect/${normalizedId}?origin=${encodeURIComponent(window.location.origin)}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        // Same reason as the /auth/callback exchange: identity on the remote
+        // auth routes rides a session cookie, not the bearer token.
+        { credentials: 'include', headers: { Authorization: `Bearer ${token}` } },
       );
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();

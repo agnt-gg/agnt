@@ -42,6 +42,7 @@ describe('providerAuthService.completeRemoteOAuthCallback', () => {
       'https://api.agnt.gg/auth/callback',
       { code: 'abc123', state: 'twitter:http://localhost:3333' },
       {
+        withCredentials: true,
         headers: {
           Authorization: 'Bearer test-jwt',
           'Content-Type': 'application/json',
@@ -49,6 +50,24 @@ describe('providerAuthService.completeRemoteOAuthCallback', () => {
       },
     );
     expect(result).toEqual({ success: true, provider: 'twitter' });
+  });
+
+  // The remote resolves the user from a session cookie on this route. Without
+  // the cookie it runs the token INSERT with user_id = NULL and the browser is
+  // shown a raw SQLite error:
+  //   "SQLITE_CONSTRAINT: NOT NULL constraint failed: oauth_tokens.user_id"
+  // Asserted on its own so a future refactor of the options object cannot drop
+  // the cookie without a failing test that names exactly what broke.
+  it('sends credentials, because the remote identifies the user by session cookie', async () => {
+    axios.post.mockResolvedValueOnce({ data: { success: true } });
+
+    await providerAuthService.completeRemoteOAuthCallback({
+      code: 'abc123',
+      state: 'twitter:http://localhost:3333',
+    });
+
+    const [, , options] = axios.post.mock.calls[0];
+    expect(options.withCredentials).toBe(true);
   });
 
   it('rejects when code is missing without making any HTTP call', async () => {

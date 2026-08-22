@@ -83,7 +83,11 @@ export default {
       .post(
         `${API_CONFIG.REMOTE_URL}/auth/callback`,
         { code, state },
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+        {
+          // The remote resolves the user from a session cookie on this route.
+          withCredentials: true,
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        },
       )
       .then((r) => r.data)
       .finally(() => {
