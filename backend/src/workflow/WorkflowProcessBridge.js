@@ -31,9 +31,14 @@ export class WorkflowProcessUnavailableError extends Error {
   /**
    * @param {string} message
    * @param {'not-spawned'|'not-ready'|'init-failed'|'timeout'} reason
+   * @param {{ cause?: unknown }} [options] underlying error, where one exists
    */
-  constructor(message, reason) {
-    super(message);
+  constructor(message, reason, options = {}) {
+    // Keep the original failure attached. Three of the four reasons are
+    // synthesised from a state check and have no cause, but 'init-failed'
+    // wraps a real error — and dropping it would repeat the mistake this
+    // whole change exists to fix.
+    super(message, 'cause' in options ? { cause: options.cause } : undefined);
     this.name = 'WorkflowProcessUnavailableError';
     this.code = 'WORKFLOW_PROCESS_UNAVAILABLE';
     this.reason = reason;
@@ -260,7 +265,9 @@ class WorkflowProcessBridge {
         await this.readyPromise;
       } catch (error) {
         return Promise.reject(
-          new WorkflowProcessUnavailableError('Workflow process failed to initialize', 'init-failed')
+          new WorkflowProcessUnavailableError('Workflow process failed to initialize', 'init-failed', {
+            cause: error,
+          })
         );
       }
     }

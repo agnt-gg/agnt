@@ -123,6 +123,17 @@ describe('transport failures are typed and named', () => {
 
     expect(error).toBeInstanceOf(WorkflowProcessUnavailableError);
     expect(error.reason).toBe('init-failed');
+    // The reason this whole change exists: do not drop the underlying error.
+    expect(error.cause).toBeInstanceOf(Error);
+    expect(error.cause.message).toBe('spawn blew up');
+  });
+
+  it('leaves cause undefined for the reasons that have no underlying error', async () => {
+    const { WorkflowProcessUnavailableError } = await freshModule();
+    const synthesised = new WorkflowProcessUnavailableError('Workflow process is not ready', 'not-ready');
+
+    expect(synthesised.cause).toBeUndefined();
+    expect('cause' in synthesised).toBe(false);
   });
 
   it('rejects with reason "timeout" when the child never answers', async () => {
