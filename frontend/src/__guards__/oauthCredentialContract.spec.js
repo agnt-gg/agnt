@@ -130,6 +130,62 @@ function callTextAt(text, openIdx) {
 }
 
 /**
+ * `text` with comments blanked out, so that a commented-out flag cannot
+ * satisfy the contract.
+ *
+ * Without this, `// credentials: 'include',` left behind by someone debugging
+ * reads as compliant and the guard waves through a real violation -- a false
+ * negative, which is the failure this whole file exists to prevent.
+ *
+ * It has to be string-aware rather than a `//.*$` sweep: these call sites are
+ * built around URLs, and a naive strip turns
+ * `'github:http://localhost:3333'` into `'github:http:` -- corrupting the
+ * source it is meant to be reading, and deleting any flag that sits after a
+ * URL on the same line. That direction is a false POSITIVE, which is how a
+ * guard loses the room's trust.
+ *
+ * Known limit: a regex literal containing `//` would confuse it. None of
+ * these call sites contain one, and the assertion below would fail loudly
+ * rather than silently pass if that changed.
+ */
+function stripComments(text) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (quote) {
+      out += ch;
+      if (ch === '\\') {
+        out += next ?? '';
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i += 1;
+      i += 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * Every call to a credentialed remote auth path in a source file, with a
  * verdict on whether it sends credentials.
  *
@@ -146,7 +202,7 @@ export function findRemoteAuthCalls(source, label = '<inline>') {
     const matchedPath = CREDENTIALED_PATHS.find((p) => rest.startsWith(p));
     if (matchedPath) {
       const open = openingParenBefore(source, at);
-      const call = open === -1 ? '' : callTextAt(source, open);
+      const call = open === -1 ? '' : stripComments(callTextAt(source, open));
       const sendsCredentials =
         /credentials:\s*['"]include['"]/.test(call) || /withCredentials:\s*true/.test(call);
       calls.push({
@@ -220,6 +276,42 @@ describe('remote auth calls carry the credential the remote authenticates', () =
     `;
     expect(findRemoteAuthCalls(withFetch, 'a.js')[0].sendsCredentials).toBe(true);
     expect(findRemoteAuthCalls(withAxios, 'b.js')[0].sendsCredentials).toBe(true);
+  });
+
+  it('does not accept a commented-out credential (self-test)', () => {
+    // Reported by Copilot on this PR, and confirmed: before stripComments the
+    // detector matched the flag inside a comment and reported compliance.
+    const fixture = `
+      await fetch(\`\${API_CONFIG.REMOTE_URL}/auth/connect/\${id}\`, {
+        // credentials: 'include',  <- disabled while debugging
+        headers: { Authorization: \`Bearer \${token}\` },
+      });
+    `;
+    const found = findRemoteAuthCalls(fixture, 'd.js');
+    expect(found).toHaveLength(1);
+    expect(found[0].sendsCredentials).toBe(false);
+  });
+
+  it('does not accept a block-commented credential either (self-test)', () => {
+    const fixture = `
+      await fetch(\`\${API_CONFIG.REMOTE_URL}/auth/callback\`, {
+        /* credentials: 'include', */
+        headers: {},
+      });
+    `;
+    expect(findRemoteAuthCalls(fixture, 'e.js')[0].sendsCredentials).toBe(false);
+  });
+
+  it('is not fooled by a URL inside a string (self-test)', () => {
+    // The other direction: a `//.*$` sweep truncates the state string and can
+    // delete a real flag, failing a call site that is perfectly correct.
+    const fixture = `
+      await fetch(\`\${API_CONFIG.REMOTE_URL}/auth/callback\`, {
+        credentials: 'include',
+        body: JSON.stringify({ state: 'github:http://localhost:3333' }),
+      });
+    `;
+    expect(findRemoteAuthCalls(fixture, 'f.js')[0].sendsCredentials).toBe(true);
   });
 
   it('does not let a neighbouring call vouch for an uncredentialed one (self-test)', () => {
