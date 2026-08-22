@@ -10,6 +10,51 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * The workflow process could not be reached, so nothing is known about the
+ * workflow itself.
+ *
+ * This is deliberately distinct from an error the child process *answered*
+ * with. `sendMessage` can fail two ways, and conflating them is what made a
+ * workflow failure undiagnosable:
+ *
+ *   - TRANSPORT: the child was never spawned, is not ready, failed to
+ *     initialise, or did not answer in time. We learned nothing. → this class.
+ *   - REPLY: the child answered `{ success: false, error }`. That message is a
+ *     real diagnosis of a real problem — e.g. "Workflow wf-1 cannot be
+ *     executed: node "n1" is missing "text"". → a plain Error carrying it.
+ *
+ * Callers that need to tell these apart should check `error.code`, not the
+ * message text.
+ */
+export class WorkflowProcessUnavailableError extends Error {
+  /**
+   * @param {string} message
+   * @param {'not-spawned'|'not-ready'|'init-failed'|'timeout'} reason
+   */
+  constructor(message, reason) {
+    super(message);
+    this.name = 'WorkflowProcessUnavailableError';
+    this.code = 'WORKFLOW_PROCESS_UNAVAILABLE';
+    this.reason = reason;
+  }
+}
+
+/**
+ * True when the workflow process itself could not be reached.
+ *
+ * Kept as a predicate so callers never have to sniff message text — the route
+ * handler used to test `error.message.includes('not ready')`, which matched
+ * exactly one of the four transport failures and would silently stop matching
+ * if the wording changed.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isWorkflowProcessUnavailable(error) {
+  return Boolean(error) && error.code === 'WORKFLOW_PROCESS_UNAVAILABLE';
+}
+
 class WorkflowProcessBridge {
   constructor() {
     this.workflowProcess = null;
@@ -214,17 +259,21 @@ class WorkflowProcessBridge {
       try {
         await this.readyPromise;
       } catch (error) {
-        return Promise.reject(new Error('Workflow process failed to initialize'));
+        return Promise.reject(
+          new WorkflowProcessUnavailableError('Workflow process failed to initialize', 'init-failed')
+        );
       }
     }
 
     return new Promise((resolve, reject) => {
       if (!this.workflowProcess) {
-        return reject(new Error('Workflow process is not available'));
+        return reject(
+          new WorkflowProcessUnavailableError('Workflow process is not available', 'not-spawned')
+        );
       }
 
       if (!this.isReady) {
-        return reject(new Error('Workflow process is not ready'));
+        return reject(new WorkflowProcessUnavailableError('Workflow process is not ready', 'not-ready'));
       }
 
       const id = ++this.messageId;
@@ -238,7 +287,9 @@ class WorkflowProcessBridge {
       // Set up timeout
       const timeoutId = setTimeout(() => {
         this.messageHandlers.delete(id);
-        reject(new Error(`Message ${type} timed out after ${timeout}ms`));
+        reject(
+          new WorkflowProcessUnavailableError(`Message ${type} timed out after ${timeout}ms`, 'timeout')
+        );
       }, timeout);
 
       // Store handler
@@ -285,6 +336,31 @@ class WorkflowProcessBridge {
     }
   }
 
+  /**
+   * Ask the workflow process for a workflow's live state.
+   *
+   * Throws rather than reporting a state it does not know.
+   *
+   * This used to `return { status: 'error', error: error.message }`, which was
+   * wrong twice over. `'error'` is a REAL workflow status — ProcessWorker sets
+   * it on a workflow whose engine failed, and ProcessManager reads it back out
+   * of the database — so "I could not reach the workflow process" and "this
+   * workflow failed" were reported with the identical value, and no caller
+   * could tell them apart. Callers testing
+   * `['running','listening','queued'].includes(status)` then quietly took the
+   * not-active branch on what was really an infrastructure failure.
+   *
+   * It also discarded the child's own diagnosis. When the child answers
+   * `{ success: false, error }` that message names the actual fault — e.g.
+   * `Workflow wf-1 cannot be executed: node "n1" is missing "text"` — and it
+   * was replaced by the single word `error` before any caller saw it.
+   *
+   * Log-and-rethrow matches restartActiveWorkflows below. All three callers
+   * already sit inside a try/catch.
+   *
+   * @throws {WorkflowProcessUnavailableError} the process could not be reached
+   * @throws {Error} the process answered, reporting this failure
+   */
   async fetchWorkflowState(workflowId, userId) {
     try {
       const result = await this.sendMessage('FETCH_WORKFLOW_STATE', {
@@ -294,7 +370,7 @@ class WorkflowProcessBridge {
       return result;
     } catch (error) {
       console.error('Error fetching workflow state via IPC:', error);
-      return { status: 'error', error: error.message };
+      throw error;
     }
   }
 

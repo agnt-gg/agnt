@@ -1,6 +1,6 @@
 import WorkflowModel from '../models/WorkflowModel.js';
 import WebhookModel from '../models/WebhookModel.js';
-import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
+import WorkflowProcessBridge, { isWorkflowProcessUnavailable } from '../workflow/WorkflowProcessBridge.js';
 import generateUUID from '../utils/generateUUID.js';
 import db from '../models/database/index.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
@@ -92,8 +92,11 @@ class WorkflowService {
           }
         }
       } catch (error) {
-        // If workflow process is not ready yet, skip the restart check
-        console.log('Workflow process not ready yet, skipping restart check');
+        // The restart check is best-effort: the save itself already succeeded.
+        // Report what actually went wrong rather than asserting a cause — this
+        // block is reached by an unreachable workflow process AND by a failure
+        // of the restart itself, and it used to blame the former for both.
+        console.warn(`Skipping post-save restart check for ${workflow.id}: ${error.message}`);
       }
 
       // Broadcast real-time update to user's connected clients (all tabs)
@@ -146,7 +149,9 @@ class WorkflowService {
           }
         }
       } catch (error) {
-        console.log('[updateWorkflow] Workflow process not ready yet, skipping restart check');
+        console.warn(
+          `[updateWorkflow] Skipping restart check for ${req.params.id}: ${error.message}`
+        );
       }
 
       // Broadcast real-time update to user's connected clients (all tabs)
@@ -318,18 +323,42 @@ class WorkflowService {
       res.status(500).json({ error: 'Failed to delete workflow', details: error.message });
     }
   }
+  /**
+   * GET /workflows/:id/status
+   *
+   * Never reports a workflow state that was not actually read. The bridge used
+   * to answer an unreachable workflow process with `{ status: 'error' }`, which
+   * this handler passed through as 200 — indistinguishable from a workflow
+   * whose engine really did fail, since 'error' is a genuine workflow status.
+   */
   async fetchWorkflowState(req, res) {
     try {
       const status = await WorkflowProcessBridge.fetchWorkflowState(req.params.id, req.user.userId);
       res.json(status);
     } catch (error) {
-      console.error('Error retrieving workflow status:', error);
-      // If workflow process is not ready, return a temporary status
-      if (error.message.includes('not ready')) {
-        res.json({ status: 'initializing', message: 'Workflow process is starting up' });
-      } else {
-        res.status(500).json({ error: 'Error retrieving workflow status' });
+      console.error(`Error retrieving status for workflow ${req.params.id}:`, error);
+
+      if (isWorkflowProcessUnavailable(error)) {
+        // Still starting up: benign and self-resolving, so keep the 200 the
+        // original handler intended. That branch was unreachable until now — it
+        // tested error.message for 'not ready', but the bridge never threw.
+        if (error.reason === 'not-ready') {
+          return res.json({ status: 'initializing', message: 'Workflow process is starting up' });
+        }
+
+        // Not spawned, failed to initialise, or did not answer. The workflow's
+        // real state is unknown, so say so rather than inventing one.
+        return res.status(503).json({
+          status: 'unavailable',
+          reason: error.reason,
+          error: 'Workflow process is unreachable',
+          details: error.message,
+        });
       }
+
+      // The process answered, reporting a failure. That message is the
+      // diagnosis — forward it instead of replacing it with a generic string.
+      res.status(500).json({ error: 'Error retrieving workflow status', details: error.message });
     }
   }
   async activateWorkflow(req, res) {
