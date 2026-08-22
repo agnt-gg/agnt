@@ -213,17 +213,33 @@ describe('the plugin-builder skill matches the code it documents', () => {
 
     const message = 'manifest.json must contain structured permissions.capabilities and permissions.domains arrays';
     expect(build).toContain(message);
-    // The doc wraps the sentence across lines, so compare on words rather than
-    // requiring the exact whitespace of either file.
-    for (const fragment of ['must contain structured permissions', 'permissions.domains']) {
-      expect(doc).toContain(fragment);
-    }
+
+    // Scope to the fenced block that shows the failure. Searching the whole
+    // document would let a paraphrase here pass on the strength of the pitfalls
+    // table further down, which is how this assertion first survived a mutant.
+    const errorBlock = doc.match(/```\n(\u274c[\s\S]*?)```/);
+    expect(errorBlock, 'SKILL.md must show the build failure in a fenced block').not.toBeNull();
+
+    // The doc wraps the sentence across lines; flatten before comparing so the
+    // test pins the words, not the line breaks.
+    expect(errorBlock[1].replace(/\s+/g, ' ').trim()).toContain(message);
   });
 
   it('shows a permissions block in the manifest example', async () => {
     const doc = await fsp.readFile(SKILL_MD, 'utf8');
-    expect(doc).toMatch(/"permissions":\s*\{/);
-    expect(doc).toContain('"capabilities"');
-    expect(doc).toContain('"domains"');
+
+    // The example an agent copies is the FIRST json block under this heading.
+    // Asserting against the whole document passed even with the block deleted
+    // from the example, because the explanatory section further down has one
+    // too — the test named a place it never looked at.
+    const section = doc.split('### `manifest.json` essentials')[1];
+    expect(section, 'SKILL.md must keep the manifest.json essentials section').toBeDefined();
+
+    const example = section.match(/```json\n([\s\S]*?)```/);
+    expect(example, 'that section must contain a json example').not.toBeNull();
+
+    expect(example[1]).toMatch(/"permissions":\s*\{/);
+    expect(example[1]).toContain('"capabilities"');
+    expect(example[1]).toContain('"domains"');
   });
 });
