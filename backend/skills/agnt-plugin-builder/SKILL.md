@@ -50,6 +50,10 @@ After `npm install` a `node_modules/` folder joins them and gets bundled into th
   "description": "What it does",
   "author": "AGNT User",
   "icon": "sparkles",
+  "permissions": {
+    "capabilities": ["network"],
+    "domains": ["api.example.com"]
+  },
   "tools": [
     {
       "type": "my-tool",
@@ -73,8 +77,58 @@ Rules that matter:
 - `category` is one of `action | trigger | utility | widget | control | custom`. 90% of plugins are `action`.
 - The top-level `type` in the tool object and the `type` inside `schema` must match.
 - `entryPoint` is relative to the manifest (use `./file.js`).
+- **`permissions` is required.** `cli/build-plugin.js` refuses to build without
+  `permissions.capabilities` and `permissions.domains` as arrays. Both must be
+  present even when empty — see below.
 
 For the full schema (parameter input types, conditional visibility, auth modes, output shapes), read `references/manifest-schema.md`.
+
+### `permissions` — what the plugin is allowed to do
+
+The build refuses to package a manifest without a structured `permissions`
+block, so this is not optional:
+
+```
+❌ Official plugin disclosure gate: manifest.json must contain structured
+   permissions.capabilities and permissions.domains arrays
+```
+
+```json
+"permissions": {
+  "capabilities": ["network", "filesystem", "env-access"],
+  "domains": ["api.example.com", "cdn.example.com"]
+}
+```
+
+`capabilities` is drawn from a fixed vocabulary — anything else is ignored:
+
+| Capability | Declare it when the plugin… |
+|---|---|
+| `network` | makes outbound HTTP/WebSocket calls (`fetch`, `axios`, `ws`, `https.request`) |
+| `filesystem` | reads or writes files (`fs`, `node:fs`, `fs/promises`, `fs-extra`) |
+| `spawn-process` | shells out (`child_process`, `node:child_process`, `execFile`, `spawn`) |
+| `env-access` | reads `process.env` |
+| `dynamic-eval` | uses `eval` or `new Function` |
+| `dynamic-import` | imports a module path built at runtime |
+
+`domains` lists the hostnames the plugin contacts. Leave it `[]` when the
+plugin makes no outbound calls of its own — a plugin that shells out to a CLI
+which then talks to the network declares `spawn-process`, not `network`, because
+the plugin's own code opens no socket.
+
+The build runs a source scan and prints what it found next to what you declared:
+
+```
+🔍 Scanning capabilities (first-party source only)...
+   Detected: filesystem, env-access
+   Declared: env-access, filesystem, spawn-process
+```
+
+The two lists do **not** have to match. Effective permissions are the union, so
+an undeclared capability is still granted — and disclosed to the user at install
+time as an undeclared one, which costs the plugin trust tier. Declaring more
+than the scan detects is harmless and is the right call whenever you know the
+plugin does something the regex-based scan cannot see.
 
 ### `package.json` essentials
 
@@ -175,6 +229,18 @@ execSync('node cli/build-plugin.js <plugin-name>', {
 ```
 
 Success produces `plugin-builds/<plugin-name>.agnt`. The build script validates the manifest, auto-fixes missing `"type": "module"`, runs `npm install` if needed, and gzipped-tars the folder.
+
+It also scans the source for capabilities and **refuses to build** a manifest
+without a structured `permissions` block. If the run stops on `manifest.json
+must contain structured permissions.capabilities and permissions.domains
+arrays`, add the block described above rather than working around it. To draft
+one from the source automatically — the script takes no arguments, it scans
+**every** plugin in `dev/` and writes one ready-to-paste block per plugin to
+`permissions-drafts/<plugin-name>.json`:
+
+```bash
+node cli/draft-permissions.js
+```
 
 ### Step 4 — Install via the API
 
@@ -317,6 +383,7 @@ To remove a plugin: `DELETE /api/plugins/:name`, then `POST /api/plugins/reload`
 | Bloated `.agnt` | Use `npm install --production` |
 | Tool `type` mismatch (manifest vs. `this.name`) | Keep them identical, kebab-case |
 | Invalid JSON in manifest | Always write via `JSON.stringify(obj, null, 2)` |
+| Build stops on `must contain structured permissions` | Add `permissions: { capabilities: [], domains: [] }` — both keys, both arrays, even when empty |
 | UI doesn't show new tool | Hit `POST /api/plugins/reload` — forgetting this is the #1 "it didn't work" cause |
 | Windows backslashes in `file://` URLs | `filePath.replace(/\\/g, '/')` before prefixing with `file://` |
 
