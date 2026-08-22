@@ -6,6 +6,7 @@ import db from '../models/database/index.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import PluginManager from '../plugins/PluginManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
+import { validateWorkflowShape } from '../workflow/validateWorkflowShape.js';
 
 /**
  * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
@@ -37,6 +38,18 @@ class WorkflowService {
       if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
         return res.status(400).json({
           error: 'Request body must be { workflow: { ... } } with a workflow object.',
+        });
+      }
+
+      // Refuse a workflow the engine could never run. Without this the row is
+      // stored happily and the mismatch only surfaces at activation, as a
+      // TypeError inside the workflow process that reaches the caller as an
+      // unqualified 'error' — naming neither the node nor the field.
+      const shape = validateWorkflowShape(workflow);
+      if (!shape.valid) {
+        return res.status(400).json({
+          error: 'Workflow does not match the shape the workflow engine executes.',
+          details: shape.errors,
         });
       }
 

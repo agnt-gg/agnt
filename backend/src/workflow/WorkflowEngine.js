@@ -10,13 +10,27 @@ import Counter from '../tools/library/utilities/counter.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import runWorkflowAction from '../tools/library/controls/run-workflow.js';
+import { assertWorkflowShape } from './validateWorkflowShape.js';
 
 dotenv.config();
 
 class WorkflowEngine extends EventEmitter {
   constructor(workflow, workflowId, userId, isSubWorkflow = false, parentInputData = {}) {
     super();
-    this.workflow = workflow;
+
+    // Rows predating save-time validation are already in every database, and
+    // /workflows/import and direct DB writes never passed through it. Fail here
+    // with a message that names the node and the field, instead of the
+    // TypeError this used to raise several lines below.
+    assertWorkflowShape(workflow, `Workflow ${workflowId}`);
+
+    // Both collections are iterated unconditionally (nodes at :516, edges at
+    // :527). A blank draft is savable, so normalise rather than demand them.
+    this.workflow = {
+      ...workflow,
+      nodes: Array.isArray(workflow.nodes) ? workflow.nodes : [],
+      edges: Array.isArray(workflow.edges) ? workflow.edges : [],
+    };
     this.workflowId = workflowId;
     this.userId = userId;
     this.receivers = {};
