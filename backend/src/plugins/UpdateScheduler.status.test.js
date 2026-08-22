@@ -24,7 +24,7 @@
  * real code path with no filesystem beyond a temp dir and no network at all.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -67,6 +67,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // Only one test fakes the clock, but restoring it here means a failure inside
+  // that test cannot leak a frozen Date into everything that follows.
+  vi.useRealTimers();
   await fs.rm(TMP, { recursive: true, force: true });
 });
 
@@ -287,6 +290,20 @@ describe('UpdateScheduler.getStatus', () => {
   });
 
   it('replaces the previous pass rather than accumulating', async () => {
+    // The clock is faked because `checkedAt` is
+    // `new Date().toISOString()` — millisecond resolution. The two ticks below
+    // run back to back with nothing slow between them, so on a fast machine
+    // both land in the SAME millisecond and the timestamps come out identical.
+    // The old assertion was `not.toBe`, which therefore passed only when
+    // something happened to be slow enough, and failed intermittently in CI
+    // while passing in isolation.
+    //
+    // Faking Date alone — not setTimeout/setInterval — keeps the scheduler's
+    // real async filesystem work untouched; there is nothing here to advance.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const firstPassAt = new Date('2026-01-01T00:00:00.000Z');
+    const secondPassAt = new Date('2026-01-01T06:00:00.000Z');
+
     const installer = stubInstaller({
       registry: { plugins: [{ name: 'weather' }] },
       updates: [{ name: 'weather', installed: '1.0.0', latest: '1.4.0', updateAvailable: true }],
@@ -295,16 +312,23 @@ describe('UpdateScheduler.getStatus', () => {
     await installer._writeRegistry();
     const scheduler = makeScheduler(installer);
 
+    vi.setSystemTime(firstPassAt);
     await scheduler.tick();
     const first = await scheduler.getStatus();
 
     installer.checkForUpdates = async () => ({ success: true, updates: [] });
+    vi.setSystemTime(secondPassAt);
     await scheduler.tick();
     const second = await scheduler.getStatus();
 
     expect(second.autoUpdated).toEqual([]);
     expect(second.updatesAvailable).toBe(0);
-    expect(second.checkedAt).not.toBe(first.checkedAt);
+
+    // Now that the clock is controlled this can assert the exact values rather
+    // than merely that they differ — which also pins the direction, so a
+    // summary that carried the OLD timestamp forward fails here too.
+    expect(first.checkedAt).toBe(firstPassAt.toISOString());
+    expect(second.checkedAt).toBe(secondPassAt.toISOString());
   });
 });
 
