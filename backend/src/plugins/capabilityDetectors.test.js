@@ -223,6 +223,12 @@ describe('the plugin-builder skill matches the code it documents', () => {
     // The doc wraps the sentence across lines; flatten before comparing so the
     // test pins the words, not the line breaks.
     expect(errorBlock[1].replace(/\s+/g, ' ').trim()).toContain(message);
+
+    // ...and because it wraps, that block cannot be found by anyone pasting the
+    // error into a search box. Somewhere in the document an unbroken fragment
+    // has to exist — today the pitfalls table carries it. Deliberately
+    // unscoped: the contract is "findable", not "findable in one place".
+    expect(doc).toContain('must contain structured permissions');
   });
 
   it('shows a permissions block in the manifest example', async () => {
