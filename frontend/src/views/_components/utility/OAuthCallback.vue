@@ -66,6 +66,11 @@ export default {
         const token = localStorage.getItem('token');
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/callback`, {
           method: 'POST',
+          // The remote identifies the user by session cookie on this route: the
+          // bearer token alone is ignored, the INSERT runs with user_id = NULL
+          // and SQLite rejects it. Without this the failure surfaces as
+          // "NOT NULL constraint failed: oauth_tokens.user_id".
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,

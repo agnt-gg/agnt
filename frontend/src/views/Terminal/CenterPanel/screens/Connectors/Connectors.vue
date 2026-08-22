@@ -1206,6 +1206,8 @@ export default {
         const token = localStorage.getItem('token');
         // Pass origin as query parameter for reliable Electron support
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/connect/${app.id}?origin=${encodeURIComponent(window.location.origin)}`, {
+          // Identity on the remote auth routes rides a session cookie.
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -2084,6 +2086,11 @@ export default {
 
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/callback`, {
           method: 'POST',
+          // The remote resolves the user from a session cookie on this
+          // route; the bearer token alone is ignored and the INSERT runs with
+          // user_id = NULL, surfacing as
+          // "NOT NULL constraint failed: oauth_tokens.user_id".
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
