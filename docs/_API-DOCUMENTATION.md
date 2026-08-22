@@ -10664,8 +10664,15 @@ which would turn a compromise of the public API into root on the fleet.
 
 **POST** `/:slug/members`
 
-- **Authentication**: Required (owner or admin, else `403 not_admin`)
-- **Body**: `{ userId, role? }` — `role` is `member` (default) or `admin`
+- **Authentication**: Required (owner or admin, else `403 not_admin`; rate limited)
+- **Body**: `{ userId?, email?, role? }` — one of `userId` or `email` is required; `role` is `member` (default) or `admin`
+
+An `email` resolves case-insensitively to the account's `userId` and flows
+through the same checks — input convenience, never a second authorization
+path. An email with no AGNT account answers `404 no_such_user` with the fix in
+the message: sign up free first, then add them. This is deliberately an
+existence oracle to tenant admins (the GitHub-org-invite tradeoff); the rate
+limiter is what keeps it from being enumeration.
 - **Response `201`**: `{ slug, userId, role, alreadyMember }`
 - **`409` `seat_limit_reached`**: returns `{ seats: { used, total } }`. Refused,
   never auto-charged — adding a seat is money leaving someone's account.
