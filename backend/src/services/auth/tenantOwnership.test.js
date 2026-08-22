@@ -130,6 +130,61 @@ describe('a bound tenant admits its members and nobody else', () => {
   });
 });
 
+describe('the issuer decides when it has an answer, the env list is the floor', () => {
+  // The env list is baked into the container at creation and goes stale the
+  // moment somebody is invited or removed. api.agnt.gg holds the live list and
+  // returns it on the auth call this backend already makes.
+  const known = (isMember) => ({ known: true, isMember, role: isMember ? 'member' : null });
+
+  it('admits somebody the issuer confirms but the env list has never heard of', () => {
+    // An invitation must take effect within a cache TTL, not at the next
+    // redeploy. Without this, adding a teammate means recreating a container.
+    bindTenant();
+    expect(tenantOwnership.isPermittedUser(STRANGER)).toBe(false);
+    expect(tenantOwnership.isPermittedUser(STRANGER, known(true))).toBe(true);
+  });
+
+  it('REFUSES somebody the env list still contains once the issuer says no', () => {
+    // The half that actually matters. A removed teammate keeps a valid token
+    // and a container that has not been recreated; if the stale list won, they
+    // would keep their access until somebody remembered to redeploy.
+    bindTenant(TEAMMATE);
+    expect(tenantOwnership.isPermittedUser(TEAMMATE)).toBe(true);
+    expect(tenantOwnership.isPermittedUser(TEAMMATE, known(false))).toBe(false);
+  });
+
+  it('falls back to the env list when the issuer gives no answer at all', () => {
+    // Unreachable issuer past its grace window, or a deployed issuer that
+    // predates the parameter. "No information" must not mean "admit everyone".
+    bindTenant(TEAMMATE);
+    expect(tenantOwnership.isPermittedUser(TEAMMATE, null)).toBe(true);
+    expect(tenantOwnership.isPermittedUser(STRANGER, null)).toBe(false);
+  });
+
+  it('falls back to the env list for a slug the issuer does not recognise', () => {
+    // known:false is the shape the server returns for an unknown slug. Reading
+    // it as a refusal would lock an owner out of an instance the control plane
+    // simply has no row for.
+    bindTenant(TEAMMATE);
+    const unknown = { known: false, isMember: false, role: null };
+    expect(tenantOwnership.isPermittedUser(TEAMMATE, unknown)).toBe(true);
+    expect(tenantOwnership.isPermittedUser(STRANGER, unknown)).toBe(false);
+  });
+
+  it('ignores a malformed verdict rather than trusting it', () => {
+    bindTenant(TEAMMATE);
+    for (const junk of [{}, { isMember: true }, { known: 'yes', isMember: true }, 'nonsense', 0]) {
+      expect(tenantOwnership.isPermittedUser(STRANGER, junk), JSON.stringify(junk)).toBe(false);
+      expect(tenantOwnership.isPermittedUser(TEAMMATE, junk), JSON.stringify(junk)).toBe(true);
+    }
+  });
+
+  it('leaves a desktop install unrestricted whatever the verdict says', () => {
+    // No slug, so there is nothing to be a member of and no call is even made.
+    expect(tenantOwnership.isPermittedUser(STRANGER, known(false))).toBe(true);
+  });
+});
+
 describe('a tenant that names nobody refuses to start', () => {
   it('fails the boot assertion when a slug is set with no members', () => {
     // The alternative readings are both silent failures: "allow all" reopens

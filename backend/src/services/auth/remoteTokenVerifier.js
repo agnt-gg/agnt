@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 
+import { tenantSlug } from './tenantOwnership.js';
+
 /**
  * Ask the token's ISSUER whether it is genuine, instead of checking it here.
  *
@@ -127,7 +129,7 @@ export function isRemoteVerifyMode() {
  */
 export async function verifyViaIssuer(token) {
   if (typeof token !== 'string' || token.length === 0) {
-    return { ok: false, user: null, source: 'empty' };
+    return { ok: false, user: null, tenant: null, source: 'empty' };
   }
 
   const key = keyFor(token);
@@ -136,7 +138,7 @@ export async function verifyViaIssuer(token) {
 
   if (hit && now < hit.expiresAt) {
     stats.hits += 1;
-    return { ok: hit.ok, user: hit.user, source: 'cache' };
+    return { ok: hit.ok, user: hit.user, tenant: hit.tenant, source: 'cache' };
   }
   stats.misses += 1;
 
@@ -150,7 +152,23 @@ export async function verifyViaIssuer(token) {
     const timer = setTimeout(() => controller.abort(), 6000);
     let response;
     try {
-      response = await fetch(`${remote}/users/auth/status`, {
+      // ASK ABOUT THIS INSTANCE AT THE SAME TIME.
+      //
+      // "Is this token genuine" is true for every account the issuer has ever
+      // created, and reading that as permission is precisely how a stranger
+      // reached a paid instance. The slug turns it into the question that
+      // actually matters: is this person allowed HERE.
+      //
+      // Free, in the sense that matters: no extra round trip, the same
+      // response, the same cache entry, and therefore the same stale-grace
+      // window — so an issuer outage extends known-good members rather than
+      // locking a team out of their own machine.
+      const slug = tenantSlug();
+      const url = slug
+        ? `${remote}/users/auth/status?tenant=${encodeURIComponent(slug)}`
+        : `${remote}/users/auth/status`;
+
+      response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
@@ -170,19 +188,43 @@ export async function verifyViaIssuer(token) {
     // GRACE: extend an answer the issuer already gave, never invent one.
     if (hit && hit.ok && now < hit.expiresAt + STALE_GRACE_MS) {
       stats.servedStale += 1;
-      return { ok: true, user: hit.user, source: 'stale-grace' };
+      // The tenant verdict rides the grace window with the identity it belongs
+      // to. Dropping it here would silently demote a confirmed member to the
+      // env-list floor during exactly the outage this path exists to survive.
+      return { ok: true, user: hit.user, tenant: hit.tenant, source: 'stale-grace' };
     }
-    return { ok: false, user: null, source: `unreachable: ${error.message}` };
+    return { ok: false, user: null, tenant: null, source: `unreachable: ${error.message}` };
   }
 
   const ok = answer?.isAuthenticated === true && !!answer?.user;
   const user = ok ? answer.user : null;
+  // Absent when this install is not a tenant, or when the issuer predates the
+  // parameter. Both mean "no answer", which is not the same as "no".
+  const tenant = ok && answer?.tenant ? answer.tenant : null;
   ok ? (stats.remoteOk += 1) : (stats.remoteDeny += 1);
 
   evictIfFull();
-  cache.set(key, { ok, user, expiresAt: now + (ok ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS) });
+  cache.set(key, { ok, user, tenant, expiresAt: now + (ok ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS) });
 
-  return { ok, user, source: 'issuer' };
+  return { ok, user, tenant, source: 'issuer' };
+}
+
+/**
+ * The issuer's membership verdict for a token it has already confirmed.
+ *
+ * The synchronous counterpart to the block above, for the same reason
+ * verifiedUserSync exists: the media, file, SSE and websocket guards cannot
+ * await anything. Reads the entry the async path wrote, so the two can never
+ * disagree about the same token.
+ *
+ * @param {string} token
+ * @returns {object|null} the tenant verdict, or null if there is no answer
+ */
+export function tenantVerdictSync(token) {
+  if (typeof token !== 'string' || !token) return null;
+  const hit = cache.get(keyFor(token));
+  if (!hit || !hit.ok || Date.now() >= hit.expiresAt) return null;
+  return hit.tenant || null;
 }
 
 /**

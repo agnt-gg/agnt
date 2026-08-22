@@ -35,7 +35,7 @@
 import jwt from 'jsonwebtoken';
 
 import { isPermittedUser, NOT_A_MEMBER } from '../services/auth/tenantOwnership.js';
-import { verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
+import { tenantVerdictSync, verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
 
 /** Cookie name used for browser-issued media subresource requests. */
 export const MEDIA_COOKIE_NAME = 'agnt_media_token';
@@ -129,7 +129,11 @@ export function verifyAuthToken(token) {
   // ModelRoutes/AuthRoutes — all of which would otherwise stay open to any
   // account while the REST middleware was closed. One boundary, or none.
   // See services/auth/tenantOwnership.js.
-  const admit = (user) => (isPermittedUser(user.id) ? { ok: true, user } : { ok: false, reason: NOT_A_MEMBER });
+  // The verdict comes from the entry the async path already wrote for this
+  // exact token, so the two can never disagree about the same caller. Null
+  // when nothing has verified it yet, which falls back to the env list.
+  const admit = (user) =>
+    isPermittedUser(user.id, tenantVerdictSync(token)) ? { ok: true, user } : { ok: false, reason: NOT_A_MEMBER };
 
   if (process.env.TRUST_REMOTE_AUTH === 'true') {
     try {

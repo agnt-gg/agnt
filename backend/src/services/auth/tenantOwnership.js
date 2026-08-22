@@ -129,13 +129,44 @@ export function tenantMemberIds() {
  * unchanged, and it is the property most worth protecting here: a wrong answer
  * costs a mass lockout of people who are not even affected by the defect.
  *
+ * ---------------------------------------------------------------------------
+ * TWO SOURCES, AND WHICH ONE WINS
+ * ---------------------------------------------------------------------------
+ * The env list is written into the container when it is created. It is correct
+ * at that instant and goes stale the moment somebody is invited or removed,
+ * and refreshing it means recreating the container.
+ *
+ * api.agnt.gg holds the live answer and returns it on the /users/auth/status
+ * call this backend already makes for every token. So when the issuer has an
+ * answer, that answer decides — an invitation takes effect within the cache
+ * TTL instead of at the next redeploy, and a removal takes effect just as
+ * fast, which is the half that actually matters.
+ *
+ * WHEN IT HAS NO ANSWER, THE ENV LIST IS THE FLOOR. Three cases reach that
+ * branch and none of them may open the instance up: the issuer is unreachable
+ * and the grace window has lapsed, this server has no record of the slug, or
+ * the deployed issuer predates the parameter entirely. All three mean "no
+ * information", and answering "admit everyone" to no information is the
+ * original defect. The list the container booted with is a floor, never a
+ * ceiling to be raised by silence.
+ *
+ * `serving` is deliberately NOT consulted. A suspended or resuming instance
+ * that is nonetheless running should still answer to its own members — gating
+ * admission on it would lock an owner out of their own machine during the
+ * provisioning window of a resume, which is the exact moment they are most
+ * likely to be looking.
+ *
  * @param {string|null|undefined} userId  an ALREADY-AUTHENTICATED user id
+ * @param {object|null} [verdict]  the issuer's answer for this tenant, if any
  * @returns {boolean}
  */
-export function isPermittedUser(userId) {
+export function isPermittedUser(userId, verdict = null) {
   if (!isTenantInstance()) return true;
   const id = clean(userId);
   if (!id) return false;
+
+  if (verdict && verdict.known === true) return verdict.isMember === true;
+
   return tenantMemberIds().includes(id);
 }
 

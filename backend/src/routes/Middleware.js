@@ -67,8 +67,8 @@ class Middleware {
    * must leave nothing behind — a local users row, or a poisoned single-slot
    * session cache, are both effects a stranger should not be able to cause.
    */
-  refuseNonMember(res, userId) {
-    if (isPermittedUser(userId)) return false;
+  refuseNonMember(res, userId, verdict = null) {
+    if (isPermittedUser(userId, verdict)) return false;
     console.warn(`[tenant] refused ${userId}: not a member of this instance`);
     res.status(403).json({
       success: false,
@@ -252,7 +252,11 @@ class Middleware {
           // THE LIVE HOLE WAS HERE. The issuer confirms the token is genuine —
           // it says that for every account it has ever issued — and this path
           // read that as permission to use this instance.
-          if (this.refuseNonMember(res, userId)) return;
+          //
+          // The same call now also answers whether this person belongs to THIS
+          // instance, so the decision is made on the live membership list
+          // rather than on whatever was baked into the container at boot.
+          if (this.refuseNonMember(res, userId, remote.tenant)) return;
 
           await this.syncRemoteUserToLocal({ ...remote.user, id: userId });
 

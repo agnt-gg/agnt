@@ -53,7 +53,7 @@
 import jwt from 'jsonwebtoken';
 
 import { isPermittedUser, NOT_A_MEMBER } from '../services/auth/tenantOwnership.js';
-import { verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
+import { tenantVerdictSync, verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
 
 /** Reasons a resolution can fail. Exported so tests + callers share one vocabulary. */
 export const SocketAuthFailure = {
@@ -180,7 +180,12 @@ export function resolveSocketIdentity(payload = {}, env = process.env) {
   if (token && !PLACEHOLDER_TOKENS.has(token)) {
     const result = verifyToken(token, env);
     if (result.error) return { ok: false, reason: result.error };
-    if (!isPermittedUser(result.userId)) return { ok: false, reason: NOT_A_MEMBER };
+    // Same cached verdict the REST and media paths use, keyed by this exact
+    // token — a socket must not outlive a removal that the HTTP API already
+    // honours, and every realtime fan-out targets a user room.
+    if (!isPermittedUser(result.userId, tenantVerdictSync(token))) {
+      return { ok: false, reason: NOT_A_MEMBER };
+    }
     return { ok: true, userId: result.userId, source: SocketIdentitySource.TOKEN, verified: true };
   }
 
