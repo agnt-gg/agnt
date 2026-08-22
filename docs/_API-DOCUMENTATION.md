@@ -74,6 +74,57 @@ The authentication middleware (`authenticateToken`) will:
 - Store token and user data in session for backend operations
 - Continue as unauthenticated if no valid token is provided
 
+### Hosted instances (AGNT Cloud)
+
+A desktop install verifies tokens locally with `JWT_SECRET`. A **hosted tenant**
+cannot: it holds a private random secret so the published key is not sitting on
+an internet-facing box, which means a genuine cloud token never verifies
+locally. With `AGNT_AUTH_MODE=verify-remote` it asks `api.agnt.gg` instead.
+
+That introduces a second question. "Is this token genuine?" is true for **every**
+account the issuer has ever created, and signup is open — so a genuine token is
+not permission to use *this* machine. Three environment variables decide:
+
+| Variable | Meaning |
+| -------- | ------- |
+| `AGNT_TENANT_SLUG` | Set only by `tenant.sh`. Its presence is what makes this a hosted instance. |
+| `AGNT_TENANT_OWNER` | The account that owns it. Always a member. |
+| `AGNT_TENANT_MEMBERS` | Comma-separated allow-list. Membership from the first line, not owner-equality, because Business Cloud sells seats. |
+
+**The slug decides the mode, not the member list.** No slug means a desktop
+install and no check at all, so every existing install is unaffected. A slug
+with no members **refuses to boot** (exit `78`) rather than admitting everyone
+or locking out its owner — both of those fail silently.
+
+Live membership comes from `GET /users/auth/status?tenant=<slug>`, on the call
+the backend already makes for every token. When the issuer answers, that answer
+decides; when it cannot, the env list is the **floor**, never a ceiling silence
+can raise.
+
+#### Responses a hosted instance can return
+
+| Status | Reason | Meaning | Client action |
+| ------ | ------ | ------- | ------------- |
+| `401` | — | No token, or a forged one. Unchanged from desktop. | Re-authenticate |
+| `403` | `not_tenant_member` | Genuine account, wrong instance. | Show "this instance belongs to another account". **Do not clear the token** — it is valid for the cloud and for their own instance. |
+| `402` | — | Subscription lapsed. Served by the fleet proxy; the container is stopped. | Update billing |
+| `429` | — | Daily runtime budget spent. Carries `Retry-After` with the seconds until reset (UTC midnight). | Back off until the reset, or upgrade to Always-On |
+
+`402` and `429` come from the fleet layer rather than the app — the container
+is not running when they are returned. A request cannot buy more runtime.
+
+#### Waking a sleeping instance
+
+On the Personal Cloud plan a tenant stops after 15 minutes idle. The next
+request is caught by the proxy and handed to a waker **with its method, path,
+headers and body intact**; the waker starts the container, waits for it, and
+forwards the original request. Cold path is about 6–8 seconds and the caller
+gets their real response — no splash page, and a webhook POST is never dropped.
+
+The fleet also wakes a sleeping tenant when its own cron is due, or when events
+are queued at the control plane. `SchedulerService` ticks in-process, so a
+stopped tenant would otherwise never fire a schedule.
+
 ### Token Storage & Access
 
 The JWT token is **not stored in the database**. It lives in three places depending on context:
@@ -9961,6 +10012,7 @@ Some endpoints may support WebSocket connections for real-time bidirectional com
 - [Remote Onboarding Routes](#remote-onboarding-routes)
 - [Remote Referral Routes](#remote-referral-routes)
 - [Remote Stream Routes](#remote-stream-routes)
+- [Remote Tenant Routes](#remote-tenant-routes)
 - [Remote User Routes](#remote-user-routes)
 - [Remote Waitlist Routes](#remote-waitlist-routes)
 - [Remote Webhook Routes](#remote-webhook-routes)
@@ -10547,6 +10599,134 @@ Base path: `https://api.agnt.gg/streams` (Internal: `StreamRoutes.js`)
 
 ---
 
+## Remote Tenant Routes
+
+Base path: `https://api.agnt.gg/tenants` (Internal: `TenantRoutes.js`)
+
+Hosted AGNT instances — who owns one, who may use it, and what the machine
+running it is supposed to do.
+
+**Two audiences, two credentials, no overlap.** Customer routes take a user's
+JWT. `/fleet/*` takes `FLEET_AGENT_SECRET`, which belongs to the machine that
+runs the containers and has no user account. A user token cannot claim
+provisioning work, and a fleet credential cannot act as a user.
+
+**The fleet host polls; this server never calls it.** The alternative is
+api.agnt.gg holding an ssh key to the box running every customer's instance,
+which would turn a compromise of the public API into root on the fleet.
+
+### List My Instances
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Every instance this caller owns or has been added to.
+- **Response**: `{ tenants: [{ slug, url, plan, status, role, isOwner, createdAt, suspendedAt, destroyAfter }] }`
+
+### Create an Instance
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**: `{ slug }` — 3–32 chars, lowercase letters, numbers, single hyphens
+- **Response `202`**: `{ slug, status: "provisioning", url, message }`
+- **Description**: Claims the slug and queues the work. Provisioning is
+  asynchronous (about 13 seconds) because the fleet host performs it, so this
+  returns `provisioning` rather than a ready instance.
+
+| Status | Reason | Meaning |
+| ------ | ------ | ------- |
+| `400` | `invalid_slug` | Fails the naming rules |
+| `403` | `plan_required` | Free plan — a cloud plan is required |
+| `409` | `already_provisioned` | One instance per subscription |
+| `409` | `slug_taken` | Someone else claimed that name |
+
+### Get Instance Detail
+
+**GET** `/:slug`
+
+- **Authentication**: Required (must be a member)
+- **Response**: `{ slug, url, plan, planName, status, role, isOwner, seats: { used, total }, members: [...], createdAt, suspendedAt, destroyAfter }`
+- **`404` `not_a_member`**: deliberately not `403` — a non-member is not told the instance exists.
+
+### Delete an Instance
+
+**DELETE** `/:slug`
+
+- **Authentication**: Required (**owner only**, else `403 not_owner`)
+- **Response**: `{ slug, status: "destroying" }`
+- **Description**: Marks it destroying and queues the work. The row survives
+  until the fleet host confirms — an instance that vanished from this table
+  while its data still existed on disk would be invisible to every future
+  reconcile.
+
+### Add a Member
+
+**POST** `/:slug/members`
+
+- **Authentication**: Required (owner or admin, else `403 not_admin`)
+- **Body**: `{ userId, role? }` — `role` is `member` (default) or `admin`
+- **Response `201`**: `{ slug, userId, role, alreadyMember }`
+- **`409` `seat_limit_reached`**: returns `{ seats: { used, total } }`. Refused,
+  never auto-charged — adding a seat is money leaving someone's account.
+
+The seat limit is enforced by the write itself (`INSERT ... SELECT ... WHERE
+(SELECT COUNT(*)) < ?`), not by a count read beforehand. Two people accepting
+the last seat at the same instant would both pass a prior check.
+
+### Remove a Member
+
+**DELETE** `/:slug/members/:userId`
+
+- **Authentication**: Required (owner or admin — or the member removing themselves)
+- **`409` `cannot_remove_owner`**: that is a transfer or a destroy. Allowing it
+  here would leave an instance nobody can administer that billing still points at.
+
+### Fleet: Read Desired State
+
+**GET** `/fleet/state`
+
+- **Authentication**: `FLEET_AGENT_SECRET` (constant-time compare; `503` if the secret is unset — fails closed)
+- **Response**: `{ tenants: [{ slug, plan, status, memberIds, serving, dailyBudgetMinutes, destroyAfter, pendingWork }], generatedAt }`
+
+**Desired state, not commands.** The fleet compares this against what is
+actually running and closes the gap, so a missed poll costs nothing — the next
+one corrects everything.
+
+| Field | Meaning |
+| ----- | ------- |
+| `plan` | Current plan. The fleet used to write this once at create and never re-read it, so a downgrade kept unlimited runtime at the cheaper price forever. |
+| `serving` | `false` when suspended. Re-enforced every poll, not once — a suspend job that failed used to leave an unpaid instance serving indefinitely. |
+| `dailyBudgetMinutes` | Runtime ceiling per UTC day. `0` = unlimited. Derived here so the pricing rule lives with the plan definition. |
+| `memberIds` | The env-list floor a container boots with, used only when this server is unreachable. |
+| `pendingWork` | An inbound event is queued here. A sleeping tenant polls never, so the fleet wakes it to collect. |
+
+### Fleet: Claim a Job
+
+**POST** `/fleet/claim`
+
+- **Authentication**: `FLEET_AGENT_SECRET`
+- **Response `200`**: `{ id, slug, action, payload, attempts }` — `action` is `provision`, `suspend`, `resume`, `destroy` or `sync-members`
+- **Response `204`**: empty queue. Not `404` and not an empty `200`: "no content" is exactly what happened, and it keeps the poll loop from confusing an idle queue with an error.
+
+The claim is a conditional `UPDATE` decided by `this.changes`, never a `SELECT`
+followed by an `UPDATE` — two fleet hosts polling at the same instant would
+both pass a prior read and both run the same `tenant create`.
+
+### Fleet: Complete a Job
+
+**POST** `/fleet/complete`
+
+- **Authentication**: `FLEET_AGENT_SECRET`
+- **Body**: `{ id, ok, error?, host?, port? }`
+- **`409` `claim_lost`**: the lease lapsed and another node took over. Accepting
+  it anyway would let a slow node overwrite a fresher result.
+
+The job's outcome IS the tenant's status — written here rather than by the
+fleet host, so the fleet never writes to this database directly.
+
+---
+
 ## Remote User Routes
 
 Base path: `https://api.agnt.gg/users` (Internal: `UserRoutes.js`)
@@ -10556,6 +10736,39 @@ Base path: `https://api.agnt.gg/users` (Internal: `UserRoutes.js`)
 **GET** `/health`
 
 - **Authentication**: None
+
+### Auth Status
+
+**GET** `/auth/status?tenant=<slug>`
+
+- **Authentication**: Bearer token (answers `isAuthenticated: false` rather than `401` when absent or invalid)
+- **Response**: `{ isAuthenticated, user: { id, userId, email, name, authMethod, googleConnected }, tenant? }`
+
+**This is the endpoint every hosted instance calls for every token it sees.** A
+tenant holds a private `JWT_SECRET` and cannot verify a cloud token locally, so
+it asks here.
+
+With `?tenant=<slug>` the response gains a `tenant` block:
+
+```json
+{
+  "slug": "acme",
+  "known": true,
+  "isMember": true,
+  "role": "owner",
+  "status": "active",
+  "serving": true
+}
+```
+
+| Field | Meaning |
+| ----- | ------- |
+| `known` | `false` when this server has no record of the slug. The instance treats that as **no answer** and falls back to its env list — answering `isMember: false` to an unknown slug would lock an owner out of their own machine. |
+| `isMember` | Whether this user may use that instance. "Is this token genuine" is true for every account ever issued; this is the question that actually matters. |
+| `serving` | Property of the TENANT, not the person. A suspended instance reports `false` even to its owner. |
+
+**Omitting `?tenant` returns exactly what it always did** — which is what every
+desktop install and the web app send.
 
 ### Register
 
@@ -10617,24 +10830,130 @@ Base path: `https://api.agnt.gg/waitlist` (Internal: `WaitlistRoutes.js`)
 
 Base path: `https://api.agnt.gg/webhooks` (Internal: `WebhookRoutes.js`)
 
+**Auth on these routes is staged, not absent by design.** Deployed clients send
+no `Authorization` header and there is no auto-updater, so requiring a token
+outright would break every install in the field. The controller already scopes
+results by owner when a token IS present (`filterWorkflowIdsForUser` /
+`filterTriggerIdsForUser`); the gate makes that scoping mandatory once adoption
+telemetry allows. `/missed` and `/replay` are new, so they are hard-guarded
+from day one.
+
+### Health Check
+
+**GET** `/health`
+
+- **Authentication**: None (deliberately public, no data)
+
 ### Register Webhook
 
 **POST** `/register`
 
-- **Authentication**: None (Internal Service Call, rate limited)
+- **Authentication**: Bearer token (staged — see above), rate limited
+- **Body**: `{ workflowId, method?, authType?, authToken?, username?, password?, responseMode? }`
+- **Description**: The body carries the webhook's own credentials, so this was
+  a two-way exposure before the gate: unauthenticated callers could register
+  against any workflow id, or read one back.
+
+### Unregister Webhook
+
+**POST** `/unregister`
+
+- **Authentication**: Bearer token (staged), rate limited
+- **Body**: `{ workflowId }`
 
 ### Poll Webhooks
 
-**GET** `/poll`
+**GET** `/poll` · **POST** `/poll`
 
-- **Authentication**: None (Internal Service Call, rate limited)
+- **Authentication**: Bearer token (staged), rate limited
+- **Query/Body**: `workflowIds` — required; scoped to the caller when a token is present
+- **Description**: Returns `pending` triggers and **atomically claims them** in
+  the same call, so two polls cannot pick up the same trigger. Claimed rows go
+  to `processing`; anything stuck there for over 5 minutes is released back to
+  `pending` by the cleanup sweep, because a poll that claimed rows and then died
+  would otherwise lose them while they looked delivered.
+
+### Confirm Processed
+
+**POST** `/confirm-processed`
+
+- **Authentication**: Bearer token (staged), rate limited
+- **Body**: `{ triggerIds }`
+- **Description**: Marks triggers `processed`. Kept afterwards — the row is the
+  proof the webhook fired.
+
+### Release Triggers
+
+**POST** `/release`
+
+- **Authentication**: Bearer token (staged), rate limited
+- **Body**: `{ triggerIds }`
+- **Description**: Hands claimed triggers back to `pending` — the explicit path
+  for a client that claimed work it cannot complete.
+
+### Webhook Status
+
+**GET** `/status`
+
+- **Authentication**: Bearer token (staged), rate limited
 
 ### Webhook Handler
 
 **ALL** `/:workflowId`
 
 - **Authentication**: None
-- **Description**: Catch-all for incoming webhooks
+- **Description**: Catch-all for incoming webhooks. This is the endpoint third
+  parties POST to (Stripe, GitHub, Zapier) — unauthenticated by design, with
+  per-webhook credentials checked inside the handler against the registration.
+
+### Missed Events
+
+**GET** `/missed`
+
+- **Authentication**: Required
+- **Response**: `{ success, missed, oldest, newest, replayable }`
+
+What arrived while this instance could not collect it. A hosted instance is
+stopped when asleep, over its daily runtime budget, or suspended for
+non-payment; events that arrive in those windows are queued here.
+
+The workflow list comes from the caller's **registrations**, not from the
+request — a client that under-reported its own workflows would be told it
+missed nothing.
+
+### Replay Missed Events
+
+**POST** `/replay`
+
+- **Authentication**: Required
+- **Body**: `{ limit? }` — default 500, hard cap 1000
+- **Response**: `{ success, replayed, remaining }`
+
+Puts missed events back in the queue, oldest first so a replayed batch arrives
+in its original order. Repeat until `remaining` is `0`.
+
+**Deliberate, never automatic.** Firing three weeks of queued payment
+notifications into live automation the moment a suspended instance returns is
+its own kind of damage — duplicate fulfilment, actions on state that has moved
+on, and no way for the customer to tell a replay from a fresh event.
+
+#### Trigger retention
+
+| State | Behaviour |
+| ----- | --------- |
+| `pending` | Delivered on the next poll. After `TRIGGER_RETENTION_HOURS` (default 168 = 7 days) it becomes `expired`. |
+| `expired` | **Kept, not deleted.** Not deliverable — the poll selects only `pending` — but visible via `/missed` and recoverable via `/replay`. |
+| `processed` | **Kept.** It is the proof the webhook fired. |
+
+**Nothing is deleted.** A trigger row is the only record that an event ever
+reached us: the sender was given a `200` and will not send it again, so a
+deleted row cannot be reconstructed. `TRIGGER_EXPIRED_KEEP_DAYS` and
+`TRIGGER_DELIVERED_KEEP_HOURS` both default to `0` (never).
+
+The expiry sweep keys on `updated_at`, not `created_at` — a replayed trigger
+has an old `created_at` by definition, and keying on that would re-expire it on
+the next sweep. `created_at` is left untouched because it is the true arrival
+time.
 
 ---
 
