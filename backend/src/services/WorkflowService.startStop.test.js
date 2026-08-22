@@ -136,6 +136,72 @@ describe('POST /workflows/:id/start', () => {
     expect(res.body.details).toBe(diagnosis);
   });
 
+  it('answers 409 — not 200 — when the workflow is already running', async () => {
+    // ProcessManager REFUSES by resolving with an error-shaped payload rather
+    // than throwing, so the throw path fixed above never sees it and res.json
+    // sent it as 200. Found by Copilot on this PR.
+    activateWorkflow.mockResolvedValue({
+      error: 'Workflow is already queued or running',
+      code: 'ALREADY_ACTIVE',
+      workflowId: 'wf-1',
+    });
+
+    const res = makeRes();
+    await WorkflowService.activateWorkflow(req, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.details).toBe('Workflow is already queued or running');
+    expect(res.body.code).toBe('ALREADY_ACTIVE');
+  });
+
+  it('answers 500 when the enqueue itself failed', async () => {
+    activateWorkflow.mockResolvedValue({
+      error: 'Failed to enqueue workflow',
+      code: 'ENQUEUE_FAILED',
+      workflowId: 'wf-1',
+    });
+
+    const res = makeRes();
+    await WorkflowService.activateWorkflow(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body.details).toBe('Failed to enqueue workflow');
+  });
+
+  it('discriminates on the code, never on the message text', async () => {
+    // Reword the sentence and keep the code: the status must not move. The
+    // previous change removed a `error.message.includes('not ready')` check for
+    // exactly this reason — do not reintroduce the pattern one layer up.
+    activateWorkflow.mockResolvedValue({
+      error: 'this workflow is already up and running, friend',
+      code: 'ALREADY_ACTIVE',
+      workflowId: 'wf-1',
+    });
+
+    const res = makeRes();
+    await WorkflowService.activateWorkflow(req, res);
+
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('falls back to 500 for an error-shaped result carrying no code', async () => {
+    activateWorkflow.mockResolvedValue({ error: 'something older, with no code' });
+
+    const res = makeRes();
+    await WorkflowService.activateWorkflow(req, res);
+
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('does not mistake a successful result for a refusal', async () => {
+    activateWorkflow.mockResolvedValue({ message: 'Workflow queued for execution', workflowId: 'wf-1' });
+
+    const res = makeRes();
+    await WorkflowService.activateWorkflow(req, res);
+
+    expect(res.statusCode).toBe(200);
+  });
+
   it('still answers 404 for a workflow that does not exist, without touching the bridge', async () => {
     findOne.mockResolvedValue(null);
 

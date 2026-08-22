@@ -388,6 +388,23 @@ class WorkflowService {
         return res.status(404).json({ error: 'Workflow not found' });
       }
       const result = await WorkflowProcessBridge.activateWorkflow(JSON.parse(workflow.workflow_data), req.user.userId);
+
+      // ProcessManager reports two refusals by RESOLVING with an error-shaped
+      // payload rather than throwing: the workflow is already active, or the
+      // enqueue failed. Passing that to res.json sends 200, which is the same
+      // lie this change exists to remove — making it throw was only half of it.
+      if (result && result.error) {
+        // 409 for "already running": the request could not be carried out in the
+        // current state, but nothing is broken. Anything else is a real failure.
+        const status = result.code === 'ALREADY_ACTIVE' ? 409 : 500;
+        return res.status(status).json({
+          error: 'Failed to start workflow',
+          code: result.code,
+          details: result.error,
+          workflowId: result.workflowId,
+        });
+      }
+
       res.json(result);
     } catch (error) {
       console.error(`Error starting workflow ${req.params.id}:`, error);
