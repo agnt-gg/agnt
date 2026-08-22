@@ -3,9 +3,10 @@ import { validateWorkflowShape, assertWorkflowShape } from './validateWorkflowSh
 
 /**
  * The engine reads one workflow shape. Everything else that writes a workflow
- * invents its own, and nothing checked — so the mismatch surfaced at
- * activation as `TypeError: Cannot read properties of undefined (reading
- * 'toLowerCase')` and reached the caller as an unqualified 'error'.
+ * invents its own, and nothing checked — so the mismatch surfaced in
+ * WorkflowEngine#_initializeNodeNameMapping as `TypeError: Cannot read
+ * properties of undefined (reading 'toLowerCase')` and reached the caller as
+ * an unqualified 'error'.
  *
  * The fixtures under "shapes found in a real database" are not invented. They
  * are the exact key sets of the 22 workflows on one developer machine, none of
@@ -155,6 +156,26 @@ describe('validateWorkflowShape — ids and edge endpoints', () => {
     expect(errors.some((e) => e.includes('unknown node id "ghost-node"'))).toBe(true);
   });
 
+  it('rejects edges when there are no nodes at all', () => {
+    // Edges with an empty node list is not a blank draft — a blank draft has no
+    // edges either. Letting it through left _findStartNodes with no start node
+    // and a fallback that indexes nodes[0] on an empty array.
+    const { valid, errors } = validateWorkflowShape({
+      nodes: [],
+      edges: [{ id: 'e1', start: { id: 'ghost-a' }, end: { id: 'ghost-b' } }],
+    });
+
+    expect(valid).toBe(false);
+    expect(errors.some((e) => e.includes('unknown node id "ghost-a"'))).toBe(true);
+    expect(errors.some((e) => e.includes('unknown node id "ghost-b"'))).toBe(true);
+  });
+
+  it('rejects edges when nodes is omitted entirely', () => {
+    expect(validateWorkflowShape({ edges: [{ id: 'e1', start: { id: 'a' }, end: { id: 'b' } }] }).valid).toBe(
+      false
+    );
+  });
+
   it('names the edge by id when it has one', () => {
     const wf = twoNodeWorkflow();
     wf.edges[0].end = { id: 'ghost', type: 'input' };
@@ -187,6 +208,16 @@ describe('validateWorkflowShape — malformed containers', () => {
   it('rejects a null entry in the nodes array', () => {
     const { errors } = validateWorkflowShape({ nodes: [null], edges: [] });
     expect(errors[0]).toContain('must be an object');
+  });
+
+  it('describes an unexpected value with the right article', () => {
+    // These strings reach the caller in `details`; "got a object" reads badly.
+    expect(validateWorkflowShape({ nodes: [{ id: 'n1', text: 't', type: {} }], edges: [] }).errors[0]).toContain(
+      'an object'
+    );
+    expect(validateWorkflowShape({ nodes: [{ id: 'n1', text: 't', type: 7 }], edges: [] }).errors[0]).toContain(
+      'a number'
+    );
   });
 
   it('does not also report per-node errors when nodes is not an array', () => {

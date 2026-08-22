@@ -24,8 +24,9 @@ class WorkflowEngine extends EventEmitter {
     // TypeError this used to raise several lines below.
     assertWorkflowShape(workflow, `Workflow ${workflowId}`);
 
-    // Both collections are iterated unconditionally (nodes at :516, edges at
-    // :527). A blank draft is savable, so normalise rather than demand them.
+    // Both collections are iterated unconditionally (nodes in
+    // _initializeNodeNameMapping, edges in _findStartNodes). A blank draft is
+    // savable, so normalise rather than demand them.
     this.workflow = {
       ...workflow,
       nodes: Array.isArray(workflow.nodes) ? workflow.nodes : [],

@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
  * fail with a diagnosis rather than:
  *
  *     TypeError: Cannot read properties of undefined (reading 'toLowerCase')
- *         at WorkflowEngine._initializeNodeNameMapping (WorkflowEngine.js:518)
+ *         at WorkflowEngine._initializeNodeNameMapping
  *
  * validateWorkflowShape.js is deliberately NOT mocked — the point is that the
  * engine really calls it.
@@ -88,7 +88,8 @@ describe('WorkflowEngine constructor — shape guard', () => {
   });
 
   it('normalises a blank draft instead of crashing on missing collections', () => {
-    // `nodes` is iterated at :516 and `edges` at :527, both unconditionally.
+    // `nodes` is iterated in _initializeNodeNameMapping and `edges` in
+    // _findStartNodes, both unconditionally.
     const engine = new WorkflowEngine({ id: 'wf-blank', name: 'draft' }, 'wf-blank', 'user-1');
 
     expect(engine.workflow.nodes).toEqual([]);

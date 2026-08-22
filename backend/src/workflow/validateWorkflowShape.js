@@ -27,20 +27,22 @@
  * ---------------------------------------------------------------------------
  * Every rule below corresponds to a property the engine DEREFERENCES. Nothing
  * here encodes taste. If the engine stops reading a field, the rule for it
- * should go too.
+ * should go too. Sites are named by method rather than line number, which
+ * drifts on the first edit above them:
  *
- *   node.text    WorkflowEngine.js:518  node.text.toLowerCase()   — display
- *                name, lowercased into the {{Node Name.output}} lookup table
- *   node.id      WorkflowEngine.js:197  new Map(nodes.map(n => [n.id, n]))
- *   node.type    WorkflowEngine.js:114  import(`../tools/library/triggers/
- *                                       ${node.type}.js`)
- *   edge.start.id WorkflowEngine.js:201,204  edgeMap keyed by start.id
- *   edge.end.id   WorkflowEngine.js:405,408,527  execution queue + start-node
- *                                       detection
+ *   node.text     WorkflowEngine#_initializeNodeNameMapping —
+ *                 node.text.toLowerCase(), the display name lowercased into
+ *                 the {{Node Name.output}} lookup table
+ *   node.id       WorkflowEngine#executeWorkflow — new Map(nodes.map(n => [n.id, n]))
+ *   node.type     WorkflowEngine#setupTriggers —
+ *                 import(`../tools/library/triggers/${node.type}.js`)
+ *   edge.start.id WorkflowEngine#executeWorkflow — edgeMap keyed by start.id
+ *   edge.end.id   WorkflowEngine#executeWorkflow (execution queue) and
+ *                 #_findStartNodes (nodes with no incoming edge)
  *
  * Absent `nodes` / `edges` are treated as empty rather than rejected: a blank
- * draft is a legitimate thing to save, and WorkflowImportService.js:39-40
- * already coerces both the same way. Contents, not presence, are what break.
+ * draft is a legitimate thing to save, and WorkflowImportService already
+ * coerces both the same way. Contents, not presence, are what break.
  *
  * @module validateWorkflowShape
  */
@@ -59,7 +61,8 @@ function describe(value) {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'an array';
   if (typeof value === 'string') return value.trim() === '' ? 'an empty string' : `"${value}"`;
-  return `a ${typeof value}`;
+  const type = typeof value;
+  return `${/^[aeiou]/.test(type) ? 'an' : 'a'} ${type}`;
 }
 
 /** Label a node in an error message: prefer its id, fall back to position. */
@@ -162,9 +165,11 @@ export function validateWorkflowShape(workflow) {
         continue;
       }
 
-      // Only meaningful once we know every declared id — an edge pointing at a
-      // node that was never declared silently drops that branch of execution.
-      if (nodeList.length && !declaredIds.has(endpoint.id)) {
+      // An edge pointing at a node that was never declared silently drops that
+      // branch of execution. Checked even when `nodes` is empty: edges without
+      // any nodes at all is not a blank draft, it is a broken workflow — a
+      // blank draft has no edges either.
+      if (!declaredIds.has(endpoint.id)) {
         errors.push(`${label} "${end}" references unknown node id "${endpoint.id}".`);
       }
     }
