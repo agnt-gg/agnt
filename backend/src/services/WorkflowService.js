@@ -300,8 +300,20 @@ class WorkflowService {
   }
   async deleteWorkflow(req, res) {
     try {
-      // Deactivate workflow (this also unregisters webhook)
-      await WorkflowProcessBridge.deactivateWorkflow(req.params.id, req.user.userId);
+      // Deactivate workflow (this also unregisters webhook).
+      //
+      // Deliberately isolated: deactivateWorkflow now throws where it used to
+      // swallow, and a delete must not start failing because the workflow
+      // process is unreachable — the user would be unable to remove a workflow
+      // until the process came back. The row goes either way, exactly as before;
+      // what changes is that the reason is now logged instead of discarded.
+      try {
+        await WorkflowProcessBridge.deactivateWorkflow(req.params.id, req.user.userId);
+      } catch (deactivateError) {
+        console.warn(
+          `Deleting workflow ${req.params.id} without confirming its triggers stopped: ${deactivateError.message}`
+        );
+      }
 
       // Delete webhook from database, scoped to the owner — matching the
       // WorkflowModel.delete call immediately below, which was already scoped.
@@ -361,6 +373,14 @@ class WorkflowService {
       res.status(500).json({ error: 'Error retrieving workflow status', details: error.message });
     }
   }
+  /**
+   * POST /workflows/:id/start
+   *
+   * Answers 2xx only when the workflow's triggers were actually armed. The
+   * bridge used to swallow an IPC failure into `{ error: message }`, which
+   * `res.json` then sent as 200 — so every caller's `response.ok` check passed
+   * and the UI reported a start that never happened.
+   */
   async activateWorkflow(req, res) {
     try {
       const workflow = await WorkflowModel.findOne(req.params.id, req.user.userId);
@@ -370,16 +390,40 @@ class WorkflowService {
       const result = await WorkflowProcessBridge.activateWorkflow(JSON.parse(workflow.workflow_data), req.user.userId);
       res.json(result);
     } catch (error) {
-      console.error('Error starting workflow:', error);
+      console.error(`Error starting workflow ${req.params.id}:`, error);
+
+      if (isWorkflowProcessUnavailable(error)) {
+        return res.status(503).json({
+          error: 'Failed to start workflow',
+          reason: error.reason,
+          details: `Workflow process is unreachable: ${error.message}`,
+        });
+      }
+
       res.status(500).json({ error: 'Failed to start workflow', details: error.message });
     }
   }
+
+  /**
+   * POST /workflows/:id/stop
+   *
+   * Same contract as start: a stop that did not happen must not answer 200.
+   */
   async deactivateWorkflow(req, res) {
     try {
       const result = await WorkflowProcessBridge.deactivateWorkflow(req.params.id, req.user.userId);
       res.json(result);
     } catch (error) {
-      console.error('Error stopping workflow:', error);
+      console.error(`Error stopping workflow ${req.params.id}:`, error);
+
+      if (isWorkflowProcessUnavailable(error)) {
+        return res.status(503).json({
+          error: 'Failed to stop workflow',
+          reason: error.reason,
+          details: `Workflow process is unreachable: ${error.message}`,
+        });
+      }
+
       res.status(500).json({ error: 'Failed to stop workflow', details: error.message });
     }
   }
