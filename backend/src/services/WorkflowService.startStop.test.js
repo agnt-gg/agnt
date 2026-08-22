@@ -172,8 +172,13 @@ describe('POST /workflows/:id/start', () => {
     // Reword the sentence and keep the code: the status must not move. The
     // previous change removed a `error.message.includes('not ready')` check for
     // exactly this reason — do not reintroduce the pattern one layer up.
+    //
+    // The wording deliberately shares NO keyword with the original. An earlier
+    // version of this test used "...is already up and running", which still
+    // contained "already" — so a mutant that matched on the text passed it, and
+    // the test proved nothing. Mutation testing caught that.
     activateWorkflow.mockResolvedValue({
-      error: 'this workflow is already up and running, friend',
+      error: 'this workflow is up and running, friend',
       code: 'ALREADY_ACTIVE',
       workflowId: 'wf-1',
     });
@@ -182,6 +187,21 @@ describe('POST /workflows/:id/start', () => {
     await WorkflowService.activateWorkflow(req, res);
 
     expect(res.statusCode).toBe(409);
+  });
+
+  it('does not infer 409 from wording when the code says otherwise', async () => {
+    // The other half of the same guarantee: a message that reads like the
+    // already-running case must NOT be treated as one when the code disagrees.
+    activateWorkflow.mockResolvedValue({
+      error: 'the queue already rejected this workflow',
+      code: 'ENQUEUE_FAILED',
+      workflowId: 'wf-1',
+    });
+
+    const res = makeRes();
+    await WorkflowService.activateWorkflow(req, res);
+
+    expect(res.statusCode).toBe(500);
   });
 
   it('falls back to 500 for an error-shaped result carrying no code', async () => {
