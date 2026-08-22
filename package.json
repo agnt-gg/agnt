@@ -241,5 +241,8 @@
       "!backend/.env",
       "!backend/.env.*"
     ]
+  },
+  "overrides": {
+    "basic-ftp": "5.3.1"
   }
 }
