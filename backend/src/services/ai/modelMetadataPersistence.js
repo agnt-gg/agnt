@@ -98,6 +98,10 @@ export async function syncPublicModelCatalog({ timeoutMs = 10000 } = {}) {
       id: m.id,
       contextLength: m.context_length,
       pricing: m.pricing,
+      // Reasoning capability travels with the catalog row. This is the path
+      // that runs at boot with NO api key, so a model's effort control is
+      // available before the user has ever opened the picker.
+      reasoning: m.reasoning,
       // FromModels parses prompt/completion itself; the cached-read rate is
       // pre-converted here because catalogs report it per token.
       inputCacheReadCostPer1M:

@@ -860,6 +860,17 @@ const PROVIDER_CONFIGS = [
         input_cache_write_1h: raw.pricing?.input_cache_write_1h != null
           ? parseFloat(raw.pricing.input_cache_write_1h) : null,
       },
+      // OpenRouter publishes reasoning capability PER MODEL:
+      //   { mandatory, default_enabled, supported_efforts, default_effort }
+      // Carried through verbatim so registerDynamicPricingFromModels can turn
+      // it into a real effort control. Without this the only thing deciding
+      // whether a model gets a reasoning selector is a hand-maintained vendor
+      // prefix list, which is an allowlist that degrades SILENTLY: a model it
+      // does not recognise is reported as `reasoning: false` and pinned at
+      // whatever effort the vendor defaults to, with no way to turn it down.
+      // Measured 2026-08-23: 141 live models publish an effort list and the
+      // prefixes matched 81 of them.
+      reasoning: raw.reasoning,
     }),
     modelFilter: (m) => m.id && m.name,
     compat: {},
@@ -1727,6 +1738,43 @@ export function registerDynamicPricingFromModels(providerKey, models) {
     if (typeof model.reasoning === 'boolean') cap.reasoning = model.reasoning;
     if (typeof model.supportsVision === 'boolean') cap.supportsVision = model.supportsVision;
 
+    // A catalog may publish reasoning as an OBJECT rather than a boolean —
+    // OpenRouter sends { mandatory, default_enabled, supported_efforts,
+    // default_effort }. The boolean test above sees an object and drops it,
+    // which is how a model whose card says `mandatory: true` came to be
+    // reported as `reasoning: false` with no effort control.
+    //
+    // Only `supported_efforts` is load-bearing. 289 of 422 live models carry
+    // the object but only 141 carry an effort list; the rest are
+    // `{ mandatory: false }`, which says nothing about controllability. The
+    // absent case must stay UNKNOWN rather than become `reasoning: false` —
+    // Anthropic's models on OpenRouter publish no efforts because they are
+    // budget-controlled (`supports_max_tokens`), and they reason regardless.
+    if (model.reasoning && typeof model.reasoning === 'object') {
+      // `mandatory` is recorded on its own, NOT gated behind an effort list.
+      // It is the answer to a different question — "can thinking be turned
+      // off at all" — and it is meaningful for models that publish no efforts
+      // (gemini image models, x-ai/grok-build-0.1). Verified live against
+      // OpenRouter: sending effort 'none' to one of these returns
+      // HTTP 400 "Reasoning is mandatory for this endpoint and cannot be
+      // disabled."
+      if (typeof model.reasoning.mandatory === 'boolean') {
+        cap.reasoningMandatory = model.reasoning.mandatory;
+      }
+
+      const efforts = (Array.isArray(model.reasoning.supported_efforts) ? model.reasoning.supported_efforts : [])
+        .filter((e) => typeof e === 'string' && e.trim())
+        .map((e) => e.trim().toLowerCase());
+
+      if (efforts.length) {
+        cap.reasoning = true;
+        cap.reasoningEfforts = efforts;
+        if (typeof model.reasoning.default_effort === 'string' && model.reasoning.default_effort.trim()) {
+          cap.reasoningDefaultEffort = model.reasoning.default_effort.trim().toLowerCase();
+        }
+      }
+    }
+
     // Pricing — present for OpenRouter (per-token strings, post-parse) and for
     // providers like Chutes that pre-parse via their own modelTransform.
     const pricing = {};
@@ -2428,6 +2476,140 @@ export function getAllModelMetadata(providerKey) {
   return metadata;
 }
 
+/**
+ * Canonical weakest-to-strongest ordering for published effort names. The
+ * catalog lists them strongest-first and inconsistently (`["max","high","low"]`
+ * vs `["xhigh","medium","low"]`); a selector has to read one way every time.
+ * `none` is deliberately absent — it is not a grade, it is the off switch, and
+ * it is handled separately below.
+ */
+const PUBLISHED_EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+const PUBLISHED_EFFORT_LABELS = {
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Very High',
+  max: 'Max',
+};
+
+/**
+ * Build a reasoning control from what the PROVIDER published, for models no
+ * hand-written predicate recognises.
+ *
+ * Read the dynamic cache by EXACT key, never through getModelMetadata. That
+ * accessor exists to find a usable PRICE and will happily fall back to a
+ * family-prefix ancestor or a normalised name — correct for pricing, wrong
+ * here. Which efforts a model accepts is model-exact; inheriting a sibling's
+ * list would offer an option the endpoint rejects.
+ *
+ * @returns {Object|null} control, or null when nothing was published.
+ */
+/**
+ * The hand-written OpenRouter controls, matched by the vendor named in the
+ * slug. Authoritative for the families listed here — several of them are
+ * controlled by a token budget rather than an effort list, so the published
+ * catalog cannot describe them (see the note at the call site).
+ */
+function buildOpenRouterPrefixReasoningControl(modelId) {
+  if (isOpenRouterOpenAIReasoningModel(modelId)) {
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Max' },
+    ]);
+  }
+
+  if (isOpenRouterAnthropicReasoningModel(modelId) || isOpenRouterGeminiReasoningModel(modelId)) {
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ]);
+  }
+
+  if (isOpenRouterXaiReasoningModel(modelId)) {
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Max' },
+    ]);
+  }
+
+  return null;
+}
+
+/**
+ * Remove an "Off" option the provider will refuse.
+ *
+ * A hand-written control cannot know that a model mandates reasoning — that
+ * fact lives in the catalog and changes without a release. Measured live
+ * 2026-08-23: 45 models matched by the vendor-prefix predicates are marked
+ * `reasoning.mandatory: true`, and every one of them answers
+ *
+ *   HTTP 400 "Reasoning is mandatory for this endpoint and cannot be disabled."
+ *
+ * when sent `reasoning: { effort: 'none' }` — confirmed against
+ * google/gemini-2.5-pro (one of OUR recommended models), gemini-3.5-flash-lite
+ * and o4-mini-high. So picking "Off" on them was a guaranteed failed request.
+ *
+ * Fails safe: with no catalog entry (offline, cold cache) the control is
+ * returned untouched, which is exactly today's behaviour.
+ */
+function pruneUnsupportedOff(providerKey, modelId, control) {
+  if (!control) return control;
+  const published = dynamicPricingCache.get(`${providerKey}:${modelId}`);
+  if (published?.reasoningMandatory !== true) return control;
+
+  const options = (control.options || []).filter((o) => o.value !== 'off');
+  if (options.length === (control.options || []).length) return control;
+  return buildReasoningControl(control.kind, options, control.defaultValue);
+}
+
+function buildPublishedReasoningControl(providerKey, modelId) {
+  const published = dynamicPricingCache.get(`${providerKey}:${modelId}`);
+  const efforts = published?.reasoningEfforts;
+  if (!Array.isArray(efforts) || !efforts.length) return null;
+
+  const available = new Set(efforts);
+  const graded = PUBLISHED_EFFORT_ORDER.filter((e) => available.has(e));
+  // An off switch with nothing to grade is not an effort control. No live
+  // model looks like this today; the guard keeps a malformed row from
+  // rendering an empty selector.
+  if (!graded.length) return null;
+
+  const options = [{ value: 'default', label: 'Default' }];
+
+  // Offer "Off" only when the vendor lists `none` among the accepted efforts.
+  // Gating on `none` rather than on `mandatory: false` keeps the UI honest by
+  // construction: every option shown is one the endpoint documented, so we can
+  // never render a switch whose request comes back rejected. Models with
+  // `mandatory: true` never list it, which is exactly the desired outcome for
+  // e.g. stealth/ox-alpha — its thinking cannot be disabled, only turned down.
+  if (available.has('none')) options.push({ value: 'off', label: 'Off' });
+
+  for (const effort of graded) {
+    options.push({
+      value: effort,
+      // Existing hand-written lists label `xhigh` as "Max" because none of them
+      // also offers a distinct `max`. Keep that wording where it still reads
+      // unambiguously, and only demote it when both grades are present.
+      label: effort === 'xhigh' && !available.has('max') ? 'Max' : PUBLISHED_EFFORT_LABELS[effort],
+    });
+  }
+
+  return buildReasoningControl('effort', options);
+}
+
 export function getReasoningControl(providerKey, modelId) {
   const lowerProvider = String(providerKey || '').toLowerCase();
   const lowerModel = String(modelId || '').toLowerCase();
@@ -2595,39 +2777,33 @@ export function getReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'openrouter') {
-    if (isOpenRouterOpenAIReasoningModel(modelId)) {
-      return buildReasoningControl('effort', [
-        { value: 'default', label: 'Default' },
-        { value: 'off', label: 'Off' },
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High' },
-        { value: 'xhigh', label: 'Max' },
-      ]);
-    }
+    const predicateControl = buildOpenRouterPrefixReasoningControl(modelId);
 
-    if (isOpenRouterAnthropicReasoningModel(modelId) || isOpenRouterGeminiReasoningModel(modelId)) {
-      return buildReasoningControl('effort', [
-        { value: 'default', label: 'Default' },
-        { value: 'off', label: 'Off' },
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High' },
-      ]);
-    }
-
-    if (isOpenRouterXaiReasoningModel(modelId)) {
-      return buildReasoningControl('effort', [
-        { value: 'default', label: 'Default' },
-        { value: 'off', label: 'Off' },
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High' },
-        { value: 'xhigh', label: 'Max' },
-      ]);
-    }
-
-    return null;
+    // Nothing above recognised it — ask what OpenRouter itself published.
+    //
+    // Deliberately LAST, not first. The catalog is a strict addition here, it
+    // never overrides a shipped control, because the two disagree in both
+    // directions and each side is right about different models:
+    //
+    //   • 60 models publish an effort list that no prefix matches — including
+    //     anthropic/claude-opus-5, deepseek/deepseek-v4-*, z-ai/glm-5.3,
+    //     qwen/qwen3.8-max and stealth/ox-alpha. Those are the gap this
+    //     closes.
+    //   • 15 go the other way: claude-sonnet-4.5, claude-opus-4.5 and
+    //     x-ai/grok-4.20 publish NO efforts because OpenRouter controls them
+    //     with a token budget (`supports_max_tokens`), yet their hand-written
+    //     control works today. Letting the catalog win would delete it.
+    //
+    // So: predicates decide what they know, the catalog answers for the rest,
+    // and a vendor listing a new model no longer requires a code change.
+    //
+    // Whichever side answered, the vendor's `mandatory` flag gets the last
+    // word on whether "Off" may be offered at all.
+    return pruneUnsupportedOff(
+      lowerProvider,
+      modelId,
+      predicateControl || buildPublishedReasoningControl(lowerProvider, modelId),
+    );
   }
 
   if (lowerProvider === 'togetherai') {
