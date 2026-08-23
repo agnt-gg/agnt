@@ -2,10 +2,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fsp from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { scanCapabilities } from '../../plugins/lib/validate-core.js';
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..');
+// `fileURLToPath`, not `new URL(...).pathname`. On Windows the pathname of a
+// file URL is `/C:/Users/...` — a URL path, not a filesystem path — and the
+// leading slash makes `path.resolve` treat it as drive-relative, producing
+// `C:\C:\Users\...` and an ENOENT on all three reads below. Linux CI cannot
+// see this because there the two forms happen to coincide.
+//
+// This is the form server.js and every script in plugins/cli/ already uses;
+// sign-plugin.js carries a hand-rolled `.replace(/^\/([A-Za-z]:)/, '$1')` for
+// the same reason, which is the workaround this avoids needing.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const SKILL_MD = path.join(REPO_ROOT, 'backend/skills/agnt-plugin-builder/SKILL.md');
 const BUILD_SCRIPT = path.join(REPO_ROOT, 'backend/plugins/cli/build-plugin.js');
 const VALIDATE_CORE = path.join(REPO_ROOT, 'backend/plugins/lib/validate-core.js');
