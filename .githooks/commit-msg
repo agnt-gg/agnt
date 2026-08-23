@@ -1,0 +1,7 @@
+#!/bin/sh
+# Reject commit messages that would read as truncated. See .githooks/README.md.
+#
+# --show-toplevel, not a path relative to this file: with core.hooksPath the
+# hook is resolved against the working tree it is running in, so this fires
+# correctly from linked worktrees as well as the primary checkout.
+exec node "$(git rev-parse --show-toplevel)/.githooks/commit-msg-lint.mjs" "$1"
