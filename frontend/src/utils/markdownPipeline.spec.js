@@ -7,6 +7,41 @@ const HTML_DOC = `<!DOCTYPE html>
 <body><h1>Hi</h1></body>
 </html>`;
 
+describe('markdownPipeline — run-together sentence repair', () => {
+  it('separates a run-together sentence in prose', () => {
+    expect(renderMarkdown('Done.Next step is easy.', {})).toContain('Done. Next step');
+  });
+
+  it('leaves a DOCTYPE inside a fenced block byte-exact', () => {
+    // The regression: `<!DOCTYPE html>` came out as `<! DOCTYPE html>`, which
+    // both corrupted the displayed code and broke content-equality pairing
+    // between the block and the file it was read from.
+    const out = renderMarkdown('```html\n' + HTML_DOC + '\n```', {});
+    expect(out).toContain('&lt;!DOCTYPE html&gt;');
+    expect(out).not.toContain('&lt;! DOCTYPE');
+  });
+
+  it('leaves a ternary inside a fenced block alone', () => {
+    const out = renderMarkdown('```js\nconst v = flag?Alpha:beta;\n```', {});
+    expect(out).toContain('flag?Alpha:beta');
+  });
+
+  it('does not inject a space into a URL inside a fenced block', () => {
+    const out = renderMarkdown('```txt\nsee https://x.test/A/B\n```', {});
+    expect(out).toContain('https://x.test/A/B');
+  });
+
+  it('leaves math untouched', () => {
+    expect(renderMarkdown('$$f(x):Y \\to Z$$', {})).toContain('f(x):Y');
+  });
+
+  it('still repairs prose that sits next to a code block', () => {
+    const out = renderMarkdown('First.Second\n\n```html\n' + HTML_DOC + '\n```\n', {});
+    expect(out).toContain('First. Second');
+    expect(out).toContain('&lt;!DOCTYPE html&gt;');
+  });
+});
+
 describe('markdownPipeline — closed fences', () => {
   it('renders a closed block with its language class and no streaming marker', () => {
     const out = renderMarkdown('Here:\n\n```html\n<div>x</div>\n```\n', { streaming: true });

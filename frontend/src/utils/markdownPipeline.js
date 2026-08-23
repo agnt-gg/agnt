@@ -261,6 +261,23 @@ const restoreMath = (html) => {
   });
 };
 
+/**
+ * Repair run-together sentences ("Done.Next step" -> "Done. Next step"), which
+ * models emit often enough that the heuristic earns its place in prose.
+ *
+ * It must run AFTER fenced blocks and math have been swapped out for
+ * `<!--CBLKn-->` / `<!--Mn-->` markers. Applied to the raw message it rewrites
+ * the user's own code — `<!DOCTYPE html>` becomes `<! DOCTYPE html>`, and a
+ * ternary `a?B:c` becomes `a? B:c`. That is not just a display defect: a code
+ * block is paired with the file it was read from by comparing contents, so a
+ * single injected space silently breaks the pairing for essentially every real
+ * HTML document, and the preview falls back to srcdoc instead of the file.
+ *
+ * The markers are safe by construction: `<!--` is `<!` followed by `-`, which
+ * the pattern does not match.
+ */
+const separateRunTogetherSentences = (text) => text.replace(/([.!?:])([A-Z])/g, '$1 $2');
+
 // Wrapper to suppress showdown's noisy "maximum nesting of 10 spans" console.error
 // This warning fires during streaming when incomplete markdown creates recursive span patterns - harmless
 const safeMarkdownToHtml = (text, { streaming = false } = {}) => {
@@ -274,9 +291,11 @@ const safeMarkdownToHtml = (text, { streaming = false } = {}) => {
     const withoutBlocks = extractFencedBlocks(text);
     // 2. Protect math from showdown mangling
     const safe = protectMath(withoutBlocks);
-    // 3. Convert markdown → HTML
-    let html = restoreMath(markdownConverter.makeHtml(safe));
-    // 4. Restore code blocks as proper <pre><code> (or viz containers)
+    // 3. Repair run-together prose — only now that code and math are hidden
+    const spaced = separateRunTogetherSentences(safe);
+    // 4. Convert markdown → HTML
+    let html = restoreMath(markdownConverter.makeHtml(spaced));
+    // 5. Restore code blocks as proper <pre><code> (or viz containers)
     html = restoreFencedBlocks(html, streaming);
     return html;
   } catch (e) {

@@ -231,6 +231,10 @@
                 <span class="btn-icon">{{ isSharing ? '⏳' : '🚀' }}</span>
                 <span class="btn-text">{{ isSharing ? 'Sharing...' : 'Share' }}</span>
               </button>
+              <button v-else-if="previewSharePath" class="share-preview-btn" @click="openBundleShareModal(previewSharePath)" :disabled="isSharing">
+                <span class="btn-icon">{{ isSharing ? '⏳' : '🚀' }}</span>
+                <span class="btn-text">{{ isSharing ? 'Sharing...' : 'Share' }}</span>
+              </button>
               <button class="close-preview-btn" @click="closePreviewModal">✕</button>
             </div>
           </div>
@@ -277,17 +281,24 @@
             <button class="share-modal-close" @click="closeShareModal">&times;</button>
           </div>
 
-          <!-- Sharing State -->
-          <div v-if="isSharing" class="share-modal-loading">
+          <!-- Preflight / Sharing State -->
+          <div v-if="isPreparingShare || isSharing" class="share-modal-loading">
             <div class="share-spinner"></div>
-            <p>Sharing your creation...</p>
+            <p v-if="isPreparingShare">Inspecting every local asset...</p>
+            <p v-else-if="shareProgress?.phase === 'validating'">Validating the deployed bundle...</p>
+            <p v-else-if="shareManifest">Uploading {{ shareProgress?.current || 0 }} / {{ shareProgress?.total || shareManifest.totals.files }} files...</p>
+            <p v-else>Sharing your creation...</p>
+            <p v-if="shareProgress?.path" class="share-bundle-current">{{ shareProgress.path }}</p>
           </div>
 
           <!-- Error State -->
           <div v-else-if="shareError" class="share-modal-error">
             <div class="error-icon">❌</div>
             <p>{{ shareError }}</p>
-            <button class="share-retry-btn" @click="retryShare">Try Again</button>
+            <div class="share-error-actions">
+              <button v-if="canRetryShare" class="share-retry-btn" @click="retryShare">Try Again</button>
+              <button v-if="shareFallbackHTML" class="share-retry-btn" @click="shareFallbackCodeOnly">Publish the code only</button>
+            </div>
           </div>
 
           <!-- Success State -->
@@ -335,6 +346,17 @@
               <label for="shareTitle">Title</label>
               <input type="text" id="shareTitle" v-model="shareTitle" placeholder="My Creation" @keyup.enter="submitShare" />
             </div>
+            <div v-if="shareManifest" class="share-bundle-summary">
+              <strong>Complete creation bundle</strong>
+              <span>{{ shareManifest.totals.files }} files · {{ (shareManifest.totals.bytes / 1048576).toFixed(1) }} MB</span>
+              <label for="shareBundleRoot">Bundle root</label>
+              <div class="share-input">
+                <input id="shareBundleRoot" v-model="shareRootPath" placeholder="Workspace-relative directory" @keyup.enter="refreshShareManifest" />
+                <button class="share-copy-btn" @click="refreshShareManifest">Rescan</button>
+              </div>
+              <span>Entry: {{ shareManifest.entryPath }}</span>
+              <span v-if="shareManifest.excluded.length">{{ shareManifest.excluded.length }} unsafe/generated paths excluded</span>
+            </div>
             <div class="share-form-actions">
               <button class="share-cancel-btn" @click="closeShareModal">Cancel</button>
               <button class="share-submit-btn" @click="submitShare" :disabled="!shareTitle.trim()">
@@ -374,6 +396,8 @@ import {
   rewriteLocalFileURLsInHTML as sharedRewriteLocalFileURLsInHTML,
 } from '@/utils/localFileUrl.js';
 import { handleLocalFileLinkClick } from '@/utils/openLocalFile.js';
+import { localFileUrlToAbsolutePath, isPublishableEntry, resolveWorkspaceEntry, titleFromEntryPath } from '@/utils/workspacePath.js';
+import { prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
 
 // Lazy-loaded heavy library caches (loaded on first use)
 let _hljs = null;
@@ -679,7 +703,31 @@ export default {
     const shareLinkInput = ref(null);
     const shareEmbedInput = ref(null);
 
-    // AGNT Creations API URL
+    // Bundle-share state.
+    //
+    // Chat publishes two different KINDS of thing and the distinction decides
+    // which endpoint runs. A preview backed by a real file publishes its whole
+    // directory through the creation-bundle pipeline — the same one Artifacts
+    // uses — so sibling CSS, JS, images, fonts and model sidecars travel with
+    // it. A bare ```html block with no file behind it has no directory to
+    // gather, so it still posts the single HTML string.
+    //
+    // `shareManifest` being non-null is the discriminator: set means bundle,
+    // null with `pendingShareHTML` set means snippet.
+    const shareManifest = ref(null);
+    const shareProgress = ref(null);
+    const shareRootPath = ref('');
+    const shareEntryPath = ref(''); // workspace-relative entry, retained for rescan/retry
+    const shareFallbackHTML = ref(''); // code-block text, offered when preflight refuses the file
+    const resumableBundleId = ref(null);
+    const isPreparingShare = ref(false);
+
+    // Absolute path behind the fullscreen preview, when it is publishable.
+    // Empty for a remote iframe or a file outside the workspace, which is what
+    // hides the Share button in the fullscreen header.
+    const previewSharePath = ref('');
+
+    // AGNT Creations API URL (single-snippet path only)
     const CREATIONS_API_URL = 'https://agnt.gg/api/previews';
 
     // Computed embed code
@@ -930,13 +978,23 @@ export default {
     };
 
     // Open preview modal pointing at a URL (e.g. an LLM-generated <iframe src="...">
-    // for a local HTML file). Uses the same modal chrome as the HTML code preview
-    // but without the Share button (there's no HTML string to publish).
+    // for a local HTML file). Uses the same modal chrome as the HTML code preview.
+    // Share appears once the URL is confirmed to be a workspace HTML file, since
+    // that is the only case the bundle pipeline can publish.
     const openIframeFullscreen = (src) => {
       previewIframeSrc.value = src;
       previewHTML.value = '';
+      previewSharePath.value = '';
       showPreviewModal.value = true;
       document.body.style.overflow = 'hidden';
+
+      const absolutePath = localFileUrlToAbsolutePath(src);
+      if (!absolutePath) return;
+      resolveWorkspaceEntry(absolutePath).then((entryPath) => {
+        // Guard against a stale resolution: the user can close this modal or
+        // open a different preview before the workspace lookup returns.
+        if (entryPath && previewIframeSrc.value === src) previewSharePath.value = absolutePath;
+      });
     };
 
     // Close preview modal
@@ -944,6 +1002,7 @@ export default {
       showPreviewModal.value = false;
       previewHTML.value = '';
       previewIframeSrc.value = '';
+      previewSharePath.value = '';
       // Restore body scroll
       document.body.style.overflow = '';
     };
@@ -1371,13 +1430,21 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             leftGroup.appendChild(copyBtn);
             leftGroup.appendChild(codeBtn);
 
-            // Share button — opens the share modal (same as fullscreen header)
+            // Share button. When the block pairs with a file on disk, publish
+            // that file's whole directory — the preview above is rendering the
+            // FILE, so publishing the code string instead would silently ship a
+            // creation missing every sibling stylesheet, script and image the
+            // user just looked at. Only an unpaired block publishes as a string.
             const shareBtn = document.createElement('button');
             shareBtn.className = 'html-action-btn share-btn';
             shareBtn.innerHTML = '<span class="btn-icon">🚀</span><span class="btn-text">Share</span>';
             shareBtn.onclick = (e) => {
               e.stopPropagation();
-              openShareModal(htmlCode);
+              if (matchedFilePath) {
+                openBundleShareModal(matchedFilePath, htmlCode);
+              } else {
+                openShareModal(htmlCode);
+              }
             };
 
             // Right group: Share + Fullscreen
@@ -1400,9 +1467,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     // Wrap plain LLM-rendered iframes (pointing at URLs, e.g. local HTML files
-    // served via /api/local-file) with a Fullscreen button. Reuses the styling
-    // from the HTML code-block preview chrome, but without copy/code/share.
-    const addIframeFullscreenButtons = () => {
+    // served via /api/local-file) with action buttons. Reuses the styling from
+    // the HTML code-block preview chrome, minus copy/code — there is no source
+    // string here, only a URL.
+    //
+    // Share is added only when the URL resolves to an HTML file inside the
+    // workspace, because that is exactly the set the bundle pipeline can
+    // publish. A YouTube embed, a PDF, or a render under %APPDATA% gets
+    // Fullscreen alone rather than a button that could only ever fail.
+    const addIframeActionButtons = () => {
       nextTick(() => {
         if (!messageRef.value) return;
 
@@ -1435,6 +1508,26 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             e.stopPropagation();
             openIframeFullscreen(src);
           };
+
+          // Built hidden and revealed once the workspace lookup confirms the
+          // file. Adding it after the fact would make it appear late and shift
+          // the toolbar under the cursor; starting hidden keeps the layout
+          // stable and never shows an affordance we cannot honour.
+          const absolutePath = localFileUrlToAbsolutePath(src);
+          if (absolutePath && isPublishableEntry(absolutePath)) {
+            const shareBtn = document.createElement('button');
+            shareBtn.className = 'html-action-btn share-btn';
+            shareBtn.style.display = 'none';
+            shareBtn.innerHTML = '<span class="btn-icon">🚀</span><span class="btn-text">Share</span>';
+            shareBtn.onclick = (e) => {
+              e.stopPropagation();
+              openBundleShareModal(absolutePath);
+            };
+            rightGroup.appendChild(shareBtn);
+            resolveWorkspaceEntry(absolutePath).then((entryPath) => {
+              if (entryPath && shareBtn.isConnected) shareBtn.style.display = '';
+            });
+          }
 
           rightGroup.appendChild(fsBtn);
           actions.appendChild(rightGroup);
@@ -2173,7 +2266,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             addVizActionButtons();
             addHTMLCodeButtons();
             addImageActionButtons();
-            addIframeFullscreenButtons();
+            addIframeActionButtons();
           }
         }
       });
@@ -2238,8 +2331,12 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         return sanitizeHTML(text);
       }
 
-      let processedContent = text.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
-      let renderedHtml = safeMarkdownToHtml(processedContent);
+      // Run-together sentence repair moved into markdownPipeline, where fenced
+      // code and math are already hidden behind markers. Here it ran over the
+      // raw message and rewrote the model's own code — `<!DOCTYPE html>` came
+      // out as `<! DOCTYPE html>`. (The chained second replace was an identity
+      // no-op: it substituted `$1$2$3` for exactly what it matched.)
+      let renderedHtml = safeMarkdownToHtml(text);
 
       // Resolve image references AFTER markdown conversion.
       // In-memory cache is fastest, but it's empty after a page reload;
@@ -2735,15 +2832,84 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     // SHARE TO AGNT CREATIONS FUNCTIONS
     // ============================================
 
-    // Open share modal with HTML content
-    const openShareModal = (html) => {
-      pendingShareHTML.value = html;
-      shareTitle.value = 'My Creation';
+    // Reset everything both share kinds share, so a second Share never renders
+    // the previous one's manifest, progress bar or result.
+    const resetShareState = () => {
       shareError.value = null;
       shareResult.value = null;
+      shareManifest.value = null;
+      shareProgress.value = null;
+      shareRootPath.value = '';
+      shareEntryPath.value = '';
+      shareFallbackHTML.value = '';
+      resumableBundleId.value = null;
+      isSharing.value = false;
+      isPreparingShare.value = false;
       copiedLink.value = false;
       copiedEmbed.value = false;
+    };
+
+    // Open share modal for a standalone HTML string (a ```html block with no
+    // file behind it). Publishes as a single document — correct here, because
+    // there is no directory of assets to gather.
+    const openShareModal = (html) => {
+      resetShareState();
+      pendingShareHTML.value = html;
+      shareTitle.value = 'My Creation';
       showShareModal.value = true;
+    };
+
+    // Open share modal for a preview backed by a real file, publishing the
+    // whole directory. `fallbackHTML` is the code-block text when one exists:
+    // if the file turns out to be unpublishable (outside the workspace, or
+    // rejected by preflight) the user is offered the single-document publish
+    // instead of a dead end — but never silently, because that would ship a
+    // creation missing every asset the preview showed.
+    const openBundleShareModal = async (absolutePath, fallbackHTML = '') => {
+      resetShareState();
+      pendingShareHTML.value = '';
+      shareFallbackHTML.value = fallbackHTML;
+      shareTitle.value = titleFromEntryPath(absolutePath);
+      showShareModal.value = true;
+      isPreparingShare.value = true;
+      try {
+        const entryPath = await resolveWorkspaceEntry(absolutePath);
+        if (!entryPath) throw new Error('This file lives outside your workspace folder, so its assets cannot be gathered.');
+        shareEntryPath.value = entryPath;
+        shareManifest.value = await prepareArtifactBundle(entryPath, store.state.userAuth?.token);
+        shareRootPath.value = shareManifest.value.rootPath;
+      } catch (error) {
+        shareError.value = error.message || 'Could not inspect this creation.';
+      } finally {
+        isPreparingShare.value = false;
+      }
+    };
+
+    // Re-run preflight against a different bundle root. Lets the user publish a
+    // parent directory when the entry's own folder is not the whole creation.
+    const refreshShareManifest = async () => {
+      if (!shareEntryPath.value) return;
+      isPreparingShare.value = true;
+      shareError.value = null;
+      try {
+        shareManifest.value = await prepareArtifactBundle(shareEntryPath.value, store.state.userAuth?.token, shareRootPath.value.trim());
+        shareRootPath.value = shareManifest.value.rootPath;
+        // A new root means a new file set; the half-uploaded bundle keyed to the
+        // old one can no longer be resumed into.
+        resumableBundleId.value = null;
+      } catch (error) {
+        shareError.value = error.message || 'Could not inspect this bundle root.';
+      } finally {
+        isPreparingShare.value = false;
+      }
+    };
+
+    // Abandon the bundle and publish just the code block. Only reachable from
+    // the error state, and only when a code block was the source.
+    const shareFallbackCodeOnly = () => {
+      const html = shareFallbackHTML.value;
+      if (!html) return;
+      openShareModal(html);
     };
 
     // Close share modal
@@ -2751,13 +2917,41 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       showShareModal.value = false;
       pendingShareHTML.value = '';
       shareTitle.value = '';
+      resetShareState();
+    };
+
+    // Upload every file in the bundle, then finalize. Resumes into a bundle
+    // already staged by a failed attempt rather than re-uploading it.
+    const submitBundleShare = async () => {
+      if (!shareManifest.value || !shareTitle.value.trim()) return;
+      isSharing.value = true;
       shareError.value = null;
-      shareResult.value = null;
-      isSharing.value = false;
+      shareProgress.value = null;
+      try {
+        shareResult.value = await publishArtifactBundle({
+          title: shareTitle.value.trim(),
+          manifest: shareManifest.value,
+          token: store.state.userAuth?.token,
+          bundleId: resumableBundleId.value,
+          onBundle: (id) => {
+            resumableBundleId.value = id;
+          },
+          onProgress: (progress) => {
+            shareProgress.value = progress;
+          },
+        });
+      } catch (error) {
+        console.error('[Share] Bundle publish failed:', error);
+        shareError.value = error.message || 'Failed to share. Please try again.';
+      } finally {
+        isSharing.value = false;
+      }
     };
 
     // Submit share to AGNT Creations API
     const submitShare = async () => {
+      // A manifest means a real directory was inspected; publish all of it.
+      if (shareManifest.value) return submitBundleShare();
       if (!pendingShareHTML.value || !shareTitle.value.trim()) return;
 
       isSharing.value = true;
@@ -2802,11 +2996,22 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       }
     };
 
-    // Retry share after error
+    // Retry the step that actually failed. A bundle that never got past
+    // preflight must re-inspect the directory, not re-POST an upload it never
+    // started — retrying the wrong step is how a "Try Again" button ends up
+    // failing forever on a transient error that has already cleared.
     const retryShare = () => {
       shareError.value = null;
-      submitShare();
+      if (shareManifest.value) return submitShare();
+      if (shareEntryPath.value) return refreshShareManifest();
+      if (pendingShareHTML.value) return submitShare();
+      return undefined;
     };
+
+    // Nothing is retryable when the entry never resolved to a workspace file
+    // and there is no code block to fall back to. The button is hidden rather
+    // than left to fail identically on every press.
+    const canRetryShare = computed(() => Boolean(shareManifest.value || shareEntryPath.value || pendingShareHTML.value));
 
     // Copy share link to clipboard
     const copyShareLink = async () => {
@@ -2920,6 +3125,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       closeShareModal,
       submitShare,
       retryShare,
+      // Bundle share (a preview backed by a real file publishes its directory)
+      openBundleShareModal,
+      refreshShareManifest,
+      shareFallbackCodeOnly,
+      shareFallbackHTML,
+      shareManifest,
+      shareProgress,
+      shareRootPath,
+      isPreparingShare,
+      canRetryShare,
+      previewSharePath,
       copyShareLink,
       copyEmbedCode,
       openInBrowser,
@@ -4523,6 +4739,50 @@ span.nodeLabel p {
 .share-retry-btn:hover {
   background: rgba(255, 107, 107, 0.2);
   border-color: var(--color-red);
+}
+
+/* Two recoveries can be offered at once: retry the bundle, or publish the code
+   block on its own. Wraps so neither is clipped in a narrow modal. */
+.share-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* Bundle preflight summary — what is about to be published, before it is. */
+.share-bundle-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  font-size: 0.82em;
+  color: var(--color-light-med-navy);
+}
+
+.share-bundle-summary strong {
+  color: var(--color-text);
+  font-size: 1.05em;
+}
+
+.share-bundle-summary label {
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* The file currently uploading. Fixed to one line: a deep asset path would
+   otherwise reflow the modal on every file and make the dialog jump. */
+.share-bundle-current {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8em;
+  color: var(--color-text-muted);
 }
 
 /* Share Modal Success State */
