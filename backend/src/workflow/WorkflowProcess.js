@@ -120,9 +120,16 @@ function setupIPCHandlers() {
     try {
       const { id, type, data } = message;
 
-      // Only log non-frequent IPC messages (skip FETCH_WORKFLOW_STATE spam)
+      // Only log non-frequent IPC messages (skip FETCH_WORKFLOW_STATE spam).
+      //
+      // `id` belongs to request/response traffic, where the parent is waiting
+      // for a reply keyed by it. One-way pushes (SESSION_TOKEN) carry no id and
+      // never will, so printing `(id: undefined)` for them advertised a defect
+      // that was not there and buried the one that was — the volume of these
+      // lines, which is a real signal because the parent only sends on change.
       if (type !== 'FETCH_WORKFLOW_STATE') {
-        console.log(`[Workflow Process]: Received IPC message: ${type} (id: ${id})`);
+        const idSuffix = id === undefined ? '' : ` (id: ${id})`;
+        console.log(`[Workflow Process]: Received IPC message: ${type}${idSuffix}`);
       }
 
       // ---------------------------------------------------------------------

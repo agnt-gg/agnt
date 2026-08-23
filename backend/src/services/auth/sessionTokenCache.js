@@ -66,9 +66,14 @@
  * hot path of every authenticated request — anything that reaches the network
  * belongs at the call site, not here. `subscribe()` is a synchronous callback
  * registry, not a transport: the bridge does the sending.
+ *
+ * `crypto` is the one import allowed, and only for a fingerprint used in log
+ * lines. It is pure CPU with no I/O surface, which is the property the guard
+ * test in sessionTokenCache.test.js actually cares about.
  */
+import { createHash } from 'crypto';
 
-/** @type {{token: string, userId: string, seenAt: number} | null} */
+/** @type {{token: string, userId: string, seenAt: number, expiresAt: number|null} | null} */
 let current = null;
 
 /** Set once a conflict is detected; disables the cache for the process. */
@@ -104,7 +109,109 @@ export function subscribe(listener) {
   return () => subscribers.delete(listener);
 }
 
+/**
+ * The `exp` claim in epoch ms, or null when there is no readable one.
+ *
+ * This DECODES; it does not verify — which is safe HERE and nowhere else. The
+ * only caller is rememberSessionToken, whose stated contract is that the caller
+ * has ALREADY verified the signature. Read `exp` off an unverified token and it
+ * becomes attacker-controlled: a forged far-future expiry would be a way to pin
+ * this slot to a credential of the attacker's choosing.
+ *
+ * @param {string} token
+ * @returns {number|null}
+ */
+function tokenExpiryMs(token) {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const json = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    const { exp } = JSON.parse(json);
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 : null;
+  } catch {
+    // Not a JWT, or not one we can read. Never throw — this runs inside the
+    // authenticated request path.
+    return null;
+  }
+}
+
+/**
+ * Should `incomingToken` displace the credential already held?
+ *
+ * @param {string} incomingToken
+ * @param {{token: string, expiresAt: number|null}} incumbent
+ * @returns {boolean}
+ */
+function supersedes(incomingToken, incumbent) {
+  // An incumbent that has already expired is worthless, so anything replaces
+  // it. Without this, a lifetime that legitimately SHORTENS (an issuer moving
+  // from 30-day to 7-day tokens) would pin the slot to a dead credential and
+  // the rule below would never let the live one in.
+  if (incumbent.expiresAt !== null && incumbent.expiresAt <= Date.now()) return true;
+
+  const incomingExpiry = tokenExpiryMs(incomingToken);
+
+  // Unreadable on either side: fall back to the previous newest-wins behaviour
+  // rather than refuse a credential we cannot reason about. Real JWTs always
+  // carry `exp`; this path exists for tests and for anything that is not a JWT.
+  if (incomingExpiry === null || incumbent.expiresAt === null) return true;
+
+  // Strictly later only. "Adopt on tie" is precisely the coin-flip that
+  // produces the churn this rule exists to stop.
+  return incomingExpiry > incumbent.expiresAt;
+}
+
+/** @param {number|null} ms */
+function iso(ms) {
+  return ms === null ? 'unknown' : new Date(ms).toISOString();
+}
+
+/**
+ * A short, stable, non-reversible label for a credential, so a log line can say
+ * WHICH token without ever saying what it is. The token itself is never logged.
+ */
+function fingerprint(token) {
+  return createHash('sha256').update(token).digest('hex').slice(0, 8);
+}
+
+/**
+ * Name a superseded credential once, not once per request.
+ *
+ * This is the diagnostic that identifies the second source: the fingerprint
+ * separates "one client whose token rotated" from "two clients each holding a
+ * different valid credential", and the expiries say which one is behind.
+ */
+const reportedSuperseded = new Set();
+
+function reportSupersededOnce(token, incumbent) {
+  const fp = fingerprint(token);
+  if (reportedSuperseded.has(fp)) return;
+  // Bounded on purpose: nothing reachable from a request path may grow without
+  // a limit.
+  if (reportedSuperseded.size >= 32) reportedSuperseded.clear();
+  reportedSuperseded.add(fp);
+
+  console.warn(
+    `[sessionTokenCache] ignoring a shorter-lived token for the same user ` +
+      `(offered ${fp} exp=${iso(tokenExpiryMs(token))}, keeping ` +
+      `${fingerprint(incumbent.token)} exp=${iso(incumbent.expiresAt)}). ` +
+      `Something is presenting a superseded credential.`
+  );
+}
+
 function notify(entry) {
+  // The line that makes this subsystem diagnosable from a log file alone.
+  //
+  // `subscribers` must be exactly 1 in the main process (the bridge) and 0 in
+  // the forked child. Any other number means the module graph is being
+  // evaluated more than once and every change is being sent N times — which is
+  // indistinguishable from token churn if you only count IPC messages.
+  // Fingerprint and expiry, never the token.
+  console.log(
+    `[sessionTokenCache] token changed: fp=${fingerprint(entry.token)} ` +
+      `exp=${iso(entry.expiresAt)} subscribers=${subscribers.size}`
+  );
+
   for (const listener of subscribers) {
     try {
       listener({ token: entry.token, userId: entry.userId });
@@ -139,14 +246,52 @@ export function rememberSessionToken(token, userId) {
     return;
   }
 
-  const isNew = !current || current.token !== token;
-  current = { token, userId, seenAt: Date.now() };
-  if (isNew) notify(current);
+  // The same credential as last time. Refresh the liveness stamp and stop —
+  // this is the overwhelmingly common path, so it stays one comparison with no
+  // parsing and no hashing.
+  if (current && current.token === token) {
+    current.seenAt = Date.now();
+    return;
+  }
+
+  // A DIFFERENT token for the SAME user. Newest-writer-wins reads as harmless
+  // and is not: when two clients each hold a valid credential (a second window,
+  // a paired device, a stale storage copy), every request from each one flips
+  // the slot back, fires the change, and re-pushes across the fork — forever.
+  // Measured on a live install: 623 changes in 11 unattended hours, one every
+  // ~65s, matching two 60s UI pollers.
+  //
+  // The noise is the least of it. Background callers have no request in scope,
+  // so they use whichever credential landed last. That is nondeterministic
+  // today, and becomes an intermittent outage the moment the loser expires
+  // while still winning half the races.
+  //
+  // So: never move to a credential that dies sooner than the one already held.
+  // The slot becomes stable under alternation, and background work always holds
+  // the longest-lived proof of the user's session.
+  if (current && !supersedes(token, current)) {
+    reportSupersededOnce(token, current);
+    return;
+  }
+
+  current = { token, userId, seenAt: Date.now(), expiresAt: tokenExpiryMs(token) };
+  notify(current);
 }
 
 /** The remembered token, or null. Never throws. */
 export function getSessionToken() {
   if (poisoned || !current) return null;
+
+  // The token's OWN expiry, not merely how long since we last saw it. `seenAt`
+  // is refreshed by every authenticated request, so a token that expires while
+  // the user is actively clicking would otherwise be handed to background
+  // callers indefinitely — the MAX_AGE window below can only ever help once the
+  // user STOPS using the app, which is the opposite of when this bites.
+  if (current.expiresAt !== null && Date.now() >= current.expiresAt) {
+    current = null;
+    return null;
+  }
+
   if (Date.now() - current.seenAt > MAX_AGE_MS) {
     current = null;
     return null;
@@ -183,4 +328,5 @@ export function __resetSessionTokenCacheForTests() {
   current = null;
   poisoned = false;
   subscribers.clear();
+  reportedSuperseded.clear();
 }
