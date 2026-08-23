@@ -298,10 +298,19 @@ const SCAN_MAX_FILE_BYTES = 1024 * 1024; // skip pathological single files > 1 M
  * migration window absorbs them (trust system).
  */
 const CAPABILITY_DETECTORS = {
+  // `node:child_process` must be detected exactly like `child_process`. The
+  // prefixed specifier is the modern spelling of the SAME builtin, and the
+  // filesystem detectors below already accept both forms — so a plugin writing
+  // `import { execFile } from 'node:child_process'` disclosed nothing while the
+  // identical unprefixed import disclosed spawn-process.
+  //
+  // The two call-shape patterns did not cover it either: execFile/spawn/exec
+  // only match when the first argument is a quoted literal, which it is not
+  // when the binary comes from a variable or env var.
   'spawn-process': [
-    /\brequire\s*\(\s*['"]child_process['"]\s*\)/,
-    /\bfrom\s+['"]child_process['"]/,
-    /\bimport\s*\(\s*['"]child_process['"]\s*\)/,
+    /\brequire\s*\(\s*['"](?:child_process|node:child_process)['"]\s*\)/,
+    /\bfrom\s+['"](?:child_process|node:child_process)['"]/,
+    /\bimport\s*\(\s*['"](?:child_process|node:child_process)['"]\s*\)/,
     /\b(?:execSync|spawnSync|execFileSync)\s*\(/,
     /\b(?:spawn|exec|execFile|fork)\s*\(\s*['"`]/,
   ],
