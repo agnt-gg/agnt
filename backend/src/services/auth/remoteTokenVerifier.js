@@ -176,9 +176,42 @@ export async function verifyViaIssuer(token) {
       clearTimeout(timer);
     }
 
-    // Any non-2xx is an UNKNOWN, not a denial. The issuer being rate-limited or
-    // briefly broken must not be read as "this user is an impostor" — that is
-    // how a bad afternoon at the API becomes a mass logout.
+    // A DENIAL AND AN OUTAGE ARE DIFFERENT ANSWERS, AND ONLY ONE OF THEM IS A
+    // REASON TO KEEP GOING.
+    //
+    // 401/403 is the issuer explicitly disowning this credential. It is an
+    // authoritative negative — the most definite answer this function can ever
+    // receive — and routing it through the catch below would classify it as
+    // "unreachable", which has three consequences, all wrong:
+    //
+    //   1. STALE GRACE WOULD KEEP THE REFUSED TOKEN ALIVE for up to 30 more
+    //      minutes. The grace window exists to protect known-good members from
+    //      a network fault; applying it to a token the issuer just REFUSED
+    //      inverts its purpose and defeats the refusal entirely.
+    //   2. It would be counted as `remoteFail`, so a wave of legitimate
+    //      refusals would show up on the dashboard as "the issuer is down" —
+    //      a false alarm at exactly the moment an operator needs a true signal.
+    //   3. It would not be cached as a denial, so every subsequent request
+    //      would re-ask, turning a rejected client into a traffic amplifier.
+    //
+    // This matters most for the token-proof flip described at the top of this
+    // file. Once `.token-proof-enforce` is touched, a token without a valid
+    // proof claim starts getting 401 from the issuer — and a hosted tenant is
+    // precisely the install that is internet-facing and must stop honouring it
+    // immediately, not half an hour later.
+    //
+    // 429 and 5xx deliberately stay UNKNOWN: a rate-limited or briefly broken
+    // issuer must not be read as "this user is an impostor", which is how a bad
+    // afternoon at the API becomes a mass logout.
+    if (response.status === 401 || response.status === 403) {
+      stats.remoteDeny += 1;
+      evictIfFull();
+      cache.set(key, { ok: false, user: null, tenant: null, expiresAt: now + NEGATIVE_TTL_MS });
+      return { ok: false, user: null, tenant: null, source: `denied: HTTP ${response.status}` };
+    }
+
+    // Everything else non-2xx is an UNKNOWN, and falls through to the grace
+    // path below.
     if (!response.ok) throw new Error(`issuer returned HTTP ${response.status}`);
 
     answer = await response.json();

@@ -5,6 +5,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import axios from 'axios';
+import { oauthCallbackError } from './oauthCallbackErrors.js';
 
 const base = (providerId) => `${API_CONFIG.BASE_URL}/providers/${providerId}/auth`;
 
@@ -78,6 +79,9 @@ export default {
     if (inFlightExchanges.has(code)) {
       return inFlightExchanges.get(code);
     }
+    // `provider:nonce:origin` — the provider is everything before the first
+    // colon. Used only to name the provider in an error message.
+    const providerFromState = String(state).split(':')[0] || null;
     const token = localStorage.getItem('token');
     const promise = axios
       .post(
@@ -86,6 +90,16 @@ export default {
         { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
       )
       .then((r) => r.data)
+      .catch((error) => {
+        // Same treatment as OAuthCallback.vue: the caller renders whatever this
+        // rejects with, so it must reject with a sentence rather than with
+        // "Request failed with status code 502".
+        //
+        // A transport failure (no `error.response`) is left alone — it is not
+        // the server's reason vocabulary and axios already describes it.
+        if (!error?.response) throw error;
+        throw oauthCallbackError(error.response.data, providerFromState, error.response.status);
+      })
       .finally(() => {
         // Keep the entry briefly so a late-arriving duplicate postMessage
         // still hits the cached result instead of re-firing the request.

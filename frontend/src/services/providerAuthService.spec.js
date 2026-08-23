@@ -110,4 +110,53 @@ describe('providerAuthService.completeRemoteOAuthCallback', () => {
       providerAuthService.completeRemoteOAuthCallback({ code: 'bad', state: 'twitter:x' }),
     ).rejects.toThrow('Request failed with status code 400');
   });
+
+  it('turns a server `reason` into copy the user can act on', async () => {
+    // Without this the caller renders axios's own "Request failed with status
+    // code 502", which tells the user nothing and hides the one useful fact:
+    // the PROVIDER refused, and retrying usually works.
+    axios.post.mockRejectedValueOnce({
+      response: { status: 502, data: { error: 'Provider rejected the authorization', reason: 'exchange_failed' } },
+    });
+
+    const error = await providerAuthService
+      .completeRemoteOAuthCallback({ code: 'bad', state: 'github:deadbeefdeadbeefdeadbeefdeadbeef:http://x' })
+      .catch((e) => e);
+
+    expect(error.reason).toBe('exchange_failed');
+    expect(error.status).toBe(502);
+    // The provider name comes out of the state parameter, first field.
+    expect(error.message).toContain('github');
+    expect(error.message).toContain('try connecting again');
+  });
+
+  it('never surfaces a server-side driver string', async () => {
+    axios.post.mockRejectedValueOnce({
+      response: {
+        status: 500,
+        data: { error: 'SQLITE_CONSTRAINT: NOT NULL constraint failed: oauth_tokens.user_id', reason: 'storage_failed' },
+      },
+    });
+
+    const error = await providerAuthService
+      .completeRemoteOAuthCallback({ code: 'bad', state: 'github:x' })
+      .catch((e) => e);
+
+    expect(error.message).not.toContain('SQLITE');
+    expect(error.message).not.toContain('oauth_tokens');
+  });
+
+  it('leaves a transport failure alone — it has no reason vocabulary', async () => {
+    // No `.response` means the request never got an answer. axios already
+    // describes that accurately, and rewriting it would hide a real outage
+    // behind "start the connection again".
+    const transport = new Error('Network Error');
+    axios.post.mockRejectedValueOnce(transport);
+
+    const error = await providerAuthService
+      .completeRemoteOAuthCallback({ code: 'bad', state: 'github:x' })
+      .catch((e) => e);
+
+    expect(error).toBe(transport);
+  });
 });

@@ -8809,6 +8809,27 @@ Base path: `/api/workflows`
 
 > **Note**: The status values are `active`, `inactive`, or `error`. There is no `completed`, `failed`, or `progress` field. This endpoint returns the workflow's activation state, not an execution progress tracker.
 
+> **⚠ CONTRACT CHANGE — `/start`, `/stop` and `/:id/status` now report failure with a failure status.**
+>
+> These three used to answer **`200` with an error inside the body** when the
+> operation had not happened. `activateWorkflow` ended in `res.json(result)`
+> with no status argument, and `WorkflowProcessBridge` returned
+> `{ status: 'error' }` as though "error" were a workflow state — so a start
+> that never armed was indistinguishable from one that did.
+>
+> Every in-tree caller gates on `response.ok`, which meant a workflow could
+> report "started" with nothing listening, no trigger registered, and no error
+> shown to the user.
+>
+> They now answer **`503`** when the workflow process is unreachable and
+> **`500`** when the operation itself failed.
+>
+> **Who this affects.** The JavaScript SDK (`base/js/libs/agnt.js`) is axios,
+> which rejects on non-2xx. Any integration that was quietly receiving
+> `{ error }` at `200` and reading it as success will now throw. That is the
+> point of the change — but it is a breaking change for anything that had
+> adapted to the old behaviour.
+
 ### Activate Workflow (Start)
 
 **POST** `/:id/start`
@@ -8827,6 +8848,11 @@ Base path: `/api/workflows`
   "workflowId": "workflow-id"
 }
 ```
+
+- **Errors**:
+  - `503` — the workflow process is not reachable, so the start could not be
+    attempted. Retryable.
+  - `500` — the start was attempted and failed.
 
 ### Deactivate Workflow (Stop)
 
@@ -10007,6 +10033,7 @@ Some endpoints may support WebSocket connections for real-time bidirectional com
 - [Remote Custom Tool Routes](#remote-custom-tool-routes)
 - [Remote Email Routes](#remote-email-routes)
 - [Remote Execution Routes](#remote-execution-routes)
+- [Remote Feedback Routes](#remote-feedback-routes)
 - [Remote Lifetime Promo Routes](#remote-lifetime-promo-routes)
 - [Remote Marketplace Routes](#remote-marketplace-routes)
 - [Remote Onboarding Routes](#remote-onboarding-routes)
@@ -10082,40 +10109,83 @@ Base path: `https://api.agnt.gg/agents` (Internal: `AgentRoutes.js`)
 
 Base path: `https://api.agnt.gg/auth` (Internal: `AuthRoutes.js`)
 
+### Two kinds of "Authentication: Required"
+
+The remote runs two middlewares and the difference is load-bearing:
+
+| Middleware | On a missing/invalid/unprovable token |
+|---|---|
+| `authenticateToken` | sets `req.user = { isAuthenticated: false }` and **continues** |
+| `requireAuth` | answers **401** and the handler never runs |
+
+`authenticateToken` identifies; it does not refuse. A route carrying only that
+middleware is reachable by anyone, and any handler behind it that reads
+`req.user.id` will run with `undefined`.
+
+That is not hypothetical. Until 2026-08-22 the four OAuth routes below mounted
+`authenticateToken` alone, so an anonymous `POST /auth/callback` reached the
+database and got this back:
+
+```json
+{ "error": "SQLITE_CONSTRAINT: NOT NULL constraint failed: oauth_tokens.user_id" }
+```
+
+SQLite was the first component in the chain able to refuse an unattributable
+write, and it reported that refusal to an unauthenticated caller as a schema
+disclosure. All four now carry `requireAuth`.
+
+**Refusal shape.** Every hard-guarded route answers:
+
+```json
+{ "error": "Authentication required", "reason": "missing" }
+```
+
+`reason` is `missing` (no credential presented) or `invalid` (presented and not
+verifiable). Clients should switch on `reason`, not on the prose.
+
 ### Get All Providers
 
 **GET** `/providers`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Get all auth providers
+- **Authentication**: Optional (rate limited)
+- **Description**: The global provider catalogue, plus the caller's own custom
+  providers when the caller is identified. An anonymous request is legitimate
+  here and receives **globals only** — the handler reads `req.user?.id`, and the
+  optional chain is the codebase's marker for "anonymous is a real caller".
+  Secret columns are stripped from every row regardless of caller.
 
 ### Create Provider
 
 **POST** `/providers`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Create a new auth provider
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: Create a new auth provider, owned by the caller. Guarded
+  because the handler passes `req.user.id` and `req.user.email` into ownership,
+  and an anonymous write would create a provider belonging to nobody.
 
 ### Update Provider
 
 **PUT** `/providers/:id`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Update an existing provider
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: Update a provider the caller owns. Guarded for the same
+  reason as create: the ownership comparison is meaningless with `undefined` on
+  one side.
 
 ### Delete Provider
 
 **DELETE** `/providers/:id`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Delete a provider
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: Delete a provider the caller owns.
 
 ### Get Provider by ID
 
 **GET** `/providers/:id`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Get details of a specific provider
+- **Authentication**: Optional (rate limited)
+- **Description**: One provider. Same contract as the list: anonymous callers
+  can read a global provider and cannot read anyone's custom one.
 
 ### Store API Key
 
@@ -10131,47 +10201,134 @@ Base path: `https://api.agnt.gg/auth` (Internal: `AuthRoutes.js`)
 - **Authentication**: Required (rate limited)
 - **Description**: Retrieve an API key for a provider
 
+### The OAuth `state` parameter
+
+The authorization round trip carries:
+
+```
+provider ':' nonce ':' origin
+```
+
+e.g. `github:5ec912c661df6c4726fc9296cc72e40a:http://localhost:3333`
+
+- **`nonce`** — 32 lowercase hex characters, minted by `GET /connect/:provider`,
+  bound to the calling session and the requested provider, **single use**, TTL
+  10 minutes. `POST /callback` consumes it.
+- **`origin`** — may itself contain colons (`http://localhost:3333`), which is
+  why the nonce sits in the MIDDLE: anything after the origin would make the
+  parse ambiguous. Parse by splitting on the first colon, then the second.
+
+Clients do not construct `state`; the server mints it and the client echoes
+back whatever it was given. Extracting the provider with
+`state.slice(0, state.indexOf(':'))` remains correct.
+
+Before 2026-08-22 the format was `provider:origin` and the value was parsed and
+then discarded, so nothing tied a completing authorization to the session that
+started it (RFC 6749 §10.12). An attacker holding an authorization code for an
+account they control could have it redeemed into a victim's account, after
+which every workflow the victim ran against that provider read and wrote the
+attacker's data.
+
+Legacy two-field `state` is refused with `400 invalid_state`.
+
 ### Connect Provider (OAuth)
 
 **GET** `/connect/:provider`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Initiate OAuth connection for a provider
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Query**: `origin` (optional) — where the callback should hand the code
+  back; falls back to the `Origin` header, then `FRONTEND_URL`
+- **Description**: Mint a state nonce for this session and return the
+  provider's authorization URL.
+- **Response**: `200 { "authUrl": "https://github.com/login/oauth/authorize?..." }`
+- **Errors**: `404 { error: "Provider not found" }` · `500 { error: "Could not
+  start authorization" }`. Failure messages are fixed strings; the underlying
+  exception is logged server-side only.
 
 ### Disconnect Provider
 
 **POST** `/disconnect/:provider`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Disconnect an OAuth provider
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: Remove the caller's stored OAuth tokens and API key for a
+  provider.
+- **Response**: `200 { "success": true }`
+- **Errors**: `500 { success: false, error: "Failed to disconnect provider" }`.
+  No `details` field — it previously carried the raw driver string.
 
 ### Handle Callback
 
 **POST** `/callback`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Handle OAuth callback
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Body**: `{ "code": "<authorization code>", "state": "<provider:nonce:origin>" }`
+- **Description**: Exchange an authorization code for tokens and store them
+  against the **authenticated caller**. The account that completes the flow
+  must be the account that started it; that is what the nonce proves.
+- **Response**: `200 { "success": true, "provider": "github" }`
+
+**Error vocabulary.** Every failure carries a stable `reason`. Switch on it,
+not on the status and not on the message — 400 covers two distinct cases.
+
+| Status | `reason` | Meaning |
+|---|---|---|
+| 400 | `invalid_request` | no `code` in the body |
+| 400 | `invalid_state` | `state` absent, malformed, expired, replayed, or bound to a different session |
+| 401 | `missing` / `invalid` | no usable credential (from `requireAuth`) |
+| 404 | `provider_unknown` | no such provider |
+| 502 | `exchange_failed` | the **provider** refused the authorization |
+| 500 | `storage_failed` | the exchange succeeded, persisting it did not |
+
+Notes that matter to a client:
+
+- **`exchange_failed` is usually transient and retryable.** It is a 502 rather
+  than a 400 because the refusal came from the upstream provider, not from the
+  caller. GitHub in particular answers an invalid code with HTTP 200 and
+  `error=bad_verification_code` in the body, so this is the only layer that can
+  make the distinction at all.
+- **A failed exchange never overwrites an existing connection.** Because that
+  same 200-with-an-error-body makes the adapter *resolve*, an unvalidated
+  result used to be written straight through `INSERT OR REPLACE`, replacing a
+  working credential with the ciphertext of `undefined`. The exchange result is
+  now validated before anything is stored.
+- Messages are generic by design. This endpoint previously answered
+  `error.message` verbatim, which is how a caller learned the storage engine,
+  the table and the column.
 
 ### Local Callback
 
 **GET** `/callback/:provider`
 
-- **Authentication**: None
-- **Description**: Handle local OAuth callback
+- **Authentication**: **None — and it must stay that way.** This is the
+  provider's redirect leg: GitHub, Google and friends send the browser here
+  with no AGNT credential, so requiring one would break every OAuth flow.
+- **Description**: Receives `code` and `state` from the provider and hands the
+  code back to the opener (redirect or `postMessage`, depending on origin). It
+  does **not** consume the nonce and does **not** store anything — the account
+  is decided by `POST /callback` above, which is guarded.
+- The authorization code is never written to the server log.
 
 ### Zapier Callback
 
 **POST** `/callback/zapier`
 
 - **Authentication**: None
-- **Description**: Handle Zapier webhook callback
+- **Body**: `{ "grant_type": "authorization_code" | "refresh_token", "code": "...", "refresh_token": "..." }`
+- **Description**: Zapier's own OAuth token endpoint. Carries **no `state`** and
+  is therefore unaffected by the nonce requirement above.
+- **Response**: `{ access_token, refresh_token, token_type: "Bearer", expires_in }`
 
 ### Get Connected Apps
 
 **GET** `/connected`
 
-- **Authentication**: Required (rate limited)
-- **Description**: Get list of connected applications
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: The provider ids the caller has connected.
+- **Response**: `200 ["github", "google", "notion", ...]`
+- Anonymous callers previously received `200 []`, which is not an empty answer
+  but a wrong one — "you have no connected apps", told to someone who has
+  several. Clients that treat a failure here as "nothing connected" should
+  check the status.
 
 ### Get Valid Token
 
@@ -10365,6 +10522,66 @@ Base path: `https://api.agnt.gg/executions` (Internal: `ExecutionRoutes.js`)
 
 ---
 
+## Remote Feedback Routes
+
+Base path: `https://api.agnt.gg/feedback` (Internal: `FeedbackRoutes.js`)
+
+The in-product feature-request and bug board. Every route is hard-guarded:
+each handler reads `req.user.id` to decide whose item and whose vote it is, so
+none of them has an anonymous answer.
+
+> These were already refusing, via a module-local `requireAuth(req, res)` at
+> the top of each controller method. The route-level guard is not a behaviour
+> change — it makes the refusal visible in the route table, where it can be
+> audited, and gives the next handler added to this file the same protection by
+> default.
+
+`user_email` is stripped from responses unless the caller is an admin.
+
+### List Feedback
+
+**GET** `/`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Query**: `type`, `status`, `mine` (`true`/`1`), `sort`, `limit`, `offset`
+- **Description**: List feedback items. `mine=true` restricts to the caller's.
+
+### Create Feedback
+
+**POST** `/`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Body**: `{ type, title, description, screenshot? }`
+- **Description**: File a feedback item against the caller's account. Title,
+  description and screenshot are length-capped.
+
+### Get Feedback Item
+
+**GET** `/:id`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+
+### Vote
+
+**POST** `/:id/vote`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+
+### Remove Vote
+
+**DELETE** `/:id/vote`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+
+### Update Feedback
+
+**PATCH** `/:id`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: Update an item. Status transitions are admin-only.
+
+---
+
 ## Remote Lifetime Promo Routes
 
 Base path: `https://api.agnt.gg/promo/lifetime` (Internal: `LifetimePromoRoutes.js`)
@@ -10493,13 +10710,21 @@ Base path: `https://api.agnt.gg/onboarding` (Internal: `OnboardingRoutes.js`)
 
 **GET** `/progress`
 
-- **Authentication**: Required (rate limited)
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
 
 ### Complete Onboarding
 
 **POST** `/complete`
 
-- **Authentication**: Required (rate limited)
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+
+### Send Test Email
+
+**POST** `/test-email`
+
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise
+- **Description**: Sends mail to the caller's own address. Guarded because the
+  handler reads both `req.user.id` and `req.user.email`.
 
 ### Analytics
 
@@ -10511,7 +10736,16 @@ Base path: `https://api.agnt.gg/onboarding` (Internal: `OnboardingRoutes.js`)
 
 **GET/POST** `/unsubscribe`
 
-- **Authentication**: None
+- **Authentication**: **None — intentionally.** Clicked from a mail client,
+  which has no session and cannot present a token.
+
+### Track Email Event
+
+**GET** `/track/:sequenceId/:eventType`
+
+- **Authentication**: **None — intentionally.** Requested by the mail client
+  itself (open/click pixels), which has no session.
+- **Description**: Record an open or click against a sequence.
 
 ---
 
@@ -10571,7 +10805,11 @@ Base path: `https://api.agnt.gg/referrals` (Internal: `ReferralRoutes.js`)
 
 ## Remote Stream Routes
 
-Base path: `https://api.agnt.gg/streams` (Internal: `StreamRoutes.js`)
+Base path: `https://api.agnt.gg/stream` (Internal: `StreamRoutes.js`)
+
+> The base path is `/stream`, singular. This section previously said
+> `/streams`, which 404s. Verified against the mounted router and against
+> production.
 
 ### Health Check
 
@@ -10583,19 +10821,45 @@ Base path: `https://api.agnt.gg/streams` (Internal: `StreamRoutes.js`)
 
 **POST** `/start-tool-forge-stream`
 
-- **Authentication**: Required (rate limited, supports file upload)
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise (rate
+  limited, supports file upload)
+- **Description**: `StreamController` constructs `new StreamEngine(req.user.id)`,
+  so an anonymous request would spend model credits against nobody.
 
 ### Start Chat Stream
 
 **POST** `/start-chat-stream`
 
-- **Authentication**: Required (rate limited, supports file upload)
+- **Authentication**: **Required** — `requireAuth`, 401 otherwise (rate
+  limited, supports file upload)
+
+### Cancel Tool Forge Stream
+
+**POST** `/cancel-tool-forge-stream`
+
+- **Authentication**: Required (rate limited)
+- **Description**: Stop an in-flight tool-forge stream for the caller.
+
+### Cancel Chat Stream
+
+**POST** `/cancel-chat-stream`
+
+- **Authentication**: Required (rate limited)
+- **Description**: Stop an in-flight chat stream for the caller.
 
 ### Generate Tool
 
 **POST** `/generate-tool`
 
 - **Authentication**: Required (rate limited)
+
+### Generate Workflow
+
+**POST** `/generate-workflow`
+
+- **Authentication**: Required (rate limited)
+- **Description**: Generate a workflow definition from a natural-language
+  description.
 
 ---
 

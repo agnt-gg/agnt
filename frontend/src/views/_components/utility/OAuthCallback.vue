@@ -29,6 +29,7 @@
 <script>
 import { ref, onMounted } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { oauthCallbackError } from '@/services/oauthCallbackErrors.js';
 
 export default {
   name: 'OAuthCallback',
@@ -57,7 +58,12 @@ export default {
           throw new Error('Missing authorization code or state');
         }
 
-        // Parse state to get provider
+        // Parse state to get provider.
+        //
+        // The wire format is `provider:nonce:origin` (api.agnt.gg
+        // src/utils/oauthState.js). Splitting on the FIRST colon still yields
+        // the provider, which is all this screen needs — the nonce is consumed
+        // server-side by POST /auth/callback, never here.
         const colonIndex = state.indexOf(':');
         const provider = state.substring(0, colonIndex);
         providerName.value = provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -74,8 +80,12 @@ export default {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to complete authentication');
+          // The server answers with a stable `reason`; map it to copy that says
+          // what to do next. Printing `errorData.error` is what surfaced raw
+          // SQLite constraint text to users before the server stopped sending
+          // it — and a generic server message is still not an instruction.
+          const errorData = await response.json().catch(() => ({}));
+          throw oauthCallbackError(errorData, providerName.value, response.status);
         }
 
         const result = await response.json();

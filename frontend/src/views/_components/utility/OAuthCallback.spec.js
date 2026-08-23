@@ -222,6 +222,7 @@ describe('OAuthCallback', () => {
     it('shows error when API call fails', async () => {
       global.fetch.mockResolvedValueOnce({
         ok: false,
+        status: 500,
         json: () => Promise.resolve({ error: 'Invalid code' }),
       });
 
@@ -229,7 +230,68 @@ describe('OAuthCallback', () => {
       await flushPromises();
 
       expect(wrapper.find('.status-error').exists()).toBe(true);
-      expect(wrapper.text()).toContain('Invalid code');
+      // A body with no `reason` gets the generic fallback — which still tells
+      // the user what to do, unlike the server's own wording.
+      expect(wrapper.text()).toContain('Please try again');
+    });
+
+    it('maps the server reason to copy, instead of echoing the server message', async () => {
+      // This used to assert the raw `error` string appeared on screen. That was
+      // pinning the defect: the same code path printed whatever the server sent,
+      // and what the server sent for an unauthenticated caller was
+      // `SQLITE_CONSTRAINT: NOT NULL constraint failed: oauth_tokens.user_id`.
+      global.fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        json: () => Promise.resolve({ error: 'Provider rejected the authorization', reason: 'exchange_failed' }),
+      });
+
+      wrapper = createWrapper();
+      await flushPromises();
+
+      expect(wrapper.find('.status-error').exists()).toBe(true);
+      const text = wrapper.text();
+      expect(text).toContain('declined the authorization');
+      expect(text).toContain('try connecting again');
+      expect(text).not.toContain('Provider rejected the authorization');
+    });
+
+    it('NEVER renders a server-side driver string', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () =>
+          Promise.resolve({
+            error: 'SQLITE_CONSTRAINT: NOT NULL constraint failed: oauth_tokens.user_id',
+            reason: 'storage_failed',
+          }),
+      });
+
+      wrapper = createWrapper();
+      await flushPromises();
+
+      const text = wrapper.text();
+      for (const leak of ['SQLITE', 'oauth_tokens', 'user_id', 'NOT NULL']) {
+        expect(text, `the screen disclosed "${leak}"`).not.toContain(leak);
+      }
+      expect(text).toContain('could not save the connection');
+    });
+
+    it('survives an error body that is not JSON', async () => {
+      // A 502 from a proxy in front of the API returns HTML, and `.json()`
+      // rejects. That must still render an error screen, not an unhandled
+      // rejection that leaves the window spinning forever.
+      global.fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      });
+
+      wrapper = createWrapper();
+      await flushPromises();
+
+      expect(wrapper.find('.status-error').exists()).toBe(true);
+      expect(wrapper.text()).not.toContain('Unexpected token');
     });
 
     it('shows error when API returns success: false', async () => {

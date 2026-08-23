@@ -76,16 +76,38 @@ describe('asking the issuer', () => {
     expect(await verifyViaIssuer(TOKEN)).toMatchObject({ ok: false, user: null });
   });
 
-  it('treats a non-2xx as UNKNOWN, not as a denial', async () => {
+  it.each([503, 502, 500, 429])('treats HTTP %i as UNKNOWN, not as a denial', async (status) => {
     // A rate-limited or briefly-broken issuer must not read as "this user is an
     // impostor" — that is how a bad afternoon at the API becomes a mass logout.
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 503 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status });
 
     const result = await verifyViaIssuer(TOKEN);
     expect(result.ok).toBe(false);
     expect(result.source).toMatch(/unreachable/);
     // Crucially it was NOT cached as a denial, so recovery is immediate.
     expect(verifierStats().remoteDeny).toBe(0);
+  });
+
+  it.each([401, 403])('treats HTTP %i as a DENIAL, not as an outage', async (status) => {
+    // The issuer disowning a credential is the most authoritative negative this
+    // function can receive. Classifying it as "unreachable" would file it under
+    // remoteFail and — far worse — make it eligible for the stale-grace window.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status });
+
+    const result = await verifyViaIssuer(TOKEN);
+
+    expect(result.ok).toBe(false);
+    expect(result.source).toBe(`denied: HTTP ${status}`);
+    expect(verifierStats().remoteDeny).toBe(1);
+    expect(verifierStats().remoteFail, 'a refusal was counted as an outage').toBe(0);
+  });
+
+  it('caches a denial, so a refused client cannot amplify traffic at the issuer', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 401 });
+
+    for (let i = 0; i < 10; i++) await verifyViaIssuer(TOKEN);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('never throws, whatever the network does', async () => {
@@ -187,6 +209,45 @@ describe('the failure policy', () => {
     // outage could manufacture a session, taking the issuer offline would be
     // the cheapest possible attack.
     expect((await verifyViaIssuer('a-token-never-seen-before')).ok).toBe(false);
+  });
+
+  it('A REFUSED TOKEN IS NOT EXTENDED BY THE GRACE WINDOW', async () => {
+    // THE REGRESSION THIS EXISTS FOR.
+    //
+    // The token-proof flip makes the issuer start answering 401 for tokens
+    // minted before proof claims existed. When every non-2xx was treated as
+    // "unreachable", this sequence kept a REFUSED token working for a further
+    // 30 minutes on exactly the installs that are reachable from the internet.
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+
+    // A working session: the issuer confirms, the answer is cached.
+    expect((await verifyViaIssuer(TOKEN)).ok).toBe(true);
+
+    // The flip happens. The issuer now refuses this token.
+    fetchMock.mockResolvedValue({ ok: false, status: 401 });
+    vi.advanceTimersByTime(6 * 60 * 1000); // past the positive TTL, inside the grace
+
+    const result = await verifyViaIssuer(TOKEN);
+    expect(result.ok, 'a token the issuer refused was served from stale grace').toBe(false);
+    expect(result.source).toBe('denied: HTTP 401');
+    expect(verifierStats().servedStale).toBe(0);
+  });
+
+  it('an outage still extends a positive, even after a denial for a DIFFERENT token', async () => {
+    // Anti-vacuity for the rule above: tightening 401 must not collapse the
+    // grace window that protects everyone else during a real outage.
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+    await verifyViaIssuer(TOKEN);
+
+    fetchMock.mockResolvedValue({ ok: false, status: 401 });
+    await verifyViaIssuer('someone-elses-refused-token');
+
+    fetchMock.mockRejectedValue(new Error('network down'));
+    vi.advanceTimersByTime(6 * 60 * 1000);
+
+    expect((await verifyViaIssuer(TOKEN))).toMatchObject({ ok: true, source: 'stale-grace' });
   });
 
   it('does not let a prior DENIAL become a stale positive', async () => {
