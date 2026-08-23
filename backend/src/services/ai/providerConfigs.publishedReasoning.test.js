@@ -294,3 +294,58 @@ describe('wire parity: every option offered is an option sent', () => {
     expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'stealth/ox-alpha', 'default')).toBeNull();
   });
 });
+
+describe('the reverse direction: an effort NOT offered is never sent', () => {
+  /*
+   * The selected reasoning value is sticky — it lives in the store and
+   * survives switching provider and model. So a value picked on one model
+   * arrives attached to a different one, and the OpenRouter branch used to
+   * forward whatever it was handed.
+   *
+   * Wire parity was only ever asserted one way ("every option offered sends
+   * something"). This is the other way, and it is the direction that produces
+   * bad requests rather than dead switches.
+   */
+  it('drops a carried-over effort the model never advertised', () => {
+    // ox-alpha publishes max/high/low. medium/xhigh/minimal are not its to
+    // interpret, and the result of sending one is undefined.
+    for (const stale of ['medium', 'xhigh', 'minimal']) {
+      expect(
+        buildOpenAiLikeReasoningExtraBody('openrouter', 'stealth/ox-alpha', stale),
+        `${stale} is not offered for ox-alpha and must not reach the wire`,
+      ).toBeNull();
+    }
+  });
+
+  it("drops the legacy 'on' toggle when the model has no medium", () => {
+    // 'on' means "think", and it resolved to medium unconditionally. On
+    // ox-alpha that invented an effort; sending nothing yields the vendor
+    // default, which for this model is 'max' — thinking, as asked.
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'stealth/ox-alpha', 'on')).toBeNull();
+  });
+
+  it("still maps 'on' to medium where medium IS offered", () => {
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'openai/gpt-5.2', 'on'))
+      .toEqual({ reasoning: { effort: 'medium' } });
+  });
+
+  it('never sends effort none to a mandatory-reasoning model', () => {
+    // Pruning 'off' from the control fixed what the UI SHOWS. It does not stop
+    // an 'off' already sitting in the store from arriving here, and this is
+    // the request that earns HTTP 400 "Reasoning is mandatory for this
+    // endpoint and cannot be disabled."
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'google/gemini-2.5-pro', 'off')).toBeNull();
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'openai/o4-mini-high', 'off')).toBeNull();
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'stealth/ox-alpha', 'off')).toBeNull();
+  });
+
+  it('still sends every effort the model DOES advertise', () => {
+    // The clamp must not become a mute button.
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'stealth/ox-alpha', 'max'))
+      .toEqual({ reasoning: { effort: 'max' } });
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'stealth/ox-alpha', 'high'))
+      .toEqual({ reasoning: { effort: 'high' } });
+    expect(buildOpenAiLikeReasoningExtraBody('openrouter', 'pubtest/optional-thinker', 'off'))
+      .toEqual({ reasoning: { effort: 'none' } });
+  });
+});

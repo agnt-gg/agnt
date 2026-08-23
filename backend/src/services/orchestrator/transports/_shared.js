@@ -730,13 +730,37 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   if (normalizedProvider === 'openrouter') {
     let effort = normalizedValue;
     if (effort === 'on') {
+      // Legacy toggle. 'medium' is the natural reading of "thinking on", but
+      // it is only sent if this model actually offers it — see below.
       effort = 'medium';
-    } else if (effort === 'off') {
-      effort = 'none';
     }
+
+    // Send ONLY an effort this model's control offers.
+    //
+    // The selected value is sticky across model switches: it lives in the
+    // store and survives changing provider or model. So a value picked on one
+    // model arrives here attached to a completely different one, and this
+    // branch used to forward whatever it was given. Two ways that bites:
+    //
+    //   • stealth/ox-alpha advertises only max/high/low, so a carried-over
+    //     'medium'/'xhigh'/'minimal' — or the legacy toggle's 'on' — sent it
+    //     an effort it never claimed to support, and the result is undefined.
+    //   • a carried-over 'off' became effort 'none', which a
+    //     mandatory-reasoning model rejects outright with
+    //     HTTP 400 "Reasoning is mandatory for this endpoint and cannot be
+    //     disabled." Pruning 'off' from the control fixed what the UI shows;
+    //     it does not stop a value already sitting in the store.
+    //
+    // Falling back to null means "send no reasoning param", i.e. the vendor's
+    // own default — always a legal request. Better a documented default than
+    // a guess the endpoint never advertised.
+    const offeredValues = new Set((reasoningControl.options || []).map((o) => o.value));
+    if (!offeredValues.has(effort)) return null;
+
     return {
       reasoning: {
-        effort,
+        // 'off' is AGNT's spelling; OpenRouter's is 'none'.
+        effort: effort === 'off' ? 'none' : effort,
       },
     };
   }

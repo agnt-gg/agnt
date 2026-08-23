@@ -634,16 +634,59 @@ Please carefully check the tool schema and ensure all parameters match the expec
             finishReason: finishReason || 'none',
           });
 
+          const isEmptyResponse =
+            accumulatedContent.length === 0 &&
+            accumulatedReasoningContent.length === 0 &&
+            accumulatedToolCalls.length === 0;
+
+          // A stream that completes CLEANLY and delivers nothing.
+          //
+          // The premature-close case below retries because no finish_reason
+          // arrived. But a provider can also report `finish_reason: 'stop'` —
+          // a successful completion — while sending zero content, zero
+          // reasoning and zero tool calls. That led with `!finishReason`, so
+          // it matched nothing here and fell straight through to an empty
+          // assistant message, and from there to a CROSS-PROVIDER failover:
+          // the user's chosen model was abandoned over a blip.
+          //
+          // Measured on openrouter/stealth/ox-alpha, 2026-08-23: roughly one
+          // request in ten returns a single chunk carrying only
+          // finish_reason 'stop', in ~1.3s, and the byte-identical request
+          // then succeeds — 3 of 3 immediate retries returned full answers.
+          // Transient, and indistinguishable from the half-close we already
+          // retry, so it is retried the same way.
+          //
+          // Scoped to 'stop' deliberately. 'length', 'content_filter' and
+          // 'tool_calls' are EXPLANATIONS for the silence rather than silence
+          // itself, and an identical retry would just reproduce them.
+          //
+          // Retries only; the terminal behaviour is deliberately unchanged. If
+          // every attempt comes back empty this falls through to the same
+          // empty response as before, so cross-provider failover still gets
+          // its turn on a provider that is genuinely down.
+          if (
+            isEmptyResponse
+            && finishReason === 'stop'
+            && !context.abortSignal?.aborted
+            && attempt < this.maxRetries
+          ) {
+            const delay = this.calculateDelay(attempt);
+            console.warn(
+              `[Stream Retry] Provider reported finish_reason='stop' with an empty response `
+              + `(attempt ${attempt + 1}/${this.maxRetries + 1}) model=${this.model} provider=${this.provider}. `
+              + `Retrying the same model in ${Math.round(delay)}ms`,
+            );
+            await this.sleep(delay);
+            continue; // retry the request
+          }
+
           // Detect silent premature stream close: upstream (Kimi, Cloudflare, etc.)
           // cleanly half-closes the HTTP connection mid-response. The for-await exits
           // normally with no error — but no finish_reason arrived and the response is
           // empty. Without this check we'd silently return an empty assistant message.
           // Abort-triggered exits are expected (client disconnect) and must NOT retry.
           if (!finishReason && !context.abortSignal?.aborted) {
-            const isEmpty =
-              accumulatedContent.length === 0 &&
-              accumulatedReasoningContent.length === 0 &&
-              accumulatedToolCalls.length === 0;
+            const isEmpty = isEmptyResponse;
 
             const hasIncompleteToolCallJson = accumulatedToolCalls.some((tc) => {
               if (!tc?.function?.arguments) return false;
