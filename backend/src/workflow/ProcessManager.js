@@ -25,8 +25,14 @@ class ProcessManager extends EventEmitter {
 
     if (this._isWorkflowInQueueOrActive(workflowId)) {
       console.log(`Workflow ${workflowId} is already queued, active, pending, or being enqueued`);
+      // `code` exists so callers can tell these apart without matching on the
+      // message text. The route handler maps ALREADY_ACTIVE to 409 and anything
+      // else to 500; without it the only discriminator would be this English
+      // sentence, which is the kind of coupling that silently stops working the
+      // first time someone rewords it.
       return {
         error: 'Workflow is already queued or running',
+        code: 'ALREADY_ACTIVE',
         workflowId: workflowId,
       };
     }
@@ -51,7 +57,7 @@ class ProcessManager extends EventEmitter {
       };
     } catch (error) {
       console.error(`Error enqueueing workflow ${workflowId}:`, error);
-      return { error: 'Failed to enqueue workflow', workflowId: workflowId };
+      return { error: 'Failed to enqueue workflow', code: 'ENQUEUE_FAILED', workflowId: workflowId };
     }
   }
   async deactivateWorkflow(workflowId, userId) {

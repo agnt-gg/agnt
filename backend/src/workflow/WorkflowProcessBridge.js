@@ -316,6 +316,22 @@ class WorkflowProcessBridge {
     });
   }
 
+  /**
+   * Arm a workflow's triggers in the workflow process.
+   *
+   * Throws rather than reporting a start that did not happen.
+   *
+   * This used to `return { error: error.message }`. The route handler passes
+   * whatever comes back straight to `res.json(result)`, and res.json with no
+   * status is 200 — so a start that never happened answered SUCCESS with an
+   * error-shaped body. All three callers gate on `response.ok`, which was true,
+   * so the failure branch never ran and the UI reported the workflow started.
+   * Nothing was armed, no trigger was listening, and the only trace was a
+   * console.error in the backend log.
+   *
+   * @throws {WorkflowProcessUnavailableError} the process could not be reached
+   * @throws {Error} the process answered, reporting this failure
+   */
   async activateWorkflow(workflow, userId, triggerData = null) {
     try {
       const result = await this.sendMessage('ACTIVATE_WORKFLOW', {
@@ -326,10 +342,20 @@ class WorkflowProcessBridge {
       return result;
     } catch (error) {
       console.error('Error activating workflow via IPC:', error);
-      return { error: error.message };
+      throw error;
     }
   }
 
+  /**
+   * Disarm a workflow's triggers in the workflow process.
+   *
+   * Throws for the same reason activateWorkflow does — a stop that did not
+   * happen must not be reported as one. See deleteWorkflow in WorkflowService
+   * for the one caller that deliberately continues past a failure here.
+   *
+   * @throws {WorkflowProcessUnavailableError} the process could not be reached
+   * @throws {Error} the process answered, reporting this failure
+   */
   async deactivateWorkflow(workflowId, userId) {
     try {
       const result = await this.sendMessage('DEACTIVATE_WORKFLOW', {
@@ -339,7 +365,7 @@ class WorkflowProcessBridge {
       return result;
     } catch (error) {
       console.error('Error deactivating workflow via IPC:', error);
-      return { error: error.message };
+      throw error;
     }
   }
 
