@@ -553,14 +553,35 @@ Please carefully check the tool schema and ensure all parameters match the expec
               }
             }
 
-            // Handle reasoning_content for providers that use thinking mode (Z.AI GLM-5, Kimi, etc.)
-            // Stream reasoning chunks to frontend to show thinking progress and keep connection alive
-            if (delta.reasoning_content) {
-              accumulatedReasoningContent += delta.reasoning_content;
+            // Thinking-mode deltas. TWO spellings are live on the wire and a
+            // provider only ever sends one of them:
+            //
+            //   reasoning_content — DeepSeek's spelling, adopted by Z.AI GLM,
+            //                       Kimi/Moonshot, Chutes and the other
+            //                       OpenAI-compatible hosts that copied it.
+            //   reasoning         — OpenRouter's spelling, for EVERY reasoning
+            //                       model it routes, whoever built the model.
+            //
+            // Reading only `reasoning_content` cost us the whole OpenRouter
+            // reasoning surface: the thinking panel stayed empty no matter how
+            // long a model thought, and — worse — the "no content but we do
+            // have reasoning" fallback further down could never fire, because
+            // the buffer it inspects was always ''. A model that answered
+            // entirely in its reasoning channel therefore reached the user as
+            // an EMPTY assistant message. stealth/ox-alpha made that
+            // unmissable (its reasoning is mandatory and defaults to effort
+            // 'max', so every single turn takes the broken path), but the bug
+            // was never specific to one model.
+            //
+            // Coalesce rather than choose: no provider sends both, so taking
+            // whichever arrived keeps every existing provider byte-identical.
+            const reasoningDelta = delta.reasoning_content || delta.reasoning;
+            if (reasoningDelta) {
+              accumulatedReasoningContent += reasoningDelta;
               if (onChunk) {
                 onChunk({
                   type: 'reasoning',
-                  delta: delta.reasoning_content,
+                  delta: reasoningDelta,
                   accumulated: accumulatedReasoningContent,
                 });
               }
