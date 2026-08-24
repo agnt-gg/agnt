@@ -89,6 +89,15 @@ class AuthManager {
           );
           return null;
         }
+        if (error.response?.status === 404) {
+          // "This user has never connected this provider" — the ordinary answer
+          // for most providers on most installs, reached on every model refresh
+          // and every background poll. It is a fact about configuration, not a
+          // failure, so it must not be logged as one: doing so filled a single
+          // tenant's log with 119 identical warnings in six hours and buried
+          // the faults worth reading.
+          return null;
+        }
         console.warn(`Remote key fallback failed for ${providerId}:`, error.message);
         return null;
       }

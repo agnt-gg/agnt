@@ -697,12 +697,25 @@ function createTables() {
         provider_name TEXT NOT NULL,
         base_url TEXT NOT NULL,
         api_key TEXT,
+        models TEXT,
         is_active INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`
       );
+
+      // Migration: declared model list for gateways with no /v1/models endpoint
+      // (2026-08-24). Some OpenAI-compatible providers — api.cline.bot among
+      // them — return 404 for an authenticated GET /v1/models, which made the
+      // supported "add a custom provider" path a dead end for them. NULL keeps
+      // the existing auto-discovery behaviour, so every existing row is
+      // unchanged and this is additive.
+      db.run(`ALTER TABLE custom_openai_providers ADD COLUMN models TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding models column to custom_openai_providers:', err);
+        }
+      });
 
       // Agent execution tracking tables - for displaying agent runs in Runs screen
       db.run(`CREATE TABLE IF NOT EXISTS agent_executions (

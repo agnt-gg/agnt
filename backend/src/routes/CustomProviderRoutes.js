@@ -67,7 +67,10 @@ router.post('/', requireAuthHeader, async (req, res) => {
       });
     }
 
-    const { provider_name, base_url, api_key } = req.body;
+    // `models` is optional: a newline- or comma-separated list (or an array)
+    // for gateways that publish no /v1/models endpoint. Omitted or empty means
+    // auto-discover, which is the behaviour every existing caller gets.
+    const { provider_name, base_url, api_key, models } = req.body;
 
     if (!provider_name || !base_url) {
       return res.status(400).json({
@@ -80,6 +83,7 @@ router.post('/', requireAuthHeader, async (req, res) => {
       provider_name,
       base_url,
       api_key,
+      models,
     });
 
     res.status(201).json({

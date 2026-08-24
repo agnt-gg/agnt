@@ -61,6 +61,25 @@
             <span v-if="errors.api_key" class="error-text">{{ errors.api_key }}</span>
           </div>
 
+          <div class="form-group">
+            <label for="models">
+              Models <span class="optional">(Optional)</span>
+            </label>
+            <textarea
+              id="models"
+              v-model="formData.models"
+              rows="4"
+              spellcheck="false"
+              placeholder="One model ID per line&#10;Leave blank to detect them automatically"
+              :disabled="isTesting || isSaving"
+              :class="{ highlight: needsManualModels }"
+            ></textarea>
+            <span class="help-text">
+              Leave blank and AGNT will ask the provider what it supports. Fill this
+              in for providers that don't publish a model list.
+            </span>
+          </div>
+
           <!-- Test Connection Results -->
           <div v-if="testResult" class="test-result" :class="{ success: testResult.success, error: !testResult.success }">
             <div class="test-result-header">
@@ -68,7 +87,10 @@
               <span>{{ testResult.success ? 'Connection Successful' : 'Connection Failed' }}</span>
             </div>
             <div v-if="testResult.success" class="test-result-details">
-              <p>Found {{ testResult.modelsCount }} model(s)</p>
+              <p v-if="testResult.requiresManualModels">
+                {{ testResult.message }}
+              </p>
+              <p v-else>Found {{ testResult.modelsCount }} model(s)</p>
               <div v-if="testResult.models && testResult.models.length > 0" class="model-list">
                 <span v-for="model in testResult.models" :key="model" class="model-tag">{{ model }}</span>
               </div>
@@ -105,6 +127,24 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
+/**
+ * The stored column is a JSON array string. Never throws: a row that cannot be
+ * parsed must open an editable dialog showing no models, not a broken one.
+ *
+ * @param {string|string[]|null|undefined} stored
+ * @returns {string[]}
+ */
+function parseStoredModels(stored) {
+  if (!stored) return [];
+  if (Array.isArray(stored)) return stored.filter((m) => typeof m === 'string' && m);
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((m) => typeof m === 'string' && m) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default {
   name: 'CustomProviderDialog',
   components: { CustomSelect },
@@ -122,11 +162,17 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
 
-    const formData = ref({
+    // `models` is a newline-separated list the user can type. Empty means
+    // "discover them from the provider", which is what every provider with a
+    // /v1/models endpoint does and stays the default.
+    const blankForm = () => ({
       provider_name: '',
       base_url: '',
       api_key: '',
+      models: '',
     });
+
+    const formData = ref(blankForm());
 
     const errors = ref({});
     const testResult = ref(null);
@@ -157,6 +203,12 @@ export default {
       return formData.value.provider_name && formData.value.base_url && !Object.keys(errors.value).length;
     });
 
+    // Drives the highlight on the models box: the provider answered, but has no
+    // catalog to offer, so the list has to come from the user.
+    const needsManualModels = computed(
+      () => !!testResult.value?.requiresManualModels && !formData.value.models
+    );
+
     // Fetch templates on mount
     const fetchTemplates = async () => {
       try {
@@ -177,7 +229,7 @@ export default {
 
     const applyTemplate = () => {
       if (!selectedTemplate.value) {
-        formData.value = { provider_name: '', base_url: '', api_key: '' };
+        formData.value = blankForm();
         testResult.value = null;
         return;
       }
@@ -186,6 +238,10 @@ export default {
         formData.value.provider_name = t.name;
         formData.value.base_url = t.baseURL;
         formData.value.api_key = '';
+        // A template that ships its own catalog pre-fills the box; the user can
+        // still edit or clear it. Templates whose provider publishes /v1/models
+        // leave it blank so discovery runs as before.
+        formData.value.models = Array.isArray(t.models) ? t.models.join('\n') : '';
         testResult.value = null;
       }
     };
@@ -199,6 +255,7 @@ export default {
             provider_name: newProvider.provider_name || '',
             base_url: newProvider.base_url || '',
             api_key: '', // Don't populate API key for security
+            models: parseStoredModels(newProvider.models).join('\n'),
           };
         }
       },
@@ -211,11 +268,7 @@ export default {
       (isOpen) => {
         if (isOpen && !props.editProvider) {
           // Reset form when opening for new provider
-          formData.value = {
-            provider_name: '',
-            base_url: '',
-            api_key: '',
-          };
+          formData.value = blankForm();
           errors.value = {};
           testResult.value = null;
           selectedTemplate.value = '';
@@ -278,6 +331,10 @@ export default {
           const updates = {
             provider_name: formData.value.provider_name,
             base_url: formData.value.base_url,
+            // Always sent, so clearing the box clears the stored list and
+            // restores auto-discovery. Omitting it would make the field
+            // one-way: fillable but never emptyable.
+            models: formData.value.models,
           };
 
           // Only include API key if it was changed
@@ -325,6 +382,7 @@ export default {
       isEditing,
       canTest,
       canSave,
+      needsManualModels,
       templates,
       selectedTemplate,
       selectedTemplateDesc,
@@ -417,8 +475,41 @@ export default {
 }
 
 .form-group input,
-.form-group select {
+.form-group select,
+.form-group textarea {
   width: 100%;
+}
+
+.form-group textarea {
+  padding: 10px 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  color: var(--color-light-med-navy);
+  /* Model ids are opaque strings where l/1 and O/0 matter, and a mistyped one
+     fails at request time with a 400 rather than in this dialog. */
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 84px;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--color-green);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.15);
+}
+
+/* The provider answered but offers no catalog: the list has to come from here. */
+.form-group textarea.highlight {
+  border-color: var(--color-green);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.15);
+}
+
+.form-group textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .template-select {

@@ -3,6 +3,46 @@ import { encrypt, decrypt } from '../../utils/encryption.js';
 import generateUUID from '../../utils/generateUUID.js';
 import fetch from 'node-fetch';
 
+/**
+ * Normalise a user-supplied model list into a JSON array string, or null.
+ *
+ * Accepts what the UI actually produces (a textarea: one id per line) as well
+ * as a real array from an API caller, because both call the same service.
+ * Returns null for "nothing declared", which is the signal to auto-discover —
+ * so clearing the box restores the default behaviour rather than pinning an
+ * empty catalog and leaving the picker permanently blank.
+ *
+ * @param {string|string[]|null|undefined} models
+ * @returns {string|null} JSON array string, or null when nothing was declared
+ */
+export function serializeModelList(models) {
+  if (models === null || models === undefined) return null;
+
+  const list = Array.isArray(models) ? models : String(models).split(/[\r\n,]+/);
+
+  const cleaned = [...new Set(list.map((m) => String(m).trim()).filter(Boolean))];
+
+  return cleaned.length > 0 ? JSON.stringify(cleaned) : null;
+}
+
+/**
+ * Inverse of serializeModelList. Never throws: a row hand-edited into invalid
+ * JSON must degrade to auto-discovery, not break the model picker.
+ *
+ * @param {string|null} stored
+ * @returns {string[]} declared model ids, empty when none
+ */
+export function parseModelList(stored) {
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((m) => typeof m === 'string' && m) : [];
+  } catch {
+    console.warn('[CustomProvider] Ignoring unparseable stored model list');
+    return [];
+  }
+}
+
 class CustomOpenAIProviderService {
   /**
    * Test connection to a custom provider
@@ -37,6 +77,23 @@ class CustomOpenAIProviderService {
         headers,
         timeout: 10000, // 10 second timeout
       });
+
+      // A 404 here means the host answered — it simply does not publish a model
+      // catalog at this path. That is a real and supported shape of
+      // OpenAI-compatible gateway (api.cline.bot is one), so reporting it as a
+      // failed connection is wrong: it tells the user their URL or key is bad
+      // when both are fine, and leaves them no path forward. Report it as a
+      // success that needs a declared model list instead.
+      if (response.status === 404) {
+        return {
+          success: true,
+          modelsCount: 0,
+          models: [],
+          requiresManualModels: true,
+          message:
+            'Connected, but this provider does not publish a model list. Enter model IDs manually.',
+        };
+      }
 
       if (!response.ok) {
         return {
@@ -73,7 +130,7 @@ class CustomOpenAIProviderService {
   async getProvidersByUserId(userId) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT id, user_id, provider_name, base_url, is_active, created_at, updated_at 
+        `SELECT id, user_id, provider_name, base_url, models, is_active, created_at, updated_at 
         FROM custom_openai_providers 
         WHERE user_id = ? AND is_active = 1
         ORDER BY created_at DESC`,
@@ -99,7 +156,7 @@ class CustomOpenAIProviderService {
   async getProviderById(providerId, userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT id, user_id, provider_name, base_url, is_active, created_at, updated_at 
+        `SELECT id, user_id, provider_name, base_url, models, is_active, created_at, updated_at 
         FROM custom_openai_providers 
         WHERE id = ? AND user_id = ?`,
         [providerId, userId],
@@ -189,7 +246,7 @@ class CustomOpenAIProviderService {
    * @returns {Promise<Object>} Updated provider
    */
   async updateProvider(providerId, userId, updates) {
-    const { provider_name, base_url, api_key } = updates;
+    const { provider_name, base_url, api_key, models } = updates;
 
     // Validate URL if provided
     if (base_url) {
@@ -217,6 +274,13 @@ class CustomOpenAIProviderService {
     if (api_key !== undefined) {
       updateFields.push('api_key = ?');
       updateValues.push(api_key ? encrypt(api_key) : null);
+    }
+
+    // Presence, not truthiness: an empty submission is the user CLEARING the
+    // list, which must write NULL to restore auto-discovery.
+    if (models !== undefined) {
+      updateFields.push('models = ?');
+      updateValues.push(serializeModelList(models));
     }
 
     if (updateFields.length === 0) {
@@ -280,7 +344,7 @@ class CustomOpenAIProviderService {
    * @returns {Promise<Object>} Created provider
    */
   async createProvider(userId, providerData) {
-    const { provider_name, base_url, api_key } = providerData;
+    const { provider_name, base_url, api_key, models } = providerData;
 
     // Validate required fields (api_key is optional)
     if (!provider_name || !base_url) {
@@ -304,13 +368,14 @@ class CustomOpenAIProviderService {
     const id = generateUUID();
     // Encrypt API key if provided, otherwise store null
     const encryptedApiKey = api_key ? encrypt(api_key) : null;
+    const serializedModels = serializeModelList(models);
 
     return new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO custom_openai_providers 
-        (id, user_id, provider_name, base_url, api_key, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
-        [id, userId, provider_name, normalizedBaseUrl, encryptedApiKey],
+        (id, user_id, provider_name, base_url, api_key, models, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
+        [id, userId, provider_name, normalizedBaseUrl, encryptedApiKey, serializedModels],
         function (err) {
           if (err) {
             console.error('Error creating custom provider:', err);
@@ -321,6 +386,7 @@ class CustomOpenAIProviderService {
               user_id: userId,
               provider_name,
               base_url: normalizedBaseUrl,
+              models: serializedModels,
               is_active: 1,
             });
           }
@@ -340,6 +406,16 @@ class CustomOpenAIProviderService {
 
     if (!provider) {
       throw new Error('Provider not found');
+    }
+
+    // A declared list wins outright and skips the network entirely. Providers
+    // that need this have no /models endpoint at all, so attempting the fetch
+    // first would spend a timeout on every model refresh to reach the same
+    // answer — and would log an error for a fully-configured provider.
+    const declared = parseModelList(provider.models);
+    if (declared.length > 0) {
+      console.log(`[CustomProvider] Using ${declared.length} declared models for ${providerId}`);
+      return declared;
     }
 
     try {
@@ -368,6 +444,17 @@ class CustomOpenAIProviderService {
         headers,
         timeout: 10000,
       });
+
+      if (response.status === 404) {
+        // Reachable, but publishes no catalog. The caller gets an empty list and
+        // the UI prompts for a manual list; this is a configuration state, not a
+        // fault, so it must not throw — throwing here is what filled tenant logs
+        // with red for providers that were working correctly.
+        console.log(
+          `[CustomProvider] ${providerId} publishes no /models endpoint; a declared model list is required`
+        );
+        return [];
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to fetch models: HTTP ${response.status}`);

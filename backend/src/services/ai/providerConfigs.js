@@ -1262,6 +1262,29 @@ const PROVIDER_CONFIGS = [
 
 export const PROVIDER_TEMPLATES = [
   {
+    key: 'cline-pass',
+    name: 'Cline Pass',
+    baseURL: 'https://api.cline.bot/api/v1',
+    defaultModel: 'cline-pass/qwen3.7-plus',
+    supportsTools: true,
+    supportsStreaming: true,
+    // This gateway answers an authenticated GET /v1/models with 404, so there
+    // is nothing to auto-discover. `models` pre-fills the declared-model box;
+    // the user can edit it, and a provider added without a template can type
+    // its own list. Ids must be family/name — a bare id is rejected upstream
+    // with 400 "invalid model format. Expected format: modelType/model".
+    // Source: https://docs.cline.bot/getting-started/clinepass
+    models: [
+      'cline-pass/qwen3.7-plus',
+      'cline-pass/glm-5.2',
+      'cline-pass/kimi-k2.5',
+      'cline-pass/minimax-m2.1',
+      'cline-pass/deepseek-v3.4',
+    ],
+    description:
+      'Cline Pass — subscription access to open coding models. Publishes no model list, so model IDs are declared rather than discovered.',
+  },
+  {
     key: 'mistral',
     name: 'Mistral AI',
     baseURL: 'https://api.mistral.ai/v1',
