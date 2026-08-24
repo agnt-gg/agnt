@@ -43,6 +43,16 @@ function run(lines, eol = '\n') {
 const bodyLines = (text) =>
   text.split(/\r?\n/).slice(2).filter((l) => l.trim() && !l.startsWith('#'));
 
+/** Write bytes verbatim, run the pre-pass, return the bytes afterwards. */
+function runRaw(raw) {
+  const file = path.join(dir, 'COMMIT_EDITMSG');
+  writeFileSync(file, raw, 'utf8');
+  execFileSync('node', [REFLOW, file], { encoding: 'utf8', stdio: 'pipe' });
+  return readFileSync(file, 'utf8');
+}
+
+const trailingNewlines = (text) => (text.match(/\n*$/) ?? [''])[0].length;
+
 describe('commit-msg reflow pre-pass', () => {
   describe('repairs what it can', () => {
     it('rewraps an over-long body at 72 columns', () => {
@@ -111,6 +121,53 @@ describe('commit-msg reflow pre-pass', () => {
       const { after } = run(['fix(scope): fine', '', LONG], '\r\n');
       expect(after).toContain('\r\n');
       expect(/[^\r]\n/.test(after)).toBe(false);
+    });
+  });
+
+  describe('leaves the end of the file exactly as it found it', () => {
+    // `raw.split(/\r?\n/)` yields a trailing "" for a file ending in a newline.
+    // Treating that artifact as a blank line and then restoring the EOL adds a
+    // blank line at EOF on every rewrite.
+    it('keeps exactly one trailing newline', () => {
+      const after = runRaw(`fix(scope): fine\n\n${LONG}\n`);
+      expect(trailingNewlines(after)).toBe(1);
+    });
+
+    it('keeps exactly one trailing newline with a comment block', () => {
+      const after = runRaw(
+        `fix(scope): fine\n\n${LONG}\n\n# Please enter the commit message.\n`,
+      );
+      expect(trailingNewlines(after)).toBe(1);
+    });
+
+    it('keeps exactly one trailing newline with a scissors diff', () => {
+      const after = runRaw(
+        `fix(scope): fine\n\n${LONG}\n\n`
+        + '# ------------------------ >8 ------------------------\n'
+        + 'diff --git a/x b/x\n',
+      );
+      expect(trailingNewlines(after)).toBe(1);
+    });
+
+    it('does not add a newline to a file that had none', () => {
+      const after = runRaw(`fix(scope): fine\n\n${LONG}`);
+      expect(trailingNewlines(after)).toBe(0);
+    });
+
+    it('ends CRLF files with exactly one CRLF', () => {
+      const after = runRaw(`fix(scope): fine\r\n\r\n${LONG}\r\n`);
+      expect(after.endsWith('\r\n')).toBe(true);
+      expect(after.endsWith('\r\n\r\n')).toBe(false);
+    });
+
+    it('does not grow the file end when a long line is reintroduced', () => {
+      const file = path.join(dir, 'COMMIT_EDITMSG');
+      writeFileSync(file, `fix(scope): fine\n\n${LONG}\n`, 'utf8');
+      for (let i = 0; i < 3; i += 1) {
+        execFileSync('node', [REFLOW, file], { stdio: 'pipe' });
+        expect(trailingNewlines(readFileSync(file, 'utf8'))).toBe(1);
+        writeFileSync(file, readFileSync(file, 'utf8') + `${LONG}\n`, 'utf8');
+      }
     });
   });
 
