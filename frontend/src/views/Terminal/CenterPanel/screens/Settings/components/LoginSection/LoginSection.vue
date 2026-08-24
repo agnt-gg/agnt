@@ -107,6 +107,7 @@ import { useRouter } from 'vue-router';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { consumeAdoptedToken } from '@/store/auth/urlSessionToken.js';
 
 export default {
   name: 'AuthSection',
@@ -264,17 +265,17 @@ export default {
     };
 
     onMounted(async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const newToken = urlParams.get('token');
-
-      if (newToken) {
-        // Google login came back through a redirect rather than the popup.
-        // Strip the token from the address bar before navigating so it does not
-        // survive in history.
-        const newURL = window.location.pathname;
-        window.history.replaceState({}, document.title, newURL);
-        await signIn(newToken);
-      }
+      // Storing the token and stripping it from the address bar BOTH happen
+      // before this app mounts now — see store/auth/urlSessionToken.js. Doing
+      // them here was the defect: this component is a grandchild of the
+      // settings screen, so by the time it mounted every sibling had already
+      // started polling with no token, and the backend's correct refusal of
+      // those header-less requests was being read as a dead session.
+      //
+      // What remains is the half that genuinely belongs to a component:
+      // confirm the session, then navigate or explain why it failed.
+      if (!consumeAdoptedToken()) return;
+      await confirmAndNavigate();
       // No `else` branch. It used to call fetchUserData and conditionally sync
       // the token — boot already does both, and doing it again from a component
       // mount raced the session start.
@@ -294,6 +295,19 @@ export default {
      */
     const signIn = async (token) => {
       store.commit('userAuth/SET_TOKEN', token);
+      await confirmAndNavigate();
+    };
+
+    /**
+     * Confirm a token that is ALREADY in the store, then leave this screen.
+     *
+     * Shared by both arrival paths — the Google popup (which stores the token
+     * itself, via signIn) and the URL handover (which was stored before mount).
+     * Boot verifies the same token concurrently on the second path; verifySession
+     * de-duplicates in-flight callers, so this awaits that one answer instead of
+     * issuing a second request.
+     */
+    const confirmAndNavigate = async () => {
       const sessionState = await store.dispatch('userAuth/verifySession');
       if (sessionState !== 'valid') {
         errorMessage.value =

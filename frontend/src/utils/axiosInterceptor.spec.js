@@ -111,11 +111,6 @@ describe('mid-session session rejection', () => {
     expect(router.push).toHaveBeenCalledWith({ path: '/m' });
   });
 
-  it('handles the missing-token reason too', async () => {
-    await fire(sessionRejection(`${API_CONFIG.BASE_URL}/agents/`, 'missing'));
-    expect(store.dispatch).toHaveBeenCalledWith('userAuth/logout');
-  });
-
   it('accepts a same-origin relative URL', async () => {
     // Not every call site builds an absolute URL; a relative /api/... path is
     // by definition this app's own backend.
@@ -164,6 +159,22 @@ describe('what must NOT trigger a logout', () => {
     expect(store.dispatch).not.toHaveBeenCalledWith('userAuth/logout');
     expect(router.push).not.toHaveBeenCalled();
   };
+
+  it('OUR OWN request that went out with no Authorization header', async () => {
+    // reason:'missing' means THIS CLIENT sent no header. That is a fact about
+    // our request, not about the user's token — and it used to sign them out.
+    //
+    // Measured on the live fleet: 63-89% of all 401s on every tenant carried
+    // no Authorization header, because the token arrives in the URL and was
+    // adopted too late in boot. Each one destroyed localStorage, which made
+    // the failure PERMANENT — every request after it was also header-less, so
+    // the app could never recover without a fresh sign-in.
+    //
+    // The requests themselves are fixed in main.js and urlSessionToken.js.
+    // This assertion is the second half: a bug on our side must not be able
+    // to masquerade as a revoked session ever again.
+    await expectNoLogout(sessionRejection(`${API_CONFIG.BASE_URL}/agents/`, 'missing'));
+  });
 
   it('a 401 from an upstream provider relayed through our backend', async () => {
     // Wrong OpenAI key, expired Anthropic credential, etc. Nothing to do with

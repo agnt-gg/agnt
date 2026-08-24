@@ -10,6 +10,7 @@ import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
 import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { watchSession, stopLicenseRefresh, idle } from '@/store/auth/sessionBoot.js';
+import { adoptTokenFromUrl } from '@/store/auth/urlSessionToken.js';
 import { vTooltip } from '@/directives/tooltip.js';
 import { vViewportClamp } from '@/directives/viewportClamp.js';
 import { installAppHeight } from '@/utils/appHeight.js';
@@ -48,9 +49,38 @@ store.dispatch('theme/initTheme');
 // Register all canvas widgets
 registerAllWidgets();
 
+// EVERY outgoing axios request carries the session token, and this is
+// registered BEFORE mount for a reason.
+//
+// It used to be the last statement in this file — after `app.mount()` and
+// after `initializeApp()`. Any request issued while components were still
+// mounting therefore went out with no `Authorization` header, because the
+// thing that attaches it did not exist yet. The backend refused those
+// correctly with `401 {reason:'missing'}`, and the response interceptor below
+// used to read that refusal as a dead session and clear the token.
+//
+// Nothing may mount before the credential path is complete, so the ordering
+// is now: attach headers, handle rejections, adopt any token, THEN mount.
+axios.interceptors.request.use(
+  (config) => {
+    const token = store.state.userAuth.token;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 // Initialize axios interceptors: rate limiting, and the mid-session auth net
 // that signs the user out when the data backend rejects their token.
 initializeAxiosInterceptor(store, router);
+
+// A hosted tenant delivers its token in the URL rather than in localStorage,
+// so the store cannot seed itself the way it does on desktop. Adopt it here —
+// synchronously, before mount — so no component can ever observe a null token
+// and poll without one. See store/auth/urlSessionToken.js.
+adoptTokenFromUrl(store);
 
 // Load the user's data when a session STARTS, and drop it when one ends —
 // however that happens. Installed before anything can change sessionState so
@@ -185,15 +215,3 @@ window.addEventListener('beforeunload', () => {
 
 // Initialize app data in background AFTER mount (non-blocking)
 initializeApp().catch(console.error);
-
-// Axios interceptor for auth headers
-axios.interceptors.request.use(
-  (config) => {
-    const token = store.state.userAuth.token;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);

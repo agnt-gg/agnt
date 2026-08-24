@@ -11,10 +11,21 @@ let router = null;
  * Deliberately narrow on both axes, because the cost of a false positive is
  * throwing a working user out of the app:
  *
- *   - the SHAPE must be the one `authenticateToken` produces, identified by
- *     its `reason` discriminator ('missing' | 'invalid'). A 401 relayed from
- *     an upstream LLM provider whose API key is wrong is also a 401, and it
- *     says nothing whatsoever about the user's session.
+ *   - the SHAPE must be the one `authenticateToken` produces, AND it must be
+ *     the `reason` that describes the TOKEN rather than the request: only
+ *     'invalid'. A 401 relayed from an upstream LLM provider whose API key is
+ *     wrong is also a 401, and it says nothing whatsoever about the session.
+ *
+ *     'missing' is deliberately EXCLUDED, and that exclusion is the fix for a
+ *     self-inflicted logout measured on the live fleet. 'missing' means this
+ *     client sent no Authorization header. That is a statement about our own
+ *     request — never evidence that the user's token is dead. Acting on it
+ *     destroyed localStorage, which made the failure permanent: every request
+ *     after it was also header-less, so the app could never recover on its
+ *     own. Any request that goes out bare is a bug on THIS side, and the
+ *     honest response is to let the caller see its 401, not to end the
+ *     session. See store/auth/urlSessionToken.js for the race that produced
+ *     them and main.js for the interceptor ordering that allowed it.
  *   - the ORIGIN must be BASE_URL, the backend serving this app's data.
  *     api.agnt.gg has its own authority and its own handling in fetchUserData.
  *
@@ -29,7 +40,7 @@ function isOurSessionRejection(error) {
   // Relative URLs are same-origin, which in this app IS the data backend.
   const sameBackend = url.startsWith(API_CONFIG.BASE_URL) || url.startsWith('/api/');
   if (!sameBackend) return false;
-  return res.data?.reason === 'missing' || res.data?.reason === 'invalid';
+  return res.data?.reason === 'invalid';
 }
 
 /**
