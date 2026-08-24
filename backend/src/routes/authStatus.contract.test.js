@@ -253,9 +253,15 @@ describe('the gate is wired to the same verification as the data routes', () => 
       path.join(HERE, '../../../frontend/src/utils/axiosInterceptor.js'),
       'utf8',
     );
-    expect(interceptor).toContain("reason === 'missing'");
     expect(interceptor).toContain("reason === 'invalid'");
-    // And those are the two the middleware mints — nothing else.
+    // 'missing' must NOT be here. It means WE sent no Authorization header —
+    // a fact about our own request, never about the token — and logging out on
+    // it was self-perpetuating: the logout cleared localStorage, so every later
+    // request was also bare, so the session could never heal. The interceptor
+    // deliberately excludes it and this asserts that exclusion holds.
+    expect(interceptor).not.toContain("reason === 'missing'");
+    // Both are still minted by the middleware — nothing else is.
+    // The client acting on only one of them is the point, not an oversight.
     const middleware = fs.readFileSync(path.join(HERE, 'Middleware.js'), 'utf8');
     const reasons = [...middleware.matchAll(/reason:\s*'([a-z]+)'/g)].map((m) => m[1]);
     expect(new Set(reasons)).toEqual(new Set(['missing', 'invalid']));
