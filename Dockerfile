@@ -157,6 +157,52 @@ COPY --chown=node:node assets/ /app/assets/
 # Expose backend/.env to dotenv (which loads from cwd=/app)
 RUN ln -sf /app/backend/.env /app/.env
 
+# ---------------------------------------------------------------------------
+# THE APPLICATION TREE IS ROOT-OWNED; THE APP RUNS AS `node`.
+# ---------------------------------------------------------------------------
+# AGNT ships an agent with a shell, so the process that serves the product can
+# also edit the product. That is not hypothetical. A tenant agent wanted a
+# provider whose gateway publishes no /v1/models endpoint, found the supported
+# path returned 404, and patched the running container instead: it hand-edited
+# the minified entry bundle, saved it under a new name, and repointed
+# index.html at it. The 160 lazily-imported route chunks still carried the
+# ORIGINAL entry filename baked in at build time, and ES modules are keyed by
+# URL — so the browser instantiated the entry graph twice, two Vue apps raced
+# to mount #app, and the root mount threw. Blank page. Every HTTP-level check
+# stayed 200 throughout, so nothing alerted.
+#
+# WHY OWNERSHIP RATHER THAN A POLICY CHECK. A path allowlist inside the app is
+# unenforceable against code that can write and run a Node script — it would
+# have to defend against itself. The filesystem is the only layer that holds.
+# `node` is uid 1000 with no CAP_CHOWN, so it cannot chown its way back out.
+#
+# WHY /app ITSELF AND NOT ONLY ITS CHILDREN. Write permission on the DIRECTORY
+# permits `mv /app/backend /app/backend.old` followed by a fresh tree, which
+# defeats the point while leaving every child's mode untouched.
+#
+# WHAT THE AGENT KEEPS. Everything a user's work legitimately touches lives
+# outside this tree and stays node-owned:
+#   /app/data        USER_DATA_PATH — sqlite db, plugins/installed, plugin-builds,
+#                    per-install secrets. PluginInstaller resolves every write
+#                    path from USER_DATA_PATH, and npm install for a plugin runs
+#                    with cwd inside it, so dependency installs are unaffected.
+#   /app/logs        logger
+#   /app/unfirehose  UNFIREHOSE_DIR — session JSONL
+# Verified before shipping: on three long-running tenants, zero files under
+# /app outside those three directories had been modified since the image was
+# built, and /app/backend/node_modules held zero packages (runtime deps live at
+# /app/node_modules and are read-only by design).
+#
+# These three are re-chowned at every boot by docker-entrypoint.sh, which still
+# runs as root before `su-exec node`. That is what makes this safe for a bind
+# mount whose host directory is owned by someone else, and it is why the chown
+# here is belt-and-braces rather than the sole guarantee — a RUN that touches
+# /app/data after the VOLUME declaration above would otherwise be discarded.
+RUN mkdir -p /app/unfirehose \
+    && chown -R root:root /app \
+    && chown -R node:node /app/data /app/logs /app/unfirehose \
+    && chmod 755 /app
+
 # Copy and set up entrypoint script
 COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
