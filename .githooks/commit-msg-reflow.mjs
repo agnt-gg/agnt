@@ -72,6 +72,14 @@ function main() {
   const eol = raw.includes('\r\n') ? '\r\n' : '\n';
   const all = raw.split(/\r?\n/);
 
+  // A file that ends in a newline splits to a trailing "" that is an artifact
+  // of the EOF, not a blank line. Left in, it is counted as a separator, then
+  // re-emitted AND followed by a restored EOL — one extra blank line at EOF
+  // every time the file is rewritten. Drop it here and restore exactly one
+  // EOL on the way out.
+  const endsWithEol = all.length > 0 && all[all.length - 1] === '';
+  if (endsWithEol) all.pop();
+
   // Everything from the scissors line on is preserved untouched.
   const cut = all.findIndex((l) => SCISSORS_LINE.test(l));
   const head = cut === -1 ? all : all.slice(0, cut);
@@ -111,7 +119,7 @@ function main() {
   if (after.problems.length > before.problems.length) return;
 
   const out = [...reflowed, ...Array(blanks).fill(''), ...comments, ...tail];
-  writeFileSync(file, out.join(eol) + (raw.endsWith('\n') ? eol : ''), 'utf8');
+  writeFileSync(file, out.join(eol) + (endsWithEol ? eol : ''), 'utf8');
 
   const worst = content.reduce((n, l) => Math.max(n, l.length), 0);
   console.error(
