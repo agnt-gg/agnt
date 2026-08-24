@@ -4,4 +4,13 @@
 # --show-toplevel, not a path relative to this file: with core.hooksPath the
 # hook is resolved against the working tree it is running in, so this fires
 # correctly from linked worktrees as well as the primary checkout.
-exec node "$(git rev-parse --show-toplevel)/.githooks/commit-msg-lint.mjs" "$1"
+ROOT="$(git rev-parse --show-toplevel)"
+
+# Pre-pass: reflow an over-long body in place, so the hook repairs what can be
+# repaired mechanically. It never exits non-zero and never rewrites a subject;
+# deliberately not `commit-msg-lint.mjs --fix`, which also strips the comment
+# block, the scissors diff and any body line starting with '#'.
+node "$ROOT/.githooks/commit-msg-reflow.mjs" "$1"
+
+# The linter is the only thing that decides whether this commit is allowed.
+exec node "$ROOT/.githooks/commit-msg-lint.mjs" "$1"
