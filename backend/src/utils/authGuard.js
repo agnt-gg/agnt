@@ -35,7 +35,21 @@
 import jwt from 'jsonwebtoken';
 
 import { isPermittedUser, NOT_A_MEMBER } from '../services/auth/tenantOwnership.js';
-import { tenantVerdictSync, verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
+import {
+  isRemoteVerifyMode,
+  tenantVerdictSync,
+  verifiedUserSync,
+  verifyViaIssuer,
+} from '../services/auth/remoteTokenVerifier.js';
+
+/**
+ * "I have no answer for this token", as distinct from "this token is bad".
+ *
+ * The difference is the whole point. The client logs out on `invalid` and only
+ * on `invalid`, so a guard that says `invalid` when it means `unverified`
+ * destroys a working session. See the block above `requireAuth`.
+ */
+export const UNVERIFIED = 'unverified';
 
 /** Cookie name used for browser-issued media subresource requests. */
 export const MEDIA_COOKIE_NAME = 'agnt_media_token';
@@ -167,40 +181,130 @@ export function verifyAuthToken(token) {
       if (user) return admit(user);
     }
 
-    return { ok: false, reason: 'invalid' };
+    // NOTHING ABOVE PROVED THIS TOKEN IS BAD — ON A HOSTED TENANT.
+    //
+    // On a desktop install the verify above IS authoritative: this process
+    // holds the issuer's signing key, so a signature it cannot check is a
+    // signature that is wrong, and `invalid` is the honest word.
+    //
+    // A tenant in verify-remote mode holds no such key by design, so the
+    // failure above carries no information whatsoever about the token. The
+    // only local evidence is the verifier cache, and that expires every
+    // POSITIVE_TTL_MS (5 minutes) while nothing on this path can refill it —
+    // `cache.set` lives inside the async `verifyViaIssuer` alone. Calling that
+    // silence `invalid` told the client its session was dead every time a
+    // cache entry aged out, and the client believed it and logged the user
+    // out. Measured on the live fleet: 401-with-a-token on the provider status
+    // polls, immediately followed by the same endpoints going out bare.
+    //
+    // So the sync path now reports what it actually knows. Callers that CAN
+    // await resolve it for real (see requireAuth); callers that cannot get a
+    // refusal that does not end the session.
+    return { ok: false, reason: isRemoteVerifyMode() ? UNVERIFIED : 'invalid' };
   }
 }
 
 /**
  * Express middleware factory that ACTUALLY REJECTS unauthenticated requests.
  *
+ * ---------------------------------------------------------------------------
+ * WHY THIS ASKS THE ISSUER INSTEAD OF READING A CACHE AND GUESSING
+ * ---------------------------------------------------------------------------
+ * `verifyAuthToken` is synchronous because three call sites cannot await:
+ * media subresources, the websocket handshake, and SSE. These 40-odd JSON
+ * routes are NOT among them — they are ordinary request/response handlers,
+ * and Express has awaited middleware since forever.
+ *
+ * Being synchronous had a cost that was invisible until it was measured. On a
+ * hosted tenant the only local evidence about a cloud token is the verifier
+ * cache, whose positive entries live 5 minutes and which only the ASYNC path
+ * can write. So every guarded route was one expired entry away from refusing a
+ * perfectly good session, and the refusal it produced — `invalid` — is exactly
+ * the word the client treats as proof the session is dead. The user was logged
+ * out mid-session, on a timer they could feel but not explain.
+ *
+ * `Middleware.authenticateToken` never had this problem: it awaits
+ * `verifyViaIssuer` and gets a real answer. This guard now does the same,
+ * which also means the two agree about the same token instead of contradicting
+ * each other within the same millisecond.
+ *
+ * THE FAST PATH STAYS SYNCHRONOUS, deliberately. A locally-verifiable token,
+ * a warm cache entry, an expired token, a non-member and a missing header all
+ * resolve without a single await, so desktop behaviour is bit-for-bit
+ * unchanged and no ordering shifts under any existing caller. Only
+ * `unverified` — which `verifyAuthToken` can produce only in verify-remote
+ * mode — costs a round trip, and only when the cache has nothing to say.
+ *
  * @param {object} [opts] - Carrier options, forwarded to extractToken.
  * @returns {import('express').RequestHandler}
  */
 export function requireAuth(opts = {}) {
-  return function requireAuthMiddleware(req, res, next) {
-    const token = extractToken(req, opts);
-    const result = verifyAuthToken(token);
-    if (!result.ok) {
-      // A non-member holds a perfectly good credential; it is simply not good
-      // HERE. Answering 401 would tell the client to go and get another one,
-      // which it would then present with the identical result, forever.
-      const notMember = result.reason === NOT_A_MEMBER;
-      return res.status(notMember ? 403 : 401).json({
-        success: false,
-        error: notMember ? 'This AGNT instance belongs to another account.' : 'Authentication required',
-        reason: result.reason,
-      });
-    }
-    req.user = result.user;
+  /** Admit a caller: identity on the request, session side-effect, next(). */
+  const admit = (req, token, user, next) => {
+    req.user = user;
     // Mirror authenticateToken's session side-effect so downstream helpers
     // (getUserTokenFromSession) behave identically on guarded routes.
     if (req.session) {
       req.session.userToken = token;
-      req.session.userData = result.user;
+      req.session.userData = user;
       req.session.lastActivity = Date.now();
     }
     return next();
+  };
+
+  const refuse = (res, reason) => {
+    // A non-member holds a perfectly good credential; it is simply not good
+    // HERE. Answering 401 would tell the client to go and get another one,
+    // which it would then present with the identical result, forever.
+    const notMember = reason === NOT_A_MEMBER;
+    return res.status(notMember ? 403 : 401).json({
+      success: false,
+      error: notMember ? 'This AGNT instance belongs to another account.' : 'Authentication required',
+      reason,
+    });
+  };
+
+  return function requireAuthMiddleware(req, res, next) {
+    const token = extractToken(req, opts);
+    const result = verifyAuthToken(token);
+
+    if (result.ok) return admit(req, token, result.user, next);
+    if (result.reason !== UNVERIFIED) return refuse(res, result.reason);
+
+    // Unresolved locally. Ask the only party that can actually answer.
+    return verifyViaIssuer(token)
+      .then((remote) => {
+        if (remote.ok && remote.user) {
+          const id = remote.user.id || remote.user.userId;
+          if (!id) return refuse(res, 'no-subject');
+          // Genuine is not the same as welcome. Same membership boundary the
+          // synchronous path applies, on the verdict from this same response.
+          if (!isPermittedUser(id, remote.tenant)) return refuse(res, NOT_A_MEMBER);
+          return admit(
+            req,
+            token,
+            {
+              isAuthenticated: true,
+              id,
+              userId: id,
+              email: remote.user.email,
+              auth_type: 'issuer-verified',
+            },
+            next,
+          );
+        }
+
+        // A DENIAL AND AN OUTAGE ARE NOT THE SAME ANSWER.
+        //
+        // `denied:` is the issuer explicitly disowning the credential — the
+        // one case where ending the session is correct. Anything else means
+        // the issuer could not be reached or could not be understood, and
+        // reporting that as `invalid` would turn a bad afternoon at the API
+        // into a fleet-wide logout. The verifier already refuses to invent a
+        // positive during an outage; this refuses to invent a negative.
+        return refuse(res, String(remote.source || '').startsWith('denied:') ? 'invalid' : UNVERIFIED);
+      })
+      .catch(() => refuse(res, UNVERIFIED));
   };
 }
 
