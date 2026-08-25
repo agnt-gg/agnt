@@ -34,11 +34,18 @@
           </div>
 
           <div class="social-login">
-            <button @click="connectGoogle" class="google-auth">
+            <button @click="connectGoogle" class="google-auth" :disabled="isWaitingForBrowser">
               <SvgIcon name="google" />
-              <span>Continue with Google</span>
+              <span>{{
+                isWaitingForBrowser ? 'Waiting for your browser\u2026' : 'Continue with Google'
+              }}</span>
             </button>
           </div>
+
+          <p v-if="isWaitingForBrowser" class="helper-text">
+            Finish signing in in your browser, then come back.
+            <a href="#" @click.prevent="cancelDesktopSignIn">Cancel</a>
+          </p>
 
           <p class="helper-text">
             By continuing, you agree to the AGNT
@@ -101,13 +108,16 @@
 </template>
 
 <script>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { consumeAdoptedToken } from '@/store/auth/urlSessionToken.js';
+import { consumeAdoptedToken, looksLikeJwt } from '@/store/auth/urlSessionToken.js';
+import { isTrustedOAuthMessageOrigin } from '@/utils/oauthMessageOrigin.js';
+import { isTrustedAuthMessageSender } from '@/utils/authMessageSender.js';
+import { canUseDesktopSignIn, startDesktopSignIn } from '@/services/desktopSignIn.js';
 
 export default {
   name: 'AuthSection',
@@ -136,7 +146,73 @@ export default {
     const showTermsModal = ref(false);
     const termsModalTab = ref('terms');
 
-    const connectGoogle = () => {
+    // A desktop sign-in in flight. Held so a second click cannot leave the
+    // first one polling for three minutes behind the user's back.
+    let desktopSignInAttempt = null;
+    const isWaitingForBrowser = ref(false);
+
+    // Teardown for the popup listener. Without it, closing the popup without
+    // signing in left the listener installed for the life of the window, and
+    // every subsequent click added another.
+    let stopPopupListener = null;
+
+    /**
+     * Sign in with Google.
+     *
+     * Two routes, chosen by what this window can actually DO rather than by
+     * sniffing a user agent:
+     *
+     *   DESKTOP  the system browser, where the user's Google session already
+     *            lives, with the answer returned over loopback. Opening our own
+     *            window here is the defect being fixed: Electron satisfies
+     *            `window.open` with a fresh Chromium that has no cookies, so
+     *            somebody permanently signed into Google is handed an empty
+     *            password form in a window with no address bar.
+     *
+     *   BROWSER  a popup on our own origin, which posts the token back here.
+     *            See utils/oauthPopupHandoff.js for the other half of that —
+     *            without it, the popup boots a second copy of AGNT instead of
+     *            answering.
+     */
+    const connectGoogle = async () => {
+      errorMessage.value = '';
+      if (canUseDesktopSignIn()) return signInWithSystemBrowser();
+      return signInWithPopup();
+    };
+
+    const cancelDesktopSignIn = () => {
+      desktopSignInAttempt?.cancel();
+      desktopSignInAttempt = null;
+      isWaitingForBrowser.value = false;
+    };
+
+    const signInWithSystemBrowser = async () => {
+      cancelDesktopSignIn();
+      isWaitingForBrowser.value = true;
+
+      const attempt = startDesktopSignIn();
+      desktopSignInAttempt = attempt;
+
+      try {
+        await signIn(await attempt.promise);
+      } catch (error) {
+        // Only the attempt that is still current may speak. A cancelled or
+        // superseded one rejects too, and reporting that would put an error on
+        // screen for something the user themselves just did.
+        if (attempt === desktopSignInAttempt) {
+          errorMessage.value = error?.message || 'Sign-in failed.';
+        }
+      } finally {
+        if (attempt === desktopSignInAttempt) {
+          desktopSignInAttempt = null;
+          isWaitingForBrowser.value = false;
+        }
+      }
+    };
+
+    const signInWithPopup = () => {
+      stopPopupListener?.();
+
       const redirectUrl = `${window.location.origin}/settings`;
       const width = 600;
       const height = 700;
@@ -150,21 +226,39 @@ export default {
       );
 
       const handleMessage = async (event) => {
-        if (event.data?.type === 'google-auth-success') {
-          const { token } = event.data;
+        // THE TRUST BOUNDARY. This handler calls signIn() with whatever
+        // arrives, so an unvetted sender is a session handed to a stranger —
+        // and AGNT renders authored artifact and widget HTML at its own origin,
+        // so an origin check alone cannot settle it. See utils/authMessageSender.js.
+        if (!isTrustedOAuthMessageOrigin(event.origin)) return;
+        if (!isTrustedAuthMessageSender(event, popup)) return;
 
-          window.removeEventListener('message', handleMessage);
+        // A trusted sender is not a well-formed message; this is a global
+        // listener and anything same-origin may post `null`.
+        if (!event.data || typeof event.data !== 'object') return;
 
-          if (token) {
-            await signIn(token);
+        if (event.data.type === 'google-auth-success') {
+          stopPopupListener?.();
+
+          // Structural check only — the backend verifies the signature. It
+          // stops a malformed token from evicting a working session.
+          if (!looksLikeJwt(event.data.token)) {
+            errorMessage.value = 'Sign-in returned something unusable. Please try again.';
+            return;
           }
-        } else if (event.data?.type === 'google-auth-error') {
-          window.removeEventListener('message', handleMessage);
-          errorMessage.value = event.data.error || 'Login failed';
+          await signIn(event.data.token);
+        } else if (event.data.type === 'google-auth-error') {
+          stopPopupListener?.();
+          errorMessage.value =
+            typeof event.data.error === 'string' ? event.data.error : 'Login failed';
         }
       };
 
       window.addEventListener('message', handleMessage);
+      stopPopupListener = () => {
+        window.removeEventListener('message', handleMessage);
+        stopPopupListener = null;
+      };
     };
 
     const sendMagicLink = async () => {
@@ -255,6 +349,16 @@ export default {
       router.push('/');
     };
 
+    // Both sign-in routes leave something running: the popup route a `message`
+    // listener on window, the desktop route a poll. Neither can survive this
+    // screen — a listener that outlives its popup would accept a token nobody
+    // is waiting for, and a poll that outlives its window is a leak.
+    onUnmounted(() => {
+      stopPopupListener?.();
+      desktopSignInAttempt?.cancel();
+      desktopSignInAttempt = null;
+    });
+
     const openTermsModal = (tab = 'terms') => {
       termsModalTab.value = tab;
       showTermsModal.value = true;
@@ -331,6 +435,8 @@ export default {
       isVerifying,
       verifyError,
       connectGoogle,
+      cancelDesktopSignIn,
+      isWaitingForBrowser,
       sendMagicLink,
       formatCodeInput,
       verifyCode,

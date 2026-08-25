@@ -11,6 +11,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Agent Routes](#agent-routes)
 - [Async Tool Routes](#async-tool-routes)
 - [Provider Auth Routes](#provider-auth-routes)
+- [Desktop Sign-In Routes](#desktop-sign-in-routes)
 - [Contract Routes](#contract-routes)
 - [Content Output Routes](#content-output-routes)
 - [Custom Provider Routes](#custom-provider-routes)
@@ -941,6 +942,71 @@ These behaviors were validated via live tool calls (see `ASYNC-TOOLS-REFERENCE.m
   "cancelled": 3
 }
 ```
+
+---
+
+## Desktop Sign-In Routes
+
+Base path: `/api/auth/desktop`
+
+Signing in with Google on the desktop app opens the user's **real browser**,
+where their Google session already exists, rather than an Electron window with
+an empty cookie jar. A browser the app did not open has no `window.opener`, so
+there is no `postMessage` path back — these routes are the loopback address the
+answer comes home to. This is the shape RFC 8252 recommends for native apps.
+
+**Every route here is deliberately unauthenticated**, because the caller is in
+the middle of obtaining a session and does not have one yet. Two properties
+replace that:
+
+- **Loopback only.** Requests are refused with 403 unless
+  `req.socket.remoteAddress` is a loopback address. Read from the socket and
+  not from `req.ip`, because `req.ip` honours the caller-supplied
+  `X-Forwarded-For` header when `trust proxy` is set.
+- **The nonce is the credential.** 256 bits from `crypto.randomBytes`, single
+  use, write once, five-minute TTL, and capped in number.
+
+The flow: the app calls `/begin`, opens the browser at the remote Google
+endpoint passing `/handoff/:nonce` as the redirect target, and polls `/claim`
+until the browser lands.
+
+### Begin a Desktop Sign-In
+
+**POST** `/begin`
+
+- **Authentication**: None (loopback only)
+- **Description**: Allocates a nonce for one sign-in attempt.
+- **Response**:
+
+```json
+{ "nonce": "3f7a...64 hex chars" }
+```
+
+### Receive the Session (browser lands here)
+
+**GET** `/handoff/:nonce?token=<jwt>`
+
+- **Authentication**: None (loopback only)
+- **Description**: Where the remote API redirects the user's browser once
+  Google has signed them in. Records the token against the nonce and renders a
+  "you can close this tab" page. Always answers with a **page**, never a bare
+  status: this is a real tab a person is looking at.
+- **Responses**: `200` recorded · `400` no token in the callback · `410` unknown,
+  expired, or already answered.
+- Sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer`, since the
+  token is in the request URL.
+
+### Claim the Session (the app polls here)
+
+**GET** `/handoff/:nonce/claim`
+
+- **Authentication**: None (loopback only)
+- **Description**: Takes the token once it has arrived. Single use — a second
+  call returns 404.
+- **Responses**:
+  - `200` `{ "token": "<jwt>" }`
+  - `204` the browser has not answered yet; keep polling
+  - `404` unknown, expired, or already claimed; stop polling
 
 ---
 

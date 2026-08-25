@@ -38,6 +38,36 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * (d) execute code. If any answer is yes, it does not belong here.
  */
 const PUBLIC_ROUTES = new Map([
+  // --- desktop sign-in over loopback (RFC 8252) ---
+  //
+  // These cannot require a session: the caller is in the middle of obtaining
+  // one. Two properties stand in for auth, and both are asserted in
+  // DesktopAuthRoutes.test.js rather than merely claimed here.
+  //
+  //   1. Loopback only. `router.use` refuses anything whose
+  //      `req.socket.remoteAddress` is not a loopback address, so a deployment
+  //      bound to 0.0.0.0 for Docker or phone access does not expose them.
+  //      Read from the socket, not `req.ip`, which honours a caller-supplied
+  //      X-Forwarded-For when `trust proxy` is set.
+  //   2. The nonce is the credential: 256 random bits, single use, write once,
+  //      five-minute TTL, capped in number.
+  //
+  // Against the four questions above: none of these reads user-specific data
+  // (the claim returns only what THIS machine's own sign-in just deposited),
+  // none writes persistent state, none spends money, none executes code.
+  [
+    'DesktopAuthRoutes.js :: POST /begin',
+    'Allocates a random nonce for one sign-in. Loopback only. No session exists yet.',
+  ],
+  [
+    'DesktopAuthRoutes.js :: GET /handoff/:nonce',
+    "Where the user's own browser lands after Google. Loopback only; the nonce is the credential and is write-once.",
+  ],
+  [
+    'DesktopAuthRoutes.js :: GET /handoff/:nonce/claim',
+    'Returns the token this machine just deposited, once. Loopback only; unguessable nonce; single use.',
+  ],
+
   // --- liveness / boot-order ---
   ['AgentRoutes.js :: GET /health', 'Liveness probe. Returns a constant.'],
   ['ContentOutputRoutes.js :: GET /health', 'Liveness probe.'],

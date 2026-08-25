@@ -52,6 +52,7 @@ import PluginManager from './src/plugins/PluginManager.js';
 // Import your API routes
 import UserRoutes from './src/routes/UserRoutes.js';
 import AuthRoutes from './src/routes/AuthRoutes.js';
+import DesktopAuthRoutes from './src/routes/DesktopAuthRoutes.js';
 import ProviderAuthRoutes from './src/routes/ProviderAuthRoutes.js';
 import StreamRoutes from './src/routes/StreamRoutes.js';
 import WorkflowRoutes from './src/routes/WorkflowRoutes.js';
@@ -226,6 +227,11 @@ if (frontendExists) {
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api/users', UserRoutes);
 app.use('/api/auth', AuthRoutes);
+// Mounted under /api/auth but kept in its own file and its own path segment:
+// every route in it is loopback-only and session-less, which is a different
+// contract from the rest of /api/auth and should not be one `router.use` away
+// from being applied to it by accident.
+app.use('/api/auth/desktop', DesktopAuthRoutes);
 app.use('/api/providers', ProviderAuthRoutes);
 app.use('/api/stream', StreamRoutes);
 app.use('/api/agents', AgentRoutes);
