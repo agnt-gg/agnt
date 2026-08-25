@@ -836,6 +836,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
+import { isTrustedOAuthMessageOrigin } from '@/utils/oauthMessageOrigin.js';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import BaseForm from '../../../_components/BaseForm.vue';
@@ -2124,6 +2125,11 @@ export default {
     }
 
     async function handleOAuthMessage(event) {
+      // This handler redeems an OAuth code against the signed-in user's account
+      // and had no origin check at all, so any page that could reach this
+      // window could have one redeemed. See utils/oauthMessageOrigin.js.
+      if (!isTrustedOAuthMessageOrigin(event.origin)) return;
+
       // Handle legacy oauth-success message
       if (event.data && event.data.type === 'oauth-success') {
         store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });

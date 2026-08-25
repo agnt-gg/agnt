@@ -54,6 +54,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
+import { isTrustedOAuthMessageOrigin } from '@/utils/oauthMessageOrigin.js';
 import providerAuthService from '@/services/providerAuthService.js';
 
 export default {
@@ -864,9 +865,11 @@ export default {
 
     // Handle OAuth completion messages from popup
     const handleOAuthMessage = async (event) => {
-      // Verify origin for security (allow same origin and api.agnt.gg for postMessage)
-      const allowedOrigins = [window.location.origin, 'https://api.agnt.gg'];
-      if (!allowedOrigins.some((origin) => event.origin === origin || event.origin.includes('localhost'))) return;
+      // This handler redeems an OAuth code against the signed-in user's account,
+      // so the origin check is the trust boundary. It used to OR in a bare
+      // `event.origin.includes('localhost')`, which admitted any registrable
+      // domain containing that substring. See utils/oauthMessageOrigin.js.
+      if (!isTrustedOAuthMessageOrigin(event.origin)) return;
 
       if (event.data.type === 'oauth_success') {
         // Refresh health immediately

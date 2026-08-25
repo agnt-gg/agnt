@@ -92,8 +92,11 @@ describe('useProviderConnection — oauth-callback postMessage handler', () => {
           state: 'twitter:http://localhost:3333',
           provider: 'twitter',
         },
-        // jsdom's window.location.origin is 'http://localhost' which the
-        // handler accepts via its `event.origin.includes('localhost')` rule.
+        // Same-origin, which is an exact match against `window.location.origin`.
+        // This previously carried a comment attributing the pass to the
+        // handler's `event.origin.includes('localhost')` rule; that was never
+        // true — the exact-match term matched first, and the test goes on
+        // passing now that the substring rule is gone.
         origin: window.location.origin,
       }),
     );
@@ -134,6 +137,41 @@ describe('useProviderConnection — oauth-callback postMessage handler', () => {
           provider: 'twitter',
         },
         origin: 'https://evil.example.com',
+      }),
+    );
+    await flushPromises();
+
+    expect(providerAuthService.completeRemoteOAuthCallback).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The test above passed against the vulnerable handler too: it never
+   * exercised the hole. The old guard OR'd in a bare
+   * `event.origin.includes('localhost')`, so it refused `evil.example.com`
+   * while admitting anything whose origin merely CONTAINED that substring —
+   * all of these registrable by an attacker.
+   *
+   * A wrong code redeemed here is grafted onto the signed-in user's account,
+   * so these run through the real listener rather than the predicate alone.
+   */
+  it.each([
+    'https://localhost.evil.com',
+    'https://evil-localhost.io',
+    'http://localhostage.com',
+    'https://notlocalhost.xyz',
+  ])('ignores oauth-callback from %s, which the substring rule admitted', async (origin) => {
+    wrapper = mount(Harness, { global: { plugins: [makeStore()] } });
+    await flushPromises();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'oauth-callback',
+          code: 'attacker-supplied-code',
+          state: 'twitter:x',
+          provider: 'twitter',
+        },
+        origin,
       }),
     );
     await flushPromises();
