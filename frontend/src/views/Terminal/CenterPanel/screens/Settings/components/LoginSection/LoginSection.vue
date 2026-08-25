@@ -108,7 +108,13 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { consumeAdoptedToken, looksLikeJwt } from '@/store/auth/urlSessionToken.js';
-import { isTrustedAuthMessage } from '@/utils/googleAuthPopup.js';
+import {
+  isTrustedAuthMessage,
+  markGoogleAuthPopupOpen,
+  clearGoogleAuthPopupMark,
+  GOOGLE_AUTH_CHANNEL,
+  GOOGLE_AUTH_SUCCESS,
+} from '@/utils/googleAuthPopup.js';
 
 export default {
   name: 'AuthSection',
@@ -144,6 +150,12 @@ export default {
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
 
+      // Before opening, not after: the popup may come back with its opener
+      // severed by COOP, and this mark is the only thing that then lets it tell
+      // itself apart from an ordinary redirect into the user's own tab. See
+      // utils/googleAuthPopup.js.
+      markGoogleAuthPopupOpen();
+
       const popup = window.open(
         `${API_CONFIG.REMOTE_URL}/users/auth/google?redirectUrl=${encodeURIComponent(redirectUrl)}`,
         'google-login-popup',
@@ -161,6 +173,41 @@ export default {
       const stopListening = () => {
         window.removeEventListener('message', handleMessage);
         clearInterval(closedPoll);
+        try {
+          channel?.close();
+        } catch {
+          /* already closed */
+        }
+        clearGoogleAuthPopupMark();
+      };
+
+      // The popup reaches us by whichever route survives — the opener if COOP
+      // has not severed it, the same-origin channel otherwise. Both land here,
+      // and `settled` is what stops a token that arrives twice from signing in
+      // twice, or from racing a teardown already in progress.
+      let settled = false;
+
+      const completeSignIn = async (token) => {
+        if (settled) return;
+        settled = true;
+        stopListening();
+
+        // The same structural rule the address-bar handover applies. A token
+        // that cannot be one must not reach SET_TOKEN, where it would evict
+        // a session that is currently working.
+        if (!looksLikeJwt(token)) {
+          errorMessage.value = 'Login failed';
+          return;
+        }
+
+        await signIn(token);
+      };
+
+      const failSignIn = (message) => {
+        if (settled) return;
+        settled = true;
+        stopListening();
+        errorMessage.value = message || 'Login failed';
       };
 
       const handleMessage = async (event) => {
@@ -171,25 +218,35 @@ export default {
         // utils/googleAuthPopup.js.
         if (!isTrustedAuthMessage(event, popup)) return;
 
-        if (event.data?.type === 'google-auth-success') {
-          const { token } = event.data;
-
-          stopListening();
-
-          // The same structural rule the address-bar handover applies. A token
-          // that cannot be one must not reach SET_TOKEN, where it would evict
-          // a session that is currently working.
-          if (!looksLikeJwt(token)) {
-            errorMessage.value = 'Login failed';
-            return;
-          }
-
-          await signIn(token);
+        if (event.data?.type === GOOGLE_AUTH_SUCCESS) {
+          await completeSignIn(event.data.token);
         } else if (event.data?.type === 'google-auth-error') {
-          stopListening();
-          errorMessage.value = event.data.error || 'Login failed';
+          failSignIn(event.data.error);
         }
       };
+
+      // The fallback route. A BroadcastChannel carries no sender identity, so
+      // unlike the message listener above there is nothing here to check it
+      // against — it is same-origin by construction, and that is the whole
+      // boundary. Worth being plain about the trade-off: a hostile same-origin
+      // script could broadcast a token of its own. It could also simply write
+      // one to localStorage, which is where this app keeps the session, so the
+      // channel grants it nothing it did not already have. The shape check in
+      // completeSignIn still applies.
+      let channel = null;
+      try {
+        channel =
+          typeof BroadcastChannel === 'function' ? new BroadcastChannel(GOOGLE_AUTH_CHANNEL) : null;
+      } catch {
+        channel = null; // unavailable in this environment; the opener route stands alone
+      }
+      if (channel) {
+        channel.onmessage = async (event) => {
+          if (event.data?.type === GOOGLE_AUTH_SUCCESS) {
+            await completeSignIn(event.data.token);
+          }
+        };
+      }
 
       // A user who closes the popup without finishing used to leave this
       // listener installed for the life of the page — one more of them on every
