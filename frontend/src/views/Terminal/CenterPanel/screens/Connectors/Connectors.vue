@@ -836,6 +836,10 @@
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
+import {
+  isTrustedOAuthMessageOrigin,
+  hasOAuthMessagePayload,
+} from '@/utils/oauthMessageOrigin.js';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import BaseForm from '../../../_components/BaseForm.vue';
@@ -2124,15 +2128,26 @@ export default {
     }
 
     async function handleOAuthMessage(event) {
+      // This handler redeems an OAuth code against the signed-in user's account
+      // and had no origin check at all, so any page that could reach this
+      // window could have one redeemed. See utils/oauthMessageOrigin.js.
+      if (!isTrustedOAuthMessageOrigin(event.origin)) return;
+
+      // This handler already tested `event.data` at each branch. That is the
+      // same rule the other two now apply, so it is stated once here rather
+      // than repeated per branch — the duplication is what let the three
+      // handlers drift apart in the first place.
+      if (!hasOAuthMessagePayload(event)) return;
+
       // Handle legacy oauth-success message
-      if (event.data && event.data.type === 'oauth-success') {
+      if (event.data.type === 'oauth-success') {
         store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
         showAlert('Success', 'OAuth connection successful!');
       }
       // Electron path: api.agnt.gg's callback page postMessages the raw `code`
       // back here; the opener has to POST it to /auth/callback to mint tokens.
       // (Browser/dev mode does the exchange in-popup via OAuthCallback.vue.)
-      else if (event.data && event.data.type === 'oauth-callback') {
+      else if (event.data.type === 'oauth-callback') {
         const { code, state, provider } = event.data;
         try {
           const result = await providerAuthService.completeRemoteOAuthCallback({ code, state });

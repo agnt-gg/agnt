@@ -9,6 +9,10 @@ import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import {
+  isTrustedOAuthMessageOrigin,
+  hasOAuthMessagePayload,
+} from '@/utils/oauthMessageOrigin.js';
 
 export function useProviderConnection(modalRef) {
   const store = useStore();
@@ -476,8 +480,17 @@ export function useProviderConnection(modalRef) {
   // ── OAuth postMessage listener ───────────────────────────
 
   const handleOAuthMessage = async (event) => {
-    const allowedOrigins = [window.location.origin, 'https://api.agnt.gg'];
-    if (!allowedOrigins.some((origin) => event.origin === origin || event.origin.includes('localhost'))) return;
+    // This handler redeems an OAuth code against the signed-in user's account,
+    // so the origin check is the trust boundary. It used to OR in a bare
+    // `event.origin.includes('localhost')`, which admitted any registrable
+    // domain containing that substring. See utils/oauthMessageOrigin.js.
+    if (!isTrustedOAuthMessageOrigin(event.origin)) return;
+
+    // A trusted origin is not a well-formed message. This is a global listener,
+    // so a same-origin extension or dev-server client posting `null` would
+    // otherwise throw on `event.data.type` — as an unhandled rejection, since
+    // this handler is async.
+    if (!hasOAuthMessagePayload(event)) return;
 
     if (event.data.type === 'oauth_success') {
       await refreshHealth();
