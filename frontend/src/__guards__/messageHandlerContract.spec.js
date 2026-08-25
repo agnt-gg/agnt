@@ -256,17 +256,87 @@ function walk(dir, found = []) {
 }
 
 /**
- * Every `window.addEventListener('message', ...)` in host code, with the body
- * of the function it registers.
+ * HOW A SENDER REACHES A RECEIVER, AND WHY THAT DECIDES WHAT TO DEMAND.
+ *
+ * Two shapes exist in this codebase and they are not equivalent:
+ *
+ *   window.addEventListener('message', h)   A GLOBAL receiver. Anyone able to
+ *   window.onmessage = h                    reach the window can post to it —
+ *                                           a page that framed us, an
+ *                                           extension, an allow-same-origin
+ *                                           artifact iframe. Receiving a
+ *                                           message implies nothing whatever
+ *                                           about the sender, so the handler
+ *                                           body is the entire trust boundary.
+ *
+ *   someChannel.onmessage = h               A HANDLE receiver. To post, a
+ *                                           sender must already hold the same
+ *                                           object: a BroadcastChannel on our
+ *                                           origin, a socket we opened, a port
+ *                                           we were handed. Possession IS the
+ *                                           boundary, and it was settled when
+ *                                           the object was constructed — there
+ *                                           is no `event.origin` to compare and
+ *                                           no `event.source` to identify.
+ *
+ * So the sender-trust rule applies to global receivers only, and that
+ * exemption is DERIVED from the syntax rather than granted by name. Note the
+ * second line above: `window.onmessage = h` is a global receiver wearing
+ * handle clothing, and is classified global for exactly that reason — it must
+ * not be able to buy the exemption by changing shape.
+ *
+ * Shape discipline applies to both. A malformed payload throws the same way
+ * whichever door it came through.
  *
  * Registrations on a DataChannel or an EventSource are deliberately not
  * matched: `dc.addEventListener('message')` is a negotiated WebRTC peer and
  * `eventSource.addEventListener('message')` is a same-origin SSE stream, so
- * neither is spoofable by a third party and neither has an `event.origin` to
- * check. Only `window` receives postMessage.
+ * neither is third-party spoofable and neither carries an `event.origin`.
  */
-function messageHandlers() {
-  const handlers = [];
+const GLOBAL_TARGETS = new Set(['window', 'globalThis', 'self']);
+
+/** Which kind of receiver an `X.onmessage =` assignment creates. */
+function receiverKindFor(target) {
+  return GLOBAL_TARGETS.has(target) ? 'global' : 'handle';
+}
+
+/**
+ * The body of the function starting at `at`, written inline or by name.
+ *
+ * Returns null when neither shape is recognised, so a call site the extractor
+ * does not understand goes MISSING from the set rather than being counted as
+ * compliant — which the anti-vacuity test below is there to notice.
+ */
+function functionAt(code, at) {
+  const after = code.slice(at);
+
+  // Inline: `function (event) {`, `(event) => {`, `async event => {`
+  const inline = after.match(/^(?:async\s+)?(?:function\s*)?\(?[\w$]*\)?\s*(?:=>)?\s*\{/);
+  if (inline) {
+    const open = at + inline[0].length - 1;
+    const close = matchBrace(code, open);
+    return close > -1 ? { name: '<inline>', body: code.slice(open, close + 1) } : null;
+  }
+
+  // Named: resolve the identifier to its declaration. The character that
+  // follows differs by call shape — `, handler)` for a listener, `= handler;`
+  // for an assignment — so accept any of them.
+  const named = after.match(/^([A-Za-z_$][\w$]*)\s*[),;\n]/);
+  if (!named) return null;
+  const name = named[1];
+
+  const declRe = new RegExp(`(?:const|let|var|function)\\s+${name}\\b[\\s\\S]{0,200}?\\{`, 'g');
+  const decl = declRe.exec(code);
+  if (!decl) return null;
+
+  const open = decl.index + decl[0].length - 1;
+  const close = matchBrace(code, open);
+  return close > -1 ? { name, body: code.slice(open, close + 1) } : null;
+}
+
+/** Every message receiver in host code, tagged with how a sender reaches it. */
+function messageReceivers() {
+  const found = [];
 
   for (const full of walk(FRONTEND_SRC)) {
     const rel = path.relative(FRONTEND_SRC, full).split(path.sep).join('/');
@@ -274,40 +344,28 @@ function messageHandlers() {
     if (rel.endsWith('messageHandlerContract.spec.js')) continue;
 
     const code = blankTemplateContents(stripComments(fs.readFileSync(full, 'utf8')));
-    const re = /window\.addEventListener\(\s*['"]message['"]\s*,\s*/g;
     let m;
 
-    while ((m = re.exec(code))) {
-      const after = code.slice(m.index + m[0].length);
+    const listenerRe = /window\.addEventListener\(\s*['"]message['"]\s*,\s*/g;
+    while ((m = listenerRe.exec(code))) {
+      const fn = functionAt(code, m.index + m[0].length);
+      if (fn) found.push({ rel, kind: 'global', target: 'window', ...fn });
+    }
 
-      // Inline: `function (event) {` or `(event) => {`
-      const inline = after.match(/^(?:async\s+)?(?:function\s*)?\(?[\w$]*\)?\s*(?:=>)?\s*\{/);
-      if (inline) {
-        const open = m.index + m[0].length + inline[0].length - 1;
-        const close = matchBrace(code, open);
-        if (close > -1) handlers.push({ rel, name: '<inline>', body: code.slice(open, close + 1) });
-        continue;
-      }
-
-      // Named: resolve the identifier to its declaration.
-      const named = after.match(/^([A-Za-z_$][\w$]*)\s*\)/);
-      if (!named) continue;
-      const name = named[1];
-
-      const declRe = new RegExp(
-        `(?:const|let|var|function)\\s+${name}\\b[\\s\\S]{0,200}?\\{`,
-        'g',
-      );
-      const decl = declRe.exec(code);
-      if (!decl) continue;
-
-      const open = decl.index + decl[0].length - 1;
-      const close = matchBrace(code, open);
-      if (close > -1) handlers.push({ rel, name, body: code.slice(open, close + 1) });
+    // `x.onmessage = fn`. A comparison (`x.onmessage === fn`) leaves `after`
+    // starting with `=`, which matches neither function shape, so it is
+    // discarded rather than mistaken for a registration.
+    const onmessageRe = /\b([A-Za-z_$][\w$]*)\s*\.\s*onmessage\s*=\s*/g;
+    while ((m = onmessageRe.exec(code))) {
+      const target = m[1];
+      const fn = functionAt(code, m.index + m[0].length);
+      if (!fn) continue;
+      const kind = receiverKindFor(target);
+      found.push({ rel, kind, target, ...fn });
     }
   }
 
-  return handlers;
+  return found;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,15 +451,15 @@ function unguardedReadIndex(body) {
 // ---------------------------------------------------------------------------
 
 describe('every window message handler: trust, then shape, then read', () => {
-  const handlers = messageHandlers();
-  const describeOne = (h) => `${h.rel} (${h.name})`;
+  const receivers = messageReceivers();
+  const describeOne = (r) => `${r.rel} (${r.kind}: ${r.target}.${r.name})`;
 
-  it('discovers the handlers, so a silent zero cannot pass this suite', () => {
+  it('discovers the receivers, so a silent zero cannot pass this suite', () => {
     // Without this, renaming addEventListener or breaking the body extractor
     // would empty the set and every assertion below would vacuously succeed.
-    const files = handlers.map((h) => h.rel);
+    const files = receivers.map((r) => r.rel);
 
-    expect(handlers.length).toBeGreaterThanOrEqual(6);
+    expect(receivers.length).toBeGreaterThanOrEqual(7);
     expect(files).toContain('canvas/widgetSdk.js');
     expect(files).toContain('composables/useProviderConnection.js');
     expect(files).toContain('views/Terminal/CenterPanel/screens/Artifacts/Artifacts.vue');
@@ -414,19 +472,35 @@ describe('every window message handler: trust, then shape, then read', () => {
     );
   });
 
+  it('finds both kinds, so widening discovery cannot quietly collapse back', () => {
+    // The BroadcastChannel receiver was invisible here until `.onmessage =`
+    // was added to discovery: the suite stayed green while an unaudited
+    // receiver sat in the tree. If the handle pattern ever stops matching,
+    // that blind spot returns silently — this is what notices.
+    const kinds = receivers.map((r) => r.kind);
+
+    expect(kinds).toContain('global');
+    expect(kinds).toContain('handle');
+  });
+
   it('extracts a real body for each, not an empty match', () => {
     // A zero-length body would satisfy "no unguarded read" for free.
-    const tiny = handlers.filter((h) => h.body.length < 40).map(describeOne);
+    const tiny = receivers.filter((r) => r.body.length < 40).map(describeOne);
 
     expect(tiny, 'these bodies are too short to be real handlers').toEqual([]);
   });
 
-  it('establishes sender trust before acting, in every handler', () => {
+  it('establishes sender trust before acting, in every global receiver', () => {
     // Either mechanism is accepted. Identity is the stronger of the two:
     // same-origin does not mean "the window I opened", and this app runs
     // authored HTML in allow-same-origin iframes.
-    const untrusted = handlers
-      .filter((h) => originGateIndex(h.body) === -1 && identityGateIndex(h.body) === -1)
+    //
+    // Handle receivers are exempt because there is nothing for them to check:
+    // possession of the object is the boundary. That exemption is derived from
+    // the syntax, not granted by name — see GLOBAL_TARGETS.
+    const untrusted = receivers
+      .filter((r) => r.kind === 'global')
+      .filter((r) => originGateIndex(r.body) === -1 && identityGateIndex(r.body) === -1)
       .map(describeOne);
 
     // Phrased as "approved" on purpose: a hand-rolled origin comparison is a
@@ -438,12 +512,15 @@ describe('every window message handler: trust, then shape, then read', () => {
     ).toEqual([]);
   });
 
-  it('checks the payload is there before dereferencing it', () => {
-    const unguarded = handlers
-      .filter((h) => {
-        const read = unguardedReadIndex(h.body);
+  it('checks the payload is there before dereferencing it, in every receiver', () => {
+    // Both kinds. A malformed payload throws the same way whichever door it
+    // came through, and these handlers are async, so the TypeError surfaces as
+    // an unhandled rejection rather than as anything anyone would notice.
+    const unguarded = receivers
+      .filter((r) => {
+        const read = unguardedReadIndex(r.body);
         if (read === -1) return false; // never dot-dereferences the payload
-        const shape = shapeGuardIndex(h.body);
+        const shape = shapeGuardIndex(r.body);
         return shape === -1 || shape > read;
       })
       .map(describeOne);
@@ -458,12 +535,12 @@ describe('every window message handler: trust, then shape, then read', () => {
     // The literal sequence, applied to the handlers whose trust mechanism IS
     // the origin. Membership is derived from the code above, so converting a
     // handler to origin-gating brings it under this rule automatically.
-    const misordered = handlers
-      .filter((h) => originGateIndex(h.body) > -1)
-      .filter((h) => {
-        const origin = originGateIndex(h.body);
-        const shape = shapeGuardIndex(h.body);
-        const read = unguardedReadIndex(h.body);
+    const misordered = receivers
+      .filter((r) => originGateIndex(r.body) > -1)
+      .filter((r) => {
+        const origin = originGateIndex(r.body);
+        const shape = shapeGuardIndex(r.body);
+        const read = unguardedReadIndex(r.body);
         if (shape === -1) return true; // origin-gated but never shape-checked
         if (origin > shape) return true; // payload trusted before the sender was
         return read > -1 && read < shape;
@@ -476,7 +553,7 @@ describe('every window message handler: trust, then shape, then read', () => {
   it('leaves origin comparison to the shared predicates', () => {
     // The two guards that existed were copy-pasted, and the copy is what let
     // them drift apart until one of them silently stopped working.
-    const handRolled = handlers
+    const handRolled = receivers
       .filter(({ body }) =>
         /event\.origin\s*(?:===|!==|\.includes|\.startsWith|\.indexOf|\.match)/.test(body),
       )
@@ -487,6 +564,57 @@ describe('every window message handler: trust, then shape, then read', () => {
       `these compare event.origin inline instead of using ${ORIGIN_PREDICATES.join(' / ')}`,
     ).toEqual([]);
   });
+
+  /**
+   * For a global receiver the boundary is the check in the handler body. For a
+   * handle receiver it is WHICH OBJECT you were handed — and for a
+   * BroadcastChannel that is decided entirely by its name. Two sides typing the
+   * same string is the same copy-paste failure the shared origin predicates
+   * exist to prevent, except that this one fails silently: a mismatched name is
+   * not an error, it is a channel nobody ever posts to.
+   *
+   * So this is the handle receiver's equivalent of "leave origin comparison to
+   * the shared predicates" — leave the channel name to the shared constant.
+   */
+  it('names a channel from a shared constant, never a bare literal', () => {
+    const literals = [];
+
+    for (const full of walk(FRONTEND_SRC)) {
+      const rel = path.relative(FRONTEND_SRC, full).split(path.sep).join('/');
+      if (rel.endsWith('messageHandlerContract.spec.js')) continue;
+
+      const code = blankTemplateContents(stripComments(fs.readFileSync(full, 'utf8')));
+      if (/new\s+BroadcastChannel\(\s*['"]/.test(code)) literals.push(rel);
+    }
+
+    expect(
+      literals,
+      'a channel name written twice is a channel that silently never connects',
+    ).toEqual([]);
+  });
+});
+
+/**
+ * The global/handle split is what decides whether the sender-trust rule
+ * applies, so it carries real weight. Nothing in the tree currently writes
+ * `window.onmessage =`, which means the guard against a global receiver
+ * disguised as a handle would otherwise never be exercised — these cover it
+ * directly rather than waiting for someone to write that line.
+ */
+describe('receiver classification', () => {
+  it.each(['window', 'globalThis', 'self'])(
+    'treats %s.onmessage as GLOBAL, so it still owes a trust check',
+    (target) => {
+      expect(receiverKindFor(target)).toBe('global');
+    },
+  );
+
+  it.each(['channel', 'ws', 'port', 'worker', 'eventSource'])(
+    'treats %s.onmessage as a handle, where possession is the boundary',
+    (target) => {
+      expect(receiverKindFor(target)).toBe('handle');
+    },
+  );
 });
 
 /**
@@ -503,8 +631,8 @@ describe('the injected widget-side listener', () => {
   });
 
   it('is not counted as a host handler', () => {
-    const inlineHandlers = messageHandlers().filter(
-      (h) => h.rel === 'canvas/widgetSdk.js' && h.name === '<inline>',
+    const inlineHandlers = messageReceivers().filter(
+      (r) => r.rel === 'canvas/widgetSdk.js' && r.name === '<inline>',
     );
 
     expect(inlineHandlers).toEqual([]);
