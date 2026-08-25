@@ -99,10 +99,15 @@
               <h2>Connect an AI</h2>
               <p class="subtitle">Pick whichever you already have.</p>
 
+              <!-- ask-billing-first: this is where the plan-vs-key distinction
+                   gets taught, and where there is room to teach it. The chat
+                   card renders both lanes at once instead, because a user who
+                   hit "no model found" mid-task is not here to be taught. -->
               <ProviderLanes
                 :providers="allProviders"
                 :connected-ids="connectedApps"
                 :codex-status="codexStatus"
+                ask-billing-first
                 @connect="handleProviderClick"
                 @submit-credential="saveApiKey"
               />

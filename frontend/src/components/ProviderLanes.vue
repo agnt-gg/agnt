@@ -1,13 +1,47 @@
 <template>
   <div class="provider-lanes">
+    <!-- ─────────────── THE FORK ───────────────
+         One question, asked before the grid, on the surface where the user has
+         never made this choice before.
+
+         The lanes below answer "which vendor". This answers "which of my two
+         wallets" — which was previously answered by two lane notes the user had
+         to read in full to discover that half the grid was never for them. -->
+    <div v-if="showFork" class="lane-fork">
+      <button
+        v-for="lane in visibleLanes"
+        :key="lane.key"
+        type="button"
+        class="fork-card"
+        :class="`fork-${lane.key}`"
+        @click="chooseLane(lane.key)"
+      >
+        <span class="fork-chip" :class="lane.key">{{ lane.chip }}</span>
+        <span class="fork-title">{{ lane.fork }}</span>
+        <span class="fork-note">{{ lane.note }}</span>
+        <span class="fork-faces" aria-hidden="true">
+          <span v-for="provider in lane.faces" :key="provider.id" class="fork-face">
+            <SvgIcon :name="provider.icon" />
+          </span>
+        </span>
+      </button>
+    </div>
+
     <!-- ─────────────── LANE LIST ─────────────── -->
-    <template v-if="!selected">
-      <section v-for="lane in visibleLanes" :key="lane.key" class="lane" :class="`lane-${lane.key}`">
+    <template v-else>
+      <button v-if="chosenLane" type="button" class="lane-back" @click="clearLane">← Both options</button>
+
+      <section v-for="lane in shownLanes" :key="lane.key" class="lane" :class="`lane-${lane.key}`">
+        <!-- Having just chosen a wallet, the user does not need it priced and
+             described back at them; the only open question is which vendor. -->
         <p class="lane-title">
-          {{ lane.title }}
-          <span class="lane-chip" :class="lane.key">{{ lane.chip }}</span>
+          <template v-if="chosenLane">{{ lane.pick }}</template>
+          <template v-else>
+            {{ lane.title }}
+            <span class="lane-chip" :class="lane.key">{{ lane.chip }}</span>
+          </template>
         </p>
-        <p class="lane-note">{{ lane.note }}</p>
+        <p v-if="!chosenLane" class="lane-note">{{ lane.note }}</p>
 
         <div class="provider-grid">
           <button
@@ -15,8 +49,9 @@
             :key="provider.id"
             type="button"
             class="provider-tile"
-            :class="{ connected: isConnected(provider) }"
+            :class="{ connected: isConnected(provider), selected: isSelected(provider) }"
             :aria-label="`Connect to ${label(provider)}`"
+            :aria-expanded="isSelected(provider)"
             @click="open(provider)"
           >
             <span v-if="isConnected(provider)" class="provider-status-dot"></span>
@@ -34,86 +69,104 @@
             <span class="provider-name">+{{ lane.hidden }}<br />more</span>
           </button>
         </div>
-      </section>
 
-      <div v-if="localProvider" class="lane-foot">
-        <button type="button" @click="$emit('connect', localProvider)">
-          <SvgIcon name="terminal" />
-          Run a model on this machine instead →
-        </button>
-      </div>
+        <!-- ─────────────── ONE PROVIDER ───────────────
+             Opens UNDER the grid it was chosen from, not instead of it. The
+             screen this replaced navigated away to say three sentences, so the
+             button you came for was fifth in reading order and the tiles you
+             might have meant instead were gone. Here the list never moves, the
+             chosen tile stays lit, and the action is the first thing in the
+             box. -->
+        <div v-if="selectedLaneKey === lane.key" class="provider-drawer">
+          <div class="drawer-head">
+            <div class="provider-icon"><SvgIcon :name="selected.icon" /></div>
+            <div class="drawer-who">
+              <strong>{{ label(selected) }}</strong>
+              <!-- The only question the old panel's first paragraph answered,
+                   kept, because it is the one worth a line: who charges me? -->
+              <span class="panel-billing" :class="selectedIsSubscription ? 'subscription' : 'api'">
+                {{
+                  selectedIsSubscription
+                    ? 'Included in your plan — no extra charge'
+                    : `Billed to your ${label(selected)} account, per token`
+                }}
+              </span>
+            </div>
+            <button
+              type="button"
+              class="panel-close"
+              :aria-label="`Close ${label(selected)}`"
+              @click="selected = null"
+            >
+              ×
+            </button>
+          </div>
+
+          <p v-if="siblingWarning" class="panel-warn">{{ siblingWarning }}</p>
+
+          <template v-if="isConnected(selected)">
+            <p class="drawer-line">
+              <strong>Already connected.</strong>
+              AGNT found your {{ label(selected) }} credentials and is using them.
+            </p>
+            <button type="button" class="btn-primary panel-action" @click="$emit('connect', selected)">
+              Use {{ label(selected) }}
+            </button>
+          </template>
+
+          <template v-else-if="selectedTakesPastedKey">
+            <!-- Same field and same source as the bare password prompt this
+                 replaced, on one row with the button it feeds. -->
+            <div class="drawer-key">
+              <input
+                v-model="keyInput"
+                type="password"
+                class="panel-input"
+                spellcheck="false"
+                :placeholder="`${label(selected)} developer key`"
+                :aria-label="`${label(selected)} developer key`"
+                @keyup.enter="submitKey"
+              />
+              <button
+                type="button"
+                class="btn-primary panel-action"
+                :disabled="!keyInput"
+                @click="submitKey"
+              >
+                Save key
+              </button>
+            </div>
+            <p v-if="selected.instructions" class="panel-instructions panel-fine" v-html="selected.instructions"></p>
+            <p class="panel-fine">Stored encrypted on your AGNT account, so it follows you to other machines.</p>
+          </template>
+
+          <template v-else>
+            <button type="button" class="btn-primary panel-action" @click="$emit('connect', selected)">
+              Sign in with {{ label(selected) }} →
+            </button>
+            <p v-if="selectedIsLocalCli" class="panel-fine">
+              Opens {{ label(selected) }} so you can sign in once, with the account your plan is on. The session
+              stays <strong>on this computer</strong>. AGNT never sees a password.
+            </p>
+          </template>
+
+          <!-- The dead end this drawer exists to remove: you picked the metered
+               API and what you actually own is the subscription. -->
+          <p v-if="sibling" class="panel-swap">
+            {{ siblingIsSubscription ? `Have a ${label(sibling)} plan already?` : 'Want to pay per token instead?' }}
+            <button type="button" @click="open(sibling)">Connect {{ label(sibling) }} instead →</button>
+          </p>
+        </div>
+      </section>
     </template>
 
-    <!-- ─────────────── ONE PROVIDER ─────────────── -->
-    <div v-else class="provider-panel">
-      <button type="button" class="panel-back" @click="selected = null">← All providers</button>
-
-      <div class="panel-head">
-        <div class="provider-icon"><SvgIcon :name="selected.icon" /></div>
-        <h3>{{ label(selected) }}</h3>
-      </div>
-
-      <!-- Line one answers the only question that matters: who charges me? -->
-      <p class="panel-billing" :class="selectedIsSubscription ? 'subscription' : 'api'">
-        {{
-          selectedIsSubscription
-            ? 'Included in your plan — no extra charge'
-            : `Billed to your ${label(selected)} account, per token`
-        }}
-      </p>
-
-      <div class="panel-box">
-        <p v-if="siblingWarning" class="panel-warn">{{ siblingWarning }}</p>
-
-        <template v-if="isConnected(selected)">
-          <p>
-            <strong>Already connected.</strong>
-            AGNT found your {{ label(selected) }} credentials and is using them — there is nothing to do here.
-          </p>
-        </template>
-        <template v-else-if="selectedTakesPastedKey">
-          <!-- Same field and same source as the bare password prompt this
-               replaced, moved next to the explanation of what it bills. -->
-          <p v-if="selected.instructions" class="panel-instructions" v-html="selected.instructions"></p>
-          <p v-else>Paste a key from your {{ label(selected) }} developer account.</p>
-          <input
-            v-model="keyInput"
-            type="password"
-            class="panel-input"
-            spellcheck="false"
-            :placeholder="`${label(selected)} developer key`"
-            :aria-label="`${label(selected)} developer key`"
-            @keyup.enter="submitKey"
-          />
-          <p class="panel-fine">Stored encrypted on your AGNT account, so it follows you to other machines.</p>
-        </template>
-        <template v-else>
-          <p>Opens {{ label(selected) }} so you can sign in once, with the account your plan is on.</p>
-          <p v-if="selectedIsLocalCli" class="panel-fine">
-            The session stays <strong>on this computer</strong>. AGNT never sees a password.
-          </p>
-        </template>
-      </div>
-
-      <button
-        v-if="selectedTakesPastedKey && !isConnected(selected)"
-        type="button"
-        class="btn-primary panel-action"
-        :disabled="!keyInput"
-        @click="submitKey"
-      >
-        Save key
+    <!-- Offered from the fork too: running a model here is a third answer to
+         "how do you want to pay", not a footnote to one of the other two. -->
+    <div v-if="localProvider" class="lane-foot">
+      <button type="button" @click="$emit('connect', localProvider)">
+        <SvgIcon name="terminal" />
+        Run a model on this machine instead →
       </button>
-      <button v-else type="button" class="btn-primary panel-action" @click="$emit('connect', selected)">
-        {{ isConnected(selected) ? 'Use ' + label(selected) : 'Sign in with ' + label(selected) + ' →' }}
-      </button>
-
-      <!-- The dead end this screen exists to remove: you picked the metered
-           API and what you actually own is the subscription. -->
-      <p v-if="sibling" class="panel-swap">
-        {{ siblingIsSubscription ? `Have a ${label(sibling)} plan already?` : 'Want to pay per token instead?' }}
-        <button type="button" @click="open(sibling)">Connect {{ label(sibling) }} instead →</button>
-      </p>
     </div>
   </div>
 </template>
@@ -134,14 +187,21 @@ const LANE_COPY = {
   subscription: {
     title: 'Sign in to a plan',
     chip: 'already paid',
+    fork: 'I have a subscription',
+    pick: 'Which plan do you have?',
     note: 'A subscription you already bought. Usage is included — AGNT never adds a charge.',
   },
   api: {
     title: 'Paste an API key',
     chip: 'pay per token',
+    fork: 'I have an API key',
+    pick: 'Which key do you have?',
     note: 'A developer account, billed by them for what you use. Separate from any subscription.',
   },
 };
+
+/** Vendor marks shown on a fork card, as a hint at what is behind it. */
+const FORK_FACE_COUNT = 4;
 
 export default {
   name: 'ProviderLanes',
@@ -153,11 +213,21 @@ export default {
     connectedIds: { type: Array, default: () => [] },
     /** store.state.appAuth.codexStatus */
     codexStatus: { type: Object, default: () => ({}) },
+    /**
+     * Ask which wallet before showing any vendor.
+     *
+     * On for onboarding, where the plan-vs-key distinction is the thing being
+     * taught and there is room to teach it. Off in chat, where the user is
+     * mid-task and already knows — there the two lanes render together and a
+     * connect is one click.
+     */
+    askBillingFirst: { type: Boolean, default: false },
   },
   emits: ['connect', 'submit-credential'],
   setup(props, { emit }) {
     const selected = ref(null);
     const keyInput = ref('');
+    const chosenLane = ref(null);
     const expanded = reactive({ subscription: false, api: false });
 
     const lanes = computed(() =>
@@ -172,7 +242,14 @@ export default {
         .map((key) => {
           const all = lanes.value[key];
           const shown = expanded[key] ? all : all.slice(0, LANE_PREVIEW_COUNT);
-          return { key, ...LANE_COPY[key], all, shown, hidden: all.length - shown.length };
+          return {
+            key,
+            ...LANE_COPY[key],
+            all,
+            shown,
+            faces: all.slice(0, FORK_FACE_COUNT),
+            hidden: all.length - shown.length,
+          };
         })
         .filter((lane) => lane.all.length > 0),
     );
@@ -185,6 +262,46 @@ export default {
     };
 
     const label = (provider) => providerLabel(provider);
+
+    /**
+     * Which lane a provider is actually in — read back off the split, never
+     * re-derived, so this cannot drift from what the grid rendered.
+     */
+    const laneKeyOf = (provider) => {
+      const id = String(provider?.id || '').toLowerCase();
+      const holds = (list) => list.some((p) => String(p.id).toLowerCase() === id);
+      if (holds(lanes.value.subscription)) return 'subscription';
+      if (holds(lanes.value.api)) return 'api';
+      return null;
+    };
+
+    const anyConnected = computed(() =>
+      [...lanes.value.subscription, ...lanes.value.api].some((provider) => isConnected(provider)),
+    );
+
+    /**
+     * Two guards, both about not asking a question that has no answer:
+     * one lane means there is no choice to make, and an existing connection
+     * must not end up hidden behind a fork the user has to guess their way past.
+     */
+    const showFork = computed(
+      () =>
+        props.askBillingFirst &&
+        !chosenLane.value &&
+        !anyConnected.value &&
+        visibleLanes.value.length > 1,
+    );
+
+    const shownLanes = computed(() =>
+      chosenLane.value
+        ? visibleLanes.value.filter((lane) => lane.key === chosenLane.value)
+        : visibleLanes.value,
+    );
+
+    const isSelected = (provider) =>
+      !!selected.value && String(selected.value.id) === String(provider?.id);
+
+    const selectedLaneKey = computed(() => (selected.value ? laneKeyOf(selected.value) : null));
 
     const selectedIsSubscription = computed(() => isSubscriptionProvider(selected.value));
 
@@ -205,8 +322,8 @@ export default {
       const id = String(selected.value?.id || '').toLowerCase();
       const siblingId = PROVIDER_LANE_SIBLING[id];
       if (!siblingId) return null;
-      // Only offer the swap if the sibling is actually on this screen. A link
-      // to a provider we are not showing is a worse dead end than no link.
+      // Only offer the swap if the sibling is actually in the catalog. A link
+      // to a provider we do not have is a worse dead end than no link.
       const pool = [...lanes.value.subscription, ...lanes.value.api];
       return pool.find((p) => String(p.id).toLowerCase() === siblingId) || null;
     });
@@ -220,13 +337,37 @@ export default {
 
     const open = (provider) => {
       keyInput.value = '';
+      // The lit tile is a toggle, so the drawer can be dismissed by the same
+      // control that opened it.
+      if (isSelected(provider)) {
+        selected.value = null;
+        return;
+      }
       selected.value = provider;
+      // Following the swap link across the billing divide has to bring the
+      // visible lane with it. Otherwise the drawer opens inside a lane the fork
+      // is hiding, and the one link that exists to clear a dead end creates one.
+      if (chosenLane.value) {
+        const key = laneKeyOf(provider);
+        if (key) chosenLane.value = key;
+      }
+    };
+
+    const chooseLane = (key) => {
+      chosenLane.value = key;
+      selected.value = null;
+    };
+
+    const clearLane = () => {
+      chosenLane.value = null;
+      selected.value = null;
+      keyInput.value = '';
     };
 
     const submitKey = () => {
       if (!keyInput.value) return;
       // Positional, matching the saveApiKey(provider, value) both parents
-      // already implement — the panel adds explanation, not new mechanics.
+      // already implement — the drawer adds explanation, not new mechanics.
       emit('submit-credential', selected.value, keyInput.value);
       keyInput.value = '';
     };
@@ -234,11 +375,16 @@ export default {
     return {
       selected,
       keyInput,
+      chosenLane,
       expanded,
       lanes,
       visibleLanes,
+      shownLanes,
+      showFork,
       localProvider,
       isConnected,
+      isSelected,
+      selectedLaneKey,
       selectedIsSubscription,
       selectedIsLocalCli,
       selectedTakesPastedKey,
@@ -247,6 +393,8 @@ export default {
       siblingWarning,
       label,
       open,
+      chooseLane,
+      clearLane,
       submitKey,
     };
   },
@@ -300,6 +448,97 @@ export default {
   color: var(--color-text-muted);
 }
 
+/* ── the fork ── */
+.lane-fork {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+/* Deliberately the tile's own border weight and hover. A fork card is a bigger
+   target for the same kind of act, and giving it a second visual language
+   would imply it does something a tile does not. */
+.fork-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px;
+  border: 3px solid var(--color-text-muted);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.3s ease;
+}
+
+.fork-card:hover {
+  background: var(--color-darker-1);
+  transform: translateY(-2px);
+  border-color: rgba(var(--primary-rgb), 0.3);
+}
+
+.fork-card:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.fork-card:active {
+  transform: translateY(0);
+}
+
+.fork-chip {
+  font-size: 0.62em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--color-darker-1);
+  color: var(--color-text-muted);
+}
+
+.fork-title {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.fork-note {
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.fork-faces {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  opacity: 0.45;
+}
+
+.fork-faces :deep(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.lane-back {
+  margin-bottom: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+}
+
+.lane-back:hover {
+  color: var(--color-primary);
+}
+
 /* ── tiles ──
    The single definition of a provider tile. The onboarding modal and the chat
    setup card each carried their own copy, with different gaps and hover
@@ -347,6 +586,13 @@ export default {
 
 .provider-tile:active {
   transform: translateY(0);
+}
+
+/* The tile stays lit for as long as its drawer is open, so the grid keeps
+   answering "which one am I reading about". */
+.provider-tile.selected {
+  border-color: var(--color-primary);
+  background: var(--color-darker-1);
 }
 
 .provider-tile.connected {
@@ -413,6 +659,12 @@ export default {
   border-top: 1px solid var(--terminal-border-color);
 }
 
+/* Same reasoning, for the screen where the fork is what precedes it. */
+.lane-fork + .lane-foot {
+  border-top: 1px solid var(--terminal-border-color);
+  margin-top: 18px;
+}
+
 .lane-foot button {
   display: inline-flex;
   align-items: center;
@@ -458,45 +710,43 @@ export default {
 }
 
 /* ── one provider ── */
-.panel-back {
-  margin-bottom: 20px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.9em;
-  color: var(--color-text-muted);
+.provider-drawer {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-primary);
+  border-radius: 12px;
+  background: var(--color-darker-1);
 }
 
-.panel-back:hover {
-  color: var(--color-primary);
-}
-
-.panel-head {
+.drawer-head {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 6px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.panel-head .provider-icon :deep(svg) {
-  width: 36px;
-  height: 36px;
+.drawer-head .provider-icon :deep(svg) {
+  width: 30px;
+  height: 30px;
   margin-bottom: 0;
 }
 
-.panel-head h3 {
-  margin: 0;
-  font-size: 1.35em;
+.drawer-who {
+  flex: 1;
+  min-width: 0;
+}
+
+.drawer-who strong {
+  display: block;
+  font-size: 1.05em;
   font-weight: 600;
   color: var(--color-text);
 }
 
 .panel-billing {
-  margin: 0 0 18px;
-  padding-left: 50px;
-  font-size: 0.9em;
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
 }
 
 .panel-billing.subscription {
@@ -507,40 +757,61 @@ export default {
   color: var(--color-secondary);
 }
 
-.panel-box {
-  margin-bottom: 14px;
-  padding: 18px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 12px;
-  background: var(--color-darker-1);
+.panel-close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.3em;
+  line-height: 1;
+  color: var(--color-text-muted);
 }
 
-.panel-box p {
+.panel-close:hover {
+  background: var(--color-darker-1);
+  color: var(--color-text);
+}
+
+.drawer-line,
+.panel-warn,
+.panel-fine,
+.panel-instructions {
   margin: 0 0 10px;
   font-size: 0.92em;
   line-height: 1.55;
   color: var(--color-text-muted);
 }
 
-.panel-box p:last-child {
-  margin-bottom: 0;
-}
-
-.panel-box strong {
+.drawer-line strong,
+.panel-fine strong {
   color: var(--color-text);
   font-weight: 600;
 }
 
 .panel-warn {
-  color: var(--color-text) !important;
+  color: var(--color-text);
 }
 
 .panel-instructions :deep(a) {
   color: var(--color-secondary);
 }
 
+/* Fine print sits BELOW the button it qualifies, so the action stays first in
+   reading order — the single change that shortens this box the most. */
 .panel-fine {
-  font-size: 0.82em !important;
+  margin: 10px 0 0;
+  font-size: 0.82em;
+}
+
+.drawer-key {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
 }
 
 /* No `background` here on purpose. Text fields take their fill from the app's
@@ -548,8 +819,8 @@ export default {
    theme — an explicit --color-darker-2 reads as a hole in the light themes.
    themeSurfaces.spec.js enforces this. */
 .panel-input {
-  width: 100%;
-  margin-bottom: 10px;
+  flex: 1;
+  min-width: 0;
   padding: 12px 14px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
@@ -563,6 +834,10 @@ export default {
   border-color: var(--color-primary);
 }
 
+.panel-action {
+  white-space: nowrap;
+}
+
 .panel-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -570,8 +845,8 @@ export default {
 }
 
 .panel-swap {
-  margin: 16px 0 0;
-  padding-top: 14px;
+  margin: 14px 0 0;
+  padding-top: 12px;
   border-top: 1px solid var(--terminal-border-color);
   font-size: 0.88em;
   color: var(--color-text-muted);

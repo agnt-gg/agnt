@@ -254,7 +254,7 @@ describe('ProviderLanes — one provider', () => {
     expect(wrapper.find('.panel-swap').text()).toContain('Connect ChatGPT instead');
 
     await wrapper.find('.panel-swap button').trigger('click');
-    expect(wrapper.find('.panel-head h3').text()).toBe('ChatGPT');
+    expect(wrapper.find('.drawer-who strong').text()).toBe('ChatGPT');
     expect(wrapper.find('.panel-swap').text()).toContain('Connect OpenAI instead');
   });
 
@@ -275,7 +275,6 @@ describe('ProviderLanes — one provider', () => {
     await openTile(wrapper, 'OpenAI');
     expect(wrapper.find('.panel-input').exists()).toBe(true);
 
-    await wrapper.find('.panel-back').trigger('click');
     await openTile(wrapper, 'ChatGPT');
     expect(wrapper.find('.panel-input').exists()).toBe(false);
     expect(wrapper.find('.panel-action').text()).toContain('Sign in with ChatGPT');
@@ -296,7 +295,6 @@ describe('ProviderLanes — one provider', () => {
     await openTile(wrapper, 'ChatGPT');
     expect(wrapper.text()).toContain('on this computer');
 
-    await wrapper.find('.panel-back').trigger('click');
     await openTile(wrapper, 'OpenAI');
     expect(wrapper.text()).toContain('follows you to other machines');
     expect(wrapper.text()).not.toContain('never sees a password');
@@ -325,8 +323,6 @@ describe('ProviderLanes — one provider', () => {
     const wrapper = mountLanes();
     await openTile(wrapper, 'OpenAI');
     await wrapper.find('.panel-input').setValue('typed-value');
-    await wrapper.find('.panel-swap button').trigger('click');
-    await wrapper.find('.panel-back').trigger('click');
     await openTile(wrapper, 'Anthropic');
     expect(wrapper.find('.panel-input').element.value).toBe('');
   });
@@ -338,11 +334,142 @@ describe('ProviderLanes — one provider', () => {
     expect(wrapper.find('.panel-input').exists()).toBe(false);
   });
 
-  it('returns to the full list from the panel', async () => {
+  it('never navigates away from the list to show one provider', async () => {
+    /**
+     * The regression this replaces. Opening a provider used to REPLACE the
+     * grid, so the tiles you might have meant instead were gone, and the
+     * button you came for was fifth in reading order behind a back link, a
+     * heading, a billing line and two paragraphs.
+     */
     const wrapper = mountLanes();
     await openTile(wrapper, 'OpenAI');
-    expect(wrapper.find('.lane-title').exists()).toBe(false);
-    await wrapper.find('.panel-back').trigger('click');
     expect(wrapper.findAll('.lane-title')).toHaveLength(2);
+    expect(wrapper.findAll('.provider-tile').length).toBeGreaterThan(1);
+    expect(wrapper.find('.panel-back').exists()).toBe(false);
+  });
+
+  it('opens the drawer inside the lane the provider came from', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    const lane = wrapper.find('.lane-api');
+    expect(lane.find('.provider-drawer').exists()).toBe(true);
+    expect(wrapper.findAll('.provider-drawer')).toHaveLength(1);
+    expect(wrapper.find('.lane-subscription .provider-drawer').exists()).toBe(false);
+  });
+
+  it('keeps the chosen tile lit while its drawer is open', async () => {
+    const wrapper = mountLanes();
+    const tile = await openTile(wrapper, 'OpenAI');
+    expect(tile.classes()).toContain('selected');
+    expect(wrapper.findAll('.provider-tile.selected')).toHaveLength(1);
+  });
+
+  it('closes the drawer from the tile that opened it', async () => {
+    const wrapper = mountLanes();
+    const tile = await openTile(wrapper, 'OpenAI');
+    await tile.trigger('click');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
+    expect(wrapper.find('.provider-tile.selected').exists()).toBe(false);
+  });
+
+  it('closes the drawer from its own close control', async () => {
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'OpenAI');
+    await wrapper.find('.panel-close').trigger('click');
+    expect(wrapper.find('.provider-drawer').exists()).toBe(false);
+  });
+
+  it('puts the action before the fine print, not after it', async () => {
+    // The whole complaint about the screen this replaces: the button was the
+    // fifth thing you read. Asserted on DOM order so prose cannot creep back
+    // above it.
+    const wrapper = mountLanes();
+    await openTile(wrapper, 'ChatGPT');
+    const order = [...wrapper.find('.provider-drawer').element.querySelectorAll('.panel-action, .panel-fine')];
+    expect(order[0].classList.contains('panel-action')).toBe(true);
+  });
+});
+
+describe('ProviderLanes — which wallet, asked first', () => {
+  it('asks nothing extra by default, so chat stays one click', () => {
+    const wrapper = mountLanes();
+    expect(wrapper.find('.lane-fork').exists()).toBe(false);
+    expect(wrapper.findAll('.lane-title')).toHaveLength(2);
+  });
+
+  it('offers the two wallets, priced, before naming a single vendor', () => {
+    const wrapper = mountLanes({ askBillingFirst: true });
+    const cards = wrapper.findAll('.fork-card');
+    expect(cards).toHaveLength(2);
+    expect(cards[0].text()).toContain('I have a subscription');
+    expect(cards[0].text()).toContain('already paid');
+    expect(cards[1].text()).toContain('I have an API key');
+    expect(cards[1].text()).toContain('pay per token');
+    expect(wrapper.find('.provider-tile').exists()).toBe(false);
+  });
+
+  it('shows only the lane that was chosen', async () => {
+    const wrapper = mountLanes({ askBillingFirst: true });
+    await wrapper.findAll('.fork-card')[0].trigger('click');
+    expect(wrapper.findAll('.lane')).toHaveLength(1);
+    expect(wrapper.find('.lane-subscription').exists()).toBe(true);
+    expect(wrapper.find('.lane-api').exists()).toBe(false);
+    expect(tileText(wrapper)).toContain('ChatGPT');
+  });
+
+  it('asks which vendor, not which wallet again, once the wallet is known', async () => {
+    const wrapper = mountLanes({ askBillingFirst: true });
+    await wrapper.findAll('.fork-card')[0].trigger('click');
+    expect(wrapper.find('.lane-title').text()).toBe('Which plan do you have?');
+    // Already read on the card that was just clicked.
+    expect(wrapper.find('.lane-chip').exists()).toBe(false);
+    expect(wrapper.find('.lane-note').exists()).toBe(false);
+  });
+
+  it('goes back to the two wallets', async () => {
+    const wrapper = mountLanes({ askBillingFirst: true });
+    await wrapper.findAll('.fork-card')[1].trigger('click');
+    await wrapper.find('.lane-back').trigger('click');
+    expect(wrapper.findAll('.fork-card')).toHaveLength(2);
+  });
+
+  it('carries the visible lane along when the swap link crosses the divide', async () => {
+    /**
+     * The swap link exists to clear a dead end. Behind the fork it can create
+     * one instead: follow it from the metered lane and the provider it selects
+     * lives in the lane the fork is hiding, so the drawer renders nowhere.
+     */
+    const wrapper = mountLanes({ askBillingFirst: true });
+    await wrapper.findAll('.fork-card')[1].trigger('click');
+    await openTile(wrapper, 'OpenAI');
+    await wrapper.find('.panel-swap button').trigger('click');
+
+    expect(wrapper.find('.lane-subscription').exists()).toBe(true);
+    expect(wrapper.find('.provider-drawer').exists()).toBe(true);
+    expect(wrapper.find('.drawer-who strong').text()).toBe('ChatGPT');
+  });
+
+  it('does not ask when only one wallet has anything in it', () => {
+    const wrapper = mountLanes({
+      askBillingFirst: true,
+      providers: [ai('openai', 'OpenAI', { connectionType: 'apikey' })],
+    });
+    expect(wrapper.find('.lane-fork').exists()).toBe(false);
+    expect(wrapper.find('.lane-api').exists()).toBe(true);
+  });
+
+  it('does not hide an already-connected provider behind the question', () => {
+    // Nothing here is worth making someone guess their way back to a provider
+    // that already works.
+    const wrapper = mountLanes({ askBillingFirst: true, connectedIds: ['claude-code'] });
+    expect(wrapper.find('.lane-fork').exists()).toBe(false);
+    expect(wrapper.findAll('.provider-tile.connected')).toHaveLength(1);
+  });
+
+  it('still offers the local runtime while the question is on screen', () => {
+    // Running a model here is a third answer to "how do you want to pay", so
+    // it cannot be stranded behind either card.
+    const wrapper = mountLanes({ askBillingFirst: true });
+    expect(wrapper.find('.lane-foot').text()).toContain('Run a model on this machine');
   });
 });
