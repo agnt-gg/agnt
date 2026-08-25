@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
+import { spawnSync } from 'child_process';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
 import { getClientIdentity } from '../ai/clientVersions.js';
@@ -23,6 +24,83 @@ function resolveClaudeCredentialsPath() {
   return path.join(os.homedir(), '.claude', '.credentials.json');
 }
 
+// ── Keychain fallback ────────────────────────────────────────────
+//
+// Claude Code 2.1.231+ keeps its session in the macOS Keychain instead of
+// ~/.claude/.credentials.json. On those versions a perfectly good `claude auth
+// login` is invisible here: the file never appears, getAccessToken() returns
+// null, and the provider reports disconnected while the CLI reports logged in.
+//
+// So the file stays authoritative and the Keychain is consulted only when the
+// file yields nothing. The read is best-effort by design — every failure path
+// returns null, which is byte-for-byte the behaviour this function had before
+// the fallback existed. It can therefore make a working install no worse.
+const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+
+/**
+ * Written by logout() to record that the user disconnected on purpose.
+ *
+ * Without it, disconnecting would be a no-op on a keychain-backed CLI: logout
+ * removes the file, the next read finds no file, the keychain fallback answers
+ * with the very session that was just disconnected, and the provider pops back
+ * to connected. The marker keeps the file readable, so the fallback never runs
+ * and "disconnected" stays a state the user can actually reach.
+ */
+const DISCONNECTED_MARKER = 'agntClaudeCodeDisconnected';
+
+// A local `security` call answers in single-digit milliseconds. The timeout is
+// here so that a wedged keychain daemon degrades to "disconnected" instead of
+// hanging every request that needs a token.
+const KEYCHAIN_TIMEOUT_MS = 2000;
+
+/**
+ * The Keychain lives on macOS. CLAUDE_CODE_SECURITY_BIN forces the lookup on
+ * regardless of platform, which is what makes this testable on a Linux runner;
+ * CLAUDE_CODE_DISABLE_KEYCHAIN=1 turns it off for anyone who would rather AGNT
+ * never shell out to `security`.
+ */
+function keychainLookupEnabled() {
+  if (process.env.CLAUDE_CODE_DISABLE_KEYCHAIN === '1') return false;
+  if (process.env.CLAUDE_CODE_SECURITY_BIN) return true;
+  return process.platform === 'darwin';
+}
+
+/**
+ * Reads the Claude Code session out of the OS keychain.
+ * @returns {{ claudeAiOauth: object } | null} null on any failure.
+ */
+function readClaudeKeychainCredentials() {
+  if (!keychainLookupEnabled()) return null;
+
+  try {
+    const bin = process.env.CLAUDE_CODE_SECURITY_BIN || '/usr/bin/security';
+    const service = process.env.CLAUDE_CODE_KEYCHAIN_SERVICE || KEYCHAIN_SERVICE;
+
+    const result = spawnSync(bin, ['find-generic-password', '-s', service, '-w'], {
+      encoding: 'utf8',
+      timeout: KEYCHAIN_TIMEOUT_MS,
+      // stderr is discarded on purpose: "could not be found in the keychain" is
+      // the ordinary answer for a user who has not logged in, not an incident.
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+
+    if (result.status !== 0 || !result.stdout) return null;
+
+    const parsed = JSON.parse(result.stdout.trim());
+    const oauth = parsed?.claudeAiOauth;
+    if (!oauth || typeof oauth !== 'object') return null;
+    if (!oauth.accessToken) return null;
+
+    // Only the OAuth block is adopted. The keychain item also carries an
+    // `apiKey` field, and silently promoting that to AGNT's Claude Code
+    // credential would swap a subscription login for a billed console key
+    // without the user ever asking for it.
+    return { claudeAiOauth: oauth };
+  } catch {
+    return null;
+  }
+}
+
 function readClaudeCredentialsFile() {
   const credPath = resolveClaudeCredentialsPath();
   try {
@@ -30,7 +108,8 @@ function readClaudeCredentialsFile() {
     const parsed = JSON.parse(raw);
     return { credPath, data: parsed };
   } catch {
-    return { credPath, data: null };
+    // No readable file. A newer CLI may still hold the session in the keychain.
+    return { credPath, data: readClaudeKeychainCredentials() };
   }
 }
 
@@ -50,6 +129,9 @@ function writeClaudeCredentials(oauthData) {
   } catch {
     // File doesn't exist yet
   }
+
+  // Connecting clears any previous disconnect marker (see logout()).
+  delete existing[DISCONNECTED_MARKER];
 
   existing.claudeAiOauth = oauthData;
   fs.writeFileSync(credPath, JSON.stringify(existing, null, 2), 'utf8');
@@ -537,14 +619,24 @@ class ClaudeCodeAuthManager {
           delete data.oauth_token;
           delete data.token;
           delete data.access_token;
-          if (Object.keys(data).length === 0) {
-            fs.unlinkSync(credPath);
-          } else {
-            fs.writeFileSync(credPath, JSON.stringify(data, null, 2), 'utf8');
-          }
+          data[DISCONNECTED_MARKER] = true;
+          fs.writeFileSync(credPath, JSON.stringify(data, null, 2), 'utf8');
         } else {
-          fs.unlinkSync(credPath);
+          fs.writeFileSync(
+            credPath,
+            JSON.stringify({ [DISCONNECTED_MARKER]: true }, null, 2),
+            'utf8',
+          );
         }
+      } else {
+        // Nothing on disk to strip, but a keychain session may still exist, so
+        // the marker has to be written for the disconnect to mean anything.
+        fs.mkdirSync(path.dirname(credPath), { recursive: true });
+        fs.writeFileSync(
+          credPath,
+          JSON.stringify({ [DISCONNECTED_MARKER]: true }, null, 2),
+          'utf8',
+        );
       }
       this.apiCheckCache = null;
       return { success: true };
