@@ -192,6 +192,131 @@ describe('isTrustedAuthMessage', () => {
 });
 
 /**
+ * THE NULL-SOURCE ABSTENTION, AND HOW FAR IT IS ALLOWED TO REACH.
+ *
+ * `isTrustedAuthMessage` refuses a message only when a DIFFERENT sender is
+ * positively identified. When `event.source` is null it abstains rather than
+ * rejects, because this popup calls `postMessage` and then `close()`
+ * immediately: by delivery the sender may already be discarded, and the HTML
+ * spec permits a null `source` for exactly that case. Refusing there would
+ * reject the LEGITIMATE message and lock that user out of signing in — worse
+ * than the attack being defended against, on a path CI cannot exercise.
+ *
+ * That is a deliberate weakening of a security check, so its EDGES are what
+ * need pinning, not its happy path. Two properties have to hold, and only the
+ * first of them is obvious:
+ *
+ *   1. a message that cannot be attributed is still allowed through
+ *   2. the abstention is NARROW - it excuses a sender from the identity check
+ *      and from nothing else
+ *
+ * The second is the one that would actually hurt. An abstention written as an
+ * early `if (!event.source) return true;` reads almost identically, passes
+ * every test in the block above, and hands any CROSS-ORIGIN sender a way to
+ * skip the origin check by the simple trick of not being identifiable. These
+ * tests exist to make that refactor fail loudly.
+ */
+describe('isTrustedAuthMessage: the boundaries of the null-source abstention', () => {
+  const ORIGIN = 'https://tenant.example.com';
+  const win = { location: { origin: ORIGIN } };
+  const popup = { name: 'the popup we opened' };
+
+  describe('a sender that cannot be attributed is allowed through', () => {
+    // Engines disagree on how an unattributable sender is reported, and the
+    // difference is not observable from here, so both spellings must behave
+    // the same. `null` is what the HTML spec calls for; `undefined` is what a
+    // synthetic or proxied event can carry.
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+    ])('abstains on a %s source', (_label, source) => {
+      expect(isTrustedAuthMessage({ origin: ORIGIN, source }, popup, win)).toBe(true);
+    });
+
+    it('abstains for a popup the browser has already closed', () => {
+      // The real sequence this exists for: the popup posts, closes itself, and
+      // the message is delivered afterwards with nothing left to attribute it
+      // to. The handle we still hold reports `closed`.
+      const closedPopup = { name: 'the popup we opened', closed: true };
+
+      expect(isTrustedAuthMessage({ origin: ORIGIN, source: null }, closedPopup, win)).toBe(true);
+    });
+
+    it('abstains when the origin is empty AND the sender is gone', () => {
+      // Both known quirks at once: Electron reports an empty origin across
+      // this window boundary, and the sender has been discarded. Neither is
+      // evidence of an attack, and together they must not add up to one.
+      expect(isTrustedAuthMessage({ origin: '', source: null }, popup, win)).toBe(true);
+    });
+  });
+
+  describe('the abstention excuses the identity check and nothing else', () => {
+    it('still refuses a cross-origin sender that has no identifiable source', () => {
+      // THE LOAD-BEARING TEST. If the null-source case is ever moved ahead of
+      // the origin check, this is the hole it opens: a hostile frame stops
+      // being refused the moment it stops being identifiable, which is not a
+      // property an attacker has to work for.
+      const event = { origin: 'https://evil.example.net', source: null };
+
+      expect(isTrustedAuthMessage(event, popup, win)).toBe(false);
+    });
+
+    it('still refuses a cross-origin sender whose source is undefined', () => {
+      const event = { origin: 'https://evil.example.net', source: undefined };
+
+      expect(isTrustedAuthMessage(event, popup, win)).toBe(false);
+    });
+
+    it('does not extend to a sender that IS identifiable', () => {
+      // Tolerating the unattributable must not soften the case the check was
+      // written for. A frame that can be seen, and is not ours, is refused.
+      const artifactFrame = { name: 'an allow-same-origin srcdoc iframe' };
+
+      expect(isTrustedAuthMessage({ origin: ORIGIN, source: artifactFrame }, popup, win)).toBe(
+        false,
+      );
+    });
+
+    it('refuses a missing event even though its source is also absent', () => {
+      // `undefined.source` is unattributable in the most literal sense. It is
+      // still not a reason to sign anybody in.
+      expect(isTrustedAuthMessage(null, popup, win)).toBe(false);
+    });
+  });
+
+  /**
+   * The whole abstention rests on one claim: a sender that is still alive can
+   * always be seen, so nothing an attacker controls reaches the abstaining
+   * branch. If any live-window shape could arrive with a falsy `source`, the
+   * abstention would be a bypass rather than a concession.
+   *
+   * This asserts the claim across every shape a hostile sender could plausibly
+   * take in this app, rather than trusting the single object literal used
+   * above.
+   */
+  describe('every identifiable sender that is not our popup is refused', () => {
+    it.each([
+      ['an artifact preview iframe', { tag: 'iframe', sandbox: 'allow-scripts allow-same-origin' }],
+      ['a custom widget iframe', { tag: 'iframe', srcdoc: '<script>...</script>' }],
+      ['a second popup the app opened', { name: 'some-other-popup' }],
+      ['the top-level window itself', { self: 'window', top: true }],
+      ['an object impersonating our popup by name', { name: 'the popup we opened' }],
+    ])('refuses %s', (_label, source) => {
+      // The last case matters most: identity here is reference equality, not a
+      // name or any other forgeable property.
+      expect(isTrustedAuthMessage({ origin: ORIGIN, source }, popup, win)).toBe(false);
+    });
+
+    it('accepts only the exact window object we opened', () => {
+      expect(isTrustedAuthMessage({ origin: ORIGIN, source: popup }, popup, win)).toBe(true);
+
+      // A structural clone of it is a different window.
+      expect(isTrustedAuthMessage({ origin: ORIGIN, source: { ...popup } }, popup, win)).toBe(false);
+    });
+  });
+});
+
+/**
  * The handoff and `adoptTokenFromUrl` both read `?token=`, and adoption strips
  * it from the address bar so it cannot leak into history or a Referer header.
  * That makes it single-use. If adoption runs first the popup keeps the token,
