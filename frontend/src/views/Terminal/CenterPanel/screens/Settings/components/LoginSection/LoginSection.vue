@@ -107,7 +107,8 @@ import { useRouter } from 'vue-router';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { consumeAdoptedToken } from '@/store/auth/urlSessionToken.js';
+import { consumeAdoptedToken, looksLikeJwt } from '@/store/auth/urlSessionToken.js';
+import { isTrustedAuthMessage } from '@/utils/googleAuthPopup.js';
 
 export default {
   name: 'AuthSection',
@@ -163,20 +164,27 @@ export default {
       };
 
       const handleMessage = async (event) => {
-        // Only our own popup may complete a sign-in. It posts with an explicit
-        // targetOrigin, so a genuine cross-origin sender is never legitimate
-        // here. Electron's opener proxy can report an empty origin for a window
-        // that is same-origin by construction, so that one case is tolerated.
-        if (event.origin && event.origin !== window.location.origin) return;
+        // Only the popup we just opened may complete a sign-in. An origin check
+        // alone is not enough here: artifact and widget iframes are
+        // `allow-scripts allow-same-origin`, so authored HTML runs at this
+        // origin and could otherwise post a token of its own choosing. See
+        // utils/googleAuthPopup.js.
+        if (!isTrustedAuthMessage(event, popup)) return;
 
         if (event.data?.type === 'google-auth-success') {
           const { token } = event.data;
 
           stopListening();
 
-          if (token) {
-            await signIn(token);
+          // The same structural rule the address-bar handover applies. A token
+          // that cannot be one must not reach SET_TOKEN, where it would evict
+          // a session that is currently working.
+          if (!looksLikeJwt(token)) {
+            errorMessage.value = 'Login failed';
+            return;
           }
+
+          await signIn(token);
         } else if (event.data?.type === 'google-auth-error') {
           stopListening();
           errorMessage.value = event.data.error || 'Login failed';

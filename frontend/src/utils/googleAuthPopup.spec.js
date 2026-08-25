@@ -25,7 +25,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { forwardGoogleAuthToOpener, GOOGLE_AUTH_SUCCESS } from './googleAuthPopup.js';
+import {
+  forwardGoogleAuthToOpener,
+  isTrustedAuthMessage,
+  GOOGLE_AUTH_SUCCESS,
+} from './googleAuthPopup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,6 +124,70 @@ describe('forwardGoogleAuthToOpener', () => {
 
   it('survives being called with no window at all', () => {
     expect(forwardGoogleAuthToOpener(undefined)).toBe(false);
+  });
+});
+
+/**
+ * WHO IS ALLOWED TO COMPLETE A SIGN-IN.
+ *
+ * The origin check that shipped first is not sufficient, and the gap is
+ * reachable in this application rather than theoretical: artifact previews and
+ * custom widgets are rendered in `allow-scripts allow-same-origin` iframes
+ * with authored HTML in `srcdoc`, so that content runs at the app's own
+ * origin. On an origin check alone it could post its own token and be
+ * believed, moving the user into someone else's account without any visible
+ * change.
+ */
+describe('isTrustedAuthMessage', () => {
+  const win = { location: { origin: 'https://tenant.example.com' } };
+  const popup = { name: 'the popup we opened' };
+
+  it('accepts the popup we opened', () => {
+    const event = { origin: 'https://tenant.example.com', source: popup };
+
+    expect(isTrustedAuthMessage(event, popup, win)).toBe(true);
+  });
+
+  it('refuses a same-origin artifact iframe posing as the popup', () => {
+    // The Copilot finding, verbatim: right origin, wrong window.
+    const artifactFrame = { name: 'an allow-same-origin srcdoc iframe' };
+    const event = { origin: 'https://tenant.example.com', source: artifactFrame };
+
+    expect(isTrustedAuthMessage(event, popup, win)).toBe(false);
+  });
+
+  it('refuses a cross-origin sender', () => {
+    const event = { origin: 'https://evil.example.net', source: popup };
+
+    expect(isTrustedAuthMessage(event, popup, win)).toBe(false);
+  });
+
+  it('tolerates an empty origin, which Electron reports across this boundary', () => {
+    const event = { origin: '', source: popup };
+
+    expect(isTrustedAuthMessage(event, popup, win)).toBe(true);
+  });
+
+  it('abstains when the sender cannot be identified at all', () => {
+    // The popup closes itself immediately after posting, and an engine that
+    // has already discarded it can report `source: null`. Refusing here would
+    // lock those users out of signing in entirely — a worse failure than the
+    // one being defended against, and this abstention does not reopen it:
+    // a live frame always has a source, so the spoof above is still refused.
+    const event = { origin: 'https://tenant.example.com', source: null };
+
+    expect(isTrustedAuthMessage(event, popup, win)).toBe(true);
+  });
+
+  it('abstains when the popup handle is missing', () => {
+    // Nothing to compare against; the origin check is all that is left.
+    const event = { origin: 'https://tenant.example.com', source: { some: 'window' } };
+
+    expect(isTrustedAuthMessage(event, null, win)).toBe(true);
+  });
+
+  it('refuses a missing event outright', () => {
+    expect(isTrustedAuthMessage(undefined, popup, win)).toBe(false);
   });
 });
 

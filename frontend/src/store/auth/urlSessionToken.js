@@ -47,8 +47,12 @@
  * session: adopting garbage would store it, fail verification, and take the
  * user's existing localStorage token down with it. Ignoring garbage instead
  * leaves an already-signed-in user exactly as they were.
+ *
+ * Exported because there are two ways a token can arrive from outside — the
+ * address bar and the Google popup's postMessage — and they must apply the
+ * same rule. A second copy of this would be one more place to forget.
  */
-function looksLikeJwt(value) {
+export function looksLikeJwt(value) {
   if (typeof value !== 'string') return false;
   const parts = value.split('.');
   return parts.length === 3 && parts.every((p) => p.length > 0);

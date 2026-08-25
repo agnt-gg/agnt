@@ -50,6 +50,61 @@
 export const GOOGLE_AUTH_SUCCESS = 'google-auth-success';
 
 /**
+ * May this `message` event be allowed to complete a sign-in?
+ *
+ * ---------------------------------------------------------------------------
+ * WHY AN ORIGIN CHECK IS NOT ENOUGH
+ * ---------------------------------------------------------------------------
+ * `event.origin` says the sender is same-origin. It does not say the sender is
+ * the popup we just opened, and this application renders authored HTML in
+ * iframes that are same-origin by construction:
+ *
+ *   Artifacts.vue          sandbox="allow-scripts allow-same-origin"
+ *   CustomWidgetRenderer   sandbox="allow-scripts allow-same-origin ..."
+ *                          :srcdoc="renderedSource"
+ *
+ * `allow-scripts` together with `allow-same-origin` means that content runs AT
+ * the app's real origin. Any artifact or widget could therefore call
+ * `parent.postMessage({ type: 'google-auth-success', token }, origin)` and, on
+ * an origin check alone, be believed. The user would be moved into whichever
+ * account that token belongs to and carry on working there — filing their
+ * keys, files and conversations under someone else's login.
+ *
+ * So the sender's identity is checked, not merely its origin.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NOT A STRICT `event.source === popup`
+ * ---------------------------------------------------------------------------
+ * A message is only REFUSED when a different sender is positively identified.
+ * If `event.source` is null — some engines drop it once the sender has been
+ * discarded, and this popup closes itself immediately after posting — the
+ * check abstains rather than rejects.
+ *
+ * That abstention cannot be exploited: a live frame always has a non-null
+ * `source`, so the spoof above is refused either way. What it buys is that a
+ * quirk of one embedder can never lock a user out of signing in, which a
+ * strict identity test would risk for no additional protection. Electron is
+ * already known to report an empty `origin` across this same window boundary.
+ *
+ * @param {MessageEvent} event
+ * @param {Window|null}  popup  the handle returned by `window.open`
+ * @param {Window}       [win]  injectable for tests
+ */
+export function isTrustedAuthMessage(event, popup, win = globalThis.window) {
+  if (!event) return false;
+
+  // An empty origin is tolerated for the same reason as below: Electron's
+  // proxy for a window that is same-origin by construction can report one.
+  const expectedOrigin = win?.location?.origin;
+  if (event.origin && expectedOrigin && event.origin !== expectedOrigin) return false;
+
+  // A sender we can see, that is not the window we opened, is refused.
+  if (popup && event.source && event.source !== popup) return false;
+
+  return true;
+}
+
+/**
  * If this document is a Google-auth popup on its return leg, give the token to
  * the opener and close.
  *
