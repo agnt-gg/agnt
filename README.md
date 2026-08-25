@@ -871,12 +871,30 @@ On startup, AGNT logs the resolved data path:
 | [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding.                  |
 | [🚀 CI/CD Pipelines](docs/CI_CD.md)                           | GitHub Actions workflows.                  |
 | [🧪 Testing Instructions](docs/_TESTS_INSTRUCTIONS.md)        | E2E test setup.                            |
+| [🤝 Contributing](CONTRIBUTING.md)                            | How to contribute, and what we cannot take. |
+| [🔐 Security Policy](SECURITY.md)                             | Reporting a vulnerability privately.       |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome.
+Contributions are welcome. Please read
+**[CONTRIBUTING.md](./CONTRIBUTING.md)** first — it will tell you, before you
+spend an evening on something, whether it is likely to be merged.
+
+Two things worth knowing up front:
+
+- **Found a security vulnerability?**
+  [Report it privately.](https://github.com/agnt-gg/agnt/security/advisories/new)
+  Please do not open a public issue or pull request — see
+  [SECURITY.md](./SECURITY.md).
+- **We do not accept outside pull requests for authentication, sessions, or
+  credential handling.** A standing policy about the category, not a judgment
+  on any submission. The paths and the reasoning are in
+  [Restricted areas](./CONTRIBUTING.md#restricted-areas). Report the bug
+  instead and we will fix it, with credit to you.
+
+Everything else:
 
 1. Fork the repository.
 2. Create a feature branch: `git checkout -b feature/amazing-feature`.
@@ -892,6 +910,9 @@ Guidelines:
 - Write tests for new behavior.
 - Update docs when the surface changes.
 - Keep commits atomic and descriptive.
+
+If you are unsure whether an idea touches a restricted area, open an issue and
+ask before you write the code.
 
 ---
 
