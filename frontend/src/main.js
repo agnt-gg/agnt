@@ -11,6 +11,7 @@ import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { watchSession, stopLicenseRefresh, idle } from '@/store/auth/sessionBoot.js';
 import { adoptTokenFromUrl } from '@/store/auth/urlSessionToken.js';
+import { handOffSessionTokenToOpener } from '@/utils/oauthPopupHandoff.js';
 import { vTooltip } from '@/directives/tooltip.js';
 import { vViewportClamp } from '@/directives/viewportClamp.js';
 import { installAppHeight } from '@/utils/appHeight.js';
@@ -76,11 +77,27 @@ axios.interceptors.request.use(
 // that signs the user out when the data backend rejects their token.
 initializeAxiosInterceptor(store, router);
 
+// FIRST, and before `adoptTokenFromUrl` below: if this document is a sign-in
+// popup that has come back carrying a token, hand that token to the window
+// that opened it and close. Never mount.
+//
+// The ordering is load-bearing twice over. `adoptTokenFromUrl` STRIPS `?token=`
+// from the address bar, so the token is readable exactly once and whichever
+// runs first is the one that gets it. And a window that exists only to carry a
+// token back must not mount an application, or the user watches a second AGNT
+// boot inside a 600x700 window while the window they started from stays on the
+// sign-in screen.
+//
+// Returns false for an ordinary page load — including a hosted tenant arriving
+// at `?token=` by direct navigation, which has no opener and must keep working
+// exactly as it does today. See utils/oauthPopupHandoff.js.
+const isSessionHandoffPopup = handOffSessionTokenToOpener();
+
 // A hosted tenant delivers its token in the URL rather than in localStorage,
 // so the store cannot seed itself the way it does on desktop. Adopt it here —
 // synchronously, before mount — so no component can ever observe a null token
 // and poll without one. See store/auth/urlSessionToken.js.
-adoptTokenFromUrl(store);
+if (!isSessionHandoffPopup) adoptTokenFromUrl(store);
 
 // Load the user's data when a session STARTS, and drop it when one ends —
 // however that happens. Installed before anything can change sessionState so
@@ -133,7 +150,11 @@ app.config.errorHandler = (err, _instance, info) => {
 
 // MOUNT IMMEDIATELY - show the app shell before data loading
 // This eliminates the blank screen while API calls complete
-app.mount('#app');
+//
+// Unless this document is a sign-in popup that has already handed its token
+// back and is closing. Mounting there is the whole defect: a second complete
+// copy of AGNT, running in a chromeless 600x700 window, issuing real requests.
+if (!isSessionHandoffPopup) app.mount('#app');
 
 // Dev-only: `__auditContrast()` in the console reports any on-screen text that
 // is unreadable against its ACTUAL rendered backdrop. Static analysis cannot
@@ -214,4 +235,6 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Initialize app data in background AFTER mount (non-blocking)
-initializeApp().catch(console.error);
+// Skipped in a handoff popup: nothing mounted, and the session belongs to the
+// window we just posted the token to.
+if (!isSessionHandoffPopup) initializeApp().catch(console.error);

@@ -48,7 +48,7 @@
  * user's existing localStorage token down with it. Ignoring garbage instead
  * leaves an already-signed-in user exactly as they were.
  */
-function looksLikeJwt(value) {
+export function looksLikeJwt(value) {
   if (typeof value !== 'string') return false;
   const parts = value.split('.');
   return parts.length === 3 && parts.every((p) => p.length > 0);
