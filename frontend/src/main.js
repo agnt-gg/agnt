@@ -11,6 +11,7 @@ import { registerAllWidgets } from '@/canvas/widgets/index.js';
 import { syncMediaCookieFromStorage } from '@/services/mediaAuth.js';
 import { watchSession, stopLicenseRefresh, idle } from '@/store/auth/sessionBoot.js';
 import { adoptTokenFromUrl } from '@/store/auth/urlSessionToken.js';
+import { forwardGoogleAuthToOpener } from '@/utils/googleAuthPopup.js';
 import { vTooltip } from '@/directives/tooltip.js';
 import { vViewportClamp } from '@/directives/viewportClamp.js';
 import { installAppHeight } from '@/utils/appHeight.js';
@@ -19,6 +20,21 @@ import { installAppHeight } from '@/utils/appHeight.js';
 if (process.env.NODE_ENV === 'development') {
   import('@/utils/testRateLimit');
 }
+
+// FIRST, before any other boot work: if this document is the "Continue with
+// Google" popup coming back with a token, hand that token to the window that
+// opened the popup and close.
+//
+// This has to happen before `adoptTokenFromUrl` below, which strips `?token=`
+// from the address bar — the token is readable exactly once, and whichever of
+// the two runs first is the one that gets it. It also has to happen before
+// `createApp`, because a window that exists only to carry a token back must
+// not mount an application. Without it the popup boots a second copy of AGNT
+// and signs ITSELF in, stranding the user in a 600x700 login window while the
+// window they started from still shows the sign-in screen.
+//
+// See utils/googleAuthPopup.js.
+const isGoogleAuthHandoff = forwardGoogleAuthToOpener();
 
 // Before mount, not after: a restored conversation can render an <img
 // src="/api/local-file/..."> on the very first paint, and that request needs
@@ -133,7 +149,13 @@ app.config.errorHandler = (err, _instance, info) => {
 
 // MOUNT IMMEDIATELY - show the app shell before data loading
 // This eliminates the blank screen while API calls complete
-app.mount('#app');
+//
+// ...unless this window is the Google auth popup, which has already handed its
+// token to the opener and is closing. Mounting a second application in there
+// IS the defect — see utils/googleAuthPopup.js.
+if (!isGoogleAuthHandoff) {
+  app.mount('#app');
+}
 
 // Dev-only: `__auditContrast()` in the console reports any on-screen text that
 // is unreadable against its ACTUAL rendered backdrop. Static analysis cannot
@@ -214,4 +236,17 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Initialize app data in background AFTER mount (non-blocking)
-initializeApp().catch(console.error);
+if (!isGoogleAuthHandoff) {
+  initializeApp().catch(console.error);
+} else {
+  // `window.close()` is a request the browser is allowed to refuse. If it did,
+  // this popup is now sitting on an empty page, so boot it after all: the worst
+  // case becomes the old behaviour — signed in, wrong window — and never a
+  // dead end the user has to work out for themselves.
+  setTimeout(() => {
+    if (!window.closed) {
+      app.mount('#app');
+      initializeApp().catch(console.error);
+    }
+  }, 1000);
+}

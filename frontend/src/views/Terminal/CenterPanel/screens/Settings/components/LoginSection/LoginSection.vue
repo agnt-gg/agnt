@@ -149,20 +149,46 @@ export default {
         `width=${width},height=${height},top=${top},left=${left}`,
       );
 
+      // The popup sends this from utils/googleAuthPopup.js, before it boots
+      // anything, and then closes itself.
+      //
+      // Until that existed nothing sent it at all: the remote redirects the
+      // POPUP to `<origin>/settings?token=...`, so the popup loaded a second
+      // copy of AGNT and signed itself in, and this window — the one the user
+      // was actually looking at — sat here waiting for a message that was
+      // never coming.
+      const stopListening = () => {
+        window.removeEventListener('message', handleMessage);
+        clearInterval(closedPoll);
+      };
+
       const handleMessage = async (event) => {
+        // Only our own popup may complete a sign-in. It posts with an explicit
+        // targetOrigin, so a genuine cross-origin sender is never legitimate
+        // here. Electron's opener proxy can report an empty origin for a window
+        // that is same-origin by construction, so that one case is tolerated.
+        if (event.origin && event.origin !== window.location.origin) return;
+
         if (event.data?.type === 'google-auth-success') {
           const { token } = event.data;
 
-          window.removeEventListener('message', handleMessage);
+          stopListening();
 
           if (token) {
             await signIn(token);
           }
         } else if (event.data?.type === 'google-auth-error') {
-          window.removeEventListener('message', handleMessage);
+          stopListening();
           errorMessage.value = event.data.error || 'Login failed';
         }
       };
+
+      // A user who closes the popup without finishing used to leave this
+      // listener installed for the life of the page — one more of them on every
+      // click of the button, each one holding this component's scope alive.
+      const closedPoll = setInterval(() => {
+        if (!popup || popup.closed) stopListening();
+      }, 500);
 
       window.addEventListener('message', handleMessage);
     };
