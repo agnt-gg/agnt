@@ -107,7 +107,8 @@ import { useRouter } from 'vue-router';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import TermsPrivacyModal from '@/components/TermsPrivacyModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { consumeAdoptedToken } from '@/store/auth/urlSessionToken.js';
+import { consumeAdoptedToken, looksLikeJwt } from '@/store/auth/urlSessionToken.js';
+import { isTrustedAuthMessage } from '@/utils/googleAuthPopup.js';
 
 export default {
   name: 'AuthSection',
@@ -149,20 +150,53 @@ export default {
         `width=${width},height=${height},top=${top},left=${left}`,
       );
 
+      // The popup sends this from utils/googleAuthPopup.js, before it boots
+      // anything, and then closes itself.
+      //
+      // Until that existed nothing sent it at all: the remote redirects the
+      // POPUP to `<origin>/settings?token=...`, so the popup loaded a second
+      // copy of AGNT and signed itself in, and this window — the one the user
+      // was actually looking at — sat here waiting for a message that was
+      // never coming.
+      const stopListening = () => {
+        window.removeEventListener('message', handleMessage);
+        clearInterval(closedPoll);
+      };
+
       const handleMessage = async (event) => {
+        // Only the popup we just opened may complete a sign-in. An origin check
+        // alone is not enough here: artifact and widget iframes are
+        // `allow-scripts allow-same-origin`, so authored HTML runs at this
+        // origin and could otherwise post a token of its own choosing. See
+        // utils/googleAuthPopup.js.
+        if (!isTrustedAuthMessage(event, popup)) return;
+
         if (event.data?.type === 'google-auth-success') {
           const { token } = event.data;
 
-          window.removeEventListener('message', handleMessage);
+          stopListening();
 
-          if (token) {
-            await signIn(token);
+          // The same structural rule the address-bar handover applies. A token
+          // that cannot be one must not reach SET_TOKEN, where it would evict
+          // a session that is currently working.
+          if (!looksLikeJwt(token)) {
+            errorMessage.value = 'Login failed';
+            return;
           }
+
+          await signIn(token);
         } else if (event.data?.type === 'google-auth-error') {
-          window.removeEventListener('message', handleMessage);
+          stopListening();
           errorMessage.value = event.data.error || 'Login failed';
         }
       };
+
+      // A user who closes the popup without finishing used to leave this
+      // listener installed for the life of the page — one more of them on every
+      // click of the button, each one holding this component's scope alive.
+      const closedPoll = setInterval(() => {
+        if (!popup || popup.closed) stopListening();
+      }, 500);
 
       window.addEventListener('message', handleMessage);
     };
