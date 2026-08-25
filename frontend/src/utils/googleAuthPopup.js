@@ -50,6 +50,116 @@
 export const GOOGLE_AUTH_SUCCESS = 'google-auth-success';
 
 /**
+ * A same-origin channel the handover falls back to when `window.opener` is not
+ * reachable.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A SECOND CHANNEL AT ALL
+ * ---------------------------------------------------------------------------
+ * `opener.postMessage` needs the opener relationship to survive the round trip
+ * through Google. Today it does, but only just: `accounts.google.com` already
+ * sends
+ *
+ *   cross-origin-opener-policy-report-only: same-origin
+ *
+ * Report-only means Google is MEASURING the breakage before enforcing it. On
+ * the day that header loses its `-report-only`, navigating the popup to
+ * accounts.google.com swaps its browsing-context group, `window.opener`
+ * becomes permanently null, and a handover built on the opener alone goes
+ * silently inert — the popup would boot a second app again, which is the exact
+ * bug this file exists to fix. The same COOP change is what broke the
+ * `window.closed` polling in Google's own GSI library.
+ *
+ * Electron is the other unknown: the popup is a separate BrowserWindow created
+ * by `setWindowOpenHandler`, and whether the child sees a usable `opener` is
+ * not something a unit test here can settle.
+ *
+ * A BroadcastChannel depends on neither. It is same-origin by construction and
+ * carries no relationship to how the window was created, so it works whether
+ * or not COOP severs the opener, and regardless of how Electron builds the
+ * child window.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY IT IS A FALLBACK AND NOT THE PRIMARY
+ * ---------------------------------------------------------------------------
+ * `postMessage` to a specific opener is TARGETED: exactly one window receives
+ * the token. A broadcast reaches every same-origin context, which here
+ * includes artifact and widget iframes, since those are rendered
+ * `allow-scripts allow-same-origin`.
+ *
+ * That is not a new capability — this application keeps the session token in
+ * `localStorage`, which any same-origin script can already read, so a hostile
+ * artifact does not need the channel to obtain one. But "no worse than
+ * today" is a poor reason to widen a path, so the broadcast only happens when
+ * the targeted route is unavailable. In the common case nothing is broadcast
+ * at all.
+ */
+export const GOOGLE_AUTH_CHANNEL = 'agnt-google-auth';
+
+/**
+ * Set by the opener immediately before `window.open`, read by the popup on its
+ * return leg.
+ *
+ * THE PROBLEM THIS SOLVES: a popup whose opener COOP has severed and an
+ * ordinary redirect into the user's own tab are INDISTINGUISHABLE from inside
+ * the document. Both have `window.opener === null` and both arrive at
+ * `/settings?token=...`. Broadcasting and closing on that signal alone would
+ * mean a popup-blocked user — who is signing in in their real tab — has that
+ * tab closed underneath them.
+ *
+ * So the opener leaves a positive signal instead of the popup guessing.
+ * `localStorage` rather than `sessionStorage`, because a session store is only
+ * cloned into a same-origin `window.open`, and this popup is navigated
+ * cross-origin before it comes back.
+ *
+ * A stale mark is bounded three ways: a short TTL, the opener clearing it when
+ * the flow finishes, and the fact that `window.close()` is a no-op on a window
+ * that script did not open — so the worst case of a misread is the one-second
+ * mount fallback in main.js, not a lost tab.
+ */
+const POPUP_MARK_KEY = 'agnt:google-auth-popup-open';
+const POPUP_MARK_TTL_MS = 5 * 60 * 1000;
+
+/** localStorage, or null where it is unavailable (private mode, some embeds). */
+function defaultStorage() {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Record that this window is about to open a Google auth popup. */
+export function markGoogleAuthPopupOpen(storage = defaultStorage()) {
+  try {
+    storage?.setItem(POPUP_MARK_KEY, String(Date.now()));
+  } catch {
+    /* a storage that refuses writes just means we fall back to opener-only */
+  }
+}
+
+/** Forget it, once the flow has finished one way or the other. */
+export function clearGoogleAuthPopupMark(storage = defaultStorage()) {
+  try {
+    storage?.removeItem(POPUP_MARK_KEY);
+  } catch {
+    /* nothing to do */
+  }
+}
+
+/** Was a popup opened recently enough that this document is plausibly it? */
+function popupMarkIsFresh(storage) {
+  try {
+    const raw = storage?.getItem(POPUP_MARK_KEY);
+    if (!raw) return false;
+    const age = Date.now() - Number(raw);
+    return Number.isFinite(age) && age >= 0 && age < POPUP_MARK_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * May this `message` event be allowed to complete a sign-in?
  *
  * ---------------------------------------------------------------------------
@@ -114,15 +224,14 @@ export function isTrustedAuthMessage(event, popup, win = globalThis.window) {
  *                      load" — including the genuine redirect flow, where
  *                      there is no opener and boot signs in normally.
  */
-export function forwardGoogleAuthToOpener(win = globalThis.window) {
+export function forwardGoogleAuthToOpener(win = globalThis.window, options = {}) {
   if (!win) return false;
 
-  // No opener means this is not a popup. That is the redirect flow — the path
-  // taken when the browser blocks popups — and signing in right here is the
-  // correct behaviour, not the bug. Returning false hands it to
-  // adoptTokenFromUrl untouched.
-  const opener = win.opener;
-  if (!opener || opener === win) return false;
+  const {
+    storage = defaultStorage(),
+    createChannel = defaultCreateChannel,
+    defer = (fn) => setTimeout(fn, 0),
+  } = options;
 
   let token = null;
   try {
@@ -131,28 +240,77 @@ export function forwardGoogleAuthToOpener(win = globalThis.window) {
     return false;
   }
 
-  // A popup with no token: the OAuth leg is still in flight, or an error came
-  // back. Either way there is nothing to forward.
+  // No token: the OAuth leg is still in flight, an error came back, or this is
+  // an ordinary page load. Nothing to forward either way.
   if (!token) return false;
 
-  try {
-    // targetOrigin is OUR origin and never '*'. The opener is same-origin by
-    // construction, and a session token must not be readable by whatever else
-    // that window may have navigated to in the meantime.
-    opener.postMessage({ type: GOOGLE_AUTH_SUCCESS, token }, win.location.origin);
-  } catch {
-    // The opener was closed, or is otherwise unreachable. Report "not handled"
-    // so the caller boots normally and the user is still signed in — in this
-    // window, which is the old behaviour and strictly better than stranding
-    // them in a popup nobody is listening to.
-    return false;
+  // ── Route 1: the opener, when we can still reach it ──────────────────────
+  // Targeted delivery to exactly one window. targetOrigin is OUR origin and
+  // never '*': the opener is same-origin by construction, and a session token
+  // must not be readable by whatever else that window may have navigated to.
+  const opener = win.opener && win.opener !== win ? win.opener : null;
+  if (opener) {
+    let delivered = false;
+    try {
+      opener.postMessage({ type: GOOGLE_AUTH_SUCCESS, token }, win.location.origin);
+      delivered = true;
+    } catch {
+      /* opener closed or unreachable — fall through to the channel */
+    }
+
+    if (delivered) {
+      clearGoogleAuthPopupMark(storage);
+      try {
+        win.close();
+      } catch {
+        /* close() is a request, not a guarantee; main.js handles a refusal */
+      }
+      return true;
+    }
   }
 
+  // ── Route 2: the same-origin channel ─────────────────────────────────────
+  // Only for a window we can POSITIVELY identify as a popup. Without the mark,
+  // a document with no opener is indistinguishable from the redirect flow, and
+  // broadcasting there would mean closing a tab the user opened themselves.
+  if (!popupMarkIsFresh(storage)) return false;
+
+  const channel = createChannel(GOOGLE_AUTH_CHANNEL);
+  if (!channel) return false; // no BroadcastChannel: boot normally, old behaviour
+
   try {
-    win.close();
+    channel.postMessage({ type: GOOGLE_AUTH_SUCCESS, token });
   } catch {
-    /* close() is a request, not a guarantee; main.js handles a refusal */
+    return false;
+  } finally {
+    try {
+      channel.close();
+    } catch {
+      /* already gone */
+    }
   }
+
+  clearGoogleAuthPopupMark(storage);
+
+  // Deferred by one task. `postMessage` queues delivery on the receiving
+  // contexts rather than this one, so closing immediately should be safe —
+  // this costs nothing and removes the question.
+  defer(() => {
+    try {
+      win.close();
+    } catch {
+      /* main.js mounts after a second if the browser refused */
+    }
+  });
 
   return true;
+}
+
+/** A BroadcastChannel, or null where the API is unavailable or blocked. */
+function defaultCreateChannel(name) {
+  try {
+    return typeof BroadcastChannel === 'function' ? new BroadcastChannel(name) : null;
+  } catch {
+    return null;
+  }
 }

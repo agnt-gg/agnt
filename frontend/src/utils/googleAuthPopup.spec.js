@@ -28,7 +28,10 @@ import { fileURLToPath } from 'url';
 import {
   forwardGoogleAuthToOpener,
   isTrustedAuthMessage,
+  markGoogleAuthPopupOpen,
+  clearGoogleAuthPopupMark,
   GOOGLE_AUTH_SUCCESS,
+  GOOGLE_AUTH_CHANNEL,
 } from './googleAuthPopup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -345,9 +348,258 @@ describe('boot order in main.js', () => {
     expect(at('forwardGoogleAuthToOpener()')).toBeLessThan(at('app.mount('));
   });
 
-  it('does not mount unconditionally', () => {
-    // The guard is the whole fix. A bare `app.mount('#app');` here would mean
-    // the popup boots a second AGNT again.
-    expect(code).toMatch(/if\s*\(\s*!isGoogleAuthHandoff\s*\)\s*\{\s*app\.mount\(/);
+    it('does not mount unconditionally', () => {
+      // The guard is the whole fix. A bare `app.mount('#app');` here would mean
+      // the popup boots a second AGNT again.
+      expect(code).toMatch(/if\s*\(\s*!isGoogleAuthHandoff\s*\)\s*\{\s*app\.mount\(/);
+    });
+  });
+
+/**
+ * THE BROADCAST CHANNEL FALLBACK, AND THE MARK THAT MAKES IT SAFE.
+ *
+ * `opener.postMessage` depends on the opener relationship surviving the round
+ * trip through Google. It does today — a real run in the packaged Electron
+ * app confirmed it, which is why this remains a fallback rather than a
+ * repair. But `accounts.google.com` already sends
+ *
+ *   cross-origin-opener-policy-report-only: same-origin
+ *
+ * Google is measuring breakage before enforcing it. The day that header drops
+ * its "report-only", the popup's browsing-context group is swapped on
+ * navigation, `window.opener` becomes permanently null, and the primary route
+ * goes silently inert. A BroadcastChannel has no such dependency: it is
+ * same-origin by construction and does not care how the window was created.
+ *
+ * The danger of a broadcast is the redirect flow. A popup whose opener COOP
+ * has severed and an ordinary redirect into the user's OWN tab are
+ * INDISTINGUISHABLE from inside the document — both have
+ * `window.opener === null` and both arrive at `/settings?token=...`. Without a
+ * positive signal that a popup was actually opened, broadcasting on the
+ * channel would close a tab underneath a popup-blocked user who is signing in
+ * the normal way. The mark in localStorage makes that signal positive, and
+ * these tests pin BOTH halves: the fallback fires when a fresh mark is
+ * present, and REFUSES — refuses to broadcast AND refuses to close — when it
+ * is not.
+ */
+describe('the BroadcastChannel fallback', () => {
+  const TOKEN = 'header.payload.signature';
+
+  /** A storage whose mark is `ageMs` old (default: brand new). */
+  const makeStorage = ({ ageMs = 0, present = true, throwsOn = null } = {}) => {
+    const store = present ? { 'agnt:google-auth-popup-open': String(Date.now() - ageMs) } : {};
+    return {
+      getItem: vi.fn((k) => {
+        if (throwsOn === 'get') throw new Error('storage denied');
+        return store[k] ?? null;
+      }),
+      setItem: vi.fn((k, v) => {
+        if (throwsOn === 'set') throw new Error('storage denied');
+        store[k] = v;
+      }),
+      removeItem: vi.fn((k) => {
+        if (throwsOn === 'remove') throw new Error('storage denied');
+        delete store[k];
+      }),
+    };
+  };
+
+  const makeChannel = () => ({ postMessage: vi.fn(), close: vi.fn() });
+
+  describe('the popup-in-flight mark', () => {
+    it('writes a timestamp the moment the popup is opened', () => {
+      const storage = makeStorage({ present: false });
+
+      markGoogleAuthPopupOpen(storage);
+
+      expect(storage.setItem).toHaveBeenCalledTimes(1);
+      const [key, value] = storage.setItem.mock.calls[0];
+      expect(key).toBe('agnt:google-auth-popup-open');
+      expect(Number(value)).toBeGreaterThan(0);
+    });
+
+    it('is removed once the flow finishes', () => {
+      const storage = makeStorage({});
+
+      clearGoogleAuthPopupMark(storage);
+
+      expect(storage.removeItem).toHaveBeenCalledWith('agnt:google-auth-popup-open');
+    });
+
+    it('survives a storage that refuses to write', () => {
+      // A storage that won't take writes just means the flow falls back to
+      // the opener-only behaviour; it must not throw at the button click.
+      expect(() => markGoogleAuthPopupOpen(makeStorage({ throwsOn: 'set' }))).not.toThrow();
+      expect(() => clearGoogleAuthPopupMark(makeStorage({ throwsOn: 'remove' }))).not.toThrow();
+    });
+  });
+
+  describe('a popup with no reachable opener', () => {
+    it('broadcasts the token and clears the mark', () => {
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const storage = makeStorage({});
+      const channel = makeChannel();
+      const createChannel = vi.fn(() => channel);
+      const deferred = [];
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage,
+        createChannel,
+        defer: (fn) => deferred.push(fn),
+      });
+
+      expect(handled).toBe(true);
+      expect(createChannel).toHaveBeenCalledWith('agnt-google-auth');
+      expect(channel.postMessage).toHaveBeenCalledWith({ type: GOOGLE_AUTH_SUCCESS, token: TOKEN });
+      expect(storage.removeItem).toHaveBeenCalledWith('agnt:google-auth-popup-open');
+    });
+
+    it('closes the popup on a deferred task, so delivery is not raced', () => {
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const storage = makeStorage({});
+      const deferred = [];
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage,
+        createChannel: () => makeChannel(),
+        defer: (fn) => deferred.push(fn),
+      });
+
+      expect(handled).toBe(true);
+      expect(win.close).not.toHaveBeenCalled(); // still a task to come
+      expect(deferred.length).toBe(1);
+      deferred[0]();
+      expect(win.close).toHaveBeenCalled();
+    });
+
+    it('never opens a wildcard broadcast — the channel is fixed', () => {
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const channel = makeChannel();
+
+      forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({}),
+        createChannel: () => channel,
+      });
+
+      expect(channel.postMessage.mock.calls[0][1]).toBeUndefined(); // no targetOrigin — channels have none
+      // and there is no '*' anywhere on the call
+      expect(JSON.stringify(channel.postMessage.mock.calls[0])).not.toContain('*');
+    });
+  });
+
+  describe('THE LOAD-BEARING CASE: the redirect flow must not be touched', () => {
+    it('refuses to broadcast when no mark exists', () => {
+      // A popup-blocked user signs in in their own tab: no opener, no mark.
+      // Firing the channel here would close that tab underneath them.
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const createChannel = vi.fn();
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({ present: false }),
+        createChannel,
+      });
+
+      expect(handled).toBe(false);
+      expect(createChannel).not.toHaveBeenCalled();
+      expect(win.close).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the mark is stale, past the five-minute TTL', () => {
+      // A mark left behind by an abandoned attempt must not fire a day later.
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const createChannel = vi.fn();
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({ ageMs: 6 * 60 * 1000 }),
+        createChannel,
+      });
+
+      expect(handled).toBe(false);
+      expect(createChannel).not.toHaveBeenCalled();
+      expect(win.close).not.toHaveBeenCalled();
+    });
+
+    it('leaves the mark alone when it is not fresh, rather than clearing it', () => {
+      // Only a real handoff clears the mark. A stray read must not erase it,
+      // so an abandoned-but-recent popup can still come back and be recognised.
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const storage = makeStorage({ ageMs: 6 * 60 * 1000 });
+
+      forwardGoogleAuthToOpener(win, { storage, createChannel: () => null });
+
+      expect(storage.removeItem).not.toHaveBeenCalled();
+      expect(win.close).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('route preference: the targeted path, or not at all', () => {
+    it('broadcasts nothing when the opener route works', () => {
+      const opener = makeOpener();
+      const win = makeWin({ search: `?token=${TOKEN}`, opener });
+      const createChannel = vi.fn();
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({}),
+        createChannel,
+      });
+
+      expect(handled).toBe(true);
+      expect(opener.postMessage).toHaveBeenCalled();
+      expect(createChannel).not.toHaveBeenCalled();
+      expect(win.close).toHaveBeenCalled(); // route 1 closes synchronously
+    });
+
+    it('falls through to the channel when the opener has died', () => {
+      // The opener exists but is unreachable — e.g. closed mid-flight. The
+      // popup must not stop there; the fresh mark lets the channel take over.
+      const deadOpener = {
+        postMessage: vi.fn(() => {
+          throw new Error('opener gone');
+        }),
+      };
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: deadOpener });
+      const channel = makeChannel();
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({}),
+        createChannel: () => channel,
+      });
+
+      expect(handled).toBe(true);
+      expect(channel.postMessage).toHaveBeenCalled();
+    });
+  });
+
+  describe('degradation when the channel cannot be used', () => {
+    it('returns false when BroadcastChannel is unavailable, so boot proceeds', () => {
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({}),
+        createChannel: () => null,
+      });
+
+      expect(handled).toBe(false);
+      expect(win.close).not.toHaveBeenCalled();
+    });
+
+    it('returns false when the channel throws on postMessage', () => {
+      const win = makeWin({ search: `?token=${TOKEN}`, opener: null });
+      const channel = {
+        postMessage: vi.fn(() => {
+          throw new Error('channel dead');
+        }),
+        close: vi.fn(),
+      };
+
+      const handled = forwardGoogleAuthToOpener(win, {
+        storage: makeStorage({}),
+        createChannel: () => channel,
+      });
+
+      expect(handled).toBe(false);
+      expect(channel.close).toHaveBeenCalled(); // still released
+      expect(win.close).not.toHaveBeenCalled();
+    });
   });
 });
