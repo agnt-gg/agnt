@@ -54,7 +54,10 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
-import { isTrustedOAuthMessageOrigin } from '@/utils/oauthMessageOrigin.js';
+import {
+  isTrustedOAuthMessageOrigin,
+  hasOAuthMessagePayload,
+} from '@/utils/oauthMessageOrigin.js';
 import providerAuthService from '@/services/providerAuthService.js';
 
 export default {
@@ -870,6 +873,12 @@ export default {
       // `event.origin.includes('localhost')`, which admitted any registrable
       // domain containing that substring. See utils/oauthMessageOrigin.js.
       if (!isTrustedOAuthMessageOrigin(event.origin)) return;
+
+      // A trusted origin is not a well-formed message. This is a global
+      // listener, so a same-origin extension or dev-server client posting
+      // `null` would otherwise throw on `event.data.type` — as an unhandled
+      // rejection, since this handler is async.
+      if (!hasOAuthMessagePayload(event)) return;
 
       if (event.data.type === 'oauth_success') {
         // Refresh health immediately

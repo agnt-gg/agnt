@@ -45,6 +45,8 @@ const FRONTEND_SRC = path.resolve(HERE, '..');
 const REDEEM = 'completeRemoteOAuthCallback';
 /** The one predicate allowed to answer "may this sender do that?". */
 const GUARD = 'isTrustedOAuthMessageOrigin';
+/** The one predicate allowed to answer "is this message actionable?". */
+const PAYLOAD_GUARD = 'hasOAuthMessagePayload';
 
 /**
  * Where the function is defined and where it is mocked. Neither redeems
@@ -170,6 +172,35 @@ describe('every OAuth code redemption is behind an origin check', () => {
       .map(({ rel }) => rel);
 
     expect(tooLate, `these call ${REDEEM} before ${GUARD}`).toEqual([]);
+  });
+
+  /**
+   * A trusted origin is not a well-formed message. These are global `message`
+   * listeners, so a same-origin sender that knows nothing about OAuth can post
+   * `null` and make `event.data.type` throw. Because the handlers are `async`
+   * that surfaces as an unhandled rejection rather than a visible crash, so
+   * nothing fails loudly when it regresses — which is exactly when a mechanical
+   * check earns its place.
+   */
+  it('checks the payload is object-shaped before branching on it', () => {
+    const unguarded = callSites()
+      .filter(({ code }) => !code.includes(`${PAYLOAD_GUARD}(`))
+      .map(({ rel }) => rel);
+
+    expect(unguarded, `these read event.data without calling ${PAYLOAD_GUARD}`).toEqual([]);
+  });
+
+  it('nobody has reintroduced a hand-rolled payload check', () => {
+    // Three handlers previously disagreed about this: two omitted it entirely
+    // and one repeated `event.data &&` at every branch. One predicate, or they
+    // drift apart again.
+    const handRolled = callSites()
+      .filter(({ code }) => /event\.data\s*&&/.test(code))
+      .map(({ rel }) => rel);
+
+    expect(handRolled, `these test event.data inline instead of using ${PAYLOAD_GUARD}`).toEqual(
+      [],
+    );
   });
 });
 

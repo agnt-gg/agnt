@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isTrustedOAuthMessageOrigin } from './oauthMessageOrigin.js';
+import { isTrustedOAuthMessageOrigin, hasOAuthMessagePayload } from './oauthMessageOrigin.js';
 
 const REMOTE = 'https://api.agnt.gg';
 const hostedApp = { location: { origin: 'https://tenant.example.com' } };
@@ -126,6 +126,7 @@ describe('isTrustedOAuthMessageOrigin', () => {
   });
 
   describe('it does not fall over on a broken environment', () => {
+
     it('survives a window with no location', () => {
       expect(isTrustedOAuthMessageOrigin('https://api.agnt.gg', {}, REMOTE)).toBe(true);
       expect(isTrustedOAuthMessageOrigin('https://evil.com', {}, REMOTE)).toBe(false);
@@ -148,5 +149,71 @@ describe('isTrustedOAuthMessageOrigin', () => {
     it('survives a malformed remote URL', () => {
       expect(isTrustedOAuthMessageOrigin('https://api.agnt.gg', hostedApp, 'not a url')).toBe(false);
     });
+  });
+});
+
+/**
+ * A TRUSTED ORIGIN IS NOT A WELL-FORMED MESSAGE.
+ *
+ * These are global `message` listeners. Passing the origin check only means the
+ * sender is us — it says nothing about what they sent, and same-origin senders
+ * that know nothing about OAuth (extensions, dev-server clients, other widgets)
+ * post whatever they like. `event.data.type` on a `null` payload throws.
+ *
+ * The throw is invisible in practice, which is why it survived: the handlers
+ * are `async`, so it never reaches the dispatcher. It becomes an unhandled
+ * rejection instead, and a test written as `expect(...).not.toThrow()` would
+ * pass whether or not the guard exists. The integration test in
+ * useProviderConnection.spec.js captures the rejection explicitly for that
+ * reason.
+ */
+describe('hasOAuthMessagePayload', () => {
+  describe('payloads that can carry a `type`', () => {
+    it.each([
+      ['an OAuth message', { type: 'oauth-callback', code: 'x' }],
+      ['an unrelated object', { hello: 'world' }],
+      ['an empty object', {}],
+      // An array cannot match any branch, but it is object-shaped and reading
+      // `.type` off it is safe, so there is no reason to single it out.
+      ['an array', []],
+    ])('accepts %s', (_label, data) => {
+      expect(hasOAuthMessagePayload({ data })).toBe(true);
+    });
+  });
+
+  describe('payloads that would throw or cannot match', () => {
+    it.each([
+      ['null, the shape Copilot flagged', null],
+      ['undefined', undefined],
+    ])('refuses %s, which would throw on .type', (_label, data) => {
+      expect(hasOAuthMessagePayload({ data })).toBe(false);
+    });
+
+    it.each([
+      ['a string, as some dev-server clients post', 'vite:beforeUpdate'],
+      ['a number', 42],
+      ['a boolean', true],
+    ])('refuses %s, which cannot match any branch', (_label, data) => {
+      // These do not throw — primitives box, so `.type` is merely undefined.
+      // They are refused anyway so that one predicate decides what is
+      // actionable, rather than each `.type` read having to be defensive.
+      expect(hasOAuthMessagePayload({ data })).toBe(false);
+    });
+
+    it('refuses an event with no data property at all', () => {
+      expect(hasOAuthMessagePayload({})).toBe(false);
+    });
+
+    it('refuses a missing event, rather than throwing on it', () => {
+      expect(hasOAuthMessagePayload(undefined)).toBe(false);
+      expect(hasOAuthMessagePayload(null)).toBe(false);
+    });
+  });
+
+  it('does not mistake null for an object', () => {
+    // `typeof null === 'object'`, so a check written as `typeof data ===
+    // 'object'` alone would admit exactly the value that throws.
+    expect(typeof null).toBe('object');
+    expect(hasOAuthMessagePayload({ data: null })).toBe(false);
   });
 });

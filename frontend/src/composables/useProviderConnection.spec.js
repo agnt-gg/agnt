@@ -154,6 +154,85 @@ describe('useProviderConnection — oauth-callback postMessage handler', () => {
    * A wrong code redeemed here is grafted onto the signed-in user's account,
    * so these run through the real listener rather than the predicate alone.
    */
+  /**
+   * Passing the origin check says the sender is us; it says nothing about what
+   * they sent. This is a global `message` listener, so same-origin senders that
+   * know nothing about OAuth reach it too, and `event.data.type` on a `null`
+   * payload throws.
+   *
+   * The rejection has to be captured explicitly. `handleOAuthMessage` is
+   * `async`, so the throw never reaches `dispatchEvent` — it becomes an
+   * unhandled rejection, and a test written as `expect(() =>
+   * window.dispatchEvent(...)).not.toThrow()` passes whether or not the guard
+   * exists. Verified before writing this: without the capture below, removing
+   * the guard leaves the suite green.
+   */
+  // `undefined` is deliberately absent: the MessageEvent constructor
+  // normalises it to `null` (verified, not assumed), so a case labelled
+  // "undefined" here would silently be a second null case. Genuine `undefined`
+  // is covered against the predicate directly in utils/oauthMessageOrigin.spec.js.
+  it.each([
+    ['null', null],
+    ['a string', 'vite:beforeUpdate'],
+    ['a number', 42],
+  ])(
+    'survives a trusted-origin message whose payload is %s',
+    async (_label, data) => {
+      wrapper = mount(Harness, { global: { plugins: [makeStore()] } });
+      await flushPromises();
+
+      const rejections = [];
+      const capture = (reason) => rejections.push(reason);
+      process.on('unhandledRejection', capture);
+
+      try {
+        window.dispatchEvent(
+          new MessageEvent('message', { data, origin: window.location.origin }),
+        );
+        await flushPromises();
+        // An unhandled rejection is only reported once the microtask queue has
+        // drained and no handler has attached, so yield to the macrotask queue.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        process.off('unhandledRejection', capture);
+      }
+
+      expect(rejections.map(String)).toEqual([]);
+      expect(providerAuthService.completeRemoteOAuthCallback).not.toHaveBeenCalled();
+    },
+  );
+
+  it('still acts on a well-formed message after a malformed one', async () => {
+    // The guard must skip the bad message, not wedge the listener.
+    providerAuthService.completeRemoteOAuthCallback.mockResolvedValueOnce({
+      success: true,
+      provider: 'twitter',
+    });
+
+    wrapper = mount(Harness, { global: { plugins: [makeStore()] } });
+    await flushPromises();
+
+    window.dispatchEvent(
+      new MessageEvent('message', { data: null, origin: window.location.origin }),
+    );
+    await flushPromises();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'oauth-callback',
+          code: 'twitter-auth-code-xyz',
+          state: 'twitter:x',
+          provider: 'twitter',
+        },
+        origin: window.location.origin,
+      }),
+    );
+    await flushPromises();
+
+    expect(providerAuthService.completeRemoteOAuthCallback).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     'https://localhost.evil.com',
     'https://evil-localhost.io',

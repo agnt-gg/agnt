@@ -120,3 +120,32 @@ export function isTrustedOAuthMessageOrigin(
 
   return false;
 }
+
+/**
+ * Does this message carry a payload worth branching on?
+ *
+ * A trusted origin is not a well-formed message. These are GLOBAL `message`
+ * listeners: they receive every message the window gets, including ones from
+ * senders that have nothing to do with OAuth and post whatever they like. A
+ * browser extension, a dev-server client, another widget on the page — all of
+ * them are same-origin, all of them therefore pass the origin check, and any
+ * of them may post `null`.
+ *
+ * `event.data.type` on a null payload throws. The handlers are `async`, so the
+ * throw does not surface to the dispatcher: it becomes an unhandled rejection,
+ * which is why it can happen repeatedly without anyone noticing.
+ *
+ * Only object payloads are actionable, since every message these handlers act
+ * on is `{ type, ... }`. A string, a number or an array cannot match any branch
+ * anyway, so rejecting them here changes no behaviour — it just moves the
+ * decision to one documented place instead of relying on every `.type` read
+ * being individually defensive.
+ *
+ * @param {MessageEvent} event
+ * @returns {boolean}
+ */
+export function hasOAuthMessagePayload(event) {
+  const data = event?.data;
+  // `typeof null` is 'object', so the null check is not redundant.
+  return data !== null && typeof data === 'object';
+}
