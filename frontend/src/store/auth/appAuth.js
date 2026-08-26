@@ -238,8 +238,9 @@ const actions = {
         }
 
         // Finally merge remote — purely additive.
-        // If remote fails on a refresh poll, leave Vuex untouched rather than
-        // wiping it down to the local-only set.
+        // If remote fails on a refresh poll we must not REPLACE Vuex with the
+        // local-only set, because the remote lane carries connections this
+        // install has never stored locally. Union instead — see the else below.
         const remoteResult = await remotePromise;
         if (remoteResult && Array.isArray(remoteResult.data)) {
           remoteLaneAnswered = true;
@@ -258,6 +259,37 @@ const actions = {
             backfillLocalProviderKeys({ token, remoteApps, localApps: connectedApps }).catch((error) =>
               console.warn('[appAuth] provider key backfill failed:', error?.message)
             );
+          }
+        } else if (!isColdStart) {
+          /**
+           * THE REMOTE LANE DID NOT ANSWER, AND THIS IS NOT A COLD START.
+           *
+           * Committing used to happen in exactly two places: the cold-start
+           * branch above, which only fires while the list is still empty, and
+           * inside the remote-success block. So on any install where the remote
+           * endpoint is unreachable — it currently answers 404 — the list
+           * painted at boot could never be updated again, however many times the
+           * 60s poll ran. Anything that became connected after boot stayed
+           * invisible until the page was reloaded, and a reload being the cure
+           * is what makes this a commit defect rather than a fetch that failed.
+           *
+           * It bit the local CLI providers hardest: they are the ones most
+           * likely to resolve a moment AFTER boot, because their status probes
+           * race the backend still finishing its own startup.
+           *
+           * Union with what Vuex already holds rather than replacing it. That
+           * preserves the exact property the original guard was protecting —
+           * remote-only providers are never dropped — while still letting a
+           * newly discovered one appear.
+           */
+          const known = (state.connectedApps || []).map(normalizeProviderId).filter(Boolean);
+          const merged = Array.from(new Set([...known, ...connectedApps]));
+
+          // Only commit on a real change. A union can only grow, so equal size
+          // means an equal set — and committing every 60s would churn every
+          // watcher of connectedApps for nothing.
+          if (merged.length !== known.length) {
+            commit('SET_CONNECTED_APPS', merged);
           }
         }
         // Without a token the remote lane answers 401 by design, so its

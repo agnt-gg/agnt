@@ -150,6 +150,122 @@ describe('an anonymous fetch is never adopted by a signed-in caller', () => {
   });
 });
 
+/**
+ * WHY LOCAL CLI PROVIDERS WENT MISSING AFTER AN APP RESTART.
+ *
+ * Reported as: restarted AGNT, and Claude Code / Codex / Cursor / Antigravity
+ * all showed as not connected — while the backend, asked directly, reported
+ * every one of them connected and usable in under 20ms.
+ *
+ * A reload being the cure is the tell again, but this is a different defect
+ * from the caching one below. `SET_CONNECTED_APPS` was committed in exactly two
+ * places: the cold-start branch, which only fires while the list is still
+ * empty, and inside the remote-lane success block. The remote endpoint now
+ * answers 404 in production, so once boot had painted ANY non-empty list, the
+ * store could never be updated again — the 60s poll ran, fetched correctly,
+ * merged correctly, and then threw the answer away.
+ *
+ * The local CLI providers are the ones that suffer, because their status probes
+ * race the backend's own startup and so are the most likely to resolve a moment
+ * after the one commit that was ever going to happen.
+ */
+describe('the connected list keeps updating when the remote lane is down', () => {
+  /** Local backend answers; remote 404s, exactly as it does in production. */
+  function remoteIsDead(local) {
+    axios.get.mockImplementation(async (url) => {
+      if (url === LOCAL) return { data: local };
+      if (url === REMOTE) throw new Error('404');
+      return { data: [] };
+    });
+  }
+
+  const committed = (ctx) =>
+    ctx.commit.mock.calls.filter(([m]) => m === 'SET_CONNECTED_APPS').map(([, v]) => v);
+
+  it('REGRESSION: a provider connected after boot appears without a page reload', async () => {
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    remoteIsDead(['openai', 'claude-code']);
+
+    // Not a cold start: boot already painted a list, and it lacked claude-code.
+    const ctx = ctxFor(token, ['openai']);
+    await appAuth.actions.fetchConnectedApps(ctx);
+
+    const commits = committed(ctx);
+    expect(commits.length, 'the store was never updated at all').toBeGreaterThan(0);
+    expect(commits.at(-1)).toContain('claude-code');
+  });
+
+  it('picks up a CLI provider whose status probe lost the boot race', async () => {
+    // The reported case: the CLI provider is found by lane 3, not lane 1.
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    const providerAuthService = (await import('@/services/providerAuthService.js')).default;
+    providerAuthService.getStatus.mockImplementation(async (id) => ({
+      available: id === 'claude-code',
+      apiUsable: id === 'claude-code',
+    }));
+    remoteIsDead(['openai']);
+
+    const ctx = ctxFor(token, ['openai']);
+    await appAuth.actions.fetchConnectedApps(ctx);
+
+    expect(committed(ctx).at(-1)).toContain('claude-code');
+  });
+
+  it('never drops a remote-only provider — the property the old guard protected', async () => {
+    // `notion` was learned from the remote lane on an earlier healthy fetch and
+    // the local backend has never heard of it. Committing the local-only set
+    // would erase it, which is precisely why the commit was gated in the first
+    // place. Union, not replace.
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    remoteIsDead(['openai', 'claude-code']);
+
+    const ctx = ctxFor(token, ['openai', 'notion']);
+    await appAuth.actions.fetchConnectedApps(ctx);
+
+    const last = committed(ctx).at(-1);
+    expect(last).toContain('notion');
+    expect(last).toContain('claude-code');
+  });
+
+  it('commits nothing when nothing changed, so the 60s poll cannot churn watchers', async () => {
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+
+    // State the lane-3 precondition rather than inheriting it. vi.clearAllMocks
+    // clears recorded calls but NOT implementations, so the CLI probe stub set
+    // by an earlier test in this file would otherwise leak in and legitimately
+    // add a provider — making this assertion fail for a reason that has nothing
+    // to do with what it is testing.
+    const providerAuthService = (await import('@/services/providerAuthService.js')).default;
+    providerAuthService.getStatus.mockImplementation(async () => ({
+      available: false,
+      apiUsable: false,
+    }));
+    remoteIsDead(['openai']);
+
+    const ctx = ctxFor(token, ['openai']);
+    await appAuth.actions.fetchConnectedApps(ctx);
+
+    expect(committed(ctx)).toHaveLength(0);
+  });
+
+  it('still commits on a cold start, which this must not have changed', async () => {
+    // Anti-vacuity partner: without it, "commits the union" would pass against
+    // an implementation that commits unconditionally and always has.
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    remoteIsDead(['openai', 'claude-code']);
+
+    const ctx = ctxFor(token, []);
+    await appAuth.actions.fetchConnectedApps(ctx);
+
+    expect(committed(ctx).at(-1)).toContain('claude-code');
+  });
+});
+
 describe('fetchConnectedApps does not freeze a degraded answer', () => {
   it('re-fetches after both lanes failed', async () => {
     const token = makeJwt();
