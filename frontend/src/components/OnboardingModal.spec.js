@@ -654,6 +654,57 @@ describe('OnboardingModal', () => {
       expect(wrapper.vm.currentStep).toBe(4);
     });
 
+    /**
+     * A CLI session the user created in their terminal, never in AGNT.
+     *
+     * This is the end state of issue #82 as a first-run user experiences it:
+     * they signed into Claude Code in a terminal, they open AGNT for the first
+     * time, and this step must already be satisfied. Nothing here is
+     * CLI-specific — it works because backend discovery puts the provider into
+     * connectedApps, which is the one list this screen reads.
+     */
+    const CLI_PROVIDERS = [
+      { id: 'claude-code', name: 'Claude Code', icon: 'anthropic', categories: ['AI'], connectionType: 'oauth' },
+      { id: 'openai', name: 'OpenAI', icon: 'openai', categories: ['AI'], connectionType: 'apikey' },
+    ];
+
+    it('a discovered CLI session marks the tile connected', async () => {
+      wrapper = createWrapper({}, { allProviders: CLI_PROVIDERS, connectedApps: ['claude-code'] });
+      await gotoProvider();
+
+      expect(wrapper.vm.isProviderConnected('claude-code')).toBe(true);
+      expect(wrapper.findAll('.provider-tile.connected').length).toBe(1);
+    });
+
+    it('a discovered CLI session satisfies the provider gate with no user action', async () => {
+      wrapper = createWrapper({}, { allProviders: CLI_PROVIDERS, connectedApps: ['claude-code'] });
+      await gotoProvider();
+
+      expect(wrapper.vm.hasAnyProviderConnected).toBe(true);
+
+      await wrapper.find('.btn-primary').trigger('click');
+      await flushPromises();
+
+      // The whole point: onboarding advances without the user connecting
+      // anything, because AGNT found the session they already had.
+      expect(wrapper.vm.currentStep).toBe(5);
+    });
+
+    it('anti-vacuity: the same CLI provider still blocks when NOT discovered', async () => {
+      // Without this, the test above would pass against a screen that lets
+      // everyone through regardless of what discovery found.
+      wrapper = createWrapper({}, { allProviders: CLI_PROVIDERS, connectedApps: [] });
+      await gotoProvider();
+
+      expect(wrapper.vm.isProviderConnected('claude-code')).toBe(false);
+      expect(wrapper.findAll('.provider-tile.connected').length).toBe(0);
+
+      await wrapper.find('.btn-primary').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.vm.currentStep).toBe(4);
+    });
+
     it('advances past the provider step once one is connected', async () => {
       wrapper = createWrapper({}, CONNECTED);
       await gotoProvider();
