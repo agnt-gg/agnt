@@ -17,12 +17,15 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 const CLAUDE = path.join(ROOT, 'backend/src/services/auth/ClaudeCodeAuthManager.js');
 const RESOLVER = path.join(ROOT, 'backend/src/services/auth/credentialResolver.js');
 const SECRET = path.join(ROOT, 'backend/src/services/auth/secretStore.js');
+const AUTHMGR = path.join(ROOT, 'backend/src/services/auth/AuthManager.js');
 
 const SUITES = [
   'backend/src/services/auth/ClaudeCodeAuthManager.test.js',
   'backend/src/services/auth/credentialResolver.test.js',
   'backend/src/services/auth/secretStore.test.js',
   'backend/src/services/auth/agntCredentialStore.test.js',
+  'backend/src/services/auth/AuthManager.connectedApps.test.js',
+  'backend/src/services/auth/CursorCliAuthManager.describeCredential.test.js',
 ];
 
 const MUTATIONS = [
@@ -102,6 +105,30 @@ const MUTATIONS = [
     file: SECRET,
     find: "  if (platform !== 'darwin' && platform !== 'linux') return null;",
     replace: '  // platform gate removed by mutation',
+  },
+  {
+    name: 'connected-apps forgets CLI sessions again (the visible half of #82)',
+    file: AUTHMGR,
+    find: '      const { connected: liveSessions } = discoverSessions();\n      liveSessions.forEach((session) => connected.add(session.providerId));',
+    replace: '      discoverSessions();',
+  },
+  {
+    name: 'connected-apps lets a discovery failure blank the whole list',
+    file: AUTHMGR,
+    find: '    } catch (err) {\n      // Never let discovery blank the list. A CLI manager throwing must cost\n      // the user their CLI badges at worst, never their saved API keys.\n      console.warn(\'getConnectedApps: CLI session discovery failed:\', err.message);\n    }',
+    replace: '    } finally { /* catch removed by mutation */ }',
+  },
+  {
+    name: 'connected-apps trusts a provider that reports disconnected',
+    file: AUTHMGR,
+    find: '      const { connected: liveSessions } = discoverSessions();',
+    replace: '      const { sessions: liveSessions } = discoverSessions();',
+  },
+  {
+    name: 'cursor: treat the config DIRECTORY as proof of sign-in',
+    file: path.join(ROOT, 'backend/src/services/auth/CursorCliAuthManager.js'),
+    find: "    const raw = fs.readFileSync(path.join(resolveCursorHome(), 'cli-config.json'), 'utf8');\n    const info = JSON.parse(raw)?.authInfo;\n    if (info && typeof info === 'object' && (info.email || info.authId)) return info;\n    return null;",
+    replace: "    if (fs.existsSync(resolveCursorHome())) return { email: null };\n    return null;",
   },
 ];
 

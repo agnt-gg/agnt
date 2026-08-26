@@ -4,6 +4,7 @@ import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
 import { decrypt, encrypt } from '../../utils/encryption.js';
 import ENV_KEY_MAP from './envKeyMap.js';
+import { discoverSessions } from './sessionDiscovery.js';
 
 // Add this import
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
@@ -144,7 +145,35 @@ class AuthManager {
       console.warn('getConnectedApps: oauth_tokens lookup failed:', err.message);
     }
 
-    // 4. Remote fallback (always-on; surfaces remote-stored keys for users who
+    // 4. Local CLI sessions.
+    //
+    //    Sources 1-3 can only see a credential AGNT was TOLD about: an env var,
+    //    a key saved through the UI, an OAuth row written by our own connect
+    //    flow. A user whose only login was made in their terminal has none of
+    //    those, so their working CLI session was absent from this list even
+    //    though getAccessToken() would happily return its token.
+    //
+    //    That split was the visible half of issue #82: the provider page said
+    //    available (it asks checkApiUsable, which resolves the real credential)
+    //    while the integration grid and "is this connected?" checks said no,
+    //    because they ask THIS function. Two answers to one question.
+    //
+    //    ENV_KEY_MAP deliberately omits the CLI providers, so this cannot be
+    //    folded into source 1 — their credentials are files and keychain items,
+    //    not single env strings.
+    //
+    //    Cost: filesystem and env reads, plus a TTL-cached OS keychain lookup.
+    //    No network, no CLI spawns. Safe on the 60s connected-apps poll.
+    try {
+      const { connected: liveSessions } = discoverSessions();
+      liveSessions.forEach((session) => connected.add(session.providerId));
+    } catch (err) {
+      // Never let discovery blank the list. A CLI manager throwing must cost
+      // the user their CLI badges at worst, never their saved API keys.
+      console.warn('getConnectedApps: CLI session discovery failed:', err.message);
+    }
+
+    // 5. Remote fallback (always-on; surfaces remote-stored keys for users who
     //    haven't re-saved locally yet). If remote is unreachable, the UI degrades
     //    silently to the local-only set above.
     if (this.remoteUrl) {
