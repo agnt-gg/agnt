@@ -80,26 +80,55 @@ describe('static layout stays in the registry, not in templates', () => {
   });
 });
 
-describe('registry entries resolve to real panel types', () => {
-  const typeDirs = (side) => {
-    const p = path.join(SRC, `views/Terminal/${side}/types`);
-    return new Set(fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name));
-  };
+/**
+ * Panels that the registry names but that have no component file. Each entry
+ * needs a reason, because the consequence is invisible: LeftPanel/RightPanel
+ * catch the failed import and silently fall back to ChatPanel, so a typo here
+ * ships as "the wrong panel renders", never as an error.
+ */
+const ALLOWED_MISSING_PANELS = new Map([
+  [
+    'RightPanel/DashboardPanel',
+    'Never implemented. Dashboard has asked for it since long before this branch '
+      + '(main passes activeRightPanel="DashboardPanel"), and RightPanel\'s catch '
+      + 'falls back to ChatPanel — which is what the Dashboard has always shown on '
+      + 'the right. Making it a real panel is a product decision, not a rename.',
+  ],
+]);
 
-  it('every named rightPanel exists under RightPanel/types', () => {
-    const known = typeDirs('RightPanel');
-    const bad = Object.entries(SCREEN_DEFAULTS)
-      .filter(([, v]) => typeof v.rightPanel === 'string' && !known.has(v.rightPanel))
-      .map(([k, v]) => `${k} → ${v.rightPanel}`);
-    expect(bad, `unknown right panel types:\n${bad.join('\n')}`).toEqual([]);
+describe('registry entries resolve to real panel types', () => {
+  /**
+   * The exact module `loadPanel` imports: `types/<Name>/<Name>.vue`.
+   * Checking only for the DIRECTORY is a false pass — an emptied panel folder
+   * satisfied it right up until git pruned the folder itself.
+   */
+  const panelFileExists = (side, name) =>
+    fs.existsSync(path.join(SRC, `views/Terminal/${side}/types`, name, `${name}.vue`));
+
+  const missing = (side, slot) =>
+    Object.entries(SCREEN_DEFAULTS)
+      .filter(([, v]) => typeof v[slot] === 'string' && !panelFileExists(side, v[slot]))
+      .filter(([, v]) => !ALLOWED_MISSING_PANELS.has(`${side}/${v[slot]}`))
+      .map(([k, v]) => `${k} → ${side}/types/${v[slot]}/${v[slot]}.vue`);
+
+  it('every named rightPanel has a component file', () => {
+    const bad = missing('RightPanel', 'rightPanel');
+    expect(bad, `these silently fall back to ChatPanel:\n${bad.join('\n')}`).toEqual([]);
   });
 
-  it('every named leftPanel exists under LeftPanel/types', () => {
-    const known = typeDirs('LeftPanel');
-    const bad = Object.entries(SCREEN_DEFAULTS)
-      .filter(([, v]) => typeof v.leftPanel === 'string' && !known.has(v.leftPanel))
-      .map(([k, v]) => `${k} → ${v.leftPanel}`);
-    expect(bad, `unknown left panel types:\n${bad.join('\n')}`).toEqual([]);
+  it('every named leftPanel has a component file', () => {
+    const bad = missing('LeftPanel', 'leftPanel');
+    expect(bad, `these silently fall back to ChatPanel:\n${bad.join('\n')}`).toEqual([]);
+  });
+
+  it('every allowed-missing panel is still genuinely missing', () => {
+    // Once someone implements one, the allowance must go — otherwise the list
+    // rots into a permanent blind spot.
+    const stale = [...ALLOWED_MISSING_PANELS.keys()].filter((key) => {
+      const [side, name] = key.split('/');
+      return panelFileExists(side, name);
+    });
+    expect(stale, `implemented — drop from ALLOWED_MISSING_PANELS: ${stale.join(', ')}`).toEqual([]);
   });
 });
 

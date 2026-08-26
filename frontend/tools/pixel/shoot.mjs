@@ -27,7 +27,18 @@ const SHOTS = path.join(HERE, 'shots');
 
 const VIEWPORT = { width: 1440, height: 900 };
 
+/**
+ * Click a tab/button by its visible text, then let the page settle again.
+ * Used for content that only exists behind an in-screen tab — a card that is
+ * never photographed is a card the gate does not actually cover.
+ */
+const clickTab = (selector, text) => async (page) => {
+  const target = page.locator(selector, { hasText: text }).first();
+  await target.click({ timeout: 5000 });
+};
+
 // Every screen worth a pixel. Terminal screens plus the standalone views.
+// A third element is an optional async prepare(page) run after first settle.
 export const ROUTES = [
   ['chat', '/chat'],
   ['dashboard', '/dashboard'],
@@ -39,6 +50,8 @@ export const ROUTES = [
   ['goals', '/goals'],
   ['traces', '/traces'],
   ['experiments', '/experiments'],
+  ['experiments-runs', '/experiments', clickTab('.view-tabs button', 'Experiments')],
+  ['experiments-datasets', '/experiments', clickTab('.view-tabs button', 'Datasets')],
   ['marketplace', '/marketplace'],
   ['widget-manager', '/widget-manager'],
   ['artifacts', '/artifacts'],
@@ -179,7 +192,7 @@ const run = async () => {
   const results = [];
 
   try {
-    for (const [name, route] of routes) {
+    for (const [name, route, prepare] of routes) {
       const context = await browser.newContext({
         viewport: VIEWPORT,
         deviceScaleFactor: 1,
@@ -243,6 +256,15 @@ const run = async () => {
       await page.goto(origin + route, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.evaluate(() => document.fonts.ready).catch(() => {});
       await waitForSettle(page, tracker);
+
+      if (prepare) {
+        try {
+          await prepare(page);
+        } catch (e) {
+          results.push({ name, error: `prepare failed: ${String(e).split('\n')[0]}` });
+        }
+        await waitForSettle(page, tracker);
+      }
       // one more frame so any layout write has painted
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 

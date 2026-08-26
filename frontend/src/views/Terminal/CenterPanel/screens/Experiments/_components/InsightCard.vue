@@ -1,35 +1,25 @@
 <template>
-  <div class="insight-card" :class="{ selected, [insight.status]: true }" @click="$emit('click')">
-    <div class="card-header">
+  <EntityCard
+    root-class="insight-card"
+    :status-class="insight.status"
+    layout="fixed"
+    :title="insight.title"
+    :subtitle="formatCategory(insight.category)"
+    :description="description"
+    description-style="clamp"
+    :show-description="true"
+    :selected="selected"
+    :actions="actions"
+    @click="emit('click')"
+    @action="emit"
+  >
+    <template #icon>
       <span class="card-icon" :class="categoryClass"><i :class="categoryIcon"></i></span>
-      <div class="card-title-block">
-        <span class="card-name">{{ insight.title }}</span>
-        <span class="card-category">{{ formatCategory(insight.category) }}</span>
-      </div>
-      <div class="card-actions">
-        <Tooltip v-if="insight.status === 'pending'" text="Apply">
-          <button class="card-btn apply" @click.stop="$emit('apply')">
-            <i class="fas fa-check"></i>
-          </button>
-        </Tooltip>
-        <Tooltip v-if="insight.status === 'pending'" text="Reject">
-          <button class="card-btn reject" @click.stop="$emit('reject')">
-            <i class="fas fa-times"></i>
-          </button>
-        </Tooltip>
-        <Tooltip text="Delete">
-          <button class="card-btn delete" @click.stop="$emit('delete')">
-            <i class="fas fa-trash"></i>
-          </button>
-        </Tooltip>
-      </div>
-    </div>
-
-    <p class="card-description">{{ truncate(insight.description, 120) }}</p>
+    </template>
 
     <div class="card-meta">
       <span class="meta-item confidence">
-        <span class="meta-bar"><span class="meta-fill" :style="{ width: (insight.confidence * 100) + '%' }"></span></span>
+        <span class="meta-bar"><span class="meta-fill" :style="{ width: insight.confidence * 100 + '%' }"></span></span>
         <span class="meta-value">{{ Math.round(insight.confidence * 100) }}%</span>
       </span>
       <span v-if="insight.occurrence_count > 1" class="meta-item occurrences">
@@ -46,17 +36,19 @@
         <i :class="targetIcon"></i> {{ insight.target_type }}
       </span>
     </div>
-  </div>
+  </EntityCard>
 </template>
 
 <script setup>
-import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { computed } from 'vue';
+import EntityCard from '@/views/Terminal/_components/cards/EntityCard.vue';
+import { safeTruncate } from '@/utils/safeTruncate.js';
 
 const props = defineProps({
   insight: { type: Object, required: true },
   selected: { type: Boolean, default: false },
 });
-defineEmits(['click', 'apply', 'reject', 'delete']);
+const emit = defineEmits(['click', 'apply', 'reject', 'delete']);
 
 const categoryIcons = {
   pattern: 'fas fa-thumbs-up',
@@ -90,47 +82,40 @@ const targetIcon = targetIcons[props.insight.target_type] || 'fas fa-cube';
 
 const formatCategory = (c) => (c || '').replace(/_/g, ' ');
 const formatSource = (s) => (s || '').replace(/_/g, ' ');
-import { safeTruncate } from '@/utils/safeTruncate.js';
-const truncate = (text, max) => safeTruncate(text, max, '...');
+
+const description = computed(() => safeTruncate(props.insight.description, 120, '...'));
+
+/** Apply and reject are only offered while the insight is still undecided. */
+const actions = computed(() => [
+  ...(props.insight.status === 'pending'
+    ? [
+        { name: 'apply', icon: 'fas fa-check', tooltip: 'Apply' },
+        { name: 'reject', icon: 'fas fa-times', tooltip: 'Reject' },
+      ]
+    : []),
+  { name: 'delete', icon: 'fas fa-trash', tooltip: 'Delete' },
+]);
 </script>
 
 <style scoped>
-.insight-card {
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  padding: 14px;
-  cursor: pointer;
-  overflow: hidden;
-  transition: border-color 0.2s, background 0.2s;
-  height: 120px;
-  display: flex;
-  flex-direction: column;
-}
-.insight-card:hover {
-  border-color: rgba(var(--green-rgb), 0.4);
-  background: var(--color-darker-1);
-}
-.insight-card.selected {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
-}
-.insight-card.applied {
+/* Frame, header, actions and description live in _components/cards/EntityCard.vue */
+
+/*
+  The class is doubled deliberately. EntityCard's `.entity-card:hover` sets the
+  `border-color` shorthand, which includes the left edge; at equal specificity
+  the winner would come down to stylesheet injection order, so the decided-state
+  stripe could vanish on hover. Doubling the class raises specificity and makes
+  the stripe win everywhere, in every theme.
+*/
+.insight-card.insight-card.applied {
   border-left: 3px solid var(--color-green);
 }
-.insight-card.rejected {
+.insight-card.insight-card.rejected {
   border-left: 3px solid #ef4444;
   opacity: 0.7;
 }
 
-/* Header */
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-  flex-shrink: 0;
-}
+/* Icon tile, tinted per insight category */
 .card-icon {
   width: 32px;
   height: 32px;
@@ -150,68 +135,6 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
 .card-icon.parameter_tune { background: rgba(20, 184, 166, 0.15); color: var(--color-blue); }
 .card-icon.tool_preference { background: rgba(99, 102, 241, 0.15); color: var(--status-blue-text); }
 .card-icon.default { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
-
-.card-title-block {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.card-name {
-  font-weight: 600;
-  color: var(--color-text);
-  font-size: 0.95em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.card-category {
-  font-size: 0.7em;
-  color: var(--color-grey);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Actions */
-.card-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.insight-card:hover .card-actions { opacity: 1; }
-.card-btn {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.2);
-  color: var(--color-grey);
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 0.75em;
-  transition: all 0.15s;
-}
-.card-btn:hover { color: var(--color-text); background: rgba(var(--green-rgb), 0.2); }
-.card-btn.apply:hover { color: var(--color-green); border-color: rgba(var(--green-rgb), 0.4); background: rgba(var(--green-rgb), 0.15); }
-.card-btn.reject:hover { color: var(--status-amber-text); border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.1); }
-.card-btn.delete:hover { color: var(--color-red); border-color: rgba(255, 77, 79, 0.3); background: rgba(255, 77, 79, 0.1); }
-
-/* Description */
-.card-description {
-  font-size: 0.85em;
-  color: var(--color-grey);
-  margin: 0 0 8px;
-  line-height: 1.4;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
 
 /* Confidence meta */
 .card-meta {

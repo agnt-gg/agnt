@@ -94,6 +94,51 @@ describe('the filter tab strip lives in one component', () => {
   });
 });
 
+describe('the entity cards share one frame', () => {
+  const CARDS = [
+    'Experiments/_components/ExperimentCard.vue',
+    'Experiments/_components/InsightCard.vue',
+    'EvalDatasets/_components/DatasetCard.vue',
+  ];
+
+  /** Rules that belong to EntityCard. A copy here means the fork is back. */
+  const FRAME_SELECTORS = [
+    '.card-header',
+    '.card-title-block',
+    '.card-name',
+    '.card-category',
+    '.card-actions',
+    '.card-btn',
+    '.card-description',
+  ];
+
+  it('every entity card delegates to EntityCard', () => {
+    const offenders = [];
+    for (const rel of CARDS) {
+      const file = path.join(SCREENS, rel);
+      if (!fs.existsSync(file)) {
+        offenders.push(`${rel} is missing`);
+        continue;
+      }
+      if (!fs.readFileSync(file, 'utf8').includes('EntityCard')) offenders.push(`${rel} no longer uses EntityCard`);
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  it('no entity card re-declares the shared frame', () => {
+    const offenders = [];
+    for (const rel of CARDS) {
+      const file = path.join(SCREENS, rel);
+      if (!fs.existsSync(file)) continue;
+      const css = (fs.readFileSync(file, 'utf8').match(/<style[\s\S]*?<\/style>/g) || []).join('\n');
+      for (const selector of FRAME_SELECTORS) {
+        if (ruleBodies(css, selector).length) offenders.push(`${rel} re-declares ${selector}`);
+      }
+    }
+    expect(offenders, `these belong to _components/cards/EntityCard.vue:\n${offenders.join('\n')}`).toEqual([]);
+  });
+});
+
 describe('the category nav panel lives in one component', () => {
   const TYPES = path.join(SRC, 'views/Terminal/LeftPanel/types');
 

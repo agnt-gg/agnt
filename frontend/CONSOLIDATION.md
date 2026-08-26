@@ -195,12 +195,55 @@ nondeterminism that had to be killed to get there.
 | `CategoryNavPanel` — 5 left panels collapse to 1 (−948 lines) | **0 / 21** |
 | `FilterTabs` — 5 screens stop carrying identical tab CSS (−123 lines) | **0 / 21** |
 | Shared `.screen-content` / `.screen-main-content` / `.card-grid` / `.card-row` | **1 / 21** — Skills only, deliberate |
+| `EntityCard` — 3 lab cards collapse onto one frame | **0 / 23** |
 
 The one intentional change: Skills' card grid used `padding: 16px 0` where
 every other collection screen used `16px`, and Memory used a 320px minimum
 column where everything else used 300px. Both now come from one rule. The diff
 image confirms only the grid's outer edge moved — inner gutters, card sizes and
 row positions are untouched.
+
+### The entity cards
+
+ExperimentCard, InsightCard and DatasetCard shared one skeleton — header (icon,
+title, subtitle, hover actions), description, body — with **six byte-identical
+CSS rules** between them. They now render through
+`_components/cards/EntityCard.vue` and supply only what actually differs: the
+icon, the middle band (progress bar / confidence meter / stat row) and the
+footer badges. `GoalCard` was measured and deliberately left alone — it shares
+**zero** selectors with the other three and is a genuinely different design.
+
+**Be honest about the size of this one.** The three cards go 762 → 522 lines and
+the shared frame costs 217, so the net is **−23 lines** — not a saving worth
+quoting. The win is that the frame now has ONE definition instead of three
+drifting ones, and the fourth card costs a caller instead of a file. Judge this
+change on that, not on a line count.
+
+Two things made this safe rather than merely smaller:
+
+- **The icon, body and footer are slots, including their wrapper divs.** Slotted
+  content is styled by the CALLER's scope, so each card keeps its own
+  `.card-icon`, `.card-footer` and middle-band rules exactly where they were. A
+  `.card-footer` div declared inside EntityCard would carry EntityCard's scope
+  and silently orphan three stylesheets.
+- **`.insight-card.applied` is doubled to `.insight-card.insight-card.applied`.**
+  EntityCard's `:hover` sets the `border-color` shorthand, which includes the
+  left edge; at equal specificity the winner would be decided by stylesheet
+  injection order, so the decided-state stripe could disappear on hover.
+
+The gate only proves this because the lab fixtures were filled in first: the
+harness previously photographed three empty tabs, and `shoot.mjs` gained a
+`prepare` step so `/experiments` is shot three times — insights, experiments and
+datasets. **A card that is never photographed is a card the gate does not
+cover.**
+
+### Known gate caveat
+
+`/chat` diffed 1.45% once across two runs of an identical build (a ~204px column
+shifting vertically, no content change) and has been byte-identical on every run
+before and since. It is an intermittent layout race in the chat welcome screen,
+not a harness defect — but if `/chat` is the only route showing a diff, re-shoot
+before believing it.
 
 ### Anti-decay
 

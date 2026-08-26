@@ -1,18 +1,18 @@
 <template>
-  <div class="dataset-card" :class="{ selected }" @click="$emit('click')">
-    <div class="card-header">
+  <EntityCard
+    root-class="dataset-card"
+    :title="dataset.name"
+    :subtitle="dataset.source || 'manual'"
+    :description="description"
+    :selected="selected"
+    :actions="actions"
+    @click="emit('click')"
+    @action="emit"
+  >
+    <template #icon>
       <span class="card-icon"><i class="fas fa-database"></i></span>
-      <div class="card-title-block">
-        <span class="card-name">{{ dataset.name }}</span>
-        <span class="card-category">{{ dataset.source || 'manual' }}</span>
-      </div>
-      <div class="card-actions">
-        <Tooltip text="Delete">
-          <button class="card-btn delete" @click.stop="$emit('delete')"><i class="fas fa-trash"></i></button>
-        </Tooltip>
-      </div>
-    </div>
-    <p v-if="dataset.description" class="card-description">{{ dataset.description?.length > 120 ? dataset.description.substring(0, 120) + '...' : dataset.description }}</p>
+    </template>
+
     <div class="card-stats">
       <div class="stat">
         <span class="stat-value">{{ dataset.items?.length || dataset.example_count || 0 }}</span>
@@ -27,18 +27,31 @@
         <span class="stat-label">{{ dataset.category }}</span>
       </div>
     </div>
+
     <div class="card-footer">
       <span class="source-badge" :class="dataset.source || 'manual'">{{ dataset.source || 'manual' }}</span>
       <span v-if="dataset.created_at" class="card-date">{{ formatDate(dataset.created_at) }}</span>
     </div>
-  </div>
+  </EntityCard>
 </template>
 
 <script setup>
-import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { computed } from 'vue';
+import EntityCard from '@/views/Terminal/_components/cards/EntityCard.vue';
 
-defineProps({ dataset: { type: Object, required: true }, selected: { type: Boolean, default: false } });
-defineEmits(['click', 'delete']);
+const props = defineProps({
+  dataset: { type: Object, required: true },
+  selected: { type: Boolean, default: false },
+});
+const emit = defineEmits(['click', 'delete']);
+
+const actions = [{ name: 'delete', icon: 'fas fa-trash', tooltip: 'Delete' }];
+
+const description = computed(() => {
+  const text = props.dataset.description;
+  if (!text) return '';
+  return text.length > 120 ? text.substring(0, 120) + '...' : text;
+});
 
 const formatDate = (d) => {
   if (!d) return '';
@@ -51,98 +64,10 @@ const formatDate = (d) => {
 </script>
 
 <style scoped>
-/* Card */
-.dataset-card {
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  padding: 14px;
-  cursor: pointer;
-  overflow: hidden;
-  transition:
-    border-color 0.2s,
-    background 0.2s;
-}
-.dataset-card:hover {
-  border-color: rgba(var(--green-rgb), 0.4);
-  background: var(--color-darker-1);
-}
-.dataset-card.selected {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
-}
+/* Frame, header, actions and description live in _components/cards/EntityCard.vue */
 
-/* Header */
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
 .card-icon {
   font-size: 1.5em;
-}
-.card-title-block {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.card-name {
-  font-weight: 600;
-  color: var(--color-text);
-  font-size: 0.95em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.card-category {
-  font-size: 0.7em;
-  color: var(--color-grey);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Actions */
-.card-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.dataset-card:hover .card-actions {
-  opacity: 1;
-}
-.card-btn {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.2);
-  color: var(--color-grey);
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 0.75em;
-  transition: all 0.15s;
-}
-.card-btn:hover {
-  color: var(--color-text);
-  background: rgba(var(--green-rgb), 0.2);
-}
-.card-btn.delete:hover {
-  color: var(--color-red);
-  border-color: rgba(255, 77, 79, 0.3);
-  background: rgba(255, 77, 79, 0.1);
-}
-
-/* Description */
-.card-description {
-  font-size: 0.85em;
-  color: var(--color-grey);
-  margin: 0 0 8px;
-  line-height: 1.4;
 }
 
 /* Stats */
