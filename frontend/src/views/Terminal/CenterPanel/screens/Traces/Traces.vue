@@ -46,21 +46,14 @@
           </div>
 
           <!-- Tabs -->
-          <div class="wm-tabs">
-            <button v-for="tab in tabs" :key="tab.id" class="wm-tab" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">
-              <i :class="tab.icon"></i> {{ tab.name }}
-            </button>
-            <span class="wm-tab-separator"></span>
-            <button
-              v-for="filter in typeFilters"
-              :key="filter.id"
-              class="wm-tab"
-              :class="{ active: executionTypeFilter === filter.id }"
-              @click="selectTypeFilter(filter.id)"
-            >
-              <i :class="filter.icon"></i> {{ filter.name }}
-            </button>
-          </div>
+          <FilterTabs
+            :tabs="tabs"
+            :active="activeTab"
+            :secondary-tabs="typeFilters"
+            :secondary-active="executionTypeFilter"
+            @select="selectTab"
+            @select-secondary="selectTypeFilter"
+          />
 
           <!-- Date Range & Sort Controls -->
           <div class="runs-controls">
@@ -274,10 +267,11 @@ import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import { useTracesTutorial } from './useTracesTutorial.js';
 import { API_CONFIG } from '@/tt.config.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 
 export default {
   name: 'TracesScreen',
-  components: { CustomSelect, BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip },
+  components: { CustomSelect, BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip, FilterTabs },
   emits: ['screen-change', 'panel-action'],
   setup(props, { emit }) {
     const store = useStore();
@@ -1499,49 +1493,8 @@ ${execution.log}
 }
 
 /* ── Category tabs ── */
-.wm-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-  overflow-x: auto;
-  flex-shrink: 0;
-  width: calc(100% - 32px);
-  justify-content: center;
-}
-
-.wm-tab {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.12s;
-  white-space: nowrap;
-  font-family: inherit;
-}
-
-.wm-tab:hover {
-  color: var(--color-text);
-  border-color: var(--color-darker-1);
-}
-
-.wm-tab.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-tab i {
-  font-size: 10px;
-}
+/* .wm-tabs / .wm-tab / .wm-tab-separator now live in
+   _components/FilterTabs.vue — this screen uses its two-group form. */
 
 .wm-tab-separator {
   width: 1px;

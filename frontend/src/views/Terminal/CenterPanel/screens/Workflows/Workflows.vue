@@ -70,11 +70,7 @@
         </ScreenToolbar>
 
         <!-- Tabs -->
-        <div class="wm-tabs">
-          <button v-for="tab in tabs" :key="tab.id" class="wm-tab" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">
-            <i :class="tab.icon"></i> {{ tab.name }}
-          </button>
-        </div>
+        <FilterTabs :tabs="tabs" :active="activeTab" @select="selectTab" />
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
         <div class="workflows-content">
@@ -323,10 +319,11 @@ import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
+import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf },
+  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -1353,49 +1350,7 @@ export default {
 }
 
 /* ── Category tabs ── */
-.wm-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-  overflow-x: auto;
-  flex-shrink: 0;
-  width: calc(100% - 32px);
-  justify-content: center;
-}
-
-.wm-tab {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.12s;
-  white-space: nowrap;
-  font-family: inherit;
-}
-
-.wm-tab:hover {
-  color: var(--color-text);
-  border-color: var(--color-darker-1);
-}
-
-.wm-tab.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-tab i {
-  font-size: 10px;
-}
+/* .wm-tabs / .wm-tab now live in _components/FilterTabs.vue. */
 .workflow-table {
   width: calc(100% - 2px);
   border: 1px solid rgba(var(--green-rgb), 0.4);
