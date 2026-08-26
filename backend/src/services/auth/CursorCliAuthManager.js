@@ -43,6 +43,32 @@ function resolveCursorHome() {
   return path.join(os.homedir(), '.cursor');
 }
 
+/**
+ * The Cursor CLI records WHO is signed in — not the credential itself — in
+ * ~/.cursor/cli-config.json under `authInfo` { email, displayName, userId,
+ * authId }. The secret stays inside the CLI; this is only an identity marker.
+ *
+ * That distinction is what makes this readable at all, and it is a strictly
+ * better discovery signal than the one thing we must NOT use: the presence of
+ * ~/.cursor itself, which appears the first time the CLI runs and would report
+ * a confident "connected" for someone who has never signed in.
+ *
+ * Weaker than an actual probe — a marker can outlive the session it describes —
+ * so callers get requiresProbe: true alongside it. "Signed in according to the
+ * CLI's own config, confirm to be sure" is a true statement; "unknown" was
+ * merely a safe one.
+ */
+function readCursorAuthInfo() {
+  try {
+    const raw = fs.readFileSync(path.join(resolveCursorHome(), 'cli-config.json'), 'utf8');
+    const info = JSON.parse(raw)?.authInfo;
+    if (info && typeof info === 'object' && (info.email || info.authId)) return info;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 class CursorCliAuthManager {
   constructor() {
     this.apiCheckCache = null;
@@ -61,26 +87,57 @@ class CursorCliAuthManager {
   /**
    * Sync provenance for sessionDiscovery.js and the status endpoint.
    *
-   * Cursor is the one provider that genuinely cannot answer cheaply: the CLI
-   * holds the credential internally and there is no file to stat. Note that
-   * ~/.cursor EXISTS as soon as the CLI has ever run, so its presence proves
-   * nothing — probing it would produce a confident false "connected".
+   * Cursor holds its credential inside the CLI, so unlike every other provider
+   * there is no token to read. Two honest answers exist, in confidence order:
    *
-   * So we report the warm probe result if checkApiUsable() has run recently, and
-   * otherwise say plainly that a probe is required. Saying "unknown" is the
-   * correct answer here; guessing is not.
+   *   1. a warm checkApiUsable() result — the CLI itself confirmed the session,
+   *   2. the CLI's own signed-in marker in cli-config.json (see above).
+   *
+   * Never the existence of ~/.cursor, which proves only that the CLI has run.
+   *
+   * This reports only. getAccessToken() still returns its sentinel strictly on
+   * the warm probe, so nothing here can talk AGNT into using a session the CLI
+   * has not confirmed.
    */
   describeCredential() {
-    const warm = this.apiCheckCache?.value?.apiUsable === true;
+    const base = { ownedByAgnt: false, credPath: resolveCursorHome(), keychainSupported: false };
+
+    if (this.apiCheckCache?.value?.apiUsable === true) {
+      return {
+        ...base,
+        connected: true,
+        source: 'cursor-cli-session',
+        tier: 'cli-probe',
+        label: 'CLI reports signed in',
+        email: this.apiCheckCache.value.email || null,
+        requiresProbe: false,
+      };
+    }
+
+    const authInfo = readCursorAuthInfo();
+    if (authInfo) {
+      return {
+        ...base,
+        connected: true,
+        source: 'cursor-cli-config',
+        tier: 'vendor-file',
+        label: authInfo.email
+          ? `Cursor CLI signed in as ${authInfo.email}`
+          : 'Cursor CLI signed in',
+        email: authInfo.email || null,
+        // A marker can outlive its session. True, but confirmable.
+        requiresProbe: true,
+      };
+    }
+
     return {
-      connected: warm,
-      source: warm ? 'cursor-cli-session' : null,
-      tier: warm ? 'cli-probe' : null,
-      ownedByAgnt: false,
-      label: warm ? 'CLI reports signed in' : 'requires a CLI probe',
-      credPath: resolveCursorHome(),
-      keychainSupported: false,
-      requiresProbe: !warm,
+      ...base,
+      connected: false,
+      source: null,
+      tier: null,
+      label: 'not connected',
+      email: null,
+      requiresProbe: true,
     };
   }
 
