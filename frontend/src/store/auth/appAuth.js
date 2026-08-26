@@ -114,6 +114,13 @@ const mutations = {
         apiUsable: status?.apiUsable === true,
         apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
         source: status?.source || null,
+        // Provenance. `source` alone was a constant per provider and could not
+        // distinguish "the user connected this in AGNT" from "we discovered the
+        // CLI's own session" — which is exactly what Disconnect depends on, and
+        // what makes a found session explainable rather than mysterious.
+        sourceLabel: status?.sourceLabel || null,
+        ownedByAgnt: status?.ownedByAgnt === true,
+        keychainSupported: status?.keychainSupported === true,
         hint: status?.hint || null,
         checkedAt: status?.checkedAt || new Date().toISOString(),
         // Codex-specific extras

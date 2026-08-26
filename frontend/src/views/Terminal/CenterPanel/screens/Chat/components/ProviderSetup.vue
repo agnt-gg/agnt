@@ -103,6 +103,20 @@ export default {
       return providerMap[providerId.toLowerCase()] || providerId;
     };
 
+    /**
+     * "Already connected" is not one thing. It can mean the user connected here,
+     * or that AGNT discovered the CLI's own session on this machine. Saying which
+     * is the difference between a mysterious green light and an explained one —
+     * and it tells the user whether Disconnect will actually end that session.
+     */
+    const connectionDetail = (providerId) => {
+      const status = store.state.appAuth?.cliProviderStatuses?.[providerId];
+      if (!status?.sourceLabel) return '';
+      return status.ownedByAgnt
+        ? `\n\nSource: ${status.sourceLabel}.`
+        : `\n\nSource: ${status.sourceLabel}. AGNT is using the session your CLI created — disconnecting here removes AGNT's access, not the CLI's.`;
+    };
+
     const isProviderConnected = (providerId) => {
       const providerKey = resolveProviderKey(providerId);
       return connectedApps.value.some((app) => app.toLowerCase() === providerKey);
@@ -155,7 +169,7 @@ export default {
       // If already connected, just select it.
       if (isProviderConnected(provider.id)) {
         await selectProvider(provider);
-        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.`);
+        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.${connectionDetail(provider.id)}`);
         return;
       }
 
@@ -213,7 +227,7 @@ export default {
       // Already connected on this machine? Just select it.
       if (isProviderConnected(provider.id)) {
         await selectProvider(provider);
-        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.`);
+        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.${connectionDetail(provider.id)}`);
         return;
       }
 

@@ -43,8 +43,13 @@
  * on a live install). So an empty constant here does not merely block new
  * connections: it sends an empty client_id to Google's token endpoint and
  * breaks the hourly refresh, signing out ALREADY-CONNECTED users within the
- * hour. Antigravity has no fallback at all, because the real Antigravity CLI
- * keeps its credentials in the OS keychain where AGNT cannot read them.
+ * hour. Antigravity has no client_id fallback in its own credential file at
+ * all, so this constant is the only source.
+ *
+ * (A session created by the REAL Antigravity CLI does live in the OS keychain.
+ * AGNT can now READ that store — see services/auth/secretStore.js — but such a
+ * credential is marked ownedByAgnt: false and is never refreshed here, so it
+ * does not change this constant's role.)
  *
  * config/oauthClients.test.js is a ship gate that fails if either pair is
  * empty, malformed, or accidentally duplicated between the two providers.

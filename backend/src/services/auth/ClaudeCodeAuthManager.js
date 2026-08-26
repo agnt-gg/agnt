@@ -5,6 +5,9 @@ import crypto from 'crypto';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
 import { getClientIdentity } from '../ai/clientVersions.js';
+import { readSecretJson, clearSecretCache, secretStoreSupported } from './secretStore.js';
+import * as agntStore from './agntCredentialStore.js';
+import { TIER, resolveFirst, describeSource } from './credentialResolver.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -18,6 +21,28 @@ const OAUTH_CONFIG = {
   REDIRECT_URI: 'https://console.anthropic.com/oauth/code/callback',
   SCOPES: 'org:create_api_key user:profile user:inference',
 };
+
+const PROVIDER_ID = 'claude-code';
+
+// The generic-password item the Claude Code CLI writes on macOS (issue #82).
+const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+
+/**
+ * Keys only the REAL Claude CLI writes into its `claudeAiOauth` block.
+ *
+ * This is the ownership discriminator, and it has to be exactly right, because
+ * getting it wrong in either direction is a live bug:
+ *
+ *   · Wrongly "CLI"  → AGNT refuses to refresh a credential it created, and the
+ *                      provider dies ~8h after upgrade when the token expires.
+ *   · Wrongly "AGNT" → AGNT rotates the user's terminal session.
+ *
+ * AGNT has only ever written four keys (accessToken, refreshToken, expiresAt,
+ * scopes). A file-era CLI writes those plus these three. So the presence of any
+ * one of them proves the block was NOT written by AGNT. Shape is evidence here,
+ * not a guess.
+ */
+const CLI_ONLY_KEYS = ['subscriptionType', 'rateLimitTier', 'refreshTokenExpiresAt'];
 
 function resolveClaudeCredentialsPath() {
   return path.join(os.homedir(), '.claude', '.credentials.json');
@@ -34,25 +59,95 @@ function readClaudeCredentialsFile() {
   }
 }
 
+/** Pull a usable token out of any of the shapes we accept. */
+function extractToken(data) {
+  if (!data || typeof data !== 'object') return null;
+
+  const oauth = data.claudeAiOauth;
+  if (oauth?.accessToken) {
+    const value = String(oauth.accessToken).trim();
+    if (value) return { token: value, oauth };
+  }
+
+  // Legacy flat fields — a hand-written file or an old manual paste. These
+  // never carry a refresh token, so they are terminal: usable until they are
+  // not, and never refreshable.
+  for (const key of ['oauth_token', 'token', 'access_token']) {
+    const value = typeof data[key] === 'string' ? data[key].trim() : '';
+    if (value) return { token: value, oauth: null };
+  }
+
+  return null;
+}
+
+function blockLooksLikeCli(oauth) {
+  if (!oauth || typeof oauth !== 'object') return false;
+  return CLI_ONLY_KEYS.some((key) => oauth[key] !== undefined);
+}
+
+/**
+ * The cascade. Order is precedence; every tier is independent and any tier may
+ * fail without taking down the ones below it.
+ */
+function claudeCandidates() {
+  return [
+    {
+      tier: TIER.AGNT_STORE,
+      source: 'agnt-store',
+      read: () => {
+        const stored = agntStore.readCredential(PROVIDER_ID);
+        const found = extractToken(stored);
+        if (!found) return null;
+        return { token: found.token, oauth: found.oauth, credPath: agntStore.getCredentialPath(PROVIDER_ID) };
+      },
+    },
+    {
+      tier: TIER.VENDOR_FILE,
+      source: 'claude-credentials',
+      read: () => {
+        const { credPath, data } = readClaudeCredentialsFile();
+        const found = extractToken(data);
+        if (!found) return null;
+
+        // AGNT wrote this same path for its entire history before the store
+        // existed. A block without CLI-only keys is therefore ours, and must
+        // stay refreshable or every existing user breaks at their next expiry.
+        const ownedByAgnt = !blockLooksLikeCli(found.oauth);
+        return { token: found.token, oauth: found.oauth, credPath, ownedByAgnt };
+      },
+    },
+    {
+      tier: TIER.SECRET_STORE,
+      source: 'claude-keychain',
+      ownedByAgnt: false,
+      read: () => {
+        const payload = readSecretJson({
+          service: KEYCHAIN_SERVICE,
+          account: os.userInfo?.().username || null,
+        });
+        const found = extractToken(payload);
+        if (!found) return null;
+        return { token: found.token, oauth: found.oauth, credPath: `keychain:${KEYCHAIN_SERVICE}` };
+      },
+    },
+  ];
+}
+
+function resolveClaudeCredential() {
+  return resolveFirst(claudeCandidates());
+}
+
+/**
+ * AGNT's own credentials go in AGNT's own store — never into ~/.claude.
+ *
+ * The old implementation assigned `existing.claudeAiOauth = oauthData`, which
+ * REPLACED a 7-key CLI block with our 4-key one and silently destroyed three
+ * fields belonging to another program. Writing somewhere else deletes the bug
+ * rather than patching it: there is no merge to get wrong.
+ */
 function writeClaudeCredentials(oauthData) {
-  const credDir = path.join(os.homedir(), '.claude');
-  const credPath = resolveClaudeCredentialsPath();
-
-  if (!fs.existsSync(credDir)) {
-    fs.mkdirSync(credDir, { recursive: true });
-  }
-
-  // Preserve any existing fields in the credentials file
-  let existing = {};
-  try {
-    const raw = fs.readFileSync(credPath, 'utf8');
-    existing = JSON.parse(raw);
-  } catch {
-    // File doesn't exist yet
-  }
-
-  existing.claudeAiOauth = oauthData;
-  fs.writeFileSync(credPath, JSON.stringify(existing, null, 2), 'utf8');
+  agntStore.writeCredential(PROVIDER_ID, { claudeAiOauth: oauthData });
+  clearSecretCache();
 }
 
 // PKCE helpers
@@ -72,28 +167,45 @@ class ClaudeCodeAuthManager {
   }
 
   getCredentialsPath() {
-    return resolveClaudeCredentialsPath();
+    // The path AGNT would WRITE to. Discovery may resolve elsewhere; use
+    // describeCredential() when you need to know where a token actually is.
+    return agntStore.getCredentialPath(PROVIDER_ID);
   }
 
   /**
-   * Reads the raw access token from disk without any refresh logic.
+   * Reads the current access token without any refresh logic.
    * Use this for synchronous callers that cannot await (e.g. health checks).
    */
   getAccessTokenSync() {
-    const { data } = readClaudeCredentialsFile();
-    if (!data || typeof data !== 'object') return null;
+    return resolveClaudeCredential()?.token || null;
+  }
 
-    if (data.claudeAiOauth?.accessToken) {
-      const value = String(data.claudeAiOauth.accessToken).trim();
-      if (value) return value;
+  /**
+   * Where the live credential came from, and whether it is ours to manage.
+   * Powers the status endpoint, the discovery sweep, and an honest Disconnect.
+   */
+  describeCredential() {
+    const resolved = resolveClaudeCredential();
+    if (!resolved) {
+      return {
+        connected: false,
+        source: null,
+        tier: null,
+        ownedByAgnt: false,
+        label: describeSource(null),
+        credPath: this.getCredentialsPath(),
+        keychainSupported: secretStoreSupported(),
+      };
     }
-
-    for (const key of ['oauth_token', 'token', 'access_token']) {
-      const value = typeof data[key] === 'string' ? data[key].trim() : '';
-      if (value) return value;
-    }
-
-    return null;
+    return {
+      connected: true,
+      source: resolved.source,
+      tier: resolved.tier,
+      ownedByAgnt: resolved.ownedByAgnt,
+      label: describeSource(resolved),
+      credPath: resolved.credPath || this.getCredentialsPath(),
+      keychainSupported: secretStoreSupported(),
+    };
   }
 
   /**
@@ -103,25 +215,18 @@ class ClaudeCodeAuthManager {
    * @param {{ autoRefresh?: boolean }} options
    */
   async getAccessToken({ autoRefresh = true } = {}) {
-    const { data } = readClaudeCredentialsFile();
-    if (!data || typeof data !== 'object') return null;
+    const resolved = resolveClaudeCredential();
+    if (!resolved) return null;
 
-    const oauth = data.claudeAiOauth;
-    let token = null;
+    const token = resolved.token;
+    const oauth = resolved.oauth;
 
-    if (oauth?.accessToken) {
-      token = String(oauth.accessToken).trim() || null;
-    }
-
-    // Legacy fallback fields (these won't have refresh tokens)
-    if (!token) {
-      for (const key of ['oauth_token', 'token', 'access_token']) {
-        const value = typeof data[key] === 'string' ? data[key].trim() : '';
-        if (value) { token = value; break; }
-      }
-    }
-
-    if (!token) return null;
+    // A credential we merely DISCOVERED is not ours to rotate. Anthropic issues
+    // a new refresh token on every refresh and invalidates the old one, so
+    // refreshing the CLI's credential would sign the user out of their own
+    // terminal from a background timer they never started. The owning CLI
+    // refreshes it on its own schedule and we re-read the result.
+    if (autoRefresh && !resolved.ownedByAgnt) return token;
 
     // If we have expiry info and a refresh token, check if we need to refresh
     if (autoRefresh && oauth?.expiresAt && oauth?.refreshToken) {
@@ -154,7 +259,8 @@ class ClaudeCodeAuthManager {
 
   async checkApiUsable({ forceRefresh = false } = {}) {
     const token = await this.getAccessToken({ autoRefresh: true });
-    const credPath = this.getCredentialsPath();
+    const described = this.describeCredential();
+    const credPath = described.credPath;
 
     if (!token) {
       return {
@@ -162,6 +268,9 @@ class ClaudeCodeAuthManager {
         apiUsable: false,
         apiStatus: null,
         source: null,
+        sourceLabel: describeSource(null),
+        ownedByAgnt: false,
+        keychainSupported: described.keychainSupported,
         credPath,
         checkedAt: new Date().toISOString(),
       };
@@ -214,7 +323,13 @@ class ClaudeCodeAuthManager {
       available: true,
       apiUsable,
       apiStatus,
-      source: 'claude-credentials',
+      // Was the constant 'claude-credentials', which could not distinguish a
+      // session the user connected in AGNT from one discovered in their
+      // keychain — the distinction Disconnect depends on.
+      source: described.source,
+      sourceLabel: described.label,
+      ownedByAgnt: described.ownedByAgnt,
+      keychainSupported: described.keychainSupported,
       credPath,
       checkedAt: new Date().toISOString(),
     };
@@ -247,7 +362,18 @@ class ClaudeCodeAuthManager {
   }
 
   async _doRefresh() {
-    const { data } = readClaudeCredentialsFile();
+    const resolved = resolveClaudeCredential();
+
+    // Refuse to rotate someone else's credential. See getAccessToken().
+    if (resolved && !resolved.ownedByAgnt) {
+      return {
+        success: false,
+        revoked: false,
+        error: 'Credential belongs to the Claude Code CLI; AGNT does not refresh it.',
+      };
+    }
+
+    const data = resolved?.oauth ? { claudeAiOauth: resolved.oauth } : null;
     const refreshToken = data?.claudeAiOauth?.refreshToken;
 
     if (!refreshToken) {
@@ -526,33 +652,73 @@ class ClaudeCodeAuthManager {
 
   // ── Disconnect ───────────────────────────────────────────────────
 
+  /**
+   * Disconnect removes AGNT's OWN credential, on every platform.
+   *
+   * It deliberately does NOT reach into the CLI's keychain item or dotfile. A
+   * session AGNT never created is not AGNT's to revoke, and a "disconnect" that
+   * silently signs the user out of their terminal is a worse bug than the one
+   * it would be papering over. When a discovered session survives the
+   * disconnect we say so plainly and name the command that ends it, rather than
+   * reporting a success the user can immediately see is false.
+   */
   async logout() {
-    const credPath = resolveClaudeCredentialsPath();
     try {
-      if (fs.existsSync(credPath)) {
-        // Remove only the claudeAiOauth key, preserving other data
-        const { data } = readClaudeCredentialsFile();
-        if (data && typeof data === 'object') {
-          delete data.claudeAiOauth;
-          delete data.oauth_token;
-          delete data.token;
-          delete data.access_token;
-          if (Object.keys(data).length === 0) {
-            fs.unlinkSync(credPath);
-          } else {
-            fs.writeFileSync(credPath, JSON.stringify(data, null, 2), 'utf8');
-          }
-        } else {
-          fs.unlinkSync(credPath);
-        }
-      }
+      agntStore.clearCredential(PROVIDER_ID);
+      clearSecretCache();
       this.apiCheckCache = null;
+
+      const remaining = resolveClaudeCredential();
+      if (remaining && !remaining.ownedByAgnt) {
+        return {
+          success: true,
+          stillDetected: true,
+          source: remaining.source,
+          message: remaining.tier === TIER.SECRET_STORE
+            ? 'Disconnected from AGNT. The Claude Code CLI still has a session in your keychain — run `claude logout` to end it.'
+            : 'Disconnected from AGNT. The Claude Code CLI still has a session in ~/.claude — run `claude logout` to end it.',
+        };
+      }
+
+      // A legacy AGNT-written block in ~/.claude is ours by shape, so clearing
+      // it here is correct — this is the one vendor-path write we still make,
+      // and it only ever removes what we put there.
+      if (remaining && remaining.tier === TIER.VENDOR_FILE && remaining.ownedByAgnt) {
+        this._clearLegacyVendorBlock();
+        this.apiCheckCache = null;
+      }
+
       return { success: true };
     } catch (error) {
       return {
         success: false,
         error: error.message || 'Failed to remove Claude credentials',
       };
+    }
+  }
+
+  /** Remove only AGNT's own legacy block from ~/.claude, preserving everything else. */
+  _clearLegacyVendorBlock() {
+    const credPath = resolveClaudeCredentialsPath();
+    try {
+      if (!fs.existsSync(credPath)) return;
+      const { data } = readClaudeCredentialsFile();
+      if (!data || typeof data !== 'object') {
+        fs.unlinkSync(credPath);
+        return;
+      }
+      delete data.claudeAiOauth;
+      delete data.oauth_token;
+      delete data.token;
+      delete data.access_token;
+      if (Object.keys(data).length === 0) {
+        fs.unlinkSync(credPath);
+      } else {
+        fs.writeFileSync(credPath, JSON.stringify(data, null, 2), 'utf8');
+      }
+    } catch {
+      // Best effort: the AGNT store is already cleared, which is the part that
+      // determines whether we report connected.
     }
   }
 }

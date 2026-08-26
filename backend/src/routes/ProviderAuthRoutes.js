@@ -10,12 +10,34 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { getAuthEntry, getCapabilities, isLocalProvider } from '../services/auth/AuthDispatcher.js';
+import { discoverSessions } from '../services/auth/sessionDiscovery.js';
 import CodexCliService from '../services/ai/CodexCliService.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { authenticateToken } from './Middleware.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
 
 const router = express.Router();
+
+// ─────────────────────────── DISCOVERY ───────────────────────────
+
+/**
+ * Which coding CLIs is this machine already signed in to?
+ *
+ * Registered BEFORE the :providerId param middleware. It cannot collide today
+ * (two path segments vs three) but ordering makes that independent of how the
+ * routes below are edited later.
+ *
+ * Filesystem + env + OS secret store only — no network, no CLI spawns — so
+ * this is safe to call on app boot and cheap to poll.
+ */
+router.get('/auth/discover', requireAuthHeader, (req, res) => {
+  try {
+    return res.json({ success: true, ...discoverSessions() });
+  } catch (error) {
+    console.error('[ProviderAuth] Session discovery failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Discovery failed' });
+  }
+});
 
 // ─────────────────────────── PARAM MIDDLEWARE ───────────────────────────
 

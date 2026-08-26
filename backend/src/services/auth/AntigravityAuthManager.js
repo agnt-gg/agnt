@@ -8,6 +8,8 @@ import axios from 'axios';
 import { OAuth2Client } from 'google-auth-library';
 import { ANTIGRAVITY_OAUTH } from '../../config/oauthClients.js';
 import { getClientVersion } from '../ai/clientVersions.js';
+import { readSecretJson, secretStoreSupported } from './secretStore.js';
+import { TIER, describeSource } from './credentialResolver.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -27,9 +29,15 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiry
 // ANTIGRAVITY client metadata, and an antigravity User-Agent. It unlocks a
 // multi-vendor model set (Gemini 3.x + Claude 4.6 + GPT-OSS) through one login.
 //
-// The real Antigravity CLI stores its credentials in the OS keychain, which we
-// cannot read. So we run our own loopback OAuth flow using Antigravity's own
-// installed-app OAuth client and persist tokens to ~/.antigravity/oauth_creds.json.
+// The real Antigravity CLI stores its credentials in the OS keychain. AGNT runs
+// its own loopback OAuth flow using Antigravity's own installed-app OAuth
+// client and persists tokens to ~/.antigravity/oauth_creds.json.
+//
+// UPDATED: the keychain is no longer a dead end. On macOS (and Linux with
+// libsecret) readCredentialsFile() now falls back to a bounded, read-only
+// keychain lookup, so a session created by the real CLI is visible to AGNT
+// instead of forcing a second sign-in. Discovered credentials are marked
+// ownedByAgnt: false and are never refreshed or deleted by us.
 //
 // Client ID/secret: Antigravity ships its OWN dedicated OAuth client — distinct
 // from Gemini CLI's. The Gemini CLI client is NOT authorized for the cclog /
@@ -119,7 +127,7 @@ async function getAntigravityBrowserHeaders() {
 
 // ── Credential paths ─────────────────────────────────────────
 // We store OAuth tokens at ~/.antigravity/oauth_creds.json (our own file —
-// the real CLI uses the OS keychain which we can't read).
+// the real CLI uses the OS keychain, which we now read but never write).
 // Format: { access_token, refresh_token, scope, token_type, id_token, expiry_date }
 
 function resolveAntigravityDir() {
@@ -130,15 +138,72 @@ function resolveCredentialsPath() {
   return path.join(resolveAntigravityDir(), 'oauth_creds.json');
 }
 
+/**
+ * Candidate keychain service names for a real Antigravity CLI session.
+ *
+ * HONESTY NOTE: unlike Claude Code's `Claude Code-credentials` — which is
+ * confirmed in issue #82 against a live install — these are UNVERIFIED. Nobody
+ * on the team has an Antigravity CLI to read. They are safe to ship anyway,
+ * because a name that matches nothing returns null and the caller falls through
+ * to exactly the behaviour it had before: a wrong guess costs one bounded,
+ * cached, read-only lookup and changes no outcome.
+ *
+ * Set AGNT_ANTIGRAVITY_KEYCHAIN_SERVICE to override once someone confirms the
+ * real name, rather than editing this list.
+ */
+const ANTIGRAVITY_KEYCHAIN_SERVICES = ['Antigravity-credentials', 'Antigravity', 'antigravity'];
+
+function readAntigravityKeychain() {
+  const override = (process.env.AGNT_ANTIGRAVITY_KEYCHAIN_SERVICE || '').trim();
+  const services = override ? [override] : ANTIGRAVITY_KEYCHAIN_SERVICES;
+  const account = os.userInfo?.().username || null;
+
+  for (const service of services) {
+    const payload = readSecretJson({ service, account });
+    if (payload && (payload.access_token || payload.refresh_token)) {
+      return { service, data: payload };
+    }
+  }
+  return null;
+}
+
+/**
+ * Single read choke point for all seven callers.
+ *
+ * Tier 1 is ~/.antigravity/oauth_creds.json — AGNT'S OWN FILE, not the vendor's.
+ * The real Antigravity CLI has always stored its session in the OS keychain, so
+ * AGNT ran its own OAuth flow and persisted tokens beside it. That made an
+ * existing CLI login permanently invisible and forced every user through a
+ * second sign-in.
+ *
+ * Tier 2 fixes that: read the keychain when our file yields nothing.
+ *
+ * `ownedByAgnt` rides along because it gates refresh — rotating a credential
+ * discovered in the keychain would sign the user out of their own CLI.
+ */
 function readCredentialsFile() {
   const credPath = resolveCredentialsPath();
   try {
     const raw = fs.readFileSync(credPath, 'utf8');
     const parsed = JSON.parse(raw);
-    return { credPath, data: parsed };
+    if (parsed && typeof parsed === 'object') {
+      return { credPath, data: parsed, ownedByAgnt: true, tier: TIER.VENDOR_FILE };
+    }
   } catch {
-    return { credPath, data: null };
+    // Fall through to discovery.
   }
+
+  const discovered = readAntigravityKeychain();
+  if (discovered) {
+    return {
+      credPath: `keychain:${discovered.service}`,
+      data: discovered.data,
+      ownedByAgnt: false,
+      tier: TIER.SECRET_STORE,
+    };
+  }
+
+  return { credPath, data: null, ownedByAgnt: false, tier: null };
 }
 
 function writeCredentials(credData) {
@@ -388,9 +453,48 @@ class AntigravityAuthManager {
 
   // ── Token Access ───────────────────────────────────────────
 
+  /**
+   * Where the live credential came from, and whether it is ours to manage.
+   * Consumed by sessionDiscovery.js and the provider status endpoint.
+   */
+  describeCredential() {
+    const { credPath, data, ownedByAgnt, tier } = readCredentialsFile();
+    const connected = Boolean(data?.access_token || data?.refresh_token);
+
+    if (!connected) {
+      return {
+        connected: false,
+        source: null,
+        tier: null,
+        ownedByAgnt: false,
+        label: describeSource(null),
+        credPath: resolveCredentialsPath(),
+        keychainSupported: secretStoreSupported(),
+      };
+    }
+
+    const resolved = { tier, source: tier === TIER.SECRET_STORE ? 'antigravity-keychain' : 'antigravity-oauth-file', ownedByAgnt };
+    return {
+      connected: true,
+      source: resolved.source,
+      tier,
+      ownedByAgnt,
+      label: describeSource(resolved),
+      credPath,
+      keychainSupported: secretStoreSupported(),
+    };
+  }
+
+  getCredentialsPath() {
+    return resolveCredentialsPath();
+  }
+
   async getAccessToken({ autoRefresh = true } = {}) {
-    const { data } = readCredentialsFile();
+    const { data, ownedByAgnt } = readCredentialsFile();
     if (!data) return null;
+
+    // Never rotate a credential we merely discovered. See _doRefresh().
+    if (!ownedByAgnt) return data.access_token || null;
 
     if (data.access_token && data.expiry_date && Date.now() < data.expiry_date - REFRESH_BUFFER_MS) {
       return data.access_token;
@@ -425,7 +529,20 @@ class AntigravityAuthManager {
   }
 
   async _doRefresh() {
-    const { data } = readCredentialsFile();
+    const { data, ownedByAgnt } = readCredentialsFile();
+
+    // A session discovered in the keychain belongs to the Antigravity CLI.
+    // Google rotates the refresh token on every refresh, so refreshing it here
+    // would invalidate the user's CLI login from a background timer they never
+    // started. The CLI refreshes on its own schedule; we re-read the result.
+    if (data && !ownedByAgnt) {
+      return {
+        success: false,
+        revoked: false,
+        error: 'Credential belongs to the Antigravity CLI; AGNT does not refresh it.',
+      };
+    }
+
     if (!data?.refresh_token) {
       return { success: false, error: 'No refresh token available', revoked: false };
     }
