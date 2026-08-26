@@ -50,8 +50,8 @@
         <FilterTabs :tabs="tabs" :active="activeTab" @select="selectTab" />
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
-        <div class="tools-content" @click="onContentClick">
-          <main class="tools-main-content fade-in">
+        <div class="screen-content tools-content" @click="onContentClick">
+          <main class="screen-main-content tools-main-content fade-in">
             <!-- List View -->
             <div v-if="currentLayout === 'table'" class="wm-list">
               <div
@@ -150,7 +150,7 @@
                   </div>
                   <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
                     <!-- Marketplace Tools Grid -->
-                    <div v-if="activeTab === 'marketplace'" class="tools-grid">
+                    <div v-if="activeTab === 'marketplace'" class="card-row tools-grid">
                       <div
                         v-for="(item, index) in tools"
                         :key="item.id"
@@ -221,7 +221,7 @@
                       </div>
                     </div>
                     <!-- Regular Tools Grid -->
-                    <div v-else class="tools-grid">
+                    <div v-else class="card-row tools-grid">
                       <div
                         v-for="(tool, index) in tools"
                         :key="tool.id"
@@ -1180,24 +1180,9 @@ export default {
   height: 100%;
 }
 
-.tools-content {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding-top: 16px;
-}
+/* layout: .screen-content in styles/components/_screen-layout.css */
 
-.tools-main-content {
-  flex: 1;
-  height: 100%;
-  overflow-y: scroll !important;
-  scrollbar-width: thin !important;
-  display: flex;
-  justify-content: center;
-}
+/* layout: .screen-main-content in styles/components/_screen-layout.css */
 
 .tools-main-content::-webkit-scrollbar {
   width: 10px !important;
@@ -1456,12 +1441,7 @@ export default {
   opacity: 0.5;
 }
 
-.tools-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: calc(100% - 5px);
-}
+/* layout: .card-row in styles/components/_screen-layout.css */
 
 .tool-card {
   display: flex;

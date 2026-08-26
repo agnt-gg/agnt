@@ -1,0 +1,62 @@
+/* ============================================================================
+   SCREEN LAYOUT — the shell every collection screen sits in.
+
+   Agents, Tools, Workflows and Runs each carried a byte-identical copy of the
+   two rules below in their own scoped stylesheets, and the card grids had
+   drifted apart: padding was `16px` on three screens and `16px 0` on a fourth,
+   columns were 300px on three and 320px on another. Nobody chose that; it is
+   just what happens when the fifth screen is made by copying the fourth.
+
+   These are GLOBAL on purpose. A scoped copy per screen is exactly the thing
+   that drifts. Screens keep their own semantic class alongside
+   (`class="screen-content agents-content"`) so screen-specific overrides and
+   tutorial selectors still have something to hook.
+   ========================================================================= */
+
+/* Vertical stack under the toolbar/tabs: header area fixed, body scrolls. */
+.screen-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 16px;
+}
+
+/* The one scroll owner. `justify-content: center` keeps the content column
+   centred when the pane is wider than the grid's natural width. */
+.screen-main-content {
+  flex: 1;
+  height: 100%;
+  overflow-y: scroll !important;
+  scrollbar-width: thin !important;
+  display: flex;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------------------------
+   CARD GRID — the default view on every collection screen.
+
+   One definition, so Skills, Memory, Experiments and Eval Datasets cannot
+   disagree about gutters again. 300px is the smallest card width that still
+   fits two columns in the narrowest pane the three-panel layout produces.
+   ------------------------------------------------------------------------ */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  align-content: start;
+}
+
+/* Wrapping row of cards that size themselves (the Agents/Tools/Workflows
+   default view). Distinct from .card-grid: these cards set their own width. */
+.card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: calc(100% - 5px);
+}

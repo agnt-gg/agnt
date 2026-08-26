@@ -13,7 +13,7 @@
           </template>
         </ScreenToolbar>
 
-        <div v-if="filteredDatasets.length > 0 && currentLayout === 'grid'" class="datasets-grid">
+        <div v-if="filteredDatasets.length > 0 && currentLayout === 'grid'" class="card-grid datasets-grid">
           <DatasetCard v-for="ds in filteredDatasets" :key="ds.id" :dataset="ds" :selected="selectedDataset?.id === ds.id" @click="selectDataset(ds)" @delete="confirmDelete(ds)" />
         </div>
 
@@ -231,15 +231,7 @@ onMounted(() => initializeScreen());
 }
 
 /* Grid */
-.datasets-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
-  padding: 16px;
-  overflow-y: auto;
-  flex: 1;
-  align-content: start;
-}
+/* layout: .card-grid in styles/components/_screen-layout.css */
 
 /* Table */
 .datasets-table-container {

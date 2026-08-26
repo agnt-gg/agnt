@@ -97,8 +97,8 @@
           </div>
 
           <!-- Main Content -->
-          <div class="runs-content">
-            <main class="runs-main-content">
+          <div class="screen-content runs-content">
+            <main class="screen-main-content runs-main-content">
               <!-- Table View -->
               <div v-if="currentLayout === 'table'" class="table-view-container">
                 <BaseTable
@@ -1582,24 +1582,9 @@ ${execution.log}
   border-color: var(--color-green);
 }
 
-.runs-content {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding-top: 16px;
-}
+/* layout: .screen-content in styles/components/_screen-layout.css */
 
-.runs-main-content {
-  flex: 1;
-  height: 100%;
-  overflow-y: scroll !important;
-  scrollbar-width: thin !important;
-  display: flex;
-  justify-content: center;
-}
+/* layout: .screen-main-content in styles/components/_screen-layout.css */
 
 .runs-main-content::-webkit-scrollbar {
   width: 10px !important;

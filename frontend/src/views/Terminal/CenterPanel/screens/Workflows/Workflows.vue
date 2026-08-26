@@ -73,8 +73,8 @@
         <FilterTabs :tabs="tabs" :active="activeTab" @select="selectTab" />
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
-        <div class="workflows-content">
-          <main class="workflows-main-content fade-in">
+        <div class="screen-content workflows-content">
+          <main class="screen-main-content workflows-main-content fade-in">
             <!-- Workflows Table -->
             <BaseTable
               v-if="currentLayout === 'table'"
@@ -168,7 +168,7 @@
                     </div>
                   </div>
                   <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
-                    <div class="workflows-grid">
+                    <div class="card-row workflows-grid">
                       <div
                         v-for="(workflow, index) in workflows"
                         :key="workflow.id"
@@ -1512,24 +1512,9 @@ export default {
   gap: 16px;
 }
 
-.workflows-content {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding-top: 16px;
-}
+/* layout: .screen-content in styles/components/_screen-layout.css */
 
-.workflows-main-content {
-  flex: 1;
-  height: 100%;
-  overflow-y: scroll !important;
-  scrollbar-width: thin !important;
-  display: flex;
-  justify-content: center;
-}
+/* layout: .screen-main-content in styles/components/_screen-layout.css */
 
 .workflows-main-content::-webkit-scrollbar {
   width: 10px !important;
@@ -1719,12 +1704,7 @@ export default {
   opacity: 0.5;
 }
 
-.workflows-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: calc(100% - 5px);
-}
+/* layout: .card-row in styles/components/_screen-layout.css */
 
 .workflow-card {
   display: flex;

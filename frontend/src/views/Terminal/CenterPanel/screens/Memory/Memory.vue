@@ -64,7 +64,7 @@
         </div>
 
         <!-- Grid Layout -->
-        <div v-if="filteredMemories.length > 0 && currentLayout === 'grid'" class="memory-grid">
+        <div v-if="filteredMemories.length > 0 && currentLayout === 'grid'" class="card-grid memory-grid">
           <div
             v-for="mem in filteredMemories"
             :key="mem.id"
@@ -532,15 +532,9 @@ onMounted(() => initializeScreen());
 }
 
 /* Grid */
-.memory-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
-  padding: 16px;
-  overflow-y: auto;
-  flex: 1;
-  align-content: start;
-}
+/* layout: .card-grid in styles/components/_screen-layout.css.
+   This screen used a 320px minimum column where every other collection screen
+   used 300px; the shared rule settles it. */
 
 .memory-card {
   background: var(--color-darker-0);

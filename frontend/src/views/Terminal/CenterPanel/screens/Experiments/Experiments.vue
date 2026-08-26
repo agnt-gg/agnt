@@ -136,7 +136,7 @@
           </div>
 
           <!-- Grid Layout -->
-          <div v-if="filteredInsights.length > 0 && currentLayout === 'grid'" class="experiments-grid">
+          <div v-if="filteredInsights.length > 0 && currentLayout === 'grid'" class="card-grid experiments-grid">
             <InsightCard
               v-for="ins in filteredInsights"
               :key="ins.id"
@@ -220,7 +220,7 @@
           </div>
 
           <!-- Grid Layout -->
-          <div v-if="filteredExperiments.length > 0 && currentLayout === 'grid'" class="experiments-grid">
+          <div v-if="filteredExperiments.length > 0 && currentLayout === 'grid'" class="card-grid experiments-grid">
             <ExperimentCard
               v-for="exp in filteredExperiments"
               :key="exp.id"
@@ -274,7 +274,7 @@
 
         <!-- ═══ DATASETS VIEW ═══ -->
         <template v-if="activeView === 'datasets'">
-          <div v-if="filteredDatasets.length > 0 && currentLayout === 'grid'" class="experiments-grid">
+          <div v-if="filteredDatasets.length > 0 && currentLayout === 'grid'" class="card-grid experiments-grid">
             <DatasetCard
               v-for="ds in filteredDatasets"
               :key="ds.id"
@@ -1151,15 +1151,7 @@ onMounted(() => initializeScreen());
 .ins-close:hover { color: var(--color-text); }
 
 /* Grid */
-.experiments-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
-  padding: 16px;
-  overflow-y: auto;
-  flex: 1;
-  align-content: start;
-}
+/* layout: .card-grid in styles/components/_screen-layout.css */
 
 /* Table */
 .experiments-table-container {

@@ -42,7 +42,7 @@
 
         <!-- Widget grid -->
         <div class="wm-content" @click="onContentClick">
-          <main class="wm-main-content">
+          <main class="screen-main-content wm-main-content">
             <!--
               This screen is never globally empty — the built-in widgets always
               exist — so the only genuine empty state is the Custom tab before
@@ -770,14 +770,7 @@ export default {
   padding-top: 16px;
 }
 
-.wm-main-content {
-  flex: 1;
-  height: 100%;
-  overflow-y: scroll !important;
-  scrollbar-width: thin !important;
-  display: flex;
-  justify-content: center;
-}
+/* layout: .screen-main-content in styles/components/_screen-layout.css */
 
 .wm-main-content > * {
   width: 100%;

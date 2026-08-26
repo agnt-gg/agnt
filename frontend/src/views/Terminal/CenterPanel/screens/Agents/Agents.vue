@@ -66,7 +66,7 @@
         <FilterTabs :tabs="agentTabs" :active="agentTab" @select="onAgentTabSelect" />
 
         <!-- Main Content -->
-        <div class="agents-content">
+        <div class="screen-content agents-content">
           <!-- Loading skeleton -->
           <div
             v-if="agents.length === 0 && !criticalDataReady"
@@ -84,7 +84,7 @@
             </div>
           </div>
 
-          <main v-else class="agents-main-content fade-in">
+          <main v-else class="screen-main-content agents-main-content fade-in">
             <!-- Table View -->
             <AgentList
               v-if="currentLayout === 'table'"
@@ -158,7 +158,7 @@
                   </div>
                   <div class="category-content" v-show="!isCategoryCollapsed(categoryName)">
                     <!-- Marketplace Agents Grid -->
-                    <div v-if="agentTab === 'marketplace'" class="agents-grid">
+                    <div v-if="agentTab === 'marketplace'" class="card-row agents-grid">
                       <div
                         v-for="(item, index) in agents"
                         :key="item.id"
@@ -226,7 +226,7 @@
                       </div>
                     </div>
                     <!-- Regular Agents Grid -->
-                    <div v-else class="agents-grid">
+                    <div v-else class="card-row agents-grid">
                       <div
                         v-for="(agent, index) in agents"
                         :key="agent.id"
@@ -2051,24 +2051,9 @@ export default {
   font-size: 1.25rem;
 }
 
-.agents-content {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding-top: 16px;
-}
+/* layout: .screen-content in styles/components/_screen-layout.css */
 
-.agents-main-content {
-  flex: 1;
-  height: 100%;
-  overflow-y: scroll !important;
-  scrollbar-width: thin !important;
-  display: flex;
-  justify-content: center;
-}
+/* layout: .screen-main-content in styles/components/_screen-layout.css */
 
 .agents-main-content::-webkit-scrollbar {
   width: 10px !important;
@@ -2276,12 +2261,7 @@ export default {
   opacity: 0.5;
 }
 
-.agents-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: calc(100% - 5px);
-}
+/* layout: .card-row in styles/components/_screen-layout.css */
 
 .agent-card {
   display: flex;

@@ -57,7 +57,7 @@
 
         <!-- ═══ SKILLS VIEW ═══ -->
         <template v-if="activeView === 'skills'">
-          <div v-if="filteredSkills.length > 0" class="skills-grid">
+          <div v-if="filteredSkills.length > 0" class="card-grid skills-grid">
             <div
               v-for="skill in filteredSkills"
               :key="skill.id"
@@ -148,7 +148,7 @@
             </span>
           </div>
 
-          <div v-if="filteredDiscoveredSkills.length > 0" class="skills-grid">
+          <div v-if="filteredDiscoveredSkills.length > 0" class="card-grid skills-grid">
             <div
               v-for="skill in filteredDiscoveredSkills"
               :key="skill.name"
@@ -980,15 +980,9 @@ onMounted(() => {
 }
 
 /* Skills Grid */
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
-  padding: 16px 0;
-  overflow-y: auto;
-  flex: 1;
-  align-content: start;
-}
+/* layout: .card-grid in styles/components/_screen-layout.css.
+   This screen used `padding: 16px 0` where every other collection screen used
+   `16px`; the shared rule settles it. */
 
 /* Card */
 .skill-card {

@@ -264,7 +264,9 @@ const run = async () => {
           counts: {
             buttons: [...document.querySelectorAll('button')].filter(vis).length,
             inputs: [...document.querySelectorAll('input,textarea')].filter(vis).length,
-            cards: [...document.querySelectorAll('[class*="card"]')].filter(vis).length,
+            // Exclude the layout containers themselves (.card-grid/.card-row),
+            // otherwise adopting a shared grid class reads as "6 new cards".
+            cards: [...document.querySelectorAll('[class*="card"]:not(.card-grid):not(.card-row)')].filter(vis).length,
             rows: [...document.querySelectorAll('tr,[class*="-row"],[class*="-item"]')].filter(vis).length,
             leftPanel: !!document.querySelector('.left-panel-component'),
             rightPanel: !!document.querySelector('.right-panel-component'),
