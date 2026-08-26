@@ -28,10 +28,10 @@ import { onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import ActiveWorkflows from './components/ActiveWorkflows.vue';
 import IntegrationHealth from './components/IntegrationHealth.vue';
-import ItemsForReview from './components/ItemsForReview.vue';
+import ItemsForReview from '@/views/Terminal/_components/chatPanel/ItemsForReview.vue';
 import PerformanceOverview from './components/PerformanceOverview.vue';
-import ActiveTasks from './components/ActiveTasks.vue';
-import SystemResources from './components/SystemResources.vue';
+import ActiveTasks from '@/views/Terminal/_components/chatPanel/ActiveTasks.vue';
+import SystemResources from '@/views/Terminal/_components/chatPanel/SystemResources.vue';
 import OutputList from './components/OutputList.vue';
 
 export default {

@@ -32,10 +32,10 @@ import { useStore } from 'vuex';
 import AgentUtilization from './components/AgentUtilization.vue';
 import ActiveWorkflows from './components/ActiveWorkflows.vue';
 import IntegrationHealth from './components/IntegrationHealth.vue';
-import ItemsForReview from './components/ItemsForReview.vue';
+import ItemsForReview from '@/views/Terminal/_components/chatPanel/ItemsForReview.vue';
 import PerformanceOverview from './components/PerformanceOverview.vue';
-import ActiveTasks from './components/ActiveTasks.vue';
-import SystemResources from './components/SystemResources.vue';
+import ActiveTasks from '@/views/Terminal/_components/chatPanel/ActiveTasks.vue';
+import SystemResources from '@/views/Terminal/_components/chatPanel/SystemResources.vue';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
 export default {
