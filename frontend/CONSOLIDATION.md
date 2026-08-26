@@ -1,6 +1,6 @@
 # Frontend Consolidation Plan
 
-Branch: `fix/fe-consolidate` · Written 2026-08-26 · Status: **PLAN — no code changed yet**
+Branch: `fix/fe-consolidate` · Written 2026-08-26 · Status: **PHASES 0–3 + 6 SHIPPED** (see §6)
 
 Goal: one cohesive system under the existing UI. **Zero visual change.** Same
 pixels, same behavior — fewer, shared, configurable components underneath.
@@ -158,3 +158,30 @@ per-screen. Nothing blocks on anything outside its phase.
 | Registry misses a dynamic panel case | Prop-wins-over-registry override |
 | Untested screens regress silently | Phase 0 smoke specs first |
 | Another branch touches same files | Small commits, rebase often |
+
+---
+
+## 6. Execution log (2026-08-26)
+
+All shipped on `fix/fe-consolidate`, suite green (236 files / 4,159+ tests,
+zero regressions), `vite build` clean.
+
+| Phase | Status | Commits | Net |
+|---|---|---|---|
+| 0 Baseline | ✅ | — | 235 files / 4,149 tests green before any change |
+| 1 Dead code | ✅ | `c3c4dfc9` | −7,213 lines (`__old-screens/`, `__old-panels/`, `_Dashboard.vue`, `_DashboardPanel.vue`) + stale guard allowlists emptied |
+| 2 Duplicate files | ✅ | `5bdd00d7` | −1,244 lines: 3 byte-identical ChatPanel parts → one shared copy in `_components/chatPanel/`; dead `feature/ContentActions.vue` + `feature/ResponseArea.vue` deleted, their specs repointed at the live ToolForge copies (one test rewritten to characterize live behavior). **Tree now has ZERO byte-identical non-spec files** (md5-verified). |
+| 3 Screen registry | ✅ | `27bf07b4` | `CenterPanel/screenRegistry.js` = single source of truth for every screen's panels + input line. BaseScreen resolves prop → registry → historical default; explicitly passed props still win (the 6 dynamic-panel screens keep theirs). 23 screens stripped of static layout ceremony. |
+| 6 Guards | ✅ | `27bf07b4` | `__guards__/screenRegistry.spec.js`: every screen has a registry entry, no orphan entries, no static layout props in templates, every named panel type exists on disk, resolution semantics pinned. |
+| — Kit hygiene | ✅ | (this commit) | dead `SkeletonLoader.vue` deleted; `ScreenTemplate.vue` rewritten to teach the registry pattern (its old imports were broken — it never compiled). |
+| 4 Primitive adoption | ⏸ next | | Needs the pixel harness below. Targets measured in §1c. |
+| 5 CSS dedupe | ⏸ next | | Measured: **86 byte-identical CSS rules appear in ≥3 screens** (~25 KB duplicated), incl. a whole `.wm-tabs` tab-bar family copy-pasted across 5 screens and `.empty-state` blocks across 7. NOT hoisted yet — scoped→global moves change cascade/specificity per theme, and per this plan's own rule that step ships only behind a render-diff gate. |
+
+### Why 4/5 wait for the pixel harness
+A scoped rule carries `[data-v-…]` specificity and is invisible to other
+screens; a hoisted global is neither. With 8 themes and the documented
+`_tables.css`-style bleed history, an unverified hoist is exactly the class
+of silent visual change this branch promised not to make. The harness
+(Playwright over all 24 routes × themes, before/after diff — probe pattern
+already proven in `nav-audit/`) needs a bootable app outside the live 3333
+singleton, then Phases 4–5 become mechanical.
