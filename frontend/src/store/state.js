@@ -1,5 +1,6 @@
 import { createStore } from 'vuex';
 import { withUserScopedReset, RESET_MUTATION } from './_utils/userScopedReset.js';
+import { invalidateAllFreshness } from './_utils/withFreshness.js';
 import chat from './features/chat';
 import chatUnified from './features/chatUnified';
 import pluginBuilder from './features/pluginBuilder';
@@ -171,6 +172,22 @@ const store = createStore({
       for (const name of Object.keys(USER_SCOPED_MODULES)) {
         commit(`${name}/${RESET_MUTATION}`);
       }
+
+      // The caches describe the state that was just wiped, so they go with it.
+      //
+      // withFreshness caches an action's RETURN VALUE and, on a hit, does not
+      // call the action — but the real work of nearly every one of these is a
+      // `commit`. Leaving a warm cache over an emptied store therefore means
+      // the commit never runs again and the state stays empty.
+      //
+      // The identity option does not cover this. It asks "is this someone
+      // else's data?", and signing back into the SAME account correctly
+      // answers no, so the cache is served and the store is never refilled.
+      // That is how a fresh sign-in came to show an empty provider list:
+      // fetchAllProviders has a thirty-minute TTL, so allProviders stayed []
+      // and the connectors screen mapped over nothing. Reloading appeared to
+      // fix it only because a module reload discards the closures.
+      invalidateAllFreshness();
       console.log('[session] user-scoped stores reset');
     },
   },

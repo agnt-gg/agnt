@@ -71,6 +71,52 @@ function bump(key, kind) {
 
 export const DEFAULT_STALE_AFTER = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Every live wrapper, so a session end can clear all of them at once.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY A REGISTRY IS NECESSARY
+ * ---------------------------------------------------------------------------
+ * This wrapper caches an action's RETURN VALUE and, on a hit, does not call
+ * the action at all. But almost every action here does its real work in a
+ * `commit` — the return value is incidental. So a cache hit means the commit
+ * DOES NOT HAPPEN.
+ *
+ * That is fine while the store and the cache agree. `resetUserScopedData`
+ * breaks the agreement: it wipes the module state on logout and leaves these
+ * closures untouched. Sign in again AS THE SAME USER and the identity is
+ * unchanged, the TTL has not elapsed, so the next call is a hit — the commit
+ * never runs and the store stays empty.
+ *
+ * That is exactly how a fresh sign-in came to show an empty provider list
+ * while `connectedApps` was fully populated: `fetchAllProviders` has a THIRTY
+ * MINUTE TTL, so `allProviders` stayed `[]` and the screen mapped over
+ * nothing. Reloading the page appeared to fix it only because a module reload
+ * discards these closures.
+ *
+ * The identity option cannot cover this. It answers "is this someone else's
+ * data?", and signing back into the same account correctly answers no. The
+ * question here is different: "does the store still hold what this cache says
+ * it delivered?"
+ *
+ * So cache lifetime is tied to store lifetime. Whoever empties the store
+ * empties these too.
+ */
+const liveCaches = new Set();
+
+/**
+ * Forget every cached result, everywhere.
+ *
+ * Called when user-scoped state is reset. Deliberately blunt: a wrapper whose
+ * store module was not reset simply re-fetches once, which costs a request.
+ * The alternative — tracking which wrapper belongs to which module — is a
+ * second mapping to keep in step with the first, and getting it wrong brings
+ * back a blank screen that only a reload fixes.
+ */
+export function invalidateAllFreshness() {
+  for (const forget of liveCaches) forget();
+}
+
 export function withFreshness(
   key,
   fn,
@@ -81,6 +127,16 @@ export function withFreshness(
   let lastIdentity;
   let inFlight = null;
   let inFlightIdentity;
+
+  // Only the CACHE is dropped, never an in-flight request. A request already
+  // on the wire still has a caller awaiting it, and rejecting or orphaning it
+  // would turn a stale screen into a broken one. It simply will not be cached:
+  // its `fetchIdentity` no longer matches anything a later hit can serve.
+  liveCaches.add(() => {
+    lastFetched = 0;
+    lastResult = undefined;
+    lastIdentity = undefined;
+  });
 
   return async function freshnessWrapped(ctx, payload, ...rest) {
     const force =

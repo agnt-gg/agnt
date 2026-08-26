@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { withFreshness } from './withFreshness.js';
+import { withFreshness, invalidateAllFreshness } from './withFreshness.js';
 
 const ctx = {};
 const authoritative = { authoritative: true };
@@ -96,6 +96,98 @@ describe('isCacheable', () => {
     // the cached good one — so an ordinary call is still a hit on the good.
     await expect(action(ctx)).resolves.toEqual(authoritative);
     expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * THE DEFECT THIS SUITE EXISTS FOR.
+ *
+ * This wrapper caches a RETURN VALUE and, on a hit, does not call the action.
+ * But nearly every action it wraps does its real work in a `commit` — so a
+ * cache hit means THE COMMIT DOES NOT HAPPEN.
+ *
+ * `resetUserScopedData` wipes module state on logout. If these closures
+ * survive that, signing back in AS THE SAME USER produces an unchanged
+ * identity and an unexpired TTL, so the next call is a hit, the commit never
+ * runs, and the store stays empty.
+ *
+ * Measured in a real browser against the built app: after sign-out and back
+ * in, `connectedApps` held 74 entries while `allProviders` held 0 — a
+ * thirty-minute TTL over an emptied store — so the connectors screen mapped
+ * over nothing. Reloading appeared to fix it only because a module reload
+ * discards these closures.
+ */
+describe('a reset store must not leave a warm cache', () => {
+  it('re-runs the action after invalidation, so its commit happens again', async () => {
+    const commit = vi.fn();
+    const fn = vi.fn(async () => {
+      commit('SET_ALL_PROVIDERS', [1, 2, 3]);
+      return authoritative;
+    });
+    const action = withFreshness('t.reset', fn, { staleAfter: 30 * 60 * 1000 });
+
+    await action(ctx);
+    await action(ctx);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+
+    // The store has just been emptied. The cache describing it must go too.
+    invalidateAllFreshness();
+
+    await action(ctx);
+    expect(fn, 'the action was skipped, so its commit never re-ran').toHaveBeenCalledTimes(2);
+    expect(commit, 'the store was left empty').toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates even when the identity is unchanged', async () => {
+    // The exact hole. Identity scoping asks "is this someone else's data?",
+    // and signing back into the same account correctly answers no — which is
+    // why identity alone could never have caught this.
+    const fn = vi.fn(async () => authoritative);
+    const action = withFreshness('t.sameIdentity', fn, {
+      staleAfter: 30 * 60 * 1000,
+      identity: () => 'user-1',
+    });
+
+    await action(ctx);
+    invalidateAllFreshness();
+    await action(ctx);
+
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears every registered wrapper, not just one', async () => {
+    const a = vi.fn(async () => authoritative);
+    const b = vi.fn(async () => authoritative);
+    const actionA = withFreshness('t.multiA', a, { staleAfter: 60000 });
+    const actionB = withFreshness('t.multiB', b, { staleAfter: 60000 });
+
+    await actionA(ctx);
+    await actionB(ctx);
+    invalidateAllFreshness();
+    await actionA(ctx);
+    await actionB(ctx);
+
+    expect(a).toHaveBeenCalledTimes(2);
+    expect(b).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not disturb a request already on the wire', async () => {
+    // A caller is awaiting it. Rejecting or orphaning an in-flight request
+    // would turn a stale screen into a broken one.
+    let release;
+    const fn = vi.fn(() => new Promise((resolve) => { release = () => resolve(authoritative); }));
+    const action = withFreshness('t.inflight', fn, { staleAfter: 60000 });
+
+    const pending = action(ctx);
+    invalidateAllFreshness();
+    release();
+
+    await expect(pending).resolves.toEqual(authoritative);
+  });
+
+  it('is safe to call when nothing has been fetched yet', () => {
+    expect(() => invalidateAllFreshness()).not.toThrow();
   });
 });
 
