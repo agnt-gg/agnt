@@ -15,3 +15,15 @@
 # Fixed at source on 2026-07-31 by setting the global git identity.
 # ---------------------------------------------------------------------
 rimusz <rimusz@users.noreply.github.com> Tom <tom@AI-Stack.local>
+
+# ---------------------------------------------------------------------
+# Same person, same email, two display names: commits made from the CLI
+# are stamped "rimusz", while commits created by GitHub itself (squash /
+# merge of a PR) are stamped with the GitHub profile name "Rimantas
+# (Rimas) Mocevicius". Both already carry the canonical email, so this
+# line normalises the NAME only and discloses no new address.
+#
+# The single-identity form below maps by email alone, so any future
+# display-name variation on this address is normalised automatically.
+# ---------------------------------------------------------------------
+rimusz <rimusz@users.noreply.github.com>
