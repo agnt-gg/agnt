@@ -1,0 +1,2 @@
+# Screenshot runs are build artifacts, not source. Regenerate with shoot.mjs.
+shots/
