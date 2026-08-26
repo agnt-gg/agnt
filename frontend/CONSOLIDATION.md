@@ -174,10 +174,43 @@ zero regressions), `vite build` clean.
 | 3 Screen registry | ✅ | `27bf07b4` | `CenterPanel/screenRegistry.js` = single source of truth for every screen's panels + input line. BaseScreen resolves prop → registry → historical default; explicitly passed props still win (the 6 dynamic-panel screens keep theirs). 23 screens stripped of static layout ceremony. |
 | 6 Guards | ✅ | `27bf07b4` | `__guards__/screenRegistry.spec.js`: every screen has a registry entry, no orphan entries, no static layout props in templates, every named panel type exists on disk, resolution semantics pinned. |
 | — Kit hygiene | ✅ | (this commit) | dead `SkeletonLoader.vue` deleted; `ScreenTemplate.vue` rewritten to teach the registry pattern (its old imports were broken — it never compiled). |
-| 4 Primitive adoption | ⏸ next | | Needs the pixel harness below. Targets measured in §1c. |
+| Pixel harness | ✅ | `c97a40aa` | `tools/pixel/` — deterministic screenshots of all 21 routes, self-verified at **0.000% across two runs**. Every consolidation below is gated on it. |
+| 4 Primitive adoption | ◑ in progress | `4a399ca6`, `+2` | `CategoryNavPanel` (5 left panels → 1), `FilterTabs` (5 screens → 1), shared screen layout + card grid (9 screens). All **0 pixels changed** except one deliberate normalization. |
 | 5 CSS dedupe | ⏸ next | | Measured: **86 byte-identical CSS rules appear in ≥3 screens** (~25 KB duplicated), incl. a whole `.wm-tabs` tab-bar family copy-pasted across 5 screens and `.empty-state` blocks across 7. NOT hoisted yet — scoped→global moves change cascade/specificity per theme, and per this plan's own rule that step ships only behind a render-diff gate. |
 
-### Why 4/5 wait for the pixel harness
+---
+
+## 7. The pixel gate (2026-08-26)
+
+`frontend/tools/pixel/` builds `dist/`, serves it in-process, answers every
+`/api/**` call from fixtures, and photographs all 21 routes. Two runs of the
+same build diff to **0.000% on 21/21 routes**, so any non-zero number is a real
+change rather than noise. See `tools/pixel/README.md` for the six sources of
+nondeterminism that had to be killed to get there.
+
+### Results
+
+| Change | Routes changed |
+|---|---|
+| `CategoryNavPanel` — 5 left panels collapse to 1 (−948 lines) | **0 / 21** |
+| `FilterTabs` — 5 screens stop carrying identical tab CSS (−123 lines) | **0 / 21** |
+| Shared `.screen-content` / `.screen-main-content` / `.card-grid` / `.card-row` | **1 / 21** — Skills only, deliberate |
+
+The one intentional change: Skills' card grid used `padding: 16px 0` where
+every other collection screen used `16px`, and Memory used a 320px minimum
+column where everything else used 300px. Both now come from one rule. The diff
+image confirms only the grid's outer edge moved — inner gutters, card sizes and
+row positions are untouched.
+
+### Anti-decay
+
+`__guards__/sharedScreenParts.spec.js` fails if a screen re-declares
+`.wm-tab*`, re-declares a shared layout class, hand-rolls a tab button, or if a
+browse panel stops delegating to `CategoryNavPanel` / grows its own `<style>`.
+
+---
+
+### Why the remaining CSS work still waits
 A scoped rule carries `[data-v-…]` specificity and is invisible to other
 screens; a hoisted global is neither. With 8 themes and the documented
 `_tables.css`-style bleed history, an unverified hoist is exactly the class
