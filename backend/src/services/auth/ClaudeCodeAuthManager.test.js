@@ -403,6 +403,59 @@ describe('disconnect is honest about what it can and cannot revoke', () => {
   it('succeeds when there is nothing to disconnect', async () => {
     await expect(manager.logout()).resolves.toMatchObject({ success: true });
   });
+
+  /**
+   * The two flaws the reporter of #82 identified in the closing review of #81
+   * and then CONFIRMED BY RUNNING THEM. Both came from the same idea: recording
+   * "disconnected" as a marker written into ~/.claude/.credentials.json.
+   *
+   * This implementation writes no marker anywhere, so both are structurally
+   * absent rather than patched. These tests exist to keep them that way — they
+   * are the regression tests for a bug that was reported but never shipped.
+   */
+  describe('the disconnect-marker flaws from #81, pinned', () => {
+    it('FLAW 1: logout on a machine with no credentials file does not create one', async () => {
+      // Reported: "with the lookup disabled, logout() creates the file where
+      // none existed" — i.e. on Windows and Linux, where the keychain fallback
+      // can never run, disconnect would litter another tool's config directory.
+      platformSpy.mockReturnValue('win32');
+      agntStore.writeCredential(PROVIDER, { claudeAiOauth: AGNT_SHAPED });
+      expect(fs.existsSync(vendorPath())).toBe(false);
+
+      const result = await manager.logout();
+
+      expect(result.success).toBe(true);
+      expect(fs.existsSync(vendorPath())).toBe(false);
+      expect(fs.existsSync(path.join(h.home, '.claude'))).toBe(false);
+    });
+
+    it('FLAW 2: disconnect is not a one-way door — a later CLI login is visible again', async () => {
+      // Reported: "after logout(), a subsequent CLI login is still invisible",
+      // because a keychain-backed CLI never touches the file that holds the
+      // marker, so `claude auth login` cannot undo it.
+      agntStore.writeCredential(PROVIDER, { claudeAiOauth: AGNT_SHAPED });
+
+      await manager.logout();
+      expect(manager.getAccessTokenSync()).toBeNull();
+
+      // The user now runs `claude auth login`, which writes to the keychain.
+      h.keychainPayload = JSON.stringify({ claudeAiOauth: CLI_SHAPED });
+      clearSecretCache();
+
+      expect(manager.getAccessTokenSync()).toBe('sk-ant-oat-cli-file');
+      expect(manager.describeCredential().connected).toBe(true);
+    });
+
+    it('and the same holds for a file-backed CLI login after disconnect', async () => {
+      agntStore.writeCredential(PROVIDER, { claudeAiOauth: AGNT_SHAPED });
+      await manager.logout();
+      expect(manager.getAccessTokenSync()).toBeNull();
+
+      writeVendorFile({ claudeAiOauth: CLI_SHAPED });
+
+      expect(manager.getAccessTokenSync()).toBe('sk-ant-oat-cli-file');
+    });
+  });
 });
 
 // ── Status ─────────────────────────────────────────────────────────────
