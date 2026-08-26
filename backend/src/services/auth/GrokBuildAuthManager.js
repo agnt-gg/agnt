@@ -101,6 +101,41 @@ class GrokBuildAuthManager {
     return this.grokBin;
   }
 
+  /**
+   * Sync provenance for sessionDiscovery.js and the status endpoint.
+   * Mirrors getAccessToken()'s precedence so the two cannot disagree.
+   *
+   * OWNERSHIP: see the note in CodexAuthManager.describeCredential — file-backed
+   * credentials stay ownedByAgnt: true to preserve current refresh behaviour.
+   */
+  describeCredential() {
+    const authPath = this.getAuthPath();
+    const envKey = typeof process.env.XAI_API_KEY === 'string' ? process.env.XAI_API_KEY.trim() : '';
+
+    if (envKey) {
+      return {
+        connected: true,
+        source: 'env',
+        tier: 'env',
+        ownedByAgnt: true,
+        label: 'environment (XAI_API_KEY)',
+        credPath: authPath,
+        keychainSupported: false,
+      };
+    }
+
+    const connected = Boolean(this.getAccessToken());
+    return {
+      connected,
+      source: connected ? 'grok-auth-file' : null,
+      tier: connected ? 'vendor-file' : null,
+      ownedByAgnt: connected,
+      label: connected ? 'Grok CLI credentials file' : 'not connected',
+      credPath: authPath,
+      keychainSupported: false,
+    };
+  }
+
   getAccessToken() {
     const envKey = typeof process.env.XAI_API_KEY === 'string' ? process.env.XAI_API_KEY.trim() : '';
     if (envKey) return envKey;

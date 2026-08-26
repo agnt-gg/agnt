@@ -91,6 +91,47 @@ class CodexAuthManager {
     return resolveCodexAuthPath();
   }
 
+  /**
+   * Sync provenance for sessionDiscovery.js and the status endpoint.
+   *
+   * Mirrors getAccessToken()'s own precedence rather than re-deriving it, so the
+   * two can never disagree about whether Codex is connected.
+   *
+   * OWNERSHIP: file-backed credentials are reported as ownedByAgnt: true, which
+   * preserves today's refresh behaviour EXACTLY. Codex shares ~/.codex/auth.json
+   * with the real CLI, so it has the same ownership ambiguity Claude Code just
+   * had — but unlike Claude there is no reliable shape discriminator yet, and
+   * flipping this to false would silently disable Codex token refresh. Migrating
+   * Codex to the AGNT-owned store is deliberate follow-up work, not a drive-by.
+   */
+  describeCredential() {
+    const authPath = this.getAuthPath();
+    const envApiKey = typeof process.env.OPENAI_API_KEY === 'string' ? process.env.OPENAI_API_KEY.trim() : '';
+
+    if (envApiKey) {
+      return {
+        connected: true,
+        source: 'env',
+        tier: 'env',
+        ownedByAgnt: true,
+        label: 'environment (OPENAI_API_KEY)',
+        credPath: authPath,
+        keychainSupported: false,
+      };
+    }
+
+    const connected = Boolean(this.getAccessToken());
+    return {
+      connected,
+      source: connected ? 'codex-auth-file' : null,
+      tier: connected ? 'vendor-file' : null,
+      ownedByAgnt: connected,
+      label: connected ? 'Codex CLI credentials file' : 'not connected',
+      credPath: authPath,
+      keychainSupported: false,
+    };
+  }
+
   getAccessToken() {
     // Allow an explicit API key from the environment to override Codex CLI auth.
     const envApiKey = typeof process.env.OPENAI_API_KEY === 'string' ? process.env.OPENAI_API_KEY.trim() : '';

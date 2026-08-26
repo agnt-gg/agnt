@@ -307,6 +307,62 @@ class GeminiCliAuthManager {
     return { success: true };
   }
 
+  getCredentialsPath() {
+    return resolveCredentialsPath();
+  }
+
+  /**
+   * Sync provenance for sessionDiscovery.js and the status endpoint.
+   *
+   * Mirrors checkApiUsable()'s own connected test — an API key OR an OAuth
+   * credential with either token — so the sweep and the status endpoint cannot
+   * disagree about whether Gemini is connected.
+   *
+   * OWNERSHIP: see the note in CodexAuthManager.describeCredential. Gemini shares
+   * ~/.gemini/oauth_creds.json with the real CLI and has no shape discriminator
+   * yet, so file-backed credentials stay ownedByAgnt: true and refresh behaviour
+   * is unchanged.
+   */
+  describeCredential() {
+    const credPath = resolveCredentialsPath();
+
+    if (process.env.GEMINI_API_KEY) {
+      return {
+        connected: true,
+        source: 'env',
+        tier: 'env',
+        ownedByAgnt: true,
+        label: 'environment (GEMINI_API_KEY)',
+        credPath,
+        keychainSupported: false,
+      };
+    }
+
+    if (this._readApiKey()) {
+      return {
+        connected: true,
+        source: 'gemini-env-file',
+        tier: 'vendor-file',
+        ownedByAgnt: true,
+        label: 'API key in ~/.gemini/.env',
+        credPath: path.join(resolveGeminiDir(), '.env'),
+        keychainSupported: false,
+      };
+    }
+
+    const { data } = readCredentialsFile();
+    const connected = Boolean(data?.access_token || data?.refresh_token);
+    return {
+      connected,
+      source: connected ? 'gemini-oauth-file' : null,
+      tier: connected ? 'vendor-file' : null,
+      ownedByAgnt: connected,
+      label: connected ? 'Gemini CLI credentials file' : 'not connected',
+      credPath,
+      keychainSupported: false,
+    };
+  }
+
   _readApiKey() {
     // Check env var first (same as Gemini CLI)
     if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;

@@ -58,6 +58,32 @@ class CursorCliAuthManager {
     return resolveCursorHome();
   }
 
+  /**
+   * Sync provenance for sessionDiscovery.js and the status endpoint.
+   *
+   * Cursor is the one provider that genuinely cannot answer cheaply: the CLI
+   * holds the credential internally and there is no file to stat. Note that
+   * ~/.cursor EXISTS as soon as the CLI has ever run, so its presence proves
+   * nothing — probing it would produce a confident false "connected".
+   *
+   * So we report the warm probe result if checkApiUsable() has run recently, and
+   * otherwise say plainly that a probe is required. Saying "unknown" is the
+   * correct answer here; guessing is not.
+   */
+  describeCredential() {
+    const warm = this.apiCheckCache?.value?.apiUsable === true;
+    return {
+      connected: warm,
+      source: warm ? 'cursor-cli-session' : null,
+      tier: warm ? 'cli-probe' : null,
+      ownedByAgnt: false,
+      label: warm ? 'CLI reports signed in' : 'requires a CLI probe',
+      credPath: resolveCursorHome(),
+      keychainSupported: false,
+      requiresProbe: !warm,
+    };
+  }
+
   getCursorBin() {
     this.cursorBin = resolveCursorBin();
     return this.cursorBin;

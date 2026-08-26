@@ -14,7 +14,20 @@ import {
   getCredentialPath, getStoreDir,
 } from './agntCredentialStore.js';
 
-const PROVIDER = 'claude-code';
+/**
+ * A provider id no real manager uses.
+ *
+ * This suite originally used 'claude-code' — the same slot ClaudeCodeAuthManager
+ * .test.js writes. When vitest puts both files in one worker process they share
+ * a PathManager root (the isolation setup redirects once PER PROCESS, not per
+ * file), so this suite's beforeEach cleanup deleted a credential the Claude
+ * suite had just written. It failed roughly one run in three, and only when
+ * enough other files were scheduled alongside them.
+ *
+ * The store is provider-agnostic, so testing it against a real provider's slot
+ * bought nothing and cost a race.
+ */
+const PROVIDER = 'store-fixture-provider';
 
 beforeEach(() => clearCredential(PROVIDER));
 afterEach(() => clearCredential(PROVIDER));
