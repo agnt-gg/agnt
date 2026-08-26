@@ -46,10 +46,19 @@ function notifyLocalBackendProviderChanged(event, providerId) {
   });
 }
 
-// In-flight promise for deduplicating concurrent fetchConnectedApps calls.
-// (withFreshness also de-dupes concurrent callers, so this is a redundant
-// safety net for any legacy callers that bypass the wrapper.)
-let _fetchConnectedAppsPromise = null;
+// In-flight fetchConnectedApps call, TAGGED WITH THE SUBJECT IT IS FETCHING FOR.
+//
+// The tag is the whole point. This guard predates withFreshness's identity
+// scoping and used to be a bare promise, which made it blind to who the
+// request belonged to. A caller who had just signed in would therefore adopt
+// an ANONYMOUS request already on the wire, and the wrapper would stamp that
+// anonymous answer as the signed-in user's for the full TTL — defeating the
+// identity option one layer down, inside the very action it was protecting.
+//
+// The symptom was a fresh sign-in showing none of the user's connected
+// integrations until they reloaded the page, which cleared this module's
+// closure state along with everything else.
+let _fetchConnectedAppsInFlight = null;
 
 const state = {
   connectedApps: [],
@@ -129,8 +138,13 @@ const mutations = {
 
 const actions = {
   fetchConnectedApps: withFreshness('appAuth.fetchConnectedApps', async ({ commit, state }) => {
-    // Deduplicate concurrent calls - return existing in-flight promise
-    if (_fetchConnectedAppsPromise) return _fetchConnectedAppsPromise;
+    // Deduplicate concurrent calls — but only within a single subject. See the
+    // declaration of _fetchConnectedAppsInFlight for why the tag matters.
+    const token = localStorage.getItem('token');
+    const subject = authSubject(token);
+    if (_fetchConnectedAppsInFlight && _fetchConnectedAppsInFlight.subject === subject) {
+      return _fetchConnectedAppsInFlight.promise;
+    }
 
     // On cold start (no providers yet), commit the local-only set early so the
     // UI lights up fast. On refresh polls, we already have providers in Vuex —
@@ -140,10 +154,20 @@ const actions = {
     // partial set and only commit the final merged result on refreshes.
     const isColdStart = !state.connectedApps || state.connectedApps.length === 0;
 
-    _fetchConnectedAppsPromise = (async () => {
+    // Declared before the IIFE so the `finally` below can reference it even if
+    // the body throws before its first await.
+    let runPromise;
+
+    runPromise = (async () => {
       try {
-        const token = localStorage.getItem('token');
         let connectedApps = [];
+
+        // Whether each network lane actually answered. Both lanes swallow
+        // their own failures, so without this a total outage resolves NORMALLY
+        // with a CLI-only list and looks exactly like a good fetch. See the
+        // isCacheable option at the bottom of this action.
+        let localLaneAnswered = false;
+        let remoteLaneAnswered = false;
 
         // Shared normalizer — handles strings, {provider_id}, {providerId}, {id}.
         // Used by every lane so the merge is collision-free by ID.
@@ -194,6 +218,7 @@ const actions = {
         // UI lights up env-sourced providers without waiting on the remote round-trip.
         const localBackendResult = await localBackendPromise;
         if (localBackendResult && Array.isArray(localBackendResult.data)) {
+          localLaneAnswered = true;
           const localBackendApps = localBackendResult.data.map(normalizeProviderId).filter(Boolean);
           connectedApps = [...new Set([...localBackendApps, ...connectedApps])];
         }
@@ -210,6 +235,7 @@ const actions = {
         // wiping it down to the local-only set.
         const remoteResult = await remotePromise;
         if (remoteResult && Array.isArray(remoteResult.data)) {
+          remoteLaneAnswered = true;
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
           const merged = Array.from(new Set([...remoteApps, ...connectedApps]));
           commit('SET_CONNECTED_APPS', merged);
@@ -227,13 +253,27 @@ const actions = {
             );
           }
         }
+        // Without a token the remote lane answers 401 by design, so its
+        // silence is expected rather than a failure to hold the cache open for.
+        return { authoritative: localLaneAnswered && (remoteLaneAnswered || !token) };
       } finally {
-        _fetchConnectedAppsPromise = null;
+        if (_fetchConnectedAppsInFlight && _fetchConnectedAppsInFlight.promise === runPromise) {
+          _fetchConnectedAppsInFlight = null;
+        }
       }
     })();
 
-    return _fetchConnectedAppsPromise;
-  }, { staleAfter: TTL.appAuthFetchConnectedApps, identity: sessionIdentity }),
+    _fetchConnectedAppsInFlight = { subject, promise: runPromise };
+    return runPromise;
+  }, {
+    staleAfter: TTL.appAuthFetchConnectedApps,
+    identity: sessionIdentity,
+    // A partial answer must not be frozen for the TTL. Both lanes catch their
+    // own errors, so a total failure used to resolve normally and be stamped
+    // fresh — which is why the wrapper's "errors do not poison the cache"
+    // never applied here: no error ever reached it.
+    isCacheable: (result) => result?.authoritative === true,
+  }),
   fetchAllProviders: withFreshness('appAuth.fetchAllProviders', async ({ commit }) => {
     try {
       const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
@@ -313,6 +353,7 @@ const actions = {
       }
 
       commit('SET_ALL_PROVIDERS', mergedProviders);
+      return { authoritative: true };
     } catch (error) {
       console.error('Error fetching all providers:', error);
       // Still expose the CLI-tied local providers even if the remote fetch fails.
@@ -374,8 +415,18 @@ const actions = {
           localOnly: true,
         },
       ]);
+
+      // Committing this is right — the CLI providers genuinely do work with no
+      // remote — but it is six providers where the real catalogue is seventy.
+      // Stamping it fresh for THIRTY MINUTES meant one failed call around
+      // sign-in hid every integration the user has until they reloaded.
+      return { authoritative: false };
     }
-  }, { staleAfter: TTL.appAuthFetchAllProviders, identity: sessionIdentity }),
+  }, {
+    staleAfter: TTL.appAuthFetchAllProviders,
+    identity: sessionIdentity,
+    isCacheable: (result) => result?.authoritative === true,
+  }),
 
   // ── Generic provider actions (unified endpoints) ──────────────────
 

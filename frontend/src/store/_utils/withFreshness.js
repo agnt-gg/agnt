@@ -13,6 +13,9 @@
  *      the cached value describes, and a value describing someone else is not
  *      fresh at any age. When `identity` is supplied, a changed identity is a
  *      cache MISS regardless of TTL.
+ *   5. Optional `isCacheable(result)` — lets an action say "I answered, but
+ *      with a DEGRADED result; do not freeze it." See the note on errors
+ *      below for why resolving successfully is not the same as succeeding.
  *
  * Usage:
  *   import { withFreshness } from '../_utils/withFreshness.js';
@@ -39,6 +42,14 @@
  *     shared global cache, so module reloads / hot-reloads start fresh.
  *   - Errors do not poison the cache: a failed fetch leaves `lastFetched`
  *     unchanged, so the next call retries.
+ *
+ *     That guarantee only covers errors THIS WRAPPER SEES. An action that
+ *     catches its own failure and returns a fallback has, as far as the
+ *     wrapper can tell, succeeded — so the fallback is stamped fresh and
+ *     served for the whole TTL. Two provider actions did exactly that, and a
+ *     single failed call at sign-in hid every connected integration until the
+ *     user reloaded the page. `isCacheable` is how such an action declines
+ *     the stamp without having to throw at callers that do not expect it.
  *   - In dev, every wrapper bumps `window.__AGNT_FETCH_STATS__` counters so
  *     you can `console.table(window.__AGNT_FETCH_STATS__.perKey)` to see
  *     hits / misses / dedupes per action during a session.
@@ -60,7 +71,11 @@ function bump(key, kind) {
 
 export const DEFAULT_STALE_AFTER = 5 * 60 * 1000; // 5 minutes
 
-export function withFreshness(key, fn, { staleAfter = DEFAULT_STALE_AFTER, identity = null } = {}) {
+export function withFreshness(
+  key,
+  fn,
+  { staleAfter = DEFAULT_STALE_AFTER, identity = null, isCacheable = null } = {},
+) {
   let lastFetched = 0;
   let lastResult;
   let lastIdentity;
@@ -122,9 +137,30 @@ export function withFreshness(key, fn, { staleAfter = DEFAULT_STALE_AFTER, ident
     const fetchPromise = (async () => {
       try {
         const result = await fn(ctx, payload, ...rest);
-        lastResult = result;
-        lastFetched = Date.now();
-        lastIdentity = fetchIdentity;
+
+        // A result the action itself calls degraded is not written to the
+        // cache at all — not the value, not the timestamp, not the subject.
+        // Leaving `lastFetched` at its previous value is what makes the next
+        // caller retry, which is the same mechanism a thrown error relies on.
+        //
+        // Only an explicit `true` caches. A predicate that throws, or returns
+        // something that merely looks truthy, falls through to "do not cache":
+        // re-fetching costs a request, while wrongly freezing a bad answer
+        // costs the user a broken screen until they reload.
+        let cacheable = true;
+        if (isCacheable) {
+          try {
+            cacheable = isCacheable(result) === true;
+          } catch {
+            cacheable = false;
+          }
+        }
+
+        if (cacheable) {
+          lastResult = result;
+          lastFetched = Date.now();
+          lastIdentity = fetchIdentity;
+        }
         return result;
       } finally {
         // Only clear inFlight if WE'RE still the registered promise. With
