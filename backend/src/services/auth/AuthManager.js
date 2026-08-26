@@ -5,6 +5,7 @@ import generateUUID from '../../utils/generateUUID.js';
 import { decrypt, encrypt } from '../../utils/encryption.js';
 import ENV_KEY_MAP from './envKeyMap.js';
 import { discoverSessions } from './sessionDiscovery.js';
+import { getAuthEntry } from './AuthDispatcher.js';
 
 // Add this import
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
@@ -231,6 +232,73 @@ class AuthManager {
     });
   }
 
+  /**
+   * Health for a LOCAL CLI provider, asked of the provider itself.
+   *
+   * WHY THIS EXISTS
+   * ---------------
+   * The health ladder below answers "is this connection working?" with
+   * `getValidAccessToken()`, which looks in three places: an env var, the
+   * encrypted api_keys table, and the remote key store. A CLI provider's
+   * credential is in NONE of them — it is a file in the user's home directory
+   * or an item in the OS keychain — so that call returns null for every one of
+   * them, and the ladder records "No valid token available".
+   *
+   * That was harmless only because CLI providers were absent from
+   * getConnectedApps(), so they were never health-checked at all. The moment
+   * discovery put them in that list, every one of them started reporting as a
+   * BROKEN connection on a machine where all six were signed in and usable —
+   * the integration grid went amber and the user was told, wrongly, that their
+   * CLI tools were not connected.
+   *
+   * A provider whose credential lives outside the vault has to be asked, not
+   * looked up. `checkApiUsable()` is the question its own manager already
+   * answers for the provider page, and it is TTL-cached, so reusing it here
+   * also makes the grid agree with that page instead of contradicting it.
+   *
+   * @returns {object|null} a health record, or null when this is not a local
+   *   provider — in which case the caller falls through to the token ladder
+   *   exactly as before.
+   */
+  async getLocalProviderHealth(providerId) {
+    const entry = getAuthEntry(providerId);
+    if (!entry?.local || typeof entry.manager?.checkApiUsable !== 'function') return null;
+
+    const lastChecked = new Date().toISOString();
+    try {
+      const status = await entry.manager.checkApiUsable();
+
+      // `available` is the same signal the provider page and the connected list
+      // use, so all three now agree by construction.
+      if (!status?.available) {
+        return {
+          status: 'error',
+          provider: providerId,
+          lastChecked,
+          error: status?.hint || 'Not signed in on this machine',
+        };
+      }
+
+      return {
+        status: 'healthy',
+        provider: providerId,
+        lastChecked,
+        details: {
+          hasValidToken: true,
+          source: status.sourceLabel || status.source || 'local session',
+          apiUsable: status.apiUsable === true,
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        provider: providerId,
+        lastChecked,
+        error: error.message || 'Local provider health check failed',
+      };
+    }
+  }
+
   async checkConnectionHealth(userId, authToken) {
     try {
       // Use the local-first union (env + local DB + OAuth + remote merge) instead of
@@ -244,6 +312,14 @@ class AuthManager {
       for (const providerId of connectedProviderIds) {
         try {
           let healthStatus;
+
+          // Local CLI providers keep their credential outside the vault, so the
+          // token ladder below cannot see it. Ask the provider instead.
+          const localHealth = await this.getLocalProviderHealth(providerId);
+          if (localHealth) {
+            results.push(localHealth);
+            continue;
+          }
 
           // Get token from remote using getValidAccessToken
           const token = await this.getValidAccessToken(userId, providerId);
@@ -391,9 +467,22 @@ class AuthManager {
       const checkProvider = async (providerId) => {
         try {
           let healthStatus;
-          const token = await this.getValidAccessToken(userId, providerId);
 
-          if (!token) {
+          // Same branch as checkConnectionHealth. This is the copy the UI
+          // actually streams from, so omitting it here would leave the grid
+          // amber while the non-streaming path said healthy.
+          //
+          // It assigns rather than returns: this function's contract is to push
+          // into `results`, advance the counters and emit an update, all of
+          // which happen below. Returning the record early skipped every one of
+          // them, so the provider vanished from the stream instead of being
+          // reported healthy — which the streaming test caught.
+          const localHealth = await this.getLocalProviderHealth(providerId);
+          const token = localHealth ? null : await this.getValidAccessToken(userId, providerId);
+
+          if (localHealth) {
+            healthStatus = localHealth;
+          } else if (!token) {
             healthStatus = {
               status: 'error',
               provider: providerId,
