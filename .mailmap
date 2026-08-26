@@ -1,0 +1,17 @@
+# .mailmap — canonical author/committer identities
+#
+# Re-labels historical commits WITHOUT rewriting them. No commit hash,
+# tree, parent or signature is touched; git simply substitutes the
+# canonical identity at display time in log / shortlog / blame.
+#
+# Format:  Canonical Name <canonical@email>  Commit Name <commit@email>
+#
+# ---------------------------------------------------------------------
+# Rimas committed as "Tom <tom@AI-Stack.local>" between 2026-07-26 and
+# 2026-07-31 (27 commits). That identity was auto-derived by git from the
+# macOS account name ("tom", RealName "Tom") and the hostname
+# ("AI-Stack") because no user.name / user.email was configured yet.
+# It is not a second contributor — it is the same person, same machine.
+# Fixed at source on 2026-07-31 by setting the global git identity.
+# ---------------------------------------------------------------------
+rimusz <rimusz@users.noreply.github.com> Tom <tom@AI-Stack.local>
