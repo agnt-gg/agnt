@@ -3,7 +3,6 @@
     ref="baseScreenRef"
     :activeRightPanel="activeRightPanel"
     screenId="SettingsScreen"
-    :showInput="false"
     :hidePanels="!isLoggedIn"
     :leftPanelProps="{ activeSection }"
     @screen-change="(screenName) => emit('screen-change', screenName)"

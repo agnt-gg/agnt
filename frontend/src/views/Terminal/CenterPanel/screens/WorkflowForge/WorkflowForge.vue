@@ -2,11 +2,9 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="WorkflowForgeScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
-    :activeLeftPanel="'WorkflowForgePanel'"
-    :leftPanelProps="panelProps"
     :activeRightPanel="activeRightPanel"
+    :leftPanelProps="panelProps"
     :panelProps="rightPanelProps"
     :class="{ 'fullscreen-panel': !!activeFullscreenPanel }"
     @panel-action="handlePanelAction"

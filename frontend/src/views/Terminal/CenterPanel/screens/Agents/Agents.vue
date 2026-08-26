@@ -2,10 +2,8 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="AgentsPanel"
     :activeRightPanel="activeRightPanel"
     screenId="AgentsScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     :leftPanelProps="{
       allAvailableAgents: agents,

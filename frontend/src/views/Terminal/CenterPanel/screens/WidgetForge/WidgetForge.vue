@@ -1,10 +1,7 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="WidgetForgePanel"
-    activeRightPanel="WidgetForgePanel"
     screenId="WidgetForgeScreen"
-    :showInput="false"
     @screen-change="(screenName) => $emit('screen-change', screenName)"
     @panel-action="handlePanelAction"
   >

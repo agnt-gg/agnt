@@ -2,10 +2,8 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="WorkflowsPanel"
     :activeRightPanel="activeRightPanel"
     screenId="WorkflowsScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     :leftPanelProps="{
       allWorkflows,

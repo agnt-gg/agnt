@@ -3,10 +3,7 @@
     <SimpleModal ref="simpleModal" />
     <BaseScreen
       ref="baseScreenRef"
-      activeLeftPanel="TracesPanel"
-      activeRightPanel="TracesPanel"
       screenId="TracesScreen"
-      :showInput="false"
       :terminalLines="terminalLines"
       :leftPanelProps="{
         executions: filteredExecutions,

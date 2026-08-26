@@ -1,5 +1,5 @@
 <template>
-  <BaseScreen ref="baseScreenRef" screenId="ExperimentInsightsScreen" activeRightPanel="ExperimentInsightsPanel" activeLeftPanel="ExperimentInsightsPanel" :panelProps="panelProps" :leftPanelProps="leftPanelProps" :showInput="false" @panel-action="handlePanelAction" @screen-change="(s) => emit('screen-change', s)" @base-mounted="initializeScreen">
+  <BaseScreen ref="baseScreenRef" screenId="ExperimentInsightsScreen" :panelProps="panelProps" :leftPanelProps="leftPanelProps" @panel-action="handlePanelAction" @screen-change="(s) => emit('screen-change', s)" @base-mounted="initializeScreen">
     <template #default>
       <div class="insights-screen">
         <ScreenToolbar title="EXPERIMENT INSIGHTS" :count="0" countLabel="" searchPlaceholder="" :searchQuery="''" :currentLayout="''" :layoutOptions="[]" :showCollapseToggle="false" :showHideEmpty="false" :createLabel="''" />

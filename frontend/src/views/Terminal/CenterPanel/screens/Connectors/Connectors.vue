@@ -3,7 +3,6 @@
     ref="baseScreenRef"
     :activeRightPanel="activeRightPanel"
     screenId="ConnectorsScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     :panelProps="{ form: form, typeOptions: typeOptions }"
     @panel-action="handlePanelAction"

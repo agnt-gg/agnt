@@ -2,13 +2,11 @@
   <div class="dashboard-screen-root">
     <BaseScreen
       ref="baseScreenRef"
-      activeRightPanel="DashboardPanel"
       :panelProps="{
         missionId: selectedMissionId,
         showChart: true,
       }"
       screenId="DashboardScreen"
-      :showInput="false"
       :terminalLines="terminalLines"
       @submit-input="handleUserInputSubmit"
       @panel-action="handlePanelAction"

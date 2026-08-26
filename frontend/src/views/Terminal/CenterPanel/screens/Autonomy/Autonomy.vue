@@ -2,10 +2,7 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="AutonomyScreen"
-    activeLeftPanel="AutonomyPanel"
     :leftPanelProps="{ activeSection }"
-    :activeRightPanel="null"
-    :showInput="false"
     @panel-action="handlePanelAction"
     @screen-change="(s) => emit('screen-change', s)"
     @base-mounted="initializeScreen"

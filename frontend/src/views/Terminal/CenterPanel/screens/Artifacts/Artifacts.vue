@@ -1,10 +1,7 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="ArtifactsPanel"
-    activeRightPanel="FileTreePanel"
     screenId="ArtifactsScreen"
-    :showInput="false"
     @screen-change="(screenName) => $emit('screen-change', screenName)"
     @panel-action="handlePanelAction"
   >

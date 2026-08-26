@@ -283,20 +283,25 @@ import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
+import { resolvePanel, resolveInput } from './screenRegistry.js';
 
 export default {
   name: 'BaseScreen',
   components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu },
   props: {
+    // Layout defaults live in screenRegistry.js, keyed by screenId. An
+    // explicitly passed prop always wins (screens with dynamic panels).
+    // `undefined` = "not passed, use the registry"; `null` keeps its old
+    // meaning of "derive a panel name from screenId".
     activeRightPanel: {
       type: [String, null],
       required: false,
-      default: null,
+      default: undefined,
     },
     activeLeftPanel: {
       type: [String, null],
       required: false,
-      default: null,
+      default: undefined,
     },
     panelProps: {
       type: Object,
@@ -325,10 +330,11 @@ export default {
       type: String,
       default: '',
     },
-    // Optional prop to control if the input line should be shown at all
+    // Optional prop to control if the input line should be shown at all.
+    // Default comes from screenRegistry (historically true).
     showInput: {
       type: Boolean,
-      default: true,
+      default: undefined,
     },
     // Optional prop to disable input initially (e.g., during streaming)
     disableInputInitially: {
@@ -354,7 +360,11 @@ export default {
   emits: ['screen-change', 'panel-action', 'submit-input', 'base-mounted', 'command-action'],
   setup(props, { emit, expose }) {
     const store = useStore(); // Keep store access if needed for base actions
-    const { screenId, showInput, disableInputInitially, useTutorialHook, terminalLines } = toRefs(props);
+    const { screenId, disableInputInitially, useTutorialHook, terminalLines } = toRefs(props);
+
+    // Whether the input line exists on this screen: explicit prop wins,
+    // otherwise the screenRegistry default (historically true).
+    const inputEnabled = computed(() => resolveInput(props.showInput, props.screenId));
 
     // --- Data Page ---
     // Derive data-page from screenId: "ChatScreen" → "terminal-chat"
@@ -504,7 +514,7 @@ export default {
     // effectAllowed.
     const isDragOver = ref(false);
     let dragLeaveTimer = null;
-    const canAcceptFileDrop = () => !!props.showInput;
+    const canAcceptFileDrop = () => !!inputEnabled.value;
     const isFileDrag = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
     const onDragEnter = (e) => {
       if (!canAcceptFileDrop() || !isFileDrag(e)) return;
@@ -671,7 +681,7 @@ export default {
 
     // --- Computed ---
     // Controls visibility based on prop AND disabled state
-    const showInputLine = computed(() => showInput.value);
+    const showInputLine = computed(() => inputEnabled.value);
 
     // --- Methods ---
     const scrollToBottom = async () => {
@@ -682,8 +692,8 @@ export default {
     };
 
     const focusInput = async () => {
-      // Only handle input focus if showInput is true
-      if (!props.showInput || isInputDisabled.value) return;
+      // Only handle input focus if the input line exists
+      if (!inputEnabled.value || isInputDisabled.value) return;
 
       await nextTick();
       textareaRef.value?.focus();
@@ -703,7 +713,7 @@ export default {
     };
 
     const triggerSubmit = () => {
-      if (isInputDisabled.value || !showInput.value) return;
+      if (isInputDisabled.value || !inputEnabled.value) return;
       const input = currentUserInput.value.trim();
       // Don't clear or emit if input is empty and no files
       if (!input && selectedFiles.value.length === 0) return;
@@ -1392,8 +1402,8 @@ export default {
       initializePanelWidths();
       observeLayout();
       terminalContentRef.value?.addEventListener('click', handleContainerClick);
-      // Only focus input if showInput is true
-      if (props.showInput) {
+      // Only focus input if the input line exists
+      if (inputEnabled.value) {
         focusInput();
       }
       // scrollToBottom(); // Call scrollToBottom after terminalLines might have rendered
@@ -1424,7 +1434,7 @@ export default {
     onActivated(() => {
       setDataPage();
       emit('base-mounted');
-      if (props.showInput) {
+      if (inputEnabled.value) {
         nextTick(focusInput);
       }
     });
@@ -1497,11 +1507,12 @@ export default {
 
     // Add computed properties for automatic panel names
     const computedRightPanel = computed(() => {
-      // If explicit prop is provided, use it
-      if (props.activeRightPanel !== null && props.activeRightPanel !== undefined) {
-        return props.activeRightPanel;
+      // Explicit prop wins, else the screenRegistry entry for this screen.
+      const effective = resolvePanel(props.activeRightPanel, props.screenId, 'rightPanel');
+      if (effective !== null && effective !== undefined) {
+        return effective;
       }
-      // Otherwise, derive from screenId
+      // Otherwise, derive from screenId (long-standing fallback)
       if (props.screenId) {
         return `${props.screenId}Panel`;
       }
@@ -1509,11 +1520,12 @@ export default {
     });
 
     const computedLeftPanel = computed(() => {
-      // If explicit prop is provided, use it
-      if (props.activeLeftPanel !== null && props.activeLeftPanel !== undefined) {
-        return props.activeLeftPanel;
+      // Explicit prop wins, else the screenRegistry entry for this screen.
+      const effective = resolvePanel(props.activeLeftPanel, props.screenId, 'leftPanel');
+      if (effective !== null && effective !== undefined) {
+        return effective;
       }
-      // Otherwise, derive from screenId
+      // Otherwise, derive from screenId (long-standing fallback)
       if (props.screenId) {
         // Remove "Screen" suffix if present, then add "Panel"
         const baseName = props.screenId.replace(/Screen$/, '');

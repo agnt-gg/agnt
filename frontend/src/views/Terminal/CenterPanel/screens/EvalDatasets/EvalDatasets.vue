@@ -1,5 +1,5 @@
 <template>
-  <BaseScreen ref="baseScreenRef" screenId="EvalDatasetsScreen" activeRightPanel="EvalDatasetsPanel" activeLeftPanel="EvalDatasetsPanel" :panelProps="panelProps" :leftPanelProps="leftPanelProps" :showInput="false" @panel-action="handlePanelAction" @screen-change="(s) => emit('screen-change', s)" @base-mounted="initializeScreen">
+  <BaseScreen ref="baseScreenRef" screenId="EvalDatasetsScreen" :panelProps="panelProps" :leftPanelProps="leftPanelProps" @panel-action="handlePanelAction" @screen-change="(s) => emit('screen-change', s)" @base-mounted="initializeScreen">
     <template #default>
       <div class="datasets-screen">
         <ScreenToolbar title="EVAL DATASETS" :count="filteredDatasets.length" countLabel="datasets" searchPlaceholder="Search datasets..." :searchQuery="searchQuery" :currentLayout="currentLayout" :layoutOptions="['grid', 'table']" :showCollapseToggle="false" :showHideEmpty="false" createLabel="Generate Dataset" @update:searchQuery="(v) => (searchQuery = v)" @update:currentLayout="(v) => (currentLayout = v)" @create="showGenerateModal = true">

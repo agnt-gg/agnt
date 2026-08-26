@@ -1,14 +1,11 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    :activeLeftPanel="'ToolForgePanel'"
-    activeRightPanel="ToolForgeResponsePanel"
     :panelProps="{
       onTestTool: handleTestTool,
       onSaveTool: handleSaveTool,
     }"
     screenId="ToolForgeScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     @submit-input="handleUserInputSubmit"
     @panel-action="handlePanelAction"

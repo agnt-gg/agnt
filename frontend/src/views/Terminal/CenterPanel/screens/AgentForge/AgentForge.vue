@@ -2,9 +2,7 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="AgentForgeScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
-    activeRightPanel="AgentForgePanel"
     :panelProps="panelProps"
     @screen-change="(screenName) => emit('screen-change', screenName)"
     @base-mounted="initializeScreen"

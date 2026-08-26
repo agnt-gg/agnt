@@ -2,10 +2,8 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="ToolsPanel"
     :activeRightPanel="activeRightPanel"
     screenId="ToolsScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     :leftPanelProps="{
       allAvailableTools,

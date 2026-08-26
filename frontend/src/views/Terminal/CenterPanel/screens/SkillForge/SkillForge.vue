@@ -3,9 +3,7 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="SkillForgeScreen"
-    activeRightPanel="SkillsPanel"
     :panelProps="panelProps"
-    :showInput="false"
     :terminalLines="terminalLines"
     @panel-action="handlePanelAction"
     @screen-change="(s) => emit('screen-change', s)"

@@ -3,11 +3,8 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="SkillsScreen"
-    activeRightPanel="SkillsPanel"
-    activeLeftPanel="SkillsPanel"
     :panelProps="panelProps"
     :leftPanelProps="leftPanelProps"
-    :showInput="false"
     :terminalLines="terminalLines"
     @panel-action="handlePanelAction"
     @screen-change="(screenName) => emit('screen-change', screenName)"

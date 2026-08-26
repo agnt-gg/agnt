@@ -2,10 +2,7 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="MarketplacePanel"
-    activeRightPanel="MarketplacePanel"
     screenId="MarketplaceScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     :leftPanelProps="{
       marketplaceWorkflows: filteredWorkflows,

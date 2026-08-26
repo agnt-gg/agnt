@@ -1,0 +1,64 @@
+/**
+ * screenRegistry — the single source of truth for per-screen layout.
+ *
+ * One entry per screen, keyed by screenId. Values are extracted VERBATIM from
+ * what each screen used to pass to <BaseScreen> as props, so adopting the
+ * registry changed nothing visually — it only moved the declaration.
+ *
+ * Semantics (mirrors BaseScreen's long-standing prop behavior exactly):
+ *   rightPanel / leftPanel:
+ *     string     → that panel type renders (when the global toggle shows it)
+ *     null       → BaseScreen derives a panel name from screenId
+ *                  (right: `${screenId}Panel`, left: screenId minus "Screen"
+ *                  + "Panel") — same as before, unknown names render empty
+ *     absent key → same as null (derive)
+ *   input:
+ *     true/false → whether the terminal input line renders
+ *     absent     → true (BaseScreen's historical default)
+ *
+ * A screen with genuinely DYNAMIC panels (e.g. Workflows swaps its right
+ * panel with selection state) keeps passing the prop — an explicitly passed
+ * prop always wins over the registry.
+ */
+export const SCREEN_DEFAULTS = Object.freeze({
+  AgentForgeScreen: { rightPanel: 'AgentForgePanel', input: false },
+  AgentsScreen: { leftPanel: 'AgentsPanel', input: false }, // right: dynamic
+  ArtifactsScreen: { leftPanel: 'ArtifactsPanel', rightPanel: 'FileTreePanel', input: false },
+  AutonomyScreen: { leftPanel: 'AutonomyPanel', rightPanel: null, input: false },
+  ChatScreen: { input: true },
+  ConnectorsScreen: { input: false }, // right: dynamic
+  DashboardScreen: { rightPanel: 'DashboardPanel', input: false },
+  EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
+  ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
+  ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },
+  ExperimentsScreen: { leftPanel: 'ExperimentsPanel', rightPanel: 'ExperimentsPanel', input: false },
+  GoalsScreen: { leftPanel: 'GoalsPanel', rightPanel: 'GoalsPanel', input: false },
+  MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
+  MemoryScreen: { leftPanel: 'MemoryPanel', rightPanel: 'MemoryPanel', input: false },
+  SettingsScreen: { input: false }, // right: dynamic
+  SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
+  SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },
+  ToolForgeScreen: { leftPanel: 'ToolForgePanel', rightPanel: 'ToolForgeResponsePanel', input: false },
+  ToolsScreen: { leftPanel: 'ToolsPanel', input: false }, // right: dynamic
+  TracesScreen: { leftPanel: 'TracesPanel', rightPanel: 'TracesPanel', input: false },
+  WidgetForgeScreen: { leftPanel: 'WidgetForgePanel', rightPanel: 'WidgetForgePanel', input: false },
+  WidgetManagerScreen: { leftPanel: 'WidgetManagerPanel', rightPanel: 'WidgetManagerPanel', input: false },
+  WorkflowForgeScreen: { leftPanel: 'WorkflowForgePanel', input: false }, // right: dynamic
+  WorkflowsScreen: { leftPanel: 'WorkflowsPanel', input: false }, // right: dynamic
+});
+
+/** Resolve a layout slot: an explicitly passed prop wins; else the registry. */
+export function resolvePanel(propValue, screenId, slot) {
+  if (propValue !== undefined) return propValue;
+  const entry = SCREEN_DEFAULTS[screenId];
+  if (entry && slot in entry) return entry[slot];
+  return null; // matches the old prop default
+}
+
+/** Resolve whether the input line shows. */
+export function resolveInput(propValue, screenId) {
+  if (propValue !== undefined) return propValue;
+  const entry = SCREEN_DEFAULTS[screenId];
+  if (entry && 'input' in entry) return entry.input;
+  return true; // matches the old prop default
+}

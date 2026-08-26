@@ -2,11 +2,8 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="MemoryScreen"
-    activeLeftPanel="MemoryPanel"
-    activeRightPanel="MemoryPanel"
     :leftPanelProps="leftPanelProps"
     :panelProps="rightPanelProps"
-    :showInput="false"
     @panel-action="handlePanelAction"
     @screen-change="(s) => emit('screen-change', s)"
     @base-mounted="initializeScreen"

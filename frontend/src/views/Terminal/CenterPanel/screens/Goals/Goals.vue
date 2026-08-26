@@ -1,14 +1,11 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="GoalsPanel"
-    activeRightPanel="GoalsPanel"
     :panelProps="{
       selectedGoalId: selectedGoalId,
       goals: allGoals,
     }"
     screenId="GoalsScreen"
-    :showInput="false"
     :terminalLines="terminalLines"
     @panel-action="handlePanelAction"
     @screen-change="(screenName) => emit('screen-change', screenName)"

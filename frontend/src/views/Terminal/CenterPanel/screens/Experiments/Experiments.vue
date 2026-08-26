@@ -2,11 +2,8 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="ExperimentsScreen"
-    activeRightPanel="ExperimentsPanel"
-    activeLeftPanel="ExperimentsPanel"
     :panelProps="panelProps"
     :leftPanelProps="leftPanelProps"
-    :showInput="false"
     @panel-action="handlePanelAction"
     @screen-change="(s) => emit('screen-change', s)"
     @base-mounted="initializeScreen"

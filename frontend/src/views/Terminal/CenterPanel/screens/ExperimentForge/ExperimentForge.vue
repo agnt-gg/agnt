@@ -1,5 +1,5 @@
 <template>
-  <BaseScreen ref="baseScreenRef" screenId="ExperimentForgeScreen" activeRightPanel="ExperimentForgePanel" activeLeftPanel="ExperimentForgePanel" :panelProps="panelProps" :leftPanelProps="leftPanelProps" :showInput="false" @panel-action="handlePanelAction" @screen-change="(s) => emit('screen-change', s)" @base-mounted="initializeScreen">
+  <BaseScreen ref="baseScreenRef" screenId="ExperimentForgeScreen" :panelProps="panelProps" :leftPanelProps="leftPanelProps" @panel-action="handlePanelAction" @screen-change="(s) => emit('screen-change', s)" @base-mounted="initializeScreen">
     <template #default>
       <div class="forge-screen">
         <ScreenToolbar title="EXPERIMENT FORGE" :count="0" countLabel="" searchPlaceholder="" :searchQuery="''" :currentLayout="''" :layoutOptions="[]" :showCollapseToggle="false" :showHideEmpty="false" :createLabel="''" />

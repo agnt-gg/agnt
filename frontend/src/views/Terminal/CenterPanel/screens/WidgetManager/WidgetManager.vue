@@ -1,10 +1,7 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    activeLeftPanel="WidgetManagerPanel"
-    activeRightPanel="WidgetManagerPanel"
     screenId="WidgetManagerScreen"
-    :showInput="false"
     :panelProps="panelProps"
     @screen-change="(screenName) => $emit('screen-change', screenName)"
     @panel-action="handlePanelAction"

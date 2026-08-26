@@ -62,11 +62,16 @@ describe('SharedResponseArea', () => {
     expect(wrapper.find('#response-area').exists()).toBe(true);
   });
 
-  it('sets contenteditable attribute correctly for tool-forge route', () => {
-    const responseArea = wrapper.find('#response-area');
-    expect(responseArea.exists()).toBe(true);
-    expect(responseArea.attributes('contenteditable')).toBe('true');
+  it('shows the empty state when there is no content', () => {
+    expect(wrapper.find('#placeholder-text').exists()).toBe(true);
   });
 
-  // Add more tests as needed for the SharedResponseArea component
+  it('renders content read-only — tool output is not editable', async () => {
+    await wrapper.setProps({ content: 'generated output' });
+    const display = wrapper.find('.content-display');
+    expect(display.exists()).toBe(true);
+    expect(display.attributes('contenteditable')).toBe('false');
+    expect(display.text()).toContain('generated output');
+    expect(wrapper.find('#placeholder-text').exists()).toBe(false);
+  });
 });
