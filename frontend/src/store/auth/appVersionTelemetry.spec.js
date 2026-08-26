@@ -38,7 +38,7 @@ function walk(dir, out = []) {
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (['node_modules', 'dist', '.git', 'libs', '__old-panels'].includes(entry.name)) continue;
+      if (['node_modules', 'dist', '.git', 'libs'].includes(entry.name)) continue;
       walk(full, out);
     } else if (/\.(js|vue)$/.test(entry.name)) {
       out.push(full);

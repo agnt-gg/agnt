@@ -108,11 +108,7 @@ const rel = (p) => path.relative(SRC, p).replace(/\\/g, '/');
  * a reason. "It's hard to find a replacement" is not a reason — the whole point
  * is that a blank icon ships to users.
  */
-const ALLOWED_MISSING_ICONS = new Map([
-  ['shield', 'Dead code: RightPanel/types/__old-panels/_MapPanel — no route renders it.'],
-  ['sword', 'Dead code: __old-panels/_MapPanel.'],
-  ['swords', 'Dead code: __old-panels/_MapPanel.'],
-]);
+const ALLOWED_MISSING_ICONS = new Map([]);
 
 /** Utility/style classes in the `fa-` namespace that are not icons. */
 const FA_MODIFIERS =
@@ -304,12 +300,7 @@ describe('dropdowns use the shared select component', () => {
  * Native `title` attributes that are deliberately kept. Every entry needs a
  * reason.
  */
-const ALLOWED_NATIVE_TITLES = new Map([
-  [
-    'views/Terminal/CenterPanel/screens/__old-screens/_Goals/_Goals.vue',
-    'Dead code: nothing imports __old-screens. Editing it is risk with no user-visible benefit.',
-  ],
-]);
+const ALLOWED_NATIVE_TITLES = new Map([]);
 
 /**
  * Count native `title` attributes in a template.
