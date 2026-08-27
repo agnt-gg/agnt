@@ -31,7 +31,7 @@ import { RUNNER_PY, RUNNER_VERSION, RESULT_SENTINEL } from './browserUseRunner.j
  * Bumping this constant is the whole upgrade procedure: the version check below
  * reinstalls when the venv disagrees.
  */
-export const BROWSER_USE_VERSION = '0.13.7';
+export const BROWSER_USE_VERSION = '0.13.8';
 
 /**
  * Packages the runner needs that browser-use does not already pull in.
