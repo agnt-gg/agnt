@@ -710,11 +710,15 @@ export default {
       if (!props.channelKey) return;
       const cfg = getChannelConfig(props.channelKey);
       if (!cfg) return;
+      // persist: false — this is a CHANNEL pin being mirrored into Vuex for
+      // the UI, not a user decision about the account default. Persisting it
+      // rewrote default_provider every time a once-pinned surface mounted or
+      // its channelKey changed.
       if (cfg.provider && cfg.provider !== store.state.aiProvider?.selectedProvider) {
-        store.dispatch('aiProvider/setProvider', cfg.provider);
+        store.dispatch('aiProvider/setProvider', { provider: cfg.provider, persist: false });
       }
       if (cfg.model && cfg.model !== store.state.aiProvider?.selectedModel) {
-        store.dispatch('aiProvider/setModel', cfg.model);
+        store.dispatch('aiProvider/setModel', { model: cfg.model, persist: false });
       }
     };
 

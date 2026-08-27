@@ -144,7 +144,7 @@ describe('a routed turn never rewrites the account default', () => {
    * historical cause of provider drift.
    */
   it('the write-back is gated on the routing mode', () => {
-    const guard = /if \(persistDefaultNormalized && !workspaceHasAiOverride && !__dynamicRouting\)/;
+    const guard = /if \(persistDefaultNormalized && requestHasPin && !workspaceHasAiOverride && !__dynamicRouting\)/;
     expect(
       guard.test(ORCHESTRATOR),
       'The default write-back must exclude dynamically-routed turns.'
@@ -176,11 +176,33 @@ describe('a routed turn never rewrites the account default', () => {
   it('the guard is checkable (negative control)', () => {
     // Without this, the regex above could rot into never matching and the
     // suite would pass while the invariant was gone.
-    const preFix = 'if (persistDefaultNormalized && !workspaceHasAiOverride) {';
-    const postFix = 'if (persistDefaultNormalized && !workspaceHasAiOverride && !__dynamicRouting) {';
-    const guard = /if \(persistDefaultNormalized && !workspaceHasAiOverride && !__dynamicRouting\)/;
+    const preFix = 'if (persistDefaultNormalized && !workspaceHasAiOverride && !__dynamicRouting) {';
+    const postFix = 'if (persistDefaultNormalized && requestHasPin && !workspaceHasAiOverride && !__dynamicRouting) {';
+    const guard = /if \(persistDefaultNormalized && requestHasPin && !workspaceHasAiOverride && !__dynamicRouting\)/;
     expect(guard.test(preFix)).toBe(false);
     expect(guard.test(postFix)).toBe(true);
+  });
+
+  it('the write-back requires a pair the REQUEST named (requestHasPin)', () => {
+    /**
+     * THE BUG THIS PREVENTS
+     * ─────────────────────
+     * Once the frontend learned to omit the provider/model pair (deferring
+     * to the server's request → agent → user-default resolution), the pair
+     * arriving at the write-back could originate from the AGENT'S OWN
+     * CONFIG. Persisting that made every @-mention / floor-pass turn
+     * rewrite the account default to the mentioned agent's pinned provider
+     * — observed live as default_provider flipping to Anthropic whenever
+     * any Anthropic-pinned agent took a turn.
+     */
+    const resolvedAt = ORCHESTRATOR.indexOf('const requestHasPin =');
+    const writeBackAt = ORCHESTRATOR.indexOf('if (persistDefaultNormalized');
+    expect(resolvedAt).toBeGreaterThan(-1);
+    expect(writeBackAt).toBeGreaterThan(-1);
+    expect(
+      resolvedAt,
+      'requestHasPin must be resolved before the write-back reads it.'
+    ).toBeLessThan(writeBackAt);
   });
 });
 

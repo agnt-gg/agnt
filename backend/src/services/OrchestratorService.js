@@ -976,7 +976,15 @@ async function universalChatHandler(req, res, context = {}) {
   // A dynamically-routed turn is a turn-only choice by definition. Writing it
   // back would make one routed request silently redefine the account default
   // for every other surface — including the background jobs that read it.
-  if (persistDefaultNormalized && !workspaceHasAiOverride && !__dynamicRouting) {
+  // A pair the REQUEST never named is a pair the USER never chose. When the
+  // frontend defers to the server (routingMode 'default' — every floor
+  // dispatch and @-mention turn since the wire pair became omittable), the
+  // pair resolved above comes from the AGENT'S own config or the
+  // auto-fallback scan: turn-scoped by definition. Writing it back persisted
+  // the mentioned agent's pinned provider as the account default on every
+  // such turn — observed live as default_provider flipping to whatever
+  // agent last held the floor.
+  if (persistDefaultNormalized && requestHasPin && !workspaceHasAiOverride && !__dynamicRouting) {
     UserModel.updateUserSettings(userId, {
       selectedProvider: resolvedProvider,
       selectedModel: model,

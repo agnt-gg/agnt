@@ -505,11 +505,13 @@ export default {
       if (!props.channelKey) return;
       const cfg = getChannelConfig(props.channelKey);
       if (!cfg) return;
+      // persist: false — restoring a channel pin for display must not
+      // rewrite the account-wide default (see UnifiedChatContainer).
       if (cfg.provider && cfg.provider !== store.state.aiProvider.selectedProvider) {
-        store.dispatch('aiProvider/setProvider', cfg.provider);
+        store.dispatch('aiProvider/setProvider', { provider: cfg.provider, persist: false });
       }
       if (cfg.model && cfg.model !== store.state.aiProvider.selectedModel) {
-        store.dispatch('aiProvider/setModel', cfg.model);
+        store.dispatch('aiProvider/setModel', { model: cfg.model, persist: false });
       }
     };
 

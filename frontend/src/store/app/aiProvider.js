@@ -121,6 +121,20 @@ const BUILT_IN_PROVIDERS = [
 
 // ─────────────────────────── DERIVED EXPORTS ───────────────────────────
 
+/**
+ * Find the canonical identifier for a provider whose stored value differs
+ * only by case ('claude-code' vs 'Claude-Code'). Returns the canonical name,
+ * or null when the provider genuinely does not exist. Extracted so the
+ * "unknown provider" cleanup can rescue case drift instead of nulling the
+ * user's selection — a nulled selection is what armed the Anthropic-first
+ * auto-select ladder.
+ */
+export function canonicalizeProviderCase(knownProviders, value) {
+  if (typeof value !== 'string' || !value) return null;
+  const lower = value.toLowerCase();
+  return knownProviders.find((p) => p.toLowerCase() === lower) || null;
+}
+
 // Map internal provider keys to user-facing display names where they differ
 export const PROVIDER_DISPLAY_NAMES = {};
 for (const p of BUILT_IN_PROVIDERS) {
@@ -923,8 +937,18 @@ export default {
     },
   },
   actions: {
-    async setProvider({ commit, state }, newProvider) {
+    // Payload: either the provider string (legacy — persists as the account
+    // default) or { provider, persist }. persist === false updates local UI
+    // state only. Channel-scoped chat surfaces mirror THEIR pinned pair this
+    // way, so mounting a once-pinned surface can never rewrite the database
+    // default — persisting a transient choice is the documented cause of
+    // provider drift in this codebase (see OrchestratorService's
+    // write-back guard).
+    async setProvider({ commit, state }, payload) {
+      const newProvider = typeof payload === 'object' && payload !== null ? payload.provider : payload;
+      const persist = !(typeof payload === 'object' && payload !== null && payload.persist === false);
       commit('SET_SELECTED_PROVIDER', newProvider);
+      if (!persist) return;
 
       try {
         const token = localStorage.getItem('token');
@@ -1118,8 +1142,13 @@ export default {
       }
     },
 
-    async setModel({ commit, state }, newModel) {
+    // Same transient contract as setProvider: a string persists,
+    // { model, persist: false } updates local state only.
+    async setModel({ commit, state }, payload) {
+      const newModel = typeof payload === 'object' && payload !== null ? payload.model : payload;
+      const persist = !(typeof payload === 'object' && payload !== null && payload.persist === false);
       commit('SET_SELECTED_MODEL', newModel);
+      if (!persist) return;
 
       try {
         const token = localStorage.getItem('token');
@@ -1611,9 +1640,19 @@ export default {
           const isCustom = providers.some((p) => p.id === state.selectedProvider);
 
           if (!isBuiltIn && !isCustom) {
-            console.warn(`Selected provider ${state.selectedProvider} no longer exists, clearing selection`);
-            commit('SET_SELECTED_PROVIDER', null);
-            commit('SET_SELECTED_MODEL', null);
+            // Rescue case variants BEFORE clearing: the DB has held lowercase
+            // keys ('claude-code') written back by the server from lowercased
+            // turn values. That is the same provider as 'Claude-Code', and
+            // clearing it handed the selection to the connected-provider
+            // ladder — whose first rung is Anthropic. Canonicalize instead.
+            const canonical = canonicalizeProviderCase(state.providers, state.selectedProvider);
+            if (canonical) {
+              commit('SET_SELECTED_PROVIDER', canonical);
+            } else {
+              console.warn(`Selected provider ${state.selectedProvider} no longer exists, clearing selection`);
+              commit('SET_SELECTED_PROVIDER', null);
+              commit('SET_SELECTED_MODEL', null);
+            }
           }
         }
 
