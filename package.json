@@ -112,6 +112,15 @@
     "afterSign": "./scripts/notarize.js",
     "appId": "com.agnt.app",
     "productName": "AGNT",
+    "protocols": [
+      {
+        "name": "AGNT",
+        "schemes": [
+          "agnt"
+        ],
+        "role": "Viewer"
+      }
+    ],
     "directories": {
       "output": "dist",
       "buildResources": "build"

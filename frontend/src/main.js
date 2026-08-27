@@ -4,6 +4,7 @@ import '@/styles/main.css';
 import { createApp } from 'vue';
 import App from '@/App.vue';
 import router from '@/router';
+import { installDeepLinkRouting } from '@/deepLinkRouting.js';
 import axios from 'axios';
 import store from '@/store/state';
 import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
@@ -34,6 +35,12 @@ const app = createApp(App);
 
 app.use(router);
 app.use(store);
+
+// agnt:// links that arrive while the app is already running. A cold start
+// does not come through here — main.js in the Electron main process loads the
+// window directly onto the target path — so this only handles the warm case,
+// where reloading the SPA would discard in-memory state to do a navigation.
+installDeepLinkRouting(router);
 
 // The themed replacement for the native `title` attribute. Registered
 // globally so it works in every template without a per-file import.

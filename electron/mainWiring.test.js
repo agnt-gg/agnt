@@ -141,8 +141,23 @@ describe('main.js — the three guards', () => {
   });
 
   it('GUARD 3: the window URL is no longer hardcoded to localhost', () => {
-    expect(code).toMatch(/mainWindow\.loadURL\(isRemoteActive\(\) \? connection\.url : `http:\/\/localhost:\$\{port\}`\)/);
+    // The origin is CHOSEN by remote mode. This used to be asserted as one
+    // inline ternary inside loadURL(); deep-link support lifted it into a
+    // variable so a link's path could be appended to it. The invariant is
+    // unchanged and is what is asserted here — anchoring on the old syntax
+    // would have failed on a refactor that kept the guarantee intact.
+    expect(code).toMatch(/const origin = isRemoteActive\(\) \? connection\.url : `http:\/\/localhost:\$\{port\}`/);
+    expect(code).toMatch(/mainWindow\.loadURL\([^)]*origin[^)]*\)/);
     expect(code).not.toMatch(/mainWindow\.loadURL\(`http:\/\/localhost:\$\{port\}`\)/);
+  });
+
+  it('GUARD 3b: a deep link opens on the ACTIVE backend, not always localhost', () => {
+    // The new way to get this wrong: build the deep-link URL against a literal
+    // localhost instead of the chosen origin. In remote mode that would send
+    // the window to a different machine than the one serving the session —
+    // silently, and only for users who deep-link while on a remote backend.
+    expect(code).toMatch(/intentToUrl\(origin,\s*intent\)/);
+    expect(code).not.toMatch(/intentToUrl\(\s*['"`]http/);
   });
 
   it('GUARD 3b: the window target follows the ACTIVE mode, not the configured one', () => {

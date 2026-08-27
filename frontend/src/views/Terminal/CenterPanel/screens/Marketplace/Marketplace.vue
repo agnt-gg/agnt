@@ -572,6 +572,7 @@
 <script>
 import { ref, computed, nextTick, inject, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTabControls from '../../../_components/BaseTabControls.vue';
@@ -602,6 +603,7 @@ export default {
     // Initialize tutorial
     const { tutorialConfig, startTutorial, onTutorialClose, initializeMarketplaceTutorial } = useMarketplaceTutorial();
     const store = useStore();
+    const route = useRoute();
     const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
     const simpleModal = ref(null);
@@ -1629,6 +1631,57 @@ export default {
       }, 250);
     };
 
+    /**
+     * Open a listing named by its ASSET ID — the target of an `agnt://` link.
+     *
+     * WHY ASSET ID AND NOT THE LISTING UUID
+     * The links live in static pages on agnt.gg, generated at build time. A
+     * listing's UUID changes whenever a listing is deleted and republished,
+     * which is currently the only way to revise a published agent's system
+     * prompt — so pages compiled with a UUID would break on the first prompt
+     * fix. The asset id (`agnt-usecase-email-triage`) is derived from the
+     * use-case slug and is stable forever.
+     *
+     * Called from two places on purpose: initializeScreen (the app booted
+     * straight onto this route) and a route watcher (the app was already open
+     * and the router pushed a new query). Same function, so the two arrival
+     * paths cannot drift apart.
+     */
+    const openByAssetId = (assetId) => {
+      if (!assetId) return;
+
+      // Search every bucket, not the filtered view: a link must work whatever
+      // tab, category or search the user happened to leave the screen on.
+      const pools = [marketplaceWorkflows.value, marketplaceAgents.value, marketplaceTools.value, marketplacePlugins.value];
+      const item = pools.flat().find((i) => i && i.asset_id === assetId);
+
+      if (!item) {
+        // Name what was looked for. Silence here reads as "the link is broken"
+        // when the real cause is usually a listing that is not published yet.
+        addLine(`[Marketplace] No listing found for "${assetId}"`, 'error');
+        return;
+      }
+
+      // Land on All so an active tab filter cannot hide the thing we just
+      // navigated to, then open its detail panel.
+      activeTab.value = 'all';
+      selectedCategory.value = 'all';
+      profileUserId.value = null;
+      selectedWorkflow.value = item;
+      addLine(`[Marketplace] Opened "${item.title}" from a link`, 'success');
+      nextTick(() => mainContentEl.value?.scrollTo({ top: 0 }));
+    };
+
+    // Warm arrival: the app was already running on some other screen and the
+    // deep-link bridge pushed a new route. The component does not remount, so
+    // initializeScreen never re-runs and this watcher is what reacts.
+    watch(
+      () => route.query.item,
+      (assetId) => {
+        if (assetId) openByAssetId(String(assetId));
+      }
+    );
+
     const initializeScreen = () => {
       terminalLines.value = [];
       addLine('Loading marketplace...', 'info');
@@ -1637,6 +1690,8 @@ export default {
       const urlParams = new URLSearchParams(window.location.search);
       const paymentStatus = urlParams.get('payment');
       const itemId = urlParams.get('itemId');
+      // ?item=<asset-id> — an agnt:// link that opened the app on this screen.
+      const deepLinkAssetId = urlParams.get('item');
 
       // Non-blocking: fetch all data in parallel, then handle payment redirects
       store.dispatch('marketplace/updateFilters', { assetType: 'all' }).then(() => {
@@ -1669,6 +1724,11 @@ export default {
         if (featuredCount > 0) {
           addLine(`${featuredCount} featured items available`, 'success');
         }
+
+        // Cold arrival: the window was loaded directly onto /marketplace?item=…
+        // Must run AFTER the fetches above — there is nothing to find until the
+        // listings are in the store.
+        if (deepLinkAssetId) openByAssetId(deepLinkAssetId);
 
         // Handle payment status from URL (needs data to be loaded first)
         if (paymentStatus === 'success' && itemId) {

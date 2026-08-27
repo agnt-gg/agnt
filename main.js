@@ -30,6 +30,7 @@ import {
 } from './electron/connectionConfig.js';
 import { waitForBackend as pollBackendHealth, probeBackendOnce } from './electron/backendHealth.js';
 import { localFilePathFromUrl } from './electron/localFileLink.js';
+import { SCHEME, parseDeepLink, deepLinkFromArgv, intentToUrl } from './electron/deepLink.js';
 
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
@@ -108,6 +109,164 @@ let mainWindow;
 let backendProcess;
 // Which window attachWindowBehaviour() has already wired up (see there).
 let behaviourAttachedTo = null;
+
+// ============================================================================
+// DEEP LINKS — agnt://
+// ============================================================================
+// A link on agnt.gg that opens THIS app, whether or not it is already running.
+// The parsing and every security decision live in electron/deepLink.js; this
+// section owns only the side effects: which process wins, when the window
+// exists, and how the intent gets from the OS to the renderer.
+//
+// ── WHY THE SINGLE-INSTANCE LOCK COMES FIRST ────────────────────────────────
+// Until now nothing stopped a second AGNT launching, because nothing ever
+// launched one — the user did, deliberately, and port preflight turned the
+// collision into a choice. A protocol handler changes that: on Windows and
+// Linux the OS answers a link by starting a NEW process with the URL in argv.
+// Without a lock, every click on a link would fork a second backend that
+// cannot bind 3333 and a second window fighting the first. So the lock is not
+// a nicety here, it is the thing that makes a protocol handler viable at all.
+//
+// It must also run BEFORE 'ready', because that is where the backend is forked
+// and the window created. app.quit() before ready means neither happens.
+
+/** Parsed intent waiting for a window to exist. See takePendingIntent(). */
+let pendingIntent = null;
+
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  // A first instance is already running and has been handed our argv through
+  // its 'second-instance' event. Leave without touching the backend, the
+  // window or the diagnostics directory — this process's entire job was to
+  // deliver a URL, and it has.
+  //
+  // app.exit(0), NOT app.quit(). MEASURED, not assumed: with app.quit() the
+  // losing instance still fires 'ready' before the quit completes — confirmed
+  // by pid in a standalone Electron harness, where the process that logged
+  // "lock refused" went on to log the ready event a few milliseconds later.
+  // In this app 'ready' is where the backend is forked, so every click on an
+  // agnt:// link while AGNT was running would have briefly started a second
+  // backend fighting for port 3333. app.exit() skips the quit sequence
+  // entirely and the ready event never arrives.
+  console.log('[deep-link] another AGNT owns this session; handing over and exiting');
+  app.exit(0);
+}
+
+/**
+ * A link arrived. Route it to the window, or hold it until there is one.
+ *
+ * @param {string} raw
+ * @param {'argv'|'open-url'|'second-instance'} source - for the log line only
+ */
+function handleDeepLink(raw, source) {
+  const intent = parseDeepLink(raw);
+  if (!intent.ok) {
+    // Refusals are logged, never surfaced. The user did not type this and
+    // cannot act on it, and a dialog would just teach a hostile page that it
+    // can make our app pop up an alert.
+    console.warn(`[deep-link] refused (${source}): ${intent.reason}`);
+    return;
+  }
+  console.log(`[deep-link] ${source} → ${intent.action} ${intent.path}`);
+
+  if (deliverToRenderer(intent)) {
+    focusMainWindow();
+    return;
+  }
+  // No window yet — this is a cold start. createWindow() consumes it so the
+  // app comes up already on the right page rather than flashing the dashboard
+  // and then navigating.
+  pendingIntent = intent;
+}
+
+/**
+ * Hand an intent to the renderer, if there is one that can take it.
+ *
+ * A window that exists but is still loading cannot receive an IPC message —
+ * the listener is registered by the app that has not booted yet — so the send
+ * waits for the load to finish rather than vanishing.
+ *
+ * @returns {boolean} true if the renderer has it (or definitely will)
+ */
+function deliverToRenderer(intent) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const wc = mainWindow.webContents;
+  const send = () => wc.send('deep-link', intent);
+  if (wc.isLoading()) wc.once('did-finish-load', send);
+  else send();
+  return true;
+}
+
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+}
+
+/**
+ * Consume the intent a cold start is waiting on, if any.
+ *
+ * Single-use by design: it is read once, when the window is built, and must
+ * not fire again on a later reconnect or reload — arriving back on a page you
+ * deep-linked to twenty minutes ago is not a feature.
+ *
+ * @returns {{path: string}|null}
+ */
+function takePendingIntent() {
+  const intent = pendingIntent;
+  pendingIntent = null;
+  return intent;
+}
+
+/**
+ * Claim the scheme with the OS, on every launch.
+ *
+ * Re-registering each time is deliberate: whichever AGNT you started last owns
+ * `agnt://`. That makes a dev build testable without a packaged installer, and
+ * it self-heals — launch the installed app and it takes the scheme back. The
+ * alternative (register once, first writer wins) leaves a developer's checkout
+ * owning the scheme with no obvious way to notice or undo it.
+ *
+ * Unpackaged, the registration has to name the Electron binary AND the app
+ * directory, or the OS launches a bare Electron with no app to run.
+ */
+function registerScheme() {
+  if (process.env.AGNT_NO_PROTOCOL_REGISTER === '1') {
+    console.log('[deep-link] registration skipped (AGNT_NO_PROTOCOL_REGISTER=1)');
+    return;
+  }
+  const ok = app.isPackaged
+    ? app.setAsDefaultProtocolClient(SCHEME)
+    : app.setAsDefaultProtocolClient(SCHEME, process.execPath, [path.resolve(process.argv[1] ?? '.')]);
+  console.log(`[deep-link] ${SCHEME}:// registered=${ok} packaged=${app.isPackaged}`);
+}
+
+if (gotTheLock) {
+  // Windows and Linux: the OS starts a new process with the URL in argv, our
+  // lock refuses it, and its argv arrives here.
+  app.on('second-instance', (_event, argv) => {
+    const raw = deepLinkFromArgv(argv);
+    if (raw) handleDeepLink(raw, 'second-instance');
+    else focusMainWindow(); // launched again with no link: just come to the front
+  });
+
+  // macOS never uses argv for this. It delivers 'open-url' to the running
+  // instance — and it can fire BEFORE 'ready' on a cold start, which is why
+  // this listener is registered at module scope rather than inside ready.
+  // Registering it late is the classic way the first click after a cold launch
+  // silently does nothing, and it only reproduces on a real signed build.
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url, 'open-url');
+  });
+
+  // Cold start on Windows/Linux: the link is in our own argv.
+  const rawFromArgv = deepLinkFromArgv(process.argv);
+  if (rawFromArgv) handleDeepLink(rawFromArgv, 'argv');
+
+  app.whenReady().then(registerScheme);
+}
 
 // ============================================================================
 // CONNECTION — local backend (default) vs remote backend
@@ -1464,7 +1623,12 @@ function createWindow(opts = {}) {
     // the server took to answer — which, for an unresponsive host, was forever.
     mainWindow.loadFile(statusPagePath());
   } else {
-    mainWindow.loadURL(isRemoteActive() ? connection.url : `http://localhost:${port}`);
+    const origin = isRemoteActive() ? connection.url : `http://localhost:${port}`;
+    // A cold start from a deep link lands ON the linked page rather than
+    // painting the dashboard and navigating away from it a moment later. The
+    // intent is consumed here, so a later reload returns to the origin.
+    const intent = takePendingIntent();
+    mainWindow.loadURL(intent ? intentToUrl(origin, intent) : origin);
   }
 
   // The OTHER way this app could die: the health check passes, then the origin
@@ -1612,6 +1776,13 @@ ipcMain.handle('connection:replace-local', async () => replaceLocalBackend());
 // documented "~12s" was really 366s. See the header of that module.
 
 app.on('ready', () => {
+  // Belt and braces behind the app.exit(0) above. That call is what actually
+  // prevents this handler running on an instance that lost the single-instance
+  // lock; this guard is what keeps that true if the exit path is ever softened
+  // back to app.quit(). Forking a second backend here is the failure it buys
+  // protection against, and it is not a cheap one.
+  if (!gotTheLock) return;
+
   // Native minidumps (V8/native aborts never reach JS) plus the four Electron
   // death modes: render-process-gone, child-process-gone, gpu crash, and a
   // frozen window. Windows are auto-watched via 'browser-window-created', so

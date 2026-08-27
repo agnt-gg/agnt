@@ -20,6 +20,30 @@ contextBridge.exposeInMainWorld('electron', {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
+  /**
+   * `agnt://` links, delivered while the app is already running.
+   *
+   * Receive-only, and one-way by construction: the renderer cannot ask for a
+   * link and cannot send one. The payload is the PARSED intent — main.js has
+   * already validated the action against an allowlist and dropped every
+   * parameter it does not recognise — so what arrives here is
+   * `{ action, params, path }` and never the raw URL. A renderer that only
+   * ever sees a sanitised object cannot be the place a bad one gets through.
+   *
+   * A cold start does NOT arrive on this channel: there is no renderer yet, so
+   * main.js loads the window straight onto the target path instead. Both paths
+   * end at the same route, which is why the frontend handles the query string
+   * as well as this event.
+   *
+   * @param {(intent: {action: string, params: object, path: string}) => void} cb
+   * @returns {() => void} unsubscribe
+   */
+  onDeepLink: (cb) => {
+    const handler = (_evt, intent) => cb(intent);
+    ipcRenderer.on('deep-link', handler);
+    return () => ipcRenderer.removeListener('deep-link', handler);
+  },
+
   // Update system - one-way messages
   openDownloadPage: () => ipcRenderer.send('open-download-page'),
   openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),

@@ -412,9 +412,62 @@ FunctionEnd
 !macroend
 
 ; =========================================================================
+; agnt:// URL SCHEME
+;
+; WHY THIS IS HAND-WRITTEN AND NOT `build.protocols`
+; -------------------------------------------------
+; electron-builder honours `protocols` on macOS (Info.plist CFBundleURLTypes)
+; and on Linux (desktop-file MimeType), and NOT on Windows: there is not one
+; reference to it anywhere under app-builder-lib/out/targets/nsis. Setting the
+; key and assuming three platforms were covered would leave Windows — the
+; majority of installs — silently without a handler.
+;
+; HKCU, NOT HKLM/HKCR, EVEN FOR A PER-MACHINE INSTALL
+; ---------------------------------------------------
+; electron-builder's NSIS templates define no shell-context variable (no SHCTX),
+; so there is nothing to follow the install mode with. Per-user is the safer
+; default of the two: it needs no elevation, it cannot collide with another
+; product's machine-wide claim, and it is scoped to the person who chose to
+; install AGNT. On a per-machine install a SECOND user on the same PC gets the
+; scheme the first time they run AGNT, because main.js re-registers on every
+; launch — the two layers cover each other.
+;
+; The runtime registration is also what makes an unpackaged dev build testable,
+; and what lets a reinstall take the scheme back from one.
+; =========================================================================
+!macro AGNT_REGISTER_PROTOCOL
+  ; "URL Protocol" must exist and must be EMPTY — its presence is the flag
+  ; Windows reads to decide a key is a URL scheme; its value is never used.
+  WriteRegStr HKCU "Software\Classes\agnt" "" "URL:AGNT Protocol"
+  WriteRegStr HKCU "Software\Classes\agnt" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\agnt\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
+  ; "%1" stays quoted. Unquoted, a URL containing a space is split across argv
+  ; and the app receives a truncated link — and worse, everything after the
+  ; space arrives as separate arguments of our own process.
+  WriteRegStr HKCU "Software\Classes\agnt\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
+!macroend
+
+; =========================================================================
 ; Original hook, preserved: ASAR is enabled; nothing to clean at install.
 ; =========================================================================
 !macro customInstall
   ; ASAR is now enabled - do not delete app.asar files
   ; The old cleanup code was removed because we now use ASAR packaging
+  !insertmacro AGNT_REGISTER_PROTOCOL
+!macroend
+
+; =========================================================================
+; Leave nothing behind pointing at an executable that is gone.
+;
+; A stale handler is not cosmetic: Windows keeps offering the association, and
+; clicking a link produces a failure with no explanation. Deleted only if it
+; still names OUR install directory — if the user has since installed AGNT
+; somewhere else, that install now owns the scheme and this uninstall must not
+; break it.
+; =========================================================================
+!macro customUnInstall
+  ReadRegStr $R0 HKCU "Software\Classes\agnt\shell\open\command" ""
+  ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "%1"'
+    DeleteRegKey HKCU "Software\Classes\agnt"
+  ${EndIf}
 !macroend
