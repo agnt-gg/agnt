@@ -202,7 +202,24 @@ class UserModel {
       const fields = [];
       const params = [];
 
-      if (selectedProvider !== undefined) {
+      // A null/empty provider is NEVER a user intent: the product has no
+      // "clear my default provider" action. It arrives when a client writes a
+      // MODEL while its own provider state is still unhydrated — setModel and
+      // ensureValidModel both send `state.selectedProvider` verbatim, and that
+      // is null during the boot race and after any code path that clears the
+      // selection.
+      //
+      // Honouring it nulled BOTH columns. getUserSettings then masks a NULL
+      // provider as 'Anthropic' / 'claude-3-5-sonnet-20240620', so a WIPED row
+      // is indistinguishable from a deliberate switch to Anthropic — which is
+      // exactly the reported "my default keeps becoming Anthropic", and
+      // exactly the pair a settings watcher captured on the flip.
+      //
+      // Fall through to the model-only branch instead, so the model still
+      // lands and the provider the user chose survives.
+      const providerIsWritable = typeof selectedProvider === 'string' && selectedProvider.trim() !== '';
+
+      if (providerIsWritable) {
         // If provider is being changed, always update model too (even to null)
         // to prevent stale model from a different provider lingering in the DB.
         fields.push('default_provider = ?');

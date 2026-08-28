@@ -381,6 +381,21 @@ export default {
       if (selectedProvider.value) {
         const currentProvider = selectedProvider.value.toLowerCase();
 
+        // A provider the user has chosen is kept even when this pass does not
+        // see it in the connected list. /auth/connected has been observed
+        // flapping between the full set and a partial one every few minutes,
+        // and each flap re-fires the watcher below. Without this, one partial
+        // answer walks the ladder underneath and rewrites the account default
+        // — the ladder's first rung is Anthropic. Disconnecting a provider is
+        // handled by its own explicit flow, not by inference from one poll.
+        const isKnownBuiltIn = store.state.aiProvider.providers.some(
+          (p) => String(p).toLowerCase() === currentProvider
+        );
+        if (isKnownBuiltIn && connectedAIProviders.length === 0) {
+          await store.dispatch('aiProvider/ensureValidModel');
+          return;
+        }
+
         // Don't auto-switch if Local is selected - let the user keep their choice
         if (currentProvider === 'local') {
           // Just ensure valid model, don't change provider

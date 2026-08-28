@@ -71,6 +71,54 @@ describe('setProvider / setModel transient mode', () => {
   });
 });
 
+describe('a model write never carries a null provider', () => {
+  /**
+   * The server treats `selectedProvider: null` as an EXPLICIT write and nulls
+   * default_provider AND default_model. A nulled provider then reads back as
+   * 'Anthropic'. So sending the provider we do not have turns "save my model"
+   * into "erase my account default" — the reported "my default keeps becoming
+   * Anthropic / stopped saving".
+   *
+   * The server refuses the erasure too (see providerDefaultErasure.test.js);
+   * this is the client half, so the bad payload never leaves in the first
+   * place.
+   */
+  let fetchMock;
+  let commit;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', { getItem: () => 'test-token' });
+    commit = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const bodyOf = (mock) => JSON.parse(mock.mock.calls[0][1].body);
+
+  it('omits selectedProvider entirely when state has none', async () => {
+    const state = { selectedProvider: null, selectedModel: null };
+    await setModel({ commit, state }, 'claude-opus-5');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = bodyOf(fetchMock);
+    expect('selectedProvider' in body).toBe(false);
+    expect(body.selectedModel).toBe('claude-opus-5');
+  });
+
+  it('still sends the pair when a provider IS selected', async () => {
+    const state = { selectedProvider: 'Claude-Code', selectedModel: 'claude-opus-5' };
+    await setModel({ commit, state }, 'claude-opus-6');
+
+    const body = bodyOf(fetchMock);
+    expect(body.selectedProvider).toBe('Claude-Code');
+    expect(body.selectedModel).toBe('claude-opus-6');
+  });
+});
+
 describe('canonicalizeProviderCase', () => {
   const providers = ['Anthropic', 'Claude-Code', 'OpenAI-Codex', 'Local'];
 

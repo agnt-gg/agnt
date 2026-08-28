@@ -1159,10 +1159,16 @@ export default {
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              selectedProvider: state.selectedProvider,
-              selectedModel: newModel,
-            }),
+            // Send the provider ONLY when we actually have one. Sending null
+            // is not "leave it alone" to the server — it is an explicit write
+            // that nulls default_provider AND default_model, and a nulled
+            // provider reads back as 'Anthropic'. A model write must never be
+            // able to erase the user's chosen provider.
+            body: JSON.stringify(
+              state.selectedProvider
+                ? { selectedProvider: state.selectedProvider, selectedModel: newModel }
+                : { selectedModel: newModel }
+            ),
           });
 
           if (!response.ok) {
@@ -1604,7 +1610,13 @@ export default {
             await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
               method: 'PUT',
               headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ selectedProvider: state.selectedProvider, selectedModel: state.selectedModel }),
+              // Same rule as setModel: never let a model correction carry a
+              // null provider, which the server would write as an erasure.
+              body: JSON.stringify(
+                state.selectedProvider
+                  ? { selectedProvider: state.selectedProvider, selectedModel: state.selectedModel }
+                  : { selectedModel: state.selectedModel }
+              ),
             });
           }
         } catch (e) {
