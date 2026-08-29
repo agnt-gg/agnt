@@ -49,6 +49,21 @@ const EXTRA_REQUIREMENTS = [];
 let environmentReadyFor = null;
 
 /**
+ * The install currently in progress, if any.
+ *
+ * The memo above is only written AFTER the await chain finishes, so two callers
+ * that arrive before it is set would both miss it and both run pip against the
+ * same directory. That was unreachable while one tool owned this environment.
+ * It is reachable now: two browser tools share the venv, and a single chat turn
+ * can call both at once. Concurrent pip runs on one venv corrupt it in ways
+ * that surface much later as a missing module.
+ *
+ * Holding the PROMISE rather than a boolean is what makes the second caller
+ * wait for the first caller's install instead of starting its own.
+ */
+let environmentInFlight = null;
+
+/**
  * Where the venv lives and what it contains.
  *
  * The CLI console script (`browser-use`) ships inside the same wheel as the
@@ -74,6 +89,7 @@ export function browserUsePaths() {
 /** Reset the memo. Test seam, and the way a failed install is retried. */
 export function _resetEnvironmentMemo() {
   environmentReadyFor = null;
+  environmentInFlight = null;
 }
 
 /**
@@ -82,9 +98,20 @@ export function _resetEnvironmentMemo() {
  * before every single browser task.
  */
 export async function ensureEnvironment() {
-  const { workingDir, venvPath, python } = browserUsePaths();
+  const { python } = browserUsePaths();
 
   if (environmentReadyFor === BROWSER_USE_VERSION && fs.existsSync(python)) return python;
+
+  // Cleared when the install settles, so a FAILED install is retried by the
+  // next caller rather than being memoised as a permanently broken promise.
+  if (!environmentInFlight) {
+    environmentInFlight = prepareEnvironment().finally(() => { environmentInFlight = null; });
+  }
+  return environmentInFlight;
+}
+
+async function prepareEnvironment() {
+  const { workingDir, venvPath, python } = browserUsePaths();
 
   await ensureVenv(workingDir, venvPath, python);
 

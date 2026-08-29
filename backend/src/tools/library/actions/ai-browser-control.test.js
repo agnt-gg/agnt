@@ -2,7 +2,7 @@
  * CONTRACT: Browser Control runs model-authored Python, so the interesting
  * assertions are all about what it REFUSES.
  *
- * Three properties are load-bearing, and each is a way this could go wrong
+ * Four properties are load-bearing, and each is a way this could go wrong
  * silently rather than loudly:
  *
  *   1. It never runs outside a conversation. A workflow node's parameters are
@@ -20,6 +20,9 @@
  *      refuses outright; BU_CDP_URL is an HTTP endpoint the widget does not
  *      serve. Both are plausible leftovers in a developer's shell, and both fail
  *      in ways that look nothing like their cause.
+ *
+ *   4. It never runs a program against a daemon it has not aimed and verified.
+ *      THIS ONE SHIPPED BROKEN. See "the shared daemon follows the widget".
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -53,21 +56,40 @@ const OTHER_CDP = 'ws://127.0.0.1:60000/other';
 const CHAT = { userId: 'u1', provider: 'Anthropic', model: 'claude-sonnet-4-5' };
 const WORKFLOW = { userId: 'u1' };
 
-/** A child process that reports `result` once the caller has written stdin. */
-function fakeChild({ stdout = '', stderr = '', code = 0 } = {}) {
+/**
+ * How many targets the preflight probe reports.
+ *
+ * The probe and the user's program go through the SAME spawn and are only
+ * distinguishable by what lands on stdin. Separating them here is what lets a
+ * test say "the program fails" without the preflight failing first — an earlier
+ * version of this file replaced `spawn` wholesale and the preflight silently
+ * ate every payload.
+ */
+let preflightTargets;
+
+/** What the user's program does: () => ({ stdout, stderr, code }) or 'hang'. */
+let programBehaviour;
+
+function makeChild() {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
-  child.kill = vi.fn();
+  // Only ever called on timeout, where the real code resolves on 'close'.
+  child.kill = vi.fn(() => child.emit('close', null));
   child.stdin = {
     written: '',
     on: vi.fn(),
     write(text) { this.written += text; },
-    end: () => {
+    end() {
+      const program = this.written;
+      const outcome = program.includes('__AGNT_TARGETS__')
+        ? { stdout: `__AGNT_TARGETS__ ${preflightTargets}` }
+        : programBehaviour(program);
+      if (outcome === 'hang') return;
       setImmediate(() => {
-        if (stdout) child.stdout.emit('data', Buffer.from(stdout));
-        if (stderr) child.stderr.emit('data', Buffer.from(stderr));
-        child.emit('close', code);
+        if (outcome.stdout) child.stdout.emit('data', Buffer.from(outcome.stdout));
+        if (outcome.stderr) child.stderr.emit('data', Buffer.from(outcome.stderr));
+        child.emit('close', outcome.code ?? 0);
       });
     },
   };
@@ -75,13 +97,17 @@ function fakeChild({ stdout = '', stderr = '', code = 0 } = {}) {
 }
 
 const envOf = (call) => call[2].env;
+/** The child that ran the user's program — the last one spawned. */
+const lastProgram = () => spawn.mock.results[spawn.mock.results.length - 1].value.stdin.written;
 
 beforeEach(() => {
   vi.clearAllMocks();
   _resetDaemonEndpoint();
   runProcess.mockResolvedValue({ stdout: '', stderr: '' });
   waitForSurface.mockResolvedValue({ instanceId: 'w1', cdpUrl: CDP });
-  spawn.mockImplementation(() => fakeChild({ stdout: 'hello from the page' }));
+  preflightTargets = 1;
+  programBehaviour = () => ({ stdout: 'hello from the page' });
+  spawn.mockImplementation(() => makeChild());
   delete process.env.BU_NAME;
   delete process.env.BU_CDP_URL;
 });
@@ -113,9 +139,12 @@ describe('it only runs where a person is present', () => {
 
   it('runs for a chat turn', async () => {
     const out = await action.execute({ python: 'print(page_info())' }, {}, CHAT);
+
     expect(out.success).toBe(true);
     expect(out.output).toBe('hello from the page');
-    expect(spawn).toHaveBeenCalledTimes(1);
+    // Preflight, then the program.
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(lastProgram()).toBe('print(page_info())');
   });
 
   it('declares itself chat-only, which is what keeps it out of the node palette', () => {
@@ -153,9 +182,9 @@ describe('it only ever drives a browser AGNT is rendering', () => {
   });
 
   it('forgets a surface whose bridge is gone, so the retry can succeed', async () => {
-    spawn.mockImplementation(() => fakeChild({
+    programBehaviour = () => ({
       stderr: 'RuntimeError: Failed to establish CDP connection', code: 1,
-    }));
+    });
 
     const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
 
@@ -169,6 +198,7 @@ describe('the environment it hands the CLI', () => {
   it('points it at the widget with BU_CDP_WS', async () => {
     await action.execute({ python: 'print(1)' }, {}, CHAT);
     expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(CDP);
+    expect(envOf(spawn.mock.calls[1]).BU_CDP_WS).toBe(CDP);
   });
 
   it('CLEARS an inherited BU_NAME and BU_CDP_URL', async () => {
@@ -199,26 +229,67 @@ describe('the environment it hands the CLI', () => {
   it('sends the program on stdin, never as an argument', async () => {
     // The whole reason browserUseRunner.js exists. An argument is a place for
     // quoting to go wrong; stdin is not.
-    let child;
-    spawn.mockImplementation(() => { child = fakeChild({ stdout: 'ok' }); return child; });
-
     await action.execute({ python: 'print(page_info())' }, {}, CHAT);
 
-    expect(spawn.mock.calls[0][1]).toEqual([]);
-    expect(child.stdin.written).toBe('print(page_info())');
+    for (const call of spawn.mock.calls) expect(call[1]).toEqual([]);
+    expect(lastProgram()).toBe('print(page_info())');
   });
 });
 
 describe('the shared daemon follows the widget', () => {
-  it('does not restart anything on the first call', async () => {
+  it('AIMS THE DAEMON ON THE FIRST CALL, and proves it sees the surface', async () => {
+    // THE BUG THAT SHIPPED. The first version skipped the restart when it had
+    // not yet aimed the daemon itself, reasoning there was nothing of ours to
+    // replace. But the daemon is a detached process that OUTLIVES the backend,
+    // and a live daemon never re-reads BU_CDP_WS. After an app restart it was
+    // still bound to a dead bridge from the previous session, reported zero
+    // targets, was judged healthy by upstream's probe (an empty target list is
+    // still a "result"), and a navigation then "succeeded" against a page in no
+    // visible window — while the user's widget sat on a completely different
+    // page and the tool reported the ghost as fact.
     await action.execute({ python: 'print(1)' }, {}, CHAT);
-    expect(runProcess).not.toHaveBeenCalled();
+
+    expect(runProcess).toHaveBeenCalledTimes(1);
+    expect(runProcess.mock.calls[0][1].join(' ')).toMatch(/admin\.restart_daemon\(\)/);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(CDP);
+  });
+
+  it('REFUSES to run the program when the daemon sees no targets', async () => {
+    preflightTargets = 0;
+
+    const out = await action.execute({ python: 'print(page_info())' }, {}, CHAT);
+
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/cannot see the Browser widget/i);
+    // Exactly one spawn: the preflight. The user's program never ran, so it
+    // cannot report a confident result about a window nobody is looking at.
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-aims on the next call after a failed preflight', async () => {
+    preflightTargets = 0;
+    await action.execute({ python: 'print(1)' }, {}, CHAT);
+    runProcess.mockClear();
+
+    preflightTargets = 1;
+    const out = await action.execute({ python: 'print(2)' }, {}, CHAT);
+
+    // A bad daemon must not be remembered as the aimed one.
+    expect(runProcess).toHaveBeenCalledTimes(1);
+    expect(out.success).toBe(true);
   });
 
   it('does not restart while the surface is unchanged', async () => {
     await action.execute({ python: 'print(1)' }, {}, CHAT);
+    runProcess.mockClear();
+    spawn.mockClear();
+
     await action.execute({ python: 'print(2)' }, {}, CHAT);
+
     expect(runProcess).not.toHaveBeenCalled();
+    // No preflight either: the daemon is already proven for this endpoint.
+    expect(spawn).toHaveBeenCalledTimes(1);
   });
 
   it('restarts when the surface changes', async () => {
@@ -226,12 +297,15 @@ describe('the shared daemon follows the widget', () => {
     // old one is alive and healthy, so nothing upstream would notice that it is
     // the wrong window — the same cross-window bug browserSurfaces.js guards.
     await action.execute({ python: 'print(1)' }, {}, CHAT);
+    runProcess.mockClear();
+    spawn.mockClear();
     waitForSurface.mockResolvedValue({ instanceId: 'w2', cdpUrl: OTHER_CDP });
 
     await action.execute({ python: 'print(2)' }, {}, CHAT);
 
     expect(runProcess).toHaveBeenCalledTimes(1);
     expect(runProcess.mock.calls[0][1].join(' ')).toMatch(/admin\.restart_daemon\(\)/);
+    expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(OTHER_CDP);
     expect(envOf(spawn.mock.calls[1]).BU_CDP_WS).toBe(OTHER_CDP);
   });
 
@@ -242,17 +316,16 @@ describe('the shared daemon follows the widget', () => {
 
     const out = await action.execute({ python: 'print(2)' }, {}, CHAT);
 
-    // ensure_daemon will probe the survivor, find it pointed at a dead socket
-    // and replace it. Failing the user's step over that would be worse.
+    // ensure_daemon will spawn a replacement, and the preflight proves it.
     expect(out.success).toBe(true);
   });
 });
 
 describe('what comes back', () => {
   it('reports a non-zero exit with the diagnostics attached', async () => {
-    spawn.mockImplementation(() => fakeChild({
+    programBehaviour = () => ({
       stdout: 'partial', stderr: 'NameError: name "goto" is not defined', code: 1,
-    }));
+    });
 
     const out = await action.execute({ python: 'goto("x")' }, {}, CHAT);
 
@@ -262,12 +335,7 @@ describe('what comes back', () => {
   });
 
   it('explains a timeout instead of reporting an empty result', async () => {
-    spawn.mockImplementation(() => {
-      const child = fakeChild();
-      child.stdin.end = () => {};           // never finishes on its own
-      child.kill = () => child.emit('close', null);
-      return child;
-    });
+    programBehaviour = () => 'hang';
 
     const out = await action.execute({ python: 'wait_for_load()', timeoutSeconds: 0.01 }, {}, CHAT);
 
@@ -297,10 +365,10 @@ describe('the update banner is never relayed to the model', () => {
   });
 
   it('does not surface the banner as a step failure', async () => {
-    spawn.mockImplementation(() => fakeChild({
+    programBehaviour = () => ({
       stdout: 'ok',
       stderr: '[browser-harness] update available: 0.1.9 -> 0.1.10\n',
-    }));
+    });
 
     const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
 

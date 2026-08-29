@@ -62,14 +62,26 @@ import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './b
  */
 
 /**
- * The endpoint the shared daemon was last pointed at.
+ * The endpoint THIS PROCESS has pointed the shared daemon at.
  *
- * browser-harness runs ONE default daemon per machine and it caches its CDP
- * connection, so `ensure_daemon` only self-heals when that connection is DEAD.
- * With two Browser widgets open the old endpoint is very much alive, the probe
- * passes, and the daemon keeps driving the window the user is not looking at —
- * the same cross-window bug browserSurfaces.js documents and defends against on
- * its own side. Endpoint drift is therefore detected here rather than inferred.
+ * browser-harness runs one default daemon per machine, it caches its CDP
+ * connection, and a LIVE daemon never re-reads BU_CDP_WS — that variable is
+ * only consumed by a daemon at spawn time. So handing the CLI a new endpoint
+ * does nothing at all if a daemon is already running.
+ *
+ * `ensure_daemon` does not save us. Its health probe accepts any response to
+ * `Target.getTargets` that contains a "result" key, and AN EMPTY TARGET LIST IS
+ * A RESULT. A daemon bound to a bridge whose browser is long gone answers
+ * `{targetInfos: []}` and is judged healthy, forever.
+ *
+ * MEASURED, not theorised: after an app restart this variable was null, the
+ * daemon from the previous session was still alive and bound to a dead bridge,
+ * and a navigation reported complete page_info() for a page that existed in no
+ * visible window. The tool returned a true statement about a ghost.
+ *
+ * null therefore means "this process has not aimed the daemon", which is NOT
+ * the same as "the daemon is fine" — it is the single most dangerous state,
+ * because a surviving daemon is most likely to be stale right after a restart.
  */
 let daemonEndpoint = null;
 
@@ -166,7 +178,9 @@ class AIBrowserControl extends BaseAction {
     try {
       const cdpUrl = await this.resolveSurface(workflowEngine, userId);
       const cli = await ensureCli();
-      await this.ensureDaemonTargets(cdpUrl);
+      if (await this.ensureDaemonTargets(cdpUrl)) {
+        await this.verifyDaemonSurface(cli, cdpUrl);
+      }
 
       const outcome = await this.runStep(cli, python, cdpUrl, params);
 
@@ -267,24 +281,59 @@ class AIBrowserControl extends BaseAction {
    * different window, because from the daemon's point of view nothing is wrong.
    */
   async ensureDaemonTargets(cdpUrl) {
-    if (daemonEndpoint === cdpUrl) return;
+    if (daemonEndpoint === cdpUrl) return false;
 
-    if (daemonEndpoint !== null) {
-      console.log('[Browser Control] browser surface changed; restarting the browser-use daemon.');
-      const { python } = browserUsePaths();
-      try {
-        // restart_daemon() only stops; the next CLI call spawns a fresh daemon
-        // through ensure_daemon() with the environment we hand it. It verifies
-        // the daemon's identity over IPC before signalling anything, so a reused
-        // pid is never killed.
-        await runProcess(python, ['-c', 'from browser_harness import admin; admin.restart_daemon()']);
-      } catch (err) {
-        // Not fatal: a daemon we could not stop is one ensure_daemon will
-        // probe, find pointed at a dead socket, and replace on its own.
-        console.warn('[Browser Control] could not stop the previous daemon:', err.message);
-      }
+    // Restart on the FIRST call too. The previous version skipped this when
+    // daemonEndpoint was null, reasoning that there was nothing of ours to
+    // replace — but the daemon is a detached OS process that outlives the
+    // backend, so "we have not aimed it yet" is exactly when it is most likely
+    // to be aimed somewhere stale. Only a daemon we SPAWNED with this
+    // BU_CDP_WS can be trusted to be driving this surface.
+    //
+    // Cost is one extra spawn per backend start. The alternative cost is
+    // silently driving a window nobody is looking at.
+    console.log(`[Browser Control] pointing the browser-use daemon at ${cdpUrl}`);
+    const { python } = browserUsePaths();
+    try {
+      // restart_daemon() only stops; the next CLI call spawns a fresh daemon
+      // through ensure_daemon() with the environment we hand it. It verifies
+      // the daemon's identity over IPC before signalling anything, so a reused
+      // pid is never killed.
+      await runProcess(python, ['-c', 'from browser_harness import admin; admin.restart_daemon()']);
+    } catch (err) {
+      // Not fatal on its own — the preflight below is what actually proves the
+      // daemon is driving this surface.
+      console.warn('[Browser Control] could not stop the previous daemon:', err.message);
     }
     daemonEndpoint = cdpUrl;
+    return true;
+  }
+
+  /**
+   * Prove the daemon can see the surface before running the user's program.
+   *
+   * This is the check that would have caught the ghost-navigation bug. A daemon
+   * bound to a dead bridge reports zero targets and upstream calls that healthy;
+   * running Python against it produces confident output about a page in no
+   * visible window, which is worse than any error.
+   *
+   * Only runs when the endpoint changed, so the steady-state cost is nothing.
+   */
+  async verifyDaemonSurface(cli, cdpUrl) {
+    const probe = 'print("__AGNT_TARGETS__", len(cdp("Target.getTargets")["targetInfos"]))';
+    const outcome = await this.runStep(cli, probe, cdpUrl, { timeoutSeconds: 45 });
+    const seen = /__AGNT_TARGETS__\s+(\d+)/.exec(outcome.stdout || '');
+
+    if (!seen || Number(seen[1]) === 0) {
+      // Force the next call to re-aim rather than inheriting this bad state.
+      daemonEndpoint = null;
+      throw new Error(
+        'The browser-use daemon connected but cannot see the Browser widget, so the step was not run. '
+        + 'This usually means the widget was reloaded and its bridge was replaced. '
+        + 'Close and reopen the Browser widget, then try again.'
+        + (outcome.stderr ? ` (${outcome.stderr.split('\n')[0]})` : ''),
+      );
+    }
   }
 
   timeoutSeconds(params) {
