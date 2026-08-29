@@ -34,9 +34,25 @@ So Browser Control is hidden from the workflow palette, and it also refuses a no
 
 What it will **never** do is drive *your* browser. The underlying `browser-use` CLI, left to itself, looks for any Chrome with remote debugging enabled and attaches to it — which would be your real one, with your logged-in sessions. AGNT does not do that: it either drives its own widget or opens its own browser.
 
-The `surface` output says which one you got: `widget` or `launched`.
+The `surface` output says which one you got: `widget`, or the name of the browser that was opened.
 
-Set `AGNT_BROWSER_PATH` to choose which browser gets launched. Chrome, Chromium and Edge are found automatically.
+### Asking for a particular browser
+
+Name one and it opens that, in its own window:
+
+> "open Brave and go to my X profile"
+
+`chrome`, `brave`, `edge`, `vivaldi`, `opera`, `chromium`, or an absolute path to an executable. Naming a browser **skips the canvas widget** — the widget is an Electron surface and cannot be Brave, so quietly using it would answer a different question than the one asked.
+
+If the named browser is not installed, the error says so and lists the ones that are. `AGNT_BROWSER_PATH` still sets the default when nothing is named.
+
+### It is a clean profile, so you are not signed in
+
+The launched browser has its own profile with no cookies and no sessions, so sites see a logged-out visitor. That is deliberate: it means the tool cannot act as you by accident.
+
+The profile **persists between runs**, so if you sign in to a site once in AGNT's browser, it stays signed in for later sessions — without ever touching your real browser's profile.
+
+If a browser from a previous run is still holding that profile (AGNT crashed, say), AGNT adopts that window rather than failing to launch on top of it.
 
 ## Writing a step
 

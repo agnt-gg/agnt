@@ -1108,6 +1108,12 @@
           "inputSize": "half",
           "default": 120,
           "description": "Hard limit for this one step. Keep steps short and call the tool again."
+        },
+        "browser": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "Only set this when the user NAMES a browser (\"open Brave and...\"). One of: chrome, brave, edge, vivaldi, opera, chromium — or an absolute path to the executable. Leave blank to use the Browser widget on the canvas, which is the default and what you want almost always. Naming a browser opens a separate window instead."
         }
       },
       "outputs": {
@@ -1125,7 +1131,7 @@
         },
         "surface": {
           "type": "string",
-          "description": "\"widget\" for the canvas Browser widget, \"launched\" for a clean browser AGNT opened because no widget was available"
+          "description": "\"widget\" for the canvas Browser widget, otherwise the name of the browser AGNT launched (e.g. \"Brave\")"
         },
         "error": {
           "type": "string",

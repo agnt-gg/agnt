@@ -4,7 +4,7 @@ import {
   waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl, getActiveSurface,
 } from '../../../services/browserSurfaces.js';
 import {
-  ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket,
+  ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
 } from './browserFallbackSurface.js';
 import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
@@ -147,12 +147,21 @@ class AIBrowserControl extends BaseAction {
         default: 120,
         description: 'Hard limit for this one step. Keep steps short and call the tool again.',
       },
+      browser: {
+        type: 'string',
+        inputType: 'text',
+        inputSize: 'half',
+        description: 'Only set this when the user NAMES a browser ("open Brave and..."). '
+          + 'One of: chrome, brave, edge, vivaldi, opera, chromium — or an absolute path to the '
+          + 'executable. Leave blank to use the Browser widget on the canvas, which is the default '
+          + 'and what you want almost always. Naming a browser opens a separate window instead.',
+      },
     },
     outputs: {
       output: { type: 'string', description: 'Everything the Python printed' },
       diagnostics: { type: 'string', description: 'Warnings the CLI wrote to stderr' },
       url: { type: 'string', description: 'The browser surface that was driven' },
-      surface: { type: 'string', description: '"widget" for the canvas Browser widget, "launched" for a clean browser AGNT opened because no widget was available' },
+      surface: { type: 'string', description: '"widget" for the canvas Browser widget, otherwise the name of the browser AGNT launched (e.g. "Brave")' },
       error: { type: 'string', description: 'Why the step could not be run' },
     },
   };
@@ -185,7 +194,9 @@ class AIBrowserControl extends BaseAction {
     }
 
     try {
-      const { cdpUrl, kind } = await this.resolveSurface(workflowEngine, userId);
+      const { cdpUrl, kind } = await this.resolveSurface(
+        workflowEngine, userId, 8000, undefined, params.browser,
+      );
       const cli = await ensureCli();
       if (await this.ensureDaemonTargets(cdpUrl)) {
         await this.verifyDaemonSurface(cli, cdpUrl);
@@ -222,7 +233,7 @@ class AIBrowserControl extends BaseAction {
       return this.formatOutput({
         success: true,
         url: cdpUrl,
-        surface: kind,
+        surface: kind === 'launched' ? (launchedBrowserLabel() || 'launched') : kind,
         output: outcome.stdout,
         diagnostics: outcome.stderr || null,
         error: null,
@@ -269,9 +280,24 @@ class AIBrowserControl extends BaseAction {
    *
    * @returns {{ cdpUrl: string, kind: 'widget'|'launched' }}
    */
-  async resolveSurface(workflowEngine, userId, waitMs = 8000, probe = undefined) {
+  async resolveSurface(workflowEngine, userId, waitMs = 8000, probe = undefined, browser = '') {
     const workspaceId = workflowEngine?.workspaceState?.id || null;
     const instanceId = workflowEngine?.workspaceState?.browserInstanceId || null;
+
+    // A NAMED BROWSER SKIPS THE WIDGET ENTIRELY.
+    //
+    // The widget is an Electron surface; it is not Brave, and it cannot become
+    // Brave. So "open Brave and go to X" cannot be satisfied by the widget at
+    // all, and quietly using it anyway would answer a different question than
+    // the one asked. Same precedent as the Browser Agent's externalWindow: an
+    // explicit human instruction outranks the convenient default.
+    if (String(browser || '').trim()) {
+      const named = await ensureFallbackSurface({ browser, log: (m) => console.log(m) });
+      if (!isLoopbackWebSocket(named)) {
+        throw new Error(`Refusing to drive a non-local browser endpoint: ${named}`);
+      }
+      return { cdpUrl: named, kind: 'launched' };
+    }
 
     const findWidget = (ms) => (probe
       ? waitForSurface(userId, { workspaceId, instanceId }, ms, 200, probe)

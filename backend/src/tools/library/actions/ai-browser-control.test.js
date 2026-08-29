@@ -34,6 +34,8 @@ const forgetSurfaceByUrl = vi.fn();
 const getActiveSurface = vi.fn();
 const ensureFallbackSurface = vi.fn();
 const closeFallbackSurface = vi.fn();
+/** What the launcher reports it has open; null when nothing is launched. */
+let launchedLabel = null;
 const runProcess = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
 const spawn = vi.fn();
 
@@ -55,6 +57,7 @@ vi.mock('./browserUseEnvironment.js', () => ({
 vi.mock('./browserFallbackSurface.js', () => ({
   ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
   closeFallbackSurface: (...a) => closeFallbackSurface(...a),
+  launchedBrowserLabel: () => launchedLabel,
   // The real predicate: any loopback ws:// endpoint, since a launched browser
   // picks its own port and path.
   isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
@@ -130,6 +133,7 @@ beforeEach(() => {
   waitForSurface.mockResolvedValue({ instanceId: 'w1', cdpUrl: CDP });
   getActiveSurface.mockReturnValue(null);
   ensureFallbackSurface.mockResolvedValue(LAUNCHED_CDP);
+  launchedLabel = null;
   preflightTargets = 1;
   programBehaviour = () => ({ stdout: 'hello from the page' });
   spawn.mockImplementation(() => makeChild());
@@ -202,6 +206,43 @@ describe('it only ever drives a browser AGNT is rendering', () => {
   it('prefers the widget and never launches when one is reachable', async () => {
     const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
 
+    expect(out.surface).toBe('widget');
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('a NAMED browser skips the widget, because the widget cannot be Brave', async () => {
+    // The widget is an Electron surface. "Open Brave and go to X" cannot be
+    // satisfied by it at all, so quietly using it would answer a different
+    // question than the one asked. Same precedent as externalWindow on the
+    // Browser Agent: an explicit human instruction outranks the default.
+    waitForSurface.mockResolvedValue({ instanceId: 'w1', cdpUrl: CDP });
+    launchedLabel = 'Brave';
+
+    const out = await action.execute({ python: 'print(1)', browser: 'brave' }, {}, CHAT);
+
+    expect(ensureFallbackSurface).toHaveBeenCalledWith(expect.objectContaining({ browser: 'brave' }));
+    expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(LAUNCHED_CDP);
+    // Reported by NAME, so the user knows which window opened.
+    expect(out.surface).toBe('Brave');
+  });
+
+  it('does not even look for a widget when a browser is named', async () => {
+    await action.execute({ python: 'print(1)', browser: 'brave' }, {}, CANVAS);
+    expect(waitForSurface).not.toHaveBeenCalled();
+  });
+
+  it('reports a named browser that is not installed, by name', async () => {
+    ensureFallbackSurface.mockRejectedValue(new Error('Vivaldi does not appear to be installed on this machine.'));
+
+    const out = await action.execute({ python: 'print(1)', browser: 'vivaldi' }, {}, CHAT);
+
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/Vivaldi does not appear to be installed/i);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('ignores a blank browser value rather than treating it as a request', async () => {
+    const out = await action.execute({ python: 'print(1)', browser: '   ' }, {}, CHAT);
     expect(out.surface).toBe('widget');
     expect(ensureFallbackSurface).not.toHaveBeenCalled();
   });
