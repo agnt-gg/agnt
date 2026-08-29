@@ -5,7 +5,7 @@
  * Nothing generates the manifests; they are hand-maintained copies. The node
  * spent a long time advertising three providers because the code changed and
  * the copies did not, and no test related them. Run
- * `node backend/scripts/sync-browser-agent-schema.mjs` when this fails.
+ * `node backend/scripts/sync-browser-tool-schemas.mjs` when this fails.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -73,11 +73,15 @@ describe('schema declares what the code actually reads', () => {
     // deleted ChatGoogleGenerativeAI and nothing here named a version.
     expect(BROWSER_USE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
 
-    const source = fs.readFileSync(path.join(here, 'ai-browser-use.js'), 'utf8');
+    // The pin now lives with the code that installs it, so this asserts against
+    // the installer rather than the tool that re-exports it. Reading the tool's
+    // source here would have kept passing while the installer drifted.
+    const installer = fs.readFileSync(path.join(here, 'browserUseEnvironment.js'), 'utf8');
     // Matches a string LITERAL, so the comment explaining the old behaviour
     // does not trip it. Installing from a VCS ref is the defect, whatever URL
     // it points at.
-    expect(source, 'the installer must not fetch from a VCS ref').not.toMatch(/['"]git\+/);
-    expect(source).toContain('browser-use==${BROWSER_USE_VERSION}');
+    expect(installer, 'the installer must not fetch from a VCS ref').not.toMatch(/['"]git\+/);
+    expect(installer).toContain('browser-use==${BROWSER_USE_VERSION}');
+    expect(installer).toContain(`BROWSER_USE_VERSION = '${BROWSER_USE_VERSION}'`);
   });
 });

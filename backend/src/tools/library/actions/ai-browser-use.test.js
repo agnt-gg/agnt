@@ -22,6 +22,10 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-browser-agent-'));
 
 const authManager = { getValidAccessToken: vi.fn() };
 const customProviders = { isCustomProvider: vi.fn(), getProviderCredentials: vi.fn() };
+// The venv now belongs to browserUseEnvironment.js rather than to this class,
+// so that is where the seam is. Nothing here should create a Python
+// environment; the tests that call execute() only care what happens around it.
+const environment = { ensureEnvironment: vi.fn() };
 
 vi.mock('../../../services/auth/AuthManager.js', () => ({ default: authManager }));
 vi.mock('../../../services/ai/CustomOpenAIProviderService.js', () => ({ default: customProviders }));
@@ -31,6 +35,10 @@ vi.mock('../../../utils/PathManager.js', () => ({
     getPath: (...parts) => path.join(tmpDir, ...parts),
   },
 }));
+vi.mock('./browserUseEnvironment.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ensureEnvironment: (...args) => environment.ensureEnvironment(...args),
+}));
 
 const { default: action } = await import('./ai-browser-use.js');
 const { RUNNER_PY, RESULT_SENTINEL } = await import('./browserUseRunner.js');
@@ -38,6 +46,7 @@ const { verifyGatewayToken, _resetGatewayTokens } = await import('../../../servi
 
 beforeEach(() => {
   _resetGatewayTokens();
+  environment.ensureEnvironment.mockReset();
   authManager.getValidAccessToken.mockReset().mockResolvedValue('sk-test-key');
   customProviders.isCustomProvider.mockReset().mockResolvedValue(false);
   customProviders.getProviderCredentials.mockReset();
@@ -98,7 +107,9 @@ describe('subscription providers go through the gateway', () => {
 
   it('revokes the token when the run ends, however it ends', async () => {
     let minted;
-    const spy = vi.spyOn(action, 'ensureEnvironment').mockImplementation(async () => {
+    // Fail AFTER the token has been minted: the point is that the `finally`
+    // revoke runs on the unhappy path too, not just on a clean return.
+    environment.ensureEnvironment.mockImplementation(async () => {
       minted = true;
       throw new Error('python is missing');
     });
@@ -114,7 +125,6 @@ describe('subscription providers go through the gateway', () => {
     // The grant must not outlive the run that needed it.
     const { _liveGatewayTokenCount } = await import('../../../services/ai/localGatewayTokens.js');
     expect(_liveGatewayTokenCount()).toBe(0);
-    spy.mockRestore();
   });
 });
 

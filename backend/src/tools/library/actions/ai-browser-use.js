@@ -3,7 +3,6 @@ import { spawn } from 'child_process';
 import { createHash, randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import https from 'https';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import PathManager from '../../../utils/PathManager.js';
 import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
@@ -17,37 +16,16 @@ import {
   describeModelAvailabilityError,
 } from './browserUseProviders.js';
 import { RUNNER_PY, RUNNER_VERSION, RESULT_SENTINEL } from './browserUseRunner.js';
+import { ensureEnvironment, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
 
 /**
- * The browser-use release this tool is written against.
- *
- * PINNED, AND THAT IS THE POINT. This tool used to install from
- * `git+https://github.com/browser-use/browser-use.git`, so every machine got
- * whatever `main` happened to be on the day its venv was created. Upstream then
- * removed `ChatGoogleGenerativeAI` when it dropped LangChain, and the Gemini
- * option in this node had been dead ever since — with no commit, no failing
- * test and no way to notice, because nothing here ever named a version.
- *
- * Bumping this constant is the whole upgrade procedure: the version check below
- * reinstalls when the venv disagrees.
+ * Re-exported so the Browser Agent still names its own dependency, and so the
+ * schema test can assert the pin from the tool that uses it. The constant and
+ * the code that installs it live together in browserUseEnvironment.js — the
+ * thing that NAMES a version and the thing that INSTALLS it must not be able
+ * to disagree. Bumping it there is still the whole upgrade procedure.
  */
-export const BROWSER_USE_VERSION = '0.13.8';
-
-/**
- * Packages the runner needs that browser-use does not already pull in.
- *
- * Deliberately almost empty. The old list installed langchain, langchain_openai,
- * langchain_google_genai, selenium, webdriver_manager and playwright — none of
- * which 0.13.x uses; it dropped LangChain at 0.7 and Playwright for raw CDP.
- * Worse, its "is it installed?" check did `__import__(name.replace('-','_'))`,
- * which turned `python-dotenv` into `python_dotenv` and `beautifulsoup4` into
- * `beautifulsoup4` — neither of which is importable — so the check failed every
- * time and pip re-ran on EVERY browser task.
- */
-const EXTRA_REQUIREMENTS = [];
-
-/** Per-process memo so the environment check runs once, not once per task. */
-let environmentReadyFor = null;
+export { BROWSER_USE_VERSION };
 
 class AIBrowserUse extends BaseAction {
   static schema = {
@@ -201,7 +179,7 @@ class AIBrowserUse extends BaseAction {
       providerLabel = llm.providerName;
 
       const config = this.buildRunnerConfig(resolved, instructions, llm);
-      const pythonExecutable = await this.ensureEnvironment();
+      const pythonExecutable = await ensureEnvironment();
       const outcome = await this.runRunner(pythonExecutable, config, params);
 
       if (!outcome.success) {
@@ -666,155 +644,6 @@ class AIBrowserUse extends BaseAction {
       fs.writeFileSync(stampPath, expected, 'utf8');
     }
     return runnerPath;
-  }
-
-  // ── python environment ───────────────────────────────────────────────────
-
-  /**
-   * Ensure a venv exists with exactly BROWSER_USE_VERSION installed, and return
-   * its interpreter. Memoised per process: the old code ran a full pip pass
-   * before every single browser task.
-   */
-  async ensureEnvironment() {
-    const workingDir = PathManager.getUserDataPath();
-    const venvPath = path.join(workingDir, 'browser_use_venv');
-    const isWindows = process.platform === 'win32';
-    const venvPython = isWindows
-      ? path.join(venvPath, 'Scripts', 'python.exe')
-      : path.join(venvPath, 'bin', 'python');
-
-    if (environmentReadyFor === BROWSER_USE_VERSION && fs.existsSync(venvPython)) return venvPython;
-
-    await this.ensureVenv(workingDir, venvPath, venvPython);
-
-    const installed = await this.installedBrowserUseVersion(venvPython);
-    if (installed !== BROWSER_USE_VERSION) {
-      console.log(`[Browser Agent] installing browser-use==${BROWSER_USE_VERSION} (found: ${installed || 'nothing'})`);
-      await this.pipInstall(venvPython, [`browser-use==${BROWSER_USE_VERSION}`, ...EXTRA_REQUIREMENTS]);
-
-      const confirmed = await this.installedBrowserUseVersion(venvPython);
-      if (confirmed !== BROWSER_USE_VERSION) {
-        throw new Error(
-          `Installed browser-use ${confirmed || 'nothing'} but expected ${BROWSER_USE_VERSION}. `
-          + 'Check the Python environment at ' + venvPath,
-        );
-      }
-    }
-
-    environmentReadyFor = BROWSER_USE_VERSION;
-    return venvPython;
-  }
-
-  async installedBrowserUseVersion(venvPython) {
-    const probe = 'import importlib.metadata as m;\nprint(m.version("browser-use"))';
-    try {
-      const { stdout } = await this.runProcess(venvPython, ['-c', probe]);
-      return stdout.trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async pipInstall(venvPython, packages) {
-    await this.runProcess(venvPython, ['-m', 'pip', 'install', '--upgrade', ...packages], { streamLogs: true });
-  }
-
-  async ensureVenv(workingDir, venvPath, venvPython) {
-    if (fs.existsSync(venvPython)) {
-      // A venv with no pip cannot install anything; repair it rather than
-      // failing several steps later with a confusing error.
-      try {
-        await this.runProcess(venvPython, ['-m', 'pip', '--version']);
-        return;
-      } catch {
-        await this.bootstrapPip(workingDir, venvPython);
-        return;
-      }
-    }
-
-    const systemPython = await this.findSystemPython();
-    console.log(`[Browser Agent] creating Python environment with ${systemPython}`);
-    try {
-      await this.runProcess(systemPython, ['-m', 'venv', venvPath]);
-    } catch (err) {
-      // Debian and friends ship python3 without ensurepip.
-      if (/ensurepip|python3-venv/i.test(err.message)) {
-        await this.runProcess(systemPython, ['-m', 'venv', '--without-pip', venvPath]);
-        await this.bootstrapPip(workingDir, venvPython);
-        return;
-      }
-      throw new Error(
-        `Could not create a Python environment for the browser agent: ${err.message}. `
-        + 'browser-use needs Python 3.11 or newer on PATH.',
-      );
-    }
-
-    try {
-      await this.runProcess(venvPython, ['-m', 'pip', '--version']);
-    } catch {
-      await this.bootstrapPip(workingDir, venvPython);
-    }
-  }
-
-  async bootstrapPip(workingDir, venvPython) {
-    const getPipPath = path.join(workingDir, 'get-pip.py');
-    await new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(getPipPath);
-      https.get('https://bootstrap.pypa.io/get-pip.py', (response) => {
-        if (response.statusCode !== 200) {
-          file.close();
-          return reject(new Error(`Downloading get-pip.py returned HTTP ${response.statusCode}`));
-        }
-        response.pipe(file);
-        file.on('finish', () => { file.close(); resolve(); });
-        return undefined;
-      }).on('error', (err) => {
-        fs.unlink(getPipPath, () => {});
-        reject(new Error(`Failed to download get-pip.py: ${err.message}`));
-      });
-    });
-
-    try {
-      await this.runProcess(venvPython, [getPipPath], { streamLogs: true });
-    } finally {
-      try { fs.unlinkSync(getPipPath); } catch { /* best effort */ }
-    }
-  }
-
-  async findSystemPython() {
-    const candidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
-    for (const candidate of candidates) {
-      try {
-        await this.runProcess(candidate, ['--version']);
-        return candidate;
-      } catch { /* try the next one */ }
-    }
-    throw new Error('No Python interpreter found on PATH. browser-use needs Python 3.11 or newer.');
-  }
-
-  runProcess(command, args, { streamLogs = false } = {}) {
-    return new Promise((resolve, reject) => {
-      const child = spawn(command, args, {
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-      });
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk.toString();
-        if (streamLogs) console.log('[Browser Agent setup]', chunk.toString().trimEnd());
-      });
-      child.stderr.on('data', (chunk) => {
-        stderr += chunk.toString();
-        if (streamLogs) console.error('[Browser Agent setup]', chunk.toString().trimEnd());
-      });
-
-      child.on('error', (err) => reject(new Error(`${command} could not be started: ${err.message}`)));
-      child.on('close', (code) => {
-        if (code === 0) resolve({ stdout, stderr });
-        else reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
-      });
-    });
   }
 
   formatOutput(output) {
