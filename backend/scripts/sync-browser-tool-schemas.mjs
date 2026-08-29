@@ -27,6 +27,7 @@ const repoRoot = path.resolve(here, '..', '..');
 /** Ordered: each tool is placed after the one before it when first inserted. */
 const TOOLS = [
   { type: 'ai-browser-use', module: '../src/tools/library/actions/ai-browser-use.js' },
+  { type: 'ai-browser-control', module: '../src/tools/library/actions/ai-browser-control.js' },
 ];
 
 /** Byte span of the JSON object containing `marker`. */

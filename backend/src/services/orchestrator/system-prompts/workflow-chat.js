@@ -16,9 +16,14 @@ async function getAvailableNodeTypes() {
     const rawToolLibrary = await fs.readFile(toolLibraryPath, 'utf-8');
     const toolLibrary = JSON.parse(rawToolLibrary);
 
+    // `chatOnly` tools are not workflow nodes (see nodeTypeCatalog). Listing one
+    // here would teach the workflow builder to emit a node type the engine then
+    // refuses at run time — a suggestion that can only ever produce a broken
+    // workflow.
     const formatCategory = (category, tools) => {
-      if (!tools || tools.length === 0) return '';
-      const types = tools.map((t) => t.type).join(', ');
+      const usable = (tools || []).filter((t) => !t?.chatOnly);
+      if (usable.length === 0) return '';
+      const types = usable.map((t) => t.type).join(', ');
       return `- ${category}: ${types}`;
     };
 

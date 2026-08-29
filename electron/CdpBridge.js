@@ -280,9 +280,19 @@ export class CdpBridge {
         // Deliberately unsupported: a second target would be a page with nowhere
         // to render. Refusing by name is better than returning a target id that
         // maps to nothing the user can see.
+        //
+        // The message names the alternative because the caller is usually an
+        // LLM, and upstream's own browser-use skill text tells it to open pages
+        // with `new_tab(url)` first. Without the second sentence that advice
+        // dead-ends here; with it, the model navigates the surface it already
+        // has and carries on.
         return this.#send(socket, {
           id,
-          error: { code: SERVER_ERROR, message: 'The AGNT browser surface hosts a single tab; Target.createTarget is not available.' },
+          error: {
+            code: SERVER_ERROR,
+            message: 'The AGNT browser surface hosts a single tab; Target.createTarget is not available. '
+              + 'Navigate the existing tab instead — goto_url(url) from the browser-use CLI, or Page.navigate over CDP.',
+          },
         });
 
       case 'Browser.getVersion':

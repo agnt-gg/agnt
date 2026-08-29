@@ -1271,6 +1271,46 @@
       }
     },
     {
+      "title": "Browser Control",
+      "category": "action",
+      "type": "ai-browser-control",
+      "icon": "terminal",
+      "chatOnly": true,
+      "description": "Drive the AGNT Browser widget DIRECTLY by running Python in it, one step at a time, and read the result back. Use this when YOU want to look at a page and decide what to do next — it has no nested agent, so you stay in control between steps. Use ai_browser_use instead when a whole task should be handed off and completed autonomously. Helpers are pre-imported; print() what you want to see. Navigate with goto_url(url) then wait_for_load() — new_tab() is NOT available, because the widget hosts a single tab. Read the page with page_info(), js(\"expression\"), or cdp(\"Accessibility.getFullAXTree\")[\"nodes\"] to find elements by role and name. To click: take the element's backendDOMNodeId, get its box with cdp(\"DOM.getBoxModel\", backendNodeId=id)[\"model\"][\"content\"], then click_at_xy(x, y) at the centre. Always wait_for_load() after navigating, or page reads race the new document and fail.",
+      "parameters": {
+        "python": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Python to run against the browser. Helpers are pre-imported: goto_url, wait_for_load, page_info, js, click_at_xy, type_text, scroll, screenshot, ensure_real_tab, cdp. Only what you print() comes back."
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "default": 120,
+          "description": "Hard limit for this one step. Keep steps short and call the tool again."
+        }
+      },
+      "outputs": {
+        "output": {
+          "type": "string",
+          "description": "Everything the Python printed"
+        },
+        "diagnostics": {
+          "type": "string",
+          "description": "Warnings the CLI wrote to stderr"
+        },
+        "url": {
+          "type": "string",
+          "description": "The browser surface that was driven"
+        },
+        "error": {
+          "type": "string",
+          "description": "Why the step could not be run"
+        }
+      }
+    },
+    {
       "title": "Discord API",
       "category": "action",
       "type": "discord-api",

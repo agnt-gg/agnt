@@ -80,6 +80,11 @@ export const TOOL_WIDGET_MAP = {
   // Annie browsing in chat should be something you can WATCH. No id to bind:
   // the widget owns its own browser surface, so opening it is the whole job.
   ai_browser_use: { widgetId: 'browser' },
+  // Browser Control needs the widget even more than the Browser Agent does: it
+  // REFUSES to run without one, because its only other option would be to
+  // attach to the user's own Chrome. Opening the widget on the first call is
+  // what turns that refusal into a one-turn recovery.
+  ai_browser_control: { widgetId: 'browser' },
   update_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   revert_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   list_workflow_versions: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },

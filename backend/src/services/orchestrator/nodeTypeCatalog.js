@@ -18,6 +18,21 @@ const BUILTIN_CATEGORY_MAP = [
 ];
 
 /**
+ * Tools that are not workflow nodes.
+ *
+ * A workflow node's parameters are templated from trigger data — text that
+ * arrives from Discord, email or a webhook. A tool whose parameter IS a program
+ * therefore cannot be a node, and `ai-browser-control` declares `chatOnly` to
+ * say so. This filter is the polite half of that rule: it keeps the tool out of
+ * the palette and out of every catalogue an LLM builds workflows from. The half
+ * that actually holds is the refusal inside the action itself, because a
+ * workflow JSON can name a type that was never offered.
+ */
+function isWorkflowNode(tool) {
+  return !tool?.chatOnly;
+}
+
+/**
  * Load every node type (built-in + plugin) grouped by display category.
  *
  * Returns:
@@ -38,7 +53,7 @@ export async function loadAllNodeTypes() {
   for (const { libraryKey, outputKey, nodeCategory } of BUILTIN_CATEGORY_MAP) {
     const tools = toolLibraryData[libraryKey];
     if (!Array.isArray(tools)) continue;
-    categories[outputKey] = tools.map((tool) => ({
+    categories[outputKey] = tools.filter(isWorkflowNode).map((tool) => ({
       type: tool.type,
       title: tool.title,
       description: tool.description,
@@ -61,6 +76,8 @@ export async function loadAllNodeTypes() {
     for (const schema of pluginSchemas) {
       const category = schema.category || 'action';
       const outputKey = category.charAt(0).toUpperCase() + category.slice(1) + 's';
+
+      if (!isWorkflowNode(schema)) continue;
 
       const pluginTool = {
         type: schema.type,
