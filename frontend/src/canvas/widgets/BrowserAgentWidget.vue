@@ -25,6 +25,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { useSurfaceContribution } from '@/canvas/surfaceFederation.js';
+import { createBridgeSession } from './browserBridgeSession.js';
 
 const props = defineProps({
   widgetInstanceId: { type: String, default: '' },
@@ -37,15 +38,17 @@ const viewRef = ref(null);
 const pageUrl = ref('about:blank');
 const pageTitle = ref('');
 const unavailable = ref('');
-let webContentsId = null;
-let cdpUrl = null;
+let session = null;
 let heartbeat = null;
 
-// The backend registry is in memory, so a backend restart forgets every browser
-// that is currently open. This widget is the only thing that still knows this
-// surface exists, so it re-states the fact rather than assuming one
-// announcement lasts forever — without it, a chat after a backend restart finds
-// no browser and opens a separate window the user never asked for.
+// The heartbeat re-asserts BOTH halves of this surface's existence: the bridge
+// itself and the backend's knowledge of it.
+//
+// The registry is in memory, so a backend restart forgets every open browser
+// and only this widget still knows the surface is there. And the bridge is tied
+// to the guest webContents, which is destroyed and rebuilt on a renderer crash
+// or a re-parent — leaving the widget on screen with no bridge behind it. Both
+// are repaired by simply saying it again, on a timer. See browserBridgeSession.
 const HEARTBEAT_MS = 20000;
 
 /**
@@ -68,7 +71,7 @@ const authHeaders = () => ({
  * Browser Agent action looks the endpoint up rather than being handed it — a
  * ws:// URL has no business travelling through a conversation.
  */
-async function announce() {
+async function announce(cdpUrl) {
   if (!cdpUrl || !props.widgetInstanceId) return;
   try {
     await fetch(`${API_CONFIG.BASE_URL}/browser-agent/surface`, {
@@ -91,31 +94,9 @@ function syncPage() {
     pageUrl.value = view()?.getURL() || 'about:blank';
     pageTitle.value = view()?.getTitle() || '';
   } catch { /* the guest is gone */ }
-  announce();
-}
-
-async function openBridge() {
-  const api = window.electron?.browserBridge;
-  if (!api) {
-    // This widget renders a real Chromium view through Electron. In a plain
-    // browser tab there is nothing to embed, and saying so beats a blank pane.
-    unavailable.value = 'The Browser widget needs the AGNT desktop app.';
-    return;
-  }
-  try {
-    webContentsId = view().getWebContentsId();
-    const result = await api.start(webContentsId);
-    if (result?.ok) {
-      cdpUrl = result.cdpUrl;
-      syncPage();
-      clearInterval(heartbeat);
-      heartbeat = setInterval(announce, HEARTBEAT_MS);
-    } else {
-      unavailable.value = result?.error || 'Could not open a browser bridge.';
-    }
-  } catch (err) {
-    unavailable.value = err.message;
-  }
+  // Re-assert rather than announce: a navigation is also the moment a crashed
+  // guest comes back with a new webContents id and no bridge behind it.
+  session?.refresh();
 }
 
 onMounted(async () => {
@@ -123,12 +104,36 @@ onMounted(async () => {
   const el = view();
   if (!el) return;
 
-  // getWebContentsId() is meaningless until the guest exists, so the bridge
-  // waits for dom-ready rather than for the Vue mount.
-  el.addEventListener('dom-ready', openBridge, { once: true });
+  const api = window.electron?.browserBridge;
+  if (!api) {
+    // This widget renders a real Chromium view through Electron. In a plain
+    // browser tab there is nothing to embed, and saying so beats a blank pane.
+    unavailable.value = 'The Browser widget needs the AGNT desktop app.';
+    return;
+  }
+
+  session = createBridgeSession({
+    bridgeApi: api,
+    getWebContentsId: () => view()?.getWebContentsId() ?? null,
+    announce,
+    onStatus: (message) => { unavailable.value = message; },
+  });
+
+  // NOT `{ once: true }`. dom-ready fires again every time the guest is rebuilt
+  // — a crash, a reap, a re-parent — and each rebuild is a new webContents with
+  // no bridge. Opening only on the first one is what left the widget on screen
+  // with a dead endpoint and no way back.
+  el.addEventListener('dom-ready', () => session?.refresh());
   el.addEventListener('did-navigate', syncPage);
   el.addEventListener('did-navigate-in-page', syncPage);
   el.addEventListener('page-title-updated', syncPage);
+  // Belt and braces: react to the guest dying instead of waiting for the next
+  // navigation or the next heartbeat tick.
+  el.addEventListener('destroyed', () => session?.refresh());
+  el.addEventListener('crashed', () => session?.refresh());
+  el.addEventListener('render-process-gone', () => session?.refresh());
+
+  heartbeat = setInterval(() => session?.refresh(), HEARTBEAT_MS);
 });
 
 onBeforeUnmount(() => {
@@ -144,9 +149,8 @@ onBeforeUnmount(() => {
       headers: authHeaders(),
     }).catch(() => {});
   }
-  if (webContentsId && window.electron?.browserBridge) {
-    window.electron.browserBridge.stop(webContentsId);
-  }
+  session?.stop();
+  session = null;
 });
 </script>
 

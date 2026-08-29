@@ -30,12 +30,15 @@ import { EventEmitter } from 'events';
 
 const waitForSurface = vi.fn();
 const forgetSurfaceByUrl = vi.fn();
+/** What the registry BELIEVES, before any liveness probe. */
+const getActiveSurface = vi.fn();
 const runProcess = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
 const spawn = vi.fn();
 
 vi.mock('../../../services/browserSurfaces.js', () => ({
   waitForSurface: (...a) => waitForSurface(...a),
   forgetSurfaceByUrl: (...a) => forgetSurfaceByUrl(...a),
+  getActiveSurface: (...a) => getActiveSurface(...a),
   // The real predicate: only ws://127.0.0.1:<port>/<token> is a local bridge.
   isLocalBridgeUrl: (url) => /^ws:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+$/.test(url || ''),
 }));
@@ -105,6 +108,7 @@ beforeEach(() => {
   _resetDaemonEndpoint();
   runProcess.mockResolvedValue({ stdout: '', stderr: '' });
   waitForSurface.mockResolvedValue({ instanceId: 'w1', cdpUrl: CDP });
+  getActiveSurface.mockReturnValue(null);
   preflightTargets = 1;
   programBehaviour = () => ({ stdout: 'hello from the page' });
   spawn.mockImplementation(() => makeChild());
@@ -168,6 +172,24 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     expect(out.error).toMatch(/no AGNT Browser widget open/i);
     // THE POINT: browser-harness's own fallback is the user's real Chrome.
     expect(out.error).toMatch(/never attaches to your own Chrome/i);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('says the connection DROPPED when the widget is open but unreachable', async () => {
+    // These are different problems with different fixes, and telling someone to
+    // open a widget they are looking at is the least useful thing this can say.
+    // It happened: the guest webContents was rebuilt, the bridge closed with it,
+    // and the tool reported "no widget open" at a widget on screen.
+    waitForSurface.mockResolvedValue(null);
+    getActiveSurface.mockReturnValue({ instanceId: 'w1', cdpUrl: CDP });
+
+    const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
+
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/connection to AGNT has dropped/i);
+    expect(out.error).toMatch(/try again in a moment/i);
+    // It must NOT tell the user to open one.
+    expect(out.error).not.toMatch(/no AGNT Browser widget open/i);
     expect(spawn).not.toHaveBeenCalled();
   });
 

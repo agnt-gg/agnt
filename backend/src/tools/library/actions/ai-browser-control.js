@@ -1,6 +1,8 @@
 import BaseAction from '../BaseAction.js';
 import { spawn } from 'child_process';
-import { waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl } from '../../../services/browserSurfaces.js';
+import {
+  waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl, getActiveSurface,
+} from '../../../services/browserSurfaces.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
 
 /**
@@ -256,6 +258,17 @@ class AIBrowserControl extends BaseAction {
       : await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
 
     if (!surface) {
+      // "Nothing is open" and "something is open but unreachable" are different
+      // problems with different fixes, and telling a user to open a widget they
+      // are looking at is the least useful thing this could say. The registry's
+      // unverified belief is exactly what distinguishes them.
+      if (getActiveSurface(userId, { workspaceId, instanceId })) {
+        throw new Error(
+          'The Browser widget is open, but its connection to AGNT has dropped — usually because the page '
+          + 'crashed or the widget was moved on the canvas. It re-establishes itself automatically within '
+          + 'about 20 seconds, so try again in a moment. If it keeps failing, close and reopen the widget.',
+        );
+      }
       throw new Error(
         'There is no AGNT Browser widget open to drive. Open one on the workspace canvas and try again. '
         + '(Browser Control never attaches to your own Chrome — only to a browser AGNT is rendering.)',
