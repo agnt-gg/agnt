@@ -61,6 +61,51 @@ const INCOMPATIBLE_TOOL_MATCHERS = Object.freeze({
   'claude-code': [(name) => name.includes('mcp_client')],
 });
 
+/**
+ * ---------------------------------------------------------------------------
+ * ONE MALFORMED TOOL MUST NOT KILL THE WHOLE REQUEST
+ * ---------------------------------------------------------------------------
+ * Anthropic validates every tool schema and rejects the ENTIRE request when any
+ * one of them is malformed:
+ *
+ *     400 invalid_request_error
+ *     "tools.357.custom.input_schema.properties: Property keys should match
+ *      pattern '^[a-zA-Z0-9_.-]{1,64}$'"
+ *
+ * Observed in production. The blast radius is total and the diagnosis is a
+ * numeric index into an array nobody can see: chat 400s on every retry, fails
+ * over to the next provider, then the next, and the user gets a turn that
+ * completes with zero tool calls and no explanation.
+ *
+ * The offending schemas come from MCP servers, which are third-party processes
+ * this repo does not control and cannot review. Their tool definitions are
+ * whatever the server author wrote. So this is not a bug to fix once upstream
+ * — it is a class of input we must be resilient to, permanently.
+ *
+ * Dropping the tool, rather than renaming its keys, is deliberate: a renamed
+ * argument would be sent to an MCP server that has never heard of it, turning
+ * a loud 400 into a silently broken tool. Losing one tool is recoverable and
+ * visible in the log; losing the conversation is neither.
+ */
+const ANTHROPIC_PROPERTY_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;
+
+/** Providers that enforce the pattern above. */
+const STRICT_SCHEMA_PROVIDERS = new Set(['anthropic', 'claude-code']);
+
+/**
+ * Property keys Anthropic will reject, from a schema in either shape.
+ *
+ * Both call sites build OpenAI-shaped schemas, but reading the native shape too
+ * means a future caller cannot bypass the check by passing what Anthropic
+ * actually wants.
+ */
+function invalidPropertyKeys(schema) {
+  const parameters = schema?.function?.parameters ?? schema?.input_schema ?? schema?.parameters;
+  const properties = parameters?.properties;
+  if (!properties || typeof properties !== 'object') return [];
+  return Object.keys(properties).filter((key) => !ANTHROPIC_PROPERTY_KEY.test(key));
+}
+
 function toolName(schema) {
   // Both call sites build OpenAI-shaped schemas ({ function: { name } }), but
   // reading a bare `name` too costs nothing and means a native-schema caller
@@ -82,13 +127,33 @@ function toolName(schema) {
 export function stripProviderIncompatibleTools(schemas, provider) {
   if (!Array.isArray(schemas) || schemas.length === 0) return schemas;
 
-  const matchers = INCOMPATIBLE_TOOL_MATCHERS[String(provider || '').toLowerCase()];
-  if (!matchers) return schemas;
+  const providerKey = String(provider || '').toLowerCase();
+  const matchers = INCOMPATIBLE_TOOL_MATCHERS[providerKey];
+  const enforcesSchemaPattern = STRICT_SCHEMA_PROVIDERS.has(providerKey);
+  if (!matchers && !enforcesSchemaPattern) return schemas;
+
+  // Collected so the log NAMES the tool. The provider's own error identifies it
+  // only as `tools.357`, an index into an array that exists for one request —
+  // useless for finding which MCP server needs fixing.
+  const reasons = [];
 
   const kept = schemas.filter((schema) => {
     const name = toolName(schema);
-    if (!name) return true; // not ours to judge; the adapter will complain
-    return !matchers.some((matches) => matches(name));
+
+    if (name && matchers?.some((matches) => matches(name))) {
+      reasons.push(`${name} (name rejected by this provider)`);
+      return false;
+    }
+
+    if (enforcesSchemaPattern) {
+      const badKeys = invalidPropertyKeys(schema);
+      if (badKeys.length > 0) {
+        reasons.push(`${name || '<unnamed>'} (invalid property key(s): ${badKeys.join(', ')})`);
+        return false;
+      }
+    }
+
+    return true;
   });
 
   // Nothing matched: hand back the original array, not a copy. Keeps the
@@ -96,8 +161,8 @@ export function stripProviderIncompatibleTools(schemas, provider) {
   // including a restricted provider that simply had no offending tool.
   if (kept.length === schemas.length) return schemas;
 
-  console.log(
-    `[providerToolCompat] ${provider}: withheld ${schemas.length - kept.length} incompatible tool(s)`
+  console.warn(
+    `[providerToolCompat] ${provider}: withheld ${reasons.length} tool(s) — ${reasons.join('; ')}`
   );
   return kept;
 }
