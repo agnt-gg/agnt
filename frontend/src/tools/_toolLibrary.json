@@ -1276,7 +1276,7 @@
       "type": "ai-browser-control",
       "icon": "terminal",
       "chatOnly": true,
-      "description": "Drive the AGNT Browser widget DIRECTLY by running Python in it, one step at a time, and read the result back. Use this when YOU want to look at a page and decide what to do next — it has no nested agent, so you stay in control between steps. Use ai_browser_use instead when a whole task should be handed off and completed autonomously. Helpers are pre-imported; print() what you want to see. Navigate with goto_url(url) then wait_for_load() — new_tab() is NOT available, because the widget hosts a single tab. Read the page with page_info(), js(\"expression\"), or cdp(\"Accessibility.getFullAXTree\")[\"nodes\"] to find elements by role and name. To click: take the element's backendDOMNodeId, get its box with cdp(\"DOM.getBoxModel\", backendNodeId=id)[\"model\"][\"content\"], then click_at_xy(x, y) at the centre. Always wait_for_load() after navigating, or page reads race the new document and fail.",
+      "description": "Drive the AGNT Browser widget DIRECTLY by running Python in it, one step at a time, and read the result back. Use this when YOU want to look at a page and decide what to do next — it has no nested agent, so you stay in control between steps. Use ai_browser_use instead when a whole task should be handed off and completed autonomously. A browser is always available: it drives the Browser widget on the canvas, and opens a clean browser of its own if no widget is there — so never ask the user to open one. Helpers are pre-imported; print() what you want to see. Navigate with goto_url(url) then wait_for_load() — use goto_url, NOT new_tab(), which the single-tab widget refuses. Read the page with page_info(), js(\"expression\"), or cdp(\"Accessibility.getFullAXTree\")[\"nodes\"] to find elements by role and name. To click: take the element's backendDOMNodeId, get its box with cdp(\"DOM.getBoxModel\", backendNodeId=id)[\"model\"][\"content\"], then click_at_xy(x, y) at the centre. Always wait_for_load() after navigating, or page reads race the new document and fail.",
       "parameters": {
         "python": {
           "type": "string",
@@ -1303,6 +1303,10 @@
         "url": {
           "type": "string",
           "description": "The browser surface that was driven"
+        },
+        "surface": {
+          "type": "string",
+          "description": "\"widget\" for the canvas Browser widget, \"launched\" for a clean browser AGNT opened because no widget was available"
         },
         "error": {
           "type": "string",

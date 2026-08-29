@@ -10,10 +10,10 @@
  *      parameter is a program. browserUseRunner.js exists because its
  *      predecessor concatenated exactly that data into a `python -c` payload.
  *
- *   2. It never attaches to a browser AGNT is not rendering. Left alone,
- *      browser-harness finds a DevToolsActivePort and drives whatever Chrome the
- *      user has open — their real one, with their real logged-in sessions. A
- *      missing widget must therefore be an error, never a fallback.
+ *   2. It never attaches to a browser the USER owns. Left alone, browser-harness
+ *      finds a DevToolsActivePort and drives whatever Chrome they have open,
+ *      with their real logged-in sessions. When no widget is available it must
+ *      open a CLEAN browser of its own instead — never adopt theirs.
  *
  *   3. It never inherits BU_NAME or BU_CDP_URL. A named daemon gives itself a
  *      dedicated tab via Target.createTarget, which the single-webview surface
@@ -32,6 +32,8 @@ const waitForSurface = vi.fn();
 const forgetSurfaceByUrl = vi.fn();
 /** What the registry BELIEVES, before any liveness probe. */
 const getActiveSurface = vi.fn();
+const ensureFallbackSurface = vi.fn();
+const closeFallbackSurface = vi.fn();
 const runProcess = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
 const spawn = vi.fn();
 
@@ -50,12 +52,22 @@ vi.mock('./browserUseEnvironment.js', () => ({
   BROWSER_USE_VERSION: '0.13.8',
 }));
 
+vi.mock('./browserFallbackSurface.js', () => ({
+  ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
+  closeFallbackSurface: (...a) => closeFallbackSurface(...a),
+  // The real predicate: any loopback ws:// endpoint, since a launched browser
+  // picks its own port and path.
+  isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
+}));
+
 vi.mock('child_process', () => ({ spawn: (...a) => spawn(...a) }));
 
 const { default: action, _resetDaemonEndpoint, stripHarnessNoise } = await import('./ai-browser-control.js');
 
 const CDP = 'ws://127.0.0.1:51234/tok3n';
 const OTHER_CDP = 'ws://127.0.0.1:60000/other';
+/** What a browser we launched looks like: Chrome's own devtools path. */
+const LAUNCHED_CDP = 'ws://127.0.0.1:9222/devtools/browser/abc-123';
 const CHAT = { userId: 'u1', provider: 'Anthropic', model: 'claude-sonnet-4-5' };
 const WORKFLOW = { userId: 'u1' };
 
@@ -109,6 +121,7 @@ beforeEach(() => {
   runProcess.mockResolvedValue({ stdout: '', stderr: '' });
   waitForSurface.mockResolvedValue({ instanceId: 'w1', cdpUrl: CDP });
   getActiveSurface.mockReturnValue(null);
+  ensureFallbackSurface.mockResolvedValue(LAUNCHED_CDP);
   preflightTargets = 1;
   programBehaviour = () => ({ stdout: 'hello from the page' });
   spawn.mockImplementation(() => makeChild());
@@ -163,34 +176,88 @@ describe('it only runs where a person is present', () => {
 });
 
 describe('it only ever drives a browser AGNT is rendering', () => {
-  it('refuses when no Browser widget is open, rather than falling back', async () => {
+  it('LAUNCHES a clean browser when no widget is open, instead of refusing', async () => {
+    // It used to fail here, on the reasoning that any fallback meant the user's
+    // own Chrome. That conflated "do not touch their browser" with "do not open
+    // one", and failed for a reason they could do nothing useful about.
+    waitForSurface.mockResolvedValue(null);
+
+    const out = await action.execute({ python: 'print(page_info())' }, {}, CHAT);
+
+    expect(out.success).toBe(true);
+    expect(ensureFallbackSurface).toHaveBeenCalledTimes(1);
+    expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(LAUNCHED_CDP);
+    // Reported, so the assistant can say where the window came from.
+    expect(out.surface).toBe('launched');
+  });
+
+  it('prefers the widget and never launches when one is reachable', async () => {
+    const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
+
+    expect(out.surface).toBe('widget');
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('waits for a registered-but-unreachable widget before opening anything', async () => {
+    // A widget IS on screen with a dropped bridge, which repairs itself on the
+    // widget's own heartbeat. Opening a second window beside the one the user is
+    // already watching would be worse than waiting a moment for it to recover.
+    getActiveSurface.mockReturnValue({ instanceId: 'w1', cdpUrl: CDP });
+    waitForSurface
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ instanceId: 'w1', cdpUrl: CDP });
+
+    const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
+
+    expect(waitForSurface).toHaveBeenCalledTimes(2);
+    expect(out.surface).toBe('widget');
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('launches if the unreachable widget never recovers', async () => {
+    getActiveSurface.mockReturnValue({ instanceId: 'w1', cdpUrl: CDP });
     waitForSurface.mockResolvedValue(null);
 
     const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
 
+    expect(out.success).toBe(true);
+    expect(out.surface).toBe('launched');
+  });
+
+  it('reports why it could not open one, when it cannot', async () => {
+    waitForSurface.mockResolvedValue(null);
+    ensureFallbackSurface.mockRejectedValue(new Error('no Chrome, Chromium or Edge could be found'));
+
+    const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
+
     expect(out.success).toBe(false);
-    expect(out.error).toMatch(/no AGNT Browser widget open/i);
-    // THE POINT: browser-harness's own fallback is the user's real Chrome.
-    expect(out.error).toMatch(/never attaches to your own Chrome/i);
+    expect(out.error).toMatch(/could be found/i);
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('says the connection DROPPED when the widget is open but unreachable', async () => {
-    // These are different problems with different fixes, and telling someone to
-    // open a widget they are looking at is the least useful thing this can say.
-    // It happened: the guest webContents was rebuilt, the bridge closed with it,
-    // and the tool reported "no widget open" at a widget on screen.
+  it('refuses a launched endpoint that is somehow not loopback', async () => {
     waitForSurface.mockResolvedValue(null);
-    getActiveSurface.mockReturnValue({ instanceId: 'w1', cdpUrl: CDP });
+    ensureFallbackSurface.mockResolvedValue('ws://10.0.0.5:9222/devtools/browser/abc');
 
     const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
 
     expect(out.success).toBe(false);
-    expect(out.error).toMatch(/connection to AGNT has dropped/i);
-    expect(out.error).toMatch(/try again in a moment/i);
-    // It must NOT tell the user to open one.
-    expect(out.error).not.toMatch(/no AGNT Browser widget open/i);
+    expect(out.error).toMatch(/non-local browser endpoint/i);
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('closes the LAUNCHED browser when its connection is refused, so the retry reopens', async () => {
+    waitForSurface.mockResolvedValue(null);
+    programBehaviour = () => ({
+      stderr: 'RuntimeError: Failed to establish CDP connection', code: 1,
+    });
+
+    const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
+
+    expect(closeFallbackSurface).toHaveBeenCalled();
+    // A launched browser is ours, so it is not the registry's to forget.
+    expect(forgetSurfaceByUrl).not.toHaveBeenCalled();
+    expect(out.error).toMatch(/run the step again/i);
   });
 
   it('refuses an endpoint that is not a loopback bridge', async () => {

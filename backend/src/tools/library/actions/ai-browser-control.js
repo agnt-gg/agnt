@@ -3,6 +3,9 @@ import { spawn } from 'child_process';
 import {
   waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl, getActiveSurface,
 } from '../../../services/browserSurfaces.js';
+import {
+  ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket,
+} from './browserFallbackSurface.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
 
 /**
@@ -119,9 +122,11 @@ class AIBrowserControl extends BaseAction {
       + 'and read the result back. Use this when YOU want to look at a page and decide what to do next — '
       + 'it has no nested agent, so you stay in control between steps. Use ai_browser_use instead when a '
       + 'whole task should be handed off and completed autonomously. '
+      + 'A browser is always available: it drives the Browser widget on the canvas, and opens a clean '
+      + 'browser of its own if no widget is there — so never ask the user to open one. '
       + 'Helpers are pre-imported; print() what you want to see. '
-      + 'Navigate with goto_url(url) then wait_for_load() — new_tab() is NOT available, because the widget '
-      + 'hosts a single tab. Read the page with page_info(), js("expression"), or '
+      + 'Navigate with goto_url(url) then wait_for_load() — use goto_url, NOT new_tab(), which the '
+      + 'single-tab widget refuses. Read the page with page_info(), js("expression"), or '
       + 'cdp("Accessibility.getFullAXTree")["nodes"] to find elements by role and name. To click: take the '
       + 'element\'s backendDOMNodeId, get its box with cdp("DOM.getBoxModel", backendNodeId=id)["model"]["content"], '
       + 'then click_at_xy(x, y) at the centre. Always wait_for_load() after navigating, or page reads race the '
@@ -146,6 +151,7 @@ class AIBrowserControl extends BaseAction {
       output: { type: 'string', description: 'Everything the Python printed' },
       diagnostics: { type: 'string', description: 'Warnings the CLI wrote to stderr' },
       url: { type: 'string', description: 'The browser surface that was driven' },
+      surface: { type: 'string', description: '"widget" for the canvas Browser widget, "launched" for a clean browser AGNT opened because no widget was available' },
       error: { type: 'string', description: 'Why the step could not be run' },
     },
   };
@@ -178,7 +184,7 @@ class AIBrowserControl extends BaseAction {
     }
 
     try {
-      const cdpUrl = await this.resolveSurface(workflowEngine, userId);
+      const { cdpUrl, kind } = await this.resolveSurface(workflowEngine, userId);
       const cli = await ensureCli();
       if (await this.ensureDaemonTargets(cdpUrl)) {
         await this.verifyDaemonSurface(cli, cdpUrl);
@@ -199,7 +205,7 @@ class AIBrowserControl extends BaseAction {
       // A dead bridge here is the narrow race where the widget closed between
       // the registry's probe and this spawn. Forgetting it is what makes the
       // obvious next move — run it again — actually work.
-      const lost = this.describeLostSurface(outcome.stderr, cdpUrl, userId);
+      const lost = this.describeLostSurface(outcome.stderr, cdpUrl, userId, kind);
       if (lost) return this.formatOutput({ success: false, url: cdpUrl, output: outcome.stdout, error: lost });
 
       if (outcome.code !== 0) {
@@ -215,6 +221,7 @@ class AIBrowserControl extends BaseAction {
       return this.formatOutput({
         success: true,
         url: cdpUrl,
+        surface: kind,
         output: outcome.stdout,
         diagnostics: outcome.stderr || null,
         error: null,
@@ -237,52 +244,67 @@ class AIBrowserControl extends BaseAction {
   }
 
   /**
-   * The browser to drive — and ONLY ever a browser AGNT is rendering.
+   * The browser to drive: the widget when there is one, otherwise one we open.
    *
-   * REFUSING IS THE FEATURE. Left to itself, browser-harness scans for a
-   * DevToolsActivePort and attaches to whatever Chrome the user happens to have
-   * running: their real browser, with their real logged-in sessions. That is a
-   * fine default for a coding CLI the user invoked in their own terminal. It is
-   * not a defensible default for a tool a model can call on its own initiative,
-   * so a missing widget is an error with an instruction, never a fallback.
+   * THE ORDER MATTERS, AND THE FALLBACK IS NOT THE USER'S BROWSER.
    *
-   * The Browser Agent can honestly fall back to launching its own Chromium
-   * because that browser is a clean profile it owns. There is no equivalent
-   * here: the CLI's fallback is somebody else's browser.
+   * The widget is strongly preferred: it sits on the canvas beside the
+   * conversation, so the work is visible where the user is already looking. It
+   * is given a real chance to appear, because the frontend opens one
+   * automatically on the first call and a freshly-mounted webview needs a
+   * moment before its bridge exists.
+   *
+   * When there is genuinely no widget to drive, this launches a browser AGNT
+   * OWNS — a clean profile, no cookies, no sessions, a port we chose. What it
+   * must never do is what browser-harness does when left alone: find a
+   * DevToolsActivePort and attach to whatever Chrome the user happens to have
+   * open, carrying their logged-in sessions.
+   *
+   * An earlier version refused instead of launching, reasoning that any
+   * fallback meant somebody else's browser. That conflated "do not touch the
+   * user's browser" with "do not open one", and made the tool fail for a reason
+   * the user could do nothing useful about — including during the few seconds
+   * after a widget opens but before its bridge exists.
+   *
+   * @returns {{ cdpUrl: string, kind: 'widget'|'launched' }}
    */
   async resolveSurface(workflowEngine, userId, waitMs = 8000, probe = undefined) {
     const workspaceId = workflowEngine?.workspaceState?.id || null;
     const instanceId = workflowEngine?.workspaceState?.browserInstanceId || null;
-    const surface = probe
-      ? await waitForSurface(userId, { workspaceId, instanceId }, waitMs, 200, probe)
-      : await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
 
-    if (!surface) {
-      // "Nothing is open" and "something is open but unreachable" are different
-      // problems with different fixes, and telling a user to open a widget they
-      // are looking at is the least useful thing this could say. The registry's
-      // unverified belief is exactly what distinguishes them.
-      if (getActiveSurface(userId, { workspaceId, instanceId })) {
-        throw new Error(
-          'The Browser widget is open, but its connection to AGNT has dropped — usually because the page '
-          + 'crashed or the widget was moved on the canvas. It re-establishes itself automatically within '
-          + 'about 20 seconds, so try again in a moment. If it keeps failing, close and reopen the widget.',
-        );
+    const findWidget = (ms) => (probe
+      ? waitForSurface(userId, { workspaceId, instanceId }, ms, 200, probe)
+      : waitForSurface(userId, { workspaceId, instanceId }, ms));
+
+    let surface = await findWidget(waitMs);
+
+    // The registry believing in a widget that did not answer means one IS on
+    // screen with a dropped bridge. That repairs itself on the widget's own
+    // heartbeat, and waiting a little is far better than opening a second
+    // browser window beside the one the user is already watching.
+    if (!surface && getActiveSurface(userId, { workspaceId, instanceId })) {
+      console.log('[Browser Control] a Browser widget is registered but unreachable; waiting for it to recover.');
+      surface = await findWidget(Math.max(waitMs, 12000));
+    }
+
+    if (surface) {
+      // Belt and braces: the registry only ever stores loopback bridge URLs, and
+      // this is the last point before that string becomes an environment
+      // variable for a subprocess. A non-local endpoint here would mean the
+      // registry itself was wrong, which is worth failing loudly over.
+      if (!isLocalBridgeUrl(surface.cdpUrl)) {
+        throw new Error(`Refusing to drive a non-local browser endpoint: ${surface.cdpUrl}`);
       }
-      throw new Error(
-        'There is no AGNT Browser widget open to drive. Open one on the workspace canvas and try again. '
-        + '(Browser Control never attaches to your own Chrome — only to a browser AGNT is rendering.)',
-      );
+      return { cdpUrl: surface.cdpUrl, kind: 'widget' };
     }
 
-    // Belt and braces: the registry only ever stores loopback bridge URLs, and
-    // this is the last point before that string becomes an environment variable
-    // for a subprocess. A non-local endpoint here would mean the registry itself
-    // was wrong, which is worth failing loudly over rather than connecting to.
-    if (!isLocalBridgeUrl(surface.cdpUrl)) {
-      throw new Error(`Refusing to drive a non-local browser endpoint: ${surface.cdpUrl}`);
+    const cdpUrl = await ensureFallbackSurface({ log: (m) => console.log(m) });
+    // The launched browser picks its own port, so this is a different shape from
+    // a widget bridge — but it must still be loopback, for the same reason.
+    if (!isLoopbackWebSocket(cdpUrl)) {
+      throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
     }
-    return surface.cdpUrl;
+    return { cdpUrl, kind: 'launched' };
   }
 
   /**
@@ -415,15 +437,23 @@ class AIBrowserControl extends BaseAction {
   }
 
   /** @returns {string|null} Guidance, or null when this is a different failure. */
-  describeLostSurface(message, cdpUrl, userId) {
+  describeLostSurface(message, cdpUrl, userId, kind = 'widget') {
     const text = String(message || '');
     if (!/Failed to establish CDP connection|ECONNREFUSED|WinError 1225|refused the network connection|unreachable/i.test(text)) {
       return null;
     }
-    forgetSurfaceByUrl(userId, cdpUrl);
     daemonEndpoint = null;
+
+    if (kind === 'launched') {
+      // Ours to clean up. Dropping it is what makes the next call open a fresh
+      // one instead of retrying a browser the user has already closed.
+      closeFallbackSurface();
+      return 'The browser this step was driving has closed. Run the step again and a new one will open.';
+    }
+
+    forgetSurfaceByUrl(userId, cdpUrl);
     return 'The Browser widget this step was driving is no longer open, so the connection was refused. '
-      + 'It has been forgotten — run the step again and it will use the Browser widget that is open now.';
+      + 'It has been forgotten — run the step again and it will use whichever browser is available now.';
   }
 
   formatOutput(output) {
@@ -432,6 +462,9 @@ class AIBrowserControl extends BaseAction {
       output: output.output ?? '',
       diagnostics: output.diagnostics ?? null,
       url: output.url ?? null,
+      // 'widget' or 'launched', so the assistant can say WHICH browser it drove
+      // rather than leaving the user wondering where a window came from.
+      surface: output.surface ?? null,
       error: output.error ?? null,
     };
     return { ...shaped, outputs: { ...shaped } };

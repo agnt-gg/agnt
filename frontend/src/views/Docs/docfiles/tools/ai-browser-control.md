@@ -28,9 +28,15 @@ So Browser Control is hidden from the workflow palette, and it also refuses a no
 
 ## Which browser it drives
 
-**Only a browser AGNT is rendering** — the Browser widget on the workspace canvas. Calling the tool in chat opens that widget if it is not already there.
+**The Browser widget on the workspace canvas, whenever there is one.** Calling the tool in chat opens that widget if it is not already there, so the work happens next to the conversation where you can watch it.
 
-If no widget is open, the tool **fails with an instruction rather than falling back**. This is deliberate. The underlying `browser-use` CLI, left to itself, looks for any Chrome with remote debugging enabled and attaches to it — which would be *your* browser, with *your* logged-in sessions. AGNT never does that.
+**If no widget is available, AGNT opens a clean browser of its own** — a dedicated profile under AGNT's data directory, with no cookies, no sessions and no extensions. It is reused across steps, so a page you navigated to in one step is still there in the next, and it closes when AGNT does.
+
+What it will **never** do is drive *your* browser. The underlying `browser-use` CLI, left to itself, looks for any Chrome with remote debugging enabled and attaches to it — which would be your real one, with your logged-in sessions. AGNT does not do that: it either drives its own widget or opens its own browser.
+
+The `surface` output says which one you got: `widget` or `launched`.
+
+Set `AGNT_BROWSER_PATH` to choose which browser gets launched. Chrome, Chromium and Edge are found automatically.
 
 ## Writing a step
 
@@ -62,7 +68,7 @@ click_at_xy(x, y)
 
 ### Two rules specific to AGNT
 
-1. **`new_tab()` is not available.** The Browser widget hosts a single tab, so `Target.createTarget` is refused. Navigate with `goto_url(url)` instead.
+1. **Navigate with `goto_url(url)`, not `new_tab(url)`.** The Browser widget hosts a single tab, so `Target.createTarget` is refused there. `goto_url` works on both surfaces, which is why it is the one to reach for.
 2. **Always `wait_for_load()` after navigating.** Otherwise a `page_info()` or `js(...)` call races the new document and fails on a half-built page.
 
 ## Parameters
@@ -79,6 +85,7 @@ click_at_xy(x, y)
 | `output` | Everything the Python printed |
 | `diagnostics` | Warnings the CLI wrote to stderr |
 | `url` | The browser surface that was driven |
+| `surface` | `widget` for the canvas widget, `launched` for a browser AGNT opened |
 | `error` | Why the step could not be run |
 
 ## Environment

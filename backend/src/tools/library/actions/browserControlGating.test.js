@@ -126,14 +126,22 @@ describe('the two browser tools stay distinguishable', () => {
     expect(agent.title).toBe('Browser Agent');
   });
 
-  it('tells the model that new_tab is unavailable here', async () => {
+  it('steers the model to goto_url instead of new_tab', async () => {
     // The single-webview surface refuses Target.createTarget, and upstream's own
     // skill text tells agents to open pages with new_tab() first. Without this
-    // sentence in the description, the model's FIRST navigation always fails.
+    // in the description, the model's FIRST navigation always fails.
     const { description } = (await import('./ai-browser-control.js')).default.constructor.schema;
 
-    expect(description).toMatch(/new_tab\(\) is NOT available/);
+    expect(description).toMatch(/NOT new_tab\(\)/);
     expect(description).toMatch(/goto_url\(url\)/);
     expect(description).toMatch(/wait_for_load\(\)/);
+  });
+
+  it('promises a browser, so the model never asks the user to open one', async () => {
+    // The tool opens its own browser when no widget is there. A model that does
+    // not know that will hand the work back to the user for no reason.
+    const { description } = (await import('./ai-browser-control.js')).default.constructor.schema;
+
+    expect(description).toMatch(/never ask the user to open one/i);
   });
 });
