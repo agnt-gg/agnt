@@ -6,6 +6,7 @@ import {
 import {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket,
 } from './browserFallbackSurface.js';
+import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
 import { ensureCli, browserUsePaths, runProcess, BROWSER_USE_VERSION } from './browserUseEnvironment.js';
 
 /**
@@ -276,7 +277,27 @@ class AIBrowserControl extends BaseAction {
       ? waitForSurface(userId, { workspaceId, instanceId }, ms, 200, probe)
       : waitForSurface(userId, { workspaceId, instanceId }, ms));
 
-    let surface = await findWidget(waitMs);
+    // HOW LONG IS IT WORTH WAITING FOR A WIDGET TO APPEAR?
+    //
+    // The wait exists because a canvas turn RACES the widget it just opened:
+    // TOOL_WIDGET_MAP mounts a Browser widget the moment this tool is called,
+    // and the backend arrives here while that webview is still attaching its
+    // debugger and minting a bridge. Without the wait, the first "go look at X"
+    // of a session would always miss the window it had just asked for.
+    //
+    // Main chat has no canvas. TOOL_WIDGET_MAP lives in the Workspace screen
+    // and nowhere else, so no widget can EVER appear there and the wait is pure
+    // latency on every single call — eight seconds of nothing before the
+    // browser it was always going to launch.
+    //
+    // The exception is a surface the registry already knows: a workspace open
+    // in another window, which a turn that is not workspace-bound may
+    // legitimately drive. That one is worth waiting for.
+    const canvasTurn = isCanvasTurn(workflowEngine);
+    const registryKnowsOne = Boolean(getActiveSurface(userId, { workspaceId, instanceId }));
+    const appearWait = canvasTurn || registryKnowsOne ? waitMs : 0;
+
+    let surface = await findWidget(appearWait);
 
     // The registry believing in a widget that did not answer means one IS on
     // screen with a dropped bridge. That repairs itself on the widget's own

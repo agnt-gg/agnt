@@ -68,7 +68,15 @@ const CDP = 'ws://127.0.0.1:51234/tok3n';
 const OTHER_CDP = 'ws://127.0.0.1:60000/other';
 /** What a browser we launched looks like: Chrome's own devtools path. */
 const LAUNCHED_CDP = 'ws://127.0.0.1:9222/devtools/browser/abc-123';
+/** Main chat: a conversation with no canvas, so `workspaceState` is absent. */
 const CHAT = { userId: 'u1', provider: 'Anthropic', model: 'claude-sonnet-4-5' };
+/** The Workspace canvas, which sends workspaceState and auto-opens the widget. */
+const CANVAS = {
+  userId: 'u1',
+  provider: 'Anthropic',
+  model: 'claude-sonnet-4-5',
+  workspaceState: { id: 'ws1', browserInstanceId: 'w1' },
+};
 const WORKFLOW = { userId: 'u1' };
 
 /**
@@ -196,6 +204,42 @@ describe('it only ever drives a browser AGNT is rendering', () => {
 
     expect(out.surface).toBe('widget');
     expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('MAIN CHAT: launches at once instead of waiting for a widget that cannot appear', async () => {
+    // There is no canvas in main chat, so TOOL_WIDGET_MAP cannot open a Browser
+    // widget and nothing will ever announce itself. Polling the full timeout
+    // there is eight seconds of dead air before the browser it was always going
+    // to launch.
+    waitForSurface.mockResolvedValue(null);
+
+    const out = await action.execute({ python: 'print(1)' }, {}, CHAT);
+
+    expect(out.surface).toBe('launched');
+    expect(waitForSurface).toHaveBeenCalledWith('u1', expect.anything(), 0);
+  });
+
+  it('CANVAS: still waits for the widget it just opened', async () => {
+    // The canvas mounts the widget as this tool is called, so the backend gets
+    // here while the webview is still attaching its debugger. Removing this
+    // wait would make the first "go look at X" of a session open a second,
+    // separate browser next to the widget the user just watched appear.
+    waitForSurface.mockResolvedValue(null);
+
+    await action.execute({ python: 'print(1)' }, {}, CANVAS);
+
+    expect(waitForSurface).toHaveBeenCalledWith('u1', expect.anything(), 8000);
+  });
+
+  it('MAIN CHAT: still waits when a widget is open in a workspace elsewhere', async () => {
+    // A turn that is not workspace-bound may legitimately drive whichever
+    // browser the account has open. That one is worth waiting for.
+    getActiveSurface.mockReturnValue({ instanceId: 'w9', cdpUrl: CDP });
+    waitForSurface.mockResolvedValue(null);
+
+    await action.execute({ python: 'print(1)' }, {}, CHAT);
+
+    expect(waitForSurface).toHaveBeenCalledWith('u1', expect.anything(), 8000);
   });
 
   it('waits for a registered-but-unreachable widget before opening anything', async () => {
