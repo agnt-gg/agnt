@@ -28,6 +28,24 @@
  * that number changes whenever one is added; asserting it would produce a test
  * that fails for the one reason nobody wants — someone did their job.
  *
+ * That rule was stated here and then broken two assertions later: the search
+ * test asserted `toHaveCount(1)` for the term "browser". That is an absolute
+ * count wearing a filter, and it held only while exactly one tool in the whole
+ * library mentioned the word.
+ *
+ * It went red on 085a9b45, which added the Browser Control tool. CI had been
+ * green through b2adcec2 (run 190) and failed on every push afterwards — the
+ * gate was reporting a NEW TOOL as a product regression, which is precisely
+ * the failure mode the paragraph above was written to prevent. Measured at the
+ * moment of the fix, "browser" matches five entries: Browser Agent and Browser
+ * Control by title, and three plugins whose DESCRIPTIONS mention a browser
+ * (the card search matches description and category, not just the name).
+ *
+ * So the filtering assertions below are relative and membership-based. What is
+ * actually worth proving is that searching NARROWS the list, keeps a known
+ * match, empties on a miss and restores on clear — none of which needs to know
+ * how many tools exist.
+ *
  * TOOLS.VUE HAS TWO INDEPENDENT SEARCH IMPLEMENTATIONS, and this suite only
  * exercises one. `toolsByCategory` filters the CARD view (the default, and
  * what these assertions drive); `filteredTools` filters the TABLE view
@@ -65,8 +83,20 @@ test.describe('Tools', () => {
     // Behavioural, not presence: an input that is rendered but wired to
     // nothing is exactly the failure a visibility check cannot see.
     await search.fill('browser');
-    await expect(appPage.locator('.tool-header')).toHaveCount(1);
-    await expect(appPage.locator('.tool-header').first()).toContainText('Browser Agent');
+
+    // Narrowed, but not to a number. `> 0` alone would pass on a search that
+    // does nothing at all, and `< total` alone would pass on one that hides
+    // everything — together they pin it to "filtered", which is the claim.
+    await expect(appPage.locator('.tool-header').first()).toBeVisible();
+    const narrowed = await appPage.locator('.tool-header').count();
+    expect(narrowed).toBeGreaterThan(0);
+    expect(narrowed).toBeLessThan(total);
+
+    // A known match survives the filter. Addressed by NAME rather than by
+    // position: the result order depends on category sorting, so `.first()`
+    // would silently start asserting about a different tool the day another
+    // category sorts ahead of this one.
+    await expect(appPage.locator('.tool-header').filter({ hasText: 'Browser Agent' })).toHaveCount(1);
 
     // A term that matches nothing must empty the list — proving the filter is
     // really filtering rather than the search being a no-op that left the
