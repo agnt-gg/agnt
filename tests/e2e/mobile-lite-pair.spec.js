@@ -126,7 +126,18 @@ test.describe('Mobile lite pairing smoke', () => {
     expect(mint.status).toBe(200);
     const { code, liteUrl, simUrl } = await mint.json();
     expect(code).toMatch(/^[a-f0-9]{32}$/);
-    expect(liteUrl).toContain(`:${new URL(base).port}/m/pair?c=${code}`);
+    // liteUrl advertises the best EXTERNALLY reachable host, which is a
+    // property of the machine and not of this code. On a LAN that is
+    // <ip>:<port>; on a host running Tailscale it is the tailnet DNS name and
+    // carries no port at all, so pinning `:<port>` here asserted the absence
+    // of a VPN. It passed on CI and failed for anyone on a tailnet — a check
+    // that can only go red where nobody is looking at it.
+    //
+    // What the route actually owes us is the PATH and the code it just minted.
+    expect(liteUrl).toMatch(new RegExp(`/m/pair\\?c=${code}$`));
+
+    // simUrl is the loopback twin and IS fully determined here, so it stays
+    // exact — that is what keeps this pair of assertions honest.
     expect(simUrl).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:${new URL(base).port}/m/pair\\?c=${code}$`));
 
     // Pair URL from API points at LAN host:port; rewrite to this test server.
