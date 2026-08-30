@@ -20,7 +20,7 @@
  */
 import { spawn } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // tests/e2e/fixtures/ -> tests/e2e/ -> tests/ -> repo root
@@ -97,8 +97,20 @@ export async function startHarnessBackend(port, { timeout = 120000 } = {}) {
 export async function startHarnessVite(vitePort, backendPort) {
   // Imported from the frontend's own node_modules: vite is a frontend
   // dependency, and this file runs from the repo root under Playwright.
-  const { createServer } = await import(path.join(FRONTEND, 'node_modules/vite/dist/node/index.js'));
-  const vue = (await import(path.join(FRONTEND, 'node_modules/@vitejs/plugin-vue/dist/index.mjs'))).default;
+  //
+  // AS A file:// URL, NOT AS A PATH. `import()` takes a URL, and on Windows an
+  // absolute path begins with a drive letter that the ESM loader reads as a
+  // scheme:
+  //
+  //   ERR_UNSUPPORTED_ESM_URL_SCHEME: Only URLs with a scheme in: file, data,
+  //   and node are supported... Received protocol 'c:'
+  //
+  // On Linux the same string is a valid POSIX path and resolves, so CI is green
+  // and only Windows sees this — it failed cross-client-runs.spec.js outright
+  // and took the five tests after it down as "did not run".
+  const fromFrontend = (rel) => import(pathToFileURL(path.join(FRONTEND, rel)).href);
+  const { createServer } = await fromFrontend('node_modules/vite/dist/node/index.js');
+  const vue = (await fromFrontend('node_modules/@vitejs/plugin-vue/dist/index.mjs')).default;
 
   const target = `http://127.0.0.1:${backendPort}`;
   const server = await createServer({

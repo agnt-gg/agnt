@@ -41,7 +41,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import http from 'http';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const PORT = Number(process.argv[2]);
 if (!PORT) {
@@ -67,7 +67,19 @@ delete process.env.DOCKER_CONTAINER;
 delete process.env.TRUST_REMOTE_AUTH; // force the local jwt.verify path
 process.env.JWT_SECRET = 'harness-xclient-secret';
 
-const fromRepo = (p) => import(path.join(REPO, p));
+// AS A file:// URL, NOT AS A PATH. `import()` takes a URL, and on Windows an
+// absolute path begins with a drive letter that the ESM loader reads as a URL
+// scheme:
+//
+//   ERR_UNSUPPORTED_ESM_URL_SCHEME: Only URLs with a scheme in: file, data,
+//   and node are supported... Received protocol 'c:'
+//
+// On Linux the same string is a valid POSIX path and resolves, so CI never sees
+// it. On Windows this process died on its first import, and because it is
+// SPAWNED rather than imported, the failure surfaced in the parent as the
+// generic "harness backend exited early" — one spec failed and the five after
+// it reported "did not run".
+const fromRepo = (p) => import(pathToFileURL(path.join(REPO, p)).href);
 
 const express = (await fromRepo('node_modules/express/index.js')).default;
 const jwt = (await fromRepo('node_modules/jsonwebtoken/index.js')).default;
