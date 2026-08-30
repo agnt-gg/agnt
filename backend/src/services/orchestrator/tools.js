@@ -3905,6 +3905,20 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
                 messages: [...history, { role: 'user', content: message }],
                 provider: finalProvider,
                 model: finalModel,
+                // finalProvider/finalModel were RESOLVED above — from the agent's
+                // own config, then the user's defaults, then a hardcoded
+                // 'Anthropic' / 'claude-3-5-sonnet-20240620'. None of those is
+                // the user asking to change their account default.
+                //
+                // But the orchestrator's write-back guard only asks whether the
+                // REQUEST named a pair (requestHasPin), and this request does.
+                // So a tool-initiated turn looked exactly like a deliberate pin
+                // and rewrote default_provider to whichever agent last spoke —
+                // measured live: chatting to an Anthropic-pinned agent moved the
+                // account default to Anthropic / claude-sonnet-4-5-20250929.
+                //
+                // A dispatch nobody asked to be permanent is turn-scoped.
+                persistDefault: false,
               };
 
               const response = await fetch(`${API_BASE_URL}/agents/${agent_id}/chat`, {
@@ -4035,6 +4049,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
                 history: history,
                 provider: streamAgentProvider,
                 model: streamAgentModel,
+                // Same resolution ladder, same rule as send_message above: this
+                // pair is resolved on the caller's behalf, so it must not be
+                // persisted as the account default.
+                persistDefault: false,
               };
 
               const response = await fetch(`${API_BASE_URL}/agents/${agent_id}/chat-stream`, {
