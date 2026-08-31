@@ -1076,7 +1076,7 @@ export default {
 
 .cv-sb-cap-text {
   display: none;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -1137,7 +1137,7 @@ export default {
   background: none;
   color: var(--color-text-muted, #445);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1148,7 +1148,7 @@ export default {
 }
 
 .cv-sb-page i {
-  width: 18px;
+  width: 16px;
   text-align: center;
   flex-shrink: 0;
 }
@@ -1156,7 +1156,7 @@ export default {
 /* Label hidden by default - shown when sidebar is expanded */
 .cv-sb-label {
   display: none;
-  font-size: 12px;
+  font-size: 10px;
   letter-spacing: 0.3px;
   white-space: nowrap;
   overflow: hidden;
@@ -1232,7 +1232,7 @@ export default {
   background: none;
   color: var(--color-text-muted, #334);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -1248,7 +1248,7 @@ export default {
 }
 
 .cv-sb-add-icon {
-  width: 18px;
+  width: 16px;
   text-align: center;
   flex-shrink: 0;
   line-height: 1;
@@ -1263,7 +1263,7 @@ export default {
   background: none;
   color: var(--color-text-muted, #445);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 10px;
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -1280,7 +1280,7 @@ export default {
 }
 
 .cv-sb-toggle i {
-  width: 18px;
+  width: 16px;
   text-align: center;
   flex-shrink: 0;
 }
