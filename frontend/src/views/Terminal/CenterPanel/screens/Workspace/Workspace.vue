@@ -543,6 +543,7 @@ export default {
     // ── opening widgets (user or Annie) ──────────────────────────────
     const open = (widgetId, {
       objectId = '', routeParam = '', custom = false, at = null, allowDuplicate = false,
+      auto = false,
     } = {}) => {
       if (custom) {
         // Make sure the definition is loadable before the renderer asks for it.
@@ -556,7 +557,9 @@ export default {
       // Point the target screen at the object the same way it is pointed
       // today: Workflow/Tool Forge read a route query param.
       applyRouteParam(routeParam, objectId);
-      addWidget(widgetId, at, { allowDuplicate });
+      // `auto` = Annie placed this, the user did not. useWorkspaces uses it to
+      // honour a previous close and to cap the footprint.
+      addWidget(widgetId, at, { allowDuplicate, auto });
     };
 
     // ── embedded screen-change → canvas action ──────────────────────
@@ -658,7 +661,33 @@ export default {
           seenToolCalls.add(uid);
           if (tc.error) continue;
           const hit = widgetForToolCall(tc);
-          if (hit) open(hit.widgetId, hit);
+          if (hit) open(hit.widgetId, { ...hit, auto: true });
+        }
+      }
+    };
+
+    /**
+     * Mark the tool calls already in a transcript as handled WITHOUT acting on
+     * them.
+     *
+     * Auto-open must react to work happening NOW. A workspace chat re-reads its
+     * transcript from conversation_logs on every tab switch and every app
+     * start, and that history still carries its toolCalls — so a write_file
+     * from yesterday re-opened its widget today, on a canvas the user had
+     * already cleared. The seen-set alone could not stop it: it is per
+     * component and was cleared on exactly the switch that replays the history.
+     *
+     * Gated on "no live activity", so during a run this stands down and the
+     * scanners above own the decision.
+     */
+    const absorbHistory = () => {
+      if (isStreaming.value || Object.keys(runningMap.value).length) return;
+      const messages = store.getters['chatUnified/getMessages'](chatChannelKey.value) || [];
+      for (const m of messages) {
+        if (!Array.isArray(m.toolCalls)) continue;
+        for (const tc of m.toolCalls) {
+          if (tc.result === undefined && tc.error === undefined) continue;
+          seenToolCalls.add(`${m.id}:${tc.id || tc.name}`);
         }
       }
     };
@@ -667,7 +696,21 @@ export default {
     watch(isStreaming, (now, before) => {
       if (before && !now) scanForWidgets();
     });
-    watch(chatChannelKey, () => seenToolCalls.clear());
+    watch(chatChannelKey, () => {
+      // Uids are message-scoped, so another channel's entries are dead weight.
+      seenToolCalls.clear();
+      absorbHistory();
+    });
+    // Transcripts hydrate ASYNCHRONOUSLY, so the absorb above can run before
+    // the history it needs to absorb has arrived. Watching the message COUNT
+    // (cheap — not a deep watch on every token of a streaming reply) catches
+    // it whenever it lands. Registered after the two scanners so that within a
+    // single flush absorbing can only ever follow acting, never pre-empt it.
+    watch(
+      () => (store.getters['chatUnified/getMessages'](chatChannelKey.value) || []).length,
+      absorbHistory,
+      { immediate: true },
+    );
 
     /**
      * Which open window should receive an event for `widgetId`?
@@ -710,9 +753,9 @@ export default {
       // ── AUTO-OPEN ── (unchanged; user-toggleable)
       if (!autoOpen.value) return;
       if (eventType.startsWith('widget-') && eventData?.id) {
-        open(eventData.id, { objectId: eventData.id, custom: true });
+        open(eventData.id, { objectId: eventData.id, custom: true, auto: true });
       } else if (eventType === 'file_written') {
-        open('artifacts');
+        open('artifacts', { auto: true });
       }
     };
 

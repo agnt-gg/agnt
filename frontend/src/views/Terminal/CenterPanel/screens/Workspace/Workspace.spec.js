@@ -92,6 +92,16 @@ describe('widgetForToolCall — tool → widget mapping', () => {
     expect(widgetForToolCall({ name: 'get_trace', result: {} }).widgetId).toBe('traces');
   });
 
+  // The bug: Artifacts opened on every canvas whatever the user was doing,
+  // because reconnaissance tools fire on nearly every turn. Producing an
+  // artifact is an event worth showing; looking at one is not.
+  it('opens NOTHING for read-only file tools', async () => {
+    const { widgetForToolCall } = await import('./surfaceRegistry.js');
+    for (const name of ['read_file', 'list_files', 'grep_files', 'glob_files']) {
+      expect(widgetForToolCall({ name, result: { content: 'x' } }), name).toBeNull();
+    }
+  });
+
   it('ignores unrelated tools', async () => {
     const { widgetForToolCall } = await import('./surfaceRegistry.js');
     expect(widgetForToolCall({ name: 'web_search', result: {} })).toBeNull();
@@ -382,6 +392,94 @@ describe('tool map ↔ real registry integrity', () => {
       if (!getWidget(entry.widgetId)) missing.push(`${tool} → ${entry.widgetId}`);
     }
     expect(missing, `tool map references unregistered widgets:\n  ${missing.join('\n  ')}`).toEqual([]);
+  });
+});
+
+// Auto-open is a SUGGESTION. The reported bug was that it behaved like an
+// instruction: closing the window it placed did nothing, because the next
+// matching tool call put it straight back — which reads as "my delete did not
+// save", even though the delete had already been persisted and pushed.
+describe('useWorkspaces — auto-open the user can refuse', () => {
+  const artifactsIn = (ws) => ws.active.value.widgets.filter((w) => w.widgetId === 'artifacts');
+
+  it('does not re-place a widget the user closed here', async () => {
+    const ws = await freshWorkspaces();
+    const id = ws.addWidget('artifacts', null, { auto: true });
+    expect(artifactsIn(ws)).toHaveLength(1);
+
+    ws.removeWidget(id);
+    expect(ws.addWidget('artifacts', null, { auto: true })).toBeNull();
+    expect(artifactsIn(ws)).toHaveLength(0);
+  });
+
+  it('keeps the refusal to the workspace it was made in', async () => {
+    const ws = await freshWorkspaces();
+    const id = ws.addWidget('artifacts', null, { auto: true });
+    ws.removeWidget(id);
+
+    const first = ws.active.value.id;
+    const other = ws.createWorkspace('Second');
+    expect(ws.addWidget('artifacts', null, { auto: true })).toBeTruthy();
+    expect(other.widgets.some((w) => w.widgetId === 'artifacts')).toBe(true);
+
+    // ...and coming back, the refusal made here is still in force.
+    ws.setActive(first);
+    expect(ws.addWidget('artifacts', null, { auto: true })).toBeNull();
+  });
+
+  it('re-arms when the user opens it deliberately', async () => {
+    const ws = await freshWorkspaces();
+    ws.removeWidget(ws.addWidget('artifacts', null, { auto: true }));
+
+    const manual = ws.addWidget('artifacts');           // palette / user click
+    expect(manual).toBeTruthy();
+    ws.removeWidget(manual);
+    ws.addWidget('artifacts');
+    ws.removeWidget(artifactsIn(ws)[0].instanceId);
+    // Re-armed by the deliberate open, then refused again by the close.
+    expect(ws.addWidget('artifacts', null, { auto: true })).toBeNull();
+  });
+
+  it('survives a reload — the widget is still gone tomorrow', async () => {
+    const ws = await freshWorkspaces();
+    ws.removeWidget(ws.addWidget('artifacts', null, { auto: true }));
+    ws.saveNow();
+
+    // Reload WITHOUT clearing storage: a new module instance, same user.
+    vi.resetModules();
+    const reg = await import('@/canvas/widgetRegistry.js');
+    for (const [id, def] of TEST_WIDGETS) reg.registerWidget(id, def);
+    const reloaded = (await import('./useWorkspaces.js')).useWorkspaces();
+
+    expect(reloaded.addWidget('artifacts', null, { auto: true })).toBeNull();
+  });
+
+  it('forgets every refusal when auto-open is switched back on', async () => {
+    const ws = await freshWorkspaces();
+    ws.removeWidget(ws.addWidget('artifacts', null, { auto: true }));
+    // Control: refused right up until the toggle says otherwise.
+    expect(ws.addWidget('artifacts', null, { auto: true })).toBeNull();
+
+    ws.setAutoOpen(false);
+    ws.setAutoOpen(true);   // an explicit "do this again"
+    expect(ws.addWidget('artifacts', null, { auto: true })).toBeTruthy();
+  });
+
+  // Every screen widget declares 12x8 — the whole grid — so before this an
+  // auto-open on an empty canvas covered the entire workspace.
+  it('never lets an auto-opened window take the whole canvas', async () => {
+    const ws = await freshWorkspaces();
+    ws.addWidget('workflow-forge', null, { auto: true });   // defaultSize 12x8
+    const auto = ws.active.value.widgets.find((w) => w.widgetId === 'workflow-forge');
+    expect(auto.cols).toBeLessThanOrEqual(6);
+  });
+
+  it('still gives a DELIBERATE open its full declared size', async () => {
+    const ws = await freshWorkspaces();
+    ws.removeWidget(ws.active.value.widgets[0].instanceId);   // clear the canvas
+    ws.addWidget('workflow-forge');
+    const manual = ws.active.value.widgets.find((w) => w.widgetId === 'workflow-forge');
+    expect(manual).toMatchObject({ cols: 12, rows: 8 });
   });
 });
 
@@ -698,8 +796,17 @@ describe('Workspace.vue', () => {
       modules: {
         chatUnified: {
           namespaced: true,
-          state: () => ({ runningToolCalls: {} }),
-          getters: { isStreaming: () => () => false, getMessages: () => () => [] },
+          // A real (empty) transcript store rather than a constant, so a test
+          // can drive the two things auto-open actually reads: the messages a
+          // channel holds, and which tool calls are in flight.
+          state: () => ({ runningToolCalls: {}, messages: {} }),
+          getters: {
+            isStreaming: () => () => false,
+            getMessages: (state) => (key) => state.messages[key] || [],
+          },
+          mutations: {
+            SET_MESSAGES: (state, { key, messages }) => { state.messages[key] = messages; },
+          },
           actions: { clearConversation: spies.clearConversation },
         },
         workflows: {
@@ -958,6 +1065,61 @@ describe('Workspace.vue', () => {
       const ids = scopes.map((s) => s.props('instanceId'));
       expect(ids).toContain(id);
       expect(scopes.map((s) => s.props('widgetId'))).toContain('traces');
+    });
+  });
+
+  // A workspace chat re-reads its transcript from conversation_logs on every
+  // tab switch and every app start, and that history still carries its
+  // toolCalls. Auto-open scanned it as if it were live, so yesterday's
+  // write_file re-opened Artifacts today — on a canvas the user had cleared.
+  describe('auto-open reacts to work happening NOW, not to replayed history', () => {
+    const turnWith = (id, toolCall) => ({ id, role: 'assistant', content: 'ok', toolCalls: [toolCall] });
+    const DONE_WRITE = { id: 't1', name: 'write_file', result: { path: '/a.html' } };
+
+    const channelOf = async () => {
+      const { useWorkspaces } = await import('./useWorkspaces.js');
+      return useWorkspaces().chatChannelKey.value;
+    };
+    const artifactWindows = (wrapper) =>
+      wrapper.findAll('.stub-frame').filter((f) => f.attributes('data-widget-id') === 'artifacts');
+
+    it('opens nothing when a transcript hydrates with completed tool calls', async () => {
+      const wrapper = await mountPage();
+      const key = await channelOf();
+
+      // Hydration lands AFTER mount — the case a prime-on-switch would miss.
+      store.commit('chatUnified/SET_MESSAGES', { key, messages: [turnWith('m1', DONE_WRITE)] });
+      await nextTick();
+
+      // Something later makes the scanner run.
+      store.state.chatUnified.runningToolCalls[key] = { t9: { name: 'web_search' } };
+      await nextTick();
+      delete store.state.chatUnified.runningToolCalls[key].t9;
+      await nextTick();
+
+      expect(artifactWindows(wrapper)).toHaveLength(0);
+    });
+
+    // NEGATIVE CONTROL: absorbing history must not gut the feature. Same
+    // widget, same tool, same channel — the only difference is that this call
+    // was watched running.
+    it('still opens for a tool call that runs while we are watching', async () => {
+      const wrapper = await mountPage();
+      const key = await channelOf();
+      store.commit('chatUnified/SET_MESSAGES', { key, messages: [turnWith('m1', DONE_WRITE)] });
+      await nextTick();
+
+      // A live run: the call is in flight, so history absorption stands down.
+      store.state.chatUnified.runningToolCalls[key] = { t2: { name: 'write_file' } };
+      await nextTick();
+      store.state.chatUnified.messages[key].push(
+        turnWith('m2', { id: 't2', name: 'write_file', result: { path: '/b.html' } }),
+      );
+      await nextTick();
+      delete store.state.chatUnified.runningToolCalls[key].t2;   // completes
+      await nextTick();
+
+      expect(artifactWindows(wrapper)).toHaveLength(1);
     });
   });
 

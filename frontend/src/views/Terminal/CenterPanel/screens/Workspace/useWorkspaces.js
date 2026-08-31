@@ -220,9 +220,21 @@ export function fitsAt(existing, col, row, cols, rows) {
  *    whatever was already there.
  * 3. Only when the canvas is genuinely full does it overlay at the origin —
  *    which is also what a crowded custom page does.
+ *
+ * `max` caps the footprint. defaultSize is what a widget wants when the USER
+ * asks for it; an auto-opened window was not asked for, and every screen
+ * widget declares 12x8 — exactly the whole grid — so on an otherwise empty
+ * canvas an auto-open covered the entire workspace. Capping at the call site
+ * keeps "screens are big" true for a deliberate open and false for a reflex.
  */
-function placeInstance(existing, widgetId, at = null) {
-  const want = defaultSizeFor(widgetId);
+function placeInstance(existing, widgetId, at = null, max = null) {
+  const declared = defaultSizeFor(widgetId);
+  const want = max
+    ? {
+      cols: Math.max(1, Math.min(declared.cols, max.cols ?? GRID_COLS)),
+      rows: Math.max(1, Math.min(declared.rows, max.rows ?? GRID_ROWS)),
+    }
+    : declared;
   const occupied = existing.filter((w) => w.visible !== false);
 
   // Explicit drop point (drag from the palette). Honour it when the footprint
@@ -480,6 +492,64 @@ const activeId = ref(
 );
 const autoOpen = ref(persisted?.autoOpen !== false);
 
+/**
+ * Per-workspace memory of auto-opened widgets the user closed.
+ *
+ * Auto-open is a convenience, not an instruction. Closing a window Annie put
+ * there is the user saying "not in this workspace" — and until this existed
+ * the next matching tool call simply put it back, which at the glass is
+ * indistinguishable from "my delete did not save".
+ *
+ * DEVICE-LOCAL on purpose. It sits beside the `autoOpen` toggle that governs
+ * the same feature and is also local: this is a preference about how this
+ * canvas behaves here, not content that belongs to the workspace everywhere.
+ * (It is therefore absent from shapeForSync/pushAll by design — adding it
+ * there would need the server allowlist and LWW semantics for a preference.)
+ *
+ * workspaceId -> Set<widgetId>
+ */
+const dismissedAutoOpen = new Map(
+  Object.entries(persisted?.autoOpenDismissed || {})
+    .filter(([, ids]) => Array.isArray(ids))
+    .map(([wsId, ids]) => [wsId, new Set(ids.filter((id) => typeof id === 'string'))])
+    .filter(([, set]) => set.size > 0),
+);
+
+function isAutoOpenDismissed(wsId, widgetId) {
+  const set = dismissedAutoOpen.get(wsId);
+  return !!set && set.has(widgetId);
+}
+
+/** Remember that the user closed this widget here. */
+function noteAutoOpenDismissed(wsId, widgetId) {
+  if (!wsId || !widgetId) return;
+  let set = dismissedAutoOpen.get(wsId);
+  if (!set) {
+    set = new Set();
+    dismissedAutoOpen.set(wsId, set);
+  }
+  set.add(widgetId);
+}
+
+/** Opening it deliberately re-arms auto-open for it. */
+function clearAutoOpenDismissed(wsId, widgetId) {
+  const set = dismissedAutoOpen.get(wsId);
+  if (!set || !set.delete(widgetId)) return;
+  if (set.size === 0) dismissedAutoOpen.delete(wsId);
+}
+
+function serializeDismissedAutoOpen() {
+  const out = {};
+  for (const [wsId, set] of dismissedAutoOpen) if (set.size) out[wsId] = [...set];
+  return out;
+}
+
+/**
+ * How big an auto-opened window may be, whatever its registry defaultSize.
+ * Half the canvas: Annie's output lands BESIDE your work, never on top of it.
+ */
+const AUTO_OPEN_MAX = { cols: Math.floor(GRID_COLS / 2), rows: GRID_ROWS };
+
 let saveTimer = null;
 
 // Ids deleted locally that must be removed server-side on next push, so a
@@ -720,6 +790,7 @@ function saveNow() {
       workspaces: workspaces.value,
       activeId: activeId.value,
       autoOpen: autoOpen.value,
+      autoOpenDismissed: serializeDismissedAutoOpen(),
       syncedIds: [...syncedIds],
     }));
     // localStorage stays the offline cache + instant-paint source; the server
@@ -838,6 +909,9 @@ export function useWorkspaces() {
     if (idx === -1) return;
     // Record for server-side removal so it does not resurrect from another device.
     if (SYNC_ENABLED) deletedIds.add(id);
+    // Ids are minted per tab and never reused, so a surviving entry would just
+    // leak. Drop it with the tab.
+    dismissedAutoOpen.delete(id);
     workspaces.value.splice(idx, 1);
     if (activeId.value === id) {
       activeId.value = workspaces.value[Math.min(idx, workspaces.value.length - 1)].id;
@@ -918,10 +992,18 @@ export function useWorkspaces() {
    * deliberate exceptions: each chat is a separate conversation, and each
    * browser is a separate live page/agent target with its own instance id.
    */
-  function addWidget(widgetId, at = null, { workspaceId, allowDuplicate = false } = {}) {
+  function addWidget(widgetId, at = null, { workspaceId, allowDuplicate = false, auto = false } = {}) {
     if (!widgetId) return null;
     const ws = resolveWorkspace(workspaceId);
     if (!ws) return null;
+    // `auto` is the single chokepoint for "Annie placed this, the user did
+    // not". Both directions live here so no caller can forget one: a reflex
+    // never overrides a close, and a deliberate open re-arms the reflex.
+    if (auto) {
+      if (isAutoOpenDismissed(ws.id, widgetId)) return null;
+    } else {
+      clearAutoOpenDismissed(ws.id, widgetId);
+    }
     // Chat is always user-created and plural. Browser is plural only for an
     // explicit user add; tool auto-open must focus the workspace browser it
     // just targeted instead of creating a fresh blank one on every call.
@@ -944,7 +1026,7 @@ export function useWorkspaces() {
         return existing.instanceId;
       }
     }
-    const geom = placeInstance(ws.widgets, widgetId, at);
+    const geom = placeInstance(ws.widgets, widgetId, at, auto ? AUTO_OPEN_MAX : null);
     const instanceId = newId('w');
     const instance = {
       instanceId,
@@ -962,12 +1044,21 @@ export function useWorkspaces() {
     return instanceId;
   }
 
+  /**
+   * Close a window.
+   *
+   * Closing is also an ANSWER to auto-open: this widget is not wanted on this
+   * canvas. Recorded for every widget, not just the auto-opened ones, because
+   * the user's intent is the same either way and a rule with an exception is a
+   * rule people have to remember.
+   */
   function removeWidget(instanceId, { workspaceId } = {}) {
     const ws = resolveWorkspace(workspaceId);
     if (!ws) return;
     const idx = ws.widgets.findIndex((w) => w.instanceId === instanceId);
     if (idx === -1) return;
-    ws.widgets.splice(idx, 1);
+    const [closed] = ws.widgets.splice(idx, 1);
+    noteAutoOpenDismissed(ws.id, closed.widgetId);
     panelScopes.delete(instanceId);
     save();
   }
@@ -1053,8 +1144,15 @@ export function useWorkspaces() {
     save();
   }
 
+  /**
+   * Turning auto-open back ON is an explicit "do this again", so it forgets
+   * every past dismissal. Without that, the toggle could be on and still open
+   * nothing — a switch that visibly does nothing is worse than no switch.
+   */
   function setAutoOpen(v) {
-    autoOpen.value = !!v;
+    const on = !!v;
+    if (on && !autoOpen.value) dismissedAutoOpen.clear();
+    autoOpen.value = on;
     save();
   }
 

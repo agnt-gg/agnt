@@ -108,10 +108,16 @@ export const TOOL_WIDGET_MAP = {
   save_agent: { widgetId: 'agent-forge', idKind: 'agent' },
   load_agent: { widgetId: 'agent-forge', idKind: 'agent' },
 
+  // PRODUCING a file opens the browser; READING one does not.
+  //
+  // Every other entry here is a mutation — the tool changed something, so show
+  // the user what changed. read_file and list_files were the only read-only
+  // tools in the table, and they fire during reconnaissance on nearly every
+  // turn whatever the topic, so Artifacts appeared on canvases that had
+  // nothing to do with files. grep_files / glob_files are absent for the same
+  // reason and must stay absent.
   write_file: { widgetId: 'artifacts' },
   edit_file: { widgetId: 'artifacts' },
-  read_file: { widgetId: 'artifacts' },
-  list_files: { widgetId: 'artifacts' },
 
   create_goal: { widgetId: 'goals' },
   create_and_run_goal: { widgetId: 'goals' },
