@@ -9,6 +9,9 @@
         <template v-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
+        <template v-else-if="untabbedScreenLabel">
+          <span class="cv-page-title">{{ untabbedScreenLabel }}</span>
+        </template>
         <template v-else>
           <button
             v-for="tab in activeSectionTabs"
@@ -453,9 +456,20 @@ export default {
       return ALL_SECTIONS.find((s) => s.screens.some((t) => t.screen === props.screenName)) || null;
     });
 
-    // Sub-tabs shown in toolbar = screens of the active section
+    // Sub-tabs shown in toolbar = the active section's screens, minus any
+    // marked `tab: false` — those are routed and owned by the section but
+    // navigated from the screen's own left panel instead.
     const activeSectionTabs = computed(() => {
-      return activeSection.value ? activeSection.value.screens : [];
+      return activeSection.value ? activeSection.value.screens.filter((t) => t.tab !== false) : [];
+    });
+
+    // A screen hidden from its own tab strip has nothing in that strip to
+    // highlight, so the toolbar would show a row of tabs with none of them
+    // selected — which reads as a bug. Name the screen instead, the same way a
+    // custom page is named.
+    const untabbedScreenLabel = computed(() => {
+      const owned = activeSection.value?.screens.find((t) => t.screen === props.screenName);
+      return owned?.tab === false ? owned.label : '';
     });
 
     // ── Clock ──
@@ -727,6 +741,7 @@ export default {
       onCustomPage,
       activeSection,
       activeSectionTabs,
+      untabbedScreenLabel,
       ctxMenu,
       openContextMenu,
       modal,

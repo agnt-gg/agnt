@@ -141,10 +141,15 @@ export const MAIN_SECTIONS = [
 //
 // Settings is the same shape one level further: Profile, Billing, Theme,
 // Memory, Evolution, Autonomy and the rest are navigated from SettingsPanel.
+//
+// `tab: false` — owned and routed by this row, but not drawn in the toolbar.
 // Memory / Evolution / Autonomy are full screens rather than Settings
-// sections, so they are listed here as toolbar tabs — that keeps them inside
-// SECTION_ROUTES, keeps the gear lit while you are on them, and lets them
-// share SettingsPanel as their left panel (see screenRegistry.js).
+// sections, so the row has to list them: that is what keeps them inside
+// SECTION_ROUTES (without it the canvas reads them as custom pages and the
+// gear goes dark while you are on them) and lets them share SettingsPanel as
+// their left panel (see screenRegistry.js). None of that requires repeating
+// them across the top of the screen, one gap away from the panel that
+// navigates them — the same restating Connect was collapsed to stop.
 export const BOTTOM_SECTIONS = [
   {
     id: 'connect',
@@ -160,9 +165,9 @@ export const BOTTOM_SECTIONS = [
     label: 'Settings',
     screens: [
       { screen: 'SettingsScreen', label: 'SETTINGS' },
-      { screen: 'MemoryScreen', label: 'MEMORY' },
-      { screen: 'ExperimentsScreen', label: 'EVOLUTION' },
-      { screen: 'AutonomyScreen', label: 'AUTONOMY' },
+      { screen: 'MemoryScreen', label: 'MEMORY', tab: false },
+      { screen: 'ExperimentsScreen', label: 'EVOLUTION', tab: false },
+      { screen: 'AutonomyScreen', label: 'AUTONOMY', tab: false },
     ],
   },
 ];

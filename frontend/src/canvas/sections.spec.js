@@ -22,6 +22,7 @@ const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)),
 const terminalSrc = read('../views/Terminal/Terminal.vue');
 const routerSrc = read('../router/index.js');
 const backendTargetsSrc = read('../../../backend/src/services/orchestrator/tutorialTargets.js');
+const canvasSrc = read('./CanvasScreen.vue');
 const settingsPanelSrc = read('../views/Terminal/LeftPanel/types/SettingsPanel/SettingsPanel.vue');
 const settingsScreenSrc = read('../views/Terminal/CenterPanel/screens/Settings/Settings.vue');
 
@@ -189,6 +190,27 @@ describe('canvas sections registry', () => {
 
     it('lists exactly the SYSTEM screens that are not SettingsScreen itself', () => {
       expect(navScreens.sort()).toEqual(systemTabs.filter((s) => s !== 'SettingsScreen').sort());
+    });
+
+    it('those screens are routed but kept out of the toolbar', () => {
+      // Two halves of one invariant, and dropping either breaks something
+      // silently: remove them from `screens` and the canvas reads them as
+      // custom pages (gear goes dark, wrong left panel); leave them tabbable
+      // and the toolbar repeats the panel that navigates them.
+      const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
+      expect(settings.screens.filter((t) => t.tab !== false).map((t) => t.screen)).toEqual(['SettingsScreen']);
+      for (const screen of ['MemoryScreen', 'ExperimentsScreen', 'AutonomyScreen']) {
+        expect(SECTION_ROUTES.has(screen)).toBe(true);
+      }
+    });
+
+    it('the toolbar actually honours tab:false, and names the screen instead', () => {
+      // A registry flag nothing reads is decoration. The second half matters
+      // too: without it the strip renders with nothing selected, which reads
+      // as a bug rather than as a deliberate absence.
+      expect(canvasSrc).toMatch(/activeSectionTabs[\s\S]{0,220}?filter\(\(t\) => t\.tab !== false\)/);
+      expect(canvasSrc).toMatch(/untabbedScreenLabel/);
+      expect(canvasSrc).toMatch(/v-else-if="untabbedScreenLabel"/);
     });
 
     it('every nav row that is a Settings SECTION has a matching v-if branch', () => {
