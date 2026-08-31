@@ -106,6 +106,63 @@ describe('ConversationMetaLine', () => {
     expect(styles).toContain('white-space: nowrap');
     expect(styles).toContain('text-overflow: ellipsis');
   });
+
+  /**
+   * THE TRUNCATION BUG, AND WHY IT NEEDED ITS OWN GUARD.
+   *
+   * The speaker and the date used to share ONE ellipsised span with the date
+   * written LAST. `text-overflow: ellipsis` eats the END of a line, so as soon
+   * as a conversation grew a roster and a long agent name, the character the
+   * browser dropped was the TIMESTAMP — the one thing the list is sorted by.
+   *
+   * Every existing test still passed, because each one was true: the avatars
+   * led the line, the speaker only showed while running, the row never grew
+   * taller. None of them said WHICH element loses when the line runs out of
+   * room. That is what these assert.
+   */
+  describe('when the line runs out of room', () => {
+    const styles = META_LINE.slice(META_LINE.indexOf('<style'));
+
+    /** The declarations inside one CSS rule, by exact selector. */
+    const ruleFor = (selector) => {
+      const at = styles.indexOf(`${selector} {`);
+      if (at === -1) return '';
+      return styles.slice(at, styles.indexOf('}', at));
+    };
+
+    it('gives the date and the speaker separate elements', () => {
+      // Sharing one element is the bug: whichever is written last is the one
+      // the ellipsis destroys, and there is no way to choose.
+      const body = templateOf(META_LINE);
+      expect(body).toContain('class="output-speaker"');
+      expect(body).toContain('class="output-date"');
+      expect(body.indexOf('output-speaker')).toBeLessThan(body.indexOf('output-date'));
+    });
+
+    it('NEVER shrinks or truncates the timestamp', () => {
+      const date = ruleFor('.output-date');
+      expect(date).toContain('flex: 0 0 auto');
+      expect(date).toContain('white-space: nowrap');
+      expect(date).not.toContain('text-overflow: ellipsis');
+    });
+
+    it('makes the SPEAKER the element that gives way', () => {
+      const speaker = ruleFor('.output-speaker');
+      expect(speaker).toContain('flex: 0 1 auto');
+      expect(speaker).toContain('text-overflow: ellipsis');
+      // A flex item defaults to `min-width: auto` and refuses to shrink below
+      // its content — without this it would shove the date out of the row
+      // instead of truncating itself.
+      expect(speaker).toContain('min-width: 0');
+    });
+
+    it('keeps the separator on the element that cannot shrink', () => {
+      // Drawn as generated content on the date, a half-eaten "Sol speak…·" is
+      // impossible.
+      expect(styles).toContain('.has-speaker .output-date::before');
+      expect(templateOf(META_LINE)).toContain("'has-speaker': !!speaker");
+    });
+  });
 });
 
 describe('the avatar ring tracks the row background', () => {
