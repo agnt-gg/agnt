@@ -119,16 +119,6 @@ export const MAIN_SECTIONS = [
     screens: [{ screen: 'SkillsScreen', label: 'SKILLS' }],
   },
   {
-    id: 'widgets',
-    group: 'BUILD',
-    icon: 'fas fa-shapes',
-    label: 'Widgets',
-    screens: [
-      { screen: 'WidgetManagerScreen', label: 'MY WIDGETS' },
-      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
-    ],
-  },
-  {
     // An asset, not a connection: a plugin is a thing you install and own,
     // the same kind of thing as an agent or a tool. It was a view inside
     // Connectors, reachable only from that screen's panel nav.
@@ -137,6 +127,16 @@ export const MAIN_SECTIONS = [
     icon: 'fas fa-puzzle-piece',
     label: 'Plugins',
     screens: [{ screen: 'PluginsScreen', label: 'MY PLUGINS' }],
+  },
+  {
+    id: 'widgets',
+    group: 'BUILD',
+    icon: 'fas fa-shapes',
+    label: 'Widgets',
+    screens: [
+      { screen: 'WidgetManagerScreen', label: 'MY WIDGETS' },
+      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
+    ],
   },
 ];
 
