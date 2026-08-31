@@ -29,7 +29,7 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.plugins',          selector: '[data-tour-id="sidebar.plugins"]',          screen: null, description: 'Sidebar button: Plugins',      safeToSimulate: true },
 
   // ── Sidebar: foot of the rail + controls ───────────────────────────
-  { id: 'sidebar.connect',          selector: '[data-tour-id="sidebar.connect"]',          screen: null, description: 'Sidebar button: Connect (API/OAuth, Emails, MCP, Plugins, Vault, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.connect',          selector: '[data-tour-id="sidebar.connect"]',          screen: null, description: 'Sidebar button: Connectors (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
   { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
   { id: 'sidebar.add-page',         selector: '[data-tour-id="sidebar.add-page"]',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
   { id: 'sidebar.toggle',           selector: '[data-tour-id="sidebar.toggle"]',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },

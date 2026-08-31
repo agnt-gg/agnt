@@ -248,7 +248,7 @@ describe('canvas sections registry', () => {
     expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['connect', 'settings']);
 
     const connect = BOTTOM_SECTIONS[0];
-    expect(connect.label).toBe('Connect');
+    expect(connect.label).toBe('Connectors');
     expect(connect.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen']);
   });
 

@@ -167,8 +167,8 @@ export const BOTTOM_SECTIONS = [
     id: 'connect',
     group: 'SYSTEM',
     icon: 'fas fa-plug',
-    label: 'Connect',
-    screens: [{ screen: 'ConnectorsScreen', label: 'CONNECT' }],
+    label: 'Connectors',
+    screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTORS' }],
   },
   {
     id: 'settings',

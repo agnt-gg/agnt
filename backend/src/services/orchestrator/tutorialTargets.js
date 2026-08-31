@@ -27,7 +27,7 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.plugins',          screen: null, description: 'Sidebar button: Plugins',      safeToSimulate: true },
 
   // ── Sidebar: foot of the rail ── one row; the screen carries its own nav.
-  { id: 'sidebar.connect',          screen: null, description: 'Sidebar button: Connect (API/OAuth, Emails, MCP, Plugins, Vault, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.connect',          screen: null, description: 'Sidebar button: Connectors (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
 
   // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
   { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
