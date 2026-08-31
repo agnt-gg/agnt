@@ -80,7 +80,6 @@ const ALL_LEFT_PANELS = [
   'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',
   'MemoryPanel',
   'AutonomyPanel',
-  'PluginsPanel',
 ];
 let panelsPreloaded = false;
 const preloadPanels = () => {

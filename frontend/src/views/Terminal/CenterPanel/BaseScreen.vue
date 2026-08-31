@@ -50,7 +50,9 @@
           <i class="fas fa-cloud-upload-alt"></i>
           <span>Drop files to attach</span>
         </div>
-        <div class="mobile-panel-toggle" v-if="isMobile" @click="togglePanel">
+        <!-- The hamburger slides the left panel in. On a screen that has no
+             left panel it would be a control that does nothing. -->
+        <div class="mobile-panel-toggle" v-if="isMobile && leftPanelEnabled" @click="togglePanel">
           <span class="hamburger-bar"></span>
           <span class="hamburger-bar"></span>
           <span class="hamburger-bar"></span>
@@ -590,7 +592,21 @@ export default {
     const actualLeftPanelWidth = ref(scopeGet('leftWidth', store.getters['theme/actualLeftPanelWidth'] || 384));
     const mainContentWidth = ref(scopeGet('mainWidth', store.getters['theme/mainContentWidth'] || 0));
     const rightPanelWidth = ref(scopeGet('rightWidth', store.getters['theme/rightPanelWidth'] || 384));
-    const showLeftPanel = ref(store.getters['theme/showLeftPanel']);
+    const showLeftPanelSetting = ref(store.getters['theme/showLeftPanel']);
+
+    // A screen can opt out of the left column entirely (screenRegistry
+    // `leftPanel: false`) — for a screen whose panel would have nothing to
+    // say that the screen does not already say.
+    //
+    // The opt-out is folded into showLeftPanel itself rather than applied at
+    // each use site, because the left column is accounted for in six places:
+    // the panel, its resize handle, the main-content width, the right-resize
+    // clamp and both auto-collapse branches. Patching the v-if alone hides
+    // the panel and leaves main-content still reserving its width — a ~390px
+    // gap where the panel used to be. ANDing once makes all six correct by
+    // construction.
+    const leftPanelEnabled = computed(() => resolvePanel(props.activeLeftPanel, props.screenId, 'leftPanel') !== false);
+    const showLeftPanel = computed(() => showLeftPanelSetting.value && leftPanelEnabled.value);
     const showRightPanel = ref(store.getters['theme/showRightPanel']);
     const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
     const rightPanelCollapsed = ref(scopeGet('rightCollapsed', store.getters['theme/rightPanelCollapsed']));
@@ -1487,7 +1503,7 @@ export default {
     watch(
       () => store.getters['theme/showLeftPanel'],
       (newValue) => {
-        showLeftPanel.value = newValue;
+        showLeftPanelSetting.value = newValue;
         calculateMainContentWidth();
       },
     );
@@ -1522,6 +1538,10 @@ export default {
     const computedLeftPanel = computed(() => {
       // Explicit prop wins, else the screenRegistry entry for this screen.
       const effective = resolvePanel(props.activeLeftPanel, props.screenId, 'leftPanel');
+      // `false` means the screen has no left column; it is not a panel name.
+      // The panel is not rendered in that case, but returning `false` from a
+      // prop typed [String, null] would warn the moment anything did render it.
+      if (effective === false) return null;
       if (effective !== null && effective !== undefined) {
         return effective;
       }
@@ -1556,6 +1576,7 @@ export default {
       mainContentWidth,
       rightPanelWidth,
       showLeftPanel,
+      leftPanelEnabled,
       showRightPanel,
       // Dual Resize System State
       isResizing,

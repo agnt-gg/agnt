@@ -8,6 +8,12 @@
  * Semantics (mirrors BaseScreen's long-standing prop behavior exactly):
  *   rightPanel / leftPanel:
  *     string     → that panel type renders (when the global toggle shows it)
+ *     false      → (leftPanel) the screen has NO left column at all: the
+ *                  panel, its resize handle and its share of the width are
+ *                  all removed. Distinct from `null`, which DERIVES a name —
+ *                  and deriving a name for a panel that does not exist is not
+ *                  "no panel", it is ChatPanel, because LeftPanel catches the
+ *                  failed import and falls back.
  *     null       → BaseScreen derives a panel name from screenId
  *                  (right: `${screenId}Panel`, left: screenId minus "Screen"
  *                  + "Panel") — same as before, unknown names render empty
@@ -43,8 +49,11 @@ export const SCREEN_DEFAULTS = Object.freeze({
   GoalsScreen: { leftPanel: 'GoalsPanel', rightPanel: 'GoalsPanel', input: false },
   MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
   MemoryScreen: { leftPanel: 'SettingsPanel', rightPanel: 'MemoryPanel', input: false },
-  // left derives to PluginsPanel; right is dynamic (plugin detail vs. news).
-  PluginsScreen: { input: false },
+  // No left column. Everything a Plugins panel could hold — the Installed /
+  // Marketplace tabs, the search box, the counts — is already on the screen
+  // itself, so the column had nothing to say. Right is dynamic (plugin detail
+  // vs. news).
+  PluginsScreen: { leftPanel: false, input: false },
   SettingsScreen: { input: false }, // right: dynamic
   SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
   SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },

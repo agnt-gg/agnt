@@ -132,6 +132,53 @@ describe('registry entries resolve to real panel types', () => {
   });
 });
 
+/**
+ * `leftPanel: false` — the screen has no left column.
+ *
+ * This is NOT the same as `null`. `null` derives a panel name from the screen
+ * id, and a derived name for a panel that does not exist resolves to
+ * ChatPanel, because LeftPanel catches the failed import and falls back. So
+ * "just delete the panel file" renders the conversation list where the panel
+ * used to be, which looks like a bug rather than an absence.
+ */
+describe('a screen can have no left column at all', () => {
+  const baseScreen = fs.readFileSync(path.join(SRC, 'views/Terminal/CenterPanel/BaseScreen.vue'), 'utf8');
+
+  it('resolves to false rather than to a derived name', () => {
+    expect(resolvePanel(undefined, 'PluginsScreen', 'leftPanel')).toBe(false);
+  });
+
+  it('no screen that opts out still ships a left panel component', () => {
+    // Otherwise the component is dead code that nothing can render.
+    const orphans = Object.entries(SCREEN_DEFAULTS)
+      .filter(([, v]) => v.leftPanel === false)
+      .map(([id]) => id.replace(/Screen$/, 'Panel'))
+      .filter((name) => fs.existsSync(path.join(SRC, 'views/Terminal/LeftPanel/types', name, `${name}.vue`)));
+    expect(orphans, `left panel opted out but the component remains: ${orphans.join(', ')}`).toEqual([]);
+  });
+
+  it('the opt-out reaches the LAYOUT, not just the v-if', () => {
+    // The left column is accounted for in six places — the panel, its resize
+    // handle, the main-content width, the right-resize clamp and both
+    // auto-collapse branches. Hiding only the panel leaves main-content still
+    // reserving ~390px, i.e. a gap where the panel used to be. BaseScreen
+    // therefore folds the opt-out into showLeftPanel itself, so every one of
+    // those six reads the same value.
+    expect(baseScreen).toMatch(/const showLeftPanel = computed\([^;]*leftPanelEnabled\.value\)/);
+    // ...and the width math must still be the thing gated on it.
+    expect(baseScreen).toMatch(/if \(showLeftPanel\.value\) \{\s*\n\s*usedWidth \+=/);
+  });
+
+  it('nothing claims rightPanel: false, which BaseScreen does not implement', () => {
+    // The two sides are not symmetric. Asserting it stops someone assuming so
+    // and getting a right panel that renders anyway.
+    const bad = Object.entries(SCREEN_DEFAULTS)
+      .filter(([, v]) => v.rightPanel === false)
+      .map(([id]) => id);
+    expect(bad, `rightPanel: false is not supported: ${bad.join(', ')}`).toEqual([]);
+  });
+});
+
 describe('resolution semantics', () => {
   it('an explicitly passed prop always wins over the registry', () => {
     expect(resolvePanel('CustomPanel', 'GoalsScreen', 'rightPanel')).toBe('CustomPanel');
