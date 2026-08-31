@@ -8,6 +8,9 @@ const activeTimeouts = new Set();
 // 60s success cache, 15s retry backoff on failure.
 let secondsAutomated90DayLastFetch = 0;
 
+// Cache gate for fetchActivityStreak. Same 60s/15s policy as above.
+let activityStreakLastFetch = 0;
+
 function clearAllTimeouts() {
   activeTimeouts.forEach((timeoutId) => {
     clearTimeout(timeoutId);
@@ -148,6 +151,16 @@ export default {
       lastFetchTime: null,
       isLoading: false,
       activityDays: 14, // Track the current time range
+    },
+    // --- Activity Streak ---
+    // Server-computed over ALL history and stored in its own slot, on purpose.
+    // It used to be derived on the client from creditsActivity.rawData, which
+    // only ever holds the chart's selected range — so the streak could never
+    // exceed that range no matter how long it really was.
+    activityStreak: {
+      days: 0,
+      lastActiveDate: null,
+      isLoading: false,
     },
     // --- Execution Ledger (PRD-122) ---
     // Real spend, sourced from llm_calls, which is the only place that knows
@@ -318,6 +331,11 @@ export default {
         state.ledger.lastFetchTime = lastFetchTime;
       }
       state.ledger.isLoading = isLoading;
+    },
+    SET_ACTIVITY_STREAK(state, { days, lastActiveDate, isLoading }) {
+      if (days !== undefined) state.activityStreak.days = days;
+      if (lastActiveDate !== undefined) state.activityStreak.lastActiveDate = lastActiveDate;
+      if (isLoading !== undefined) state.activityStreak.isLoading = isLoading;
     },
     SET_SECONDS_AUTOMATED_90_DAY(state, total) {
       state.secondsAutomated90Day = total;
@@ -844,6 +862,54 @@ export default {
         // Failure backoff: allow a retry after 15s instead of holding the full
         // 60s cache window — but never instantly (retry storms peg the disk).
         secondsAutomated90DayLastFetch = Date.now() - 45000;
+      }
+    },
+
+    // Fetches the current activity streak. Takes NO range argument by design:
+    // the streak is a property of the user's whole history, not of whatever
+    // window the chart happens to be showing, so nothing about the chart's
+    // range selection may reach this call.
+    async fetchActivityStreak({ commit }) {
+      const now = Date.now();
+      if (now - activityStreakLastFetch < 60000) {
+        return;
+      }
+      activityStreakLastFetch = now;
+      commit('SET_ACTIVITY_STREAK', { isLoading: true });
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No auth token found');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+          activeTimeouts.delete(timeoutId);
+        }, 15000);
+        activeTimeouts.add(timeoutId);
+
+        const response = await axios.get(`${API_CONFIG.BASE_URL}/executions/streak`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        activeTimeouts.delete(timeoutId);
+
+        commit('SET_ACTIVITY_STREAK', {
+          days: response.data?.streak || 0,
+          lastActiveDate: response.data?.lastActiveDate || null,
+          isLoading: false,
+        });
+      } catch (error) {
+        if (axios.isCancel(error)) {
+          console.warn('[UserStats] Request canceled for fetchActivityStreak');
+        } else {
+          console.error('Error fetching activity streak:', error);
+        }
+        // Leave the last known streak on screen rather than flashing it to 0 on
+        // a transient failure. 15s retry backoff, never an instant retry.
+        commit('SET_ACTIVITY_STREAK', { isLoading: false });
+        activityStreakLastFetch = Date.now() - 45000;
       }
     },
 
@@ -1494,61 +1560,14 @@ export default {
     creditsActivity: (state) => state.creditsActivity,
     isCreditsActivityLoading: (state) => state.creditsActivity.isLoading,
     creditsActivityLastFetchTime: (state) => state.creditsActivity.lastFetchTime,
-    daysStreak: (state) => {
-      const rawData = state.creditsActivity.rawData;
-      if (!rawData || rawData.length === 0) return 0;
-
-      // Filter for items with automation time > 0 and sort by date descending
-      // rawData is expected to be { date: 'YYYY-MM-DD', credits_used: number } or similar
-      // Actually fillMissingDates formats them as 'Jan 27' but rawData in state might be different
-      // Let's look at how rawData is populated in fetchCreditsActivity
-      // It uses fillMissingDates(response.data, startDate, endDate)
-      // fillMissingDates returns { date: formatDate(currentDate), credits_used: ... }
-      // formatDate returns 'Jan 27'
-
-      // Wait, if it's 'Jan 27', we might have trouble with year boundaries.
-      // But for a simple streak calculation, we can work with the array order if it's chronological.
-      // fillMissingDates produces chronological order.
-
-      const reversedData = [...rawData].reverse();
-      let streak = 0;
-      const today = formatDate(new Date());
-      const yesterdayDate = new Date();
-      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-      const yesterday = formatDate(yesterdayDate);
-
-      // A streak is active if today has activity OR if yesterday had activity (and today hasn't happened or hasn't had activity yet)
-      let foundStart = false;
-      let startIndex = -1;
-
-      // Check today
-      if (reversedData[0] && reversedData[0].date === today) {
-        if (reversedData[0].credits_used > 0) {
-          foundStart = true;
-          startIndex = 0;
-        } else if (reversedData[1] && reversedData[1].date === yesterday && reversedData[1].credits_used > 0) {
-          // If today is 0, check yesterday
-          foundStart = true;
-          startIndex = 1;
-        }
-      } else if (reversedData[0] && reversedData[0].date === yesterday && reversedData[0].credits_used > 0) {
-        // If the most recent data point is yesterday (today not in data yet)
-        foundStart = true;
-        startIndex = 0;
-      }
-
-      if (!foundStart) return 0;
-
-      for (let i = startIndex; i < reversedData.length; i++) {
-        if (reversedData[i].credits_used > 0) {
-          streak++;
-        } else {
-          break;
-        }
-      }
-
-      return streak;
-    },
+    // Read straight from the server-computed value. This getter used to walk
+    // creditsActivity.rawData, which is only ever the chart's SELECTED RANGE:
+    // the streak was silently capped at the window length (+1, because the
+    // window is zero-filled inclusively from today-N through today), so a
+    // year-long streak displayed as 15 on the default 14-day view.
+    daysStreak: (state) => state.activityStreak.days,
+    activityStreak: (state) => state.activityStreak,
+    isActivityStreakLoading: (state) => state.activityStreak.isLoading,
     // --- $AGNT Score Getter - Returns state value (calculated by action) ---
     agntScore: (state) => state.agntScore,
     // --- End $AGNT Score Getters ---

@@ -418,6 +418,10 @@ export default {
 
     onMounted(() => {
       fetchCreditsData();
+      // Deliberately NOT part of fetchCreditsData: the streak spans all of
+      // history and must not be refetched (or reinterpreted) when the chart's
+      // range changes. Range selection and streak are independent facts.
+      store.dispatch('userStats/fetchActivityStreak');
 
       // If data already exists in store (from cache), render immediately
       if (creditsActivity.value.rawData && creditsActivity.value.rawData.length > 0) {

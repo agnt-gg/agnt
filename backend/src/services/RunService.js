@@ -523,6 +523,20 @@ class RunService {
     }
   }
 
+  // The activity streak is deliberately its own endpoint rather than a field on
+  // /activity: it spans all of history, so it must not inherit that route's
+  // date window. A failure here degrades to "no streak" rather than 500 — the
+  // badge is decoration on a dashboard, and must never take the page with it.
+  async getActivityStreak(req, res) {
+    try {
+      const streak = await ExecutionModel.getActivityStreak(req.user.id);
+      res.json(streak);
+    } catch (error) {
+      console.error('Error in getActivityStreak:', error);
+      res.json({ streak: 0, lastActiveDate: null, asOf: null, error: true });
+    }
+  }
+
   // Agent Execution Methods
   async getAgentExecutions(req, res) {
     try {

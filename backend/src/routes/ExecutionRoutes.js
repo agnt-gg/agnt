@@ -7,6 +7,8 @@ const ExecutionRoutes = express.Router();
 // Workflow executions
 ExecutionRoutes.get('/', authenticateToken, RunService.getExecutions);
 ExecutionRoutes.post('/activity', authenticateToken, RunService.getAgentActivityData);
+// Must stay ABOVE '/:id' or the catch-all swallows it as an execution id.
+ExecutionRoutes.get('/streak', authenticateToken, RunService.getActivityStreak);
 ExecutionRoutes.get('/:id', authenticateToken, RunService.getExecutionDetails);
 
 // Agent/Orchestrator executions

@@ -435,6 +435,91 @@ class ExecutionModel {
       );
     });
   }
+  // Current consecutive-days-of-activity streak, over the user's WHOLE history.
+  //
+  // This exists because the streak used to be derived on the client from the
+  // Cumulative Credits chart's data, which only ever holds the selected range.
+  // A streak can be older than any range the chart offers, so deriving it from
+  // windowed data silently clamped it to the window — a year-long streak read
+  // as 15 when the chart was set to 14 days.
+  //
+  // Cost is bounded by the streak's own length, not by history: days are loaded
+  // in chunks walking backwards and the walk stops at the first gap. The common
+  // case (a short streak, or none) is a single 180-day query.
+  static async getActivityStreak(userId) {
+    const CHUNK_DAYS = 180;
+    const MAX_CHUNKS = 40; // 20 years — a hard stop so this can never loop away
+
+    // SQLite's clock, so "today" matches the DATE(..., 'localtime') grouping.
+    const { today } = await dbGet(`SELECT DATE('now', 'localtime') AS today`, []);
+
+    const activeDates = new Set();
+    let loadedFrom = null; // earliest day `activeDates` is known to cover
+
+    const loadChunk = async () => {
+      const end = loadedFrom ? addDays(loadedFrom, -1) : today;
+      const start = addDays(end, -(CHUNK_DAYS - 1));
+      for (const row of await ExecutionModel._activeDatesBetween(userId, start, end)) {
+        if (row.date) activeDates.add(row.date);
+      }
+      loadedFrom = start;
+    };
+
+    await loadChunk();
+
+    // Anchor on today, falling back to yesterday: a day that hasn't been worked
+    // in YET is not a broken streak, it's an unfinished one.
+    let cursor = activeDates.has(today) ? today : addDays(today, -1);
+    if (!activeDates.has(cursor)) return { streak: 0, lastActiveDate: null, asOf: today };
+
+    const lastActiveDate = cursor;
+    let streak = 0;
+    let chunksLoaded = 1;
+
+    for (;;) {
+      while (cursor >= loadedFrom && activeDates.has(cursor)) {
+        streak++;
+        cursor = addDays(cursor, -1);
+      }
+      // Stopped inside loaded territory => that's a real gap, the streak ends.
+      if (cursor >= loadedFrom) break;
+      if (chunksLoaded >= MAX_CHUNKS) break;
+      // Ran off the loaded edge mid-streak: load further back and keep walking.
+      await loadChunk();
+      chunksLoaded++;
+    }
+
+    return { streak, lastActiveDate, asOf: today };
+  }
+
+  // Distinct local dates in [start, end] on which the user burned credits.
+  //
+  // "Activity" is credits_used > 0 from the same two tables the chart's credits
+  // series sums, so the badge and the bars can never disagree about which days
+  // count. DISTINCT (not SUM) keeps this index-friendly and tiny: one row per
+  // active day, no row payloads read.
+  //
+  // The range is padded a day either side because start_time is stored in UTC
+  // while days are grouped in localtime, and because a bare 'YYYY-MM-DD' upper
+  // bound sorts BELOW every timestamp on that same day. Extra dates outside the
+  // window are harmless — they are still true active days.
+  static _activeDatesBetween(userId, startYmd, endYmd) {
+    const lower = addDays(startYmd, -1);
+    const upper = addDays(endYmd, 2);
+    return dbAll(
+      `SELECT DISTINCT DATE(start_time, 'localtime') AS date
+         FROM workflow_executions
+        WHERE user_id = ? AND COALESCE(credits_used, 0) > 0
+          AND start_time BETWEEN ? AND ?
+       UNION
+       SELECT DISTINCT DATE(start_time, 'localtime') AS date
+         FROM agent_executions
+        WHERE user_id = ? AND COALESCE(credits_used, 0) > 0
+          AND start_time BETWEEN ? AND ?`,
+      [userId, lower, upper, userId, lower, upper]
+    );
+  }
+
   static async getTotalCreditsUsed(executionId) {
     return new Promise((resolve, reject) => {
       db.get('SELECT SUM(credits_used) as total_credits FROM node_executions WHERE execution_id = ?', [executionId], (err, row) => {
