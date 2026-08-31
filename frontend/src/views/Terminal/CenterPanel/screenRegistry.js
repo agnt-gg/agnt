@@ -43,6 +43,8 @@ export const SCREEN_DEFAULTS = Object.freeze({
   GoalsScreen: { leftPanel: 'GoalsPanel', rightPanel: 'GoalsPanel', input: false },
   MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
   MemoryScreen: { leftPanel: 'SettingsPanel', rightPanel: 'MemoryPanel', input: false },
+  // left derives to PluginsPanel; right is dynamic (plugin detail vs. news).
+  PluginsScreen: { input: false },
   SettingsScreen: { input: false }, // right: dynamic
   SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
   SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },

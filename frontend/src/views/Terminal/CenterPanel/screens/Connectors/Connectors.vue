@@ -544,20 +544,8 @@
         </div>
       </div>
 
-      <!-- Plugins Section -->
-      <div v-else-if="activeSection === 'plugins'" class="connectors-content" @click="handlePluginAreaClick">
-        <div class="content-header">
-          <h2 class="content-title">My Plugins</h2>
-          <p class="content-subtitle">
-            Extend AGNT with community plugins. Install tools like Discord, Slack, GitHub and more without bloating your app.
-          </p>
-        </div>
-        <div class="connectors-grid">
-          <div class="connectors-section full-width">
-            <Plugins @show-alert="showAlert" />
-          </div>
-        </div>
-      </div>
+      <!-- Plugins moved to its own screen and its own BUILD row: an
+           installable asset is not a connection. See screens/Plugins. -->
 
       <!-- Add/Edit Provider Modal -->
       <div v-if="showEditProviderModal || showAddProviderModal" class="mcp-server-form-overlay" @click.self="closeProviderModal">
@@ -864,7 +852,6 @@ import ChatBehaviorSettings from './components/ChatBehaviorSettings.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
-import Plugins from './components/Plugins.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
@@ -889,7 +876,6 @@ export default {
     ResourcesSection,
     Webhooks,
     EmailServer,
-    Plugins,
     Tooltip,
   },
   setup(props, { emit }) {
@@ -913,7 +899,9 @@ export default {
       }).catch((err) => console.warn('[Connectors] notify-changed failed:', err));
     }
     const terminalLines = ref(['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.']);
-    const activeSection = ref('plugins');
+    // Opens on the first row of the panel's nav. It was 'plugins' until that
+    // view left for its own screen.
+    const activeSection = ref('oauth');
     const searchQuery = ref('');
     const selectedSecret = ref(null);
     const form = ref({
@@ -925,7 +913,11 @@ export default {
     });
     const popup = ref({ show: false, type: 'success', message: '', icon: '' });
 
-    const activeRightPanel = computed(() => (store.getters['connectors/selectedPlugin'] ? 'ConnectorsPanel' : 'NewsPanel'));
+    // Was `selectedPlugin ? 'ConnectorsPanel' : 'NewsPanel'` while this screen
+    // hosted the plugin list. Nothing here can select a plugin any more, and
+    // leaving the condition would have let a selection made over on the
+    // Plugins screen open a plugin detail panel on top of Connectors.
+    const activeRightPanel = computed(() => 'NewsPanel');
 
     // Provider form state
     const providerForm = ref({
@@ -1806,7 +1798,6 @@ export default {
       activeSection.value = next;
       resetForm();
       selectedSecret.value = null;
-      store.dispatch('connectors/selectPlugin', null);
     }
 
     // The six CONNECT rows in the sidebar all navigate here and differ only by
@@ -2456,15 +2447,6 @@ export default {
       router.push({ path: '/workflow-forge', query: { id: workflowId } });
     }
 
-    // Handle click-away to close the right plugin panel
-    function handlePluginAreaClick(event) {
-      // Check if the click target is a plugin card or inside one
-      const pluginCard = event.target.closest('.plugin-card');
-      if (!pluginCard) {
-        // Clicked outside plugin cards, deselect the plugin to close the right panel
-        store.dispatch('connectors/selectPlugin', null);
-      }
-    }
 
     return {
       baseScreenRef,
@@ -2564,7 +2546,6 @@ export default {
       selectNPMPackage,
       openNPMBrowser,
       openWorkflow,
-      handlePluginAreaClick,
       isPro,
     };
   },

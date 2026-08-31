@@ -26,6 +26,7 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.tools',            selector: '[data-tour-id="sidebar.tools"]',            screen: null, description: 'Sidebar button: Tools',        safeToSimulate: true },
   { id: 'sidebar.skills',           selector: '[data-tour-id="sidebar.skills"]',           screen: null, description: 'Sidebar button: Skills',       safeToSimulate: true },
   { id: 'sidebar.widgets',          selector: '[data-tour-id="sidebar.widgets"]',          screen: null, description: 'Sidebar button: Widgets',      safeToSimulate: true },
+  { id: 'sidebar.plugins',          selector: '[data-tour-id="sidebar.plugins"]',          screen: null, description: 'Sidebar button: Plugins',      safeToSimulate: true },
 
   // ── Sidebar: foot of the rail + controls ───────────────────────────
   { id: 'sidebar.connect',          selector: '[data-tour-id="sidebar.connect"]',          screen: null, description: 'Sidebar button: Connect (API/OAuth, Emails, MCP, Plugins, Vault, Webhooks)', safeToSimulate: true },

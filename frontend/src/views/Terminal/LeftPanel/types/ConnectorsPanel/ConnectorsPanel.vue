@@ -74,16 +74,17 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 
-// The same six rows the sidebar's CONNECT group renders, in the same order.
-// This panel is the in-screen mirror of that group — both read and write ONE
-// shared value, so they can not disagree about which view is showing.
-// "Default AI Provider" is deliberately absent: a default-model choice is a
-// system setting, and it now lives under SYSTEM → AI Provider.
+// Everything this screen can show, in order — the nav for the single Connect
+// row in the sidebar. Both this panel and the screen read and write ONE shared
+// value, so they cannot disagree about which view is showing.
+//
+// Two things are deliberately absent. "Default AI Provider" is a system
+// setting and lives under SYSTEM → AI Provider. "Plugins" is an installable
+// asset, not something AGNT reaches out to, and now has its own BUILD row.
 const CONNECT_ITEMS = Object.freeze([
   { id: 'oauth', icon: 'fas fa-plug', label: 'API / OAuth' },
   { id: 'email-server', icon: 'fas fa-envelope', label: 'Emails', pro: true },
   { id: 'mcp-servers', icon: 'fas fa-server', label: 'MCP' },
-  { id: 'plugins', icon: 'fas fa-puzzle-piece', label: 'Plugins' },
   { id: 'api-keys', icon: 'fas fa-key', label: 'Vault' },
   { id: 'webhooks', icon: 'fas fa-link', label: 'Webhooks', pro: true },
 ]);
@@ -95,7 +96,7 @@ export default {
     const store = useStore();
     // Not local state: reading the shared value is what keeps this panel in
     // step with the sidebar when navigation starts from the rail.
-    const activeSection = computed(() => activeInnerSection.value || 'plugins');
+    const activeSection = computed(() => activeInnerSection.value || 'oauth');
 
     const totalSecrets = computed(() => {
       const secrets = store.getters['connectors/allSecrets'] || [];

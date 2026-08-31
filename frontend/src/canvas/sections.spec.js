@@ -24,6 +24,8 @@ const routerSrc = read('../router/index.js');
 const backendTargetsSrc = read('../../../backend/src/services/orchestrator/tutorialTargets.js');
 const canvasSrc = read('./CanvasScreen.vue');
 const settingsPanelSrc = read('../views/Terminal/LeftPanel/types/SettingsPanel/SettingsPanel.vue');
+const connectorsPanelSrc = read('../views/Terminal/LeftPanel/types/ConnectorsPanel/ConnectorsPanel.vue');
+const connectorsScreenSrc = read('../views/Terminal/CenterPanel/screens/Connectors/Connectors.vue');
 const settingsScreenSrc = read('../views/Terminal/CenterPanel/screens/Settings/Settings.vue');
 
 const sectionScreens = ALL_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
@@ -248,6 +250,30 @@ describe('canvas sections registry', () => {
     const connect = BOTTOM_SECTIONS[0];
     expect(connect.label).toBe('Connect');
     expect(connect.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen']);
+  });
+
+  it('Plugins is a BUILD row of its own, and Connect no longer offers it', () => {
+    // A plugin is an installable asset — the same kind of thing as an agent or
+    // a tool — not something AGNT reaches out to. Both ends are pinned because
+    // either half alone fails quietly: left in the Connect nav it would be a
+    // second door to a screen that moved, and left rendering inside
+    // Connectors it would be an unreachable branch.
+    const plugins = MAIN_SECTIONS.find((s) => s.id === 'plugins');
+    expect(plugins?.group).toBe('BUILD');
+    expect(plugins?.screens.map((t) => t.screen)).toEqual(['PluginsScreen']);
+
+    const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
+    expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
+    expect(connectNavIds).not.toContain('plugins');
+    expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
+  });
+
+  it('every view the Connect panel lists has a branch on the Connect screen', () => {
+    // The panel is the only way to reach these views, so a row naming a view
+    // the screen cannot render shows a blank page rather than erroring.
+    const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
+    const branches = new Set([...connectorsScreenSrc.matchAll(/activeSection === '([\w-]+)'/g)].map((m) => m[1]));
+    expect(connectNavIds.filter((id) => !branches.has(id))).toEqual([]);
   });
 
   it('no section declares a deep-link inner section', () => {

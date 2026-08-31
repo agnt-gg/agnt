@@ -128,6 +128,16 @@ export const MAIN_SECTIONS = [
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
+  {
+    // An asset, not a connection: a plugin is a thing you install and own,
+    // the same kind of thing as an agent or a tool. It was a view inside
+    // Connectors, reachable only from that screen's panel nav.
+    id: 'plugins',
+    group: 'BUILD',
+    icon: 'fas fa-puzzle-piece',
+    label: 'Plugins',
+    screens: [{ screen: 'PluginsScreen', label: 'MY PLUGINS' }],
+  },
 ];
 
 // ── The foot of the rail ── below a separator, captionless: two rows you
@@ -137,7 +147,9 @@ export const MAIN_SECTIONS = [
 // each gets one row instead of several. Connect had six — API/OAuth, Emails,
 // MCP, Plugins, Vault, Webhooks — and every one of them landed on a screen
 // already listing those same six down its left side. The rail was spending
-// its longest group restating a menu the destination draws anyway.
+// its longest group restating a menu the destination draws anyway. (Plugins
+// has since left for BUILD, where an installable asset belongs, so Connect is
+// now five views of things AGNT reaches out to.)
 //
 // Settings is the same shape one level further: Profile, Billing, Theme,
 // Memory, Evolution, Autonomy and the rest are navigated from SettingsPanel.
