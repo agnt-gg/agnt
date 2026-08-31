@@ -7,7 +7,7 @@
 // the assistant from triggering `simulateClick` on destructive controls.
 // `screen: null` means "visible on every screen" (e.g. sidebar, chrome).
 export const TOUR_TARGETS = [
-  // ── Sidebar: HOME (global — always visible) ────────────────────────
+  // ── Sidebar: WORK (global — always visible) ────────────────────────
   { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
   { id: 'sidebar.marketplace',      screen: null, description: 'Sidebar button: Marketplace',  safeToSimulate: true },
   { id: 'sidebar.workspaces',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },

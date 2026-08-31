@@ -2,7 +2,7 @@
 
      Everything that used to be scattered between the main sidebar (Memory,
      Evolution, Autonomy) and Connectors' inner nav (Default AI Provider) now
-     lives here, under two captions. The main rail carries HOME / PLAN / BUILD
+     lives here, under two captions. The main rail carries WORK / PLAN / BUILD
      / CONNECT and one gear; twelve configuration rows would have drowned it.
 
      Two kinds of row, one nav:

@@ -164,7 +164,7 @@ describe('canvas sections registry', () => {
     });
 
     it('renders the four intended main groups in order', () => {
-      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['HOME', 'PLAN', 'BUILD', 'CONNECT']);
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD', 'CONNECT']);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -179,7 +179,7 @@ describe('canvas sections registry', () => {
     expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen']);
     const workspaces = MAIN_SECTIONS.find((s) => s.id === 'workspaces');
     expect(workspaces.screens.map((t) => t.screen)).toEqual(['WorkspaceScreen']);
-    expect(workspaces.group).toBe('HOME');
+    expect(workspaces.group).toBe('WORK');
   });
 
   it('SYSTEM screens are reachable but absent from the main rail', () => {

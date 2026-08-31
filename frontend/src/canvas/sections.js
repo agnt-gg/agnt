@@ -25,17 +25,17 @@
 // you which of the hand-maintained lists you forgot.
 
 export const MAIN_SECTIONS = [
-  // ── HOME ── the three places you land: talk, browse, arrange.
+  // ── WORK ── the three places you land: talk, browse, arrange.
   {
     id: 'chat',
-    group: 'HOME',
+    group: 'WORK',
     icon: 'fas fa-comments',
     label: 'Chat',
     screens: [{ screen: 'ChatScreen', label: 'CHAT' }],
   },
   {
     id: 'marketplace',
-    group: 'HOME',
+    group: 'WORK',
     icon: 'fas fa-store',
     label: 'Marketplace',
     screens: [{ screen: 'MarketplaceScreen', label: 'MARKETPLACE' }],
@@ -45,7 +45,7 @@ export const MAIN_SECTIONS = [
     // grouping made the distinction legible (Chat is a thread, a Workspace is
     // an arrangement), so it no longer needs to borrow Chat's row.
     id: 'workspaces',
-    group: 'HOME',
+    group: 'WORK',
     icon: 'fas fa-columns',
     label: 'Workspaces',
     screens: [{ screen: 'WorkspaceScreen', label: 'WORKSPACES' }],

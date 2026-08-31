@@ -9,7 +9,7 @@
 // sections.spec.js: every section must be tour-able, and every sidebar target
 // must point at a section that actually renders.
 export const TOUR_TARGETS = [
-  // ── Sidebar: HOME (global — always visible) ────────────────────────
+  // ── Sidebar: WORK (global — always visible) ────────────────────────
   { id: 'sidebar.chat',             selector: '[data-tour-id="sidebar.chat"]',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
   { id: 'sidebar.marketplace',      selector: '[data-tour-id="sidebar.marketplace"]',      screen: null, description: 'Sidebar button: Marketplace',  safeToSimulate: true },
   { id: 'sidebar.workspaces',       selector: '[data-tour-id="sidebar.workspaces"]',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },
