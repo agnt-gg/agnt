@@ -1032,8 +1032,8 @@ export default {
 }
 
 .cv-sidebar.expanded {
-  width: 120px;
-  min-width: 120px;
+  width: 110px;
+  min-width: 110px;
   align-items: stretch;
   padding: 6px 6px;
 }
@@ -1522,10 +1522,11 @@ export default {
 /* ═══════════════════ NARROW VIEWPORTS ═══════════════════
    Measured on a 390x844 phone viewport: the sidebar's expanded state is
    persisted, so a desktop session that left it expanded hands the phone a
-   120px rail (133px with padding and border) out of 390px — a third of the
-   screen — and pushed the entire three-panel container off to x=133 with a
-   257px width, which in turn overflowed the composer and put the send button
-   at x=427, past the right edge and unclickable.
+   full rail (measured at 120px, 133px with padding and border) out of 390px
+   — a third of the screen — and pushed the entire three-panel container off
+   to x=133 with a 257px width, which in turn overflowed the composer and put
+   the send button at x=427, past the right edge and unclickable. The rail is
+   110px now; the ratio that caused this is unchanged.
 
    The rail stays (navigation must remain reachable), but collapses to the
    44px icon strip regardless of the persisted expanded state.
