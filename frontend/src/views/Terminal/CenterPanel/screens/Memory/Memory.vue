@@ -211,6 +211,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { handleSystemNav } from '../systemNav.js';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
@@ -420,17 +421,24 @@ const clearOrphaned = async () => {
   }
 };
 
-// Panel props
+// Panel props.
+//
+// The LEFT panel is SettingsPanel now (Memory is a SYSTEM screen), so it takes
+// the SYSTEM nav's own prop. The filter props moved to the RIGHT panel, which
+// renders the same MemoryPanel component the left one used to — nothing that
+// panel needs was dropped, it just changed sides.
 const leftPanelProps = computed(() => ({
-  activeType: activeTypeFilter.value,
-  activeAgent: activeAgentFilter.value,
+  activeSection: 'memory',
 }));
 
 const rightPanelProps = computed(() => ({
   selectedMemory: selectedMemory.value,
+  activeType: activeTypeFilter.value,
+  activeAgent: activeAgentFilter.value,
 }));
 
 const handlePanelAction = (action, data) => {
+  if (handleSystemNav(action, data, (s) => emit('screen-change', s))) return;
   if (action === 'navigate') emit('screen-change', data);
   else if (action === 'filter-type') activeTypeFilter.value = data;
   else if (action === 'filter-agent') activeAgentFilter.value = data;

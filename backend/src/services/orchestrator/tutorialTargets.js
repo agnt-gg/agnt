@@ -7,20 +7,36 @@
 // the assistant from triggering `simulateClick` on destructive controls.
 // `screen: null` means "visible on every screen" (e.g. sidebar, chrome).
 export const TOUR_TARGETS = [
-  // ── Sidebar (global — always visible) ──────────────────────────────
-  { id: 'sidebar.chat',        screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
-  { id: 'sidebar.dashboard',   screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
-  { id: 'sidebar.agents',      screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
-  { id: 'sidebar.workflows',   screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
-  { id: 'sidebar.tools',       screen: null, description: 'Sidebar button: Tools',        safeToSimulate: true },
-  { id: 'sidebar.artifacts',   screen: null, description: 'Sidebar button: Artifacts',    safeToSimulate: true },
-  { id: 'sidebar.lab',         screen: null, description: 'Sidebar button: Lab (Skills, Memory, Evolution, Autonomy)', safeToSimulate: true },
-  { id: 'sidebar.add-page',    screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
-  { id: 'sidebar.marketplace', screen: null, description: 'Sidebar button: Marketplace',  safeToSimulate: true },
-  { id: 'sidebar.widgets',     screen: null, description: 'Sidebar button: Widgets',      safeToSimulate: true },
-  { id: 'sidebar.connect',     screen: null, description: 'Sidebar button: Connectors',   safeToSimulate: true },
-  { id: 'sidebar.settings',    screen: null, description: 'Sidebar button: Settings',     safeToSimulate: true },
-  { id: 'sidebar.toggle',      screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },
+  // ── Sidebar: HOME (global — always visible) ────────────────────────
+  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
+  { id: 'sidebar.marketplace',      screen: null, description: 'Sidebar button: Marketplace',  safeToSimulate: true },
+  { id: 'sidebar.workspaces',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },
+
+  // ── Sidebar: PLAN ──────────────────────────────────────────────────
+  { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
+  { id: 'sidebar.goals',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
+  { id: 'sidebar.artifacts',        screen: null, description: 'Sidebar button: Artifacts',    safeToSimulate: true },
+  { id: 'sidebar.traces',           screen: null, description: 'Sidebar button: Traces',       safeToSimulate: true },
+
+  // ── Sidebar: BUILD ─────────────────────────────────────────────────
+  { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
+  { id: 'sidebar.workflows',        screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
+  { id: 'sidebar.tools',            screen: null, description: 'Sidebar button: Tools',        safeToSimulate: true },
+  { id: 'sidebar.skills',           screen: null, description: 'Sidebar button: Skills',       safeToSimulate: true },
+  { id: 'sidebar.widgets',          screen: null, description: 'Sidebar button: Widgets',      safeToSimulate: true },
+
+  // ── Sidebar: CONNECT ── six rows, one ConnectorsScreen, six inner views.
+  { id: 'sidebar.connect-oauth',    screen: null, description: 'Sidebar button: API / OAuth connections', safeToSimulate: true },
+  { id: 'sidebar.connect-emails',   screen: null, description: 'Sidebar button: Emails (email server)',   safeToSimulate: true },
+  { id: 'sidebar.connect-mcp',      screen: null, description: 'Sidebar button: MCP / NPM library',        safeToSimulate: true },
+  { id: 'sidebar.connect-plugins',  screen: null, description: 'Sidebar button: Plugins',                 safeToSimulate: true },
+  { id: 'sidebar.connect-vault',    screen: null, description: 'Sidebar button: Vault (API keys)',        safeToSimulate: true },
+  { id: 'sidebar.connect-webhooks', screen: null, description: 'Sidebar button: Webhooks',                safeToSimulate: true },
+
+  // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
+  { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
+  { id: 'sidebar.add-page',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
+  { id: 'sidebar.toggle',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },
 
   // ── Workflows ──────────────────────────────────────────────────────
   { id: 'workflows.add-node-button', screen: 'WorkflowsScreen', description: 'Opens the node picker to add a new workflow node', safeToSimulate: true },

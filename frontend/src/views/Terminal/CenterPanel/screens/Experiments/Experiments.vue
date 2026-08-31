@@ -555,6 +555,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ExperimentCard from './_components/ExperimentCard.vue';
 import InsightCard from './_components/InsightCard.vue';
 import DatasetCard from '../EvalDatasets/_components/DatasetCard.vue';
+import { handleSystemNav } from '../systemNav.js';
 
 const store = useStore();
 const route = useRoute();
@@ -685,16 +686,20 @@ const filteredDatasets = computed(() => {
   return result;
 });
 
+// The LEFT panel is SettingsPanel now (Evolution is a SYSTEM screen), so the
+// props it used to carry moved to the RIGHT panel — the same ExperimentsPanel
+// component renders there, so nothing it needs was lost.
 const panelProps = computed(() => ({
   selectedExperiment: activeView.value === 'experiments' ? selectedExperiment.value : null,
   selectedDataset: activeView.value === 'datasets' ? selectedDataset.value : null,
   selectedInsight: activeView.value === 'insights' ? selectedInsight.value : null,
-}));
-const leftPanelProps = computed(() => ({
   experiments: experiments.value,
   activeTab: activeStatusTab.value,
   insightStats: insightStats.value,
   pendingInsightCount: pendingInsightCount.value,
+}));
+const leftPanelProps = computed(() => ({
+  activeSection: 'evolution',
 }));
 const canLaunch = computed(() => forgeForm.value.name?.trim() && forgeForm.value.skillId);
 
@@ -896,6 +901,7 @@ const generateDataset = async () => {
 };
 
 const handlePanelAction = (action, data) => {
+  if (handleSystemNav(action, data, (s) => emit('screen-change', s))) return;
   if (action === 'navigate') emit('screen-change', data);
   else if (action === 'navigate-to-trace') emit('screen-change', 'TracesScreen', { selectedExecutionId: data?.sourceId });
   else if (action === 'delete-experiment' && data) confirmDeleteExperiment(data);

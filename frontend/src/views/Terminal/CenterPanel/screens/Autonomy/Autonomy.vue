@@ -2,7 +2,7 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="AutonomyScreen"
-    :leftPanelProps="{ activeSection }"
+    :leftPanelProps="{ activeSection: 'autonomy' }"
     @panel-action="handlePanelAction"
     @screen-change="(s) => emit('screen-change', s)"
     @base-mounted="initializeScreen"
@@ -48,6 +48,7 @@ import AutonomyManager from './components/AutonomyManager/AutonomyManager.vue';
 import SchedulesManager from './components/SchedulesManager/SchedulesManager.vue';
 import ContractsManager from './components/ContractsManager/ContractsManager.vue';
 import MutationsViewer from './components/MutationsViewer/MutationsViewer.vue';
+import { handleSystemNav } from '../systemNav.js';
 
 const TABS = [
   { id: 'autonomy', label: 'Autonomy & Inbox', icon: 'fas fa-robot',
@@ -87,6 +88,9 @@ export default {
     const setSection = (id) => { activeSection.value = id; };
 
     const handlePanelAction = (action, payload) => {
+      // The left panel is SettingsPanel (Autonomy is a SYSTEM screen); the
+      // inner tab strip in this screen's own header drives 'autonomy-nav'.
+      if (handleSystemNav(action, payload, (s) => emit('screen-change', s))) return;
       if (action === 'autonomy-nav') {
         setSection(payload);
       }

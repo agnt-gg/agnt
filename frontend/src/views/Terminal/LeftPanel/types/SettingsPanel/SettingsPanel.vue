@@ -1,114 +1,96 @@
+<!-- SettingsPanel — the SYSTEM navigation.
+
+     Everything that used to be scattered between the main sidebar (Memory,
+     Evolution, Autonomy) and Connectors' inner nav (Default AI Provider) now
+     lives here, under two captions. The main rail carries HOME / PLAN / BUILD
+     / CONNECT and one gear; twelve configuration rows would have drowned it.
+
+     Two kinds of row, one nav:
+       • a Settings SECTION  → 'settings-nav'  (Settings.vue swaps its body)
+       • a whole SCREEN      → 'settings-goto' (the host screen navigates)
+     Memory / Evolution / Autonomy are full screens, not Settings sections, so
+     they take the second path. They also render THIS panel on their left
+     (screenRegistry.js), which is what makes SYSTEM feel like one place
+     instead of three unrelated destinations you can only reach once. -->
 <template>
   <div class="settings-panel">
-    <!-- <div class="panel-header">
-      <h3 class="panel-title">Settings</h3>
-      <p class="panel-subtitle">System Configuration</p>
-    </div> -->
-
     <div class="panel-header">
-      <h2 class="title">/ Account</h2>
-      <div class="panel-stats">
-        <span class="stat-item">
-          <i class="fas fa-tools"></i>
-          {{ totalTools }}
-        </span>
-      </div>
+      <h2 class="title">/ System</h2>
     </div>
 
     <div class="settings-nav">
-      <div class="nav-section" data-section="account">
+      <div class="nav-section" data-section="general">
         <h4>General</h4>
         <div class="nav-items">
-          <button class="nav-item" :class="{ active: activeSection === 'profile' }" @click="handleNavClick('profile')" data-nav="profile">
-            <i class="fas fa-user"></i>
-            <span>Profile</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'referrals' }" @click="handleNavClick('referrals')" data-nav="referrals">
-            <i class="fas fa-users"></i>
-            <span>Referrals</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'leaderboard' }" @click="handleNavClick('leaderboard')" data-nav="leaderboard">
-            <i class="fas fa-trophy"></i>
-            <span>Leaderboard</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'billing' }" @click="handleNavClick('billing')" data-nav="billing">
-            <i class="fas fa-wallet"></i>
-            <span>Billing</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'api-keys' }" @click="handleNavClick('api-keys')" data-nav="api-keys">
-            <i class="fas fa-key"></i>
-            <span>API Key <span style="color: var(--color-yellow)">[PRO]</span></span>
+          <button
+            v-for="item in GENERAL_ITEMS"
+            :key="item.id"
+            class="nav-item"
+            :class="{ active: activeSection === item.id }"
+            :data-nav="item.id"
+            @click="handleNavClick(item)"
+          >
+            <i :class="item.icon"></i>
+            <span>{{ item.label }}</span>
           </button>
         </div>
       </div>
 
-      <div class="nav-section" data-section="configuration">
-        <h4>Configuration</h4>
+      <div class="nav-section" data-section="config">
+        <h4>Config</h4>
         <div class="nav-items">
           <button
+            v-for="item in CONFIG_ITEMS"
+            :key="item.id"
             class="nav-item"
-            :class="{ active: activeSection === 'connection' }"
-            @click="handleNavClick('connection')"
-            data-nav="connection"
+            :class="{ active: activeSection === item.id }"
+            :data-nav="item.id"
+            @click="handleNavClick(item)"
           >
-            <i class="fas fa-server"></i>
-            <span>Connection</span>
-          </button>
-          <button
-            class="nav-item"
-            :class="{ active: activeSection === 'phone-access' }"
-            @click="handleNavClick('phone-access')"
-            data-nav="phone-access"
-          >
-            <i class="fas fa-mobile-alt"></i>
-            <span>Phone Access</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'theme' }" @click="handleNavClick('theme')" data-nav="theme">
-            <i class="fas fa-palette"></i>
-            <span>Theme</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'security' }" @click="handleNavClick('security')" data-nav="security">
-            <i class="fas fa-shield-alt"></i>
-            <span>Security</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'sounds' }" @click="handleNavClick('sounds')" data-nav="sounds">
-            <i class="fas fa-volume-up"></i>
-            <span>Sounds</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'tours' }" @click="handleNavClick('tours')" data-nav="tours">
-            <i class="fas fa-route"></i>
-            <span>Tours</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'general' }" @click="handleNavClick('general')" data-nav="general">
-            <i class="fas fa-cog"></i>
-            <span>Logout</span>
+            <i :class="item.icon"></i>
+            <span>{{ item.label }}</span>
           </button>
         </div>
       </div>
 
-      <!-- <div class="nav-section" data-section="system">
-        <h4>System</h4>
-        <div class="nav-items">
-          <button class="nav-item" :class="{ active: activeSection === 'backup' }" @click="handleNavClick('backup')" data-nav="backup">
-            <i class="fas fa-download"></i>
-            <span>Backup & Export</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'reset' }" @click="handleNavClick('reset')" data-nav="reset">
-            <i class="fas fa-trash"></i>
-            <span>Reset Settings</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'about' }" @click="handleNavClick('about')" data-nav="about">
-            <i class="fas fa-info-circle"></i>
-            <span>About</span>
-          </button>
-        </div>
-      </div> -->
+      <!-- Logout is an action, not a settings page, so it sits below the
+           captions rather than inside one. It kept its 'general' section id
+           because that is the Settings view that hosts LoginSection. -->
+      <div class="nav-footer">
+        <button class="nav-item nav-item-quiet" :class="{ active: activeSection === 'general' }" data-nav="general" @click="handleNavClick(LOGOUT_ITEM)">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Logout</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, computed, toRefs } from 'vue';
+import { toRefs } from 'vue';
+
+// `screen` present → the row navigates to a whole screen rather than swapping
+// the Settings body. Everything else is a Settings section id, matching the
+// `activeSection === '…'` branches in Settings.vue.
+const GENERAL_ITEMS = Object.freeze([
+  { id: 'providers', icon: 'fas fa-robot', label: 'AI Provider' },
+  { id: 'autonomy', icon: 'fas fa-user-shield', label: 'Autonomy', screen: 'AutonomyScreen' },
+  { id: 'billing', icon: 'fas fa-wallet', label: 'Billing' },
+  { id: 'evolution', icon: 'fas fa-dna', label: 'Evolution', screen: 'ExperimentsScreen' },
+  { id: 'memory', icon: 'fas fa-brain', label: 'Memory', screen: 'MemoryScreen' },
+  { id: 'profile', icon: 'fas fa-user', label: 'Profile' },
+  { id: 'referrals', icon: 'fas fa-users', label: 'Referrals' },
+]);
+
+const CONFIG_ITEMS = Object.freeze([
+  { id: 'phone-access', icon: 'fas fa-mobile-alt', label: 'Remote Access' },
+  { id: 'connection', icon: 'fas fa-server', label: 'Remote Backend' },
+  { id: 'security', icon: 'fas fa-shield-alt', label: 'Security' },
+  { id: 'theme', icon: 'fas fa-palette', label: 'Theme' },
+  { id: 'tours', icon: 'fas fa-route', label: 'Tours' },
+]);
+
+const LOGOUT_ITEM = Object.freeze({ id: 'general', icon: 'fas fa-sign-out-alt', label: 'Logout' });
 
 export default {
   name: 'SettingsPanel',
@@ -121,16 +103,18 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit }) {
     const { activeSection } = toRefs(props);
-    const totalTools = ref(42); // Placeholder - could be computed from store
 
-    const handleNavClick = (section) => {
-      emit('panel-action', 'settings-nav', section);
+    const handleNavClick = (item) => {
+      if (item.screen) emit('panel-action', 'settings-goto', item.screen);
+      else emit('panel-action', 'settings-nav', item.id);
     };
 
     return {
       activeSection,
-      totalTools,
       handleNavClick,
+      GENERAL_ITEMS,
+      CONFIG_ITEMS,
+      LOGOUT_ITEM,
     };
   },
 };
@@ -161,21 +145,6 @@ export default {
   font-weight: 400;
   letter-spacing: 0.48px;
   margin: 0;
-}
-
-.panel-title {
-  color: var(--color-primary);
-  font-size: 1.2em;
-  font-weight: 600;
-  margin: 0 0 4px 0;
-  text-shadow: 0 0 5px rgba(var(--primary-rgb), 0.3);
-}
-
-.panel-subtitle {
-  color: var(--color-text);
-  font-size: 0.85em;
-  margin: 0;
-  opacity: 0.8;
 }
 
 .settings-nav {
@@ -238,15 +207,6 @@ export default {
   padding-left: 9px;
 }
 
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--color-light-med-navy);
-  font-size: 0.85em;
-  opacity: 0.8;
-}
-
 .nav-item i {
   width: 16px;
   text-align: center;
@@ -262,5 +222,16 @@ export default {
 .nav-item p {
   font-weight: 400;
   flex: 1;
+}
+
+/* Pushed to the bottom and separated: an action, not a destination. */
+.nav-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--terminal-border-color-light);
+}
+
+.nav-item-quiet {
+  opacity: 0.75;
 }
 </style>

@@ -24,17 +24,25 @@ export const SCREEN_DEFAULTS = Object.freeze({
   AgentForgeScreen: { rightPanel: 'AgentForgePanel', input: false },
   AgentsScreen: { leftPanel: 'AgentsPanel', input: false }, // right: dynamic
   ArtifactsScreen: { leftPanel: 'ArtifactsPanel', rightPanel: 'FileTreePanel', input: false },
-  AutonomyScreen: { leftPanel: 'AutonomyPanel', rightPanel: null, input: false },
+  // ── SYSTEM screens ──
+  // Memory / Evolution / Autonomy left the main sidebar and are now navigated
+  // from Settings' own nav, so they render SettingsPanel on the left: the
+  // SYSTEM list stays on screen and you can move between them without a trip
+  // back through the gear. Nothing is lost on the way — Memory and Evolution
+  // already rendered the SAME panel component on both sides, and Autonomy
+  // carries its own inline tab strip (see Autonomy.vue), so its left panel
+  // was duplicate navigation.
+  AutonomyScreen: { leftPanel: 'SettingsPanel', rightPanel: null, input: false },
   ChatScreen: { input: true },
   ConnectorsScreen: { input: false }, // right: dynamic
   DashboardScreen: { rightPanel: 'DashboardPanel', input: false },
   EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
   ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
   ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },
-  ExperimentsScreen: { leftPanel: 'ExperimentsPanel', rightPanel: 'ExperimentsPanel', input: false },
+  ExperimentsScreen: { leftPanel: 'SettingsPanel', rightPanel: 'ExperimentsPanel', input: false },
   GoalsScreen: { leftPanel: 'GoalsPanel', rightPanel: 'GoalsPanel', input: false },
   MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
-  MemoryScreen: { leftPanel: 'MemoryPanel', rightPanel: 'MemoryPanel', input: false },
+  MemoryScreen: { leftPanel: 'SettingsPanel', rightPanel: 'MemoryPanel', input: false },
   SettingsScreen: { input: false }, // right: dynamic
   SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
   SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },

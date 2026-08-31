@@ -12,31 +12,20 @@
 
     <div class="connectors-nav">
       <div class="nav-section">
-        <!-- <h4>Connections</h4> -->
         <div class="nav-items">
-          <button class="nav-item" :class="{ active: activeSection === 'plugins' }" @click="handleNavClick('plugins')">
-            <i class="fas fa-puzzle-piece"></i>
-            <span>My Plugins</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'oauth' }" @click="handleNavClick('oauth')">
-            <i class="fas fa-plug"></i>
-            <span>Auth Connections</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'providers' }" @click="handleNavClick('providers')" data-nav="providers">
-            <i class="fas fa-robot"></i>
-            <span>Default AI Provider</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'mcp-servers' }" @click="handleNavClick('mcp-servers')">
-            <i class="fas fa-server"></i>
-            <span>MCP / NPM Library</span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'webhooks' }" @click="handleNavClick('webhooks')">
-            <i class="fas fa-link"></i>
-            <span>Webhooks <span style="color: var(--color-yellow)">[PRO]</span></span>
-          </button>
-          <button class="nav-item" :class="{ active: activeSection === 'email-server' }" @click="handleNavClick('email-server')">
-            <i class="fas fa-envelope"></i>
-            <span>Email Server <span style="color: var(--color-yellow)">[PRO]</span></span>
+          <button
+            v-for="item in CONNECT_ITEMS"
+            :key="item.id"
+            class="nav-item"
+            :class="{ active: activeSection === item.id }"
+            :data-nav="item.id"
+            @click="handleNavClick(item.id)"
+          >
+            <i :class="item.icon"></i>
+            <span>
+              {{ item.label }}
+              <span v-if="item.pro" style="color: var(--color-yellow)">[PRO]</span>
+            </span>
           </button>
         </div>
       </div>
@@ -81,15 +70,32 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 import { useStore } from 'vuex';
+import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
+
+// The same six rows the sidebar's CONNECT group renders, in the same order.
+// This panel is the in-screen mirror of that group — both read and write ONE
+// shared value, so they can not disagree about which view is showing.
+// "Default AI Provider" is deliberately absent: a default-model choice is a
+// system setting, and it now lives under SYSTEM → AI Provider.
+const CONNECT_ITEMS = Object.freeze([
+  { id: 'oauth', icon: 'fas fa-plug', label: 'API / OAuth' },
+  { id: 'email-server', icon: 'fas fa-envelope', label: 'Emails', pro: true },
+  { id: 'mcp-servers', icon: 'fas fa-server', label: 'MCP' },
+  { id: 'plugins', icon: 'fas fa-puzzle-piece', label: 'Plugins' },
+  { id: 'api-keys', icon: 'fas fa-key', label: 'Vault' },
+  { id: 'webhooks', icon: 'fas fa-link', label: 'Webhooks', pro: true },
+]);
 
 export default {
   name: 'ConnectorsPanel',
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
-    const activeSection = ref('plugins');
+    // Not local state: reading the shared value is what keeps this panel in
+    // step with the sidebar when navigation starts from the rail.
+    const activeSection = computed(() => activeInnerSection.value || 'plugins');
 
     const totalSecrets = computed(() => {
       const secrets = store.getters['connectors/allSecrets'] || [];
@@ -98,7 +104,7 @@ export default {
     });
 
     const handleNavClick = (section) => {
-      activeSection.value = section;
+      setInnerSection(section);
       emit('panel-action', 'connectors-nav', section);
     };
 
@@ -106,6 +112,7 @@ export default {
       activeSection,
       handleNavClick,
       totalSecrets,
+      CONNECT_ITEMS,
     };
   },
 };

@@ -50,18 +50,20 @@
           </div>
         </div>
 
-        <!-- Providers Section -->
-        <!-- <div v-else-if="activeSection === 'providers'" class="settings-content" data-section="providers">
-            <div class="content-header">
-              <h2 class="content-title">Provider Settings</h2>
-              <p class="content-subtitle">Configure your AI service providers</p>
+        <!-- AI Provider Section. Reachable again: the SYSTEM nav lists it as
+             "AI Provider", which is where a default-model choice belongs —
+             it was previously only offered inside Connectors. -->
+        <div v-else-if="activeSection === 'providers'" class="settings-content" data-section="providers">
+          <div class="content-header">
+            <h2 class="content-title">Default AI Provider</h2>
+            <p class="content-subtitle">Choose the model AGNT uses when nothing more specific is set</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section mid-section">
+              <ProviderSelector />
             </div>
-            <div class="settings-grid">
-              <div class="settings-section mid-section">
-                <ProviderSelector />
-              </div>
-            </div>
-          </div> -->
+          </div>
+        </div>
 
         <!-- Profile Section -->
         <div v-else-if="activeSection === 'profile'" class="settings-content" data-section="profile">
@@ -366,6 +368,10 @@ export default {
       console.log('Settings: Received panel action:', action, payload);
       if (action === 'settings-nav') {
         activeSection.value = payload;
+      } else if (action === 'settings-goto') {
+        // A SYSTEM row that is a whole screen (Memory / Evolution / Autonomy)
+        // rather than a section of this one.
+        emit('screen-change', payload);
       }
       // Handle other panel actions if needed
     };

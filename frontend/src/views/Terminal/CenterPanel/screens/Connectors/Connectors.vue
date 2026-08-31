@@ -832,7 +832,8 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import {
@@ -1801,16 +1802,36 @@ export default {
       //   }, 2000);
       // }
     }
+    function showSection(next) {
+      activeSection.value = next;
+      resetForm();
+      selectedSecret.value = null;
+      store.dispatch('connectors/selectPlugin', null);
+    }
+
+    // The six CONNECT rows in the sidebar all navigate here and differ only by
+    // which view they open, so the sidebar's selection is what drives this
+    // screen. Watching (rather than reading once on mount) is required:
+    // clicking a sibling row while already on this screen emits the same
+    // screen name, so no mount or activation happens — the shared value
+    // changing IS the navigation.
+    watch(
+      activeInnerSection,
+      (next) => {
+        if (next && next !== activeSection.value) showSection(next);
+      },
+      { immediate: true },
+    );
+
     function handlePanelAction(action, payload) {
       if (action === 'save') {
         saveSecret();
       } else if (action === 'cancel') {
         resetForm();
       } else if (action === 'connectors-nav') {
-        activeSection.value = payload;
-        resetForm();
-        selectedSecret.value = null;
-        store.dispatch('connectors/selectPlugin', null);
+        // Publish to the shared value so the sidebar highlight follows the
+        // in-screen nav; the watcher above applies it.
+        setInnerSection(payload);
       }
     }
 

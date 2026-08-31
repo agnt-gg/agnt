@@ -15,12 +15,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES } from './sections.js';
+import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
 import { TOUR_TARGETS } from '@/views/_components/utility/tourTargets.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const terminalSrc = read('../views/Terminal/Terminal.vue');
 const routerSrc = read('../router/index.js');
+const backendTargetsSrc = read('../../../backend/src/services/orchestrator/tutorialTargets.js');
 
 const sectionScreens = ALL_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
 
@@ -63,12 +64,6 @@ describe('canvas sections registry', () => {
     expect(missing).toEqual([]);
   });
 
-  it('no screen belongs to two sections', () => {
-    const seen = new Set();
-    const dupes = sectionScreens.filter((s) => (seen.has(s) ? true : (seen.add(s), false)));
-    expect(dupes).toEqual([]);
-  });
-
   it('no section id collides between main and settings', () => {
     const mainIds = MAIN_SECTIONS.map((s) => s.id);
     const settingsIds = SETTINGS_SECTIONS.map((s) => s.id);
@@ -93,15 +88,120 @@ describe('canvas sections registry', () => {
     expect([...SECTION_ROUTES].sort()).toEqual([...new Set(sectionScreens)].sort());
   });
 
-  // ── Regression locks for the Workspaces re-parent (2026-08-05) ──
-  it('WorkspaceScreen is a toolbar tab of the chat section', () => {
-    const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
-    expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen', 'WorkspaceScreen']);
-    // First screen is what the sidebar icon lands on — must stay ChatScreen.
-    expect(chat.screens[0].screen).toBe('ChatScreen');
+  it('the backend tour-target mirror lists the same ids', () => {
+    // Both files say "keep the two in sync" in a comment and nothing enforced
+    // it, so renaming a sidebar section silently left the orchestrator
+    // planning tours against ids the DOM no longer carries. Comparing ids (not
+    // selectors) is the whole contract: the backend copy deliberately ships no
+    // selectors.
+    const backendIds = [...backendTargetsSrc.matchAll(/id:\s*'([\w.-]+)'/g)].map((m) => m[1]);
+    expect(backendIds.length).toBeGreaterThanOrEqual(20);
+    expect(backendIds.sort()).toEqual(TOUR_TARGETS.map((t) => t.id).sort());
   });
 
-  it('there is no standalone workspace sidebar section', () => {
-    expect(ALL_SECTIONS.find((s) => s.id === 'workspace')).toBeUndefined();
+  // ── Shared screens ──
+  // A screen may have several sidebar rows (CONNECT: six rows, one
+  // ConnectorsScreen) ONLY if each row deep-links to a different inner view.
+  // Without that, CanvasScreen cannot tell which row to highlight and would
+  // silently light the first one for all six.
+  describe('shared screens', () => {
+    const ownersByScreen = new Map();
+    for (const section of ALL_SECTIONS) {
+      for (const tab of section.screens) {
+        if (!ownersByScreen.has(tab.screen)) ownersByScreen.set(tab.screen, []);
+        ownersByScreen.get(tab.screen).push(section);
+      }
+    }
+    const shared = [...ownersByScreen.entries()].filter(([, owners]) => owners.length > 1);
+
+    it('every section that shares a screen declares an inner section', () => {
+      const undeclared = shared.flatMap(([screen, owners]) =>
+        owners.filter((o) => !o.section).map((o) => `${o.id} -> ${screen}`),
+      );
+      expect(undeclared).toEqual([]);
+    });
+
+    it('sections sharing a screen point at DIFFERENT inner sections', () => {
+      const collisions = shared.flatMap(([screen, owners]) => {
+        const seen = new Set();
+        return owners.filter((o) => (seen.has(o.section) ? true : (seen.add(o.section), false))).map((o) => `${screen}#${o.section}`);
+      });
+      expect(collisions).toEqual([]);
+    });
+
+    it('a section that declares an inner section owns exactly one screen', () => {
+      // Otherwise the inner section would be ambiguous across that row's tabs.
+      const bad = ALL_SECTIONS.filter((s) => s.section && s.screens.length !== 1).map((s) => s.id);
+      expect(bad).toEqual([]);
+    });
+  });
+
+  // ── Grouping ──
+  // The rail emits a caption whenever `group` changes while walking the list,
+  // so an ungrouped section would render under whichever caption happened to
+  // precede it, and a group split across two runs would render twice.
+  describe('sidebar grouping', () => {
+    it('every section declares a group', () => {
+      const ungrouped = ALL_SECTIONS.filter((s) => !s.group).map((s) => s.id);
+      expect(ungrouped).toEqual([]);
+    });
+
+    it('sections of a group are contiguous (no caption renders twice)', () => {
+      const order = MAIN_SECTIONS.map((s) => s.group);
+      const runs = order.filter((g, i) => g !== order[i - 1]);
+      expect(runs).toEqual([...new Set(runs)]);
+    });
+
+    it('withGroupHeadings captions exactly the first section of each group', () => {
+      const rows = withGroupHeadings(MAIN_SECTIONS);
+      expect(rows).toHaveLength(MAIN_SECTIONS.length);
+      const captions = rows.filter((r) => r.caption).map((r) => r.caption);
+      expect(captions).toEqual([...new Set(MAIN_SECTIONS.map((s) => s.group))]);
+      // The very first row always opens a group.
+      expect(rows[0].startsGroup).toBe(true);
+    });
+
+    it('renders the four intended main groups in order', () => {
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['HOME', 'PLAN', 'BUILD', 'CONNECT']);
+    });
+
+    it('no group is a single row (a caption over one item is noise)', () => {
+      const counts = MAIN_SECTIONS.reduce((acc, s) => ({ ...acc, [s.group]: (acc[s.group] || 0) + 1 }), {});
+      expect(Object.entries(counts).filter(([, n]) => n < 2)).toEqual([]);
+    });
+  });
+
+  // ── Regression locks for the sidebar-categories re-parent (2026-08-31) ──
+  it('Workspaces is its own sidebar row, not a Chat toolbar tab', () => {
+    const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
+    expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen']);
+    const workspaces = MAIN_SECTIONS.find((s) => s.id === 'workspaces');
+    expect(workspaces.screens.map((t) => t.screen)).toEqual(['WorkspaceScreen']);
+    expect(workspaces.group).toBe('HOME');
+  });
+
+  it('SYSTEM screens are reachable but absent from the main rail', () => {
+    // Memory / Evolution / Autonomy are navigated from SettingsPanel. They
+    // must stay inside SECTION_ROUTES (or the canvas treats them as custom
+    // pages and the gear goes dark while you are on them) while owning no row
+    // of their own in MAIN_SECTIONS.
+    const systemScreens = ['MemoryScreen', 'ExperimentsScreen', 'AutonomyScreen'];
+    const mainScreens = MAIN_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
+    for (const screen of systemScreens) {
+      expect(SECTION_ROUTES.has(screen)).toBe(true);
+      expect(mainScreens).not.toContain(screen);
+    }
+    const settings = SETTINGS_SECTIONS.find((s) => s.id === 'settings');
+    // The sidebar row lands on the first screen — must stay SettingsScreen.
+    expect(settings.screens[0].screen).toBe('SettingsScreen');
+  });
+
+  it('every CONNECT row opens a distinct view of ConnectorsScreen', () => {
+    const connect = MAIN_SECTIONS.filter((s) => s.group === 'CONNECT');
+    expect(connect).toHaveLength(6);
+    expect(connect.every((s) => s.screens[0].screen === 'ConnectorsScreen')).toBe(true);
+    expect(connect.map((s) => s.section).sort()).toEqual(
+      ['api-keys', 'email-server', 'mcp-servers', 'oauth', 'plugins', 'webhooks'].sort(),
+    );
   });
 });

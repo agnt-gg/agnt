@@ -72,22 +72,28 @@
     <div class="cv-main-area">
       <!-- Sidebar: section icons -->
       <div v-if="isAuthenticated" class="cv-sidebar" :class="{ expanded: isSidebarExpanded }">
-        <!-- Main sections (top) -->
+        <!-- Main sections (top), grouped under captions -->
         <div class="cv-sb-pages">
-          <Tooltip v-for="section in mainSections" :key="section.id" :text="section.label" position="right" width="auto">
-            <button
-              class="cv-sb-page"
-              :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
-              :data-tour-id="`sidebar.${section.id}`"
-              @click="navigateToSection(section)"
-            >
-              <i :class="section.icon"></i>
-              <span v-if="section.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
-              <span class="cv-sb-label" v-marquee>
-                <span class="cv-sb-label-inner">{{ section.label }}</span>
-              </span>
-            </button>
-          </Tooltip>
+          <template v-for="(row, i) in mainRail" :key="row.section.id">
+            <!-- Caption doubles as the group divider; collapsed, only the rule survives. -->
+            <div v-if="row.caption" class="cv-sb-cap" :class="{ 'is-first': i === 0 }">
+              <span class="cv-sb-cap-text">{{ row.caption }}</span>
+            </div>
+            <Tooltip :text="row.section.label" position="right" width="auto">
+              <button
+                class="cv-sb-page"
+                :class="{ active: !onCustomPage && activeSection && activeSection.id === row.section.id }"
+                :data-tour-id="`sidebar.${row.section.id}`"
+                @click="navigateToSection(row.section)"
+              >
+                <i :class="row.section.icon"></i>
+                <span v-if="row.section.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
+                <span class="cv-sb-label" v-marquee>
+                  <span class="cv-sb-label-inner">{{ row.section.label }}</span>
+                </span>
+              </button>
+            </Tooltip>
+          </template>
         </div>
 
         <!-- Custom pages -->
@@ -130,7 +136,6 @@
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
-              <span v-if="section.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
               <span class="cv-sb-label" v-marquee>
                 <span class="cv-sb-label-inner">{{ section.label }}</span>
               </span>
@@ -257,7 +262,8 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Sidebar icons + toolbar sub-tabs both derive from this registry.
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
-import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES } from './sections.js';
+import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
+import { activeInnerSection, setInnerSection, clearInnerSection } from './innerSection.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 
 // Directive: when the label text overflows its container, expose the
@@ -386,6 +392,8 @@ export default {
     // Section data (static)
     const mainSections = MAIN_SECTIONS;
     const settingsSections = SETTINGS_SECTIONS;
+    // Precomputed once: the registry is static, so group boundaries are too.
+    const mainRail = withGroupHeadings(MAIN_SECTIONS);
 
     // Green dot on the Chat nav: "a conversation finished changing and you
     // haven't seen it". EXACTLY the set that rings the chime — unread minus
@@ -412,9 +420,17 @@ export default {
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);
 
-    // Find the active section based on current screenName
+    // Find the active section based on current screenName.
+    //
+    // Most screens have exactly one owner. CONNECT's six rows share
+    // ConnectorsScreen, so for a shared screen the inner section is what
+    // decides which row is lit; falling back to the first owner keeps the
+    // rail from going dark if nothing has published an inner section yet
+    // (e.g. a deep link straight to /connectors).
     const activeSection = computed(() => {
-      return ALL_SECTIONS.find((s) => s.screens.some((t) => t.screen === props.screenName)) || null;
+      const owners = ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === props.screenName));
+      if (owners.length <= 1) return owners[0] || null;
+      return owners.find((s) => s.section === activeInnerSection.value) || owners[0];
     });
 
     // Sub-tabs shown in toolbar = screens of the active section
@@ -581,7 +597,13 @@ export default {
 
     function navigateToSection(section) {
       onCustomPage.value = false;
-      // Navigate to the first screen in the section
+      // A row that deep-links into a shared screen publishes its inner section
+      // BEFORE navigating. This is load-bearing for CONNECT: clicking a
+      // sibling row while already on ConnectorsScreen emits the SAME screen
+      // name, so screen-change is a no-op and the inner section is the only
+      // signal that anything happened.
+      if (section.section) setInnerSection(section.section);
+      else clearInnerSection();
       emit('screen-change', section.screens[0].screen);
     }
 
@@ -677,6 +699,7 @@ export default {
       allPages,
       mainSections,
       settingsSections,
+      mainRail,
       hasUnreadChats,
       customPages,
       isCustomPage,
@@ -1027,6 +1050,56 @@ export default {
   scrollbar-width: none;
 }
 .cv-sb-pages::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Group captions ──
+   Expanded, the caption names the group. Collapsed the rail is 44px wide, so
+   the text is dropped and the caption survives as the divider rule it already
+   carries — the grouping stays legible at both widths instead of vanishing
+   with the labels. */
+.cv-sb-cap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 9px 7px 3px;
+  margin-top: 4px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.cv-sb-cap.is-first {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 2px;
+}
+
+.cv-sb-cap-text {
+  display: none;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #445);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cv-sidebar.expanded .cv-sb-cap-text {
+  display: inline-block;
+}
+
+/* Collapsed: caption reduces to its rule, matching .cv-sb-sep's width so the
+   in-list dividers and the settings divider read as the same element. */
+.cv-sidebar:not(.expanded) .cv-sb-cap {
+  width: 24px;
+  height: 1px;
+  padding: 0;
+  margin: 5px 0;
+}
+
+.cv-sidebar:not(.expanded) .cv-sb-cap.is-first {
   display: none;
 }
 
