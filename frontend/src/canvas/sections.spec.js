@@ -22,6 +22,8 @@ const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)),
 const terminalSrc = read('../views/Terminal/Terminal.vue');
 const routerSrc = read('../router/index.js');
 const backendTargetsSrc = read('../../../backend/src/services/orchestrator/tutorialTargets.js');
+const settingsPanelSrc = read('../views/Terminal/LeftPanel/types/SettingsPanel/SettingsPanel.vue');
+const settingsScreenSrc = read('../views/Terminal/CenterPanel/screens/Settings/Settings.vue');
 
 const sectionScreens = ALL_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
 
@@ -194,6 +196,43 @@ describe('canvas sections registry', () => {
     const settings = SETTINGS_SECTIONS.find((s) => s.id === 'settings');
     // The sidebar row lands on the first screen — must stay SettingsScreen.
     expect(settings.screens[0].screen).toBe('SettingsScreen');
+  });
+
+  // ── SYSTEM sub-nav ──
+  // SettingsPanel is the ONLY way to reach these screens now that they have no
+  // sidebar row, so a screen listed as a SYSTEM tab with no matching nav row
+  // is unreachable, and a nav row naming a screen that is not a SYSTEM tab
+  // navigates somewhere the gear does not stay lit for. Neither crashes.
+  describe('SYSTEM sub-nav (SettingsPanel)', () => {
+    const navScreens = [...settingsPanelSrc.matchAll(/screen:\s*'(\w+Screen)'/g)].map((m) => m[1]);
+    const systemTabs = SETTINGS_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
+
+    it('lists exactly the SYSTEM screens that are not SettingsScreen itself', () => {
+      expect(navScreens.sort()).toEqual(systemTabs.filter((s) => s !== 'SettingsScreen').sort());
+    });
+
+    it('every nav row that is a Settings SECTION has a matching v-if branch', () => {
+      // A row whose id no longer matches any `activeSection === '…'` branch
+      // renders a blank page rather than erroring.
+      const sectionIds = [...settingsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)',[^}]*\}/g)]
+        .map((m) => m[0])
+        .filter((entry) => !/screen:/.test(entry))
+        .map((entry) => entry.match(/id:\s*'([\w-]+)'/)[1]);
+      const branches = new Set([...settingsScreenSrc.matchAll(/activeSection === '([\w-]+)'/g)].map((m) => m[1]));
+      expect(sectionIds.length).toBeGreaterThanOrEqual(9);
+      expect(sectionIds.filter((id) => !branches.has(id))).toEqual([]);
+    });
+
+    it('the AI Provider page still renders all three cards', () => {
+      // It was briefly reduced to ProviderSelector alone while moving screens
+      // between surfaces. Fallback and chat behaviour are the other two thirds
+      // of that page and vanished silently, because a missing card looks like
+      // a page that simply has less on it.
+      const providerBlock = settingsScreenSrc.split("activeSection === 'providers'")[1]?.split('activeSection ===')[0] ?? '';
+      for (const card of ['<ProviderSelector />', '<FallbackProviders />', '<ChatBehaviorSettings />']) {
+        expect(providerBlock).toContain(card);
+      }
+    });
   });
 
   it('every CONNECT row opens a distinct view of ConnectorsScreen', () => {

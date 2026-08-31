@@ -50,18 +50,34 @@
           </div>
         </div>
 
-        <!-- AI Provider Section. Reachable again: the SYSTEM nav lists it as
-             "AI Provider", which is where a default-model choice belongs —
-             it was previously only offered inside Connectors. -->
+        <!-- AI Provider Section. The page Connectors used to host, moved here
+             intact: same three cards, same order, same copy. `.settings-grid`
+             and `.connectors-grid` are the identical flex column, so it also
+             lays out identically. -->
         <div v-else-if="activeSection === 'providers'" class="settings-content" data-section="providers">
           <div class="content-header">
             <h2 class="content-title">Default AI Provider</h2>
-            <p class="content-subtitle">Choose the model AGNT uses when nothing more specific is set</p>
+            <p class="content-subtitle">
+              The model Annie uses everywhere she isn't told otherwise — and what happens when it's unavailable.
+            </p>
           </div>
+          <!--
+            ORDERED BY HOW OFTEN EACH ONE IS ACTUALLY TOUCHED, not by how new or
+            interesting the feature is:
+
+              01 Model        daily          ← the reason anyone opens this page
+              02 Fallback     a few × / year
+              03 Instructions monthly
+              04 Limits       once, ever     ← collapsed, values shown in header
+
+            Dynamic routing is deliberately NOT a fifth card. It is the second
+            answer to "which model", so it lives inside 01 as a mode — putting it
+            on top would place the rarest decision above the most common one.
+          -->
           <div class="settings-grid">
-            <div class="settings-section mid-section">
-              <ProviderSelector />
-            </div>
+            <ProviderSelector />
+            <FallbackProviders />
+            <ChatBehaviorSettings />
           </div>
         </div>
 
@@ -263,6 +279,11 @@ import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
 import ProviderSelector from './components/ProviderSelector/ProviderSelector.vue';
+// Owned by the Connectors screen directory, which is where this page lived
+// before it moved under SYSTEM. Imported rather than copied so there is still
+// exactly one implementation of each card.
+import FallbackProviders from '../Connectors/components/FallbackProviders.vue';
+import ChatBehaviorSettings from '../Connectors/components/ChatBehaviorSettings.vue';
 import ApiKeyManager from './components/ApiKeyManager/ApiKeyManager.vue';
 import ThemeSelector from './components/ThemeSelector/ThemeSelector.vue';
 import BillingManager from './components/BillingManager/BillingManager.vue';
@@ -287,6 +308,8 @@ export default {
     TerminalHeader,
     LoginSection,
     ProviderSelector,
+    FallbackProviders,
+    ChatBehaviorSettings,
     ApiKeyManager,
     ThemeSelector,
     BillingManager,

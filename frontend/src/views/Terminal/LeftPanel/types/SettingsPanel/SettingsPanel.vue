@@ -36,6 +36,26 @@
         </div>
       </div>
 
+      <!-- The three screens that govern how Annie herself behaves: how much
+           she may do alone, what she remembers, how she improves. They are
+           full screens rather than sections of this one, so they navigate. -->
+      <div class="nav-section" data-section="assistant">
+        <h4>Assistant</h4>
+        <div class="nav-items">
+          <button
+            v-for="item in ASSISTANT_ITEMS"
+            :key="item.id"
+            class="nav-item"
+            :class="{ active: activeSection === item.id }"
+            :data-nav="item.id"
+            @click="handleNavClick(item)"
+          >
+            <i :class="item.icon"></i>
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
+
       <div class="nav-section" data-section="config">
         <h4>Config</h4>
         <div class="nav-items">
@@ -74,12 +94,15 @@ import { toRefs } from 'vue';
 // `activeSection === '…'` branches in Settings.vue.
 const GENERAL_ITEMS = Object.freeze([
   { id: 'providers', icon: 'fas fa-robot', label: 'AI Provider' },
-  { id: 'autonomy', icon: 'fas fa-user-shield', label: 'Autonomy', screen: 'AutonomyScreen' },
   { id: 'billing', icon: 'fas fa-wallet', label: 'Billing' },
-  { id: 'evolution', icon: 'fas fa-dna', label: 'Evolution', screen: 'ExperimentsScreen' },
-  { id: 'memory', icon: 'fas fa-brain', label: 'Memory', screen: 'MemoryScreen' },
   { id: 'profile', icon: 'fas fa-user', label: 'Profile' },
   { id: 'referrals', icon: 'fas fa-users', label: 'Referrals' },
+]);
+
+const ASSISTANT_ITEMS = Object.freeze([
+  { id: 'autonomy', icon: 'fas fa-user-shield', label: 'Autonomy', screen: 'AutonomyScreen' },
+  { id: 'evolution', icon: 'fas fa-dna', label: 'Evolution', screen: 'ExperimentsScreen' },
+  { id: 'memory', icon: 'fas fa-brain', label: 'Memory', screen: 'MemoryScreen' },
 ]);
 
 const CONFIG_ITEMS = Object.freeze([
@@ -113,6 +136,7 @@ export default {
       activeSection,
       handleNavClick,
       GENERAL_ITEMS,
+      ASSISTANT_ITEMS,
       CONFIG_ITEMS,
       LOGOUT_ITEM,
     };
