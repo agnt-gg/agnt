@@ -25,13 +25,8 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.skills',           screen: null, description: 'Sidebar button: Skills',       safeToSimulate: true },
   { id: 'sidebar.widgets',          screen: null, description: 'Sidebar button: Widgets',      safeToSimulate: true },
 
-  // ── Sidebar: CONNECT ── six rows, one ConnectorsScreen, six inner views.
-  { id: 'sidebar.connect-oauth',    screen: null, description: 'Sidebar button: API / OAuth connections', safeToSimulate: true },
-  { id: 'sidebar.connect-emails',   screen: null, description: 'Sidebar button: Emails (email server)',   safeToSimulate: true },
-  { id: 'sidebar.connect-mcp',      screen: null, description: 'Sidebar button: MCP / NPM library',        safeToSimulate: true },
-  { id: 'sidebar.connect-plugins',  screen: null, description: 'Sidebar button: Plugins',                 safeToSimulate: true },
-  { id: 'sidebar.connect-vault',    screen: null, description: 'Sidebar button: Vault (API keys)',        safeToSimulate: true },
-  { id: 'sidebar.connect-webhooks', screen: null, description: 'Sidebar button: Webhooks',                safeToSimulate: true },
+  // ── Sidebar: foot of the rail ── one row; the screen carries its own nav.
+  { id: 'sidebar.connect',          screen: null, description: 'Sidebar button: Connect (API/OAuth, Emails, MCP, Plugins, Vault, Webhooks)', safeToSimulate: true },
 
   // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
   { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },

@@ -13,11 +13,9 @@
 // without a group fails sections.spec.js rather than silently rendering it
 // under whatever caption happens to precede it.
 //
-// SHARED SCREENS. A screen may be owned by more than one section as long as
-// each owner declares a distinct `section` — the inner view that sidebar row
-// deep-links to. CONNECT uses this: six rows, one ConnectorsScreen, six inner
-// sections. `activeInnerSection` (canvas/innerSection.js) is what
-// disambiguates which row is highlighted.
+// ONE ROW PER SCREEN. No screen may be owned by two sections: the rail
+// resolves the active row from the screen name alone, so a second owner would
+// light the wrong row. sections.spec.js enforces that.
 //
 // Every screen listed here must also exist in Terminal.vue's lazy-import map
 // and screenRoutes, and in router/index.js. sections.spec.js enforces that
@@ -130,72 +128,31 @@ export const MAIN_SECTIONS = [
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
-
-  // ── CONNECT ── everything that reaches outside AGNT. These six rows all
-  // render ConnectorsScreen; `section` selects which view it opens on. They
-  // were previously buried in ConnectorsPanel's inner nav, which meant the
-  // sidebar could not say what the app could actually connect to.
-  {
-    id: 'connect-oauth',
-    group: 'CONNECT',
-    section: 'oauth',
-    icon: 'fas fa-plug',
-    label: 'API / OAuth',
-    screens: [{ screen: 'ConnectorsScreen', label: 'AUTH CONNECTIONS' }],
-  },
-  {
-    id: 'connect-emails',
-    group: 'CONNECT',
-    section: 'email-server',
-    icon: 'fas fa-envelope',
-    label: 'Emails',
-    screens: [{ screen: 'ConnectorsScreen', label: 'EMAIL SERVER' }],
-  },
-  {
-    id: 'connect-mcp',
-    group: 'CONNECT',
-    section: 'mcp-servers',
-    icon: 'fas fa-server',
-    label: 'MCP',
-    screens: [{ screen: 'ConnectorsScreen', label: 'MCP / NPM LIBRARY' }],
-  },
-  {
-    id: 'connect-plugins',
-    group: 'CONNECT',
-    section: 'plugins',
-    icon: 'fas fa-puzzle-piece',
-    label: 'Plugins',
-    screens: [{ screen: 'ConnectorsScreen', label: 'MY PLUGINS' }],
-  },
-  {
-    // The credential store. Connectors already rendered this view; nothing
-    // linked to it, so it was unreachable until it got a sidebar row.
-    id: 'connect-vault',
-    group: 'CONNECT',
-    section: 'api-keys',
-    icon: 'fas fa-key',
-    label: 'Vault',
-    screens: [{ screen: 'ConnectorsScreen', label: 'VAULT' }],
-  },
-  {
-    id: 'connect-webhooks',
-    group: 'CONNECT',
-    section: 'webhooks',
-    icon: 'fas fa-link',
-    label: 'Webhooks',
-    screens: [{ screen: 'ConnectorsScreen', label: 'WEBHOOKS' }],
-  },
 ];
 
-// ── SYSTEM ── one row at the foot of the rail. Everything under it (Profile,
-// Billing, Theme, Memory, Evolution, Autonomy, …) is navigated from Settings'
-// own left panel, not from the main sidebar: these are things you configure
-// once, and putting twelve of them in the rail would drown the four groups
-// above. Memory / Evolution / Autonomy are full screens rather than Settings
+// ── The foot of the rail ── below a separator, captionless: two rows you
+// visit to set the machine up rather than to do work with it.
+//
+// Both are a screen that carries its OWN left-panel nav, which is exactly why
+// each gets one row instead of several. Connect had six — API/OAuth, Emails,
+// MCP, Plugins, Vault, Webhooks — and every one of them landed on a screen
+// already listing those same six down its left side. The rail was spending
+// its longest group restating a menu the destination draws anyway.
+//
+// Settings is the same shape one level further: Profile, Billing, Theme,
+// Memory, Evolution, Autonomy and the rest are navigated from SettingsPanel.
+// Memory / Evolution / Autonomy are full screens rather than Settings
 // sections, so they are listed here as toolbar tabs — that keeps them inside
 // SECTION_ROUTES, keeps the gear lit while you are on them, and lets them
 // share SettingsPanel as their left panel (see screenRegistry.js).
-export const SETTINGS_SECTIONS = [
+export const BOTTOM_SECTIONS = [
+  {
+    id: 'connect',
+    group: 'SYSTEM',
+    icon: 'fas fa-plug',
+    label: 'Connect',
+    screens: [{ screen: 'ConnectorsScreen', label: 'CONNECT' }],
+  },
   {
     id: 'settings',
     group: 'SYSTEM',
@@ -210,7 +167,7 @@ export const SETTINGS_SECTIONS = [
   },
 ];
 
-export const ALL_SECTIONS = [...MAIN_SECTIONS, ...SETTINGS_SECTIONS];
+export const ALL_SECTIONS = [...MAIN_SECTIONS, ...BOTTOM_SECTIONS];
 
 // Set of all screen names that belong to a section (used to identify custom pages)
 export const SECTION_ROUTES = new Set(ALL_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen)));

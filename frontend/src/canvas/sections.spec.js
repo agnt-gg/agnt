@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
+import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
 import { TOUR_TARGETS } from '@/views/_components/utility/tourTargets.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -66,10 +66,10 @@ describe('canvas sections registry', () => {
     expect(missing).toEqual([]);
   });
 
-  it('no section id collides between main and settings', () => {
+  it('no section id collides between the main rail and its foot', () => {
     const mainIds = MAIN_SECTIONS.map((s) => s.id);
-    const settingsIds = SETTINGS_SECTIONS.map((s) => s.id);
-    expect(mainIds.filter((id) => settingsIds.includes(id))).toEqual([]);
+    const bottomIds = BOTTOM_SECTIONS.map((s) => s.id);
+    expect(mainIds.filter((id) => bottomIds.includes(id))).toEqual([]);
   });
 
   it('sidebar tour targets and section ids agree bidirectionally', () => {
@@ -101,41 +101,19 @@ describe('canvas sections registry', () => {
     expect(backendIds.sort()).toEqual(TOUR_TARGETS.map((t) => t.id).sort());
   });
 
-  // ── Shared screens ──
-  // A screen may have several sidebar rows (CONNECT: six rows, one
-  // ConnectorsScreen) ONLY if each row deep-links to a different inner view.
-  // Without that, CanvasScreen cannot tell which row to highlight and would
-  // silently light the first one for all six.
-  describe('shared screens', () => {
-    const ownersByScreen = new Map();
+  it('no screen is owned by two sidebar rows', () => {
+    // CanvasScreen resolves the lit row from the screen name alone, so a
+    // second owner would silently light the first of them from both. CONNECT
+    // used to be six rows sharing ConnectorsScreen, kept apart by a deep-link
+    // mechanism; collapsing it to one row deleted that mechanism, and this is
+    // what stops the next shared screen from arriving without it.
+    const owners = new Map();
     for (const section of ALL_SECTIONS) {
       for (const tab of section.screens) {
-        if (!ownersByScreen.has(tab.screen)) ownersByScreen.set(tab.screen, []);
-        ownersByScreen.get(tab.screen).push(section);
+        owners.set(tab.screen, [...(owners.get(tab.screen) || []), section.id]);
       }
     }
-    const shared = [...ownersByScreen.entries()].filter(([, owners]) => owners.length > 1);
-
-    it('every section that shares a screen declares an inner section', () => {
-      const undeclared = shared.flatMap(([screen, owners]) =>
-        owners.filter((o) => !o.section).map((o) => `${o.id} -> ${screen}`),
-      );
-      expect(undeclared).toEqual([]);
-    });
-
-    it('sections sharing a screen point at DIFFERENT inner sections', () => {
-      const collisions = shared.flatMap(([screen, owners]) => {
-        const seen = new Set();
-        return owners.filter((o) => (seen.has(o.section) ? true : (seen.add(o.section), false))).map((o) => `${screen}#${o.section}`);
-      });
-      expect(collisions).toEqual([]);
-    });
-
-    it('a section that declares an inner section owns exactly one screen', () => {
-      // Otherwise the inner section would be ambiguous across that row's tabs.
-      const bad = ALL_SECTIONS.filter((s) => s.section && s.screens.length !== 1).map((s) => s.id);
-      expect(bad).toEqual([]);
-    });
+    expect([...owners.entries()].filter(([, ids]) => ids.length > 1)).toEqual([]);
   });
 
   // ── Grouping ──
@@ -163,8 +141,8 @@ describe('canvas sections registry', () => {
       expect(rows[0].startsGroup).toBe(true);
     });
 
-    it('renders the four intended main groups in order', () => {
-      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD', 'CONNECT']);
+    it('renders the three intended main groups in order', () => {
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD']);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -193,7 +171,7 @@ describe('canvas sections registry', () => {
       expect(SECTION_ROUTES.has(screen)).toBe(true);
       expect(mainScreens).not.toContain(screen);
     }
-    const settings = SETTINGS_SECTIONS.find((s) => s.id === 'settings');
+    const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
     // The sidebar row lands on the first screen — must stay SettingsScreen.
     expect(settings.screens[0].screen).toBe('SettingsScreen');
   });
@@ -205,7 +183,9 @@ describe('canvas sections registry', () => {
   // navigates somewhere the gear does not stay lit for. Neither crashes.
   describe('SYSTEM sub-nav (SettingsPanel)', () => {
     const navScreens = [...settingsPanelSrc.matchAll(/screen:\s*'(\w+Screen)'/g)].map((m) => m[1]);
-    const systemTabs = SETTINGS_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
+    // Scoped to the Settings row specifically — Connect sits beside it at the
+    // foot of the rail but is navigated from the rail, not from this panel.
+    const systemTabs = BOTTOM_SECTIONS.find((s) => s.id === 'settings').screens.map((t) => t.screen);
 
     it('lists exactly the SYSTEM screens that are not SettingsScreen itself', () => {
       expect(navScreens.sort()).toEqual(systemTabs.filter((s) => s !== 'SettingsScreen').sort());
@@ -235,12 +215,22 @@ describe('canvas sections registry', () => {
     });
   });
 
-  it('every CONNECT row opens a distinct view of ConnectorsScreen', () => {
-    const connect = MAIN_SECTIONS.filter((s) => s.group === 'CONNECT');
-    expect(connect).toHaveLength(6);
-    expect(connect.every((s) => s.screens[0].screen === 'ConnectorsScreen')).toBe(true);
-    expect(connect.map((s) => s.section).sort()).toEqual(
-      ['api-keys', 'email-server', 'mcp-servers', 'oauth', 'plugins', 'webhooks'].sort(),
-    );
+  it('Connect is a single row at the foot of the rail, directly above Settings', () => {
+    // It was six rows — API/OAuth, Emails, MCP, Plugins, Vault, Webhooks — each
+    // deep-linking into a view that ConnectorsScreen's own left panel already
+    // lists. The rail spent its longest group restating a menu the destination
+    // draws anyway.
+    expect(MAIN_SECTIONS.some((s) => s.screens.some((t) => t.screen === 'ConnectorsScreen'))).toBe(false);
+    expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['connect', 'settings']);
+
+    const connect = BOTTOM_SECTIONS[0];
+    expect(connect.label).toBe('Connect');
+    expect(connect.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen']);
+  });
+
+  it('no section declares a deep-link inner section', () => {
+    // The `section` field went with the six CONNECT rows. Leaving one behind
+    // would be inert: nothing reads it any more.
+    expect(ALL_SECTIONS.filter((s) => s.section).map((s) => s.id)).toEqual([]);
   });
 });

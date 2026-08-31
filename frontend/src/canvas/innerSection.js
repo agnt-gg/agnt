@@ -1,18 +1,15 @@
-// innerSection — which inner view a shared screen is currently showing.
+// innerSection — which inner view Connectors is currently showing.
 //
-// Most sidebar rows own a screen outright, so the active row is just "the
-// section whose screens include the current screen". CONNECT breaks that
-// assumption: six rows share ConnectorsScreen and differ only by which inner
-// section they open. Without a shared value, the sidebar would highlight the
-// first of the six no matter which one you clicked, and clicking a row while
-// already on ConnectorsScreen would navigate nowhere.
+// ConnectorsScreen and ConnectorsPanel are two halves of one screen: the panel
+// is the nav, the screen is the body. Both read and write THIS ref rather than
+// passing the value between them, so the highlighted row and the rendered view
+// cannot disagree about what is showing.
 //
-// This is deliberately a plain module-level ref rather than vuex state: it is
-// ephemeral view position, not application data — nothing persists it, nothing
-// syncs it across tabs, and it resets to null the moment you leave the screen
-// that owns it. Both the sidebar (which writes on click) and the screen (which
-// writes when its own inner nav is used) read the same ref, so the two can not
-// disagree about what is showing.
+// Deliberately a plain module-level ref rather than vuex state: it is ephemeral
+// view position, not application data — nothing persists it and nothing syncs
+// it across tabs. Living at module scope does mean it survives unmounting, so
+// leaving Connectors and coming back resumes the view you were on, which is
+// the behaviour you want from a screen reached by a single sidebar row.
 
 import { ref } from 'vue';
 

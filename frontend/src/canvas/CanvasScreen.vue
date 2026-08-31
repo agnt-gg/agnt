@@ -124,11 +124,12 @@
         </Tooltip>
 
         <!-- Separator -->
-        <div class="cv-sb-sep" v-if="settingsSections.length > 0"></div>
+        <div class="cv-sb-sep" v-if="bottomSections.length > 0"></div>
 
-        <!-- Settings sections (bottom) -->
+        <!-- Foot of the rail: Connect, then Settings. No caption — each is a
+             single row whose screen carries its own left-panel nav. -->
         <div class="cv-sb-bottom">
-          <Tooltip v-for="section in settingsSections" :key="section.id" :text="section.label" position="right" width="auto" :disabled="railLabelsVisible">
+          <Tooltip v-for="section in bottomSections" :key="section.id" :text="section.label" position="right" width="auto" :disabled="railLabelsVisible">
             <button
               class="cv-sb-page"
               :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
@@ -264,8 +265,7 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Sidebar icons + toolbar sub-tabs both derive from this registry.
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
-import { MAIN_SECTIONS, SETTINGS_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
-import { activeInnerSection, setInnerSection, clearInnerSection } from './innerSection.js';
+import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 
 // Directive: when the label text overflows its container, expose the
@@ -417,7 +417,7 @@ export default {
 
     // Section data (static)
     const mainSections = MAIN_SECTIONS;
-    const settingsSections = SETTINGS_SECTIONS;
+    const bottomSections = BOTTOM_SECTIONS;
     // Precomputed once: the registry is static, so group boundaries are too.
     const mainRail = withGroupHeadings(MAIN_SECTIONS);
 
@@ -446,17 +446,11 @@ export default {
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);
 
-    // Find the active section based on current screenName.
-    //
-    // Most screens have exactly one owner. CONNECT's six rows share
-    // ConnectorsScreen, so for a shared screen the inner section is what
-    // decides which row is lit; falling back to the first owner keeps the
-    // rail from going dark if nothing has published an inner section yet
-    // (e.g. a deep link straight to /connectors).
+    // Find the active section based on current screenName. Every screen has
+    // exactly one owning row — sections.spec.js enforces it — so the screen
+    // name alone decides which row is lit.
     const activeSection = computed(() => {
-      const owners = ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === props.screenName));
-      if (owners.length <= 1) return owners[0] || null;
-      return owners.find((s) => s.section === activeInnerSection.value) || owners[0];
+      return ALL_SECTIONS.find((s) => s.screens.some((t) => t.screen === props.screenName)) || null;
     });
 
     // Sub-tabs shown in toolbar = screens of the active section
@@ -623,13 +617,6 @@ export default {
 
     function navigateToSection(section) {
       onCustomPage.value = false;
-      // A row that deep-links into a shared screen publishes its inner section
-      // BEFORE navigating. This is load-bearing for CONNECT: clicking a
-      // sibling row while already on ConnectorsScreen emits the SAME screen
-      // name, so screen-change is a no-op and the inner section is the only
-      // signal that anything happened.
-      if (section.section) setInnerSection(section.section);
-      else clearInnerSection();
       emit('screen-change', section.screens[0].screen);
     }
 
@@ -731,7 +718,7 @@ export default {
       activePage,
       allPages,
       mainSections,
-      settingsSections,
+      bottomSections,
       mainRail,
       railLabelsVisible,
       hasUnreadChats,

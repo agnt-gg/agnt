@@ -27,15 +27,8 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.skills',           selector: '[data-tour-id="sidebar.skills"]',           screen: null, description: 'Sidebar button: Skills',       safeToSimulate: true },
   { id: 'sidebar.widgets',          selector: '[data-tour-id="sidebar.widgets"]',          screen: null, description: 'Sidebar button: Widgets',      safeToSimulate: true },
 
-  // ── Sidebar: CONNECT ── six rows, one ConnectorsScreen, six inner views.
-  { id: 'sidebar.connect-oauth',    selector: '[data-tour-id="sidebar.connect-oauth"]',    screen: null, description: 'Sidebar button: API / OAuth connections', safeToSimulate: true },
-  { id: 'sidebar.connect-emails',   selector: '[data-tour-id="sidebar.connect-emails"]',   screen: null, description: 'Sidebar button: Emails (email server)',   safeToSimulate: true },
-  { id: 'sidebar.connect-mcp',      selector: '[data-tour-id="sidebar.connect-mcp"]',      screen: null, description: 'Sidebar button: MCP / NPM library',        safeToSimulate: true },
-  { id: 'sidebar.connect-plugins',  selector: '[data-tour-id="sidebar.connect-plugins"]',  screen: null, description: 'Sidebar button: Plugins',                 safeToSimulate: true },
-  { id: 'sidebar.connect-vault',    selector: '[data-tour-id="sidebar.connect-vault"]',    screen: null, description: 'Sidebar button: Vault (API keys)',        safeToSimulate: true },
-  { id: 'sidebar.connect-webhooks', selector: '[data-tour-id="sidebar.connect-webhooks"]', screen: null, description: 'Sidebar button: Webhooks',                safeToSimulate: true },
-
-  // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
+  // ── Sidebar: foot of the rail + controls ───────────────────────────
+  { id: 'sidebar.connect',          selector: '[data-tour-id="sidebar.connect"]',          screen: null, description: 'Sidebar button: Connect (API/OAuth, Emails, MCP, Plugins, Vault, Webhooks)', safeToSimulate: true },
   { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
   { id: 'sidebar.add-page',         selector: '[data-tour-id="sidebar.add-page"]',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
   { id: 'sidebar.toggle',           selector: '[data-tour-id="sidebar.toggle"]',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },
