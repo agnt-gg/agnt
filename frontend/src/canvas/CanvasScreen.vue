@@ -1165,7 +1165,7 @@ export default {
 
 .cv-sb-page {
   width: 32px;
-  height: 32px;
+  height: 30px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
@@ -1260,7 +1260,7 @@ export default {
 
 .cv-sb-add {
   width: 32px;
-  height: 32px;
+  height: 30px;
   border: 1px dashed var(--color-dull-navy);
   border-radius: 4px;
   background: none;
@@ -1291,7 +1291,7 @@ export default {
 /* Collapse / expand toggle button */
 .cv-sb-toggle {
   width: 32px;
-  height: 32px;
+  height: 30px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
