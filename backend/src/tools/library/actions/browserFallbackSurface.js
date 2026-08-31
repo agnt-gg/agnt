@@ -45,6 +45,7 @@ import { WebSocket } from 'ws';
 import fs from 'fs';
 import path from 'path';
 import PathManager from '../../../utils/PathManager.js';
+import { requiredChromeFlags, shouldRunHeadless, describeRuntime } from '../../../services/browserRuntime.js';
 
 /** The browser we launched, if it is still running. */
 let session = null;
@@ -352,6 +353,10 @@ async function launchBrowser({ log, browser }) {
   }
   const { executable, label, key } = found;
 
+  // A headless browser that exits immediately reports the same way as a missing
+  // one, so the reason it was launched headless is recorded before it can fail.
+  const headlessHere = shouldRunHeadless();
+
   const profilePath = path.join(PathManager.getUserDataPath(), PROFILE_DIR);
   fs.mkdirSync(profilePath, { recursive: true });
 
@@ -385,7 +390,18 @@ async function launchBrowser({ log, browser }) {
   // us to a browser that no longer exists.
   try { fs.unlinkSync(path.join(profilePath, 'DevToolsActivePort')); } catch { /* not there */ }
 
-  log(`[Browser Control] launching a clean ${label} profile at ${profilePath}`);
+  // WHY THE FLAGS ARE NOT A CONSTANT.
+  //
+  // The header above says this browser is "visible, not headless", and on a
+  // desktop that is exactly right. On a machine with no window server there is
+  // nothing to be visible ON: the process exits instantly and the wait loop
+  // below spends its full 30 seconds polling for a DevToolsActivePort that is
+  // never coming — a timeout whose message blames the browser for a decision
+  // this code made. requiredChromeFlags() returns [] on a desktop, so the
+  // visible path is unchanged; see services/browserRuntime.js for why the test
+  // is DISPLAY rather than container-ness.
+  const runtimeFlags = requiredChromeFlags();
+  log(`[Browser Control] launching a clean ${label} profile at ${profilePath} (${describeRuntime()})`);
 
   const child = spawn(executable, [
     '--remote-debugging-port=0',
@@ -395,6 +411,7 @@ async function launchBrowser({ log, browser }) {
     // Not the user's browser, so it must never try to become it.
     '--no-service-autorun',
     '--disable-features=Translate,OptimizationHints',
+    ...runtimeFlags,
     'about:blank',
   ], { stdio: 'ignore', windowsHide: false });
 
@@ -423,7 +440,12 @@ async function launchBrowser({ log, browser }) {
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       session = null;
-      throw new Error(`${label} exited immediately (code ${child.exitCode}) instead of opening.`);
+      throw new Error(
+        `${label} exited immediately (code ${child.exitCode}) instead of opening`
+        + `${headlessHere ? ' in headless mode' : ''}.`
+        + (headlessHere ? '' : ' There may be no display available on this machine —'
+          + ' set AGNT_BROWSER_HEADLESS=1 to launch without one.'),
+      );
     }
     const endpoint = readEndpoint(profilePath);
     if (endpoint) {

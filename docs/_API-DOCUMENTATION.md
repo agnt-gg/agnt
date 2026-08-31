@@ -5168,9 +5168,71 @@ tokens to drift from the tool that already does all of it.
   navigation, so the registry knows where each window is. When more than one
   Browser widget is open, the most recently refreshed surface is the one a chat
   turn drives — which is the window the user was last working in.
-- **Errors**: `400` when `cdpUrl` is not a loopback bridge
-  (`ws://127.0.0.1:<port>/<token>`). Accepting anything else would turn this
-  into a way to point the agent at an arbitrary CDP endpoint on the network.
+- **Errors**: `400` with `reason: "not-a-bridge"` when `cdpUrl` is not a
+  loopback bridge (`ws://127.0.0.1:<port>/<token>`). Accepting anything else
+  would turn this into a way to point the agent at an arbitrary CDP endpoint on
+  the network.
+- **Errors**: `400` with `reason: "unreachable"` when the announcement arrives
+  from a **different machine**. `127.0.0.1` names the CLIENT's loopback in that
+  case, not the backend's, so the bridge is real and simply not reachable from
+  here — the documented remote-backend topology. The client should render a
+  streamed surface instead (see `POST /view`). This case previously succeeded,
+  and the agent silently drove a browser on the server while the user watched an
+  empty widget.
+
+### Watch a surface
+
+**POST** `/view`
+
+- **Authentication**: Required
+- **Body**: `{ instanceId?, workspaceId? }`
+- **Description**: Starts a CDP screencast of the named surface, or joins one
+  already running, and returns `{ instanceId, transport, viewers, joined }`.
+  Frames are then delivered over Socket.IO as `browser:frame` to the caller's
+  `user:<id>` room. This is how a plain browser tab, a paired phone, or a
+  desktop app pointed at a remote backend watches a browser it cannot embed.
+- **The client never supplies a `cdpUrl`** — it does not have one and must not.
+  It names WHICH surface it means; the backend looks the endpoint up. A viewer
+  can therefore only ever watch a browser this backend already owns.
+- **Errors**: `404` when no surface exists yet (the normal cold-start case — the
+  widget opens the instant the tool is called, before a browser is launched);
+  `409` when the browser died between the registry write and the call.
+
+### Stop watching
+
+**DELETE** `/view/:instanceId`
+
+- **Authentication**: Required
+- **Description**: Drops one viewer. Ref-counted: the screencast stops when the
+  last viewer leaves, and the browser itself keeps running — the agent may still
+  be mid-task, and closing a window because somebody looked away would be its
+  own bug.
+
+### Is anything streaming there
+
+**GET** `/view/:instanceId`
+
+- **Authentication**: Required
+- **Description**: Returns `{ streaming: boolean }`.
+
+### Socket.IO events
+
+| Direction | Event | Payload |
+|---|---|---|
+| server → client | `browser:frame` | `{ instanceId, data, metadata, frameId }` |
+| server → client | `browser:navigated` | `{ instanceId, url }` |
+| client → server | `browser:ack` | `{ instanceId, frameId }` |
+| client → server | `browser:input` | `{ instanceId, method, params }` |
+| client → server | `browser:watching` / `browser:unwatching` | `{ instanceId }` |
+
+`browser:ack` is sent **after the client paints**, never on arrival. Chromium
+will not send the next frame until the current one is acked, so acking on render
+is what makes a slow viewer throttle itself instead of drowning in frames it
+cannot draw.
+
+`browser:input` accepts only `Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`
+and `Input.insertText`. The allowlist is by exact method, not by `Input.` prefix
+— `Input.dispatchDragEvent` can initiate a file drag.
 
 ### Withdraw a surface
 

@@ -155,8 +155,38 @@ if (electron?.getAppVersion) {
 | Speech-to-text | ✅ | ✅ (needs HTTPS) |
 | Plugins | ✅ | ✅ |
 | API | ✅ | ✅ |
+| Browser widget | ✅ embedded | ✅ streamed |
 
-**Everything works in both modes** - the core functionality is identical.
+**Every feature works in both modes.** One of them RENDERS differently, and it
+is worth knowing which.
+
+### The Browser widget: same browser, two ways of seeing it
+
+The Browser widget shows a real Chromium page that an agent drives. Where that
+browser runs never changes — it is always on the machine running the backend,
+because that is the only process that can speak CDP to it. What changes is how
+the pixels reach you.
+
+| | Desktop, local backend | Everywhere else |
+|---|---|---|
+| Rendered by | Electron `<webview>` | `<canvas>` + CDP screencast |
+| Composited | natively, on the GPU | JPEG frames over Socket.IO |
+| Input | real, native | forwarded mouse/key events |
+| Interaction | always on | off by default, one click to enable |
+
+"Everywhere else" is a browser tab, a paired phone, **and the desktop app
+pointed at a remote backend** — that last one has a `<webview>`, but it is on
+the wrong machine for the backend to drive, so it streams too.
+
+The choice is automatic and needs no configuration: the widget checks whether it
+can embed a Chromium view AND whether the backend is on this machine. If the
+backend then refuses a bridge announcement as unreachable, the widget switches
+to streaming on that evidence rather than trusting its own guess.
+
+On a server with no display — a container, a headless VPS, an SSH session, WSL —
+the browser launches headless automatically. Set `AGNT_BROWSER_HEADLESS=0` to
+force a visible window (e.g. under Xvfb), or `=1` to force headless on a machine
+that has a display.
 
 ---
 

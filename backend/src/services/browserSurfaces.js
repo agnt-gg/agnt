@@ -30,7 +30,15 @@
 
 import { WebSocket } from 'ws';
 
-/** userId -> Map(instanceId -> { workspaceId, cdpUrl, url, title, updatedAt }) */
+/**
+ * userId -> Map(instanceId -> { workspaceId, cdpUrl, transport, url, title, updatedAt })
+ *
+ * `transport` names HOW the pixels reach a person, which is the one thing the
+ * rest of the system cannot infer from a ws:// URL:
+ *
+ *   'electron-bridge' — an Electron <webview> on this machine, painted natively
+ *   'host-cdp'        — a browser the backend launched, watched by screencast
+ */
 const byUser = new Map();
 
 /** Only loopback bridges, in the shape CdpBridge mints. */
@@ -41,18 +49,117 @@ export function isLocalBridgeUrl(cdpUrl) {
 }
 
 /**
+ * A browser AGNT launched, which chose its own port and its own path.
+ *
+ * Deliberately a SEPARATE, looser check rather than a relaxation of
+ * LOOPBACK_CDP. A launched Chrome reports `/devtools/browser/<uuid>`, which the
+ * bridge pattern rejects because it contains slashes — so widening the bridge
+ * pattern to fit would also widen what the PUBLIC announcement route accepts,
+ * and that route's narrowness is the thing stopping a client pointing the agent
+ * at an arbitrary endpoint. Two shapes, two checks, chosen by transport.
+ */
+const LOOPBACK_ANY = /^ws:\/\/(127\.\d+\.\d+\.\d+|\[::1\]):\d+\/\S*$/;
+
+export function isHostCdpUrl(cdpUrl) {
+  return typeof cdpUrl === 'string' && LOOPBACK_ANY.test(cdpUrl);
+}
+
+/** The endpoint shape a given transport is allowed to announce. */
+function endpointIsValidFor(transport, cdpUrl) {
+  return transport === 'host-cdp' ? isHostCdpUrl(cdpUrl) : isLocalBridgeUrl(cdpUrl);
+}
+
+/**
+ * The instance id for the browser the backend launched for a user.
+ *
+ * Stable and derived, not random: the launched browser is a singleton per user
+ * (browserFallbackSurface reuses one session), so a fresh id per announcement
+ * would fill the registry with entries for one browser and leave viewers
+ * subscribed to ids that no longer resolve.
+ */
+export function hostInstanceId(userId) {
+  return `host:${userId}`;
+}
+
+/**
+ * Announce the browser this backend launched, so a client can watch it.
+ *
+ * In-process, so there is no client address to check — the endpoint was minted
+ * by this process, on this machine, a few milliseconds ago.
+ */
+export function announceHostSurface(userId, cdpUrl, { workspaceId = null, url = null, title = null } = {}) {
+  return registerSurface(userId, hostInstanceId(userId), {
+    workspaceId, cdpUrl, url, title, transport: 'host-cdp',
+  });
+}
+
+/**
+ * Is this address the machine this process is running on?
+ *
+ * Express reports IPv4 clients over a dual-stack listener as `::ffff:127.0.0.1`,
+ * so a naive `=== '127.0.0.1'` calls the local desktop remote and refuses every
+ * announcement on a normal install.
+ */
+export function isLoopbackAddress(address) {
+  if (!address) return false;
+  const addr = String(address).replace(/^::ffff:/i, '').trim();
+  return addr === '::1' || addr === 'localhost' || /^127\./.test(addr);
+}
+
+/**
+ * Can THIS BACKEND reach the bridge being announced?
+ *
+ * ---------------------------------------------------------------------------
+ * THE BUG THIS EXISTS TO CLOSE
+ * ---------------------------------------------------------------------------
+ * `isLocalBridgeUrl` validates the SHAPE of a string. That is the same check
+ * whether the announcement came from the desktop this backend runs on or from a
+ * desktop on the other side of the internet — and `127.0.0.1` means a DIFFERENT
+ * MACHINE in the second case.
+ *
+ * AGNT ships that second case as a documented topology (Settings -> Connection,
+ * `AGNT_REMOTE_URL`): the Electron app runs here, the backend runs on a server.
+ * The widget minted a real bridge on the user's laptop, announced it, and this
+ * registry accepted it because the string looked right. probeBridge then dialled
+ * the SERVER's 127.0.0.1, found nothing, pruned the entry, and the tool fell
+ * through to launching a browser on the server. The user watched an empty widget
+ * while the agent worked somewhere they could not see.
+ *
+ * Reachability is not a property of the URL. It is a property of the URL AND the
+ * machine that minted it, so the announcement has to say where it came from.
+ */
+export function canBackendReachBridge(cdpUrl, clientAddress) {
+  if (!isLocalBridgeUrl(cdpUrl)) return false;
+  // A loopback bridge is only ours if the client IS us.
+  return isLoopbackAddress(clientAddress);
+}
+
+/**
  * Announce a browser surface, or refresh one that has navigated.
- * @returns {boolean} false when the endpoint is not a local bridge.
+ *
+ * @param {object} options
+ * @param {string} [options.clientAddress] Where the announcement came from.
+ *   Omitted by in-process callers (the backend announcing its own launched
+ *   browser), which are trivially local.
+ * @returns {{ ok: boolean, reason?: string }}
  */
 export function registerSurface(userId, instanceId, {
   workspaceId = null, cdpUrl, url = null, title = null,
+  transport = 'electron-bridge', clientAddress = null,
 } = {}) {
-  if (!userId || !instanceId || !isLocalBridgeUrl(cdpUrl)) return false;
+  if (!userId || !instanceId) return { ok: false, reason: 'invalid' };
+  if (!endpointIsValidFor(transport, cdpUrl)) return { ok: false, reason: 'not-a-bridge' };
+
+  // clientAddress === null means "announced from inside this process".
+  if (clientAddress !== null && !canBackendReachBridge(cdpUrl, clientAddress)) {
+    return { ok: false, reason: 'unreachable' };
+  }
+
   if (!byUser.has(userId)) byUser.set(userId, new Map());
   byUser.get(userId).set(instanceId, {
-    workspaceId, cdpUrl, url, title, updatedAt: Date.now(),
+    workspaceId, cdpUrl, transport, url, title, updatedAt: Date.now(),
   });
-  return true;
+  return { ok: true };
 }
 
 export function unregisterSurface(userId, instanceId) {

@@ -798,6 +798,59 @@ function startServer() {
         console.log(`[Socket.IO] canvas:response ${requestId} ${ok ? 'accepted' : 'ignored (already resolved or expired)'} from user ${socket.userId}`);
       });
 
+      // ─────────────── Browser screencast: the return channel ───────────────
+      // Frames go OUT via broadcastToUser to the `user:<id>` room. These two
+      // handlers are what comes BACK, and they are here rather than on an HTTP
+      // route because both are per-frame and per-keystroke: a POST each would
+      // add a round trip and a header block to something that happens 60 times
+      // a second.
+      //
+      // Neither trusts a userId from the payload — `socket.userId` is set by
+      // the authenticate handler above from the bearer token, and the service
+      // re-checks ownership on every call.
+
+      // The client has PAINTED a frame and is ready for the next one. This is
+      // the flow control: acking on render is what makes a slow viewer throttle
+      // itself instead of drowning. See BrowserScreencastService.
+      socket.on('browser:ack', async ({ instanceId, frameId } = {}) => {
+        if (!socket.userId || !instanceId) return;
+        const { acknowledgeFrame } = await import('./src/services/BrowserScreencastService.js');
+        acknowledgeFrame(instanceId, frameId);
+      });
+
+      // A viewer clicked, typed or scrolled on the streamed page.
+      socket.on('browser:input', async ({ instanceId, method, params } = {}, ack) => {
+        if (!socket.userId) return ack?.({ ok: false, error: 'unauthenticated' });
+        const { dispatchInput } = await import('./src/services/BrowserScreencastService.js');
+        const result = dispatchInput({
+          userId: socket.userId, instanceId, method, params,
+        });
+        return ack?.(result);
+      });
+
+      socket.on('disconnect', async () => {
+        // A tab that closed without a DELETE would otherwise hold its viewer
+        // ref-count forever, and the screencast would run against a browser
+        // nobody is watching. Closing the laptop lid is the normal case here,
+        // not the exceptional one.
+        if (socket.userId && socket.browserViews?.size) {
+          const { stopViewing } = await import('./src/services/BrowserScreencastService.js');
+          for (const instanceId of socket.browserViews) stopViewing(instanceId);
+          socket.browserViews.clear();
+        }
+      });
+
+      // Registered so the disconnect sweep above has something to sweep.
+      socket.on('browser:watching', ({ instanceId } = {}) => {
+        if (!socket.userId || !instanceId) return;
+        if (!socket.browserViews) socket.browserViews = new Set();
+        socket.browserViews.add(instanceId);
+      });
+
+      socket.on('browser:unwatching', ({ instanceId } = {}) => {
+        socket.browserViews?.delete(instanceId);
+      });
+
       socket.on('disconnect', () => {
         if (socket.userId) {
           console.log(`[Socket.IO] User ${socket.userId} disconnected: ${socket.id}`);

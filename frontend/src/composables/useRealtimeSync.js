@@ -16,6 +16,19 @@ const isAuthenticated = ref(false);
  * dispatch text via socket while a turn is in flight, instead of
  * starting a new POST /chat that would race or queue.
  */
+/**
+ * The app's ONE socket, for features that need to listen or emit directly.
+ *
+ * Returned rather than re-created: this connection is already authenticated and
+ * already in the user's room, and a second socket would mean a second
+ * `authenticate` round trip, a second entry in every fan-out, and two places
+ * for the identity to be wrong. Callers must tolerate null — it is null until
+ * connect() runs, which is a real state during app start.
+ */
+export function getRealtimeSocket() {
+  return socket;
+}
+
 export function emitSteer(conversationId, content) {
   return new Promise((resolve) => {
     if (!socket || !socket.connected) {

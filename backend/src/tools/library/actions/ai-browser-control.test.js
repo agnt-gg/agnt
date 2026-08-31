@@ -34,6 +34,8 @@ const forgetSurfaceByUrl = vi.fn();
 const getActiveSurface = vi.fn();
 const ensureFallbackSurface = vi.fn();
 const closeFallbackSurface = vi.fn();
+/** A launched browser announces itself so a streamed client can watch it. */
+const announceHostSurface = vi.fn();
 /** What the launcher reports it has open; null when nothing is launched. */
 let launchedLabel = null;
 const runProcess = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
@@ -43,6 +45,7 @@ vi.mock('../../../services/browserSurfaces.js', () => ({
   waitForSurface: (...a) => waitForSurface(...a),
   forgetSurfaceByUrl: (...a) => forgetSurfaceByUrl(...a),
   getActiveSurface: (...a) => getActiveSurface(...a),
+  announceHostSurface: (...a) => announceHostSurface(...a),
   // The real predicate: only ws://127.0.0.1:<port>/<token> is a local bridge.
   isLocalBridgeUrl: (url) => /^ws:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+$/.test(url || ''),
 }));
@@ -201,6 +204,29 @@ describe('it only ever drives a browser AGNT is rendering', () => {
     expect(envOf(spawn.mock.calls[0]).BU_CDP_WS).toBe(LAUNCHED_CDP);
     // Reported, so the assistant can say where the window came from.
     expect(out.surface).toBe('launched');
+
+    // THE LINE THAT MAKES A WEB CLIENT WORK. A browser tab has no <webview>, so
+    // it always lands here — and without this announcement the work happens on
+    // the host with no registry entry for a viewer to subscribe to, which is
+    // the invisible-agent bug wearing a different hat.
+    expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
+  });
+
+  it('announces a NAMED browser too, because a headless host has no window either', async () => {
+    // "Open Brave and go to X" opens a separate OS window on a desktop. On a
+    // server there is no window, and the person who asked still has to be able
+    // to see what it did.
+    waitForSurface.mockResolvedValue(null);
+    await action.execute({ python: 'print(1)', browser: 'brave' }, {}, CHAT);
+    expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
+  });
+
+  it('does NOT announce a host surface when the widget is driven', async () => {
+    // The widget announced itself; a second entry under a different id would be
+    // two registry rows for one browser, and the newest-wins rule would start
+    // handing turns to whichever was refreshed last.
+    await action.execute({ python: 'print(1)' }, {}, CHAT);
+    expect(announceHostSurface).not.toHaveBeenCalled();
   });
 
   it('prefers the widget and never launches when one is reachable', async () => {

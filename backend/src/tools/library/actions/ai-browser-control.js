@@ -1,7 +1,7 @@
 import BaseAction from '../BaseAction.js';
 import { spawn } from 'child_process';
 import {
-  waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl, getActiveSurface,
+  waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl, getActiveSurface, announceHostSurface,
 } from '../../../services/browserSurfaces.js';
 import {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
@@ -296,6 +296,10 @@ class AIBrowserControl extends BaseAction {
       if (!isLoopbackWebSocket(named)) {
         throw new Error(`Refusing to drive a non-local browser endpoint: ${named}`);
       }
+      // Announced even though it is a separate OS window: on a machine with no
+      // display there IS no window, and a client that cannot see one still
+      // needs a way to watch. Announcing costs nothing when nobody subscribes.
+      announceHostSurface(userId, named, { workspaceId });
       return { cdpUrl: named, kind: 'launched' };
     }
 
@@ -351,6 +355,12 @@ class AIBrowserControl extends BaseAction {
     if (!isLoopbackWebSocket(cdpUrl)) {
       throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
     }
+    // THIS IS THE LINE THAT MAKES THE WEB CLIENT WORK.
+    //
+    // Without it, a browser tab reached exactly this point — no <webview>, so no
+    // widget, so a launched browser — and the work happened on the host with no
+    // way to see it. The registry entry is what a viewer subscribes to.
+    announceHostSurface(userId, cdpUrl, { workspaceId });
     return { cdpUrl, kind: 'launched' };
   }
 

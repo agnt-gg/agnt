@@ -17,6 +17,7 @@
 import express from 'express';
 import { authenticateToken } from './Middleware.js';
 import { registerSurface, unregisterSurface, getActiveSurface } from '../services/browserSurfaces.js';
+import { startViewing, stopViewing, isStreaming } from '../services/BrowserScreencastService.js';
 
 const router = express.Router();
 
@@ -31,10 +32,27 @@ router.post('/surface', authenticateToken, (req, res) => {
   const { instanceId, workspaceId, cdpUrl, url, title } = req.body || {};
   if (!instanceId) return res.status(400).json({ success: false, error: 'instanceId is required.' });
 
+  // WHY THE CLIENT'S ADDRESS IS PART OF THE ANSWER.
+  //
   // Refusing anything that is not a loopback bridge keeps this from becoming a
-  // way to point the agent at an arbitrary CDP endpoint on the network.
-  if (!registerSurface(req.user.id, instanceId, { workspaceId, cdpUrl, url, title })) {
-    return res.status(400).json({ success: false, error: 'That is not a local browser bridge endpoint.' });
+  // way to point the agent at an arbitrary CDP endpoint on the network. But
+  // `127.0.0.1` names a DIFFERENT MACHINE when the announcement arrives from
+  // one — which is the documented remote-backend topology, not an exotic case.
+  // Accepting it produced the worst possible outcome: the registry believed in
+  // a bridge, the probe could not reach it, and the agent silently drove a
+  // browser on the server while the user watched an empty widget.
+  const outcome = registerSurface(req.user.id, instanceId, {
+    workspaceId, cdpUrl, url, title, transport: 'electron-bridge', clientAddress: req.ip,
+  });
+
+  if (!outcome.ok) {
+    // Two different problems, two different fixes — so two different messages.
+    // "Not a bridge" is a client bug; "unreachable" is a correct client on the
+    // wrong side of a network, and it needs to know to stream instead.
+    const error = outcome.reason === 'unreachable'
+      ? 'This backend cannot reach a bridge on your machine. Use a streamed browser surface instead.'
+      : 'That is not a local browser bridge endpoint.';
+    return res.status(400).json({ success: false, error, reason: outcome.reason });
   }
   return res.json({ success: true });
 });
@@ -64,8 +82,63 @@ router.get('/surface', authenticateToken, (req, res) => {
       workspaceId: surface.workspaceId,
       url: surface.url,
       title: surface.title,
+      transport: surface.transport || 'electron-bridge',
     } : null,
   });
+});
+
+/**
+ * POST /api/browser-agent/view
+ * Body: { instanceId? , workspaceId? }
+ *
+ * Start watching a surface — or join a stream already running.
+ *
+ * WHY THE CLIENT DOES NOT SEND A cdpUrl. It does not have one and must not: the
+ * endpoint is a credential for driving the user's browser, which is why GET
+ * /surface deliberately withholds it. The client names WHICH surface it means
+ * and the backend looks the endpoint up, so a viewer can only ever watch a
+ * browser this backend already knows about and already owns.
+ */
+router.post('/view', authenticateToken, async (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+  const surface = getActiveSurface(req.user.id, {
+    instanceId: req.body?.instanceId || null,
+    workspaceId: req.body?.workspaceId || null,
+  });
+  if (!surface) return res.status(404).json({ success: false, error: 'There is no browser to watch yet.' });
+
+  try {
+    const result = await startViewing({
+      userId: req.user.id,
+      instanceId: surface.instanceId,
+      cdpUrl: surface.cdpUrl,
+    });
+    return res.json({
+      success: true,
+      instanceId: surface.instanceId,
+      transport: surface.transport || 'electron-bridge',
+      url: surface.url,
+      ...result,
+    });
+  } catch (err) {
+    // A browser that died between the registry write and this call is the
+    // common case here, and it is recoverable by trying again — so say so
+    // rather than returning a bare 500.
+    return res.status(409).json({ success: false, error: `Could not start watching that browser: ${err.message}` });
+  }
+});
+
+/** DELETE /api/browser-agent/view/:instanceId — one viewer leaves. */
+router.delete('/view/:instanceId', authenticateToken, (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  return res.json({ success: true, ...stopViewing(req.params.instanceId) });
+});
+
+/** GET /api/browser-agent/view/:instanceId — is anything streaming there? */
+router.get('/view/:instanceId', authenticateToken, (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  return res.json({ success: true, streaming: isStreaming(req.params.instanceId) });
 });
 
 export default router;

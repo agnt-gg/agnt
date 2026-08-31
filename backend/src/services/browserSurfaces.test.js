@@ -21,6 +21,7 @@ import {
   probeBridge,
   waitForSurface,
   isLocalBridgeUrl,
+  isLoopbackAddress,
   _resetSurfaces,
 } from './browserSurfaces.js';
 
@@ -35,7 +36,7 @@ beforeEach(() => _resetSurfaces());
 describe('only local bridges may be registered', () => {
   it('accepts the shape CdpBridge mints', () => {
     expect(isLocalBridgeUrl(CDP)).toBe(true);
-    expect(registerSurface('u1', 'w_1', { cdpUrl: CDP })).toBe(true);
+    expect(registerSurface('u1', 'w_1', { cdpUrl: CDP }).ok).toBe(true);
   });
 
   it('refuses anything that is not loopback', () => {
@@ -48,14 +49,59 @@ describe('only local bridges may be registered', () => {
       null,
     ]) {
       expect(isLocalBridgeUrl(bad), `${bad} should be refused`).toBe(false);
-      expect(registerSurface('u1', 'w_1', { cdpUrl: bad })).toBe(false);
+      expect(registerSurface('u1', 'w_1', { cdpUrl: bad }).ok).toBe(false);
     }
     expect(getActiveSurface('u1')).toBeNull();
   });
 
   it('requires both a user and an instance', () => {
-    expect(registerSurface(null, 'w_1', { cdpUrl: CDP })).toBe(false);
-    expect(registerSurface('u1', null, { cdpUrl: CDP })).toBe(false);
+    expect(registerSurface(null, 'w_1', { cdpUrl: CDP }).ok).toBe(false);
+    expect(registerSurface('u1', null, { cdpUrl: CDP }).ok).toBe(false);
+  });
+});
+
+describe('a loopback bridge is only ours when the client is us', () => {
+  // THE REGRESSION THIS PINS: the remote-backend topology (Electron here,
+  // backend on a server) announced a bridge minted on the USER'S machine. The
+  // shape check passed, the probe could not reach it, and the agent silently
+  // drove a browser on the server instead.
+  it('accepts an announcement from the machine the backend runs on', () => {
+    for (const local of ['127.0.0.1', '::1', '::ffff:127.0.0.1', '127.0.1.1']) {
+      expect(isLoopbackAddress(local), `${local} is this machine`).toBe(true);
+      expect(
+        registerSurface('u1', 'w_1', { cdpUrl: CDP, clientAddress: local }).ok,
+        `${local} should be accepted`,
+      ).toBe(true);
+    }
+  });
+
+  it('refuses a loopback bridge announced from somewhere else, and says why', () => {
+    for (const remote of ['10.0.0.5', '192.168.1.20', '::ffff:203.0.113.7']) {
+      expect(isLoopbackAddress(remote), `${remote} is not this machine`).toBe(false);
+      const outcome = registerSurface('u1', 'w_1', { cdpUrl: CDP, clientAddress: remote });
+      expect(outcome.ok, `${remote} should be refused`).toBe(false);
+      // 'unreachable' is what tells the client to stream instead of retrying.
+      expect(outcome.reason).toBe('unreachable');
+    }
+    expect(getActiveSurface('u1')).toBeNull();
+  });
+
+  it('separates "not a bridge" from "cannot reach it" — different fixes', () => {
+    expect(registerSurface('u1', 'w_1', { cdpUrl: 'ws://evil.example.com/t', clientAddress: '127.0.0.1' }).reason)
+      .toBe('not-a-bridge');
+    expect(registerSurface('u1', 'w_1', { cdpUrl: CDP, clientAddress: '10.0.0.5' }).reason)
+      .toBe('unreachable');
+  });
+
+  it('trusts an in-process announcement, which has no client at all', () => {
+    // The backend announcing the browser it launched itself.
+    expect(registerSurface('u1', 'w_host', { cdpUrl: CDP, transport: 'host-cdp' }).ok).toBe(true);
+    expect(getActiveSurface('u1').transport).toBe('host-cdp');
+  });
+
+  it('defaults transport to the Electron bridge, so old clients are unchanged', () => {
+    registerSurface('u1', 'w_1', { cdpUrl: CDP });
+    expect(getActiveSurface('u1').transport).toBe('electron-bridge');
   });
 });
 
