@@ -88,6 +88,13 @@ const avatarStyle = computed(() => {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  /* Faces overlap in a stack, so their paint order is a design decision, not
+     something to leave to chance — `position: relative` is what makes the
+     z-index below apply at all. Without an explicit z-index the running pulse
+     animation on the speaking face gets composited into its own layer and
+     lands on top ANYWAY, which is the behaviour we want but arrived at by
+     accident and not guaranteed across engines. Declared instead. */
+  position: relative;
   border-radius: 50%;
   overflow: hidden;
   background: var(--surface-raised);
@@ -137,14 +144,35 @@ const avatarStyle = computed(() => {
 
 /* WHO IS TALKING RIGHT NOW. A ring rather than a badge: it reads at 16px,
    costs no layout, and cannot collide with a neighbour in a stack. */
+/*
+ * THE LIVE SPEAKER OUTRANKS EVERYONE, ANNIE INCLUDED.
+ *
+ * The stack's default order paints Annie on top — she is the constant, and
+ * the anchor the eye returns to. But while a run is in flight, WHO IS TALKING
+ * is the most useful fact in the row, and its ring is only 1.5px: buried under
+ * a neighbouring face it reads as a stray pink arc rather than an indicator.
+ * So the speaker is raised for exactly as long as it is speaking.
+ *
+ * IT RECOLOURS THE RIM RATHER THAN ADDING A RING OUTSIDE IT. Every face
+ * already carries a 1.5px border — the separator that keeps overlapping faces
+ * legible — and that border is INSIDE the layout box. An outset
+ * `box-shadow` ring was two bugs at once: it rendered 1.5px wider than the
+ * box, so a speaking face at the right edge of the stack ate a quarter of the
+ * gap to the text and that one row read tighter than every other; and its
+ * right-hand arc landed on the neighbouring face as a bright stroke through
+ * someone else's portrait. Recolouring costs no width at all, so every row
+ * measures identically, and the pink reads as this face's own outline
+ * because it is in exactly the place the dark rim already was.
+ */
 .agent-avatar.is-speaking {
-  box-shadow: 0 0 0 1.5px var(--color-primary);
+  z-index: 1;
+  border-color: var(--color-primary);
   animation: agent-avatar-pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes agent-avatar-pulse {
-  0%, 100% { box-shadow: 0 0 0 1.5px rgba(var(--primary-rgb), 1); }
-  50% { box-shadow: 0 0 0 1.5px rgba(var(--primary-rgb), 0.3); }
+  0%, 100% { border-color: rgba(var(--primary-rgb), 1); }
+  50% { border-color: rgba(var(--primary-rgb), 0.35); }
 }
 
 @media (prefers-reduced-motion: reduce) {
