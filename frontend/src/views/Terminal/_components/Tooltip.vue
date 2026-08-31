@@ -23,8 +23,14 @@
  * Use `v-tooltip` instead wherever a wrapper div would disturb layout — flex
  * and grid children, percentage-width elements, and anything targeted by a
  * `>`, `+` or `:first-child` selector.
+ *
+ * `disabled` is for a trigger whose tooltip is only sometimes worth showing —
+ * a control that already displays its own label, say. Blanking `text` would
+ * also suppress it, but only for hovers that START while it is blank: a
+ * tooltip already on screen keeps the text it was shown with, because nothing
+ * re-runs `show` on a prop change. `disabled` retracts that one too.
  */
-import { ref, onBeforeUnmount } from 'vue';
+import { ref, watch, onBeforeUnmount } from 'vue';
 import { showTooltip, hideTooltip } from '@/directives/tooltipEngine.js';
 
 export default {
@@ -47,12 +53,16 @@ export default {
       type: String,
       default: 'auto',
     },
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
   },
   setup(props) {
     const containerRef = ref(null);
 
     const show = () => {
-      if (!containerRef.value) return;
+      if (props.disabled || !containerRef.value) return;
       showTooltip(containerRef.value, {
         text: props.text,
         title: props.title,
@@ -64,6 +74,18 @@ export default {
     const hide = () => {
       if (containerRef.value) hideTooltip(containerRef.value);
     };
+
+    // Becoming disabled while visible must retract it. The pointer is usually
+    // still on the trigger at that moment — the control that flipped the
+    // condition is often the one being hovered — and `mouseleave` will not
+    // fire until it moves away, so the tooltip would otherwise sit there
+    // contradicting the UI it just changed.
+    watch(
+      () => props.disabled,
+      (isDisabled) => {
+        if (isDisabled) hide();
+      },
+    );
 
     // A tooltip is teleported, so it outlives its trigger unless this runs.
     onBeforeUnmount(hide);

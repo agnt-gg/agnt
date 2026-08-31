@@ -79,7 +79,7 @@
             <div v-if="row.caption" class="cv-sb-cap" :class="{ 'is-first': i === 0 }">
               <span class="cv-sb-cap-text">{{ row.caption }}</span>
             </div>
-            <Tooltip :text="row.section.label" position="right" width="auto">
+            <Tooltip :text="row.section.label" position="right" width="auto" :disabled="railLabelsVisible">
               <button
                 class="cv-sb-page"
                 :class="{ active: !onCustomPage && activeSection && activeSection.id === row.section.id }"
@@ -98,7 +98,7 @@
 
         <!-- Custom pages -->
         <div class="cv-sb-custom" v-if="customPages.length > 0">
-          <Tooltip v-for="page in customPages" :key="page.id" :text="page.name" position="right" width="auto">
+          <Tooltip v-for="page in customPages" :key="page.id" :text="page.name" position="right" width="auto" :disabled="railLabelsVisible">
             <button
               class="cv-sb-page"
               :class="{ active: onCustomPage && page.id === activePageId }"
@@ -114,7 +114,7 @@
         </div>
 
         <!-- Add page button -->
-        <Tooltip text="Add page" position="right" width="auto">
+        <Tooltip text="Add page" position="right" width="auto" :disabled="railLabelsVisible">
           <button class="cv-sb-add" data-tour-id="sidebar.add-page" @click="startAddPage">
             <span class="cv-sb-add-icon">+</span>
             <span class="cv-sb-label" v-marquee>
@@ -128,7 +128,7 @@
 
         <!-- Settings sections (bottom) -->
         <div class="cv-sb-bottom">
-          <Tooltip v-for="section in settingsSections" :key="section.id" :text="section.label" position="right" width="auto">
+          <Tooltip v-for="section in settingsSections" :key="section.id" :text="section.label" position="right" width="auto" :disabled="railLabelsVisible">
             <button
               class="cv-sb-page"
               :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
@@ -144,7 +144,9 @@
         </div>
 
         <!-- Collapse / expand toggle -->
-        <Tooltip :text="isSidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'" position="right" width="auto">
+        <!-- Only reachable while collapsed, so the expanded wording would be
+             dead text here. The aria-label below still carries both. -->
+        <Tooltip text="Expand sidebar" position="right" width="auto" :disabled="railLabelsVisible">
           <button
             class="cv-sb-toggle"
             data-tour-id="sidebar.toggle"
@@ -335,6 +337,30 @@ export default {
         // ignore storage failures
       }
     }
+
+    // The rail force-collapses to its 44px icon strip below this width no
+    // matter what isSidebarExpanded says (see the NARROW VIEWPORTS block in the
+    // stylesheet), so the flag alone does not tell you whether a label is on
+    // screen. Keep this in sync with that @media rule.
+    const NARROW_RAIL_QUERY = '(max-width: 800px)';
+    const isNarrowViewport = ref(false);
+    let narrowRailQuery = null;
+    const syncNarrowViewport = (event) => {
+      isNarrowViewport.value = event.matches;
+    };
+
+    // Whether the rail is currently showing its text labels.
+    //
+    // Every tooltip in the rail is suppressed exactly when it is: repeating a
+    // label that is already on screen, one gap to its right, is noise. When a
+    // label is too long for the rail the marquee directive above scrolls it on
+    // hover, so nothing becomes unreadable by losing the tooltip.
+    //
+    // Keyed off the LABEL being visible rather than off isSidebarExpanded,
+    // because those differ: a narrow desktop window renders the icon strip
+    // with the flag still true, and that is precisely the case that needs its
+    // tooltips back.
+    const railLabelsVisible = computed(() => isSidebarExpanded.value && !isNarrowViewport.value);
 
     // Window controls
     const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -670,6 +696,12 @@ export default {
 
       document.addEventListener('click', closeCtx);
 
+      if (window.matchMedia) {
+        narrowRailQuery = window.matchMedia(NARROW_RAIL_QUERY);
+        isNarrowViewport.value = narrowRailQuery.matches;
+        narrowRailQuery.addEventListener('change', syncNarrowViewport);
+      }
+
       const layoutsLoaded = store.getters['widgetLayout/isLoaded'];
       if (!layoutsLoaded) {
         // Fire and forget - don't block render. Once layouts finish loading we
@@ -686,6 +718,7 @@ export default {
     onBeforeUnmount(() => {
       if (clockTimer) clearInterval(clockTimer);
       document.removeEventListener('click', closeCtx);
+      narrowRailQuery?.removeEventListener('change', syncNarrowViewport);
     });
 
     return {
@@ -700,6 +733,7 @@ export default {
       mainSections,
       settingsSections,
       mainRail,
+      railLabelsVisible,
       hasUnreadChats,
       customPages,
       isCustomPage,

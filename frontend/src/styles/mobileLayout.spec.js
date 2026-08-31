@@ -36,17 +36,43 @@ const read = (rel) => fs.readFileSync(path.join(SRC, rel), 'utf8');
 
 const MOBILE_QUERY = /@media\s*\(\s*max-width:\s*800px\s*\)/;
 
+/**
+ * The narrow-viewport block's own banner — the ═-ruled section header, not the
+ * words inside it.
+ *
+ * Anchoring on the bare phrase made these guards decidable by prose: the
+ * script half of CanvasScreen.vue legitimately cross-references this block by
+ * name (the tooltip suppression reads the same 800px breakpoint), which made
+ * the count 2 and put the "first occurrence" above `<style scoped>`, failing
+ * both guards below on a file where nothing was wrong.
+ *
+ * This is the same mistake three other assertions in this file already carry a
+ * note about — ruleBody strips comments, the 100vh chain strips comments, and
+ * the viewport meta is parsed rather than searched. A guard a comment can fail
+ * is a guard that punishes documentation, so it gets written out of the file
+ * rather than worked around. A row of ═ cannot appear in prose by accident.
+ */
+const NARROW_BANNER = /═+\s*NARROW VIEWPORTS\s*═+/;
+const NARROW_BANNER_G = new RegExp(NARROW_BANNER.source, 'g');
+
 describe('CanvasScreen narrow-viewport rules', () => {
   const file = read('canvas/CanvasScreen.vue');
 
   it('has exactly one narrow-viewport block', () => {
-    expect((file.match(/NARROW VIEWPORTS/g) || []).length).toBe(1);
+    expect((file.match(NARROW_BANNER_G) || []).length).toBe(1);
+  });
+
+  it('counts the block, not prose that refers to it', () => {
+    // Anti-vacuity for the locator itself: a cross-reference must not register
+    // as a second block, or documenting the breakpoint breaks the build.
+    expect(NARROW_BANNER.test('see the NARROW VIEWPORTS block in the stylesheet')).toBe(false);
+    expect(NARROW_BANNER.test('/* \u2550\u2550\u2550 NARROW VIEWPORTS \u2550\u2550\u2550 */')).toBe(true);
   });
 
   it('places that block inside the SCOPED style block, not the global one', () => {
     const scopedOpen = file.indexOf('<style scoped>');
     const scopedClose = file.indexOf('</style>', scopedOpen);
-    const blockAt = file.indexOf('NARROW VIEWPORTS');
+    const blockAt = file.search(NARROW_BANNER);
 
     expect(scopedOpen).toBeGreaterThan(-1);
     expect(blockAt).toBeGreaterThan(scopedOpen);
@@ -58,7 +84,7 @@ describe('CanvasScreen narrow-viewport rules', () => {
   it('collapses the rail regardless of the persisted expanded state', () => {
     // EOL-agnostic: this file is CRLF, so any pattern containing a bare \n
     // silently matches nothing.
-    const block = file.slice(file.indexOf('NARROW VIEWPORTS')).replace(/\r\n/g, '\n');
+    const block = file.slice(file.search(NARROW_BANNER)).replace(/\r\n/g, '\n');
     const rule = /\.cv-sidebar,\s*\n\s*\.cv-sidebar\.expanded\s*\{([^}]*)\}/.exec(block);
     expect(rule, 'combined .cv-sidebar/.cv-sidebar.expanded rule not found').not.toBeNull();
     expect(rule[1]).toMatch(/width:\s*44px/);
@@ -68,7 +94,7 @@ describe('CanvasScreen narrow-viewport rules', () => {
   it('grows the toolbar as well as the tab strip', () => {
     // A 44px strip centred in a 33px toolbar resolves to top:-6px and pushes
     // the tab above the viewport — which is exactly what happened.
-    const block = file.slice(file.indexOf('NARROW VIEWPORTS'));
+    const block = file.slice(file.search(NARROW_BANNER));
     expect(block).toMatch(/\.cv-toolbar\s*\{[^}]*min-height:\s*44px/);
     expect(block).toMatch(/\.cv-nav-panels\s*\{[^}]*min-height:\s*44px/);
   });

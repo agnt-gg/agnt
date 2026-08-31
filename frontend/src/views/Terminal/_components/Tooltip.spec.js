@@ -85,6 +85,55 @@ describe('Tooltip', () => {
     });
   });
 
+  describe('disabled', () => {
+    it('shows nothing on hover while disabled', async () => {
+      const w = mountTooltip({ disabled: true });
+      await w.trigger('mouseenter');
+      expect(tooltipEl()).toBeNull();
+      w.unmount();
+    });
+
+    it('retracts a tooltip that is already open when it becomes disabled', async () => {
+      // The control that flips the condition is usually the one under the
+      // pointer (the sidebar's collapse button expands the rail beneath the
+      // cursor), so mouseleave will not fire to clean this up.
+      const w = mountTooltip();
+      await w.trigger('mouseenter');
+      expect(isTooltipVisible()).toBe(true);
+
+      await w.setProps({ disabled: true });
+      expect(isTooltipVisible()).toBe(false);
+      w.unmount();
+    });
+
+    it('does not retract on an unrelated prop change', async () => {
+      const w = mountTooltip();
+      await w.trigger('mouseenter');
+      await w.setProps({ text: 'Delete for good' });
+      expect(isTooltipVisible()).toBe(true);
+      w.unmount();
+    });
+
+    it('works again once re-enabled', async () => {
+      const w = mountTooltip({ disabled: true });
+      await w.trigger('mouseenter');
+      expect(tooltipEl()).toBeNull();
+
+      await w.setProps({ disabled: false });
+      await w.trigger('mouseenter');
+      expect(tooltipText()).toBe('Delete');
+      w.unmount();
+    });
+
+    it('defaults to enabled, so no existing call site changes behaviour', async () => {
+      expect(Tooltip.props.disabled.default).toBe(false);
+      const w = mountTooltip();
+      await w.trigger('mouseenter');
+      expect(isTooltipVisible()).toBe(true);
+      w.unmount();
+    });
+  });
+
   describe('bugs this refactor fixed', () => {
     it('shows on keyboard focus of the wrapped control', async () => {
       // `focus` does not bubble, so the old @focus listener on the wrapper
