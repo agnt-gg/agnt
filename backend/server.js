@@ -135,7 +135,12 @@ const config = {
       'https://www.alpha.agnt.gg',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    // Every custom header the frontend sends must be listed here or the
+    // browser refuses the request BEFORE it is sent — the server never sees
+    // it, so nothing is logged and the only symptom is "Failed to fetch".
+    // X-AGNT-Client-Id identifies the sending client so it can ignore its own
+    // run:started announcement (frontend chatService.js).
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-AGNT-Client-Id'],
     credentials: true,
     optionsSuccessStatus: 204,
   },
