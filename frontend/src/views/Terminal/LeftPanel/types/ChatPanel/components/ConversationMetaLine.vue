@@ -1,7 +1,7 @@
 <template>
   <div class="output-meta">
     <AgentAvatarStack
-      :participants="participants"
+      :participants="participantsWithIcons"
       :annie-icon="annieAvatar"
       :speaking-id="speaker ? speaker.id : null"
       :size="14"
@@ -38,10 +38,13 @@
  * carry; spending it only when there is live news is what keeps a list of a
  * thousand rows scannable.
  */
+import { computed } from 'vue';
+import { useStore } from 'vuex';
 import AgentAvatarStack from '@/components/common/AgentAvatarStack.vue';
+import { attachIcons } from '@/utils/agentAvatar.js';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 
-defineProps({
+const props = defineProps({
   /** Stored roster, agents only, in join order: [{ id, name }]. */
   participants: { type: Array, default: () => [] },
   /** { id, name } while a run is in flight in this conversation, else null. */
@@ -49,6 +52,21 @@ defineProps({
   /** Already-formatted relative date string. */
   date: { type: String, required: true },
 });
+
+const store = useStore();
+
+/**
+ * THE STORED ROSTER CARRIES NO PICTURES — only [{id, name}], because an icon
+ * is an inline data-URL up to ~233KB and a sidebar row has to stay tiny. So
+ * the face is resolved here, against the agents already in the store
+ * (fetched in phase 1 of initializeStore, before this panel can render).
+ *
+ * An agent missing from the index — deleted, or not yet fetched — keeps no
+ * icon and draws its initial, which is a real answer rather than a hole.
+ */
+const participantsWithIcons = computed(() =>
+  attachIcons(props.participants, store.getters['agents/avatarIndex']),
+);
 </script>
 
 <style scoped>

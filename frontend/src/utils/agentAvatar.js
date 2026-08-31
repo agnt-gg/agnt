@@ -116,6 +116,47 @@ export function resolveAvatar(agent = {}) {
 }
 
 /**
+ * Fill in each participant's icon from a live lookup.
+ *
+ * WHY THE ICON IS NOT IN THE PARTICIPANT ALREADY. A stored roster is
+ * [{id, name}] and nothing else, on purpose: agent icons are inline
+ * data-URLs up to ~233KB, so putting one in a sidebar row would mean
+ * megabytes of duplicated base64 in a table whose entire point is to stay
+ * small — and would freeze a stale copy of an avatar the user can change at
+ * any time. The id is the durable handle; the picture is resolved live.
+ *
+ * Participants that ALREADY carry an icon are passed through untouched: the
+ * chat roster derives its list from messages, which do carry one, and a
+ * message's icon is the better answer there because it is what that agent
+ * looked like when it spoke.
+ *
+ * A participant with no match keeps its lack of an icon and falls to the
+ * initial rung — which is the correct rendering for an agent that has since
+ * been deleted.
+ *
+ * @param {Array<{id?: string|null, name?: string|null, icon?: string|null}>} participants
+ * @param {{ byId?: Map<string, string>, byName?: Map<string, string> }|null} index
+ * @returns {Array<object>}
+ */
+export function attachIcons(participants = [], index = null) {
+  if (!Array.isArray(participants)) return [];
+
+  const byId = index && index.byId instanceof Map ? index.byId : null;
+  const byName = index && index.byName instanceof Map ? index.byName : null;
+
+  return participants.filter(Boolean).map((participant) => {
+    if (participant.icon) return participant;
+
+    const icon =
+      (participant.id && byId ? byId.get(participant.id) : null)
+      || (participant.name && byName ? byName.get(participant.name) : null)
+      || null;
+
+    return icon ? { ...participant, icon } : participant;
+  });
+}
+
+/**
  * ANNIE. The orchestrator is in every conversation by definition and is never
  * stored in a roster, so every surface needs the same literal for her. Her
  * avatar is a real asset, not a letter.

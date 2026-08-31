@@ -437,6 +437,39 @@ export default {
   getters: {
     allAgents: (state) => state.agents,
     getAgentById: (state) => (id) => state.agents.find((agent) => agent.id === id),
+    /**
+     * AGENT ID -> AVATAR, for surfaces that hold a roster of ids and need to
+     * draw faces: the saved-chat sidebar, the group-chat roster.
+     *
+     * Built ONCE per change to the agents list rather than per row. The
+     * sidebar can render hundreds of conversations, and a linear scan of ~90
+     * agents inside each one would be a five-figure operation on every
+     * reactive tick. Vuex caches this until `state.agents` changes; each row
+     * then costs one Map lookup.
+     *
+     * READS `agent.avatar`, NOT `agent.icon`. SET_AGENTS renames the
+     * backend's `icon` field to `avatar` on the way in, so this is the name
+     * the store actually holds — reaching for `.icon` here returns undefined
+     * for every agent and silently blanks every avatar in the app. The test
+     * for this getter runs the real mutation with a real backend payload so
+     * the two can never drift apart again.
+     *
+     * The name index is a fallback for older transcripts that recorded a
+     * speaker's name but no id. Names are NOT unique (this install has three
+     * agents called "Social Media Manager"), so it is first-wins and the id
+     * index always takes precedence.
+     */
+    avatarIndex: (state) => {
+      const byId = new Map();
+      const byName = new Map();
+      for (const agent of state.agents || []) {
+        const icon = agent && agent.avatar ? agent.avatar : null;
+        if (!icon) continue;
+        if (agent.id) byId.set(agent.id, icon);
+        if (agent.name && !byName.has(agent.name)) byName.set(agent.name, icon);
+      }
+      return { byId, byName };
+    },
     isLoading: (state) => state.isLoading,
     error: (state) => state.error,
     recentActivities: (state) => state.recentActivities,

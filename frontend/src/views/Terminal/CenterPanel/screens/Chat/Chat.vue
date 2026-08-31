@@ -242,7 +242,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import MessageItem from './components/MessageItem.vue';
 import ProcessingState from './components/ProcessingState.vue';
 import AgentAvatar from '@/components/common/AgentAvatar.vue';
-import { ANNIE_ID, ANNIE_NAME } from '@/utils/agentAvatar.js';
+import { ANNIE_ID, ANNIE_NAME, attachIcons } from '@/utils/agentAvatar.js';
 import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
 import ChatActions from './components/ChatActions.vue';
@@ -438,7 +438,11 @@ export default {
           seen.set(m.agentName, { name: m.agentName, icon: m.agentIcon || null, id: m.agentId || null });
         }
       }
-      return [...seen.values()];
+      // A message usually carries its own agentIcon, and that one wins — it is
+      // what the agent looked like when it spoke. Older transcripts recorded
+      // the name and id only, so those fall back to the live agent's avatar
+      // instead of dropping to a letter.
+      return attachIcons([...seen.values()], store.getters['agents/avatarIndex']);
     });
 
     // Group chat: pending floor passes + turn budget for the indicator line.

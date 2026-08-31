@@ -91,6 +91,16 @@ describe('ConversationMetaLine', () => {
     expect(META_LINE).toContain('speaking');
   });
 
+  it('resolves participant icons against the live agents store', () => {
+    // The stored roster is [{id, name}] with no picture in it. Passing that
+    // straight to the avatar stack is what made every agent render as a
+    // letter while Annie — whose icon is passed in explicitly — rendered
+    // fine. The lookup is the fix, and it must stay.
+    expect(META_LINE).toContain("import { attachIcons } from '@/utils/agentAvatar.js'");
+    expect(META_LINE).toContain("store.getters['agents/avatarIndex']");
+    expect(templateOf(META_LINE)).toContain(':participants="participantsWithIcons"');
+  });
+
   it('cannot grow a row taller than its neighbours', () => {
     const styles = META_LINE.slice(META_LINE.indexOf('<style'));
     expect(styles).toContain('white-space: nowrap');
