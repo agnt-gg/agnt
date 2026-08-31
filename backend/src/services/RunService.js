@@ -3,6 +3,7 @@ import ExecutionModel from '../models/ExecutionModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import { serializeParticipants } from '../utils/transcriptParticipants.js';
 
 /**
  * How many messages an INCOMING conversation payload carries.
@@ -170,6 +171,18 @@ class RunService {
         }
       }
 
+      // WHO IS IN THIS CONVERSATION, derived from the transcript we are about
+      // to store rather than accepted from the client. The sidebar needs a
+      // roster to draw avatars against, and it cannot read the transcript —
+      // the list query excludes `content` because rows average ~0.5MB. This
+      // is the same JSON.parse the truncation guard above performs, so the
+      // roster cannot describe a different transcript than the one saved.
+      //
+      // Only conversations have a roster. An HTML artifact has no messages,
+      // and the deriver returning null for it means COALESCE leaves the
+      // column untouched — see ContentOutputModel.createOrUpdate.
+      const participants = contentType === 'conversation' ? serializeParticipants(content) : null;
+
       await ContentOutputModel.createOrUpdate(
         outputId,
         userId,
@@ -180,7 +193,7 @@ class RunService {
         contentType || 'html',
         conversationId || null,
         title || null,
-        { channelKey: channelKey || null }
+        { channelKey: channelKey || null, participants }
       );
 
       // The row's list metadata (no content column) rides on BOTH the

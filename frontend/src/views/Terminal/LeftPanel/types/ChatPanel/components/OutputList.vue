@@ -111,7 +111,11 @@
                         <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
                         {{ getPreviewText(output.content, output) }}
                       </div>
-                      <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
+                      <ConversationMetaLine
+                        :participants="participantsFor(output)"
+                        :speaker="speakerFor(output.id)"
+                        :date="formatDate(output.updated_at || output.created_at)"
+                      />
                     </div>
                     <div class="output-actions">
                       <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -156,7 +160,11 @@
                       <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
                       {{ getPreviewText(output.content, output) }}
                     </div>
-                    <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
+                    <ConversationMetaLine
+                      :participants="participantsFor(output)"
+                      :speaker="speakerFor(output.id)"
+                      :date="formatDate(output.updated_at || output.created_at)"
+                    />
                   </div>
                   <div class="output-actions">
                     <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -198,7 +206,11 @@
                     <span v-else-if="isOutputUnread(output.id)" class="unread-dot" v-tooltip="'Unread changes'"></span>
                     {{ getPreviewText(output.content, output) }}
                   </div>
-                  <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
+                  <ConversationMetaLine
+                    :participants="participantsFor(output)"
+                    :speaker="speakerFor(output.id)"
+                    :date="formatDate(output.updated_at || output.created_at)"
+                  />
                 </div>
                 <div class="output-actions">
                   <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -228,7 +240,12 @@
                 >
                   <div class="output-content" @click="handleOutputClick(output.id, $event)">
                     <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
-                    <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
+                    <!-- Archived rows never carry a speaker: nothing runs in a
+                         conversation that has been put away. -->
+                    <ConversationMetaLine
+                      :participants="participantsFor(output)"
+                      :date="formatDate(output.updated_at || output.created_at)"
+                    />
                   </div>
                   <div class="output-actions">
                     <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -340,12 +357,14 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { sortOutputs } from './outputSort.js';
 import { groupUnreadCount, notifiableUnreadIds, formatListDate } from '@/utils/conversationAttention.js';
+import ConversationMetaLine from './ConversationMetaLine.vue';
 
 export default {
   name: 'OutputList',
   components: {
     SimpleModal,
     Tooltip,
+    ConversationMetaLine,
   },
   setup() {
     const route = useRoute();
@@ -428,6 +447,43 @@ export default {
 
     // Streaming output IDs from the chat store
     const streamingOutputIds = computed(() => store.getters['chat/streamingOutputIds'] || new Set());
+
+    // WHO IS IN EACH CONVERSATION, and WHO IS TALKING IN IT RIGHT NOW.
+    //
+    // The roster is a stored column, not something derived here: a sidebar row
+    // has no transcript to derive it from (LIST_COLUMNS excludes `content`
+    // because rows average ~0.5MB). The server writes it on every save from
+    // the transcript it is already parsing — see
+    // backend/src/utils/transcriptParticipants.js.
+    const speakingByOutputId = computed(() => store.getters['chat/speakingByOutputId'] || {});
+
+    /**
+     * The stored roster for a row, as [{ id, name }] — agents only, Annie
+     * excluded (she is added by the avatar stack, because she is in every
+     * conversation by definition).
+     *
+     * Tolerates every shape a real row can hold: NULL for the ~2,000 rows
+     * that predate the column, an already-parsed array if some caller hands
+     * one over, and unparseable text. All three degrade to "Annie alone",
+     * which is the correct rendering rather than a broken one.
+     */
+    function participantsFor(output) {
+      const stored = output?.participants;
+      if (!stored) return [];
+      if (Array.isArray(stored)) return stored;
+      if (typeof stored !== 'string') return [];
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    /** { id, name } while a run is in flight in this row, else null. */
+    function speakerFor(outputId) {
+      return speakingByOutputId.value[outputId] || null;
+    }
 
     // Unread output IDs — DERIVED server-side state (updated_at >
     // last_read_at on content_outputs; see utils/conversationAttention.js).
@@ -1511,6 +1567,9 @@ export default {
       isActive,
       // Streaming
       isOutputStreaming,
+      // Participants + who is speaking
+      participantsFor,
+      speakerFor,
       // Unread
       isOutputUnread,
       unreadOutputIds,
@@ -1775,6 +1834,25 @@ div#saved-outputs {
 .output-item:hover {
   border-color: var(--color-primary);
   background: var(--color-darker-0);
+}
+
+/* THE AVATAR SEPARATOR RING. Overlapping faces need a rim between them or they
+   read as one smear at 14px. It is defined in terms of the ROW's own
+   background rather than as a colour of its own, so it stays a separator in
+   every theme instead of becoming a visible outline in some of them.
+
+   --color-darker-0 is TRANSLUCENT in every theme (rgba, alpha 0.025-0.3), so a
+   ring of it over a row already painted with it composites very slightly
+   DARKER than the row — which is exactly the rim we want, and why this is the
+   right token rather than a solid surface colour. The selected row is tinted,
+   so it restates the value with that tint mixed in rather than inheriting a
+   rim computed for the untinted background. */
+.output-item {
+  --avatar-ring: var(--color-darker-0);
+}
+
+.output-item.active {
+  --avatar-ring: color-mix(in srgb, var(--color-primary) 8%, var(--color-darker-0));
 }
 
 .output-content {

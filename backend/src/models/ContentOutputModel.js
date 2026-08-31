@@ -4,7 +4,7 @@ import db from './database/index.js';
 // sidebar list, the save response, and the realtime broadcast must all carry
 // the same shape, or the row a client patches in place diverges from the row
 // a full fetch would have given it. Excludes the large content column.
-const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, channel_key, created_at, updated_at';
+const LIST_COLUMNS = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, last_read_at, archived_at, channel_key, participants, created_at, updated_at';
 
 class ContentOutputModel {
   /**
@@ -25,7 +25,7 @@ class ContentOutputModel {
    * client-side, where streaming conversations are excluded from the chime
    * until the run completes (notifiableUnreadIds).
    */
-  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null } = {}) {
+  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null, participants = null } = {}) {
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
@@ -55,9 +55,17 @@ class ContentOutputModel {
       // not mention a channel can never silently un-scope a row and drop it
       // back into the main chat list. There is no legitimate un-scope, and the
       // failure mode of getting this wrong is the original bug returning.
+      //
+      // THE participants CLAUSE. COALESCE, so an UNREADABLE transcript leaves
+      // the stored roster alone rather than erasing it: the deriver returns
+      // null for "I cannot tell" and a real (possibly empty) answer otherwise
+      // — see utils/transcriptParticipants.js. This is deliberately NOT the
+      // same stickiness as channel_key: a roster that legitimately empties is
+      // stored as NULL by the deriver, which reads back as Annie-alone, which
+      // is the correct rendering for a conversation with no agents in it.
       db.run(
-        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, channel_key, last_read_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
+        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, channel_key, participants, last_read_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
@@ -68,9 +76,10 @@ class ContentOutputModel {
            conversation_id = excluded.conversation_id,
            title = excluded.title,
            channel_key = COALESCE(excluded.channel_key, content_outputs.channel_key),
+           participants = COALESCE(excluded.participants, content_outputs.participants),
            last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
            updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null],
+        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null, participants || null],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });

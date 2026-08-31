@@ -342,6 +342,7 @@ function createTables() {
         last_read_at DATETIME,
         archived_at DATETIME,
         channel_key TEXT,
+        participants TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
@@ -2028,6 +2029,33 @@ function runMigrations() {
           console.error('Error adding archived_at column to content_outputs:', err);
         } else if (!err) {
           console.log('✓ Added archived_at column to content_outputs table');
+        }
+      });
+
+      // Migration: Add participants column to content_outputs (2026-08-31).
+      //
+      // WHO IS IN THIS CONVERSATION — a compact JSON array of [{id, name}] for
+      // every AGENT that has spoken, so the sidebar can show their avatars
+      // without reading the transcript. It cannot read the transcript: the
+      // list query excludes `content` on purpose, because rows average ~0.5MB.
+      //
+      // Derived server-side at save time by utils/transcriptParticipants.js,
+      // from the same JSON.parse the truncation guard already performs. Annie
+      // is never listed (the orchestrator is in every conversation by
+      // definition, and the UI paints her first regardless) and icons are
+      // never stored (they are data-URLs up to ~233KB, resolved live from the
+      // agents store by id).
+      //
+      // NULL means "no agents, or not yet derived" — both of which render as
+      // Annie alone, which is the correct answer for the overwhelming majority
+      // of existing rows. So there is NO BACKFILL and none is wanted: a mass
+      // migration would have to parse every stored transcript, and the column
+      // fills itself on each conversation's next save.
+      db.run(`ALTER TABLE content_outputs ADD COLUMN participants TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding participants column to content_outputs:', err);
+        } else if (!err) {
+          console.log('✓ Added participants column to content_outputs table');
         }
       });
 

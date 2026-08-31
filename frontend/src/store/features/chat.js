@@ -12,6 +12,7 @@ import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
 import { dispatchGlobalFrontendEvent } from '@/services/globalFrontendEvents.js';
 import { getClientId, isOwnAnnouncement } from '@/services/clientId.js';
+import { ANNIE_ID, ANNIE_NAME } from '@/utils/agentAvatar.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -111,6 +112,48 @@ export function findAgentConversationId(conversations = {}, agentId) {
   if (!agentId) return null;
   const match = Object.keys(conversations).find((id) => conversations[id]?.agentId === agentId);
   return match || null;
+}
+
+/**
+ * The participant a conversation is CURRENTLY hearing from, as { id, name }.
+ *
+ * `id` is an agent id, or ANNIE_ID for the orchestrator — the sentinel the
+ * avatar components match against, so a caller never has to special-case her.
+ *
+ * Pure and O(messages-from-the-end): it stops at the first assistant message
+ * rather than scanning a transcript that can run to hundreds of turns.
+ *
+ * The sentinel is IMPORTED, not redeclared: the avatar components match
+ * against the same literal, and two copies of a magic string in two files is
+ * the drift this whole change is meant to avoid.
+ */
+export function currentSpeakerOfConversation(conv) {
+  const messages = Array.isArray(conv?.messages) ? conv.messages : [];
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg) continue;
+
+    // The human's turn is in flight: nobody has started answering yet, so the
+    // speaker is whoever holds the floor next rather than whoever held it last.
+    if (msg.role === 'user') break;
+
+    if (msg.role === 'assistant') {
+      if (msg.agentId || msg.agentName) {
+        return { id: msg.agentId || msg.agentName, name: msg.agentName || 'Agent' };
+      }
+      return { id: ANNIE_ID, name: ANNIE_NAME };
+    }
+  }
+
+  const nextOnFloor = Array.isArray(conv?.floorQueue) ? conv.floorQueue[0] : null;
+  if (nextOnFloor) {
+    const id = nextOnFloor.agentId || nextOnFloor.id || null;
+    const name = nextOnFloor.agentName || nextOnFloor.name || null;
+    if (id || name) return { id: id || name, name: name || 'Agent' };
+  }
+
+  return { id: ANNIE_ID, name: ANNIE_NAME };
 }
 
 /**
@@ -1440,6 +1483,42 @@ export default {
         }
       }
       return ids;
+    },
+
+    /**
+     * WHO IS TALKING RIGHT NOW, per sidebar row: { [outputId]: { id, name } }.
+     *
+     * The sidebar already shows THAT a conversation is running. This says WHO
+     * is running in it, which is the question a group chat actually raises —
+     * with four agents on the floor, "something is happening over there" is
+     * much less useful than "Sol is answering".
+     *
+     * Derived from the same conversation objects `streamingOutputIds` walks,
+     * so a row can never be marked streaming while claiming nobody is
+     * speaking, or vice versa.
+     *
+     * WHO, precisely: the author of the message currently being written. That
+     * is the LAST assistant message — streaming appends its message up front
+     * and fills the content in, so it is already there to be read. An
+     * assistant message with no agent attribution is Annie, exactly as
+     * speakerOfMessage() classifies it. If the last message is the user's
+     * (the turn has been sent but nothing has come back yet) the floor queue
+     * names whoever was handed the floor, and Annie answers when it is empty.
+     */
+    speakingByOutputId: (state, getters) => {
+      const speaking = {};
+      for (const [convId, conv] of Object.entries(state.conversations)) {
+        if (!conv?.savedOutputId) continue;
+
+        const active =
+          conv.isStreaming ||
+          (conv.activeAsyncTools && conv.activeAsyncTools.size > 0) ||
+          getters.isConvBlockedByGoal(convId);
+        if (!active) continue;
+
+        speaking[conv.savedOutputId] = currentSpeakerOfConversation(conv);
+      }
+      return speaking;
     },
     // Sidebar "unread" dot — set when a conversation changes (stream ends or
     // an assistant message arrives) while the user is looking at a different

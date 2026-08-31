@@ -104,10 +104,12 @@
               <!-- Group-chat roster: who's in this room (Annie is implicit) -->
               <div v-if="chatParticipants.length > 0" class="chat-roster">
                 <span class="chat-roster-label"><i class="fas fa-users"></i></span>
-                <span class="chat-roster-chip is-annie">Annie</span>
+                <span class="chat-roster-chip is-annie">
+                  <AgentAvatar :agent="annieParticipant" :size="14" />
+                  Annie
+                </span>
                 <span v-for="p in chatParticipants" :key="p.name" class="chat-roster-chip">
-                  <img v-if="p.icon && (p.icon.startsWith('http') || p.icon.startsWith('data:') || p.icon.startsWith('/'))" :src="p.icon" class="chat-roster-avatar" alt="" />
-                  <i v-else-if="p.icon" :class="p.icon"></i>
+                  <AgentAvatar :agent="p" :size="14" />
                   @{{ p.name }}
                 </span>
               </div>
@@ -239,6 +241,9 @@ import BaseScreen from '../../BaseScreen.vue';
   import { safeTruncate } from '@/utils/safeTruncate.js';
 import MessageItem from './components/MessageItem.vue';
 import ProcessingState from './components/ProcessingState.vue';
+import AgentAvatar from '@/components/common/AgentAvatar.vue';
+import { ANNIE_ID, ANNIE_NAME } from '@/utils/agentAvatar.js';
+import annieAvatarAsset from '@/assets/images/annie-avatar.png';
 import QuickActions from './components/QuickActions.vue';
 import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
@@ -268,6 +273,7 @@ export default {
     BaseScreen,
     MessageItem,
     ProcessingState,
+    AgentAvatar,
     QuickActions,
     ChatActions,
     ContextMonitor,
@@ -412,6 +418,16 @@ export default {
       }
       return 'Annie';
     });
+
+    // Annie's own chip. She is the orchestrator: implicit in every
+    // conversation and never stored in a roster, so every surface that draws
+    // one supplies her the same way — see utils/agentAvatar.js.
+    const annieParticipant = {
+      id: ANNIE_ID,
+      name: ANNIE_NAME,
+      icon: annieAvatarAsset,
+      isAnnie: true,
+    };
 
     // Group chat: distinct agent participants in this conversation (Annie is
     // implicit). Drives the roster chip row above the transcript.
@@ -2794,6 +2810,7 @@ export default {
       saveConversation,
       activeAgentName,
       chatParticipants,
+      annieParticipant,
       floorState,
       useTutorial,
       initializeScreen,
