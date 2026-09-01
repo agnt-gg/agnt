@@ -41,8 +41,8 @@ class AIBrowserUse extends BaseAction {
     // in a window they did not ask for.
     description: 'Hands a WHOLE browsing task to an autonomous nested agent (browser-use) that runs its own '
       + 'perceive-decide-act loop and reports back when finished — slow but self-sufficient, right for '
-      + 'workflows and fire-and-forget jobs. For interactive browsing in chat, PREFER ai_browser_act: it is '
-      + 'far faster and you stay in control between steps. ALWAYS drives the Browser widget inside AGNT — '
+      + 'workflows and fire-and-forget jobs. For interactive browsing, PREFER the browser tool\'s verbs: '
+      + 'far faster, and you stay in control between steps. ALWAYS drives the Browser widget inside AGNT — '
       + 'opening a hidden browser the widget can stream if none is there — and NEVER opens a visible OS '
       + 'window unless externalWindow is set, which requires the user explicitly asking for a separate, '
       + 'external or standalone browser window.',

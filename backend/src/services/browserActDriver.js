@@ -209,6 +209,39 @@ async function takeSnapshot(driver, { query = '', maxChars = 8000 } = {}) {
 
 // ─── acting on refs ─────────────────────────────────────────────────────────
 
+/**
+ * Resolve what a click or type should act on: a @ref or a CSS selector.
+ *
+ * WHY BOTH EXIST. Refs come from snapshots, and snapshots are read by a model
+ * — they are the right handle for an agent reasoning about a page it just
+ * looked at. A workflow authored once and run forever has no model in the
+ * loop and no snapshot to spend; it needs an address that survives page
+ * loads. That is a CSS selector. Selector resolution is LIVE (queried against
+ * the document as it is right now), so it deliberately skips the staleness
+ * guard — there is no snapshot to be stale against.
+ */
+async function resolveActionTarget(driver, { ref, selector } = {}) {
+  const css = String(selector || '').trim();
+  if (css) {
+    const { root } = await driver.connection.send('DOM.getDocument', { depth: 0 }, driver.sessionId);
+    const found = await driver.connection.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: css,
+    }, driver.sessionId);
+    if (!found?.nodeId) {
+      throw new Error(`Nothing on the page matches the selector "${css}".`);
+    }
+    const { node } = await driver.connection.send('DOM.describeNode', { nodeId: found.nodeId }, driver.sessionId);
+    if (!node?.backendNodeId) {
+      throw new Error(`The element matching "${css}" cannot be acted on.`);
+    }
+    return node.backendNodeId;
+  }
+
+  await assertFreshRefs(driver);
+  return refTarget(driver, ref);
+}
+
 function refTarget(driver, ref) {
   const clean = String(ref || '').replace(/^@/, '').trim();
   const backendNodeId = driver.refs.get(clean);
@@ -240,9 +273,8 @@ async function assertFreshRefs(driver) {
   return state;
 }
 
-async function clickRef(driver, ref) {
-  await assertFreshRefs(driver);
-  const backendNodeId = refTarget(driver, ref);
+async function clickRef(driver, { ref, selector } = {}) {
+  const backendNodeId = await resolveActionTarget(driver, { ref, selector });
 
   // Off-screen elements have a box but receive no synthetic mouse events.
   await driver.connection.send('DOM.scrollIntoViewIfNeeded', { backendNodeId }, driver.sessionId)
@@ -263,9 +295,8 @@ async function clickRef(driver, ref) {
   return pageState(driver);
 }
 
-async function typeIntoRef(driver, ref, text, submit = false) {
-  await assertFreshRefs(driver);
-  const backendNodeId = refTarget(driver, ref);
+async function typeIntoRef(driver, { ref, selector, text, submit = false } = {}) {
+  const backendNodeId = await resolveActionTarget(driver, { ref, selector });
 
   await driver.connection.send('DOM.focus', { backendNodeId }, driver.sessionId);
   // Replace, don't append: selecting existing content first means insertText
@@ -383,8 +414,10 @@ export async function performBrowserAction(userId, cdpUrl, action, params = {}) 
     switch (action) {
       case 'navigate': return await navigateTo(driver, params.url);
       case 'snapshot': return await takeSnapshot(driver, { query: params.query, maxChars: params.maxChars });
-      case 'click': return await clickRef(driver, params.ref);
-      case 'type': return await typeIntoRef(driver, params.ref, params.text, Boolean(params.submit));
+      case 'click': return await clickRef(driver, params);
+      case 'type': return await typeIntoRef(driver, {
+        ref: params.ref, selector: params.selector, text: params.text, submit: Boolean(params.submit),
+      });
       case 'press': return await pressKey(driver, params.key);
       case 'scroll': return await scrollPage(driver, params.deltaY);
       case 'read': return await readPageText(driver, params.selector, params.maxChars);

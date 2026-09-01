@@ -104,6 +104,8 @@ export const LONG_RUNNING_TOOL_NAMES = new Set([
   'send_email',
   'custom_api',
   'ai_browser_use',
+  // The unified tool's action="run" is the same long-running delegation.
+  'browser',
   'slop_connector',
   'mcp_client',
   // Model calls

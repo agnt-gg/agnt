@@ -220,15 +220,15 @@ export const TOOL_GROUPS = {
     'set_background_image',
     'clear_background_image',
   ],
-  // The three browser tools, fastest first. Before this group existed they
-  // lived in the anonymous "installed" bucket — invisible until a blanket
-  // load, and even then shown only as a truncated sample. Measured result: the
-  // model picked the nested-agent tool it happened to see over the verbs tool
-  // it did not, on the exact task the verbs tool was built for.
+  // ONE browser tool. It was three (act/use/control) and the model had to
+  // guess which to reach for — the 2026-09-01 surprise-window bug WAS that
+  // guess going wrong. The unified tool folds them into one schema as
+  // delegation levels (verbs / run / script), so there is nothing to mis-pick.
+  // The legacy pair stay registered OUTSIDE any group as dispatch aliases for
+  // existing workflow nodes, invisible to the model, deletable once no
+  // workflow names them.
   browser: [
-    'ai_browser_act',
-    'ai_browser_use',
-    'ai_browser_control',
+    'browser',
   ],
   canvas: [
     'get_canvas_state',
@@ -331,7 +331,7 @@ export const GROUP_DESCRIPTIONS = {
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
   appearance: "Set or clear the app's background image/video live (ephemeral overlay — never overwrites the user's saved theme background)",
-  browser: 'Drive a real browser: fast deterministic verbs (ai_browser_act — prefer this), an autonomous browser agent (ai_browser_use), and raw Python/CDP control (ai_browser_control)',
+  browser: 'Drive a real browser with one tool: fast deterministic verbs by default, a whole-task autonomous agent via action="run", raw Python/CDP via action="script"',
   canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
   mcp: 'Tools exposed by your configured MCP servers (mcp__<server>__<tool>)',
 };

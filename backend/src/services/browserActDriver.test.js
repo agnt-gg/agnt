@@ -72,6 +72,13 @@ async function fakeBrowser() {
           return reply({ nodes: state.axNodes });
         case 'DOM.getBoxModel':
           return reply({ model: { content: [10, 20, 110, 20, 110, 60, 10, 60] } });
+        case 'DOM.getDocument':
+          return reply({ root: { nodeId: 1 } });
+        case 'DOM.querySelector':
+          // Only '#go' exists on this fake page; everything else misses.
+          return reply({ nodeId: m.params.selector === '#go' ? 42 : 0 });
+        case 'DOM.describeNode':
+          return reply({ node: { backendNodeId: 12 } });
         case 'Page.getNavigationHistory':
           return reply({ currentIndex: 1, entries: [{ id: 7 }, { id: 8 }] });
         case 'Page.navigateToHistoryEntry':
@@ -164,6 +171,37 @@ describe('click: lands at the centre of the ref\'s box', () => {
     await act('click', { ref: 'e1' }); // this click navigates
 
     await expect(act('type', { ref: 'e2', text: 'x' })).rejects.toThrow(/new snapshot/i);
+  });
+});
+
+describe('a CSS selector is the deterministic handle — no snapshot, no model, no staleness', () => {
+  it('clicks by selector with no snapshot ever taken', async () => {
+    // The workflow case: authored once, run forever, no model in the loop to
+    // read a snapshot. The selector is resolved LIVE against the document.
+    const result = await act('click', { selector: '#go' });
+
+    const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
+    expect(mouse.map((x) => x.params.type)).toEqual(['mousePressed', 'mouseReleased']);
+    expect(mouse[0].params.x).toBe(60);
+    expect(result.url).toBeTruthy();
+  });
+
+  it('types by selector', async () => {
+    await act('type', { selector: '#go', text: 'from a workflow' });
+    const insert = browser.state.inputs.find((i) => i.method === 'Input.insertText');
+    expect(insert.params.text).toBe('from a workflow');
+  });
+
+  it('says plainly when nothing matches', async () => {
+    await expect(act('click', { selector: '#nope' })).rejects.toThrow(/Nothing on the page matches/);
+  });
+
+  it('still works after a navigation — selectors cannot go stale', async () => {
+    await act('snapshot');
+    await act('navigate', { url: 'https://elsewhere.example/' });
+    // A ref would be refused here; the selector resolves against the live page.
+    const result = await act('click', { selector: '#go' });
+    expect(result.url).toBeTruthy();
   });
 });
 

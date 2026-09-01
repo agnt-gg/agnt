@@ -88,6 +88,8 @@ export const TOOL_WIDGET_MAP = {
   // Browser Actions is the verbs path — the one agents reach for by default —
   // and it streams into the same widget so the user watches the clicks land.
   ai_browser_act: { widgetId: 'browser' },
+  // The unified tool: verbs, run and script all show their work in the widget.
+  browser: { widgetId: 'browser' },
   update_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   revert_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   list_workflow_versions: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },

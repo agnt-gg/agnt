@@ -938,7 +938,7 @@
       "category": "action",
       "type": "ai-browser-use",
       "icon": "web",
-      "description": "Hands a WHOLE browsing task to an autonomous nested agent (browser-use) that runs its own perceive-decide-act loop and reports back when finished — slow but self-sufficient, right for workflows and fire-and-forget jobs. For interactive browsing in chat, PREFER ai_browser_act: it is far faster and you stay in control between steps. ALWAYS drives the Browser widget inside AGNT — opening a hidden browser the widget can stream if none is there — and NEVER opens a visible OS window unless externalWindow is set, which requires the user explicitly asking for a separate, external or standalone browser window.",
+      "description": "Hands a WHOLE browsing task to an autonomous nested agent (browser-use) that runs its own perceive-decide-act loop and reports back when finished — slow but self-sufficient, right for workflows and fire-and-forget jobs. For interactive browsing, PREFER the browser tool's verbs: far faster, and you stay in control between steps. ALWAYS drives the Browser widget inside AGNT — opening a hidden browser the widget can stream if none is there — and NEVER opens a visible OS window unless externalWindow is set, which requires the user explicitly asking for a separate, external or standalone browser window.",
       "parameters": {
         "instructions": {
           "type": "string",
@@ -1136,6 +1136,155 @@
         "error": {
           "type": "string",
           "description": "Why the step could not be run"
+        }
+      }
+    },
+    {
+      "title": "Browser",
+      "category": "action",
+      "type": "browser",
+      "icon": "globe",
+      "description": "ONE browser tool, three levels of control. VERBS (default — each call is milliseconds, no nested agent): action=\"navigate\" with url, then action=\"snapshot\" to see the page as an accessibility tree where every interactive element has a @ref, then action=\"click\" or \"type\" with that ref or a CSS selector — snapshot again after anything changes, because refs die on navigation. \"read\" returns page text, \"press\" sends a key (Enter submits), \"scroll\" moves the viewport, \"back\" is history. DELEGATION: action=\"run\" with instructions hands the WHOLE task to an autonomous browser agent that reports back when finished — slow but self-sufficient, right for workflows and fire-and-forget jobs. ESCAPE HATCH: action=\"script\" with python drives the browser with raw Python/CDP helpers, in chat only. A browser is always available: it drives the Browser widget when one is open and quietly opens a hidden one otherwise — never ask the user to open a browser, and never expect a visible OS window unless the user explicitly asked for one (externalWindow, run only).",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "text",
+          "description": "One of: navigate, snapshot, click, type, press, scroll, read, back, run, script."
+        },
+        "url": {
+          "type": "string",
+          "inputType": "text",
+          "description": "For navigate: where to go. A bare domain is fine — https:// is assumed."
+        },
+        "ref": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For click/type: the @ref from the latest snapshot, e.g. \"e12\" or \"@e12\"."
+        },
+        "selector": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For click/type/read: CSS selector instead of a ref — stable across page loads, so it is the right handle for workflows."
+        },
+        "text": {
+          "type": "string",
+          "inputType": "text",
+          "description": "For type: replaces what is in the field (it is selected first)."
+        },
+        "submit": {
+          "type": "boolean",
+          "inputType": "checkbox",
+          "inputSize": "half",
+          "default": false,
+          "description": "For type: press Enter afterwards."
+        },
+        "key": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For press: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, PageUp/Down, Home, End."
+        },
+        "deltaY": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "default": 600,
+          "description": "For scroll: pixels; positive scrolls down."
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For snapshot: only include elements whose name or role contains this."
+        },
+        "maxChars": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "description": "Cap for snapshot (default 8000) and read (default 6000)."
+        },
+        "instructions": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "For run: the whole task in plain English. The autonomous agent does the reasoning and reports back when finished."
+        },
+        "python": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "For script (chat only): Python to run against the browser, with the browser-use helpers pre-imported."
+        },
+        "provider": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For run in a workflow: which AI provider drives the agent. In chat the conversation’s provider is used."
+        },
+        "model": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For run in a workflow: the model for the agent. In chat the conversation’s model is used."
+        },
+        "secrets": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "For run: optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder."
+        },
+        "externalWindow": {
+          "type": "string",
+          "inputType": "checkbox",
+          "options": [
+            "true"
+          ],
+          "description": "For run: open a separate, visible OS browser window. ONLY when the user explicitly asked for one."
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "description": "For run/script: how long the step may take before it is stopped."
+        },
+        "browser": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For script: launch a specific installed browser (chrome, brave, edge, chromium) instead of the widget."
+        }
+      },
+      "outputs": {
+        "url": {
+          "type": "string",
+          "description": "Where the page is after the action"
+        },
+        "title": {
+          "type": "string",
+          "description": "The page title after the action"
+        },
+        "snapshot": {
+          "type": "string",
+          "description": "The accessibility tree with @refs (snapshot only)"
+        },
+        "text": {
+          "type": "string",
+          "description": "The page text (read only)"
+        },
+        "surface": {
+          "type": "string",
+          "description": "\"widget\" for the canvas Browser widget, otherwise the launched browser"
+        },
+        "result": {
+          "type": "string",
+          "description": "What the autonomous agent reported (run only)"
+        },
+        "output": {
+          "type": "string",
+          "description": "What the script printed (script only)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Why the action could not be performed"
         }
       }
     },
