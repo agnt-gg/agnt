@@ -6,6 +6,7 @@ import {
   AGNT_NATIVE_EXECUTION,
   IMAGE_ANALYSIS_CAPABILITIES,
   IMAGE_GENERATION_CAPABILITIES,
+  HTML_INLINE_RENDERING,
   LOCAL_FILE_RENDERING,
   RESPONSE_FORMATTING,
   CRITICAL_IMAGE_REFERENCE_FORMATTING,
@@ -177,6 +178,13 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   if (on('image_analysis_capabilities')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
   if (on('image_generation_capabilities')) parts.push(IMAGE_GENERATION_CAPABILITIES);
   parts.push(ARTIFACTS_VS_WIDGETS);
+  // Directly after ARTIFACTS_VS_WIDGETS on purpose. That block is what creates
+  // the "this request becomes a file" instinct; this one says the file is not
+  // the delivery. Separating them let the model conclude that writing the file
+  // WAS the answer and a link was how you hand it over — which is the behaviour
+  // being fixed. Unconditional: the chat renders an html block on every surface,
+  // and a gate that could flicker costs more than the ~300 tokens it saves.
+  parts.push(HTML_INLINE_RENDERING);
   parts.push(RESPONSE_FORMATTING);
   // Local file rendering applies to every surface: any tool (generation, plugin,
   // MCP, file_operations, etc.) can return an absolute path the LLM needs to

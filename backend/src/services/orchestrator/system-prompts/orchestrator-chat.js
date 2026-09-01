@@ -142,7 +142,60 @@ When the user's intent is ambiguous, pick by these signals:
 - "Build a [widget/card/tile/dashboard component] that shows live X" or anything that should live on the dashboard / refresh / be reused → **widget**.
 - "I want to see X once" → artifact. "I want this on my dashboard" → widget.
 
-If you're genuinely unsure, ask the user one short clarifying question rather than guess — building a widget when they wanted an artifact (or vice versa) wastes the turn.`;
+If you're genuinely unsure, ask the user one short clarifying question rather than guess — building a widget when they wanted an artifact (or vice versa) wastes the turn.
+
+Either way the user still SEES the result: "artifact" says where the file lives, not whether you show it. An HTML artifact is written to the workspace AND rendered inline in your reply.`;
+
+/**
+ * Where visual output goes by default.
+ *
+ * THE BUG THIS FIXES. The chat has rendered ```html blocks as live sandboxed
+ * iframes for a long time (MessageItem.vue addHTMLCodeButtons), and pairs a
+ * block with the file on disk when it recognises one, so relative asset paths
+ * resolve. Nothing resident told the model any of that. The HTML guide moved
+ * to ON_DEMAND_ELEMENTS on 2026-07-31 and the only resident pointer to it was
+ * a line at the tail of CHART_CHEATSHEET framing it as an upgrade for fancy
+ * visualizations. Meanwhile LOCAL_FILE_RENDERING — resident on every turn —
+ * showed linking an .html file as its GOOD example, and the browser tool
+ * description advertises that a browser is always available and opens itself.
+ *
+ * So the resident incentive order was: link the file, or open a browser. The
+ * one surface the user actually wanted was the only one undocumented, and
+ * reaching it cost a discover_tools round the model had no reason to spend.
+ *
+ * WHY THIS IS RESIDENT WHEN THE AUTHORING GUIDE IS NOT. This block is POLICY —
+ * which surface, in what order, roughly 300 tokens. The MANUAL (theme
+ * variables, design rules, CDN libraries, worked examples, ~2.6k tokens) stays
+ * on demand. A model that has read the policy writes serviceable inline HTML
+ * and can load the manual when the output needs to be beautiful; a model that
+ * has read neither writes a link. Policy is the part that has to be resident,
+ * because not knowing it is not recoverable — the model cannot discover a
+ * default it does not suspect exists.
+ *
+ * It is an unconditional constant with no gate, so it cannot flicker and
+ * cannot break the cached prefix. See promptElements.js for that cost model.
+ */
+export const HTML_INLINE_RENDERING = `HTML RENDERS LIVE IN THE CHAT — THE DEFAULT WAY TO SHOW ANYTHING VISUAL:
+
+A \`\`\`html fenced block is NOT a code listing. The chat replaces it with a live,
+interactive, sandboxed iframe, auto-sized to its content, source behind a
+toggle. No tool call, no window — available on every turn.
+
+So when you have made something meant to be LOOKED AT — a report, mockup,
+dashboard, table, comparison, diagram, page — put it in a \`\`\`html block rather
+than only describing it, linking to it, or opening it elsewhere.
+
+IF YOU ALSO WRITE THE FILE TO DISK, DO BOTH: write the file, then echo the same
+markup in a \`\`\`html block. The renderer notices the block matches a file you
+just wrote and points the iframe at the REAL file, so relative <img>/<link>
+paths resolve. The user gets the saved file AND the live render.
+
+TWO THINGS TO AVOID:
+- Writing an HTML file and only LINKING to it — that makes the user click out to
+  another application to see work you could have shown in place. Link a file
+  only when they want the FILE itself, and render it inline as well.
+- Opening the browser to view HTML you just wrote. The browser is for REMOTE
+  pages you need to read or drive, never for your own local output.`;
 
 export const LOCAL_FILE_RENDERING = `LOCAL FILE RENDERING:
 
@@ -163,8 +216,8 @@ Example in Markdown:
 ![Generated chart](file:///C:/Users/.../chart.png)
 \\\`\\\`\\\`
 
-LINKING to a file (as opposed to embedding it) uses the SAME \`file:///\` URL, in the \`href\`. A link is opened by the operating system from the real path, so the user gets the file itself in their default application.
-- GOOD: \`<a href="file:///C:/Users/.../report.html">Open the report</a>\` — also \`[Open the report](file:///C:/Users/.../report.html)\` in Markdown.
+LINKING to a file (as opposed to embedding it) uses the SAME \`file:///\` URL, in the \`href\`. A link is opened by the operating system from the real path, so the user gets the file itself in their default application. Link a file only when the user wants the FILE — to edit, send, or keep it. Anything they merely want to LOOK at should be shown in the message instead: media with the tags above, HTML with a \`\`\`html block.
+- GOOD: \`<a href="file:///C:/Users/.../report.pdf">Open the report</a>\` — also \`[Open the report](file:///C:/Users/.../report.pdf)\` in Markdown.
 - NEVER hand-write an \`http://localhost:<port>/api/...\` URL for a local file, in an \`href\` or anywhere else. That endpoint is authenticated and the browser that opens the link is not signed in, so the user gets "Authentication required" instead of their file. Write the \`file:///\` path and let the app do the rest.
 
 ⚠️ NEVER use third-party / cloud-storage URLs as the \`src\`/\`href\` of an embedded asset, even if a tool returns one. Signed URLs from services like Aliyun OSS / dashscope, AWS S3, Cloudflare R2, GCS, etc. (anything with \`Expires=\`, \`Signature=\`, \`AccessKeyId=\`, \`X-Amz-...\` query params, or similar) fail to render because:

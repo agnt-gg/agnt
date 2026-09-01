@@ -22,6 +22,7 @@ import {
   CRITICAL_TOOL_CALL_REQUIREMENTS,
   AGNT_NATIVE_EXECUTION,
   ARTIFACTS_VS_WIDGETS,
+  HTML_INLINE_RENDERING,
   RESPONSE_FORMATTING,
   LOCAL_FILE_RENDERING,
   CHART_CHEATSHEET,
@@ -41,6 +42,7 @@ const ALWAYS_RESIDENT_STATIC = {
   CRITICAL_TOOL_CALL_REQUIREMENTS,
   AGNT_NATIVE_EXECUTION,
   ARTIFACTS_VS_WIDGETS,
+  HTML_INLINE_RENDERING,
   RESPONSE_FORMATTING,
   LOCAL_FILE_RENDERING,
   CHART_CHEATSHEET,
@@ -102,6 +104,17 @@ const FIXTURE_TOLERANCE = 25;
 // Measured 2026-08-01: 3,980 (darwin) – 4,135 (win32 cmd.exe) estimator-tokens.
 // 5,000 leaves ~865 tokens for a genuinely necessary addition while still
 // failing on another 3,187-token cheatsheet.
+//
+// 2026-09-01: HTML_INLINE_RENDERING spent 510 of that headroom (384 for the
+// block, 126 for two clarifying sentences in the blocks either side) — the
+// always-resident policy for which surface visual output goes to, added
+// because the renderer's inline-iframe capability was documented ONLY in the
+// on-demand block while the resident prose showed linking an .html file as its
+// good example. The budget was not raised to accommodate it: the first draft
+// measured 494 tokens and put the heaviest host at 5,012, so the prose was cut
+// to 384 to fit under the existing ceiling. That is the control working as
+// designed. The 2.6k-token HTML AUTHORING manual stays on demand — policy is
+// resident, manual is not.
 //
 // RATCHET: if the resident prose shrinks again, the tightness test below goes
 // red on purpose — lower this number, do not raise the multiplier.

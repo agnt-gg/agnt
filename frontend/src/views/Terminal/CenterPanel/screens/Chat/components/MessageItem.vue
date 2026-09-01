@@ -417,6 +417,10 @@ import {
   rewriteLocalFileURLsInHTML as sharedRewriteLocalFileURLsInHTML,
 } from '@/utils/localFileUrl.js';
 import { handleLocalFileLinkClick } from '@/utils/openLocalFile.js';
+import {
+  findMatchingFileOnDisk as pairingMatch,
+  getBaseDirFromToolCalls as pairingBaseDir,
+} from '@/utils/htmlBlockFilePairing.js';
 import { localFileUrlToAbsolutePath, isPublishableEntry, resolveWorkspaceEntry, titleFromEntryPath } from '@/utils/workspacePath.js';
 import { prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
 
@@ -863,125 +867,18 @@ export default {
       return `${API_CONFIG.BASE_URL}/local-file/${encodeURI(joined)}`;
     };
 
-    // Pair a ```html code block with a file the LLM just READ from disk, so we
+    // Pair a ```html code block with a file the LLM just wrote or read, so we
     // can render the block via iframe.src pointing at the real file. The
     // browser then uses the file's URL as the iframe's base, and every asset
     // reference inside the HTML — relative (../videos/x.mp4), absolute
     // (/images/y.png), protocol-relative, or file:// — resolves exactly as it
     // would if you opened the file directly.
     //
-    // Read tools recognized:
-    //  - artifact-chat: read_file
-    //  - main-chat:     file_operations(operation: 'read')
-    //
-    // Match strategy: exact trimmed content, or a ≥200-char prefix match to
-    // cover streaming partials / truncated echoes.
-    const normalizeForMatch = (s) => (s || '').replace(/\r\n/g, '\n').trim();
-
-    const getReadFileCandidate = (tc) => {
-      if (!tc) return null;
-      let args = tc.args;
-      if (typeof args === 'string') {
-        try {
-          args = JSON.parse(args);
-        } catch {
-          args = null;
-        }
-      }
-      let res = tc.result;
-      if (typeof res === 'string') {
-        try {
-          res = JSON.parse(res);
-        } catch {
-          res = null;
-        }
-      }
-      if (!res) return null;
-
-      // Each read tool stores its content under a different key:
-      //   read_file / file_operations(read) → res.content
-      //   file_system_operation(readFile)   → res.result  (the tool's own shape)
-      const isReadFile = tc.name === 'read_file';
-      const isFileOpsRead = tc.name === 'file_operations' && args?.operation === 'read';
-      const isFileSystemOpsRead = tc.name === 'file_system_operation' && args?.operation === 'readFile';
-      if (!isReadFile && !isFileOpsRead && !isFileSystemOpsRead) return null;
-
-      const content = isFileSystemOpsRead ? res.result : res.content;
-      if (typeof content !== 'string') return null;
-
-      // Prefer absolutePath. Fall back to res.path when absolute.
-      // Final fallback for file_system_operation: rebuild from args so
-      // messages saved before the backend started emitting absolutePath
-      // still pair correctly.
-      const joinPath = (a, b) => {
-        if (!a) return b || '';
-        if (!b) return a;
-        const trimmed = a.replace(/[\\/]+$/, '');
-        const suffix = b.replace(/^[\\/]+/, '');
-        return `${trimmed}/${suffix}`;
-      };
-      let abs = null;
-      if (typeof res.absolutePath === 'string') {
-        abs = res.absolutePath;
-      } else if (typeof res.path === 'string' && (/^[a-zA-Z]:[\\/]/.test(res.path) || res.path.startsWith('/'))) {
-        abs = res.path;
-      } else if (isFileSystemOpsRead && args && typeof args.path === 'string') {
-        const joined = joinPath(args.rootDirectory, args.path);
-        if (/^[a-zA-Z]:[\\/]/.test(joined) || joined.startsWith('/')) abs = joined;
-      }
-      if (!abs) return null;
-
-      return { absPath: abs, content };
-    };
-
-    const getBaseDirFromToolCalls = () => {
-      const calls = props.message?.toolCalls;
-      if (!Array.isArray(calls) || calls.length === 0) return '';
-      let lastHtml = null;
-      let lastAny = null;
-      for (const tc of calls) {
-        const cand = getReadFileCandidate(tc);
-        if (!cand) continue;
-        lastAny = cand.absPath;
-        if (/\.html?$/i.test(cand.absPath)) lastHtml = cand.absPath;
-      }
-      const pick = lastHtml || lastAny;
-      if (!pick) return '';
-      const slash = Math.max(pick.lastIndexOf('/'), pick.lastIndexOf('\\'));
-      return slash > 0 ? pick.slice(0, slash) : '';
-    };
-
-    const findMatchingFileOnDisk = (htmlCode) => {
-      const calls = props.message?.toolCalls;
-      if (!Array.isArray(calls) || calls.length === 0) return null;
-      const block = normalizeForMatch(htmlCode);
-      if (!block) return null;
-
-      let bestPath = null;
-      let bestScore = 0;
-
-      for (const tc of calls) {
-        const cand = getReadFileCandidate(tc);
-        if (!cand) continue;
-        const fileContent = normalizeForMatch(cand.content);
-        if (!fileContent) continue;
-
-        let score = 0;
-        if (fileContent === block) {
-          score = block.length + 1000;
-        } else {
-          const shorter = fileContent.length < block.length ? fileContent : block;
-          const longer = fileContent.length < block.length ? block : fileContent;
-          if (shorter.length >= 200 && longer.startsWith(shorter)) {
-            score = shorter.length;
-          }
-        }
-        if (score <= bestScore) continue;
-        bestPath = cand.absPath;
-        bestScore = score;
-      }
-      return bestPath;
-    };
+    // Tools recognized — reads AND writes. See utils/htmlBlockFilePairing.js for
+    // the matching rules and why a written file counts as strong a claim as a
+    // read one (it is the common "generate a page and show it" flow).
+    const getBaseDirFromToolCalls = () => pairingBaseDir(props.message?.toolCalls);
+    const findMatchingFileOnDisk = (htmlCode) => pairingMatch(htmlCode, props.message?.toolCalls);
 
     // Build a /api/local-file URL for a filesystem absolute path. Cache-busted
     // with the message id so edits in a later turn pick up fresh content.
