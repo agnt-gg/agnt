@@ -164,13 +164,15 @@ describe('a dead surface is never handed to a viewer', () => {
   });
 });
 
-describe('a host browser that cannot stream is discarded, not re-adopted', () => {
-  it('drops the launcher session when attach fails against a zombie', async () => {
-    // A browser can be alive enough to pass a liveness probe and still unable
-    // to stream — measured: a crashed-profile headless launch whose renderer
-    // hung; attach succeeded, every page command timed out. Without discarding
-    // the session, the launcher re-adopts that zombie on the next poll and the
-    // failure repeats identically forever.
+describe('watching is read-only: a failed attach never ends the session', () => {
+  it('THE REGRESSION: does NOT kill the browser when attach fails', async () => {
+    // This path used to call the launcher's teardown, to heal a zombie that
+    // answers /json/version but cannot stream. Right about a rare case,
+    // catastrophic about a common one: attaching also fails TRANSIENTLY —
+    // mid-navigation Target.getTargets briefly reports no page target — and
+    // the response was to taskkill the browser tree the agent was working in,
+    // ending the task and the stream together. Reported from live use as "the
+    // next browser step does not work and it kills both".
     const zombie = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     await new Promise((resolve) => { zombie.once('listening', resolve); });
     // Accepts connections, answers NOTHING — the shape of a hung renderer.
@@ -179,9 +181,14 @@ describe('a host browser that cannot stream is discarded, not re-adopted', () =>
 
     const response = await view({ launch: false });
 
+    // Still reported honestly, and the registry entry is still pruned so the
+    // next poll re-probes rather than replaying a dead endpoint.
     expect(response.status).toBe(404);
     expect((await response.json()).reason).toBe('stale');
-    expect(closeFallbackSurface).toHaveBeenCalledTimes(1);
+
+    // But the browser itself survives — a viewer has no standing to end a
+    // session it does not own.
+    expect(closeFallbackSurface).not.toHaveBeenCalled();
 
     for (const client of zombie.clients) { try { client.terminate(); } catch { /* gone */ } }
     await new Promise((resolve) => { zombie.close(resolve); });

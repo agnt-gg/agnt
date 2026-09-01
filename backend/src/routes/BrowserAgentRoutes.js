@@ -21,7 +21,7 @@ import {
   getLiveSurface, forgetSurfaceByUrl, announceHostSurface, hostInstanceId,
 } from '../services/browserSurfaces.js';
 import { startViewing, stopViewing, isStreaming } from '../services/BrowserScreencastService.js';
-import { ensureFallbackSurface, closeFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
+import { ensureFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
 
 const router = express.Router();
 
@@ -171,16 +171,22 @@ router.post('/view', authenticateToken, async (req, res) => {
     // no longer exists.
     forgetSurfaceByUrl(userId, surface.cdpUrl);
 
-    // And if it was OUR browser, discard the session too — not just the
-    // registry entry. A browser can be alive enough to answer /json/version
-    // and still unable to stream (measured: a crashed-profile headless launch
-    // whose renderer hung — attach succeeded, every page command timed out).
-    // Without this, the launcher re-adopts that zombie on the next poll and
-    // the failure repeats identically forever. With it, the next poll launches
-    // fresh, so ANY paralysis we have not foreseen heals in one cycle.
-    if (surface.transport === 'host-cdp') closeFallbackSurface();
-
-    console.log(`[Screencast] ${surface.instanceId} died before it could be watched: ${err.message}`);
+    // A VIEWER NEVER DESTROYS THE BROWSER.
+    //
+    // This path used to end the launcher session here, to heal a zombie that
+    // answers /json/version but cannot stream. That was right about a rare
+    // case and catastrophic about a common one: attaching also fails
+    // TRANSIENTLY — mid-navigation Target.getTargets briefly reports no page
+    // target, so attachToPage throws "that browser has no page to show". The
+    // response was to taskkill the browser tree the agent was working in,
+    // ending the running task and the stream together. Reported from live use
+    // as "the next browser step does not work and it kills both".
+    //
+    // Watching is read-only and has no standing to end a session it does not
+    // own. The registry entry is still pruned above, so the next poll
+    // re-probes rather than replaying a dead endpoint. Healing an unusable
+    // browser belongs to the DRIVER path, which finds out by trying to use it.
+    console.log(`[Screencast] ${surface.instanceId} could not be watched: ${err.message}`);
     return res.status(404).json({ success: false, error: 'There is no browser to watch yet.', reason: 'stale' });
   }
 });

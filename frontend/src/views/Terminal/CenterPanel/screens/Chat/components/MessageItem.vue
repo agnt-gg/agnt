@@ -63,12 +63,7 @@
           <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
             <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
             <div v-else-if="part.type === 'tool_calls'" class="tool-execution-details">
-              <div
-                v-for="tc in part.items"
-                :key="`${message.id}-${tc.index}`"
-                class="tool-call-item"
-                :class="{ 'tool-call-item--wide': isBrowserTool(tc.toolCall) }"
-              >
+              <div v-for="tc in part.items" :key="`${message.id}-${tc.index}`" class="tool-call-item">
                 <div class="top-tool-bar">
                   <div class="tool-header" @click="toggleToolCall(tc.index)">
                     <span class="tool-expansion-icon">
@@ -170,19 +165,6 @@
                   </div>
                 </div>
 
-                <!--
-                  The live browser, for any tool call that drives one.
-                  Outside the expand block on purpose: watching the page
-                  is the point, and burying it behind a disclosure
-                  triangle would mean the work finishes before most
-                  people find it.
-                -->
-                <BrowserLiveCard
-                  v-if="isBrowserTool(tc.toolCall)"
-                  :card-key="message.id + '-' + tc.index"
-                  :order="browserCardOrder(tc.index)"
-                />
-
                 <!-- Inline Goal Progress Widget for autonomous goals -->
                 <GoalProgressWidget
                   v-if="isAutonomousGoalTool(tc.toolCall)"
@@ -194,6 +176,30 @@
               </div>
             </div>
           </template>
+
+          <!--
+            The live browser for this turn: ONE per message, outside the
+            tool-call loop.
+
+            It was one card PER CALL, and that was the bug. A turn that browses
+            makes several calls, only the newest card may stream, so every new
+            call flipped the previous card's v-if and UNMOUNTED its stream view
+            — firing DELETE /view while the new card's POST /view was still in
+            flight. Both address the same ref-counted instanceId, because there
+            is one browser, so whenever the DELETE won the race the viewer
+            count reached zero, the screencast stopped and the connection
+            closed. That is the "shows for a second, then the next one does not
+            work".
+
+            There is one browser, so there is one card. Anchored to the message
+            rather than to a call, it mounts once and survives every tool call
+            in the turn.
+          -->
+          <BrowserLiveCard
+            v-if="hasBrowserToolCall"
+            :card-key="message.id"
+            :order="browserCardOrder"
+          />
 
           <!-- Uploaded Files Preview (for user messages) -->
           <div v-if="message.files && message.files.length > 0 && message.role === 'user'" class="uploaded-files-preview">
@@ -2641,22 +2647,26 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       'ai_browser_use',
       'ai_browser_control',
     ]);
-    const isBrowserTool = (toolCall) => BROWSER_TOOL_NAMES.has(toolCall?.name);
+    const hasBrowserToolCall = computed(
+      () => (props.message?.toolCalls || []).some((tc) => BROWSER_TOOL_NAMES.has(tc?.name)),
+    );
 
     /**
-     * Where this card sits in the conversation, for deciding which one
-     * streams.
+     * Where this MESSAGE sits in the conversation, for deciding which card
+     * streams. One card per message now, so there is no tool-call index to
+     * break ties with — and no intra-turn handover to break ties for.
      *
-     * Timestamp first, falling back to NOW: a message still streaming may
-     * not have one yet, and "now" is exactly right for it — the newest
-     * card is the one being created. Multiplied out so the tool-call index
-     * breaks ties within a single message, which is the common case when a
-     * turn makes several browser calls in a row.
+     * The fallback is CAPTURED ONCE rather than read inside the getter. A
+     * message still streaming has no timestamp yet, and calling Date.now() per
+     * evaluation would hand the card a different order every time it
+     * re-rendered, which during a browsing turn is many times a second.
      */
-    const browserCardOrder = (index) => {
+    const messageFirstRenderedAt = Date.now();
+
+    const browserCardOrder = computed(() => {
       const ts = Number(props.message?.timestamp);
-      return (Number.isFinite(ts) && ts > 0 ? ts : Date.now()) * 1000 + (index || 0);
-    };
+      return Number.isFinite(ts) && ts > 0 ? ts : messageFirstRenderedAt;
+    });
 
     const isAutonomousGoalTool = (toolCall) => {
       // Direct tool names
@@ -3036,7 +3046,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isRunning,
       toolCallStatus,
       isAutonomousGoalTool,
-      isBrowserTool,
+      hasBrowserToolCall,
       browserCardOrder,
       extractGoalId,
       extractGoalTitle,
@@ -3556,18 +3566,6 @@ span.nodeLabel p {
   align-content: center;
   justify-content: flex-start;
   align-items: center;
-}
-
-/*
-  A tool call that renders a live browser takes a full row of the wrapping
-  flex container, instead of sitting beside other tool chips at its
-  intrinsic width. Scoped to the browser card rather than applied to every
-  tool-call-item, because the side-by-side chip layout is right for the
-  ordinary case and only this one has a viewport in it.
-*/
-.tool-call-item--wide {
-  width: 100%;
-  align-items: stretch;
 }
 
 .tool-call-item:last-child {
