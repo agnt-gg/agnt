@@ -41,6 +41,23 @@ import { onUnhandledError } from './tests/setup/unhandledErrorFilter.mjs';
  *
  * Anything excluded here MUST have a runner named above. Silently dropping a
  * suite is the same failure as silently ignoring one.
+ *
+ * **\/.worktrees/** is the one exclusion that drops nothing, because it is not
+ * a suite — it is a SECOND COPY of this one. A linked worktree is a full
+ * checkout living under the repo root, so default discovery walks into it and
+ * collects every test file a second time. Worse, every pattern above is
+ * root-relative: 'frontend/**' does not match '.worktrees/wt-x/frontend/**',
+ * so a worktree smuggles back in precisely the four groups this config
+ * deliberately drops, and they fail exactly as documented above.
+ *
+ * Measured on 2026-09-01 with a single worktree checked out: 963 files
+ * collected, 625 of them duplicates from .worktrees — a 338-file suite
+ * reporting 662 failures. The failure scales with parallelism, so the more
+ * branches in flight the redder the gate gets, which is backwards. And because
+ * .worktrees/ is gitignored (.gitignore:26), nothing in git, CI or review ever
+ * mentions it; the only symptom is a suite that cannot go green.
+ *
+ * Guarded by scripts/vitestDiscoveryScope.contract.test.js.
  */
 export default defineConfig({
   test: {
@@ -82,6 +99,7 @@ export default defineConfig({
       'backend/plugins/tests/**',
       'backend/tests/providers/providers/**',
       'backend/tests/providers/suites/**',
+      '**/.worktrees/**',
     ],
   },
 });
