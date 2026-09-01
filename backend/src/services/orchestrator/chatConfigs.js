@@ -423,6 +423,50 @@ function isAlwaysOnToolName(name) {
 }
 
 /**
+ * Tools that REPLACE earlier ones, successor -> the predecessors it absorbs.
+ *
+ * WHY PERMISSION MUST BE INHERITED. A saved `enabledTools` selection is an
+ * enumerated snapshot of the registry from the moment the user last touched
+ * the tool selector, and it is applied as a hard ceiling that bounds even
+ * discover_tools. When we consolidate three tools into one, the new name is
+ * absent from every existing snapshot — so a user who explicitly enabled
+ * browsing loses it, with no way to notice and no healing path. Measured live
+ * 2026-09-01: the `browser` group filtered to zero members and disappeared
+ * from discover_tools entirely, while the legacy tools it replaced stayed
+ * visible in the same channel.
+ *
+ * This is NOT a blanket grant. The successor is permitted only where the user
+ * already permitted something it replaces, so the ceiling still means exactly
+ * what the user chose — it just survives us renaming the thing they chose.
+ * A channel that never enabled browsing still gets nothing.
+ */
+const TOOL_SUCCESSORS = {
+  browser: ['ai_browser_use', 'ai_browser_control', 'ai_browser_act'],
+};
+
+/**
+ * The channel's selection, widened by inherited permissions.
+ *
+ * Memoised on the context because it is read by both the ceiling and the
+ * runtime filter, and both must agree — a successor permitted by one and
+ * refused by the other would be reachable but never resident.
+ *
+ * `context.enabledTools` itself is left untouched so provenance can still
+ * distinguish what the user literally ticked from what was inherited.
+ */
+function permittedSelection(context) {
+  if (!(context.enabledTools instanceof Set)) return null;
+  if (context._permittedSelection instanceof Set) return context._permittedSelection;
+
+  const permitted = new Set(context.enabledTools);
+  for (const [successor, predecessors] of Object.entries(TOOL_SUCCESSORS)) {
+    if (predecessors.some((p) => permitted.has(p))) permitted.add(successor);
+  }
+  context._permittedSelection = permitted;
+  return permitted;
+}
+
+/**
  * ENABLED-TOOLS IS A CEILING, NOT A MANIFEST.
  *
  * A saved `enabledTools` list answers "what is this channel ALLOWED to use?".
@@ -459,12 +503,13 @@ export const WHITELIST_VERBATIM_BUDGET_TOKENS = 12_000;
  * Returns null when the client sent no selection at all ("no opinion").
  */
 function resolveToolCeiling(context, allSchemas) {
-  if (!(context.enabledTools instanceof Set)) return null;
+  const selection = permittedSelection(context);
+  if (!selection) return null;
   const ceiling = new Set();
   for (const s of allSchemas) {
     const name = s.function?.name;
     if (!name) continue;
-    if (context.enabledTools.has(name) || isAlwaysOnToolName(name)) ceiling.add(name);
+    if (selection.has(name) || isAlwaysOnToolName(name)) ceiling.add(name);
   }
   return ceiling;
 }
@@ -635,7 +680,9 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   // user's checkboxes are the single source of truth when present. Universal
   // primitives ride along as always.
   if (context.enabledTools) {
-    const runtimeAllowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
+    // permittedSelection, not enabledTools: a selection saved before a
+    // consolidation must still permit the tool that replaced what it named.
+    const runtimeAllowed = new Set([...permittedSelection(context), ...UNIVERSAL_TOOLS]);
     filteredSchemas = filteredSchemas.filter((s) => {
       const name = s.function?.name;
       return name && runtimeAllowed.has(name);
