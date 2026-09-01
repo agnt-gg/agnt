@@ -166,16 +166,15 @@ async function takeSnapshot(driver, { query = '', maxChars = 8000 } = {}) {
   driver.refUrl = state.url;
 
   const q = String(query || '').trim().toLowerCase();
-  const lines = [`URL: ${state.url}`, `Title: ${state.title}`, ''];
-  let total = lines.join('\n').length;
+  const header = [`URL: ${state.url}`, `Title: ${state.title}`, ''];
+  const entries = [];
   let counter = 0;
-  let truncated = false;
 
   for (const node of nodes) {
     if (node.ignored) continue;
     const role = node.role?.value || '';
     const name = (node.name?.value || '').trim();
-    const interactive = INTERACTIVE_ROLES.has(role) && node.backendDOMNodeId;
+    const interactive = Boolean(INTERACTIVE_ROLES.has(role) && node.backendDOMNodeId);
 
     // Unqueried: interactive elements plus named headings for orientation.
     // Queried: ANY named node that matches, because "find the text that says X"
@@ -185,26 +184,97 @@ async function takeSnapshot(driver, { query = '', maxChars = 8000 } = {}) {
       : (interactive || (role === 'heading' && Boolean(name)));
     if (!include) continue;
 
-    let line;
     if (interactive) {
+      // Every interactive node gets a ref, whether or not it survives the
+      // budget below — the map is a superset of what is printed, so a ref the
+      // agent already knows about keeps working.
       counter += 1;
       const ref = `e${counter}`;
       driver.refs.set(ref, node.backendDOMNodeId);
       const value = node.value?.value ? ` value="${String(node.value.value).slice(0, 80)}"` : '';
-      line = `@${ref} ${role} "${name.slice(0, 120)}"${value}${describeProps(node)}`;
+      entries.push({
+        interactive: true,
+        text: `@${ref} ${role} "${name.slice(0, 120)}"${value}${describeProps(node)}`,
+      });
     } else {
-      line = `${role} "${name.slice(0, 160)}"`;
+      entries.push({ interactive: false, text: `${role} "${name.slice(0, 160)}"` });
     }
-
-    total += line.length + 1;
-    if (total > maxChars) { truncated = true; break; }
-    lines.push(line);
   }
 
-  if (truncated) lines.push(`… (truncated at ${maxChars} chars — pass query to narrow it)`);
-  if (counter === 0 && !q) lines.push('(no interactive elements found — the page may still be loading; try again or read its text)');
+  return { ...state, snapshot: fitSnapshot(header, entries, maxChars, q) };
+}
 
-  return { ...state, snapshot: lines.join('\n') };
+/**
+ * Fit a snapshot into its budget WITHOUT losing the things you can act on.
+ *
+ * THE BUG THIS REPLACES. The first version walked the tree in document order
+ * and stopped dead at the cap, so everything past it vanished — refs included.
+ * Measured on duckduckgo.com: the marketing sections that precede the search
+ * box spent the entire budget on headings and nav buttons, and the search box
+ * — the one element anybody opens that page to use — was never listed. The
+ * tool confidently described a page with no textbox on it, which is worse than
+ * describing less of the page, because there is nothing in the output to
+ * suggest anything is missing.
+ *
+ * Orientation lines are the ones to give up. A heading tells the agent where
+ * it is; a @ref is the only thing it can DO. So context is dropped first, from
+ * the end, and refs are only sacrificed once nothing else is left — and then
+ * they are COUNTED, so "no search box" can never be confused with "no search
+ * box shown".
+ */
+function fitSnapshot(header, entries, maxChars, q) {
+  const cost = (text) => text.length + 1;
+  const budget = Math.max(0, maxChars - header.join('\n').length);
+
+  let total = entries.reduce((sum, e) => sum + cost(e.text), 0);
+  let kept = entries;
+  let droppedContext = 0;
+
+  // Pass 1: give up orientation, newest-last first, while over budget.
+  if (total > budget) {
+    const dropped = new Set();
+    for (let i = entries.length - 1; i >= 0 && total > budget; i -= 1) {
+      if (entries[i].interactive) continue;
+      dropped.add(i);
+      droppedContext += 1;
+      total -= cost(entries[i].text);
+    }
+    kept = entries.filter((_, i) => !dropped.has(i));
+  }
+
+  // Pass 2: the page genuinely has more refs than fit. Pack what does, in
+  // order, and count the rest rather than implying they do not exist.
+  let hiddenRefs = 0;
+  if (total > budget) {
+    const fitted = [];
+    let used = 0;
+    for (const entry of kept) {
+      const next = used + cost(entry.text);
+      if (next > budget) {
+        if (entry.interactive) hiddenRefs += 1;
+        else droppedContext += 1;
+        continue;
+      }
+      used = next;
+      fitted.push(entry);
+    }
+    kept = fitted;
+  }
+
+  const lines = [...header, ...kept.map((e) => e.text)];
+  const refCount = entries.reduce((n, e) => n + (e.interactive ? 1 : 0), 0);
+
+  if (hiddenRefs > 0) {
+    lines.push(`… ${hiddenRefs} more interactive element(s) did not fit — raise maxChars or pass query.`);
+  } else if (droppedContext > 0) {
+    lines.push('… (context lines omitted to fit; every interactive element is listed)');
+  }
+
+  if (refCount === 0 && !q) {
+    lines.push('(no interactive elements found — the page may still be loading; try again or read its text)');
+  }
+
+  return lines.join('\n');
 }
 
 // ─── acting on refs ─────────────────────────────────────────────────────────

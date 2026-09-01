@@ -296,6 +296,71 @@ describe('the other verbs', () => {
   });
 });
 
+describe('a tight budget keeps the things you can act on', () => {
+  it('THE REGRESSION: drops orientation before refs, so the search box survives', async () => {
+    // Measured on duckduckgo.com. The marketing sections that precede the
+    // search box spent the whole budget on headings, the walk stopped at the
+    // cap, and the one element anybody opens that page to use was never
+    // listed — with nothing in the output to suggest it had been cut.
+    const headings = Array.from({ length: 40 }, (_, i) => ({
+      ignored: false,
+      role: { value: 'heading' },
+      name: { value: `Marketing section ${i} with a fairly long orientation title` },
+      backendDOMNodeId: 200 + i,
+    }));
+    browser.state.axNodes = [
+      ...headings,
+      {
+        ignored: false, role: { value: 'textbox' }, name: { value: 'Search the web' }, backendDOMNodeId: 999,
+      },
+    ];
+
+    const { snapshot } = await act('snapshot', { maxChars: 600 });
+
+    expect(snapshot).toContain('@e1 textbox "Search the web"');
+    expect(snapshot).toContain('context lines omitted');
+  });
+
+  it('COUNTS the refs it could not fit, rather than implying there are none', async () => {
+    // "No button matched" and "more buttons than fit" are different answers
+    // and lead to different next moves. Silence reads as the first.
+    browser.state.axNodes = Array.from({ length: 60 }, (_, i) => ({
+      ignored: false,
+      role: { value: 'button' },
+      name: { value: `Button number ${i} with a reasonably long accessible name` },
+      backendDOMNodeId: 300 + i,
+    }));
+
+    const { snapshot } = await act('snapshot', { maxChars: 500 });
+
+    expect(snapshot).toMatch(/more interactive element/);
+    expect(snapshot).toContain('@e1 ');
+  });
+
+  it('keeps every ref spendable even when it was not printed', async () => {
+    // The ref map is a superset of what fits on screen, so an element the
+    // agent learned about in an earlier, roomier snapshot still works.
+    browser.state.axNodes = Array.from({ length: 30 }, (_, i) => ({
+      ignored: false,
+      role: { value: 'button' },
+      name: { value: `Button number ${i} with a reasonably long accessible name` },
+      backendDOMNodeId: 300 + i,
+    }));
+
+    await act('snapshot', { maxChars: 400 });
+    // e30 was minted but almost certainly not shown at that budget.
+    const result = await act('click', { ref: 'e30' });
+    expect(result.url).toBeTruthy();
+  });
+
+  it('says nothing about omissions when everything fits', async () => {
+    const { snapshot } = await act('snapshot');
+    expect(snapshot).toContain('heading "Welcome"');
+    expect(snapshot).toContain('@e1 button "Sign In"');
+    expect(snapshot).not.toMatch(/omitted|did not fit/);
+  });
+});
+
 describe('the connection is working memory, not a per-call cost', () => {
   it('reuses one connection across verbs', async () => {
     await act('snapshot');
