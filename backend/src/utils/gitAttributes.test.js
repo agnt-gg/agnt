@@ -134,8 +134,22 @@ describe('resolveEolPolicy', () => {
     expect(await resolveEolPolicy(path.join(root, 'a.js'))).toBe('\r\n');
   });
 
-  it('never throws on a nonsense path', async () => {
+  it('never throws on a nonsense path, and never answers for the cwd instead', async () => {
     await expect(resolveEolPolicy('')).resolves.toBeNull();
     await expect(resolveEolPolicy(null)).resolves.toBeNull();
+    await expect(resolveEolPolicy(undefined)).resolves.toBeNull();
+
+    // `path.resolve('')` is `process.cwd()`, so an empty path used to walk up
+    // from wherever the suite ran and borrow that directory's policy. The null
+    // above was therefore an accident of location, not a promise: it held in
+    // the main checkout and broke in every linked worktree, where the parent
+    // of the cwd is the repo root.
+    //
+    // Asserting the cwd HAS a policy is what stops the rest passing vacuously
+    // — this repo declares `* text=auto eol=lf`, so a path inside the cwd
+    // resolves to '\n' while the empty path must still refuse to borrow it.
+    const cwdPolicy = await resolveEolPolicy(path.join(process.cwd(), 'probe.js'));
+    expect(cwdPolicy, 'the suite must run inside a repo that declares a policy').not.toBeNull();
+    await expect(resolveEolPolicy('')).resolves.toBeNull();
   });
 });

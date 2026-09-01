@@ -172,6 +172,16 @@ async function rulesFor(dir) {
  * back to the file's own bytes — rather than failing the write.
  */
 export async function resolveEolPolicy(absPath, { maxDepth = 40 } = {}) {
+  // A falsy path is not a path, and must not be answered for. `path.resolve('')`
+  // is `process.cwd()`, so without this line an empty path silently walked up
+  // from wherever the process happened to start and returned a policy for an
+  // unrelated directory. The result therefore depended on the caller's cwd: in
+  // the main checkout the parent of cwd holds no `.gitattributes` and the
+  // accident looked like "returns null", while inside a linked worktree the
+  // parent IS the repo root, so the identical call returned '\n' and the test
+  // asserting otherwise failed in every worktree and nowhere else.
+  if (typeof absPath !== 'string' || absPath === '') return null;
+
   try {
     let dir = path.dirname(path.resolve(absPath));
     for (let depth = 0; depth < maxDepth; depth++) {
