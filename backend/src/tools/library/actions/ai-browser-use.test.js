@@ -40,12 +40,22 @@ vi.mock('./browserUseEnvironment.js', async (importOriginal) => ({
   ensureEnvironment: (...args) => environment.ensureEnvironment(...args),
 }));
 
+/** The launcher must never really spawn a browser from a unit test. */
+const ensureFallbackSurface = vi.fn();
+vi.mock('./browserFallbackSurface.js', () => ({
+  ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
+  isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
+}));
+
 const { default: action } = await import('./ai-browser-use.js');
 const { RUNNER_PY, RESULT_SENTINEL } = await import('./browserUseRunner.js');
+const { getActiveSurface, _resetSurfaces } = await import('../../../services/browserSurfaces.js');
 const { verifyGatewayToken, _resetGatewayTokens } = await import('../../../services/ai/localGatewayTokens.js');
 
 beforeEach(() => {
   _resetGatewayTokens();
+  _resetSurfaces();
+  ensureFallbackSurface.mockReset().mockResolvedValue('ws://127.0.0.1:9333/devtools/browser/hidden');
   environment.ensureEnvironment.mockReset();
   authManager.getValidAccessToken.mockReset().mockResolvedValue('sk-test-key');
   customProviders.isCustomProvider.mockReset().mockResolvedValue(false);
@@ -243,6 +253,44 @@ describe('reading the runner back', () => {
   it('reports nothing rather than guessing when the line is absent', () => {
     expect(action.parseResultLine('INFO  [agent] crashed')).toBeNull();
     expect(action.parseResultLine(`${RESULT_SENTINEL} {not json`)).toBeNull();
+  });
+});
+
+describe('a chat run with no widget NEVER opens an OS window', () => {
+  // THE REGRESSION THIS PINS. resolveSurface used to return '' here, which let
+  // the Python runner launch browser-use's OWN chromium — a visible window
+  // popping over the user's desktop. It was reported as a malfunction the very
+  // first time a real user hit the path, because from their chair it is one.
+  const CHAT = { userId: 'u1', provider: 'anthropic', workspaceState: { id: 'ws_1' } };
+
+  it('launches OUR browser hidden, and hands its endpoint to the runner', async () => {
+    const cdpUrl = await action.resolveSurface({}, CHAT, 'u1', 0);
+
+    expect(cdpUrl).toBe('ws://127.0.0.1:9333/devtools/browser/hidden');
+    expect(ensureFallbackSurface).toHaveBeenCalledTimes(1);
+    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
+  });
+
+  it('announces it, so the Browser widget can stream what the agent is doing', async () => {
+    await action.resolveSurface({}, CHAT, 'u1', 0);
+
+    const surface = getActiveSurface('u1');
+    expect(surface).not.toBeNull();
+    expect(surface.transport).toBe('host-cdp');
+  });
+
+  it('still yields a visible window when the user EXPLICITLY asked for one', async () => {
+    // externalWindow is the one lever, and it must keep working: '' tells the
+    // runner to launch browser-use's own window, which is the request.
+    const cdpUrl = await action.resolveSurface({ externalWindow: 'true' }, CHAT, 'u1', 0);
+    expect(cdpUrl).toBe('');
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('does not launch anything for a workflow run', async () => {
+    const cdpUrl = await action.resolveSurface({}, { userId: 'u1' }, 'u1', 0);
+    expect(cdpUrl).toBe('');
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
   });
 });
 

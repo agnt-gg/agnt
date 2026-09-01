@@ -1119,7 +1119,7 @@
       "category": "action",
       "type": "ai-browser-use",
       "icon": "web",
-      "description": "Runs a browser automation task with browser-use, driven by any connected AI provider. ALWAYS drives the Browser widget inside AGNT on the workspace canvas — opening one if none is there — so the user can watch the page being used. Do NOT set externalWindow unless the user explicitly asks for a separate, external or standalone browser window.",
+      "description": "Hands a WHOLE browsing task to an autonomous nested agent (browser-use) that runs its own perceive-decide-act loop and reports back when finished — slow but self-sufficient, right for workflows and fire-and-forget jobs. For interactive browsing in chat, PREFER ai_browser_act: it is far faster and you stay in control between steps. ALWAYS drives the Browser widget inside AGNT — opening a hidden browser the widget can stream if none is there — and NEVER opens a visible OS window unless externalWindow is set, which requires the user explicitly asking for a separate, external or standalone browser window.",
       "parameters": {
         "instructions": {
           "type": "string",

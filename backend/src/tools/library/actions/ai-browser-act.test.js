@@ -76,25 +76,25 @@ describe('which browser it drives', () => {
     expect(waitForSurface.mock.calls[1][2]).toBe(0);
   });
 
-  it('launches hidden on a canvas turn — the streamed widget is the window', async () => {
+  it('launches HIDDEN everywhere — a visible OS window is never a side effect', async () => {
+    // The first version launched visible in plain desktop chat ("the OS window
+    // is the only view there") and the very first real use reported that
+    // window as a malfunction. The Browser widget streams any host browser on
+    // any surface, so watchability never requires a window.
+    for (const [engine, canvas] of [[CHAT, true], [CHAT, false], [WORKFLOW, false]]) {
+      ensureFallbackSurface.mockClear();
+      isCanvasTurn.mockReturnValue(canvas);
+      await action.execute({ action: 'read' }, {}, engine);
+      expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
+    }
+  });
+
+  it('announces the launched browser so the widget\'s stream can find it', async () => {
     isCanvasTurn.mockReturnValue(true);
     const out = await action.execute({ action: 'read' }, {}, CHAT);
 
     expect(out.surface).toBe('Chrome');
-    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
-    // Announced so the widget's stream can find it.
     expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, expect.anything());
-  });
-
-  it('launches VISIBLE in plain desktop chat, where an OS window is the only view', async () => {
-    isCanvasTurn.mockReturnValue(false);
-    await action.execute({ action: 'read' }, {}, CHAT);
-    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(false);
-  });
-
-  it('launches hidden in a workflow — nobody is watching a server', async () => {
-    await action.execute({ action: 'read' }, {}, WORKFLOW);
-    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
   });
 });
 

@@ -33,6 +33,17 @@ vi.mock('../../../utils/PathManager.js', () => ({
   default: { getUserDataPath: () => tmpDir, getPath: (...p) => path.join(tmpDir, ...p) },
 }));
 
+// MOCKED because the no-widget fallback now launches a real browser — and a
+// unit test that spawns Chrome on the developer's machine is its own defect.
+const HIDDEN = 'ws://127.0.0.1:9333/devtools/browser/hidden';
+vi.mock('./browserFallbackSurface.js', () => ({
+  ensureFallbackSurface: vi.fn(async ({ hidden } = {}) => {
+    if (!hidden) throw new Error('a chat fallback must be hidden — visible windows are opt-in only');
+    return HIDDEN;
+  }),
+  isLoopbackWebSocket: (url) => /^ws:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(url || ''),
+}));
+
 const { default: action } = await import('./ai-browser-use.js');
 const {
   registerSurface, getActiveSurface, _resetSurfaces,
@@ -154,16 +165,16 @@ describe('the browser comes from the canvas', () => {
     expect(await action.resolveSurface({}, engine, 'u1', 50, alive)).toBe(CDP);
   });
 
-  it('launches instead of handing back a browser that has closed', async () => {
+  it('falls past a browser that has closed to a hidden one of OUR own', async () => {
     // The reported failure: a registry entry outlived its bridge, so the run
     // died on "[WinError 1225] The remote computer refused the network
-    // connection" with zero steps taken. Now an unreachable surface resolves
-    // to nothing, and the run proceeds in a browser that exists.
+    // connection" with zero steps taken. An unreachable surface resolves past,
+    // and the run proceeds in a browser that exists — ours, hidden, announced.
     registerSurface('u1', 'w_a', { workspaceId: 'ws_a', cdpUrl: CDP });
     const engine = chat('Gemini', {
       workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
     });
-    expect(await action.resolveSurface({}, engine, 'u1', 50, () => false)).toBe('');
+    expect(await action.resolveSurface({}, engine, 'u1', 50, () => false)).toBe(HIDDEN);
   });
 
   it('does not let another workspace steal the turn', async () => {
@@ -171,18 +182,29 @@ describe('the browser comes from the canvas', () => {
     const engine = chat('Gemini', {
       workspaceState: { id: 'ws_a', browserInstanceId: 'w_a' },
     });
-    expect(await action.resolveSurface({}, engine, 'u1', 50, alive)).toBe('');
+    // The other workspace's window is not adopted — a hidden browser is used.
+    expect(await action.resolveSurface({}, engine, 'u1', 50, alive)).toBe(HIDDEN);
   });
 
   it('never adopts another user\'s window', async () => {
     registerSurface('u2', 'w_1', { cdpUrl: CDP });
-    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe('');
+    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe(HIDDEN);
   });
 
-  it('launches its own browser when no window is open', async () => {
-    // Chat outside a workspace, or a non-desktop client. Launching is the
-    // honest fallback — refusing would make the tool unusable off-canvas.
-    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe('');
+  it('uses a HIDDEN browser of our own when no window is open — never an OS window', async () => {
+    // Chat outside a workspace, or a non-desktop client. Returning '' here
+    // used to let browser-use launch its OWN chromium — a visible window over
+    // the user's desktop, reported as a malfunction the first time a real user
+    // hit the path. The mock above throws on a visible launch, so this test
+    // also proves hidden:true was requested.
+    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe(HIDDEN);
+  });
+
+  it('announces the hidden browser so the Browser widget can stream it', async () => {
+    await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive);
+    const surface = getActiveSurface('u1');
+    expect(surface).not.toBeNull();
+    expect(surface.transport).toBe('host-cdp');
   });
 
   it('leaves the visible browser alone during a workflow run', async () => {
@@ -256,7 +278,9 @@ describe('the browser comes from the canvas', () => {
 
     expect(guidance).toMatch(/no longer open/);
     expect(guidance).toMatch(/run the task again/);
-    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe('');
+    // The corpse is pruned, so the retry resolves to the hidden fallback
+    // rather than the same refused socket.
+    expect(await action.resolveSurface({}, chat('Gemini'), 'u1', 50, alive)).toBe(HIDDEN);
   });
 
   it('does not blame the browser for an unrelated failure', () => {

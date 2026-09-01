@@ -190,11 +190,13 @@ class AIBrowserAct extends BaseAction {
     const surface = await waitForSurface(userId, { workspaceId, instanceId }, appearWait);
     if (surface) return { cdpUrl: surface.cdpUrl, kind: 'widget' };
 
-    // hidden except in plain desktop chat: on a canvas the streamed widget is
-    // the window, and in a workflow nobody is watching — but in main chat with
-    // no canvas an OS window is the only way the user can see anything.
-    const hidden = !isChat || isCanvasTurn(workflowEngine);
-    const cdpUrl = await ensureFallbackSurface({ hidden, log: (m) => console.log(m) });
+    // ALWAYS hidden. The first version made an exception for plain desktop
+    // chat ("an OS window is the only way to see anything there") and the very
+    // first real use reported that window as a malfunction — because from the
+    // user's chair a browser popping over their desktop unasked IS one. The
+    // Browser widget streams any host browser on any surface, so watchability
+    // does not require a window; it requires opening the widget.
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
     if (!isLoopbackWebSocket(cdpUrl)) {
       throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
     }

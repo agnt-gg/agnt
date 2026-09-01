@@ -95,6 +95,11 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   'tutorial',
   'canvas',
   'appearance',
+  // Three schemas. Being resident is what makes "open agnt.gg" work on turn 1
+  // without a discovery round — the first live run of the verbs tool failed
+  // precisely because the model could not see it and reached for the
+  // nested-agent tool it could.
+  'browser',
 ];
 
 /**

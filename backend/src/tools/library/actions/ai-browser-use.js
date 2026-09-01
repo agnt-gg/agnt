@@ -7,7 +7,8 @@ import AuthManager from '../../../services/auth/AuthManager.js';
 import PathManager from '../../../utils/PathManager.js';
 import CustomOpenAIProviderService from '../../../services/ai/CustomOpenAIProviderService.js';
 import { mintGatewayToken, revokeGatewayToken } from '../../../services/ai/localGatewayTokens.js';
-import { waitForSurface, forgetSurfaceByUrl } from '../../../services/browserSurfaces.js';
+import { waitForSurface, forgetSurfaceByUrl, announceHostSurface } from '../../../services/browserSurfaces.js';
+import { ensureFallbackSurface, isLoopbackWebSocket } from './browserFallbackSurface.js';
 import {
   ROUTE,
   resolveBrowserUseProvider,
@@ -38,10 +39,13 @@ class AIBrowserUse extends BaseAction {
     // model reaches for `externalWindow` whenever a task "feels" like it needs a
     // real browser, and the user watches an empty widget while the work happens
     // in a window they did not ask for.
-    description: 'Runs a browser automation task with browser-use, driven by any connected AI provider. '
-      + 'ALWAYS drives the Browser widget inside AGNT on the workspace canvas — opening one if none is '
-      + 'there — so the user can watch the page being used. Do NOT set externalWindow unless the user '
-      + 'explicitly asks for a separate, external or standalone browser window.',
+    description: 'Hands a WHOLE browsing task to an autonomous nested agent (browser-use) that runs its own '
+      + 'perceive-decide-act loop and reports back when finished — slow but self-sufficient, right for '
+      + 'workflows and fire-and-forget jobs. For interactive browsing in chat, PREFER ai_browser_act: it is '
+      + 'far faster and you stay in control between steps. ALWAYS drives the Browser widget inside AGNT — '
+      + 'opening a hidden browser the widget can stream if none is there — and NEVER opens a visible OS '
+      + 'window unless externalWindow is set, which requires the user explicitly asking for a separate, '
+      + 'external or standalone browser window.',
     parameters: {
       instructions: {
         type: 'string',
@@ -330,12 +334,21 @@ class AIBrowserUse extends BaseAction {
       : await waitForSurface(userId, { workspaceId, instanceId }, waitMs);
     if (surface) return surface.cdpUrl;
 
-    // No window to drive — chat outside a workspace, or the desktop app is not
-    // hosting one. Launching is the honest fallback, not an error.
+    // No widget to drive. Returning '' here used to let browser-use launch its
+    // OWN chromium — a surprise OS window over the user's desktop, reported as
+    // a malfunction every single time it happened. Now the fallback is a
+    // browser AGNT owns, launched HIDDEN and announced to the registry, so the
+    // Browser widget streams it wherever the user is. A visible window is
+    // opt-in via externalWindow, never a side effect.
     console.log(
-      `[Browser Agent] no browser surface is open for ${instanceId || workspaceId || 'this chat'}; launching one instead.`,
+      `[Browser Agent] no browser surface is open for ${instanceId || workspaceId || 'this chat'}; using a hidden browser.`,
     );
-    return '';
+    const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
+    if (!isLoopbackWebSocket(cdpUrl)) {
+      throw new Error(`Refusing to drive a non-local browser endpoint: ${cdpUrl}`);
+    }
+    announceHostSurface(userId, cdpUrl, { workspaceId });
+    return cdpUrl;
   }
 
   /**

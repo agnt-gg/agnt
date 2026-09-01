@@ -220,6 +220,16 @@ export const TOOL_GROUPS = {
     'set_background_image',
     'clear_background_image',
   ],
+  // The three browser tools, fastest first. Before this group existed they
+  // lived in the anonymous "installed" bucket — invisible until a blanket
+  // load, and even then shown only as a truncated sample. Measured result: the
+  // model picked the nested-agent tool it happened to see over the verbs tool
+  // it did not, on the exact task the verbs tool was built for.
+  browser: [
+    'ai_browser_act',
+    'ai_browser_use',
+    'ai_browser_control',
+  ],
   canvas: [
     'get_canvas_state',
     'inspect_canvas_widget',
@@ -295,6 +305,10 @@ export const GROUP_TRIGGERS = {
   memory: /\b(remember|memor(?:y|ies)|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|histor(?:y|ies)|traces?|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
   tutorial: /\b(tours?|tutorials?|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
   appearance: /\b(backgrounds?|wallpapers?|bg\s*images?|desktop\s*images?)\b/i,
+  // The bare-domain alternative ("go to agnt.gg") matters: that exact phrase
+  // carries none of the keywords and is the single most common way the request
+  // arrives.
+  browser: /\b(browsers?|browse|browsing|websites?|web\s?pages?|webpages?|urls?|navigate|surf|visit\s+\S+|[\w-]+\.(?:com|org|net|io|gg|ai|dev|app|co)\b)/i,
   canvas: /\b(canvas|workspaces?|widgets?|windows?|panes?|tabs?|open\s+(?:the\s+)?(?:traces|goals|dashboard|memory|artifacts)|looking\s+at|on\s+(?:my|the)\s+screen)\b/i,
   mcp: /\b(mcp|mcps|model\s*context\s*protocols?)\b/i,
 };
@@ -317,6 +331,7 @@ export const GROUP_DESCRIPTIONS = {
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
   appearance: "Set or clear the app's background image/video live (ephemeral overlay — never overwrites the user's saved theme background)",
+  browser: 'Drive a real browser: fast deterministic verbs (ai_browser_act — prefer this), an autonomous browser agent (ai_browser_use), and raw Python/CDP control (ai_browser_control)',
   canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
   mcp: 'Tools exposed by your configured MCP servers (mcp__<server>__<tool>)',
 };
@@ -375,6 +390,7 @@ export const GROUP_GUIDANCE = {
   memory: [],
   tutorial: ['IMPORTANT_GUIDELINES'],
   appearance: [],
+  browser: ['ASYNC_EXECUTION_GUIDANCE'],
 };
 
 /**
