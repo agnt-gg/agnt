@@ -21,7 +21,7 @@ import {
   getLiveSurface, forgetSurfaceByUrl, announceHostSurface, hostInstanceId,
 } from '../services/browserSurfaces.js';
 import { startViewing, stopViewing, isStreaming } from '../services/BrowserScreencastService.js';
-import { ensureFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
+import { ensureFallbackSurface, closeFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
 
 const router = express.Router();
 
@@ -170,6 +170,16 @@ router.post('/view', authenticateToken, async (req, res) => {
     // yet" — which is now the truth — rather than an error about a browser that
     // no longer exists.
     forgetSurfaceByUrl(userId, surface.cdpUrl);
+
+    // And if it was OUR browser, discard the session too — not just the
+    // registry entry. A browser can be alive enough to answer /json/version
+    // and still unable to stream (measured: a crashed-profile headless launch
+    // whose renderer hung — attach succeeded, every page command timed out).
+    // Without this, the launcher re-adopts that zombie on the next poll and
+    // the failure repeats identically forever. With it, the next poll launches
+    // fresh, so ANY paralysis we have not foreseen heals in one cycle.
+    if (surface.transport === 'host-cdp') closeFallbackSurface();
+
     console.log(`[Screencast] ${surface.instanceId} died before it could be watched: ${err.message}`);
     return res.status(404).json({ success: false, error: 'There is no browser to watch yet.', reason: 'stale' });
   }

@@ -135,6 +135,23 @@ describe('the browser it opens is its own', () => {
     expect(url).toContain('51999');
   });
 
+  it('always hides the crash-restore bubble — a crashed profile must not paralyze the next launch', async () => {
+    // Measured on Chrome 151: after a force-kill marks the profile crashed, a
+    // HEADLESS launch on it hangs its renderer on the restore path. CDP accepts
+    // connections, targets list, attach succeeds — and every page command times
+    // out silently, which reads as "the stream is broken" with no error
+    // anywhere. Same profile with this flag: streams a frame. Force-kills are
+    // routine here (closeFallbackSurface uses taskkill), so this flag is
+    // load-bearing, not cosmetic.
+    await ensureFallbackSurface({ log: () => {} });
+    expect(launchCalls()[0].args).toContain('--hide-crash-restore-bubble');
+
+    closeFallbackSurface();
+    spawned = [];
+    await ensureFallbackSurface({ log: () => {}, hidden: true });
+    expect(launchCalls()[0].args).toContain('--hide-crash-restore-bubble');
+  });
+
   it('launches HIDDEN with a self-naming start page when asked', async () => {
     // hidden = "the stream is the window". A visible launch here put a second
     // Chrome window on the host desktop; and about:blank streams as a white
@@ -360,6 +377,34 @@ describe('a browser that outlived AGNT', () => {
     expect(launchCalls()[0].command.toLowerCase()).toMatch(/brave/);
     expect(_fallbackSessionForTests().adopted).toBe(false);
     expect(_fallbackSessionForTests().label).toBe('Brave');
+  });
+
+  it('FORGETS an adopted browser that has died, instead of serving it forever', async () => {
+    // THE WEDGE THIS PINS (measured live 2026-09-01): an adopted session has no
+    // child handle, so nothing ever told the launcher its browser died. It
+    // returned the same dead endpoint to every caller, every viewer got the
+    // same refused connection, and no path in the process could clear it — the
+    // backend stayed wedged until a human restarted it.
+    fs.mkdirSync(PROFILE, { recursive: true });
+    fs.writeFileSync(PORT_FILE, '51999\n/devtools/browser/adopted-1\n');
+    profileHolderIsLive(true);
+
+    const first = await ensureFallbackSurface({ log: () => {} });
+    expect(first).toBe('ws://127.0.0.1:51999/devtools/browser/adopted-1');
+    expect(_fallbackSessionForTests().adopted).toBe(true);
+
+    // The adopted browser dies. Its endpoint now refuses everything.
+    globalThis.fetch.mockRestore();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => { throw new Error('ECONNREFUSED'); });
+    // Its stale port file must not resurrect it either.
+    fs.writeFileSync(PORT_FILE, '51999\n/devtools/browser/adopted-1\n');
+
+    const second = await ensureFallbackSurface({ log: () => {} });
+
+    // A fresh browser was launched; the corpse was not served again.
+    expect(launchCalls()).toHaveLength(1);
+    expect(_fallbackSessionForTests().adopted).toBe(false);
+    expect(second).toContain('ws://127.0.0.1:');
   });
 
   it('adopts happily when the marker says it IS the browser asked for', async () => {

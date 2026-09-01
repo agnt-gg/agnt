@@ -35,8 +35,10 @@ vi.mock('./Middleware.js', () => ({
 
 /** The launcher is the one collaborator we do not want really running. */
 const ensureFallbackSurface = vi.fn();
+const closeFallbackSurface = vi.fn();
 vi.mock('../tools/library/actions/browserFallbackSurface.js', () => ({
   ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
+  closeFallbackSurface: (...a) => closeFallbackSurface(...a),
   default: (...a) => ensureFallbackSurface(...a),
 }));
 
@@ -107,6 +109,7 @@ afterAll(() => new Promise((resolve) => server.close(resolve)));
 beforeEach(() => {
   _resetSurfaces();
   ensureFallbackSurface.mockReset();
+  closeFallbackSurface.mockReset();
 });
 
 afterEach(() => _stopAll());
@@ -159,6 +162,30 @@ describe('a dead surface is never handed to a viewer', () => {
     expect((await response.json()).instanceId).toBe('w_live');
     await browser.close();
   });
+});
+
+describe('a host browser that cannot stream is discarded, not re-adopted', () => {
+  it('drops the launcher session when attach fails against a zombie', async () => {
+    // A browser can be alive enough to pass a liveness probe and still unable
+    // to stream — measured: a crashed-profile headless launch whose renderer
+    // hung; attach succeeded, every page command timed out. Without discarding
+    // the session, the launcher re-adopts that zombie on the next poll and the
+    // failure repeats identically forever.
+    const zombie = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((resolve) => { zombie.once('listening', resolve); });
+    // Accepts connections, answers NOTHING — the shape of a hung renderer.
+    const url = `ws://127.0.0.1:${zombie.address().port}/devtools/browser/zombie`;
+    registerSurface('u1', 'host:u1', { cdpUrl: url, transport: 'host-cdp' });
+
+    const response = await view({ launch: false });
+
+    expect(response.status).toBe(404);
+    expect((await response.json()).reason).toBe('stale');
+    expect(closeFallbackSurface).toHaveBeenCalledTimes(1);
+
+    for (const client of zombie.clients) { try { client.terminate(); } catch { /* gone */ } }
+    await new Promise((resolve) => { zombie.close(resolve); });
+  }, 15000);
 });
 
 describe('opening a browser when there is nothing to watch', () => {

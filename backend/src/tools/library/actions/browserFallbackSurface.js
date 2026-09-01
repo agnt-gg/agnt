@@ -220,10 +220,32 @@ export function isLoopbackWebSocket(url) {
 function isAlive() {
   if (!session) return false;
   // An ADOPTED browser has no child handle — we did not spawn this process, a
-  // previous run of AGNT did. Its liveness is proven by the CDP endpoint, and
-  // the step's own daemon preflight is what notices if it goes away.
+  // previous run of AGNT did. This check is deliberately optimistic; the
+  // ENDPOINT probe in ensureFallbackSurface is what makes it honest. Measured
+  // 2026-09-01: trusting adoption unconditionally made a dead adopted browser
+  // IMMORTAL — every caller was handed the same refused endpoint forever, and
+  // no path in the process could clear it short of a restart.
   if (session.adopted) return Boolean(session.cdpUrl);
   return Boolean(session.child && session.child.exitCode === null && !session.child.killed);
+}
+
+/**
+ * Does the browser behind this CDP endpoint still answer?
+ *
+ * A cheap HTTP probe of /json/version — the same signal findProfileHolder
+ * trusts before adopting. Used to re-verify ADOPTED sessions on reuse, because
+ * an adopted browser is a process we never owned: no child handle, no exit
+ * event, nothing that tells us it died except asking.
+ */
+async function endpointAnswers(cdpUrl) {
+  const port = String(cdpUrl || '').match(/^ws:\/\/(?:127\.0\.0\.1|\[::1\]):(\d+)\//)?.[1];
+  if (!port) return false;
+  try {
+    await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(700) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -353,7 +375,15 @@ export async function ensureFallbackSurface({ log = console.log, browser = '', h
   // consumer may be mid-task in — the agent driving a page, or a viewer
   // watching one — and every browser is watchable through the stream either
   // way. The preference only decides how a NEW browser comes up.
-  if (isAlive() && session.cdpUrl) return session.cdpUrl;
+  if (isAlive() && session.cdpUrl) {
+    // A spawned child proves its liveness through its exit handler. An ADOPTED
+    // browser proves nothing — so ask it. Skipping this is the bug that wedged
+    // a backend permanently on a dead adopted endpoint.
+    if (!session.adopted) return session.cdpUrl;
+    if (await endpointAnswers(session.cdpUrl)) return session.cdpUrl;
+    log('[Browser Control] the adopted browser is gone; forgetting it.');
+    session = null;
+  }
   if (launching) return launching;
 
   launching = launchBrowser({ log, browser: wanted, hidden }).finally(() => { launching = null; });
@@ -443,6 +473,14 @@ async function launchBrowser({ log, browser, hidden = false }) {
     // Not the user's browser, so it must never try to become it.
     '--no-service-autorun',
     '--disable-features=Translate,OptimizationHints',
+    // NON-NEGOTIABLE, and not cosmetic. Anything that force-kills this browser
+    // (closeFallbackSurface's taskkill, a crash, a user) marks the profile
+    // crashed, and the next HEADLESS launch on a crashed profile hangs its
+    // renderer on the restore path: CDP accepts connections, targets list,
+    // attach succeeds — and every page command times out silently. Measured on
+    // Chrome 151 (2026-09-01): same profile, with this flag PASS, without it
+    // a permanent hang that reads as "the stream is broken".
+    '--hide-crash-restore-bubble',
     ...runtimeFlags,
     // See START_PAGE: a stream of about:blank is indistinguishable from a
     // broken stream. The agent's own visible window keeps about:blank — an OS
