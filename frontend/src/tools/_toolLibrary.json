@@ -1321,6 +1321,100 @@
       }
     },
     {
+      "title": "Browser Actions",
+      "category": "action",
+      "type": "ai-browser-act",
+      "icon": "globe",
+      "description": "The FAST way to browse: drive the browser directly with deterministic verbs — no nested agent, no code, each call is milliseconds. The loop: action=\"navigate\" with url, then action=\"snapshot\" to see the page as an accessibility tree where every interactive element has a @ref, then action=\"click\" or \"type\" with that ref — and snapshot again after anything changes, because refs die on navigation. snapshot takes query to filter big pages; \"read\" returns the page text; \"press\" sends a key (Enter submits); \"scroll\" moves the viewport; \"back\" is history. A browser is always available: it drives the Browser widget when one is open and quietly opens a clean browser otherwise — never ask the user to open one. Prefer this for all interactive browsing; use ai_browser_use only to hand a whole task to an autonomous agent, and ai-browser-control only when you need raw Python/CDP.",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "text",
+          "description": "One of: navigate, snapshot, click, type, press, scroll, read, back."
+        },
+        "url": {
+          "type": "string",
+          "inputType": "text",
+          "description": "For navigate: where to go. A bare domain is fine — https:// is assumed."
+        },
+        "ref": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For click/type: the @ref from the latest snapshot, e.g. \"e12\" or \"@e12\"."
+        },
+        "text": {
+          "type": "string",
+          "inputType": "text",
+          "description": "For type: replaces what is in the field (it is selected first)."
+        },
+        "submit": {
+          "type": "boolean",
+          "inputType": "checkbox",
+          "inputSize": "half",
+          "default": false,
+          "description": "For type: press Enter afterwards."
+        },
+        "key": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For press: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, PageUp/Down, Home, End."
+        },
+        "deltaY": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "default": 600,
+          "description": "For scroll: pixels; positive scrolls down."
+        },
+        "selector": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For read: optional CSS selector; whole page when blank."
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "For snapshot: only include elements whose name or role contains this."
+        },
+        "maxChars": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "description": "Cap for snapshot (default 8000) and read (default 6000)."
+        }
+      },
+      "outputs": {
+        "url": {
+          "type": "string",
+          "description": "Where the page is after the action"
+        },
+        "title": {
+          "type": "string",
+          "description": "The page title after the action"
+        },
+        "snapshot": {
+          "type": "string",
+          "description": "The accessibility tree with @refs (snapshot only)"
+        },
+        "text": {
+          "type": "string",
+          "description": "The page text (read only)"
+        },
+        "surface": {
+          "type": "string",
+          "description": "\"widget\" for the canvas Browser widget, otherwise the launched browser"
+        },
+        "error": {
+          "type": "string",
+          "description": "Why the action could not be performed"
+        }
+      }
+    },
+    {
       "title": "Discord API",
       "category": "action",
       "type": "discord-api",

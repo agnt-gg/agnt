@@ -85,6 +85,9 @@ export const TOOL_WIDGET_MAP = {
   // separate window; opening the widget on the first call keeps the work on the
   // canvas, beside the conversation, where the user is already looking.
   ai_browser_control: { widgetId: 'browser' },
+  // Browser Actions is the verbs path — the one agents reach for by default —
+  // and it streams into the same widget so the user watches the clicks land.
+  ai_browser_act: { widgetId: 'browser' },
   update_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   revert_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   list_workflow_versions: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
