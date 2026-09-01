@@ -5185,7 +5185,7 @@ tokens to drift from the tool that already does all of it.
 **POST** `/view`
 
 - **Authentication**: Required
-- **Body**: `{ instanceId?, workspaceId? }`
+- **Body**: `{ instanceId?, workspaceId?, launch? }`
 - **Description**: Starts a CDP screencast of the named surface, or joins one
   already running, and returns `{ instanceId, transport, viewers, joined }`.
   Frames are then delivered over Socket.IO as `browser:frame` to the caller's
@@ -5194,9 +5194,23 @@ tokens to drift from the tool that already does all of it.
 - **The client never supplies a `cdpUrl`** — it does not have one and must not.
   It names WHICH surface it means; the backend looks the endpoint up. A viewer
   can therefore only ever watch a browser this backend already owns.
-- **Errors**: `404` when no surface exists yet (the normal cold-start case — the
-  widget opens the instant the tool is called, before a browser is launched);
-  `409` when the browser died between the registry write and the call.
+- **Candidates are PROBED, never trusted.** The registry is in memory and is
+  updated by a widget that cannot promise to run its own teardown, so an entry
+  routinely outlives the socket it names. This route connects before it answers
+  and drops every candidate that does not, which is what stops a dead surface
+  being handed out repeatedly. Reporting a remembered endpoint produced exactly
+  that: `ECONNREFUSED 127.0.0.1:<port>` on every call, forever, for a browser
+  that no longer existed.
+- **Launches on demand** when nothing live is found, unless `launch: false`.
+  This is not a race with a chat turn: the launcher shares one in-flight launch
+  and reuses a running browser, so a widget mounting as a turn starts gets the
+  same browser rather than a second one.
+- **Errors**: `404` when there is nothing to watch — the normal cold-start case,
+  and also what is returned (with `reason: "stale"`) when a browser dies in the
+  gap between the probe and the attach. The entry is forgotten first, so a
+  retrying client recovers instead of repeating the same failure. `503` when no
+  browser can be opened on that machine at all; a client should stop polling and
+  show the message rather than spin forever.
 
 ### Stop watching
 
@@ -5221,6 +5235,7 @@ tokens to drift from the tool that already does all of it.
 |---|---|---|
 | server → client | `browser:frame` | `{ instanceId, data, metadata, frameId }` |
 | server → client | `browser:navigated` | `{ instanceId, url }` |
+| server → client | `browser:stopped` | `{ instanceId, reason }` |
 | client → server | `browser:ack` | `{ instanceId, frameId }` |
 | client → server | `browser:input` | `{ instanceId, method, params }` |
 | client → server | `browser:watching` / `browser:unwatching` | `{ instanceId }` |
@@ -5229,6 +5244,11 @@ tokens to drift from the tool that already does all of it.
 will not send the next frame until the current one is acked, so acking on render
 is what makes a slow viewer throttle itself instead of drowning in frames it
 cannot draw.
+
+`browser:stopped` is emitted only when a stream ends on its OWN — the browser
+exited or the connection dropped. A viewer that has not been told keeps showing
+the last frame it received, which is indistinguishable from a page that simply
+stopped changing. It is deliberately NOT sent when a viewer leaves on purpose.
 
 `browser:input` accepts only `Input.dispatchMouseEvent`, `Input.dispatchKeyEvent`
 and `Input.insertText`. The allowlist is by exact method, not by `Input.` prefix

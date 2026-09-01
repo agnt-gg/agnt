@@ -141,8 +141,20 @@ async function startWatching() {
 
     if (!response.ok) {
       // 404 means "not yet", which is the normal cold-start case and not worth
-      // showing as a failure. Anything else is a real problem worth naming.
-      error.value = response.status === 404 ? '' : (body.error || 'Could not watch that browser.');
+      // showing as a failure — keep polling quietly.
+      if (response.status === 404) {
+        error.value = '';
+        return false;
+      }
+
+      // 503 means no browser can be opened on that machine at all (none
+      // installed, or it will not start). Polling cannot fix that, and a widget
+      // that retries forever never tells the user what is wrong.
+      error.value = body.error || 'Could not watch that browser.';
+      if (response.status === 503) {
+        waiting.value = false;
+        return 'stop';
+      }
       return false;
     }
 
@@ -160,7 +172,8 @@ async function startWatching() {
 async function pollForSurface() {
   if (instanceId) return;
   const started = await startWatching();
-  if (!started) retryTimer = setTimeout(pollForSurface, RETRY_MS);
+  if (started === true || started === 'stop') return;
+  retryTimer = setTimeout(pollForSurface, RETRY_MS);
 }
 
 // ── input ──────────────────────────────────────────────────────────────────
@@ -267,6 +280,24 @@ function onNavigated(payload) {
   emit('page', { url: payload.url || '', title: '' });
 }
 
+/**
+ * The browser we were watching went away.
+ *
+ * Without this the canvas keeps showing the last frame it received, which is
+ * indistinguishable from a page that simply stopped changing — the most
+ * confusing possible failure, because everything looks fine. Dropping back to
+ * polling picks up whatever opens next, including the browser the agent is
+ * about to launch for its next step.
+ */
+function onStopped(payload) {
+  if (!instanceId || payload.instanceId !== instanceId) return;
+  instanceId = null;
+  hasFrame.value = false;
+  waiting.value = true;
+  canInteract.value = false;
+  pollForSurface();
+}
+
 onMounted(() => {
   socket = getRealtimeSocket();
   if (!socket) {
@@ -278,6 +309,7 @@ onMounted(() => {
   }
   socket.on('browser:frame', onFrame);
   socket.on('browser:navigated', onNavigated);
+  socket.on('browser:stopped', onStopped);
   pollForSurface();
 });
 
@@ -285,6 +317,7 @@ onBeforeUnmount(() => {
   clearTimeout(retryTimer);
   socket?.off('browser:frame', onFrame);
   socket?.off('browser:navigated', onNavigated);
+  socket?.off('browser:stopped', onStopped);
   if (instanceId) {
     socket?.emit('browser:unwatching', { instanceId });
     // Drop this viewer's ref-count. The browser itself keeps running — the

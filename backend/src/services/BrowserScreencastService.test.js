@@ -261,6 +261,30 @@ describe('a browser that goes away', () => {
     expect(streamsForUser('u1')).toHaveLength(0);
   });
 
+  it('TELLS its viewers, so they recover instead of freezing on the last frame', async () => {
+    await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    await browser.close();
+    await settle();
+
+    // A canvas still showing the last frame is indistinguishable from a page
+    // that stopped changing — everything LOOKS fine, which is the most
+    // confusing way for this to fail.
+    const stopped = broadcastToUser.mock.calls.filter(([, event]) => event === 'browser:stopped');
+    expect(stopped).toHaveLength(1);
+    expect(stopped[0][0]).toBe('u1');
+    expect(stopped[0][2].instanceId).toBe('host:u1');
+  });
+
+  it('does NOT announce a stop the viewer asked for', async () => {
+    await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    stopViewing('host:u1');
+    await settle();
+
+    // Telling a viewer that leaving worked would send it straight back to
+    // polling for the browser it just chose to stop watching.
+    expect(broadcastToUser.mock.calls.filter(([, e]) => e === 'browser:stopped')).toHaveLength(0);
+  });
+
   it('stopping something that was never started is not an error', () => {
     expect(stopViewing('never').ok).toBe(true);
   });

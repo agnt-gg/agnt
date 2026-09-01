@@ -260,7 +260,7 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
 
 function handleEvent(session, message) {
   if (message.method === '__closed') {
-    stopSession(session.instanceId, message.params?.reason || 'the browser went away');
+    stopSession(session.instanceId, message.params?.reason || 'the browser went away', { notify: true });
     return;
   }
 
@@ -347,11 +347,20 @@ export function stopViewing(instanceId) {
   return { ok: true, viewers: 0 };
 }
 
-function stopSession(instanceId, reason) {
+function stopSession(instanceId, reason, { notify = false } = {}) {
   const session = sessions.get(instanceId);
   if (!session) return;
   sessions.delete(instanceId);
   clearTimeout(session.ackTimer);
+
+  // A viewer whose browser died would otherwise sit on its last frame forever,
+  // looking like a page that simply stopped changing. Telling it lets it go
+  // back to polling and pick up whatever opens next. Only sent when the stream
+  // ended on its OWN — a viewer that deliberately left does not need to hear
+  // that leaving worked.
+  if (notify) {
+    broadcastToUser(session.userId, 'browser:stopped', { instanceId, reason });
+  }
 
   // Best effort: if the browser is already gone this throws, and that is fine —
   // the point of stopping the screencast is to leave a browser that SURVIVES in

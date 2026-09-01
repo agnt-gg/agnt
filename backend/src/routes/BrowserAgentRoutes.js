@@ -16,8 +16,12 @@
 
 import express from 'express';
 import { authenticateToken } from './Middleware.js';
-import { registerSurface, unregisterSurface, getActiveSurface } from '../services/browserSurfaces.js';
+import {
+  registerSurface, unregisterSurface, getActiveSurface,
+  getLiveSurface, forgetSurfaceByUrl, announceHostSurface, hostInstanceId,
+} from '../services/browserSurfaces.js';
 import { startViewing, stopViewing, isStreaming } from '../services/BrowserScreencastService.js';
+import { ensureFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
 
 const router = express.Router();
 
@@ -102,18 +106,53 @@ router.get('/surface', authenticateToken, (req, res) => {
 router.post('/view', authenticateToken, async (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
 
-  const surface = getActiveSurface(req.user.id, {
-    instanceId: req.body?.instanceId || null,
-    workspaceId: req.body?.workspaceId || null,
-  });
+  const userId = req.user.id;
+  const workspaceId = req.body?.workspaceId || null;
+  const selector = { instanceId: req.body?.instanceId || null, workspaceId };
+
+  // getLiveSurface, NEVER getActiveSurface.
+  //
+  // THE BUG THIS CLOSES. getActiveSurface reports what the registry BELIEVES;
+  // it does not touch the network. browserSurfaces.js says why that is never
+  // enough, in its own header: "A dead ws:// URL is indistinguishable from a
+  // live one by inspection, so resolution does not inspect: it CONNECTS."
+  //
+  // Handing a viewer a remembered endpoint produced exactly the failure that
+  // warning describes. A widget had announced a bridge, the widget went away
+  // without a DELETE (a reload, a crash, a webContents rebuild), and the entry
+  // outlived the socket. Every /view call then dialled a port with nothing
+  // behind it and returned `ECONNREFUSED 127.0.0.1:<port>` — forever, because
+  // nothing on this path ever pruned the corpse. The agent could not use that
+  // surface either, but IT probes, so it quietly launched a browser and carried
+  // on while the viewer stared at the error.
+  //
+  // getLiveSurface probes each candidate and DROPS the ones that do not answer,
+  // so this path now self-heals instead of failing identically every time.
+  let surface = await getLiveSurface(userId, selector);
+
+  // Nothing live. Open one, the way the desktop widget always had one to show.
+  //
+  // Not a race with the tool: ensureFallbackSurface shares a single in-flight
+  // launch and reuses a running browser, so a widget mounting at the same moment
+  // a chat turn starts gets the SAME browser, not a second one.
+  if (!surface && req.body?.launch !== false) {
+    try {
+      const cdpUrl = await ensureFallbackSurface({ log: (m) => console.log(m) });
+      announceHostSurface(userId, cdpUrl, { workspaceId });
+      surface = {
+        instanceId: hostInstanceId(userId), cdpUrl, transport: 'host-cdp', url: 'about:blank',
+      };
+    } catch (err) {
+      // No browser installed, or it would not start. That is a real answer, and
+      // the message names it rather than leaving the widget spinning.
+      return res.status(503).json({ success: false, error: `Could not open a browser to watch: ${err.message}` });
+    }
+  }
+
   if (!surface) return res.status(404).json({ success: false, error: 'There is no browser to watch yet.' });
 
   try {
-    const result = await startViewing({
-      userId: req.user.id,
-      instanceId: surface.instanceId,
-      cdpUrl: surface.cdpUrl,
-    });
+    const result = await startViewing({ userId, instanceId: surface.instanceId, cdpUrl: surface.cdpUrl });
     return res.json({
       success: true,
       instanceId: surface.instanceId,
@@ -122,10 +161,13 @@ router.post('/view', authenticateToken, async (req, res) => {
       ...result,
     });
   } catch (err) {
-    // A browser that died between the registry write and this call is the
-    // common case here, and it is recoverable by trying again — so say so
-    // rather than returning a bare 500.
-    return res.status(409).json({ success: false, error: `Could not start watching that browser: ${err.message}` });
+    // The narrow race the probe cannot close: the browser died between the probe
+    // and the attach. Forget it so the next poll starts clean, and report "none
+    // yet" — which is now the truth — rather than an error about a browser that
+    // no longer exists.
+    forgetSurfaceByUrl(userId, surface.cdpUrl);
+    console.log(`[Screencast] ${surface.instanceId} died before it could be watched: ${err.message}`);
+    return res.status(404).json({ success: false, error: 'There is no browser to watch yet.', reason: 'stale' });
   }
 });
 
