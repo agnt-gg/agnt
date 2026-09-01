@@ -1,10 +1,23 @@
 <template>
-  <div class="browser-live-card">
+  <!--
+    v-if="owns" on the ROOT, so a superseded card renders nothing whatsoever.
+
+    The first version showed a placeholder in a full-height body, and a turn
+    that made six browser calls left five dead grey panes stacked down the
+    transcript — over two thousand pixels of nothing, each announcing that the
+    interesting one was somewhere further down. The live browser is ONE thing;
+    it belongs in one place, at the newest step.
+
+    The component still mounts either way, so it still registers its order with
+    the registry and can take the stream over when a newer card unmounts. Only
+    the DOM is empty.
+  -->
+  <div v-if="owns" class="browser-live-card">
     <div class="live-header" @click="collapsed = !collapsed">
       <span class="live-caret">{{ collapsed ? '▸' : '▾' }}</span>
-      <span class="live-dot" :class="{ on: owns }"></span>
-      <span class="live-title">{{ owns ? 'Live browser' : 'Browser' }}</span>
-      <span v-if="owns && pageUrl" class="live-url">{{ pageUrl }}</span>
+      <span class="live-dot on"></span>
+      <span class="live-title">Live browser</span>
+      <span v-if="pageUrl" class="live-url">{{ pageUrl }}</span>
     </div>
 
     <div v-if="!collapsed" class="live-body">
@@ -15,10 +28,7 @@
         would open a browser just by being rendered, including when the user
         scrolls back through old messages.
       -->
-      <BrowserStreamView v-if="owns" :launch="false" @page="onPage" />
-      <div v-else class="live-superseded">
-        A newer browser step is streaming further down.
-      </div>
+      <BrowserStreamView :launch="false" @page="onPage" />
     </div>
   </div>
 </template>
@@ -138,14 +148,4 @@ onBeforeUnmount(() => releaseLiveView(props.cardKey));
   position: relative;
 }
 
-.live-superseded {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  font-size: 12px;
-  color: var(--color-text-muted, #556);
-  text-align: center;
-  padding: 16px;
-}
 </style>

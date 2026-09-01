@@ -79,4 +79,31 @@ describe('giving it up', () => {
     expect(ownsLiveView('a')).toBe(false);
     expect(ownsLiveView(null)).toBe(false);
   });
+
+  it('HANDS OVER to the next-highest card still mounted', () => {
+    // A virtualised transcript reclaims rows as the user scrolls, so the owner
+    // can vanish while older cards are still on screen. Without a handover the
+    // live view would disappear entirely and nothing could take it — the
+    // remaining cards only claim once, at mount.
+    claimLiveView('old', 100);
+    claimLiveView('mid', 200);
+    claimLiveView('new', 300);
+    expect(ownsLiveView('new')).toBe(true);
+
+    releaseLiveView('new');
+    expect(ownsLiveView('mid')).toBe(true);
+
+    releaseLiveView('mid');
+    expect(ownsLiveView('old')).toBe(true);
+
+    releaseLiveView('old');
+    expect(activeLiveKey.value).toBeNull();
+  });
+
+  it('re-mounting an older card does not disturb the owner', () => {
+    claimLiveView('new', 300);
+    // Scrolling back up re-mounts an older card; it registers but must not win.
+    expect(claimLiveView('old', 100)).toBe(false);
+    expect(ownsLiveView('new')).toBe(true);
+  });
 });
