@@ -1,7 +1,7 @@
 import BaseAction from '../BaseAction.js';
 import { spawn } from 'child_process';
 import {
-  waitForSurface, forgetSurfaceByUrl, isLocalBridgeUrl, getActiveSurface, announceHostSurface,
+  waitForSurface, forgetSurfaceByUrl, getActiveSurface, announceHostSurface, surfaceKind,
 } from '../../../services/browserSurfaces.js';
 import {
   ensureFallbackSurface, closeFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
@@ -343,10 +343,19 @@ class AIBrowserControl extends BaseAction {
       // this is the last point before that string becomes an environment
       // variable for a subprocess. A non-local endpoint here would mean the
       // registry itself was wrong, which is worth failing loudly over.
-      if (!isLocalBridgeUrl(surface.cdpUrl)) {
+      // isLoopbackWebSocket, NOT the bridge-shaped isLocalBridgeUrl. The
+      // registry holds two shapes now: an Electron bridge
+      // (ws://127.0.0.1:PORT/token) and a browser AGNT launched
+      // (ws://127.0.0.1:PORT/devtools/browser/<uuid>), because launched
+      // browsers announce themselves so the widget can stream them. The
+      // bridge regex rejects the slashes in the second form, so this refused
+      // a perfectly local browser it had opened itself \u2014 reported live as
+      // "Refusing to drive a non-local browser endpoint: ws://127.0.0.1:...".
+      // Loopback is the property this guard actually exists to enforce.
+      if (!isLoopbackWebSocket(surface.cdpUrl)) {
         throw new Error(`Refusing to drive a non-local browser endpoint: ${surface.cdpUrl}`);
       }
-      return { cdpUrl: surface.cdpUrl, kind: 'widget' };
+      return { cdpUrl: surface.cdpUrl, kind: surfaceKind(surface) };
     }
 
     const cdpUrl = await ensureFallbackSurface({ log: (m) => console.log(m) });

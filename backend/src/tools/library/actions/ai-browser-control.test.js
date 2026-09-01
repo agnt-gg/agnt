@@ -46,6 +46,7 @@ vi.mock('../../../services/browserSurfaces.js', () => ({
   forgetSurfaceByUrl: (...a) => forgetSurfaceByUrl(...a),
   getActiveSurface: (...a) => getActiveSurface(...a),
   announceHostSurface: (...a) => announceHostSurface(...a),
+  surfaceKind: (s) => (s?.transport === 'host-cdp' ? 'launched' : 'widget'),
   // The real predicate: only ws://127.0.0.1:<port>/<token> is a local bridge.
   isLocalBridgeUrl: (url) => /^ws:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+$/.test(url || ''),
 }));

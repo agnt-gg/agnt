@@ -71,14 +71,29 @@ async function fakeBrowser() {
         case 'Accessibility.getFullAXTree':
           return reply({ nodes: state.axNodes });
         case 'DOM.getBoxModel':
+          // 99 is the hidden node: Chromium refuses a box for anything with
+          // no layout, and it refuses it as a protocol ERROR, not an empty
+          // result — which is why the driver must catch rather than check.
+          if (m.params.backendNodeId === 99) {
+            return socket.send(JSON.stringify({
+              id: m.id, error: { message: 'Could not compute box model.' },
+            }));
+          }
           return reply({ model: { content: [10, 20, 110, 20, 110, 60, 10, 60] } });
         case 'DOM.getDocument':
           return reply({ root: { nodeId: 1 } });
-        case 'DOM.querySelector':
-          // Only '#go' exists on this fake page; everything else misses.
-          return reply({ nodeId: m.params.selector === '#go' ? 42 : 0 });
+        case 'DOM.querySelectorAll': {
+          // '#hidden-first' models the real shape that broke on agnt.gg: a
+          // display:none copy earlier in the document than the visible one.
+          const matches = {
+            '#go': [42],
+            '#hidden-first': [90, 42],
+            '#all-hidden': [90],
+          };
+          return reply({ nodeIds: matches[m.params.selector] || [] });
+        }
         case 'DOM.describeNode':
-          return reply({ node: { backendNodeId: 12 } });
+          return reply({ node: { backendNodeId: m.params.nodeId === 90 ? 99 : 12 } });
         case 'Page.getNavigationHistory':
           return reply({ currentIndex: 1, entries: [{ id: 7 }, { id: 8 }] });
         case 'Page.navigateToHistoryEntry':
@@ -194,6 +209,26 @@ describe('a CSS selector is the deterministic handle — no snapshot, no model, 
 
   it('says plainly when nothing matches', async () => {
     await expect(act('click', { selector: '#nope' })).rejects.toThrow(/Nothing on the page matches/);
+  });
+
+  it('prefers a match that is LAID OUT over the first one in the document', async () => {
+    // THE REGRESSION THIS PINS (found on the live site): a[href="#pricing"]
+    // matched a display:none mobile-nav copy before the visible link, and the
+    // click failed on a raw CDP "Could not compute box model".
+    const result = await act('click', { selector: '#hidden-first' });
+
+    const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
+    expect(mouse.map((x) => x.params.type)).toEqual(['mousePressed', 'mouseReleased']);
+    // The centre of the VISIBLE node's box, not a failure on the hidden one.
+    expect(mouse[0].params.x).toBe(60);
+    expect(result.url).toBeTruthy();
+  });
+
+  it('explains itself when no match is laid out at all', async () => {
+    // "Could not compute box model" names an internal step and offers no
+    // remedy; a person needs to know the element is hidden and what to do.
+    await expect(act('click', { selector: '#all-hidden' }))
+      .rejects.toThrow(/hidden, collapsed, or zero-sized/);
   });
 
   it('still works after a navigation — selectors cannot go stale', async () => {

@@ -77,6 +77,10 @@ function endpointIsValidFor(transport, cdpUrl) {
  * would fill the registry with entries for one browser and leave viewers
  * subscribed to ids that no longer resolve.
  */
+export function surfaceKind(surface) {
+  return surface?.transport === 'host-cdp' ? 'launched' : 'widget';
+}
+
 export function hostInstanceId(userId) {
   return `host:${userId}`;
 }

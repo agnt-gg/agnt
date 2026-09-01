@@ -12,6 +12,9 @@ vi.mock('../../../services/browserSurfaces.js', () => ({
   waitForSurface: (...a) => waitForSurface(...a),
   forgetSurfaceByUrl: (...a) => forgetSurfaceByUrl(...a),
   announceHostSurface: (...a) => announceHostSurface(...a),
+  // The real implementation: a registry entry is a widget unless it names the
+  // host-cdp transport, which is what a launched browser announces itself as.
+  surfaceKind: (s) => (s?.transport === 'host-cdp' ? 'launched' : 'widget'),
 }));
 
 const ensureFallbackSurface = vi.fn();

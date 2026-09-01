@@ -1,6 +1,6 @@
 import BaseAction from '../BaseAction.js';
 import {
-  waitForSurface, forgetSurfaceByUrl, announceHostSurface,
+  waitForSurface, forgetSurfaceByUrl, announceHostSurface, surfaceKind,
 } from '../../../services/browserSurfaces.js';
 import {
   ensureFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
@@ -188,7 +188,11 @@ class AIBrowserAct extends BaseAction {
 
     const appearWait = isChat && isCanvasTurn(workflowEngine) ? 8000 : 0;
     const surface = await waitForSurface(userId, { workspaceId, instanceId }, appearWait);
-    if (surface) return { cdpUrl: surface.cdpUrl, kind: 'widget' };
+    // Not every registry surface is a widget. A launched browser announces
+    // itself so a streamed client can watch it, so calling every entry
+    // "widget" told the user their canvas widget was driving while the work
+    // happened in a browser AGNT had opened.
+    if (surface) return { cdpUrl: surface.cdpUrl, kind: surfaceKind(surface) };
 
     // ALWAYS hidden. The first version made an exception for plain desktop
     // chat ("an OS window is the only way to see anything there") and the very

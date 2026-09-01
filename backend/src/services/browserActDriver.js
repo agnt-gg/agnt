@@ -224,18 +224,47 @@ async function resolveActionTarget(driver, { ref, selector } = {}) {
   const css = String(selector || '').trim();
   if (css) {
     const { root } = await driver.connection.send('DOM.getDocument', { depth: 0 }, driver.sessionId);
-    const found = await driver.connection.send('DOM.querySelector', {
+    const { nodeIds = [] } = await driver.connection.send('DOM.querySelectorAll', {
       nodeId: root.nodeId,
       selector: css,
     }, driver.sessionId);
-    if (!found?.nodeId) {
+    if (!nodeIds.length) {
       throw new Error(`Nothing on the page matches the selector "${css}".`);
     }
-    const { node } = await driver.connection.send('DOM.describeNode', { nodeId: found.nodeId }, driver.sessionId);
-    if (!node?.backendNodeId) {
-      throw new Error(`The element matching "${css}" cannot be acted on.`);
+
+    // DOCUMENT ORDER IS NOT VISUAL PRIORITY, which is why this walks the
+    // matches instead of taking querySelector's first hit. Responsive sites
+    // routinely put a display:none mobile-nav copy of a link BEFORE the
+    // visible desktop one, so the first match is frequently the one nobody
+    // can click. Measured on agnt.gg: `a[href="#pricing"]` matched a hidden
+    // copy first and the click died on a raw CDP "Could not compute box
+    // model" — an error that names an internal step and no remedy.
+    //
+    // Capped because this is two round trips per candidate and a loose
+    // selector can match a hundred nodes; past the cap the first match is
+    // still returned, and clickRef's own box check produces the useful error.
+    const CANDIDATE_CAP = 25;
+    let firstUsable = null;
+    for (const nodeId of nodeIds.slice(0, CANDIDATE_CAP)) {
+      // eslint-disable-next-line no-await-in-loop -- ordered by preference;
+      // the first laid-out candidate wins, so parallel probing wastes calls.
+      const described = await driver.connection.send('DOM.describeNode', { nodeId }, driver.sessionId)
+        .catch(() => null);
+      const backendNodeId = described?.node?.backendNodeId;
+      if (!backendNodeId) continue;
+      if (firstUsable === null) firstUsable = backendNodeId;
+
+      // eslint-disable-next-line no-await-in-loop
+      const box = await driver.connection.send('DOM.getBoxModel', { backendNodeId }, driver.sessionId)
+        .catch(() => null);
+      if (box?.model) return backendNodeId;
     }
-    return node.backendNodeId;
+
+    // Nothing laid out. Return the first real node anyway: DOM.focus works
+    // without layout, so `type` can still be legitimate, and `click` reports
+    // the honest reason from its own box check.
+    if (firstUsable !== null) return firstUsable;
+    throw new Error(`The element matching "${css}" cannot be acted on.`);
   }
 
   await assertFreshRefs(driver);
@@ -280,8 +309,19 @@ async function clickRef(driver, { ref, selector } = {}) {
   await driver.connection.send('DOM.scrollIntoViewIfNeeded', { backendNodeId }, driver.sessionId)
     .catch(() => { /* older Chromium; the box may already be visible */ });
 
-  const { model } = await driver.connection.send('DOM.getBoxModel', { backendNodeId }, driver.sessionId);
-  const quad = model.content;
+  // Box model, but with a reason attached. Chromium answers "Could not
+  // compute box model" for anything with no layout, and that phrasing names
+  // an internal step rather than the situation: the element is hidden.
+  const box = await driver.connection.send('DOM.getBoxModel', { backendNodeId }, driver.sessionId)
+    .catch(() => null);
+  if (!box?.model) {
+    throw new Error(
+      'That element has no position on the page, so it cannot be clicked \u2014 it is hidden, '
+      + 'collapsed, or zero-sized. Take a snapshot and click a @ref you can see, or use a more '
+      + 'specific selector.',
+    );
+  }
+  const quad = box.model.content;
   const x = Math.round((quad[0] + quad[2] + quad[4] + quad[6]) / 4);
   const y = Math.round((quad[1] + quad[3] + quad[5] + quad[7]) / 4);
 
