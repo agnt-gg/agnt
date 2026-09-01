@@ -72,6 +72,12 @@ onBeforeUnmount(() => releaseLiveView(props.cardKey));
 
 <style scoped>
 .browser-live-card {
+  /* Full width, like an image attachment: the point of this card is
+     watching a page, and a page rendered into a narrow column is a page
+     you cannot read. align-self overrides the tool-call item's
+     align-items: flex-start, which would otherwise shrink it to fit. */
+  width: 100%;
+  align-self: stretch;
   margin-top: 8px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
@@ -128,7 +134,7 @@ onBeforeUnmount(() => releaseLiveView(props.cardKey));
   taking over the transcript.
 */
 .live-body {
-  height: 320px;
+  height: 420px;
   position: relative;
 }
 

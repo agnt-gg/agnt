@@ -46,6 +46,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { getRealtimeSocket } from '@/composables/useRealtimeSync.js';
+import { viewportToPage } from './streamGeometry.js';
 
 const props = defineProps({
   workspaceId: { type: String, default: '' },
@@ -190,22 +191,23 @@ async function pollForSurface() {
 // ── input ──────────────────────────────────────────────────────────────────
 
 /**
- * Canvas coordinates -> page coordinates.
+ * Where this event lands on the page, or null if it lands on nothing.
  *
- * The canvas is stretched by CSS to fill the widget, so a click at the element's
- * centre is NOT at the frame's centre unless the aspect ratios happen to match.
- * Scaling by the ratio of backing store to rendered size is what makes a click
- * land where the user aimed.
+ * The canvas keeps the frame aspect ratio (object-fit: contain), so it is
+ * painted into a letterboxed sub-rectangle and a click on the bars is not a
+ * click on the page at all. See streamGeometry.js for the arithmetic and
+ * why scaling by the element size is wrong.
  */
 function pagePoint(event) {
   const canvas = canvasRef.value;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / (rect.width || 1);
-  const scaleY = canvas.height / (rect.height || 1);
-  return {
-    x: Math.round((event.clientX - rect.left) * scaleX),
-    y: Math.round((event.clientY - rect.top) * scaleY),
-  };
+  if (!canvas) return null;
+  return viewportToPage({
+    clientX: event.clientX,
+    clientY: event.clientY,
+    rect: canvas.getBoundingClientRect(),
+    frameWidth: canvas.width,
+    frameHeight: canvas.height,
+  });
 }
 
 const MOUSE_TYPES = { mousedown: 'mousePressed', mouseup: 'mouseReleased', mousemove: 'mouseMoved' };
@@ -218,11 +220,13 @@ function sendInput(method, params) {
 function onMouse(event) {
   if (!canInteract.value) return;
   canvasRef.value?.focus();
-  const { x, y } = pagePoint(event);
+  // null means the letterbox bar rather than the page.
+  const point = pagePoint(event);
+  if (!point) return;
   sendInput('Input.dispatchMouseEvent', {
     type: MOUSE_TYPES[event.type],
-    x,
-    y,
+    x: point.x,
+    y: point.y,
     button: ['left', 'middle', 'right'][event.button] || 'left',
     clickCount: 1,
     modifiers: modifierBits(event),
@@ -237,17 +241,21 @@ function onMouseMove(event) {
   const now = Date.now();
   if (now - lastMoveAt < 40) return;
   lastMoveAt = now;
-  const { x, y } = pagePoint(event);
-  sendInput('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: modifierBits(event) });
+  const point = pagePoint(event);
+  if (!point) return;
+  sendInput('Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: point.x, y: point.y, modifiers: modifierBits(event),
+  });
 }
 
 function onWheel(event) {
   if (!canInteract.value) return;
-  const { x, y } = pagePoint(event);
+  const point = pagePoint(event);
+  if (!point) return;
   sendInput('Input.dispatchMouseEvent', {
     type: 'mouseWheel',
-    x,
-    y,
+    x: point.x,
+    y: point.y,
     deltaX: -event.deltaX,
     deltaY: -event.deltaY,
     modifiers: modifierBits(event),
