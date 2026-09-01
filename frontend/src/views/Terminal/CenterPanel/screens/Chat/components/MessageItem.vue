@@ -165,6 +165,19 @@
                   </div>
                 </div>
 
+                <!--
+                  The live browser, for any tool call that drives one.
+                  Outside the expand block on purpose: watching the page
+                  is the point, and burying it behind a disclosure
+                  triangle would mean the work finishes before most
+                  people find it.
+                -->
+                <BrowserLiveCard
+                  v-if="isBrowserTool(tc.toolCall)"
+                  :card-key="message.id + '-' + tc.index"
+                  :order="browserCardOrder(tc.index)"
+                />
+
                 <!-- Inline Goal Progress Widget for autonomous goals -->
                 <GoalProgressWidget
                   v-if="isAutonomousGoalTool(tc.toolCall)"
@@ -383,6 +396,9 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 // This defers the crypto-js dependency (~40KB) from the critical render path
 const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name: 'ProviderSetup' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
+// Lazy: a conversation that never browses should not download a streaming
+// client, and this one pulls the canvas stream view in behind it.
+const BrowserLiveCard = lazyComponent(() => import('./BrowserLiveCard.vue'), { name: 'BrowserLiveCard' });
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
 import { vMorphHtml } from '@/utils/morphHtmlDirective';
@@ -525,6 +541,7 @@ export default {
     ProviderSetup,
     Tooltip,
     GoalProgressWidget,
+    BrowserLiveCard,
   },
   directives: {
     'morph-html': vMorphHtml,
@@ -2706,6 +2723,39 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       }
     };
 
+    /**
+     * Tool calls that drive a browser, and therefore have something to
+     * watch.
+     *
+     * All four names, not just the current one: "browser" is the tool
+     * today, but the three it consolidated remain dispatchable as aliases
+     * for existing workflow nodes, and a conversation loaded from history
+     * can contain any of them. A card that only knew the new name would
+     * render nothing for yesterday's transcript.
+     */
+    const BROWSER_TOOL_NAMES = new Set([
+      'browser',
+      'ai_browser_act',
+      'ai_browser_use',
+      'ai_browser_control',
+    ]);
+    const isBrowserTool = (toolCall) => BROWSER_TOOL_NAMES.has(toolCall?.name);
+
+    /**
+     * Where this card sits in the conversation, for deciding which one
+     * streams.
+     *
+     * Timestamp first, falling back to NOW: a message still streaming may
+     * not have one yet, and "now" is exactly right for it — the newest
+     * card is the one being created. Multiplied out so the tool-call index
+     * breaks ties within a single message, which is the common case when a
+     * turn makes several browser calls in a row.
+     */
+    const browserCardOrder = (index) => {
+      const ts = Number(props.message?.timestamp);
+      return (Number.isFinite(ts) && ts > 0 ? ts : Date.now()) * 1000 + (index || 0);
+    };
+
     const isAutonomousGoalTool = (toolCall) => {
       // Direct tool names
       const directMatch = toolCall.name === 'create_and_run_goal' || toolCall.name === 'execute_goal_autonomous';
@@ -3084,6 +3134,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isRunning,
       toolCallStatus,
       isAutonomousGoalTool,
+      isBrowserTool,
+      browserCardOrder,
       extractGoalId,
       extractGoalTitle,
       extractTaskCount,

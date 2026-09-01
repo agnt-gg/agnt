@@ -49,6 +49,16 @@ import { getRealtimeSocket } from '@/composables/useRealtimeSync.js';
 
 const props = defineProps({
   workspaceId: { type: String, default: '' },
+  /**
+   * May a missing browser be OPENED to satisfy this viewer?
+   *
+   * True for the canvas widget: it is placed BECAUSE a browser step is
+   * starting, so opening one is the whole job. False for the inline chat
+   * card, which appears alongside a step that already opened its own — a
+   * card that launched would open a browser merely by being rendered,
+   * including when the user scrolls back through an old conversation.
+   */
+  launch: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['page']);
@@ -136,7 +146,7 @@ async function startWatching() {
       method: 'POST',
       credentials: 'include',
       headers: authHeaders(),
-      body: JSON.stringify({ workspaceId: props.workspaceId }),
+      body: JSON.stringify({ workspaceId: props.workspaceId, launch: props.launch }),
     });
     const body = await response.json().catch(() => ({}));
 
