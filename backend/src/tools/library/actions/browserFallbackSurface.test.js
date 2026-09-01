@@ -135,6 +135,37 @@ describe('the browser it opens is its own', () => {
     expect(url).toContain('51999');
   });
 
+  it('launches HIDDEN with a self-naming start page when asked', async () => {
+    // hidden = "the stream is the window". A visible launch here put a second
+    // Chrome window on the host desktop; and about:blank streams as a white
+    // rectangle indistinguishable from a broken stream, so the start page
+    // names itself.
+    await ensureFallbackSurface({ log: () => {}, hidden: true });
+
+    const args = launchCalls()[0].args;
+    expect(args).toContain('--headless=new');
+    expect(args.join(' ')).not.toContain('about:blank');
+    expect(args.some((a) => a.startsWith('data:text/html'))).toBe(true);
+  });
+
+  it('stays VISIBLE with about:blank by default — the agent\'s window on a desktop', async () => {
+    await ensureFallbackSurface({ log: () => {} });
+
+    const args = launchCalls()[0].args;
+    expect(args).not.toContain('--headless=new');
+    expect(args).toContain('about:blank');
+  });
+
+  it('reuses a live browser across a hidden/visible mismatch instead of relaunching', async () => {
+    // Relaunching to honour the preference would kill a browser the OTHER
+    // consumer may be mid-task in. Every browser is watchable via the stream,
+    // so the preference only shapes a NEW launch.
+    const first = await ensureFallbackSurface({ log: () => {} });
+    const second = await ensureFallbackSurface({ log: () => {}, hidden: true });
+    expect(second).toBe(first);
+    expect(launchCalls()).toHaveLength(1);
+  });
+
   it('never passes a flag that could point at the user\'s data', async () => {
     await ensureFallbackSurface({ log: () => {} });
 

@@ -5204,7 +5204,9 @@ tokens to drift from the tool that already does all of it.
 - **Launches on demand** when nothing live is found, unless `launch: false`.
   This is not a race with a chat turn: the launcher shares one in-flight launch
   and reuses a running browser, so a widget mounting as a turn starts gets the
-  same browser rather than a second one.
+  same browser rather than a second one. The launch is **hidden** (headless,
+  with a self-naming start page): the stream is the window, and a visible
+  launch put a second, redundant Chrome window on the host desktop.
 - **Errors**: `404` when there is nothing to watch — the normal cold-start case,
   and also what is returned (with `reason: "stale"`) when a browser dies in the
   gap between the probe and the attach. The entry is forgotten first, so a

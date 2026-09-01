@@ -321,7 +321,23 @@ async function closeOverCdp(cdpUrl, port, log) {
  * Reused across calls: relaunching per step would throw away the page the last
  * step navigated to, which is the whole point of an interactive loop.
  */
-export async function ensureFallbackSurface({ log = console.log, browser = '' } = {}) {
+/**
+ * What a freshly launched, streamed browser shows before its first task.
+ *
+ * about:blank streams as a featureless white rectangle, which is exactly what a
+ * BROKEN stream looks like — the first thing a viewer saw was indistinguishable
+ * from the bug they were checking for. A page that names itself proves the
+ * pixels are flowing.
+ */
+const START_PAGE = `data:text/html;charset=utf-8,${encodeURIComponent(
+  '<!doctype html><title>AGNT Browser</title>'
+  + '<body style="margin:0;height:100vh;display:grid;place-items:center;'
+  + 'background:#0d0d16;color:#8b8ba3;font:15px system-ui">'
+  + '<div style="text-align:center"><div style="font-size:34px;margin-bottom:12px">\u{1F310}</div>'
+  + 'AGNT Browser — ready.<br>Ask Annie to browse something.</div>',
+)}`;
+
+export async function ensureFallbackSurface({ log = console.log, browser = '', hidden = false } = {}) {
   const wanted = String(browser || '').trim().toLowerCase();
 
   // A DIFFERENT browser was asked for than the one already running. Naming a
@@ -332,14 +348,19 @@ export async function ensureFallbackSurface({ log = console.log, browser = '' } 
     closeFallbackSurface();
   }
 
+  // A hidden/visible MISMATCH deliberately reuses what is already running.
+  // Relaunching to honour the preference would kill a browser the other
+  // consumer may be mid-task in — the agent driving a page, or a viewer
+  // watching one — and every browser is watchable through the stream either
+  // way. The preference only decides how a NEW browser comes up.
   if (isAlive() && session.cdpUrl) return session.cdpUrl;
   if (launching) return launching;
 
-  launching = launchBrowser({ log, browser: wanted }).finally(() => { launching = null; });
+  launching = launchBrowser({ log, browser: wanted, hidden }).finally(() => { launching = null; });
   return launching;
 }
 
-async function launchBrowser({ log, browser }) {
+async function launchBrowser({ log, browser, hidden = false }) {
   // Throws by name for an unknown or uninstalled request, which is more useful
   // than silently falling back to a browser nobody asked for.
   const found = findBrowser(browser);
@@ -401,7 +422,18 @@ async function launchBrowser({ log, browser }) {
   // visible path is unchanged; see services/browserRuntime.js for why the test
   // is DISPLAY rather than container-ness.
   const runtimeFlags = requiredChromeFlags();
-  log(`[Browser Control] launching a clean ${label} profile at ${profilePath} (${describeRuntime()})`);
+
+  // HIDDEN is a caller decision, not a machine one. requiredChromeFlags says
+  // what this MACHINE forces (no display -> headless). A browser launched to be
+  // watched through the screencast adds its own reason: the stream IS the
+  // window, and a second copy popping up over the user's desktop reads as a
+  // malfunction — it was the first thing reported when /view shipped without
+  // this. Visible stays the default for the agent's own launches on a desktop,
+  // where the OS window is the only way to watch at all.
+  if (hidden && !runtimeFlags.includes('--headless=new')) {
+    runtimeFlags.push('--headless=new', '--disable-gpu');
+  }
+  log(`[Browser Control] launching a clean ${label} profile at ${profilePath} (${hidden ? 'hidden, ' : ''}${describeRuntime()})`);
 
   const child = spawn(executable, [
     '--remote-debugging-port=0',
@@ -412,7 +444,10 @@ async function launchBrowser({ log, browser }) {
     '--no-service-autorun',
     '--disable-features=Translate,OptimizationHints',
     ...runtimeFlags,
-    'about:blank',
+    // See START_PAGE: a stream of about:blank is indistinguishable from a
+    // broken stream. The agent's own visible window keeps about:blank — an OS
+    // window is self-evidently alive.
+    hidden ? START_PAGE : 'about:blank',
   ], { stdio: 'ignore', windowsHide: false });
 
   child.on('error', (err) => { log(`[Browser Control] browser failed to start: ${err.message}`); });

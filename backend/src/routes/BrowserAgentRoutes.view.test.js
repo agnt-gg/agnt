@@ -172,6 +172,11 @@ describe('opening a browser when there is nothing to watch', () => {
     expect(response.status).toBe(200);
     expect(body.transport).toBe('host-cdp');
     expect(ensureFallbackSurface).toHaveBeenCalledTimes(1);
+
+    // HIDDEN, because the caller is about to watch it through the screencast.
+    // The stream is the window; a visible launch put a second, redundant Chrome
+    // window on the host desktop — the first thing reported after shipping.
+    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
     await browser.close();
   });
 

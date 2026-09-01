@@ -137,7 +137,11 @@ router.post('/view', authenticateToken, async (req, res) => {
   // a chat turn starts gets the SAME browser, not a second one.
   if (!surface && req.body?.launch !== false) {
     try {
-      const cdpUrl = await ensureFallbackSurface({ log: (m) => console.log(m) });
+      // hidden: the caller is about to WATCH this browser through the
+      // screencast, so the stream is its window. Launching it visibly put a
+      // second, redundant Chrome window on the host desktop — the first thing
+      // reported when this endpoint shipped.
+      const cdpUrl = await ensureFallbackSurface({ hidden: true, log: (m) => console.log(m) });
       announceHostSurface(userId, cdpUrl, { workspaceId });
       surface = {
         instanceId: hostInstanceId(userId), cdpUrl, transport: 'host-cdp', url: 'about:blank',

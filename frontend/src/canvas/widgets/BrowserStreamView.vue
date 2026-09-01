@@ -62,6 +62,7 @@ const canInteract = ref(false);
 let instanceId = null;
 let socket = null;
 let retryTimer = null;
+let socketTimer = null;
 let painting = false;
 
 /**
@@ -298,23 +299,38 @@ function onStopped(payload) {
   pollForSurface();
 }
 
-onMounted(() => {
+onMounted(attachWhenReady);
+
+/**
+ * Nothing starts until the socket exists, and then EVERYTHING starts.
+ *
+ * THE BUG THIS SHAPE FIXES. The socket is created a moment after app start, so
+ * this widget routinely mounts before it exists. The first version handled
+ * that by retrying only the HTTP subscribe — which succeeded — while the frame
+ * listeners were attached on a path the retry never reached. Result: the
+ * backend streamed frames into the user's room, the subscription held it open,
+ * and the canvas painted nothing. The widget looked completely dead while
+ * every backend measurement said the pipeline was healthy — the worst kind of
+ * failure to diagnose, and it shipped.
+ *
+ * One entry point that either does ALL the setup or reschedules ALL of it
+ * makes that split impossible by construction.
+ */
+function attachWhenReady() {
   socket = getRealtimeSocket();
   if (!socket) {
-    error.value = 'The realtime connection is not ready yet.';
-    // Not fatal: the socket appears a moment after app start, so retry rather
-    // than leaving a dead panel on screen.
-    retryTimer = setTimeout(() => { socket = getRealtimeSocket(); pollForSurface(); }, RETRY_MS);
+    socketTimer = setTimeout(attachWhenReady, 500);
     return;
   }
   socket.on('browser:frame', onFrame);
   socket.on('browser:navigated', onNavigated);
   socket.on('browser:stopped', onStopped);
   pollForSurface();
-});
+}
 
 onBeforeUnmount(() => {
   clearTimeout(retryTimer);
+  clearTimeout(socketTimer);
   socket?.off('browser:frame', onFrame);
   socket?.off('browser:navigated', onNavigated);
   socket?.off('browser:stopped', onStopped);
