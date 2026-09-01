@@ -42,6 +42,24 @@ function sortDeep(value) {
 }
 
 /**
+ * NAMED EXEMPTION — the Claude Code CLI version in the billing header.
+ *
+ * That version is resolved live from npm (see clientVersions.js) because
+ * Anthropic rejects requests that mimic a CLI it considers too old. It
+ * therefore changes whenever Anthropic ships, and the 3-char fingerprint is a
+ * hash OVER the version, so it moves with it. Left alone, both would turn this
+ * oracle red for an upstream release rather than for anything AGNT did.
+ *
+ * Only those two churning values are masked. The header's structure — key
+ * names, cc_entrypoint, the cch=00000 placeholder, ordering, its position as
+ * the first system block — is still compared byte-for-byte. The suffix
+ * ALGORITHM, which the oracle can no longer see, is guarded directly by
+ * claudeBillingHeader.test.js.
+ */
+const CC_VERSION_RE = /cc_version=\d+(?:\.\d+)*\.[0-9a-f]{3}/g;
+const maskCcVersion = (s) => s.replace(CC_VERSION_RE, 'cc_version=<cli-version>.<fp>');
+
+/**
  * Strip values that legitimately differ run to run. Anything removed here is
  * a deliberate, named exemption — never a blanket "ignore what changed".
  */
@@ -50,6 +68,7 @@ function scrub(value) {
     if (typeof v === 'function') return '[Function]';
     if (v instanceof AbortSignal) return '[AbortSignal]';
     if (typeof v === 'bigint') return v.toString();
+    if (typeof v === 'string' && v.includes('cc_version=')) return maskCcVersion(v);
     return v;
   });
   if (json === undefined) return undefined;

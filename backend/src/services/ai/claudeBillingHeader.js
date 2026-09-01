@@ -18,13 +18,31 @@
 
 import crypto from 'crypto';
 import xxhashWasm from 'xxhash-wasm';
+import { getCachedClientVersion } from './clientVersions.js';
 
 // ── Constants (extracted from Claude Code binary + source leak) ──────────
 const CCH_SEED    = 0x6E52736AC806831En;   // xxHash64 seed (BigInt)
 const FP_SALT     = '59cf53e54c78';         // fingerprint salt
 const FP_INDICES  = [4, 7, 20];             // character pick indices
-const CC_VERSION  = '2.1.92';               // current CLI version to mimic
 const CC_ENTRYPOINT = 'cli';
+
+/**
+ * The CLI version we mimic.
+ *
+ * Anthropic GATES MODEL ACCESS on this value — a version it considers too old
+ * fails the whole request with 400 claude_code_version_too_old, taking every
+ * Claude model down with it. So it cannot be a hardcoded constant: the moment
+ * Anthropic raises the floor, a frozen literal is a scheduled outage.
+ *
+ * It is read from clientVersions.js — the same npm-backed source that already
+ * feeds the claude-cli/<v> user-agent — so the two identities agree. They used
+ * to disagree (user-agent live, this constant frozen at 2.1.92), which is both
+ * how the outage happened and a fingerprint anomaly in its own right: a real
+ * CLI reports one version, not two.
+ */
+function currentCcVersion() {
+  return getCachedClientVersion('claude-code');
+}
 
 // ── Lazy-loaded xxhash instance ─────────────────────────────────────────
 let _xxhash = null;
@@ -46,13 +64,16 @@ async function getXxhash() {
  * [4, 7, 20] and feeds them along with the salt and version into SHA-256.
  *
  * @param {string} firstUserMessage - The first user message in the conversation
+ * @param {string} [version] - CLI version to hash over. Defaults to the
+ *   resolved current version; pass it explicitly to pin a suffix and its
+ *   header text to the same version.
  * @returns {string} 3-character hex suffix (e.g. "f2a")
  */
-export function computeVersionSuffix(firstUserMessage = '') {
+export function computeVersionSuffix(firstUserMessage = '', version = currentCcVersion()) {
   const chars = FP_INDICES
     .map(i => (i < firstUserMessage.length ? firstUserMessage[i] : '0'))
     .join('');
-  const raw = `${FP_SALT}${chars}${CC_VERSION}`;
+  const raw = `${FP_SALT}${chars}${version}`;
   return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 3);
 }
 
@@ -60,10 +81,12 @@ export function computeVersionSuffix(firstUserMessage = '') {
  * Build the billing header TEXT with the cch=00000 placeholder.
  *
  * @param {string} versionSuffix - 3-char hex suffix from computeVersionSuffix()
- * @returns {string} e.g. "x-anthropic-billing-header: cc_version=2.1.92.f2a; cc_entrypoint=cli; cch=00000;"
+ * @param {string} [version] - CLI version to embed. Must be the same version
+ *   the suffix was hashed over.
+ * @returns {string} e.g. "x-anthropic-billing-header: cc_version=2.1.257.f2a; cc_entrypoint=cli; cch=00000;"
  */
-export function buildBillingHeaderText(versionSuffix) {
-  return `x-anthropic-billing-header: cc_version=${CC_VERSION}.${versionSuffix}; cc_entrypoint=${CC_ENTRYPOINT}; cch=00000;`;
+export function buildBillingHeaderText(versionSuffix, version = currentCcVersion()) {
+  return `x-anthropic-billing-header: cc_version=${version}.${versionSuffix}; cc_entrypoint=${CC_ENTRYPOINT}; cch=00000;`;
 }
 
 /**
@@ -74,10 +97,14 @@ export function buildBillingHeaderText(versionSuffix) {
  * @returns {{ type: string, text: string }} Content block for the system array
  */
 export function buildBillingHeaderBlock(firstUserMessage = '') {
-  const suffix = computeVersionSuffix(firstUserMessage);
+  // Resolve ONCE and thread it through both calls. The suffix is a hash OVER
+  // the version, so reading it twice could pair a suffix with a different
+  // version if a background cache refresh landed in between.
+  const version = currentCcVersion();
+  const suffix = computeVersionSuffix(firstUserMessage, version);
   return {
     type: 'text',
-    text: buildBillingHeaderText(suffix),
+    text: buildBillingHeaderText(suffix, version),
   };
 }
 

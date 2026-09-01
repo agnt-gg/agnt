@@ -39,21 +39,21 @@ const SOURCES = {
     registry: 'https://registry.npmjs.org/@anthropic-ai/claude-code/latest',
     extract: (json) => json?.version,
     format: (v) => `claude-cli/${v} (external, cli)`,
-    fallback: '2.1.2',
+    fallback: '2.1.257',
   },
   'openai-codex': {
     label: 'OpenAI Codex CLI',
     registry: 'https://registry.npmjs.org/@openai/codex/latest',
     extract: (json) => json?.version,
     format: (v) => v,
-    fallback: '0.124.0',
+    fallback: '0.152.0',
   },
   'kimi-code': {
     label: 'Kimi CLI',
     registry: 'https://pypi.org/pypi/kimi-cli/json',
     extract: (json) => json?.info?.version,
     format: (v) => `KimiCLI/${v}`,
-    fallback: '1.38.0',
+    fallback: '1.50.0',
   },
   antigravity: {
     label: 'Antigravity CLI',
@@ -61,7 +61,7 @@ const SOURCES = {
     headers: { 'User-Agent': 'agnt', Accept: 'application/vnd.github+json' },
     extract: (json) => json?.tag_name?.replace(/^v/, ''),
     format: (v) => v,
-    fallback: '1.0.16',
+    fallback: '1.1.23',
   },
 };
 
@@ -179,8 +179,35 @@ export async function getClientVersion(key) {
 }
 
 /**
+ * Synchronous read of the resolved version, for call sites that build a
+ * request body inline and cannot await (see claudeBillingHeader.js).
+ *
+ * Never touches the network on the calling path: it serves the in-memory or
+ * on-disk value, falls back to SOURCES[key].fallback, and schedules a
+ * background refresh when the entry is stale so the NEXT caller is current.
+ * Boot's warmupClientVersions() means that refresh has normally already
+ * landed before the first request is built.
+ *
+ * @param {string} key Provider key, e.g. 'claude-code'.
+ * @returns {string} Raw version string. Never throws for a known key.
+ */
+export function getCachedClientVersion(key) {
+  const config = SOURCES[key];
+  if (!config) throw new Error(`Unknown client-version provider: ${key}`);
+
+  hydrateFromDisk();
+  const cached = memoryCache?.[key];
+
+  // Stale or missing → kick a refresh but do NOT wait for it. A 5s registry
+  // timeout on a request-build path is worse than a slightly old version.
+  if (!isFresh(cached)) getClientVersion(key).catch(() => {});
+
+  return cached?.version || config.fallback;
+}
+
+/**
  * Returns a formatted identity string ready for a header or query param.
- * E.g. for claude-code returns "claude-cli/2.1.2 (external, cli)".
+ * E.g. for claude-code returns "claude-cli/2.1.257 (external, cli)".
  */
 export async function getClientIdentity(key) {
   const config = SOURCES[key];
