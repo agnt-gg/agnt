@@ -59,6 +59,7 @@ function fakeBrowser() {
 }
 
 let previousBrowserPath;
+let previousHeadless;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -72,6 +73,17 @@ beforeEach(() => {
   // do — spawn is mocked, so nothing is executed.
   previousBrowserPath = process.env.AGNT_BROWSER_PATH;
   process.env.AGNT_BROWSER_PATH = process.execPath;
+
+  // Pin WHETHER THIS MACHINE HAS A DISPLAY, for exactly the reason the line
+  // above pins the executable: otherwise these assertions describe the host
+  // rather than this code. requiredChromeFlags() adds --headless=new wherever
+  // there is no window server, so the launch args below differ by platform —
+  // Windows and macOS always report a display and stayed green, Linux CI has
+  // none and went red on 'stays VISIBLE'. '0' means "a desktop", which is the
+  // premise of these tests; the display-less path is asserted in its own test
+  // rather than left to the luck of where the suite runs.
+  previousHeadless = process.env.AGNT_BROWSER_HEADLESS;
+  process.env.AGNT_BROWSER_HEADLESS = '0';
 
   spawn.mockImplementation((command, args) => {
     spawned.push({ command, args: args || [] });
@@ -97,6 +109,8 @@ afterEach(() => {
   closeFallbackSurface();
   if (previousBrowserPath === undefined) delete process.env.AGNT_BROWSER_PATH;
   else process.env.AGNT_BROWSER_PATH = previousBrowserPath;
+  if (previousHeadless === undefined) delete process.env.AGNT_BROWSER_HEADLESS;
+  else process.env.AGNT_BROWSER_HEADLESS = previousHeadless;
 });
 afterAll(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -171,6 +185,23 @@ describe('the browser it opens is its own', () => {
     const args = launchCalls()[0].args;
     expect(args).not.toContain('--headless=new');
     expect(args).toContain('about:blank');
+  });
+
+  it('still goes headless where there is no display, because visible is a preference and a window server is not', async () => {
+    // The machine overrules the default above, and MUST: a headed launch on a
+    // box with no window server exits instantly, and the wait loop then spends
+    // its full 30 seconds polling for a DevToolsActivePort that is never
+    // coming — a timeout that blames the browser for a decision this code
+    // made. Asserted rather than merely neutralised by the pin in beforeEach,
+    // because this is the path every Linux CI runner, container and headless
+    // VPS actually takes.
+    process.env.AGNT_BROWSER_HEADLESS = '1';
+
+    await ensureFallbackSurface({ log: () => {} });
+
+    const args = launchCalls()[0].args;
+    expect(args).toContain('--headless=new');
+    expect(args).toContain('--disable-gpu');
   });
 
   it('reuses a live browser across a hidden/visible mismatch instead of relaunching', async () => {
