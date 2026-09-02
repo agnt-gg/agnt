@@ -41,6 +41,17 @@ function findTicket(dir, id) {
   return t;
 }
 
+// The list column: an enriched ticket has earned its title; a raw dump only
+// has its first line. Either way the cut lands on a word, never inside one.
+export function summaryOf(t, width = 70) {
+  const title = typeof t.title === 'string' ? t.title.trim() : '';
+  const text = title || (t.body ?? '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  if (text.length <= width) return text;
+  const room = width - 1;
+  const cut = text.lastIndexOf(' ', room);
+  return `${text.slice(0, cut > 0 ? cut : room).trimEnd()}…`;
+}
+
 function main(argv) {
   const [cmd, ...rest] = argv;
   const root = primaryRoot();
@@ -63,7 +74,7 @@ function main(argv) {
         .sort((a, b) => b.score - a.score);
       if (!rows.length) return out(`no tickets in ${dir}`);
       for (const t of rows) {
-        out(`${t.id}  ${String(t.status).padEnd(9)} ${t.score.toFixed(2).padStart(6)}  ${(t.footprint ?? []).length} files  ${t.body.split('\n')[0].slice(0, 70)}`);
+        out(`${t.id}  ${String(t.status).padEnd(9)} ${t.score.toFixed(2).padStart(6)}  ${(t.footprint ?? []).length} files  ${summaryOf(t)}`);
       }
       return;
     }
