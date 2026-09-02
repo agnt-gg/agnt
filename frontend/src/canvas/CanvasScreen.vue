@@ -198,6 +198,12 @@
 
       <!-- Main content area -->
       <div class="cv-dashboard">
+        <!-- Persistent panel surfaces under the swapping screen: the frame
+             each screen mounts is torn down on navigation, and for a frame or
+             two nothing opaque covers this box (transparent under custom-bg).
+             See PanelBackdrop.vue. -->
+        <PanelBackdrop v-if="!onCustomPage" :screen-name="screenName" />
+
         <!-- Custom pages: full widget canvas system -->
         <WidgetCanvas
           v-if="onCustomPage && activePageId"
@@ -306,6 +312,7 @@ import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroup
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
+import PanelBackdrop from './PanelBackdrop.vue';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -344,7 +351,7 @@ const marqueeDirective = {
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette, PanelBackdrop },
   directives: { marquee: marqueeDirective },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
@@ -1620,6 +1627,10 @@ export default {
   flex-direction: column;
   box-sizing: border-box;
   background: var(--color-background);
+}
+
+.cv-dashboard > .cv-backdrop {
+  flex: none; /* absolutely positioned; must not take a flex slot */
 }
 
 .cv-dashboard > * {

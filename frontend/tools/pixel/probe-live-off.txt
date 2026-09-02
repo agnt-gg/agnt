@@ -1,0 +1,8 @@
+LIVE data from http://localhost:3333, build from C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro.wt\agnt-one\frontend/dist  backdrop=OFF
+/chat      -> /agents    frames=59 flashFrames=1 left:100%@0ms main:100%@0ms right:100%@0ms
+/agents    -> /workflows frames=10 flashFrames=0 left:0% main:0% right:0%
+/workflows -> /traces    frames=37 flashFrames=2 left:100%@211ms main:100%@211ms right:100%@211ms
+/traces    -> /settings  frames=58 flashFrames=0 left:0% main:0% right:0%
+/settings  -> /goals     frames=46 flashFrames=0 left:0% main:0% right:0%
+/goals     -> /chat      frames=61 flashFrames=0 left:0% main:0% right:0%
+TOTAL flashFrames 3

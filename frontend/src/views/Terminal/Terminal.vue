@@ -19,8 +19,11 @@
           @screen-change="changeScreen"
         />
       </KeepAlive>
-      <!-- Placeholder while screen chunk is loading (outside KeepAlive to avoid lifecycle crash) -->
-      <div v-if="!isScreenReady" style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>
+      <!-- Placeholder while screen chunk is loading (outside KeepAlive to avoid
+           lifecycle crash). Transparent: PanelBackdrop under it already paints
+           the three panel surfaces, so a flat block here would itself be a
+           flash (one opaque rectangle where the panels are about to be). -->
+      <div v-if="!isScreenReady" style="flex:1;width:100%;height:100%;pointer-events:none"></div>
     </CanvasScreen>
 
     <!-- BallJumper uses legacy direct rendering (no nav shell) -->
