@@ -28,7 +28,7 @@
 
       <!-- Jump (⌘K): the router when you do not know which row owns a thing.
            Centred so it reads as the one global control on the bar. -->
-      <button class="cv-jump" data-tour-id="toolbar.jump" @click="openJump" :title="jumpHint">
+      <button class="cv-jump" data-tour-id="toolbar.jump" @click="openJump" v-tooltip="jumpHint">
         <i class="fas fa-search"></i>
         <span class="cv-jump-text">Jump to anything…</span>
         <kbd class="cv-kbd">{{ jumpKey }}</kbd>
@@ -38,16 +38,16 @@
       <div class="cv-right">
         <!-- Live pills: each is a click into the thing it counts. Only the
              provider pill is always drawn; the others appear when non-zero. -->
-        <button v-if="pills.running" class="cv-pill" @click="goRunning" title="Running now — open Traces">
+        <button v-if="pills.running" class="cv-pill" @click="goRunning" v-tooltip="'Running now — open Traces'">
           <span class="cv-pill-dot is-live"></span>{{ pills.running }} running
         </button>
-        <button v-if="pills.approvals" class="cv-pill" @click="goApprovals" title="Waiting for your approval — open Autonomy">
+        <button v-if="pills.approvals" class="cv-pill" @click="goApprovals" v-tooltip="'Waiting for your approval — open Autonomy'">
           <span class="cv-pill-dot is-warn"></span>{{ pills.approvals }} to approve
         </button>
-        <button v-if="updateAvailable" class="cv-pill is-update" @click="goAbout" title="An update is ready — Settings › About">
+        <button v-if="updateAvailable" class="cv-pill is-update" @click="goAbout" v-tooltip="'An update is ready — Settings › About'">
           <i class="fas fa-arrow-circle-up"></i> update
         </button>
-        <button v-if="!globalProviderLabel" class="cv-pill is-red" @click="goProviders" title="Connect an AI provider">
+        <button v-if="!globalProviderLabel" class="cv-pill is-red" @click="goProviders" v-tooltip="'Connect an AI provider'">
           <span class="cv-pill-dot is-red"></span>no provider
         </button>
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
@@ -1065,7 +1065,7 @@ export default {
   color: var(--color-text);
 }
 .cv-pill.is-red {
-  color: #ff9a9a;
+  color: var(--color-red);
   border-color: rgba(254, 78, 78, 0.35);
 }
 .cv-pill.is-update {

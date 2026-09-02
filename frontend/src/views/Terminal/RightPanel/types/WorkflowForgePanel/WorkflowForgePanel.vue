@@ -457,7 +457,7 @@ export default {
 }
 .wf-run-st.st-failed,
 .wf-run-st.st-error {
-  color: #ff8a8a;
+  color: var(--color-red);
   border-color: rgba(254, 78, 78, 0.3);
 }
 .wf-run-st.st-running {

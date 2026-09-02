@@ -340,7 +340,7 @@ export default {
   line-height: 1.5;
 }
 .err {
-  color: #ff8a8a;
+  color: var(--color-red);
   font-size: 11.5px;
   background: rgba(254, 78, 78, 0.07);
   border: 1px solid rgba(254, 78, 78, 0.22);
@@ -411,7 +411,7 @@ export default {
   border-color: rgba(18, 224, 255, 0.3);
 }
 .b-red {
-  color: #ff8a8a;
+  color: var(--color-red);
   border-color: rgba(254, 78, 78, 0.3);
 }
 .b-yellow {
@@ -462,7 +462,7 @@ export default {
 }
 .btn.pri {
   background: var(--color-green);
-  color: #04120a;
+  color: var(--on-fill-accent);
   border-color: var(--color-green);
   font-weight: 600;
 }

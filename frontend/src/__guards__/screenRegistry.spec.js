@@ -86,15 +86,9 @@ describe('static layout stays in the registry, not in templates', () => {
  * catch the failed import and silently fall back to ChatPanel, so a typo here
  * ships as "the wrong panel renders", never as an error.
  */
-const ALLOWED_MISSING_PANELS = new Map([
-  [
-    'RightPanel/DashboardPanel',
-    'Never implemented. Dashboard has asked for it since long before this branch '
-      + '(main passes activeRightPanel="DashboardPanel"), and RightPanel\'s catch '
-      + 'falls back to ChatPanel — which is what the Dashboard has always shown on '
-      + 'the right. Making it a real panel is a product decision, not a rename.',
-  ],
-]);
+// Empty as of AGNT One: RightPanel/DashboardPanel and LeftPanel/DashboardPanel
+// are real panels now (the Dashboard used to render Chat's on both sides).
+const ALLOWED_MISSING_PANELS = new Map([]);
 
 describe('registry entries resolve to real panel types', () => {
   /**

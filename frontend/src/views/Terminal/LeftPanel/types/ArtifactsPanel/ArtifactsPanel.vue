@@ -1,7 +1,7 @@
 <template>
   <div class="artifacts-panel">
     <div class="panel-header">
-      <h2 class="title">/ Artifacts</h2>
+      <h2 class="title">/ Annie</h2>
       <div class="right-tabs">
         <Tooltip text="Clear Chat History" width="auto" position="bottom">
           <button class="tab-button clear-chat-button" @click="handleClearChat">

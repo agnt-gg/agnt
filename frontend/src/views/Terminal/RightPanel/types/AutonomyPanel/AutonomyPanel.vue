@@ -116,7 +116,7 @@ export default {
 }
 .au-btn.pri {
   background: var(--color-green);
-  color: #04120a;
+  color: var(--on-fill-accent);
   border-color: var(--color-green);
   font-weight: 600;
 }

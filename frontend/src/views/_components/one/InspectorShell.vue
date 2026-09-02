@@ -7,7 +7,7 @@
       <span v-if="live" class="insp-live">live</span>
       <span class="insp-cap-sp"></span>
       <slot name="cap-actions"></slot>
-      <button v-if="title && closable" class="insp-x" type="button" title="Back (Esc)" @click="$emit('close')">
+      <button v-if="title && closable" class="insp-x" type="button" v-tooltip="'Back (Esc)'" @click="$emit('close')">
         <i class="fas fa-times"></i>
       </button>
     </div>
@@ -16,8 +16,8 @@
       <div class="insp-id">
         <span v-if="icon" class="insp-tile" :class="'tone-' + tone"><i :class="icon"></i></span>
         <div class="insp-titles">
-          <div class="insp-title" :title="title">{{ title }}</div>
-          <div v-if="sub" class="insp-sub" :title="sub">{{ sub }}</div>
+          <div class="insp-title">{{ title }}</div>
+          <div v-if="sub" class="insp-sub">{{ sub }}</div>
         </div>
         <span v-if="badge" class="insp-badge" :class="'tone-' + (badgeTone || tone)">{{ badge }}</span>
       </div>
@@ -206,17 +206,17 @@ export default {
   background: rgba(255, 215, 0, 0.09);
 }
 .tone-red {
-  color: #ff8a8a;
+  color: var(--color-red);
   border-color: rgba(254, 78, 78, 0.3);
   background: rgba(254, 78, 78, 0.1);
 }
 .tone-pink {
-  color: #f0a0c8;
+  color: var(--color-pink);
   border-color: rgba(229, 61, 143, 0.3);
   background: rgba(229, 61, 143, 0.1);
 }
 .tone-indigo {
-  color: #b892ff;
+  color: var(--color-indigo);
   border-color: rgba(125, 61, 229, 0.35);
   background: rgba(125, 61, 229, 0.14);
 }

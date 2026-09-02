@@ -297,15 +297,15 @@ export default {
   border-color: rgba(255, 215, 0, 0.26);
 }
 .k-trace {
-  color: #b892ff;
+  color: var(--color-indigo);
   border-color: rgba(125, 61, 229, 0.32);
 }
 .k-memory {
-  color: #f0a0c8;
+  color: var(--color-pink);
   border-color: rgba(229, 61, 143, 0.26);
 }
 .k-artifact {
-  color: #ffb27a;
+  color: var(--color-orange);
   border-color: rgba(255, 143, 90, 0.3);
 }
 .pulse {
@@ -325,7 +325,7 @@ export default {
   cursor: pointer;
 }
 .lnk.danger {
-  color: #ff9a9a;
+  color: var(--color-red);
 }
 .btn {
   height: 26px;

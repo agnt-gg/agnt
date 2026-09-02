@@ -283,7 +283,9 @@ describe('UnifiedChatContainer hosts — clear affordance wiring', () => {
     .filter(({ src }) => src.includes('<UnifiedChatContainer'));
 
   it('finds every host (anti-vacuity)', () => {
-    expect(hosts.length).toBeGreaterThanOrEqual(7);
+    // Six since AGNT One: the Workflow Forge RIGHT panel no longer hosts a
+    // chat (that slot is "This workflow"; Annie lives in the left panel).
+    expect(hosts.length).toBeGreaterThanOrEqual(6);
   });
 
   // Markup only. An earlier version of this guard also accepted a
