@@ -126,7 +126,7 @@ function unlinkLink(p) {
 }
 
 /** Detach every link we may have created, plus any other link at the top level. */
-function detachLinks(worktreePath) {
+export function detachLinks(worktreePath) {
   const detached = [];
   const candidates = new Set(LINKED_DIRS.map((d) => path.join(worktreePath, d)));
   let top = [];
@@ -169,7 +169,7 @@ function deleteTree(p) {
   fs.rmSync(p, { force: true });
 }
 
-function attachLinks(repoRoot, worktreePath) {
+export function attachLinks(repoRoot, worktreePath) {
   const linked = [];
   for (const rel of LINKED_DIRS) {
     const target = path.join(repoRoot, rel);

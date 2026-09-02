@@ -17,6 +17,7 @@
     "test:all": "npm test && npm run test:frontend",
     "test:impacted": "node scripts/test-impacted.mjs",
     "wt": "node scripts/worktree.mjs",
+    "pipeline": "node scripts/pipeline/pipeline.mjs",
     "hooks:install": "node .githooks/install.mjs",
     "eol": "node scripts/normalize-eol.mjs",
     "eol:check": "node scripts/normalize-eol.mjs --check",
