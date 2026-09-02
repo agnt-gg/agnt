@@ -1,1 +1,12 @@
 * text=auto eol=lf
+
+# Append-only prose: when two branches add to it, keep both additions rather
+# than stop the merge. Union is lossless (nothing is ever dropped) but it can
+# duplicate a hunk both sides edited, so it is only ever safe on files a
+# human reads and never on anything a parser does — JSON, code and lockfiles
+# come out syntactically broken. scripts/repoMergePolicy.contract.test.js
+# refuses anything but .md here.
+#
+# This file is touched by 4.3% of all commits (measured 2026-09-01), almost
+# always to append an endpoint. That is the whole reason it is listed.
+docs/_API-DOCUMENTATION.md merge=union
