@@ -28,11 +28,12 @@
  *     that side-effect has historically caused provider drift — see project
  *     memory). runWithFallback therefore never calls updateUserSettings.
  *
- * No external dependencies beyond ProviderRegistry so this stays trivially
- * unit-testable.
+ * Depends only on the provider registry + its config table so this stays
+ * trivially unit-testable.
  */
 
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 
 /** Hard ceiling on fallback tiers (excludes the primary). */
 export const MAX_FALLBACKS = 3;
@@ -101,8 +102,51 @@ export function isKnownProvider(provider, customProviderIds) {
       if (typeof id === 'string' && id.trim().toLowerCase() === lower) return true;
     }
   }
-  const caps = ProviderRegistry.PROVIDER_CAPABILITIES || {};
-  return Object.keys(caps).some((k) => k.toLowerCase() === lower);
+  return resolveProviderKey(provider) !== null;
+}
+
+/**
+ * Resolve any accepted spelling of a built-in provider to its canonical
+ * registry key, or null if the registry does not know it.
+ *
+ * The UI stores a fallback tier's provider as its DISPLAY NAME
+ * (FallbackProviders.vue: `{ provider: <displayName> }`), while every backend
+ * lookup is keyed by the registry KEY. For 18 of the 20 built-ins the display
+ * name lowercases to exactly the key, so the mismatch is invisible. For the
+ * other two it was fatal and silent:
+ *
+ *   "Cursor" -> cursor-cli        "Z.AI" -> zai
+ *
+ * Those tiers saved fine, rendered in the UI as configured, and were dropped
+ * from every chain that was ever built.
+ *
+ * `getProviderConfig` already resolves both spellings — it falls back to a
+ * strip-non-alphanumerics match against the config's `name` — which is why the
+ * EXECUTOR has always accepted display names (`createLlmAdapter` calls it).
+ * Only the chain builder was stricter than the thing it feeds.
+ *
+ * The result is gated on PROVIDER_CAPABILITIES membership rather than returned
+ * raw. Admitting a provider the capability registry does not know would trade a
+ * tier that is silently dropped for one that is silently DEAD — strictly worse,
+ * because the chain would then claim a depth it cannot deliver.
+ */
+export function resolveProviderKey(provider) {
+  if (!provider || typeof provider !== 'string') return null;
+  const lower = provider.trim().toLowerCase();
+  if (!lower) return null;
+
+  const capKeys = Object.keys(ProviderRegistry.PROVIDER_CAPABILITIES || {});
+  const direct = capKeys.find((k) => k.toLowerCase() === lower);
+  if (direct) return direct;
+
+  let config;
+  try {
+    config = getProviderConfig(provider);
+  } catch {
+    return null;
+  }
+  if (!config || !config.key) return null;
+  return capKeys.find((k) => k.toLowerCase() === String(config.key).toLowerCase()) || null;
 }
 
 /**
@@ -173,6 +217,10 @@ export function resolveTierModel(provider, model) {
  *   - Fallbacks are included only when `fallbackEnabled` is true.
  *   - Unknown providers are dropped; duplicates (same provider+model as an
  *     earlier tier) are dropped; capped at MAX_FALLBACKS.
+ *   - A built-in tier is normalized to its canonical registry key, so the
+ *     display name the UI stored ("Cursor") reaches the executor as the key it
+ *     looks up ("cursor-cli"). Custom providers are already keyed by UUID and
+ *     pass through untouched.
  *
  * @param {object} args
  * @param {string} args.provider         primary provider (already resolved)
@@ -186,8 +234,16 @@ export function resolveTierModel(provider, model) {
  */
 export function buildProviderChain({ provider, model, fallbackEnabled, fallbackProviders, customProviderIds }) {
   const primaryProviderLc = String(provider || '').toLowerCase();
+  // Compare tiers by canonical identity, not by whatever string each one
+  // happens to be spelled with. The primary arrives lowercased from the
+  // orchestrator ("cursor"), a tier arrives as a display name ("Cursor"), and
+  // both mean cursor-cli — so a raw string compare would fail to notice they
+  // are the same provider and cheerfully build a chain that fails Cursor over
+  // to Cursor. Falls back to the raw lowercase for a custom-provider UUID,
+  // which has no registry key.
+  const primaryCanonical = (resolveProviderKey(provider) || primaryProviderLc).toLowerCase();
   const chain = [{ provider, model: model || null, tier: 0, primary: true }];
-  const seen = new Set([`${primaryProviderLc}::${model || ''}`]);
+  const seen = new Set([`${primaryCanonical}::${model || ''}`]);
 
   if (!fallbackEnabled) return chain;
 
@@ -201,13 +257,34 @@ export function buildProviderChain({ provider, model, fallbackEnabled, fallbackP
   let tier = 1;
   for (const cand of candidates) {
     if (chain.length - 1 >= MAX_FALLBACKS) break;
-    if (!isKnownProvider(cand.provider, customIdSet)) continue;
+
+    const candLc = String(cand.provider || '').trim().toLowerCase();
+    const isCustom = customIdSet.has(candLc);
+    // A custom provider IS its UUID; a built-in is its registry key. Null means
+    // the registry has never heard of it — drop the tier.
+    const canonical = isCustom ? cand.provider : resolveProviderKey(cand.provider);
+    if (!canonical) continue;
 
     // Never fail over to the SAME provider we just exhausted — a different
     // model on the same down provider will almost certainly fail too.
-    if (cand.provider.toLowerCase() === primaryProviderLc) continue;
+    if (canonical.toLowerCase() === primaryCanonical) continue;
 
-    const isCustom = customIdSet.has(cand.provider.toLowerCase());
+    // Deliberately passed the ORIGINAL spelling, not `canonical`.
+    //
+    // resolveTierModel snaps an unrecognised model to the provider's first
+    // STATIC model, and for a CLI provider that static list is a stale floor
+    // rather than an authority — the UI offers models fetched live from the CLI
+    // that the hardcoded list has never heard of. Handing it the canonical key
+    // would make it "recognise" cursor-cli and silently rewrite a live,
+    // user-chosen model (cursor-grok-4.6-medium-fast) to a hardcoded one
+    // (cursor-grok-4.5-high) — turning a fix for a dropped tier into a config
+    // rewrite nobody asked for. The original spelling keeps the
+    // trust-the-caller branch, which is the right answer for a provider whose
+    // real model list is resolved at runtime.
+    //
+    // A tier with NO model configured still gets a default: the executor
+    // resolves one from the canonical key pushed below
+    // (OrchestratorService: getTextModels(String(tier.provider).toLowerCase())).
     const usableModel = resolveTierModel(cand.provider, cand.model);
 
     // A custom provider has no static model list to draw a default from, so an
@@ -215,11 +292,11 @@ export function buildProviderChain({ provider, model, fallbackEnabled, fallbackP
     // request at runtime. Drop the tier instead of shipping a dead one.
     if (isCustom && !usableModel) continue;
 
-    const key = `${cand.provider.toLowerCase()}::${usableModel || ''}`;
+    const key = `${canonical.toLowerCase()}::${usableModel || ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
-    chain.push({ provider: cand.provider, model: usableModel, tier, primary: false });
+    chain.push({ provider: canonical, model: usableModel, tier, primary: false });
     tier += 1;
   }
 
@@ -408,6 +485,7 @@ export default {
   MAX_FALLBACKS,
   parseFallbackList,
   isKnownProvider,
+  resolveProviderKey,
   createCustomProviderIdResolver,
   resolveTierModel,
   buildProviderChain,
