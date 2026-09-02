@@ -195,19 +195,6 @@
         </div>
       </div>
 
-      <!-- Outputs this goal produced: the union of files from the
-           conversations its tasks ran in and the workflows it triggered. -->
-      <div v-if="goalOutputs.length" class="goal-outputs">
-        <h3><i class="fas fa-cube"></i> Outputs ({{ goalOutputs.length }})</h3>
-        <div class="outputs-list">
-          <button v-for="o in goalOutputs.slice(0, 6)" :key="o.id" type="button" class="output-row" @click="openOutput(o)">
-            <i class="fas fa-file-alt"></i>
-            <span class="output-name">{{ outputLabel(o) }}</span>
-          </button>
-          <button v-if="goalOutputs.length > 6" type="button" class="output-more" @click="$emit('panel-action', 'navigate', 'ArtifactsScreen')">All {{ goalOutputs.length }} in Outputs →</button>
-        </div>
-      </div>
-
       <!-- Actions -->
       <div class="goal-actions">
         <Tooltip text="Copy Details" width="auto">
@@ -310,7 +297,6 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import BoundedJson from '@/components/common/BoundedJson.vue';
 import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
-import { outputsForGoal, outputLabel } from '@/utils/outputSources.js';
 
 const mdConverter = new showdown.Converter({
   tables: true,
@@ -346,12 +332,6 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit, expose }) {
     const store = useStore();
-
-    // Outputs the selected goal produced (see outputSources.js).
-    const goalOutputs = computed(() => outputsForGoal(store.getters['contentOutputs/visibleOutputs'] || [], props.selectedGoal));
-    const openOutput = (o) => {
-      emit('panel-action', 'navigate', { screen: 'ArtifactsScreen', opts: { select: { kind: 'artifact', id: o.id } } });
-    };
 
     // Nothing-selected summary: the board beside this panel.
     const summaryStats = computed(() => {
@@ -826,9 +806,6 @@ ${goal.tasks
 
     return {
       summaryStats,
-      goalOutputs,
-      outputLabel,
-      openOutput,
       selectedGoal,
       showCopiedMessage,
       goalProgress,
@@ -1512,59 +1489,6 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-/* ── Outputs this goal produced ── */
-.goal-outputs {
-  margin-bottom: 16px;
-}
-.goal-outputs h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.outputs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.output-row,
-.output-more {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: none;
-  color: var(--color-text);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-}
-.output-row:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: var(--terminal-border-color);
-}
-.output-row i {
-  color: var(--color-text-muted);
-  font-size: 11px;
-  width: 13px;
-  text-align: center;
-}
-.output-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.output-more {
-  color: var(--color-green);
-  font-size: 11px;
 }
 
 .action-button {

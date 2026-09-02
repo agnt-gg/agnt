@@ -364,7 +364,6 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
 import { useSurfaceContribution, useSurfaceAddressing } from '@/canvas/surfaceFederation.js';
 import { Codemirror } from 'vue-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
@@ -747,7 +746,6 @@ export default {
   components: { BaseScreen, Codemirror, Tooltip, draggable },
   emits: ['screen-change'],
   setup(_, { emit }) {
-    const router = useRouter();
     const baseScreenRef = ref(null);
     const bodyRef = ref(null);
     const previewFrame = ref(null);
@@ -2180,12 +2178,6 @@ export default {
     const handlePanelAction = (action, data) => {
       if (action === 'open-file' && data?.path) {
         openFile(data.path);
-      } else if (action === 'open-output' && data) {
-        // A row from the left panel's "By source" list. A file opens in a
-        // tab here; a conversation output IS a chat, so open that chat.
-        const filePath = data.file_path || data.path || data.filePath;
-        if (filePath) openFile(filePath);
-        else if (data.id) router.push(`/chat?content-id=${data.id}`);
       } else if (action === 'file-renamed' && data?.oldPath && data?.newPath) {
         const tab = openTabs.value.find((t) => t.path === data.oldPath);
         if (tab) {

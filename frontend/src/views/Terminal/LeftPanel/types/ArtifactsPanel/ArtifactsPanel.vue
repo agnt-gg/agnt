@@ -1,15 +1,9 @@
 <template>
   <div class="artifacts-panel">
     <div class="panel-header">
-      <h2 class="title">/ Outputs</h2>
+      <h2 class="title">/ Annie</h2>
       <div class="right-tabs">
-        <!-- By source: every output grouped by what produced it. Annie: the
-             artifacts chat. Remembered per user. -->
-        <div class="ap-seg" role="tablist">
-          <button role="tab" class="ap-seg-btn" :class="{ on: view === 'sources' }" @click="view = 'sources'">By source</button>
-          <button role="tab" class="ap-seg-btn" :class="{ on: view === 'annie' }" @click="view = 'annie'">Annie</button>
-        </div>
-        <Tooltip v-if="view === 'annie'" text="Clear Chat History" width="auto" position="bottom">
+        <Tooltip text="Clear Chat History" width="auto" position="bottom">
           <button class="tab-button clear-chat-button" @click="handleClearChat">
             <i class="fas fa-trash"></i>
             <span class="tab-name">Clear</span>
@@ -18,11 +12,7 @@
       </div>
     </div>
 
-    <div v-if="view === 'sources'" class="panel-content ap-sources">
-      <OutputSources @open="openOutput" />
-    </div>
-
-    <div v-else class="panel-content">
+    <div class="panel-content">
       <!-- This panel renders its own Clear button in the header above. -->
       <UnifiedChatContainer
         :show-clear-action="false"
@@ -43,10 +33,9 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
 import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
-import OutputSources from './OutputSources.vue';
 import { useArtifactChatContext } from '@/composables/chat/useArtifactChatContext.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -58,31 +47,10 @@ const initialArtifactSuggestions = [
 
 export default {
   name: 'ArtifactsPanel',
-  components: { UnifiedChatContainer, SimpleModal, Tooltip, OutputSources },
+  components: { UnifiedChatContainer, SimpleModal, Tooltip },
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
-
-    const VIEW_KEY = 'agnt:outputs:leftView';
-    const view = ref(
-      (() => {
-        try {
-          return localStorage.getItem(VIEW_KEY) === 'annie' ? 'annie' : 'sources';
-        } catch {
-          return 'sources';
-        }
-      })(),
-    );
-    watch(view, (v) => {
-      try {
-        localStorage.setItem(VIEW_KEY, v);
-      } catch {
-        // survivable
-      }
-    });
-    // An output row: the screen decides how to open it (file → editor tab,
-    // conversation → that chat). See Artifacts.vue handlePanelAction.
-    const openOutput = (o) => emit('panel-action', 'open-output', o);
     const sessionId = 'artifacts';
     const {
       channelKey: chatChannelKey,
@@ -115,8 +83,6 @@ export default {
     };
 
     return {
-      view,
-      openOutput,
       chatChannelKey,
       chatChatType,
       chatPageContext,
@@ -131,33 +97,6 @@ export default {
 </script>
 
 <style scoped>
-.ap-seg {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 7px;
-}
-.ap-seg-btn {
-  border: 0;
-  border-radius: 5px;
-  background: none;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: 10.5px;
-  font-weight: 500;
-  padding: 3px 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ap-seg-btn.on {
-  color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.14);
-}
-.ap-sources {
-  overflow: auto;
-  padding-top: 4px;
-}
 .artifacts-panel {
   display: flex;
   flex-direction: column;
