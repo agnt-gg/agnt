@@ -53,8 +53,10 @@
       <div v-if="!hasContext" class="muted">Appears after the first turn.</div>
     </InspSection>
 
-    <InspSection title="Artifacts" v-if="artifacts.length">
-      <div v-for="a in artifacts" :key="a.href" class="li" @click="openArtifact(a)">
+    <!-- Files this thread produced. Click opens the file; ⇧-click goes to
+         Outputs (REVIEW) with it selected — the provenance link back. -->
+    <InspSection title="Artifacts" v-if="artifacts.length" action="all outputs →" @action="$emit('panel-action', 'navigate', 'ArtifactsScreen')">
+      <div v-for="a in artifacts" :key="a.href" class="li" @click="openArtifact(a, $event)">
         <span class="tile k-artifact"><i class="fas fa-cube"></i></span>
         <span class="nm">{{ a.name }}</span>
         <span class="t">file</span>
@@ -193,7 +195,11 @@ export default {
     function stopStreaming() {
       emit('panel-action', 'stop-streaming');
     }
-    function openArtifact(a) {
+    function openArtifact(a, ev) {
+      if (ev?.shiftKey) {
+        emit('panel-action', 'navigate', { screen: 'ArtifactsScreen', opts: { select: { kind: 'artifact', id: a.href } } });
+        return;
+      }
       emit('panel-action', 'open-artifact', a);
     }
     function onEntityAction(action, payload) {

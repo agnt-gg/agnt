@@ -504,6 +504,25 @@
           <BoundedJson :value="filteredExecutionLog" filename="execution-log.txt" />
         </div>
 
+        <!-- Outputs this run's workflow produced. Files a workflow writes
+             carry its workflow_id on content_outputs; a run is one firing of
+             it, so "what did this write" is the newest of those. -->
+        <div v-if="runOutputs.length" class="detail-section outputs-section">
+          <h4>
+            <i class="fas fa-cube"></i>
+            Outputs
+            <span class="insight-count">{{ runOutputs.length }}</span>
+          </h4>
+          <div class="outputs-list">
+            <button v-for="o in runOutputs.slice(0, 6)" :key="o.id" type="button" class="output-row" @click="openOutput(o)">
+              <i class="fas fa-file-alt"></i>
+              <span class="output-name">{{ outputLabel(o) }}</span>
+              <span class="output-when">{{ formatRelative(o.updated_at || o.created_at) }}</span>
+            </button>
+            <button v-if="runOutputs.length > 6" type="button" class="output-more" @click="$emit('panel-action', 'navigate', 'ArtifactsScreen')">All {{ runOutputs.length }} in Outputs →</button>
+          </div>
+        </div>
+
         <!-- Linked Insights -->
         <div class="detail-section insights-section">
           <h4>
@@ -587,6 +606,8 @@ import showdown from 'showdown';
 import DOMPurify from 'dompurify';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import { outputsForWorkflow, outputLabel } from '@/utils/outputSources.js';
+import { parseServerTime } from '@/utils/serverTime.js';
 import BoundedJson from '@/components/common/BoundedJson.vue';
 import { originLabel } from '@/utils/originLabels';
 
@@ -634,6 +655,24 @@ export default {
     const goalInput = ref('');
     const goalInputRef = ref(null);
     const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
+
+    // Outputs the selected run's workflow produced (see outputSources.js).
+    const runOutputs = computed(() => {
+      const ex = props.selectedExecution;
+      const wfId = ex?.workflow_id || ex?.workflowId || ex?.workflow?.id;
+      return outputsForWorkflow(store.getters['contentOutputs/visibleOutputs'] || [], wfId);
+    });
+    const formatRelative = (d) => {
+      const ms = parseServerTime(d);
+      if (!ms) return '';
+      const diff = (Date.now() - ms) / 1000;
+      if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+      return `${Math.floor(diff / 86400)}d`;
+    };
+    const openOutput = (o) => {
+      emit('panel-action', 'navigate', { screen: 'ArtifactsScreen', opts: { select: { kind: 'artifact', id: o.id } } });
+    };
 
     // Nothing-selected summary: the run list beside this panel.
     const summaryStats = computed(() => {
@@ -1402,6 +1441,10 @@ ${execution.log}
 
     return {
       summaryStats,
+      runOutputs,
+      outputLabel,
+      formatRelative,
+      openOutput,
       selectedExecution,
       // Execution ledger
       ledger,
@@ -2358,6 +2401,55 @@ ${execution.log}
 }
 
 /* Workflow Actions Section */
+/* ── Outputs this run produced ── */
+.outputs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.output-row,
+.output-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.output-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--terminal-border-color);
+}
+.output-row i {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  width: 13px;
+  text-align: center;
+}
+.output-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.output-when {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+.output-more {
+  color: var(--color-green);
+  font-size: 11px;
+}
+
 .workflow-actions-section {
   border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;

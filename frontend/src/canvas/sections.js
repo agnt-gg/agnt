@@ -41,13 +41,7 @@ export const MAIN_SECTIONS = [
     group: 'WORK',
     icon: 'fas fa-comments',
     label: 'Chat',
-    // Artifacts are what conversations produce. As a PLAN row it was a list
-    // you reached from nowhere in particular; as Chat's second tab it sits
-    // one click from the thread that made the file.
-    screens: [
-      { screen: 'ChatScreen', label: 'CHAT' },
-      { screen: 'ArtifactsScreen', label: 'ARTIFACTS' },
-    ],
+    screens: [{ screen: 'ChatScreen', label: 'CHAT' }],
   },
   {
     // Workspaces was a toolbar tab of Chat. It is its own destination now:
@@ -60,29 +54,47 @@ export const MAIN_SECTIONS = [
     screens: [{ screen: 'WorkspaceScreen', label: 'WORKSPACES' }],
   },
 
-  // ── PLAN ── what you intend, and the record of what happened.
+  // ── REVIEW ── what happened, what is happening, what came out of it. The
+  // day starts here: runs overnight, the files they wrote, the goals still
+  // moving. Top to bottom is the morning sweep, which is why Goals is last
+  // (it is what you INTEND; the rows above it are what you GOT).
   {
     id: 'dashboard',
-    group: 'PLAN',
+    group: 'REVIEW',
     icon: 'fas fa-tachometer-alt',
     label: 'Dashboard',
     screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }],
   },
   {
+    // "Runs" is the word; "Traces" is what engineers call the record of one.
+    // Route and screen keep their names.
+    id: 'traces',
+    group: 'REVIEW',
+    icon: 'fas fa-stream',
+    label: 'Runs',
+    badge: 'traces',
+    screens: [{ screen: 'TracesScreen', label: 'RUNS' }],
+  },
+  {
+    // Outputs are what runs, goals, agents AND chats produce. It was a tab
+    // of Chat, which put a file the nightly digest wrote under the room you
+    // talk in; three different things make files and only one of them is a
+    // conversation. Beside Runs it reads as "what came out", and its left
+    // panel groups by the thing that made each file. ("Artifacts" is the
+    // route and the store; nobody says artifact.)
+    id: 'artifacts',
+    group: 'REVIEW',
+    icon: 'fas fa-cube',
+    label: 'Outputs',
+    screens: [{ screen: 'ArtifactsScreen', label: 'OUTPUTS' }],
+  },
+  {
     id: 'goals',
-    group: 'PLAN',
+    group: 'REVIEW',
     icon: 'fas fa-bullseye',
     label: 'Goals',
     badge: 'goals',
     screens: [{ screen: 'GoalsScreen', label: 'GOALS' }],
-  },
-  {
-    id: 'traces',
-    group: 'PLAN',
-    icon: 'fas fa-stream',
-    label: 'Traces',
-    badge: 'traces',
-    screens: [{ screen: 'TracesScreen', label: 'TRACES' }],
   },
 
   // ── BUILD ── the workforce and what it can use. List first, forge

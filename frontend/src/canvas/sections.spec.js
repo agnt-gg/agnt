@@ -145,8 +145,16 @@ describe('canvas sections registry', () => {
       expect(rows[0].startsGroup).toBe(true);
     });
 
-    it('renders the four intended main groups in order (do · plan · build · connect)', () => {
-      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD', 'CONNECT']);
+    it('renders the four intended main groups in order (work · review · build · connect)', () => {
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'REVIEW', 'BUILD', 'CONNECT']);
+    });
+
+    it('REVIEW is the morning sweep in order: Dashboard · Runs · Outputs · Goals', () => {
+      // What ran, what it wrote, what is still moving. Goals last: it is
+      // what you intend, the rows above are what you got.
+      const review = MAIN_SECTIONS.filter((s) => s.group === 'REVIEW');
+      expect(review.map((s) => s.id)).toEqual(['dashboard', 'traces', 'artifacts', 'goals']);
+      expect(review.map((s) => s.label)).toEqual(['Dashboard', 'Runs', 'Outputs', 'Goals']);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -158,18 +166,23 @@ describe('canvas sections registry', () => {
   // ── Regression locks for the sidebar-categories re-parent (2026-08-31) ──
   it('Workspaces is its own sidebar row, not a Chat toolbar tab', () => {
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
-    expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen', 'ArtifactsScreen']);
+    expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen']);
     const workspaces = MAIN_SECTIONS.find((s) => s.id === 'workspaces');
     expect(workspaces.screens.map((t) => t.screen)).toEqual(['WorkspaceScreen']);
     expect(workspaces.group).toBe('WORK');
   });
 
   // ── Regression locks for the AGNT One re-parent (2026-09-02) ──
-  it('Artifacts is a Chat tab, not a PLAN row', () => {
-    // A file a conversation produced belongs one click from that thread.
-    expect(MAIN_SECTIONS.some((s) => s.id === 'artifacts')).toBe(false);
+  it('Outputs (ArtifactsScreen) is a REVIEW row beside Runs, and Chat has one tab', () => {
+    // Runs, goals, agents and chats all produce files; only one of those is
+    // a conversation, so a Chat tab was the wrong owner. The Chat inspector
+    // keeps the provenance link (its Artifacts section ⇧-clicks here).
+    const outputs = MAIN_SECTIONS.find((s) => s.id === 'artifacts');
+    expect(outputs?.group).toBe('REVIEW');
+    expect(outputs.label).toBe('Outputs');
+    expect(outputs.screens).toEqual([{ screen: 'ArtifactsScreen', label: 'OUTPUTS' }]);
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
-    expect(chat.screens[1]).toMatchObject({ screen: 'ArtifactsScreen', label: 'ARTIFACTS' });
+    expect(chat.screens.some((t) => t.screen === 'ArtifactsScreen')).toBe(false);
   });
 
   it('Library owns Tools · Skills · Widgets · Marketplace as tabs, forges contextual', () => {
