@@ -18,6 +18,7 @@
     ref="baseScreenRef"
     screenId="PluginsScreen"
     :activeRightPanel="activeRightPanel"
+    :panelProps="{ context: 'plugins' }"
     @screen-change="(screenName) => emit('screen-change', screenName)"
   >
     <template #default>
@@ -53,9 +54,10 @@ const store = useStore();
 const baseScreenRef = ref(null);
 const modalRef = ref(null);
 
-// Selecting a plugin swaps the right panel to its detail view; with nothing
-// selected the screen keeps NewsPanel, exactly as it did inside Connectors.
-const activeRightPanel = computed(() => (store.getters['connectors/selectedPlugin'] ? 'ConnectorsPanel' : 'NewsPanel'));
+// The right panel is ConnectorsPanel in both states: a selected plugin shows
+// its detail; nothing selected shows the plugins summary (context: 'plugins').
+// News & updates moved to Settings › About.
+const activeRightPanel = computed(() => 'ConnectorsPanel');
 
 async function showAlert(title, message) {
   await modalRef.value?.showModal({ title, message, confirmText: 'OK', showCancel: false });

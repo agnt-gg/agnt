@@ -73,6 +73,45 @@
         </div>
       </div>
 
+      <!-- Data: what AGNT holds for you, and the two irreversible verbs. These
+           sections existed in Settings.vue with no row to reach them. -->
+      <div class="nav-section" data-section="data">
+        <h4>Data</h4>
+        <div class="nav-items">
+          <button
+            v-for="item in DATA_ITEMS"
+            :key="item.id"
+            class="nav-item"
+            :class="{ active: activeSection === item.id }"
+            :data-nav="item.id"
+            @click="handleNavClick(item)"
+          >
+            <i :class="item.icon"></i>
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- About: version, news and updates, Docs · GitHub · Discord · Feedback.
+           The Resources block that every right panel used to carry lives
+           here now, once. -->
+      <div class="nav-section" data-section="about">
+        <h4>About</h4>
+        <div class="nav-items">
+          <button
+            v-for="item in ABOUT_ITEMS"
+            :key="item.id"
+            class="nav-item"
+            :class="{ active: activeSection === item.id }"
+            :data-nav="item.id"
+            @click="handleNavClick(item)"
+          >
+            <i :class="item.icon"></i>
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Logout is an action, not a settings page, so it sits below the
            captions rather than inside one. It kept its 'general' section id
            because that is the Settings view that hosts LoginSection. -->
@@ -111,7 +150,19 @@ const CONFIG_ITEMS = Object.freeze([
   { id: 'connection', icon: 'fas fa-server', label: 'Remote Backend' },
   { id: 'security', icon: 'fas fa-shield-alt', label: 'Security' },
   { id: 'theme', icon: 'fas fa-palette', label: 'Theme' },
+  { id: 'sounds', icon: 'fas fa-volume-up', label: 'Sounds' },
+  { id: 'notifications', icon: 'fas fa-bell', label: 'Notifications' },
   { id: 'tours', icon: 'fas fa-route', label: 'Tours' },
+]);
+
+const DATA_ITEMS = Object.freeze([
+  { id: 'backup', icon: 'fas fa-database', label: 'Backup & Export' },
+  { id: 'reset', icon: 'fas fa-undo', label: 'Reset' },
+]);
+
+const ABOUT_ITEMS = Object.freeze([
+  { id: 'about', icon: 'fas fa-info-circle', label: 'About & Resources' },
+  { id: 'leaderboard', icon: 'fas fa-trophy', label: 'Leaderboard' },
 ]);
 
 const LOGOUT_ITEM = Object.freeze({ id: 'general', icon: 'fas fa-sign-out-alt', label: 'Logout' });
@@ -139,6 +190,8 @@ export default {
       GENERAL_ITEMS,
       ASSISTANT_ITEMS,
       CONFIG_ITEMS,
+      DATA_ITEMS,
+      ABOUT_ITEMS,
       LOGOUT_ITEM,
     };
   },

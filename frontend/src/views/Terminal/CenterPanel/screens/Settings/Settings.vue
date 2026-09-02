@@ -243,13 +243,17 @@
         <div v-else-if="activeSection === 'about'" class="settings-content" data-section="about">
           <div class="content-header">
             <h2 class="content-title">About</h2>
-            <p class="content-subtitle">System information and version details</p>
+            <p class="content-subtitle">Version, updates, and where to find help</p>
           </div>
           <div class="settings-grid">
-            <div class="settings-section">
-              <h3>System Information</h3>
-              <p>About information will be implemented here.</p>
+            <!-- Version · update check · latest releases. This was the
+                 "AGNT News & Updates" right panel on Connectors, Plugins and
+                 Settings; it has one home now and the toolbar carries an
+                 "update" pill when there is one. -->
+            <div class="settings-section full-width">
+              <NewsPanel />
             </div>
+            <!-- Docs · GitHub · Discord · Feedback — once, here, and in ⌘K. -->
             <div class="settings-section full-width">
               <ResourcesSection />
             </div>
@@ -275,6 +279,7 @@
 <script>
 import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
@@ -289,6 +294,7 @@ import ThemeSelector from './components/ThemeSelector/ThemeSelector.vue';
 import BillingManager from './components/BillingManager/BillingManager.vue';
 import CreditPurchase from '../../../../_components/common/CreditPurchase.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
+import NewsPanel from '@/views/Terminal/RightPanel/types/NewsPanel/NewsPanel.vue';
 import TourSettings from './components/TourSettings/TourSettings.vue';
 import SoundsSettings from './components/SoundsSettings/SoundsSettings.vue';
 import SecuritySettings from './components/SecuritySettings/SecuritySettings.vue';
@@ -315,6 +321,7 @@ export default {
     BillingManager,
     CreditPurchase,
     ResourcesSection,
+    NewsPanel,
     TourSettings,
     SoundsSettings,
     SecuritySettings,
@@ -329,6 +336,7 @@ export default {
   emits: ['screen-change', 'start-tour'],
   setup(props, { emit }) {
     const store = useStore();
+    const route = useRoute();
     const baseScreenRef = ref(null);
     const activeSection = ref('profile');
     const componentKey = ref(0);
@@ -350,8 +358,11 @@ export default {
     let lastRefreshAt = 0;
 
     const initializeScreen = () => {
-      // Check if there's a requested section to navigate to
-      const requestedSection = localStorage.getItem('settings-initial-section');
+      // Check if there's a requested section to navigate to: the URL first
+      // (?section=about from the toolbar pill / Jump palette), then the
+      // localStorage hand-off older callers use.
+      const urlSection = typeof route?.query?.section === 'string' ? route.query.section : '';
+      const requestedSection = urlSection || localStorage.getItem('settings-initial-section');
       if (requestedSection) {
         activeSection.value = requestedSection;
         localStorage.removeItem('settings-initial-section'); // Clean up

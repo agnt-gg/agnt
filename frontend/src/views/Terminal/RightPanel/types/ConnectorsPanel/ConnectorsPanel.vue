@@ -1,13 +1,18 @@
 <template>
   <div class="ui-panel connectors-panel">
-    <!-- Default View -->
-    <div v-if="!selectedPlugin">
-      <h2>Connectors</h2>
-      <div class="panel-section about-section">
-        <div class="about-row">AGNT Terminal UI v0.3.1</div>
-        <div class="about-row">Connect your favorite apps and MCPs.</div>
-      </div>
-    </div>
+    <!-- Nothing selected: connection health. IntegrationHealth used to sit in
+         Chat's right panel on every screen; a connection's health belongs
+         beside the connections. -->
+    <ListSummaryPanel
+      v-if="!selectedPlugin"
+      :caption="summaryCaption"
+      overview-title="Health"
+      :stats="summaryStats"
+      :hint="summaryHint"
+      :actions="summaryActions"
+    >
+      <IntegrationHealth />
+    </ListSummaryPanel>
 
     <!-- Plugin Details View -->
     <div v-else class="plugin-details">
@@ -71,12 +76,44 @@ import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { apiFetch } from '@/utils/apiFetch.js';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import IntegrationHealth from '@/views/Terminal/RightPanel/types/ChatPanel/components/IntegrationHealth.vue';
 
 export default {
   name: 'ConnectorsPanel',
-  components: { BaseButton, SimpleModal },
-  setup() {
+  components: { BaseButton, SimpleModal, ListSummaryPanel, IntegrationHealth },
+  props: {
+    /** 'connectors' (default) or 'plugins' — which screen is beside this panel. */
+    context: { type: String, default: 'connectors' },
+  },
+  setup(props) {
     const store = useStore();
+
+    const isPlugins = computed(() => props.context === 'plugins');
+    const summaryCaption = computed(() => (isPlugins.value ? 'Plugins' : 'Connectors'));
+    const summaryHint = computed(() =>
+      isPlugins.value
+        ? 'Click a plugin card to see its version, tools and actions here. Esc comes back.'
+        : 'Pick a view on the left. Select a plugin (Library › Plugins) to see its tools and settings here.',
+    );
+
+    // Nothing-selected summary: connection health from the same getters the
+    // Connectors screen reads.
+    const summaryStats = computed(() => {
+      const healthy = store.getters['appAuth/healthyConnectionsCount'] || 0;
+      const total = store.getters['appAuth/totalConnectionsCount'] || 0;
+      const apps = (store.getters['appAuth/connectedApps'] || []).length;
+      const attention = Math.max(0, total - healthy);
+      return [
+        { label: 'Connected', value: apps },
+        { label: 'Healthy', value: `${healthy} / ${total}` },
+        { label: 'Need attention', value: attention, live: attention > 0 },
+        { label: 'Provider', value: store.state.aiProvider?.selectedProvider || 'none' },
+      ];
+    });
+    const summaryActions = [
+      { label: 'Check health', onClick: () => store.dispatch('appAuth/checkConnectionHealth').catch(() => {}) },
+    ];
     const isUninstalling = ref(false);
     const isInstalling = ref(false);
     const modalRef = ref(null);
@@ -290,6 +327,10 @@ export default {
     }
 
     return {
+      summaryStats,
+      summaryActions,
+      summaryCaption,
+      summaryHint,
       selectedPlugin,
       closeDetails,
       editPlugin,

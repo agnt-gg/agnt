@@ -914,7 +914,8 @@ export default {
     // hosted the plugin list. Nothing here can select a plugin any more, and
     // leaving the condition would have let a selection made over on the
     // Plugins screen open a plugin detail panel on top of Connectors.
-    const activeRightPanel = computed(() => 'NewsPanel');
+    // Right panel: connection health for this screen (News moved to Settings › About).
+    const activeRightPanel = computed(() => 'ConnectorsPanel');
 
     // Provider form state
     const providerForm = ref({
@@ -1766,6 +1767,11 @@ export default {
       nextTick(() => baseScreenRef.value?.scrollToBottom());
     }
     function initializeScreen() {
+      // ?section=providers (toolbar "no provider" pill, Jump palette) lands on
+      // a specific view; otherwise keep whatever was open.
+      const wanted = typeof route.query?.section === 'string' ? route.query.section : '';
+      if (wanted && wanted !== activeSection.value) activeSection.value = wanted;
+
       // Background load secrets
       store.dispatch('connectors/loadSecrets');
       terminalLines.value = ['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.'];

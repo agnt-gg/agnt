@@ -103,7 +103,8 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useStore } from 'vuex';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG } from '@/tt.config.js';
 
@@ -118,6 +119,13 @@ export default {
     const latestVersion = ref('');
     const updateAvailable = ref(false);
     const checkingUpdate = ref(false);
+
+    // The toolbar draws an "update" pill from shell state; this panel is the
+    // one place that knows, so it tells the shell.
+    const store = useStore();
+    watch([updateAvailable, latestVersion], ([has, v]) => {
+      store.dispatch('shell/setUpdateAvailable', has ? { version: v } : null);
+    });
 
     // Releases data
     const releases = ref([]);
