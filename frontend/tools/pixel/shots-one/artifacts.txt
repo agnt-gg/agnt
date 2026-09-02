@@ -1,6 +1,6 @@
 {
  "headings": [
-  "left:/ Outputs"
+  "left:/ Annie"
  ],
  "buttons": [
   "toolbar:OUTPUTS",
@@ -22,49 +22,56 @@
   "rail:+ New page",
   "rail:Settings",
   "rail:Collapse",
-  "left:By source",
-  "left:Annie",
+  "left:Clear",
+  "left:📄 Create new file",
+  "left:📁 List my files",
+  "left:Toggle hands-free voice conversation",
+  "left:(icon:fas fa-ellipsis-h)",
+  "left:(icon:fas fa-paper-plane)",
   "center:(icon:fas fa-code)",
   "center:(icon:fas fa-sync-alt)"
  ],
  "tabs": [
-  "toolbar:OUTPUTS",
-  "left:By source",
-  "left:Annie"
+  "toolbar:OUTPUTS"
  ],
- "inputs": [],
+ "inputs": [
+  "left:textarea Ask about code, create files..."
+ ],
  "links": [],
- "text": "OUTPUTS Jump to anything… Ctrl K 1 running no provider 09:41:00 WORK Chat Workspaces REVIEW Dashboard Runs 1 Outputs Goals BUILD Agents Workflows Library CONNECT Connections AI Providers Plugins + New page Settings Collapse / Outputs By source Annie RECENT 0 Nothing yet. Files that chats, runs and agents produce land here. BY SOURCE 0 PREVIEW Open a file to see preview",
+ "text": "OUTPUTS Jump to anything… Ctrl K 1 running no provider 09:41:00 WORK Chat Workspaces REVIEW Dashboard Runs 1 Outputs Goals BUILD Agents Workflows Library CONNECT Connections AI Providers Plugins + New page Settings Collapse / Annie Clear Hi! I'm Annie, your artifacts assistant. I can help you create, edit, and explore files — code, docs, charts, and more! 09:41 📄 Create new file 📁 List my files PREVIEW Open a file to see preview",
  "errors": [
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: WebSocket connection to 'ws://127.0.0.1:60806/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
-  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:60806/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:60806/assets/js/vendor-services.CvToKhtQ.js:1:13294)",
-  "console: Failed to fetch pseudonym: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async lb.actions.fetchPseudonym.Ao.staleAfter (http://127.0.0.1:60806/as",
+  "console: WebSocket connection to 'ws://127.0.0.1:51161/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
+  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:51161/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:51161/assets/js/vendor-services.CvToKhtQ.js:1:13294)",
+  "console: Failed to fetch pseudonym: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async lb.actions.fetchPseudonym.Ao.staleAfter (http://127.0.0.1:51161/as",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: ❌ Error fetching subscription: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async lb.actions.fetchSubscription.Ao.staleAfter (http://127.0.0.1:6",
+  "console: ❌ Error fetching subscription: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async lb.actions.fetchSubscription.Ao.staleAfter (http://127.0.0.1:5",
   "console: ❌ Error response: undefined",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching credits activity: TypeError: e.map is not a function\n    at g1 (http://127.0.0.1:60806/assets/js/index.lPFdEpW7.js:905:27944)\n    at e.fetchCreditsActivity (http://127.0.0.1:60806/assets/js/index.lPFdEpW7.js:905:39309)",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: ❌ Error fetching referral balance: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralBalance (http://127.0.0.1:60806/assets/js/i",
-  "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching referral tree: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralTree (http://127.0.0.1:60806/assets/js/index.lPF",
+  "console: Error fetching credits activity: TypeError: e.map is not a function\n    at g1 (http://127.0.0.1:51161/assets/js/index.GHwmtzin.js:905:27944)\n    at e.fetchCreditsActivity (http://127.0.0.1:51161/assets/js/index.GHwmtzin.js:905:39309)",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.Ao.staleAfter (http://127.0.0.1:60806/asse",
+  "console: ❌ Error fetching referral balance: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralBalance (http://127.0.0.1:51161/assets/js/i",
+  "console: Failed to load resource: net::ERR_FAILED",
+  "console: Error fetching referral tree: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralTree (http://127.0.0.1:51161/assets/js/index.GHw",
+  "console: Failed to load resource: net::ERR_FAILED",
+  "console: ❌ Error fetching referral balance: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralBalance (http://127.0.0.1:51161/assets/js/i",
+  "console: Failed to load resource: net::ERR_FAILED",
+  "console: Error fetching referral tree: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralTree (http://127.0.0.1:51161/assets/js/index.GHw",
+  "console: Failed to load resource: net::ERR_FAILED",
+  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.Ao.staleAfter (http://127.0.0.1:51161/asse",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: ❌ License validation error: Network Error",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: EventSource's response has a MIME type (\"application/json\") that is not \"text/event-stream\". Aborting the connection.",
-  "console: ❌ Error syncing stats to remote: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:60806/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.syncStatsToRemote (http://127.0.0.1:60806/assets/js/index.",
+  "console: ❌ Error syncing stats to remote: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:51161/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.syncStatsToRemote (http://127.0.0.1:51161/assets/js/index.",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: TypeError: Cannot read properties of undefined (reading 'length')\n    at Proxy.dn (http://127.0.0.1:60806/assets/js/FileTreePanel.D2hgFxT8.js:7:3805)\n    at Qr (http://127.0.0.1:60806/assets/js/vendor-vue.DcmVC_TO.js:31:17175)\n    at wr.M [as fn] (http://127.0.0.1:60806/assets/js/vendor-vue.DcmVC_TO",
-  "console: WebSocket connection to 'ws://127.0.0.1:60806/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
-  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:60806/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:60806/assets/js/vendor-services.CvToKhtQ.js:1:13294)",
-  "console: WebSocket connection to 'ws://127.0.0.1:60806/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
-  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:60806/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:60806/assets/js/vendor-services.CvToKhtQ.js:1:13294)"
+  "console: TypeError: Cannot read properties of undefined (reading 'length')\n    at Proxy.dn (http://127.0.0.1:51161/assets/js/FileTreePanel.l4Lb-R7e.js:7:3805)\n    at Qr (http://127.0.0.1:51161/assets/js/vendor-vue.DcmVC_TO.js:31:17175)\n    at wr.M [as fn] (http://127.0.0.1:51161/assets/js/vendor-vue.DcmVC_TO",
+  "console: WebSocket connection to 'ws://127.0.0.1:51161/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
+  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:51161/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:51161/assets/js/vendor-services.CvToKhtQ.js:1:13294)"
  ]
 }
