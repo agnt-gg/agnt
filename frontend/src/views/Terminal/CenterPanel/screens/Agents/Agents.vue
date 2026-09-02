@@ -336,6 +336,7 @@
 <script>
 import { ref, onMounted, onUnmounted, nextTick, inject, computed, watch } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import { API_CONFIG } from '@/tt.config.js';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import BaseScreen from '../../BaseScreen.vue';
@@ -358,6 +359,7 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
+    const route = useRoute();
     const playSound = inject('playSound', () => {});
 
     // Initialize tutorial
@@ -832,12 +834,23 @@ export default {
         terminalLines.value.push('Data loaded.'); // Confirmation
         await nextTick();
         scrollToBottom();
+        applySelectIntent();
       });
 
       // Show tutorial after a short delay
       setTimeout(() => {
         initializeAgentsTutorial();
       }, 2000);
+    };
+
+    // ?select=agent:ID (Jump palette "Open", entity chips, EntityInspector
+    // "Open in Agents") selects that agent so the right panel shows it.
+    const applySelectIntent = () => {
+      const sel = typeof route.query?.select === 'string' ? route.query.select : '';
+      if (!sel.startsWith('agent:')) return;
+      const id = sel.slice(6);
+      const agent = (store.getters['agents/allAgents'] || []).find((a) => String(a.id) === id);
+      if (agent) selectAgent(agent);
     };
 
     const toggleAgent = async (agent) => {

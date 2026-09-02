@@ -285,7 +285,26 @@ export default {
     const selectedExecution = ref(null);
     const activeTab = ref('all');
     const searchQuery = ref('');
-    const currentLayout = ref('grid');
+    // AGNT One: runs are a log; the table is the default read, the grid a
+    // toggle. Remembered per user.
+    const LAYOUT_KEY = 'agnt:traces:layout';
+    const currentLayout = ref(
+      (() => {
+        try {
+          const v = localStorage.getItem(LAYOUT_KEY);
+          return v === 'grid' || v === 'table' ? v : 'table';
+        } catch {
+          return 'table';
+        }
+      })(),
+    );
+    watch(currentLayout, (v) => {
+      try {
+        localStorage.setItem(LAYOUT_KEY, v);
+      } catch {
+        // survivable
+      }
+    });
     const currentFilter = ref('all');
     const selectedWorkflow = ref('');
     const executionTypeFilter = ref('all'); // 'all', 'goals', 'workflows'
@@ -1270,6 +1289,24 @@ ${execution.log}
         initializeTracesTutorial();
       }, 2000);
     };
+
+    // ?status=running (toolbar "N running" pill) presets the status tab. Also
+    // answers the shell's inspect({ kind: 'running' }) by the same preset.
+    watch(
+      () => route.query.status,
+      (status) => {
+        if (!status || route.path !== '/traces') return;
+        if (tabs.some((t) => t.id === status)) activeTab.value = status;
+        router.replace({ path: '/traces', query: {} });
+      },
+      { immediate: true },
+    );
+    watch(
+      () => store.getters['shell/inspect'],
+      (t) => {
+        if (t && t.kind === 'running' && route.path === '/traces') activeTab.value = 'running';
+      },
+    );
 
     // Auto-select execution from query param (e.g. navigating from insights)
     watch(

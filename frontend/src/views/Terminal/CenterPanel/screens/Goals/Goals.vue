@@ -334,6 +334,7 @@
 <script>
 import { ref, computed, inject, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import GoalCard from './components/GoalCard.vue';
@@ -403,6 +404,7 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
+    const route = useRoute();
     const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
     const toolbarRef = ref(null);
@@ -594,12 +596,27 @@ export default {
     const doneSuccessGoals = computed(() => filteredGoals.value.filter((g) => DONE_SUCCESS.includes(g.status)));
     const doneFailureGoals = computed(() => filteredGoals.value.filter((g) => DONE_FAILURE.includes(g.status)));
 
+    // Navigation intents carried in the URL (AGNT One): ?new=1 opens the
+    // composer (Traces' "New goal", Dashboard quick action, ⌘K); ?select=goal:ID
+    // selects a goal (Jump palette, entity chips).
+    const applyRouteIntents = () => {
+      if (route.query?.new === '1') showCreateModal.value = true;
+      const sel = typeof route.query?.select === 'string' ? route.query.select : '';
+      if (sel.startsWith('goal:')) {
+        const id = sel.slice(5);
+        const goal = (allGoals.value || []).find((g) => String(g.id) === id);
+        if (goal) handleGoalClick(goal);
+      }
+    };
+
     const initializeScreen = () => {
       terminalLines.value.push('Loading goals...');
+      if (route.query?.new === '1') showCreateModal.value = true;
       store
         .dispatch('goals/fetchGoals')
         .then(() => {
           terminalLines.value.push(`Loaded ${allGoals.value.length} goals.`);
+          applyRouteIntents();
           // Hydrate task progress for in-flight goals so cards show running tasks
           // immediately instead of waiting for the next socket event.
           const inFlight = (allGoals.value || []).filter((g) => ['executing', 'paused'].includes(g.status));

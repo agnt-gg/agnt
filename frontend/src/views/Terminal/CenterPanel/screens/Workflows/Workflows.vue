@@ -307,6 +307,7 @@
 <script>
 import { ref, onMounted, onUnmounted, computed, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import BaseScreen from '../../BaseScreen.vue';
@@ -327,6 +328,7 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
+    const route = useRoute();
     const cleanup = useCleanup();
     const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
@@ -994,6 +996,12 @@ export default {
         .dispatch('workflows/fetchWorkflows')
         .then(() => {
           const workflows = store.getters['workflows/allWorkflows'];
+          // ?select=workflow:ID (Jump palette, entity chips) selects it.
+          const sel = typeof route.query?.select === 'string' ? route.query.select : '';
+          if (sel.startsWith('workflow:')) {
+            const hit = workflows.find((w) => String(w.id) === sel.slice(9));
+            if (hit) handleWorkflowClick(hit);
+          }
           if (cachedWorkflows.length === 0) {
             if (workflows.length === 0) {
               addLine('No workflows found. Create a workflow in the Workflow Designer.', 'info');
