@@ -14,6 +14,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + verified · `[-]` kept /
 
 - [x] P0.1 Worktree `feat/agnt-one`, junctions (root/frontend/backend node_modules), `.env` hardlink
 - [x] P0.2 `sections.js` re-parent: WORK = Chat(CHAT|ARTIFACTS) · Workspaces; PLAN = Dashboard · Goals · Traces; BUILD = Agents · Workflows · **Library**(TOOLS|SKILLS|WIDGETS|MARKETPLACE + contextual forges); **CONNECT** = Connections · AI Providers · Plugins; foot = Settings
+- [x] P0.16 REVIEW group + Outputs (2026-09-02): PLAN → REVIEW (Dashboard · Runs · Outputs · Goals, the morning sweep); ArtifactsScreen is the Outputs row (label), Chat has one tab; Traces row labelled Runs; Outputs left panel = By source (Recent strip + groups by This chat / workflow / tool / chat / Loose, from content_outputs provenance) with an Annie tab; Outputs section on the Runs and Goals inspectors; Chat inspector Artifacts rows ⇧-click → Outputs. utils/outputSources.js + spec
 - [x] P0.15 CONNECT group (2026-09-02): new `ProvidersScreen` (`/providers`, thin wrapper over ProviderSelector · FallbackProviders · ChatBehaviorSettings); Plugins leaves Library; Connections nav = API/OAuth · Emails · MCP · Vault · Webhooks; attention badge on Connections; "no provider" pill and ⌘K land on ProvidersScreen; Settings › AI Provider kept as a second read of the same cards
 - [x] P0.3 `tourTargets.js` + backend `tutorialTargets.js` mirror updated for the new ids (`library`), removed ids (tools/skills/plugins/widgets/marketplace/artifacts)
 - [x] P0.4 `sections.spec.js` regression locks updated to the new truth (Plugins→Library tab, Artifacts→Chat tab, Marketplace→Library tab)
@@ -45,8 +46,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + verified · `[-]` kept /
 
 ## 2 · Chat › Artifacts (tab)
 
-- [x] A1 ARTIFACTS tab in Chat section → ArtifactsScreen; rail row removed; `/artifacts` deep link works
-- [-] A2 Left = file tree (FileTreePanel moved from right) + "From chats" + New file; Annie chat kept reachable (Ask Annie) — *Artifacts keeps Annie left (titled Annie) and the file tree right — the chat IS the artifact workflow; moving the tree left would put it above the composer that makes files*
+- [x] A1 ~~ARTIFACTS tab in Chat~~ → superseded: Outputs is a REVIEW rail row (P0.16); `/artifacts` deep link works
+- [x] A2 Left = By source (Recent + groups by producer) with an Annie tab; file tree stays right (FileTreePanel)
 - [-] A3 Centre = preview with Preview · Code · Split · ↻ · Open in app · Share — *preview/code/split toolbar deferred*
 - [-] A4 Right = file inspector (Details · Versions · Used in) + Ask Annie / Download / Make widget / Publish — *file inspector deferred (FileTreePanel carries details today)*
 

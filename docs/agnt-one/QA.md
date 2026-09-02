@@ -3,13 +3,13 @@
 Run from the worktree: quit AGNT, `cd backend && npm start` (port 3333 is a singleton), then `cd frontend && npx vite build`, Ctrl-R the app. Every line is a click path with the expected result. Tick as you go.
 
 ## Shell (every page)
-- [ ] Rail shows four readable captions WORK · PLAN · BUILD · CONNECT; rows Chat · Workspaces / Dashboard · Goals · Traces / Agents · Workflows · Library / Connections · AI Providers · Plugins; foot Settings alone.
-- [ ] Goals row shows a count while a goal is executing; Traces while a run is running; Connections shows an amber count when a connection needs attention.
+- [ ] Rail shows four readable captions WORK · REVIEW · BUILD · CONNECT; rows Chat · Workspaces / Dashboard · Runs · Outputs · Goals / Agents · Workflows · Library / Connections · AI Providers · Plugins; foot Settings alone.
+- [ ] Goals row shows a count while a goal is executing; Runs while a run is running; Connections shows an amber count when a connection needs attention.
 - [ ] Toolbar: centred "Jump to anything…" field. Press ⌘K / Ctrl-K anywhere → palette. Type "agents" → Go to › Agents; type an agent's name → Open › that agent; type nonsense → "send to Annie" (↵ sends it in Chat; ⇧↵ drops it in the composer).
 - [ ] Toolbar pills: "N running" appears while runs are live (click → Traces, Running tab); "N to approve" while insights are escalated (click → Autonomy); red "no provider" when none is connected (click → CONNECT › AI Providers); "update" when an update exists (click → Settings › About).
 - [ ] ⌘\ toggles the left panel, ⌘⇧\ the right. Esc clears a right-panel selection back to the summary.
 - [ ] Library row lands on Tools; toolbar tabs TOOLS · SKILLS · WIDGETS · MARKETPLACE (Plugins is under CONNECT). Open Tool Forge from a tool → an amber TOOL FORGE tab appears while inside, disappears when you leave. Same for WIDGET FORGE.
-- [ ] Chat row → tabs CHAT · ARTIFACTS. `/artifacts` deep link still opens Artifacts.
+- [ ] Chat row → one tab, CHAT. REVIEW › Outputs opens the Artifacts screen (`/artifacts`); left panel "By source" shows Recent (newest 8) then groups (This chat · workflow names · tool names · chat titles · Loose) with counts; Annie tab switches to the chat; clicking a row opens the file (or that chat). Runs › a run and Goals › a goal show an Outputs section when that run/goal produced files. Chat inspector › Artifacts: click opens, ⇧-click → Outputs; "all outputs →" link.
 
 ## Chat
 - [ ] Right panel reads THIS CONVERSATION: Working now (stop works), Mentioned (appears once Annie names an agent/workflow/goal), Awaiting approval (when any), Context & cost (tiles appear after the first turn; expanding a tile shows Cost/Inventory/Health/Activity), Artifacts (file links from replies), This chat (Model row opens the provider popover; Tools row opens the tool popover). Footer: Save chat · New chat · Open in workspace.

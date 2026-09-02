@@ -10,13 +10,14 @@
 // must point at a section that actually renders.
 export const TOUR_TARGETS = [
   // ── Sidebar: WORK (global — always visible) ────────────────────────
-  { id: 'sidebar.chat',             selector: '[data-tour-id="sidebar.chat"]',             screen: null, description: 'Sidebar button: Chat (Chat, Artifacts)',         safeToSimulate: true },
+  { id: 'sidebar.chat',             selector: '[data-tour-id="sidebar.chat"]',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
   { id: 'sidebar.workspaces',       selector: '[data-tour-id="sidebar.workspaces"]',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },
 
   // ── Sidebar: PLAN ──────────────────────────────────────────────────
   { id: 'sidebar.dashboard',        selector: '[data-tour-id="sidebar.dashboard"]',        screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
   { id: 'sidebar.goals',            selector: '[data-tour-id="sidebar.goals"]',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
-  { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Traces',       safeToSimulate: true },
+  { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Runs (execution traces)',       safeToSimulate: true },
+  { id: 'sidebar.artifacts',         selector: '[data-tour-id="sidebar.artifacts"]',         screen: null, description: 'Sidebar button: Outputs (files produced by chats, runs, goals and agents)', safeToSimulate: true },
 
   // ── Sidebar: BUILD ─────────────────────────────────────────────────
   { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
