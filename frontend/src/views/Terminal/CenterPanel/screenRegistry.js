@@ -71,6 +71,20 @@ export const SCREEN_DEFAULTS = Object.freeze({
   WorkflowsScreen: { leftPanel: 'WorkflowsPanel', input: false }, // right: dynamic
 });
 
+/**
+ * Screens that do NOT render BaseScreen's three-panel frame. They lay out
+ * their own surfaces (Workspace is a full-bleed widget canvas with its own
+ * gutters), so the persistent PanelBackdrop must not paint under them or the
+ * wallpaper between widgets fills in. Kept OUTSIDE SCREEN_DEFAULTS on
+ * purpose: that table is guarded to contain only screens that mount
+ * <BaseScreen screenId="…">, and a frameless screen by definition does not.
+ */
+export const FRAMELESS_SCREENS = Object.freeze(new Set(['WorkspaceScreen']));
+
+export function screenHasFrame(screenId) {
+  return !FRAMELESS_SCREENS.has(screenId);
+}
+
 /** Resolve a layout slot: an explicitly passed prop wins; else the registry. */
 export function resolvePanel(propValue, screenId, slot) {
   if (propValue !== undefined) return propValue;

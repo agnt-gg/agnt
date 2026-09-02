@@ -202,7 +202,7 @@
              each screen mounts is torn down on navigation, and for a frame or
              two nothing opaque covers this box (transparent under custom-bg).
              See PanelBackdrop.vue. -->
-        <PanelBackdrop v-if="!onCustomPage" :screen-name="screenName" />
+        <PanelBackdrop v-if="showPanelBackdrop" :screen-name="screenName" />
 
         <!-- Custom pages: full widget canvas system -->
         <WidgetCanvas
@@ -313,6 +313,7 @@ import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
 import PanelBackdrop from './PanelBackdrop.vue';
+import { screenHasFrame } from '@/views/Terminal/CenterPanel/screenRegistry.js';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -542,10 +543,16 @@ export default {
       emit('screen-change', 'SettingsScreen', { section: 'about' });
     }
 
+    // The backdrop exists only where the three-panel frame does. Custom pages
+    // (widget canvas) and frameless screens (Workspace) draw their own gutters
+    // and MUST show the wallpaper between widgets — a backdrop there filled
+    // the gaps in. One predicate drives both the component and the body class
+    // that makes the frame's panels transparent, so they can never disagree.
+    const showPanelBackdrop = computed(() => !onCustomPage.value && screenHasFrame(props.screenName));
     function syncBackdropClass() {
-      document.body.classList.toggle('has-panel-backdrop', !onCustomPage.value);
+      document.body.classList.toggle('has-panel-backdrop', showPanelBackdrop.value);
     }
-    watch(onCustomPage, syncBackdropClass);
+    watch(showPanelBackdrop, syncBackdropClass);
 
     // ── Jump (⌘K) ──
     const isMacKeys = navigator.platform.toUpperCase().includes('MAC');
@@ -875,6 +882,7 @@ export default {
       customPages,
       isCustomPage,
       onCustomPage,
+      showPanelBackdrop,
       activeSection,
       activeSectionTabs,
       untabbedScreenLabel,
