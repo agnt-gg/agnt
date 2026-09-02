@@ -18,7 +18,23 @@ async function retry(operation, context, attempts = 3) {
       await new Promise((resolve) => setTimeout(resolve, 200 * (2 ** (attempt - 1))));
     }
   }
-  throw new Error(`${context}: ${lastError.message}`);
+  const error = new Error(`${context}: ${lastError.message}`);
+  error.status = lastError.status;
+  error.cause = lastError;
+  throw error;
+}
+const formatMegabytes = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
+
+// A proxy that refuses a body for its size closes the socket before the
+// browser has finished sending it, so fetch() rejects with a bare TypeError:
+// no status, no headers, nothing that says why. A 21 MB film once failed as
+// "Failed to fetch" for exactly that reason. The size is the one fact the
+// publisher always has, so it is the fact both size-shaped failures carry.
+function describeUploadFailure(file, error) {
+  const size = formatMegabytes(file.size);
+  if (error.status === 413) return new Error(`Uploading ${file.path}: ${size} is more than the server accepts`, { cause: error });
+  if (error.status) return error;
+  return new Error(`Uploading ${file.path}: the connection dropped while sending ${size}, before the server answered`, { cause: error });
 }
 async function sha256(bytes) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -69,7 +85,11 @@ export async function publishArtifactBundle({ title, manifest, token, overrides 
         const source = await checked(await fetchImpl(`${API_CONFIG.BASE_URL}/filesystem/publish-file?${params}`, { headers:authHeaders(token) }), `Reading ${file.path}`);
         body = await source.arrayBuffer();
       }
-      await retry(async () => checked(await fetchImpl(`${REMOTE_BUNDLE_API}/${bundle.id}/files/${encodeURIComponent(file.path)}`, { method:'PUT', headers:authHeaders(token, {'Content-Type':'application/octet-stream','X-Content-SHA256':file.sha256}), body }), `Uploading ${file.path}`), `Uploading ${file.path}`);
+      try {
+        await retry(async () => checked(await fetchImpl(`${REMOTE_BUNDLE_API}/${bundle.id}/files/${encodeURIComponent(file.path)}`, { method:'PUT', headers:authHeaders(token, {'Content-Type':'application/octet-stream','X-Content-SHA256':file.sha256}), body }), `Uploading ${file.path}`), `Uploading ${file.path}`);
+      } catch (error) {
+        throw describeUploadFailure(file, error);
+      }
       completed += 1;
       uploadedBytes += file.size;
       onProgress({ phase:'uploading', current:completed, total:files.length, uploadedBytes, totalBytes:files.reduce((sum, item) => sum + item.size, 0), path:file.path });
