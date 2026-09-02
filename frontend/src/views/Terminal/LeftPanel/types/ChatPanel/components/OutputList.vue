@@ -530,32 +530,29 @@ export default {
     // cleared by the markRead PATCH when the conversation is opened.
     const unreadOutputIds = computed(() => store.getters['contentOutputs/unreadOutputIdSet'] || new Set());
 
-    // Client-side activity timestamps, written on three events: a save, a run
-    // completing, and a manual "Mark as Unread". All three now move
-    // `updated_at` server-side, so the bump is purely about latency — the
-    // item rises now rather than after the round-trip, and the two values
-    // agree once it lands.
+    // Client-side activity timestamp, written on exactly ONE event: a save
+    // from this window (see the conversation-saved handler below). It covers
+    // the round-trip latency — the row rises now rather than after the
+    // refetch — and the two values agree once the server's `updated_at`
+    // lands. The sort takes max(updated_at, bump); see outputSort.js.
     //
-    // The sort takes max(updated_at, bump) — see outputSort.js. Reading an item
-    // clears the unread flag but deliberately does NOT touch this map, so the
-    // item keeps its position instead of resorting under the cursor. The map
-    // resets on reload, where DB `updated_at` order takes over on its own.
+    // THERE USED TO BE A SECOND WRITER HERE, and it was the sticky tier that
+    // outputSort.js's header describes as removed, rebuilt through a back
+    // door. It watched the unread set and stamped Date.now() on every id
+    // that ENTERED it. On first load the set goes from empty to every unread
+    // conversation you have — 270 of them, some weeks old — so all 270
+    // became "now" and, under the time sort, sat above every chat you had
+    // actually read that day. Which one was on top depended on where
+    // Date.now() ticked over during the loop: older rows were walked later
+    // and won. The Unread sort looked right only because its unread
+    // partition ignores bumps.
+    //
+    // It was also redundant: every event that makes a row unread (a run
+    // finishing, a Mark-as-Unread) moves `updated_at` server-side and the
+    // sidebar refetches, so the row is already in the right place without a
+    // client-side stamp. Deriving "activity" from "unread" was the mistake —
+    // unread is true for anything you have not opened yet, however old.
     const bumpTimestamps = ref({});
-    // Position bumps: any NEW unread id gets a bump so the item rises
-    // immediately. This deliberately includes streaming/active rows — it is
-    // about list position, not noise.
-    watch(unreadOutputIds, (newSet, oldSet) => {
-      if (!newSet || newSet.size === 0) return;
-      const next = { ...bumpTimestamps.value };
-      let changed = false;
-      newSet.forEach((id) => {
-        if (!oldSet || !oldSet.has(id)) {
-          next[id] = Date.now();
-          changed = true;
-        }
-      });
-      if (changed) bumpTimestamps.value = next;
-    });
 
     // The CHIME derives from a stricter set than the dot: unread minus
     // streaming — see notifiableUnreadIds for why (a streaming conversation

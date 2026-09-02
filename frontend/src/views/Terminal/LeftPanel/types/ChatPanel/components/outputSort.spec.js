@@ -426,6 +426,36 @@ describe('negative control — the comparator this replaced', () => {
   });
 });
 
+describe('bumps — only a save from this window may write one', () => {
+  // REGRESSION (2026-09-02): a watcher on the unread set stamped Date.now()
+  // on every id that entered it. On first load that is EVERY unread
+  // conversation, weeks old included, so under the time sort all of them
+  // outranked every chat actually read that day; which one sat on top was
+  // whichever ms tick Date.now() landed on mid-loop. Deriving activity from
+  // "unread" is wrong — unread is true for anything not yet opened, however
+  // old — and redundant, since every unread-making event already moves
+  // updated_at server-side and the sidebar refetches.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(here, 'OutputList.vue'), 'utf8');
+
+  it('has exactly one writer of bumpTimestamps, and it is not a watcher on the unread set', () => {
+    const writers = source.match(/bumpTimestamps\.value = /g) || [];
+    expect(writers).toHaveLength(1);
+    expect(source).not.toMatch(/watch\(unreadOutputIds[\s\S]{0,400}bumpTimestamps/);
+  });
+
+  it('the one writer stamps a single saved id, never a set', () => {
+    expect(source).toMatch(/bumpTimestamps\.value = \{ \.\.\.bumpTimestamps\.value, \[savedId\]: Date\.now\(\) \}/);
+  });
+
+  it('end to end: 270 stale unread rows cannot outrank a read chat from today under the time sort', () => {
+    const outputs = [{ id: 'today-read', updated_at: t('14:28'), last_read_at: t('14:30') }];
+    for (let i = 0; i < 270; i++) outputs.push({ id: `old-${i}`, updated_at: `2026-07-0${1 + (i % 9)}T10:00:00.000Z`, last_read_at: '2026-06-01T00:00:00.000Z' });
+    // No bumps: what the sidebar now feeds the sort on a fresh load.
+    expect(ids(sortOutputs(outputs, { sortKey: 'updated_at', sortOrder: 'desc', bumps: {} }))[0]).toBe('today-read');
+  });
+});
+
 describe('template — the unread dot renders in every list', () => {
   // The grouped list carried the dot; the flat/ungrouped list did not, so the
   // green dot was invisible whenever grouping was off. Both must render it.
