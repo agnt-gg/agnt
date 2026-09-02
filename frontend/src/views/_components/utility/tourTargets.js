@@ -21,10 +21,12 @@ export const TOUR_TARGETS = [
   // ── Sidebar: BUILD ─────────────────────────────────────────────────
   { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
   { id: 'sidebar.workflows',        selector: '[data-tour-id="sidebar.workflows"]',        screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
-  { id: 'sidebar.library',          selector: '[data-tour-id="sidebar.library"]',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Plugins, Widgets, Marketplace)', safeToSimulate: true },
+  { id: 'sidebar.library',          selector: '[data-tour-id="sidebar.library"]',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Widgets, Marketplace)', safeToSimulate: true },
 
   // ── Sidebar: foot of the rail + controls ───────────────────────────
-  { id: 'sidebar.connect',          selector: '[data-tour-id="sidebar.connect"]',          screen: null, description: 'Sidebar button: Connectors (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.connect',           selector: '[data-tour-id="sidebar.connect"]',           screen: null, description: 'Sidebar button: Connections (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.providers',         selector: '[data-tour-id="sidebar.providers"]',         screen: null, description: 'Sidebar button: AI Providers (default model, fallback, behaviour)', safeToSimulate: true },
+  { id: 'sidebar.plugins',           selector: '[data-tour-id="sidebar.plugins"]',           screen: null, description: 'Sidebar button: Plugins', safeToSimulate: true },
   { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
   { id: 'sidebar.add-page',         selector: '[data-tour-id="sidebar.add-page"]',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
   { id: 'sidebar.toggle',           selector: '[data-tour-id="sidebar.toggle"]',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },

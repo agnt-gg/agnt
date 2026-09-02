@@ -69,7 +69,7 @@ const GOTO = Object.freeze([
   { screen: 'TracesScreen', icon: 'fas fa-stream', label: 'Traces', count: 'running' },
   { screen: 'AgentsScreen', icon: 'fas fa-robot', label: 'Agents' },
   { screen: 'WorkflowsScreen', icon: 'fas fa-project-diagram', label: 'Workflows' },
-  { screen: 'ConnectorsScreen', icon: 'fas fa-plug', label: 'Connectors' },
+  { screen: 'ConnectorsScreen', icon: 'fas fa-plug', label: 'Connections' },
 ]);
 
 export default {

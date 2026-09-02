@@ -19,6 +19,7 @@ const ROUTES_ALL = [
   ['dashboard', '/dashboard'], ['goals', '/goals'], ['artifacts', '/artifacts'], ['traces', '/traces'],
   ['agents', '/agents'], ['agent-forge', '/agent-forge'], ['workflows', '/workflows'], ['workflow-forge', '/workflow-forge'],
   ['tools', '/tools'], ['tool-forge', '/tool-forge'], ['skills', '/skills'], ['plugins', '/plugins'],
+  ['providers', '/providers'],
   ['widget-manager', '/widget-manager'], ['widget-forge', '/widget-forge'],
   ['connectors', '/connectors'],
   ['connectors-email', '/connectors', clickText('.left-panel-component *', 'Emails')],

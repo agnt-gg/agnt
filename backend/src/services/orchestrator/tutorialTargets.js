@@ -19,10 +19,12 @@ export const TOUR_TARGETS = [
   // ── Sidebar: BUILD ─────────────────────────────────────────────────
   { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
   { id: 'sidebar.workflows',        screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
-  { id: 'sidebar.library',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Plugins, Widgets, Marketplace)', safeToSimulate: true },
+  { id: 'sidebar.library',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Widgets, Marketplace)', safeToSimulate: true },
 
   // ── Sidebar: foot of the rail ── one row; the screen carries its own nav.
-  { id: 'sidebar.connect',          screen: null, description: 'Sidebar button: Connectors (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.connect',           screen: null, description: 'Sidebar button: Connections (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
+  { id: 'sidebar.providers',         screen: null, description: 'Sidebar button: AI Providers (default model, fallback, behaviour)', safeToSimulate: true },
+  { id: 'sidebar.plugins',           screen: null, description: 'Sidebar button: Plugins', safeToSimulate: true },
 
   // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
   { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },

@@ -90,11 +90,12 @@ export default {
     const store = useStore();
 
     const isPlugins = computed(() => props.context === 'plugins');
-    const summaryCaption = computed(() => (isPlugins.value ? 'Plugins' : 'Connectors'));
+    const summaryCaption = computed(() => ({ plugins: 'Plugins', providers: 'AI providers' })[props.context] || 'Connections');
     const summaryHint = computed(() =>
-      isPlugins.value
-        ? 'Click a plugin card to see its version, tools and actions here. Esc comes back.'
-        : 'Pick a view on the left. Select a plugin (Library › Plugins) to see its tools and settings here.',
+      ({
+        plugins: 'Click a plugin card to see its version, tools and actions here. Esc comes back.',
+        providers: 'Pick the model Annie thinks with, what she falls back to, and how she behaves. Health of every connection is above.',
+      })[props.context] || 'Pick a view on the left. Plugins and AI providers have their own rows under CONNECT.',
     );
 
     // Nothing-selected summary: connection health from the same getters the

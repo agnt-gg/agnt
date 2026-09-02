@@ -13,7 +13,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done + verified · `[-]` kept /
 ## 0 · Platform (every page depends on these)
 
 - [x] P0.1 Worktree `feat/agnt-one`, junctions (root/frontend/backend node_modules), `.env` hardlink
-- [x] P0.2 `sections.js` re-parent: WORK = Chat(CHAT|ARTIFACTS) · Workspaces; PLAN = Dashboard · Goals · Traces; BUILD = Agents · Workflows · **Library**(TOOLS|SKILLS|PLUGINS|WIDGETS|MARKETPLACE + contextual forges); foot = Connectors · Settings
+- [x] P0.2 `sections.js` re-parent: WORK = Chat(CHAT|ARTIFACTS) · Workspaces; PLAN = Dashboard · Goals · Traces; BUILD = Agents · Workflows · **Library**(TOOLS|SKILLS|WIDGETS|MARKETPLACE + contextual forges); **CONNECT** = Connections · AI Providers · Plugins; foot = Settings
+- [x] P0.15 CONNECT group (2026-09-02): new `ProvidersScreen` (`/providers`, thin wrapper over ProviderSelector · FallbackProviders · ChatBehaviorSettings); Plugins leaves Library; Connections nav = API/OAuth · Emails · MCP · Vault · Webhooks; attention badge on Connections; "no provider" pill and ⌘K land on ProvidersScreen; Settings › AI Provider kept as a second read of the same cards
 - [x] P0.3 `tourTargets.js` + backend `tutorialTargets.js` mirror updated for the new ids (`library`), removed ids (tools/skills/plugins/widgets/marketplace/artifacts)
 - [x] P0.4 `sections.spec.js` regression locks updated to the new truth (Plugins→Library tab, Artifacts→Chat tab, Marketplace→Library tab)
 - [x] P0.5 Rail: captions 9px readable, live counts (Goals executing · Traces running · Connectors attention), unread dot kept

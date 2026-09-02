@@ -42,7 +42,7 @@ describe('jumpIndex', () => {
     const a = buildJumpIndex({ ...src, query: 'approv' });
     expect(a.groups.find((g) => g.id === 'do').items[0].label).toMatch(/3 pending approvals/);
     const b = buildJumpIndex({ ...src, hasProvider: false, query: 'provider' });
-    expect(b.groups.find((g) => g.id === 'do').items[0].action.screen).toBe('ConnectorsScreen');
+    expect(b.groups.find((g) => g.id === 'do').items[0].action.screen).toBe('ProvidersScreen');
   });
 
   it('falls through to Annie when nothing matches, and never when something does', () => {

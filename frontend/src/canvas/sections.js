@@ -108,11 +108,13 @@ export const MAIN_SECTIONS = [
     ],
   },
   {
-    // Tools · Skills · Plugins · Widgets · Marketplace were five rail rows for
-    // one idea — "things I can use" — and the grouping that would have said
-    // so was a 7px caption nobody could read. One row, five tabs, exactly the
+    // Tools · Skills · Widgets · Marketplace were separate rail rows for one
+    // idea — "things I make or get" — and the grouping that would have said
+    // so was a 7px caption nobody could read. One row, four tabs, exactly the
     // mechanism Agents and Workflows already use. Marketplace is the last tab
-    // because it is where the other four come from.
+    // because it is where the other three come from. (Plugins lived here for
+    // a while; it moved to CONNECT because to a user "install the Slack
+    // plugin" and "connect Slack" are the same intent.)
     id: 'library',
     group: 'BUILD',
     icon: 'fas fa-book',
@@ -121,27 +123,52 @@ export const MAIN_SECTIONS = [
       { screen: 'ToolsScreen', label: 'TOOLS' },
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE', ctx: true },
       { screen: 'SkillsScreen', label: 'SKILLS' },
-      { screen: 'PluginsScreen', label: 'PLUGINS' },
       { screen: 'WidgetManagerScreen', label: 'WIDGETS' },
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE', ctx: true },
       { screen: 'MarketplaceScreen', label: 'MARKETPLACE' },
     ],
   },
+
+  // ── CONNECT ── what AGNT reaches out to. Three rows because each is a
+  // different question: which APPS can she use, which MODEL does she think
+  // with, which PLUGINS extend her. It was one captionless row at the foot;
+  // connecting things is most of the setup a new user does, and the rail
+  // should say so. MCP servers stay under Connections (a server you point at
+  // is a connection).
+  {
+    id: 'connect',
+    group: 'CONNECT',
+    icon: 'fas fa-plug',
+    label: 'Connections',
+    badge: 'connect',
+    screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTIONS' }],
+  },
+  {
+    // The most-touched setup page: the toolbar's "no provider" pill and the
+    // first-run card both land here. Settings › AI Provider draws the same
+    // three cards for anyone who looks there first.
+    id: 'providers',
+    group: 'CONNECT',
+    icon: 'fas fa-robot',
+    label: 'AI Providers',
+    screens: [{ screen: 'ProvidersScreen', label: 'AI PROVIDERS' }],
+  },
+  {
+    id: 'plugins',
+    group: 'CONNECT',
+    icon: 'fas fa-puzzle-piece',
+    label: 'Plugins',
+    screens: [{ screen: 'PluginsScreen', label: 'PLUGINS' }],
+  },
 ];
 
-// ── The foot of the rail ── below a separator, captionless: two rows you
-// visit to set the machine up rather than to do work with it.
+// ── The foot of the rail ── below a separator, captionless: the one row you
+// visit to set the machine up rather than to do work with it. (Connect sat
+// here too until it became its own captioned group above.)
 //
-// Both are a screen that carries its OWN left-panel nav, which is exactly why
-// each gets one row instead of several. Connect had six — API/OAuth, Emails,
-// MCP, Plugins, Vault, Webhooks — and every one of them landed on a screen
-// already listing those same six down its left side. (Plugins has since left
-// for BUILD › Library, where an installable asset belongs; AI providers has
-// since ARRIVED here from Settings, because a provider is a thing AGNT
-// reaches out to.)
-//
-// Settings is the same shape one level further: Profile, Billing, Theme,
-// Memory, Evolution, Autonomy and the rest are navigated from SettingsPanel.
+// Settings carries its OWN left-panel nav, which is why it gets one row
+// instead of several: Profile, Billing, Theme, Memory, Evolution, Autonomy
+// and the rest are navigated from SettingsPanel.
 //
 // `tab: false` — owned and routed by this row, but not drawn in the toolbar.
 // Memory / Evolution / Autonomy are full screens rather than Settings
@@ -150,14 +177,6 @@ export const MAIN_SECTIONS = [
 // gear goes dark while you are on them) and lets them share SettingsPanel as
 // their left panel (see screenRegistry.js).
 export const BOTTOM_SECTIONS = [
-  {
-    id: 'connect',
-    group: 'SYSTEM',
-    icon: 'fas fa-plug',
-    label: 'Connectors',
-    badge: 'connect',
-    screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTORS' }],
-  },
   {
     id: 'settings',
     group: 'SYSTEM',

@@ -97,6 +97,12 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'PluginsScreen' },
     },
     {
+      path: '/providers',
+      name: 'TerminalProviders',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'ProvidersScreen' },
+    },
+    {
       path: '/agents',
       name: 'TerminalAgents',
       component: Terminal,

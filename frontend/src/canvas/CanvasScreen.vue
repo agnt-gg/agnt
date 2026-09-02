@@ -528,7 +528,7 @@ export default {
     }
     function goProviders() {
       onCustomPage.value = false;
-      emit('screen-change', 'ConnectorsScreen', { section: 'providers' });
+      emit('screen-change', 'ProvidersScreen');
     }
     function goAbout() {
       onCustomPage.value = false;

@@ -145,8 +145,8 @@ describe('canvas sections registry', () => {
       expect(rows[0].startsGroup).toBe(true);
     });
 
-    it('renders the three intended main groups in order', () => {
-      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD']);
+    it('renders the four intended main groups in order (do · plan · build · connect)', () => {
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'PLAN', 'BUILD', 'CONNECT']);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -172,19 +172,19 @@ describe('canvas sections registry', () => {
     expect(chat.screens[1]).toMatchObject({ screen: 'ArtifactsScreen', label: 'ARTIFACTS' });
   });
 
-  it('Library owns Tools · Skills · Plugins · Widgets · Marketplace as tabs, forges contextual', () => {
+  it('Library owns Tools · Skills · Widgets · Marketplace as tabs, forges contextual', () => {
     const library = MAIN_SECTIONS.find((s) => s.id === 'library');
     expect(library?.group).toBe('BUILD');
     // The rail row lands on Tools.
     expect(library.screens[0].screen).toBe('ToolsScreen');
     // Destinations (always drawn), in order; Marketplace last because it is
     // where the other four come from.
-    expect(visibleTabs(library, 'ToolsScreen').map((t) => t.label)).toEqual(['TOOLS', 'SKILLS', 'PLUGINS', 'WIDGETS', 'MARKETPLACE']);
+    expect(visibleTabs(library, 'ToolsScreen').map((t) => t.label)).toEqual(['TOOLS', 'SKILLS', 'WIDGETS', 'MARKETPLACE']);
     // Editors appear only while you are inside them.
-    expect(visibleTabs(library, 'ToolForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'TOOL FORGE', 'SKILLS', 'PLUGINS', 'WIDGETS', 'MARKETPLACE']);
+    expect(visibleTabs(library, 'ToolForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'TOOL FORGE', 'SKILLS', 'WIDGETS', 'MARKETPLACE']);
     expect(visibleTabs(library, 'WidgetForgeScreen').map((t) => t.label)).toContain('WIDGET FORGE');
     expect(visibleTabs(library, 'WidgetForgeScreen').map((t) => t.label)).not.toContain('TOOL FORGE');
-    for (const id of ['tools', 'skills', 'plugins', 'widgets', 'marketplace']) {
+    for (const id of ['tools', 'skills', 'widgets', 'marketplace']) {
       expect(MAIN_SECTIONS.some((s) => s.id === id)).toBe(false);
     }
   });
@@ -283,32 +283,33 @@ describe('canvas sections registry', () => {
     });
   });
 
-  it('Connect is a single row at the foot of the rail, directly above Settings', () => {
-    // It was six rows — API/OAuth, Emails, MCP, Plugins, Vault, Webhooks — each
-    // deep-linking into a view that ConnectorsScreen's own left panel already
-    // lists. The rail spent its longest group restating a menu the destination
-    // draws anyway.
-    expect(MAIN_SECTIONS.some((s) => s.screens.some((t) => t.screen === 'ConnectorsScreen'))).toBe(false);
-    expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['connect', 'settings']);
-
-    const connect = BOTTOM_SECTIONS[0];
-    expect(connect.label).toBe('Connectors');
-    expect(connect.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen']);
+  it('CONNECT is a captioned group of three rows, last in the main rail; Settings is the foot alone', () => {
+    // Connect was one captionless row at the foot. Connecting things is most
+    // of the setup a new user does, and it is three different questions —
+    // which apps, which model, which plugins — so it reads as a group with
+    // three rows, after BUILD (do · plan · build · connect).
+    const connect = MAIN_SECTIONS.filter((s) => s.group === 'CONNECT');
+    expect(connect.map((s) => s.id)).toEqual(['connect', 'providers', 'plugins']);
+    expect(connect.map((s) => s.screens[0].screen)).toEqual(['ConnectorsScreen', 'ProvidersScreen', 'PluginsScreen']);
+    expect(MAIN_SECTIONS.slice(-3).map((s) => s.group)).toEqual(['CONNECT', 'CONNECT', 'CONNECT']);
+    expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['settings']);
+    // The attention badge rides the Connections row.
+    expect(connect[0].badge).toBe('connect');
   });
 
-  it('Plugins is a BUILD › Library tab, and Connect no longer offers it', () => {
-    // A plugin is an installable asset — the same kind of thing as an agent or
-    // a tool — not something AGNT reaches out to. Both ends are pinned because
-    // either half alone fails quietly: left in the Connect nav it would be a
-    // second door to a screen that moved, and left rendering inside
-    // Connectors it would be an unreachable branch.
+  it('Plugins and AI Providers are CONNECT rows, and neither Library nor the Connect nav offers them', () => {
+    // Each has exactly one door. Left in Library, Plugins would be an asset
+    // list beside a connection list one row away; left in the Connect nav,
+    // either would be a second door to a screen with its own rail row.
     const library = MAIN_SECTIONS.find((s) => s.id === 'library');
     expect(library?.group).toBe('BUILD');
-    expect(library?.screens.some((t) => t.screen === 'PluginsScreen')).toBe(true);
+    expect(library?.screens.some((t) => t.screen === 'PluginsScreen')).toBe(false);
+    expect(visibleTabs(library, 'ToolsScreen').map((t) => t.label)).toEqual(['TOOLS', 'SKILLS', 'WIDGETS', 'MARKETPLACE']);
 
     const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
     expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
     expect(connectNavIds).not.toContain('plugins');
+    expect(connectNavIds).not.toContain('providers');
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
   });
 

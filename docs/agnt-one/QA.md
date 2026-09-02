@@ -3,12 +3,12 @@
 Run from the worktree: quit AGNT, `cd backend && npm start` (port 3333 is a singleton), then `cd frontend && npx vite build`, Ctrl-R the app. Every line is a click path with the expected result. Tick as you go.
 
 ## Shell (every page)
-- [ ] Rail shows three readable captions WORK · PLAN · BUILD; rows Chat · Workspaces / Dashboard · Goals · Traces / Agents · Workflows · Library; foot Connectors · Settings.
-- [ ] Goals row shows a count while a goal is executing; Traces while a run is running; Connectors shows an amber count when a connection needs attention.
+- [ ] Rail shows four readable captions WORK · PLAN · BUILD · CONNECT; rows Chat · Workspaces / Dashboard · Goals · Traces / Agents · Workflows · Library / Connections · AI Providers · Plugins; foot Settings alone.
+- [ ] Goals row shows a count while a goal is executing; Traces while a run is running; Connections shows an amber count when a connection needs attention.
 - [ ] Toolbar: centred "Jump to anything…" field. Press ⌘K / Ctrl-K anywhere → palette. Type "agents" → Go to › Agents; type an agent's name → Open › that agent; type nonsense → "send to Annie" (↵ sends it in Chat; ⇧↵ drops it in the composer).
-- [ ] Toolbar pills: "N running" appears while runs are live (click → Traces, Running tab); "N to approve" while insights are escalated (click → Autonomy); red "no provider" when none is connected (click → Connectors › AI providers); "update" when an update exists (click → Settings › About).
+- [ ] Toolbar pills: "N running" appears while runs are live (click → Traces, Running tab); "N to approve" while insights are escalated (click → Autonomy); red "no provider" when none is connected (click → CONNECT › AI Providers); "update" when an update exists (click → Settings › About).
 - [ ] ⌘\ toggles the left panel, ⌘⇧\ the right. Esc clears a right-panel selection back to the summary.
-- [ ] Library row lands on Tools; toolbar tabs TOOLS · SKILLS · PLUGINS · WIDGETS · MARKETPLACE. Open Tool Forge from a tool → an amber TOOL FORGE tab appears while inside, disappears when you leave. Same for WIDGET FORGE.
+- [ ] Library row lands on Tools; toolbar tabs TOOLS · SKILLS · WIDGETS · MARKETPLACE (Plugins is under CONNECT). Open Tool Forge from a tool → an amber TOOL FORGE tab appears while inside, disappears when you leave. Same for WIDGET FORGE.
 - [ ] Chat row → tabs CHAT · ARTIFACTS. `/artifacts` deep link still opens Artifacts.
 
 ## Chat
@@ -31,7 +31,7 @@ Run from the worktree: quit AGNT, `cd backend && npm start` (port 3333 is a sing
 ## Dashboard · Autonomy · Connectors · Settings
 - [ ] Dashboard left: Pages (custom pages + New page), Go to, Quick actions. Right: Right-now stats (Running → inspector; To approve → queue), Active Workflows, Open Traces / Connectors.
 - [ ] Autonomy right: approval queue with Approve / Reject per item.
-- [ ] Connectors left has AI providers first; right shows connection health (Check health works). Plugins right shows a plugins summary; selecting a plugin shows its detail.
+- [ ] CONNECT › Connections: left nav API/OAuth · Emails · MCP · Vault · Webhooks; right shows connection health (Check health works). CONNECT › AI Providers: three cards (model · fallback · behaviour), no left panel, health on the right. CONNECT › Plugins: right shows a plugins summary; selecting a plugin shows its detail. `/providers` deep link works.
 - [ ] Settings left has Data (Backup & Export · Reset) and About (About & Resources · Leaderboard) groups; About shows version, update check, releases and Docs · GitHub · Discord · Feedback. `?section=about` deep link opens it.
 
 ## Nothing lost — spot checks
