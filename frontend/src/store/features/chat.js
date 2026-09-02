@@ -10,6 +10,7 @@ import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
+import { healStaleToolCalls, settleOpenToolCalls } from '@/utils/toolCallSettlement.js';
 import { dispatchGlobalFrontendEvent } from '@/services/globalFrontendEvents.js';
 import { getClientId, isOwnAnnouncement } from '@/services/clientId.js';
 import { ANNIE_ID, ANNIE_NAME } from '@/utils/agentAvatar.js';
@@ -1021,6 +1022,20 @@ export default {
         if (state.activeConversationId === conversationId) {
           state.isStreaming = value;
         }
+        // Stream ended (completion, Stop, or a dropped socket): no result can
+        // arrive any more, so every open tool call is settled as interrupted
+        // NOW, before the completion autosave writes the message. Without
+        // this the absence of a result rendered as a spinner forever — on
+        // one real conversation 709 of 1,087 calls. See toolCallSettlement.js.
+        if (!value) {
+          for (let i = conv.messages.length - 1; i >= 0; i--) {
+            const m = conv.messages[i];
+            if (m?.role !== 'assistant' || !Array.isArray(m.toolCalls) || !m.toolCalls.length) continue;
+            const { toolCalls, changed } = settleOpenToolCalls(m.toolCalls);
+            if (changed) conv.messages.splice(i, 1, { ...m, toolCalls });
+            break; // only the most recent assistant message can be live
+          }
+        }
         // Unread is no longer marked here: the stream's completion autosave
         // bumps updated_at server-side, and the sidebar derives unread from
         // updated_at > last_read_at. No event bookkeeping needed.
@@ -1079,7 +1094,12 @@ export default {
     SCOPED_SET_MESSAGES(state, { conversationId, messages }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
-      conv.messages = messages.filter(msg => msg && msg.role && msg.content !== undefined);
+      const filtered = messages.filter(msg => msg && msg.role && msg.content !== undefined);
+      // Conversations saved before tool calls were settled on abort carry open
+      // calls that will never resolve. Heal them on every load; the live
+      // streaming message (if this load races one) is left alone.
+      const liveMessageId = conv.isStreaming ? (filtered[filtered.length - 1]?.id ?? null) : null;
+      conv.messages = healStaleToolCalls(filtered, { liveMessageId }).messages;
       if (state.activeConversationId === conversationId) {
         state.messages = conv.messages;
       }
@@ -3318,7 +3338,9 @@ export default {
               toolCallId: eventData.toolCall.id,
               result: eventData.toolCall.result,
               error: eventData.toolCall.error,
-              status: eventData.toolCall.error ? 'error' : 'completed',
+              // An explicit status (the server's abort settlement sends
+              // 'interrupted') wins over the error/completed inference.
+              status: eventData.toolCall.status || (eventData.toolCall.error ? 'error' : 'completed'),
             };
             commit('SCOPED_UPDATE_TOOL_CALL_RESULT', { conversationId: targetConvId, ...payload });
           }
@@ -3898,6 +3920,8 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         toolCallId: data.toolCall.id,
         result: data.toolCall.result,
         error: data.toolCall.error,
+        // The server's abort settlement carries status 'interrupted'.
+        status: data.toolCall.status,
       });
       // Group chat: a successful mention_agent queues the mentioned agent's
       // turn. Dispatched when this stream's 'done' arrives — the floor holder

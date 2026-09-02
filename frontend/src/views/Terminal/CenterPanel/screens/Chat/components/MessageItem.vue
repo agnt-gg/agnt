@@ -2584,7 +2584,13 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
     // PRD-100: status pill state. Order matters — error wins over running so a
     // tool that erred mid-execution shows the red pill, not the cyan one.
+    //
+    // `interrupted` is checked first: the settlement on abort gives the call
+    // BOTH a result and an error (so the model's history is consistent), and
+    // neither red nor green is the truth — the stream ended before an answer
+    // came back. Neutral pill, no spinner. See utils/toolCallSettlement.js.
     const toolCallStatus = (tc) => {
+      if (tc.toolCall.status === 'interrupted') return 'interrupted';
       if (tc.toolCall.error) return 'error';
       if (props.runningTools.includes(tc.toolCall.id)) return 'running';
       if (tc.toolCall.result !== undefined && tc.toolCall.result !== null) return 'completed';
@@ -3803,6 +3809,16 @@ span.nodeLabel p {
 .tool-status-indicator.error {
   background: rgba(255, 91, 114, 0.1);
   color: var(--color-red);
+}
+
+/* The stream ended before this call's result arrived. Not a failure of the
+   tool (it may well have run — the trace has it), not a success we can show:
+   a quiet neutral so a wall of them reads as "cut off", not "broken". */
+.tool-status-indicator.interrupted {
+  background: rgba(127, 129, 147, 0.12);
+  color: var(--color-text-muted);
+  border: 1px dashed rgba(127, 129, 147, 0.35);
+  padding-top: 3px;
 }
 
 @keyframes tool-pulse {

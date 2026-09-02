@@ -3513,6 +3513,29 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
 
+    // The loop's guard is `!signal.aborted`. When Stop fires between rounds,
+    // `toolCalls` still holds the calls the model just issued: the client has
+    // their tool_start (the card is drawn) and will never get a tool_end, so
+    // the card spins forever — in the live tab and, once autosaved, on every
+    // reload. messageSanitizers already injects the cancelled result into the
+    // MODEL's history; this is the same fact told to the CLIENT.
+    if (streamAbortController.signal.aborted && toolCalls && toolCalls.length > 0) {
+      const interrupted = 'Tool call interrupted: the stream ended before a result arrived.';
+      for (const toolCall of toolCalls) {
+        sendEvent('tool_end', {
+          assistantMessageId,
+          toolCall: {
+            id: toolCall.id,
+            name: toolCall.function?.name,
+            result: JSON.stringify({ success: false, interrupted: true, error: interrupted }),
+            error: interrupted,
+            status: 'interrupted',
+          },
+        });
+      }
+      console.log(`[Tool Loop] Aborted with ${toolCalls.length} open tool call(s); settled as interrupted`);
+    }
+
     // The between-rounds drain only fires when there's a next round. If the
     // turn ended on a final response (no more tool calls), any steer queued
     // during that final stream is still parked. Clear it here so the
