@@ -542,6 +542,11 @@ export default {
       emit('screen-change', 'SettingsScreen', { section: 'about' });
     }
 
+    function syncBackdropClass() {
+      document.body.classList.toggle('has-panel-backdrop', !onCustomPage.value);
+    }
+    watch(onCustomPage, syncBackdropClass);
+
     // ── Jump (⌘K) ──
     const isMacKeys = navigator.platform.toUpperCase().includes('MAC');
     const jumpKey = isMacKeys ? '⌘K' : 'Ctrl K';
@@ -817,6 +822,10 @@ export default {
 
       document.addEventListener('click', closeCtx);
       document.addEventListener('keydown', onGlobalKeydown);
+      // The backdrop is the panel surface while it is mounted; the frame's own
+      // panels go transparent under it (see _core.css). Custom pages have no
+      // backdrop, so the class follows onCustomPage.
+      syncBackdropClass();
       window.addEventListener('agnt:open-page', onOpenPageEvent);
       window.addEventListener('agnt:new-page', startAddPage);
 
@@ -843,6 +852,7 @@ export default {
       if (clockTimer) clearInterval(clockTimer);
       document.removeEventListener('click', closeCtx);
       document.removeEventListener('keydown', onGlobalKeydown);
+      document.body.classList.remove('has-panel-backdrop');
       window.removeEventListener('agnt:open-page', onOpenPageEvent);
       window.removeEventListener('agnt:new-page', startAddPage);
       narrowRailQuery?.removeEventListener('change', syncNarrowViewport);

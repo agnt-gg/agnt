@@ -84,9 +84,9 @@ for (let i = 1; i < ROUTES.length; i++) {
   const got = frames.slice();
   let flash = 0; const per = patches.map(() => ({ max: 0, at: -1, ms: 0 }));
   const first = got[0]?.t || 0;
-  got.forEach((f, k) => { const png = PNG.sync.read(f.buf); patches.forEach((p, j) => { const v = share(png, p); if (v > per[j].max) { per[j].max = v; per[j].at = k; per[j].ms = Math.round((f.t - first) * 1000); } }); if (patches.some((p) => share(png, p) > 0.5)) flash++; });
+  got.forEach((f, k) => { const png = PNG.sync.read(f.buf); if (png.width !== 1440 || png.height !== 900) return; patches.forEach((p, j) => { const v = share(png, p); if (v > per[j].max) { per[j].max = v; per[j].at = k; per[j].ms = Math.round((f.t - first) * 1000); } }); const shares = patches.map((p) => share(png, p)); if (shares.some((v) => v > 0.5)) { flash++; if (!per.flagged) per.flagged = []; per.flagged.push(`f${k}@${Math.round((f.t - first) * 1000)}ms ${png.width}x${png.height} ` + patches.map((p, j) => { let r = 0, g = 0, b = 0, n = 0; for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) { const i = (y * png.width + x) * 4; r += png.data[i]; g += png.data[i + 1]; b += png.data[i + 2]; n++; } return `${p.name}=#${[r / n, g / n, b / n].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}(${(shares[j] * 100).toFixed(0)}%)`; }).join(' ')); } });
   total += flash;
-  say(`${from.padEnd(10)} -> ${to.padEnd(10)} frames=${got.length} flashFrames=${flash} ` + patches.map((p, j) => `${p.name}:${(per[j].max * 100).toFixed(0)}%${per[j].at >= 0 ? '@' + per[j].ms + 'ms' : ''}`).join(' '));
+  say(`${from.padEnd(10)} -> ${to.padEnd(10)} frames=${got.length} flashFrames=${flash} ` + patches.map((p, j) => `${p.name}:${(per[j].max * 100).toFixed(0)}%${per[j].at >= 0 ? '@' + per[j].ms + 'ms' : ''}`).join(' ') + (per.flagged ? '\n      ' + per.flagged.slice(0, 3).join('\n      ') : ''));
 }
 say('TOTAL flashFrames ' + total);
 // Written before teardown: proxied fetches can hold the loop open and a hung

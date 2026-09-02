@@ -75,3 +75,18 @@ body.custom-bg #left-sidebar {
 body.custom-bg .terminal-screen {
   background-color: transparent !important;
 }
+
+/* While PanelBackdrop is mounted (canvas/PanelBackdrop.vue) it IS the panel
+   surface: it paints the three regions once, persistently, so a screen swap
+   never exposes the wallpaper. The screen's own panels must then contribute
+   content only — if they also painted the rule above, the wallpaper would
+   cross two 90%-opaque layers (8% of it becoming 0.6%) and be blurred twice.
+   The backdrop's own surfaces are excluded from this override: they are the
+   one layer that should paint. */
+body.custom-bg.has-panel-backdrop .three-panel-container .main-panel,
+body.custom-bg.has-panel-backdrop .three-panel-container .left-panel,
+body.custom-bg.has-panel-backdrop .three-panel-container .controls-panel {
+  background: transparent !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
