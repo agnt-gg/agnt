@@ -86,31 +86,34 @@ export default {
     });
 
     // Event handlers for workflow designer
+    // One selection at a time. Selecting an edge while a node was selected used
+    // to leave the node's editor on screen (the designer clears its own copy,
+    // but this component's did not follow), so the panel showed the wrong thing.
     const handleNodeSelected = (node) => {
       selectedNodeContent.value = node;
-      // Don't clear edge content here - handled separately by WorkflowDesignerComponent
-      // selectedEdgeContent.value = null;
+      if (node) selectedEdgeContent.value = null;
       updatePanelProps();
     };
 
     const handleEdgeSelected = (edge) => {
       selectedEdgeContent.value = edge;
-      // Don't clear node content here - handled separately by WorkflowDesignerComponent
-      // selectedNodeContent.value = null;
+      if (edge) selectedNodeContent.value = null;
       updatePanelProps();
     };
 
     const handleAllDeselected = () => {
-      console.log('All deselected event triggered');
       selectedNodeContent.value = null;
       selectedEdgeContent.value = null;
-      // DON'T call updatePanelProps - deselection doesn't need to update panels
-      // The panel props will be updated on next user interaction
+      // The right panel has a nothing-selected state now ("This workflow"), so
+      // deselection is a panel change too.
+      updatePanelProps();
     };
 
     const handleNodesUpdate = (nodes) => {
       if (workflowDesigner.value) {
         panelProps.value.nodes = nodes;
+        // The right panel's "This workflow" list reads the same array.
+        rightPanelProps.value = { ...rightPanelProps.value, nodes };
       }
     };
 
@@ -195,33 +198,22 @@ export default {
               activeFullscreenPanel: activeFullscreenPanel.value,
             };
 
-            // Update right panel props (editor panel)
-            // Only show editor panel when a node or edge is selected
-            if (selectedNodeContent.value || selectedEdgeContent.value) {
-              activeRightPanel.value = 'WorkflowForgePanel'; // This should be the editor panel
-              rightPanelProps.value = {
-                selectedNodeContent: selectedNodeContent.value,
-                selectedEdgeContent: selectedEdgeContent.value,
-                nodes: designer.nodes || [],
-                edges: designer.edges || [],
-                customTools: designer.customTools || [],
-                workflowId: finalWorkflowId,
-                backendTools: designer.backendTools || null, // Include backend tools (plugins)
-                activeFullscreenPanel: activeFullscreenPanel.value,
-              };
-            } else {
-              // Hide right panel when nothing is selected
-              activeRightPanel.value = null;
-              rightPanelProps.value = {
-                selectedNodeContent: null,
-                selectedEdgeContent: null,
-                nodes: [],
-                edges: [],
-                customTools: [],
-                workflowId: null,
-                backendTools: null,
-              };
-            }
+            // Update right panel props. The editor panel is ALWAYS the right
+            // panel here: with a node or edge selected it is that item's
+            // editor; with nothing selected it is "This workflow" (steps,
+            // last runs). Setting it to null used to fall back to the Chat
+            // screen's panel — Active Workflows beside a workflow canvas.
+            activeRightPanel.value = 'WorkflowForgePanel';
+            rightPanelProps.value = {
+              selectedNodeContent: selectedNodeContent.value,
+              selectedEdgeContent: selectedEdgeContent.value,
+              nodes: designer.nodes || [],
+              edges: designer.edges || [],
+              customTools: designer.customTools || [],
+              workflowId: finalWorkflowId,
+              backendTools: designer.backendTools || null, // Include backend tools (plugins)
+              activeFullscreenPanel: activeFullscreenPanel.value,
+            };
           }
         }
       });
@@ -362,8 +354,16 @@ export default {
           break;
         case 'edit-workflow':
           // Handle edit workflow action by navigating to the workflow editor
-          console.log('Editing workflow with ID:', payload);
           emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
+          break;
+        case 'select-node': {
+          // "This workflow" step list → select that node on the canvas.
+          const idx = (workflowDesigner.value.nodes || []).findIndex((n) => n.id === payload);
+          if (idx >= 0 && typeof workflowDesigner.value.selectNode === 'function') workflowDesigner.value.selectNode(idx);
+          break;
+        }
+        case 'navigate':
+          emit('screen-change', payload);
           break;
       }
     };

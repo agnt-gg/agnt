@@ -807,6 +807,13 @@ export default {
         isPanelOpen.value = false;
         return;
       }
+      // `navigate` with an object payload { screen, opts } is a navigation
+      // intent with options (select an item, preset a filter). The bare-string
+      // form still flows through to each screen's own handler unchanged.
+      if (action === 'navigate' && payload && typeof payload === 'object' && payload.screen) {
+        emit('screen-change', payload.screen, payload.opts || {});
+        return;
+      }
       // Always pass through to parent so screen-specific handlers run (e.g. clearing widget activeDefinition)
       emit('panel-action', action, payload);
     };

@@ -185,7 +185,7 @@ export default {
       if (props.selectedToolContent) {
         return props.selectedToolContent.title || 'Tool Properties';
       }
-      return 'Tool Forge';
+      return 'Annie';
     });
 
     const setActiveTab = (tabName) => {

@@ -5,7 +5,7 @@
 
     <!-- Panel header with controls -->
     <div class="panel-header">
-      <h2 class="title">/ Widget Builder</h2>
+      <h2 class="title">/ Annie</h2>
       <div class="right-tabs">
         <Tooltip text="Clear Chat History" width="auto" position="bottom">
           <button class="tab-button clear-chat-button" @click="handleClearChat">

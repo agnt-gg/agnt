@@ -25,37 +25,36 @@
           <i :class="tab.icon"></i>
           <span class="tab-name">{{ tab.title }}</span>
         </button>
-        <!-- Show clear chat button only when in chat view (no node selected) -->
-        <Tooltip v-if="!selectedNodeContent && !selectedEdgeContent" text="Clear Chat History" width="auto">
-          <button class="tab-button clear-chat-button" @click="handleClearChat">
-            <i class="fas fa-trash"></i>
-            <span class="tab-name">Clear</span>
-          </button>
-        </Tooltip>
       </div>
     </div>
 
-    <!-- Show chat when nothing is selected -->
-    <div class="panel-content" v-if="!selectedNodeContent && !selectedEdgeContent">
-      <!-- This panel renders its own Clear button in the header above. -->
-      <UnifiedChatContainer
-        :show-clear-action="false"
-        :key="chatChannelKey"
-        :channel-key="chatChannelKey"
-        :chat-type="chatChatType"
-        :page-context="chatPageContext"
-        :page-state="chatPageState"
-        :on-frontend-event="chatOnFrontendEvent"
-        welcome-message="Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!"
-        empty-icon="fas fa-comments"
-        placeholder="Ask about workflows, nodes, or get help..."
-        :initial-suggestions="initialWorkflowSuggestions"
-        :show-suggestions="true"
-        :show-voice-input="true"
-        suggestions-context-label="workflow"
-      />
-
-      <div style="margin-top: 24px; padding: 0 16px">
+    <!-- Nothing selected: THIS WORKFLOW. Annie's chat lives in the left panel
+         (LeftPanel/types/WorkflowForgePanel); this slot used to repeat it or,
+         worse, fall back to the Chat screen's panel. Now it is the graph as a
+         list — click a step to select it on the canvas — plus the last runs. -->
+    <div class="panel-content wf-summary" v-if="!selectedNodeContent && !selectedEdgeContent">
+      <div class="wf-sum-sec">
+        <div class="wf-sum-hd">Steps <span class="wf-sum-ln"></span><span class="wf-sum-n">{{ nodes.length }}</span></div>
+        <div v-if="!nodes.length" class="wf-sum-empty">Drag a tool from the palette, or ask Annie on the left what this workflow should do.</div>
+        <div v-else class="wf-steps">
+          <div class="wf-spine"></div>
+          <button v-for="(n, i) in orderedNodes" :key="n.id" type="button" class="wf-step" :class="'is-' + (n.category || 'action')" @click="$emit('panel-action', 'select-node', n.id)">
+            <span class="wf-step-ty">{{ i + 1 }} · {{ n.category || n.type }}</span>
+            <span class="wf-step-nm">{{ n.text || n.title || n.type }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="wf-sum-sec">
+        <div class="wf-sum-hd">Last runs <span class="wf-sum-ln"></span><span class="wf-sum-n">{{ lastRuns.length }}</span></div>
+        <div v-if="!lastRuns.length" class="wf-sum-empty">No runs yet. ▶ in the toolbar runs it once.</div>
+        <button v-for="r in lastRuns" :key="r.id" type="button" class="wf-run" @click="$emit('panel-action', 'navigate', { screen: 'TracesScreen', opts: { selectedExecutionId: r.id } })">
+          <span class="wf-run-st" :class="'st-' + String(r.status || '').toLowerCase()">{{ r.status }}</span>
+          <span class="wf-run-when">{{ relTime(r.started_at || r.startTime || r.created_at) }}</span>
+        </button>
+      </div>
+      <div class="wf-sum-sec">
+        <div class="wf-sum-hd">Inspector <span class="wf-sum-ln"></span></div>
+        <div class="wf-sum-empty">Click a node for its Parameters · Outputs · Docs, or an edge for its conditions. Esc comes back here.</div>
       </div>
     </div>
     <div v-else-if="selectedNodeContent || selectedEdgeContent">
@@ -84,23 +83,15 @@
 </template>
 
 <script>
-import { ref, computed, toRefs, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import PanelTab from '@/views/Terminal/CenterPanel/screens/WorkflowForge/components/WorkflowDesigner/components/EditorPanel/components/PanelTab.vue';
-import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
-import { useWorkflowChatContext } from '@/composables/chat/useWorkflowChatContext.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-
-const initialWorkflowSuggestions = [
-  { id: 'wf-1', text: 'List tools', icon: '📦' },
-  { id: 'wf-2', text: 'Analyze flow', icon: '🔍' },
-];
 
 export default {
   name: 'WorkflowForgePanel',
   components: {
     PanelTab,
-    UnifiedChatContainer,
     Tooltip,
   },
   props: {
@@ -139,7 +130,7 @@ export default {
   },
   emits: ['panel-action', 'update:nodeContent', 'update:edgeContent'],
   setup(props, { emit }) {
-    console.log('WorkflowForgePanel: Received workflowId:', props.workflowId);
+    const store = useStore();
     const activeTab = ref('parameters');
     const isFullScreen = computed(() => props.activeFullscreenPanel === 'editor');
 
@@ -232,15 +223,50 @@ export default {
       { immediate: true } // Run immediately to validate initial state
     );
 
+    const nodeLabelById = (id) => {
+      const n = (props.nodes || []).find((x) => x.id === id);
+      return n ? n.text || n.title || n.type || id : id;
+    };
+
     const panelTitle = computed(() => {
       if (props.selectedEdgeContent) {
-        return 'Edge Parameters';
+        // Name both ends: "Timer Trigger → AI LLM Call", not "Edge Parameters".
+        const e = props.selectedEdgeContent;
+        const from = e.source || e.from || e.start || e.sourceId;
+        const to = e.target || e.to || e.end || e.targetId;
+        return from && to ? `${nodeLabelById(from)} → ${nodeLabelById(to)}` : 'Edge conditions';
       }
       if (props.selectedNodeContent) {
         return props.selectedNodeContent.text || 'Node Properties';
       }
-      return 'Workflow Assistant';
+      return 'This workflow';
     });
+
+    // Summary data for the nothing-selected state.
+    const orderedNodes = computed(() => {
+      const list = [...(props.nodes || [])];
+      // Triggers first, then by canvas position (top-left to bottom-right).
+      return list.sort((a, b) => {
+        const ta = a.category === 'trigger' ? 0 : 1;
+        const tb = b.category === 'trigger' ? 0 : 1;
+        if (ta !== tb) return ta - tb;
+        return (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0);
+      });
+    });
+    const lastRuns = computed(() => {
+      if (!props.workflowId) return [];
+      const get = store.getters['executionHistory/getExecutionsByWorkflowId'];
+      return (get ? get(props.workflowId) : []).slice(0, 5);
+    });
+    const relTime = (d) => {
+      if (!d) return '';
+      const diff = (Date.now() - new Date(d).getTime()) / 1000;
+      if (!Number.isFinite(diff)) return '';
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+      return `${Math.floor(diff / 86400)}d ago`;
+    };
 
     const setActiveTab = (tabName) => {
       activeTab.value = tabName;
@@ -268,29 +294,6 @@ export default {
       emit('panel-action', 'update:edgeContent', updatedContent);
     };
 
-    const store = useStore();
-    const { workflowId, nodes, edges } = toRefs(props);
-    const {
-      channelKey: chatChannelKey,
-      chatType: chatChatType,
-      pageContext: chatPageContext,
-      pageState: chatPageState,
-      onFrontendEvent: chatOnFrontendEvent,
-    } = useWorkflowChatContext({ workflowId, nodes, edges });
-
-    const handleClearChat = () => {
-      store.dispatch('chatUnified/clearConversation', {
-        channelKey: chatChannelKey.value,
-        welcomeMessage: {
-          id: `wf-welcome-${Date.now()}`,
-          role: 'assistant',
-          content: "Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!",
-          timestamp: Date.now(),
-        },
-      });
-      emit('panel-action', 'clear-chat');
-    };
-
     // Use backendTools prop as the tool library (passed from parent, fetched from Vuex)
     const toolLibrary = computed(
       () =>
@@ -315,19 +318,158 @@ export default {
       toggleFullScreen,
       updateNodeContent,
       updateEdgeContent,
-      handleClearChat,
-      chatChannelKey,
-      chatChatType,
-      chatPageContext,
-      chatPageState,
-      chatOnFrontendEvent,
-      initialWorkflowSuggestions,
+      orderedNodes,
+      lastRuns,
+      relTime,
     };
   },
 };
 </script>
 
 <style scoped>
+/* ── This workflow (nothing selected) ── */
+.wf-summary {
+  padding: 12px 12px 16px;
+  overflow: auto;
+}
+.wf-sum-sec {
+  margin-bottom: 16px;
+}
+.wf-sum-hd {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+.wf-sum-ln {
+  flex: 1;
+  height: 1px;
+  background: var(--terminal-border-color);
+}
+.wf-sum-n {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.wf-sum-empty {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+.wf-steps {
+  position: relative;
+  padding-left: 26px;
+}
+.wf-spine {
+  position: absolute;
+  left: 10px;
+  top: 12px;
+  bottom: 18px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--color-green), rgba(18, 224, 255, 0.55));
+}
+.wf-step {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.wf-step:hover {
+  border-color: rgba(var(--green-rgb), 0.45);
+}
+.wf-step::before {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-background);
+  border: 2px solid var(--color-blue, #12e0ff);
+}
+.wf-step.is-trigger::before {
+  border-color: var(--color-green);
+  background: var(--color-green);
+}
+.wf-step.is-control::before,
+.wf-step.is-utility::before {
+  border-color: var(--color-yellow, #ffd700);
+}
+.wf-step-ty {
+  display: block;
+  font-size: 8.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.wf-step-nm {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.wf-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--terminal-border-color);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.wf-run:last-child {
+  border-bottom: 0;
+}
+.wf-run-st {
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 0 7px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted);
+}
+.wf-run-st.st-completed,
+.wf-run-st.st-success {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.3);
+}
+.wf-run-st.st-failed,
+.wf-run-st.st-error {
+  color: #ff8a8a;
+  border-color: rgba(254, 78, 78, 0.3);
+}
+.wf-run-st.st-running {
+  color: var(--color-blue, #12e0ff);
+  border-color: rgba(18, 224, 255, 0.3);
+}
+.wf-run-when {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
 .workflow-editor-panel {
   display: flex;
   flex-direction: column;

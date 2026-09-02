@@ -179,7 +179,7 @@ export default {
       if (props.selectedAgentContent) {
         return props.selectedAgentContent.title || 'Agent Properties';
       }
-      return 'Agent Builder';
+      return 'Annie';
     });
 
     const setActiveTab = (tabName) => {

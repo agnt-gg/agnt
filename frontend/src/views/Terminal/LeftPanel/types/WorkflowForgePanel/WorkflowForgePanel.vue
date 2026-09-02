@@ -229,7 +229,9 @@ export default {
       if (props.selectedNodeContent) {
         return props.selectedNodeContent.text || 'Node Properties';
       }
-      return 'Workflow Canvas';
+      // The left panel is Annie, every forge alike. "Workflow Canvas" named
+      // the thing beside it, not the thing in it.
+      return 'Annie';
     });
 
     const setActiveTab = (tabName) => {

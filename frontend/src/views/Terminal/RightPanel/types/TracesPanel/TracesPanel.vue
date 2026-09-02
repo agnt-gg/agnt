@@ -546,7 +546,7 @@
       :stats="summaryStats"
       hint="Click a run to inspect its timeline, tools, tokens and raw output here. Esc comes back."
       primary-label="New goal"
-      @primary="$emit('panel-action', 'navigate', 'GoalsScreen', { newGoal: true })"
+      @primary="$emit('panel-action', 'navigate', { screen: 'GoalsScreen', opts: { newGoal: true } })"
     >
       <!-- Recent Runs -->
       <div class="panel-section recent-runs-section">
