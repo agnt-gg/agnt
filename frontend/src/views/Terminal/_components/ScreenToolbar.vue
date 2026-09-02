@@ -237,9 +237,18 @@ export default {
 .wm-btn-label {
   white-space: nowrap;
 }
-@media (max-width: 1100px) {
+/* Words are conditional on the HEADER's own width, not the viewport: with
+   both side panels open the centre column is ~735px at 1440 wide. */
+.wm-header {
+  container-type: inline-size;
+  container-name: screen-toolbar;
+}
+@container screen-toolbar (max-width: 900px) {
   .wm-btn-label {
     display: none;
+  }
+  .wm-search-input {
+    width: 150px;
   }
 }
 .wm-seg {

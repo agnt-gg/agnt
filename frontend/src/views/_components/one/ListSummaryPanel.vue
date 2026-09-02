@@ -10,7 +10,9 @@
       <p v-else class="ls-muted">{{ emptyText }}</p>
     </InspSection>
 
-    <slot></slot>
+    <div v-if="$slots.default" class="ls-slot">
+      <slot></slot>
+    </div>
 
     <InspSection v-if="hint" title="Inspector">
       <p class="ls-muted">{{ hint }}</p>
@@ -93,6 +95,9 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.ls-slot {
+  margin-bottom: 14px;
 }
 .ls-muted {
   margin: 0;

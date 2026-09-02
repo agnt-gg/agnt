@@ -572,6 +572,11 @@ export default {
           // Navigate to WorkflowForge screen with the workflow ID
           emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
           break;
+        case 'navigate':
+          // Left/right panel rows (Go to · quick actions). Object payloads
+          // ({ screen, opts }) are already unwrapped by BaseScreen.
+          emit('screen-change', payload);
+          break;
         default:
           console.log('Unhandled panel action:', action, payload);
       }

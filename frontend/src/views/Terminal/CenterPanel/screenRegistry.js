@@ -38,10 +38,12 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // already rendered the SAME panel component on both sides, and Autonomy
   // carries its own inline tab strip (see Autonomy.vue), so its left panel
   // was duplicate navigation.
-  AutonomyScreen: { leftPanel: 'SettingsPanel', rightPanel: null, input: false },
+  // Right: the approval queue (AGNT One). `null` used to fall back to Chat's
+  // panel beside the policy screen.
+  AutonomyScreen: { leftPanel: 'SettingsPanel', rightPanel: 'AutonomyPanel', input: false },
   ChatScreen: { input: true },
   ConnectorsScreen: { input: false }, // right: dynamic
-  DashboardScreen: { rightPanel: 'DashboardPanel', input: false },
+  DashboardScreen: { leftPanel: 'DashboardPanel', rightPanel: 'DashboardPanel', input: false },
   EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
   ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
   ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },

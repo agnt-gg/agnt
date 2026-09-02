@@ -735,6 +735,12 @@ export default {
       onCustomPage.value = true;
       store.dispatch('widgetLayout/setActivePage', pageId);
     }
+    // Panels (Dashboard's left) ask the canvas to switch pages by event: the
+    // custom-page flag lives here and nowhere else.
+    function onOpenPageEvent(e) {
+      const id = e.detail?.pageId;
+      if (id) switchToPage(id);
+    }
 
     function navigateToSection(section) {
       onCustomPage.value = false;
@@ -804,6 +810,8 @@ export default {
 
       document.addEventListener('click', closeCtx);
       document.addEventListener('keydown', onGlobalKeydown);
+      window.addEventListener('agnt:open-page', onOpenPageEvent);
+      window.addEventListener('agnt:new-page', startAddPage);
 
       if (window.matchMedia) {
         narrowRailQuery = window.matchMedia(NARROW_RAIL_QUERY);
@@ -828,6 +836,8 @@ export default {
       if (clockTimer) clearInterval(clockTimer);
       document.removeEventListener('click', closeCtx);
       document.removeEventListener('keydown', onGlobalKeydown);
+      window.removeEventListener('agnt:open-page', onOpenPageEvent);
+      window.removeEventListener('agnt:new-page', startAddPage);
       narrowRailQuery?.removeEventListener('change', syncNarrowViewport);
     });
 

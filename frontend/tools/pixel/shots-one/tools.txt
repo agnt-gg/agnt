@@ -1,7 +1,6 @@
 {
  "headings": [
-  "left:/ Tools",
-  "right:RESOURCES"
+  "left:/ Tools"
  ],
  "buttons": [
   "toolbar:TOOLS",
@@ -36,8 +35,7 @@
   "center:PLUGINS",
   "center:MARKETPLACE",
   "center:(icon:fas fa-chevron-down)",
-  "right:Create New Tool",
-  "right:Feedback"
+  "right:New tool"
  ],
  "tabs": [
   "toolbar:TOOLS",
@@ -49,49 +47,45 @@
  "inputs": [
   "center:text Search tools..."
  ],
- "links": [
-  "right:Docs",
-  "right:GitHub",
-  "right:Discord"
- ],
- "text": "TOOLS SKILLS PLUGINS WIDGETS MARKETPLACE Jump to anything… Ctrl K 1 running no provider 09:41:00 WORK Chat Workspaces PLAN Dashboard Goals Traces 1 BUILD Agents Workflows Library + New page Connectors Settings Collapse / Tools 6 Categories All Tools (6) Custom (6) TOOLS 6 tools Collapse Empty hidden Sort A–Z Grid Table New Tool ALL SYSTEM CUSTOM PLUGINS MARKETPLACE Custom 6 tools CSV Reshaper CUSTOM Pivots and cleans a delimited file. Type: custom Invoice Parser CUSTOM Extracts line items from a PDF invoice. Type: custom Screenshot Diff CUSTOM Compares two images and reports drift. Type: custom Sitemap Crawler CUSTOM Walks a sitemap and returns page titles. Type: custom Slack Digest CUSTOM Summarizes a channel into one message. Type: custom Token Counter CUSTOM Estimates prompt cost before you send it. Type: custom Select a tool to view details. Create New Tool RESOURCES Docs GitHub Discord Feedback",
+ "links": [],
+ "text": "TOOLS SKILLS PLUGINS WIDGETS MARKETPLACE Jump to anything… Ctrl K 1 running no provider 09:41:00 WORK Chat Workspaces PLAN Dashboard Goals Traces 1 BUILD Agents Workflows Library + New page Connectors Settings Collapse / Tools 6 Categories All Tools (6) Custom (6) TOOLS 6 tools Collapse Empty hidden Sort A–Z Grid Table New Tool ALL SYSTEM CUSTOM PLUGINS MARKETPLACE Custom 6 tools CSV Reshaper CUSTOM Pivots and cleans a delimited file. Type: custom Invoice Parser CUSTOM Extracts line items from a PDF invoice. Type: custom Screenshot Diff CUSTOM Compares two images and reports drift. Type: custom Sitemap Crawler CUSTOM Walks a sitemap and returns page titles. Type: custom Slack Digest CUSTOM Summarizes a channel into one message. Type: custom Token Counter CUSTOM Estimates prompt cost before you send it. Type: custom TOOLS OVERVIEW 12 TOOLS 6 CUSTOM 6 BUILT IN 0 FROM PLUGINS INSPECTOR Click a tool card to inspect its schema, usage and tests here. New tool",
  "errors": [
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: WebSocket connection to 'ws://127.0.0.1:61451/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
-  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:61451/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:61451/assets/js/vendor-services.CvToKhtQ.js:1:13294)",
-  "console: Failed to fetch pseudonym: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async cb.actions.fetchPseudonym.To.staleAfter (http://127.0.0.1:61451/as",
+  "console: WebSocket connection to 'ws://127.0.0.1:63121/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
+  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:63121/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:63121/assets/js/vendor-services.CvToKhtQ.js:1:13294)",
+  "console: Failed to fetch pseudonym: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async cb.actions.fetchPseudonym.Ao.staleAfter (http://127.0.0.1:63121/as",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: ❌ Error fetching subscription: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async cb.actions.fetchSubscription.To.staleAfter (http://127.0.0.1:6",
+  "console: ❌ Error fetching subscription: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async cb.actions.fetchSubscription.Ao.staleAfter (http://127.0.0.1:6",
   "console: ❌ Error response: undefined",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching credits activity: TypeError: e.map is not a function\n    at g1 (http://127.0.0.1:61451/assets/js/index.DRJWVgQY.js:905:27944)\n    at e.fetchCreditsActivity (http://127.0.0.1:61451/assets/js/index.DRJWVgQY.js:905:39309)",
+  "console: Error fetching credits activity: TypeError: e.map is not a function\n    at g1 (http://127.0.0.1:63121/assets/js/index.CkRnh0ZQ.js:905:27944)\n    at e.fetchCreditsActivity (http://127.0.0.1:63121/assets/js/index.CkRnh0ZQ.js:905:39309)",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.To.staleAfter (http://127.0.0.1:61451/asse",
+  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.Ao.staleAfter (http://127.0.0.1:63121/asse",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: ❌ Error fetching referral balance: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralBalance (http://127.0.0.1:61451/assets/js/i",
+  "console: ❌ Error fetching referral balance: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralBalance (http://127.0.0.1:63121/assets/js/i",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching referral tree: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralTree (http://127.0.0.1:61451/assets/js/index.DRJ",
+  "console: Error fetching referral tree: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.fetchReferralTree (http://127.0.0.1:63121/assets/js/index.CkR",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.To.staleAfter (http://127.0.0.1:61451/asse",
+  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.Ao.staleAfter (http://127.0.0.1:63121/asse",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: ❌ License validation error: Network Error",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: EventSource's response has a MIME type (\"application/json\") that is not \"text/event-stream\". Aborting the connection.",
-  "console: ❌ Error syncing stats to remote: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.syncStatsToRemote (http://127.0.0.1:61451/assets/js/index.",
+  "console: ❌ Error syncing stats to remote: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async e.syncStatsToRemote (http://127.0.0.1:63121/assets/js/index.",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: Error checking Stripe status: TypeError: Failed to fetch\n    at R (http://127.0.0.1:61451/assets/js/ToolsPanel.DS7_vm_b.js:1:1570)\n    at http://127.0.0.1:61451/assets/js/ToolsPanel.DS7_vm_b.js:1:2207\n    at http://127.0.0.1:61451/assets/js/vendor-vue.BbkmGHJx.js:30:7270\n    at An (http://127.0.0.1:",
-  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:61451/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.To.staleAfter (http://127.0.0.1:61451/asse",
+  "console: Error checking Stripe status: TypeError: Failed to fetch\n    at L (http://127.0.0.1:63121/assets/js/ToolsPanel.BvCb6VPU.js:1:1578)\n    at http://127.0.0.1:63121/assets/js/ToolsPanel.BvCb6VPU.js:1:2208\n    at http://127.0.0.1:63121/assets/js/vendor-vue.DcmVC_TO.js:30:7270\n    at An (http://127.0.0.1:",
+  "console: Error fetching all providers: AxiosError: Network Error\n    at p.onerror (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:3:6174)\n    at j.request (http://127.0.0.1:63121/assets/js/vendor-axios.D5GkNzM3.js:5:2078)\n    at async B3.fetchAllProviders.Ao.staleAfter (http://127.0.0.1:63121/asse",
   "console: Failed to load resource: net::ERR_FAILED",
   "console: Failed to load resource: net::ERR_FAILED",
-  "console: WebSocket connection to 'ws://127.0.0.1:61451/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
-  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:61451/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:61451/assets/js/vendor-services.CvToKhtQ.js:1:13294)"
+  "console: WebSocket connection to 'ws://127.0.0.1:63121/socket.io/?EIO=4&transport=websocket' failed: Error during WebSocket handshake: Unexpected response code: 404",
+  "console: [Realtime] Connection error: et: websocket error\n    at G.onError (http://127.0.0.1:63121/assets/js/vendor-services.CvToKhtQ.js:1:7113)\n    at ws.onerror (http://127.0.0.1:63121/assets/js/vendor-services.CvToKhtQ.js:1:13294)"
  ]
 }

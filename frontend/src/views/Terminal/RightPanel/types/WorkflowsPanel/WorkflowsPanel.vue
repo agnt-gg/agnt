@@ -104,24 +104,22 @@
         />
       </div>
     </div>
-    <template v-if="!selectedWorkflow">
-      <div class="no-workflow-selected">
-        <p>Select a workflow to view details.</p>
-        <BaseButton variant="primary" class="create-workflow-button" @click="$emit('panel-action', 'navigate', 'WorkflowForgeScreen')">
-          <i class="fas fa-plus"></i>
-          Create New Workflow
-        </BaseButton>
-      </div>
-
-      <!-- Active Workflows -->
+    <!-- Nothing selected: the list beside this panel. ActiveWorkflows (the
+         listening ones, with their last-run state) lives here now rather than
+         on every screen's right panel; Integration Health went to Connectors. -->
+    <ListSummaryPanel
+      v-if="!selectedWorkflow"
+      caption="Workflows"
+      :stats="summaryStats"
+      hint="Click a workflow card to inspect it here as steps, runs and settings. Esc comes back."
+      primary-label="New workflow"
+      @primary="$emit('panel-action', 'navigate', 'WorkflowForgeScreen')"
+    >
       <ActiveWorkflows
         @edit-workflow="(payload) => $emit('panel-action', 'edit-workflow', payload.workflowId)"
         @panel-action="(action, ...args) => $emit('panel-action', action, ...args)"
       />
-
-      <!-- Integration Health -->
-      <IntegrationHealth />
-    </template>
+    </ListSummaryPanel>
 
 
     <!-- Publish Workflow Modal -->
@@ -154,11 +152,11 @@ import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModa
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ActiveWorkflows from '@/views/Terminal/RightPanel/types/ChatPanel/components/ActiveWorkflows.vue';
-import IntegrationHealth from '@/views/Terminal/RightPanel/types/ChatPanel/components/IntegrationHealth.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'WorkflowsPanel',
-  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, IntegrationHealth },
+  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, ListSummaryPanel },
   props: {
     selectedWorkflowId: {
       type: String,
@@ -168,6 +166,21 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
+
+    // Nothing-selected summary: the list beside this panel.
+    const summaryStats = computed(() => {
+      const all = store.getters['workflows/allWorkflows'] || [];
+      const st = (w) => String(w.status || '').toLowerCase();
+      const active = all.filter((w) => ['active', 'listening', 'running', 'enabled'].includes(st(w))).length;
+      const runs = (store.getters['executionHistory/getWorkflowExecutions'] || []);
+      const running = runs.filter((e) => ['running', 'executing', 'in_progress'].includes(String(e.status || '').toLowerCase())).length;
+      return [
+        { label: 'Workflows', value: all.length },
+        { label: 'Listening', value: active },
+        { label: 'Running now', value: running, live: running > 0 },
+        { label: 'Runs recorded', value: runs.length },
+      ];
+    });
     const selectedCategory = ref('');
 
     const selectedWorkflow = computed(() => {
@@ -655,6 +668,7 @@ export default {
     };
 
     return {
+      summaryStats,
       selectedWorkflow,
       isWorkflowActive,
       canStart,
