@@ -12,8 +12,11 @@ const style = source.match(/<style[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? '';
 
 describe('saved-chat toolbar narrow-width layout', () => {
   it('keeps the toolbar on one row and collapses New Chat to its plus icon', () => {
-    expect(template).toMatch(/<button[^>]*v-tooltip="'New Chat'"[^>]*class="new-chat-btn"/);
-    expect(template).toMatch(/<span class="new-chat-label">New Chat<\/span>/);
+    // AGNT One: New Chat sits in the panel header beside the count; the
+    // segment owns the toolbar row. The label still collapses when narrow.
+    expect(template).toMatch(/<button[^>]*v-tooltip="'New chat \(⌘N\)'"[^>]*class="new-chat-btn header-new"/);
+    expect(template).toMatch(/<span class="new-chat-label">New<\/span>/);
+    expect(template).toMatch(/class="view-seg"/);
     expect(style).toMatch(/\.sort-controls\s*{[^}]*flex-wrap:\s*nowrap;/s);
     expect(style).toMatch(/container-type:\s*inline-size;/);
     expect(style).toMatch(/@container[^\{]*\(max-width:[^)]+\)[\s\S]*?\.new-chat-label\s*{[^}]*display:\s*none;/s);

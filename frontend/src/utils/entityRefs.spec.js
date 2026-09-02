@@ -26,8 +26,8 @@ describe('annotateEntityRefs', () => {
     expect(annotateEntityRefs('<p>Database</p>', E)).not.toContain('entity-ref');
   });
 
-  it('never touches code, pre, links, or existing refs', () => {
-    const html = '<p>See <code>Release Marshal</code> and <a href="#">Release Marshal</a> and <pre>Release Marshal</pre> <span class="entity-ref" data-kind="agent" data-id="a1">Release Marshal</span></p>';
+  it('never touches code, pre, links, mention pills, or existing refs', () => {
+    const html = '<p>See <code>Release Marshal</code> and <a href="#">Release Marshal</a> and <pre>Release Marshal</pre> <span class="mention-pill">@Release Marshal</span> <span class="entity-ref" data-kind="agent" data-id="a1">Release Marshal</span></p>';
     const out = annotateEntityRefs(html, E);
     expect((out.match(/entity-ref/g) || []).length).toBe(1);
   });

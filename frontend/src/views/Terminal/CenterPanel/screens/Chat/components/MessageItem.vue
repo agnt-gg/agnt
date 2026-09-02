@@ -423,6 +423,8 @@ import { vMorphHtml } from '@/utils/morphHtmlDirective';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
 import { vizErrorHtml } from '@/utils/vizError';
 import { renderMentionPills } from '@/utils/agentMentions.js';
+import { annotateEntityRefs, entityRegistryFromStore } from '@/utils/entityRefs.js';
+import { bindEntityRefClicks } from '@/views/_components/one/EntityRef.vue';
 import { API_CONFIG } from '@/../user.config.js';
 import {
   buildLocalFileUrl as sharedBuildLocalFileUrl,
@@ -2240,10 +2242,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
     onMounted(highlightCode);
     onUpdated(debouncedHighlightCode);
+    // Entity references: the names Annie mentions become chips (see
+    // entityRefs.js). One delegated listener per message; click inspects in
+    // the right panel, ⇧-click goes to the entity's screen.
+    let unbindEntityRefs = () => {};
+    onMounted(() => {
+      unbindEntityRefs = bindEntityRefClicks(messageRef.value, store);
+    });
     onBeforeUnmount(() => {
       if (highlightTimer) clearTimeout(highlightTimer);
       if (renderTimer) clearTimeout(renderTimer);
       destroyChartInstances();
+      unbindEntityRefs();
     });
 
     // Core render function - extracted from computed for throttling
@@ -2313,6 +2323,13 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
       // Style @mentions as pills — match known agent names to avoid false positives in code
       renderedHtml = renderMentionPills(renderedHtml, store.state.agents.agents);
+
+      // Then the plain-name references (agents, workflows, goals) Annie
+      // makes in prose. Whole-word, never inside code/links/pills, capped
+      // per entity per message.
+      if (props.message.role === 'assistant') {
+        renderedHtml = annotateEntityRefs(renderedHtml, entityRegistryFromStore(store));
+      }
 
       return addTargetBlankToLinks(renderedHtml);
     };
@@ -4234,8 +4251,14 @@ span.nodeLabel p {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid rgba(127, 129, 147, 0.15);
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(127, 129, 147, 0.15);
+}
+
+.message-text :deep(.setup-lede) {
+  margin: 4px 0 0;
+  font-size: 0.95em;
+  color: var(--color-text-muted);
 }
 
 .message-text :deep(.setup-icon) {

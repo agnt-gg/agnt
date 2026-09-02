@@ -445,8 +445,12 @@ describe('template — the unread dot renders in every list', () => {
   });
 
   it('offers both sort modes and defaults to the attention order', () => {
-    expect(source).toContain("sortBy('attention')");
+    // AGNT One: the modes are the All · Unread · Groups segment. Unread picks
+    // the attention order; the others pick date, with a direction toggle.
+    expect(source).toContain("setViewMode('unread')");
+    expect(source).toContain("setViewMode('all')");
     expect(source).toContain("sortBy('updated_at')");
+    expect(source).toMatch(/if \(mode === 'unread'\) sortKey\.value = 'attention'/);
     // The default lives in loadSortPreference's fallback.
     expect(source).toMatch(/return \{ key: 'attention', order: 'desc' \}/);
   });
@@ -454,7 +458,7 @@ describe('template — the unread dot renders in every list', () => {
   it('labels the attention mode "Unread"', () => {
     // "Needs you" named a card that no longer exists. The mode does exactly
     // one describable thing — unread first — so it says that.
-    expect(source).toMatch(/<span>Unread<\/span>/);
+    expect(source).toMatch(/@click="setViewMode\('unread'\)">\s*Unread/);
     expect(source).not.toMatch(/>Needs you</);
   });
 

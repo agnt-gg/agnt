@@ -8,6 +8,7 @@
     :useTutorialHook="useTutorial"
     :terminalLines="terminalLines"
     :disableInputInitially="!hasConnectedAIProvider"
+    :panelProps="inspectorProps"
     @submit-input="handleUserInputSubmit"
     @panel-action="handlePanelAction"
     @screen-change="handleScreenChange"
@@ -21,10 +22,16 @@
         <!-- Context Monitoring Panel — absent until the conversation has
              actually produced a measurement. A model's window is known as soon
              as a model is picked, so rendering on that alone made a brand-new
-             chat open with "0% full · 0 / 1.0M" above an empty transcript. -->
+             chat open with "0% full · 0 / 1.0M" above an empty transcript.
+
+             AGNT One: it lives in the right panel's "Context & cost" section
+             now (the thread gets the strip's height back), teleported there so
+             every measurement stays wired to this component. `defer` waits for
+             the panel to mount; if the right panel is hidden the tiles simply
+             do not render, which is the same as the old collapsed state. -->
+        <Teleport v-if="!isMobile && hasMonitoringData" defer to="#agnt-insp-context">
         <div
-          v-if="!isMobile && hasMonitoringData"
-          class="monitoring-panel"
+          class="monitoring-panel in-inspector"
           :class="{ collapsed: isMonitoringCollapsed }"
         >
           <!-- Six summary tiles; each expands its own detail. The panel used to
@@ -90,6 +97,7 @@
             </template>
           </ContextTiles>
         </div>
+        </Teleport>
 
         <!-- Conversation Canvas -->
         <div class="conversation-canvas-wrapper">
@@ -2305,21 +2313,13 @@ export default {
             content: `<div class="setup-message">
   <div class="setup-header">
     <div class="setup-icon">🚀</div>
-    <h2>Welcome to AGNT!</h2>
-  </div>
-
-  <div class="setup-content">
-    <div class="setup-step">
-      <div class="step-number">1</div>
-      <div class="step-text">
-        <h3>Connect an AI Provider</h3>
-        <p>Choose from the AI providers below to get started with intelligent automation.</p>
-      </div>
+    <div>
+      <h2>Welcome to AGNT</h2>
+      <p class="setup-lede">One step before Annie can talk: pick where she thinks.</p>
     </div>
   </div>
 </div>`,
             timestamp: Date.now(),
-            metadata: ['Setup Required', 'No AI Provider Connected'],
             showProviderSetup: true, // Special flag to show provider setup UI
             showProviderNote: true, // Special flag to show note after provider buttons
             contentType: 'html', // Mark as HTML content
@@ -2346,6 +2346,7 @@ export default {
         checkLocalServer();
       }, 30000);
       window.addEventListener('trigger-new-chat', clearConversation);
+      window.addEventListener('agnt:ask-annie', handleAskAnnie);
       window.addEventListener('keydown', handleChatKeyboardScroll);
       // A reload or app quit gives us no unmount hook, so the last debounced
       // capture would be lost. visibilitychange fires on both, and on tab
@@ -2367,9 +2368,49 @@ export default {
       focusInput();
     };
 
+    // ⌘K fallthrough ("no match → send to Annie"): the palette navigates here
+    // and fires this with the typed text. `send:false` (⇧↵) drops it into
+    // the composer instead so it can be edited first.
+    const handleAskAnnie = (e) => {
+      const { text, send } = e.detail || {};
+      if (!text) return;
+      if (send && hasConnectedAIProvider.value) {
+        handleUserInputSubmit(text);
+      } else if (baseScreenRef.value) {
+        baseScreenRef.value.currentUserInput = text;
+        nextTick(() => baseScreenRef.value?.handleTextareaInput?.());
+        focusInput();
+      }
+    };
+
+    // What the right panel ("This conversation") needs from this screen.
+    const inspectorProps = computed(() => ({
+      participants: chatParticipants.value,
+      hasContext: hasMonitoringData.value,
+      activeAgentName: activeAgentName.value,
+    }));
+
     const handlePanelAction = (action, payload) => {
       if (action === 'edit-workflow') {
         emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
+      } else if (action === 'edit-agent') {
+        emit('screen-change', 'AgentForgeScreen', { agentId: payload });
+      } else if (action === 'new-chat') {
+        confirmClearConversation();
+        return;
+      } else if (action === 'stop-streaming') {
+        store.dispatch('chat/stopStreamingConversation');
+        return;
+      } else if (action === 'open-provider-selector') {
+        baseScreenRef.value?.toggleProviderSelector?.();
+        return;
+      } else if (action === 'open-tool-selector') {
+        baseScreenRef.value?.toggleToolSelector?.();
+        return;
+      } else if (action === 'open-artifact' && payload?.href) {
+        emit('screen-change', 'ArtifactsScreen', { select: { kind: 'artifact', id: payload.href } });
+      } else if (action === 'open-in-workspace') {
+        emit('screen-change', 'WorkspaceScreen');
       } else if (action === 'deploy-workflow' && payload.workflowId) {
         console.log('Panel action:', action, payload);
         store.commit('chat/ADD_MESSAGE', {
@@ -2479,21 +2520,13 @@ export default {
               content: `<div class="setup-message">
   <div class="setup-header">
     <div class="setup-icon">🚀</div>
-    <h2>Welcome to AGNT!</h2>
-  </div>
-  
-  <div class="setup-content">
-    <div class="setup-step">
-      <div class="step-number">1</div>
-      <div class="step-text">
-        <h3>Connect an AI Provider</h3>
-        <p>Choose from the AI providers below to get started with intelligent automation.</p>
-      </div>
+    <div>
+      <h2>Welcome to AGNT</h2>
+      <p class="setup-lede">One step before Annie can talk: pick where she thinks.</p>
     </div>
   </div>
 </div>`,
               timestamp: Date.now(),
-              metadata: ['Setup Required', 'No AI Provider Connected'],
               showProviderSetup: true, // Special flag to show provider setup UI
               showProviderNote: true, // Special flag to show note after provider buttons
               contentType: 'html', // Mark as HTML content
@@ -2527,6 +2560,7 @@ export default {
       // Unregister stream event callback when component unmounts
       store.dispatch('chat/unregisterStreamEventCallback', handleStreamEvent);
       window.removeEventListener('trigger-new-chat', clearConversation);
+      window.removeEventListener('agnt:ask-annie', handleAskAnnie);
       window.removeEventListener('keydown', handleChatKeyboardScroll);
       document.removeEventListener('visibilitychange', flushScrollCaptureOnHide);
       unsubscribeScrollSync();
@@ -2769,21 +2803,13 @@ export default {
           content: `<div class="setup-message">
   <div class="setup-header">
     <div class="setup-icon">🚀</div>
-    <h2>Welcome to AGNT!</h2>
-  </div>
-  
-  <div class="setup-content">
-    <div class="setup-step">
-      <div class="step-number">1</div>
-      <div class="step-text">
-        <h3>Connect an AI Provider</h3>
-        <p>Choose from the AI providers below to get started with intelligent automation.</p>
-      </div>
+    <div>
+      <h2>Welcome to AGNT</h2>
+      <p class="setup-lede">One step before Annie can talk: pick where she thinks.</p>
     </div>
   </div>
 </div>`,
           timestamp: Date.now(),
-          metadata: ['Setup Required', 'No AI Provider Connected'],
           showProviderSetup: true,
           showProviderNote: true,
           contentType: 'html',
@@ -2964,6 +2990,7 @@ export default {
       handleUserInputSubmit,
       handleEditMessage,
       handlePanelAction,
+      inspectorProps,
       handleScreenChange,
       handleProviderConnected,
       executeSuggestion,

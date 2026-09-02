@@ -100,7 +100,8 @@ export function annotateEntityRefs(html, entities, opts = {}) {
       const tag = m ? m[1].toLowerCase() : '';
       const closing = tok[1] === '/';
       const selfClosing = /\/\s*>$/.test(tok) || tag === 'br' || tag === 'img' || tag === 'hr';
-      const isRef = !closing && tag === 'span' && /class="[^"]*\bentity-ref\b/.test(tok);
+      // Existing chips and @-mention pills are already interactive; leave them.
+      const isRef = !closing && tag === 'span' && /class="[^"]*\b(entity-ref|mention[\w-]*)\b/.test(tok);
       if (!closing && !selfClosing && (SKIP_TAGS.has(tag) || isRef)) {
         skipStack.push(tag);
         skipDepth++;

@@ -62,11 +62,10 @@
         </div>
         <!-- Input line container -->
         <div class="input-container" :class="{ 'input-disabled': isInputDisabled }" v-if="showInputLine">
-          <!-- Disconnected provider notice -->
-          <div v-if="isInputDisabled" class="input-disabled-notice">
-            <i class="fas fa-exclamation-circle"></i>
-            <span>No AI provider connected. Select a provider to start chatting.</span>
-          </div>
+          <!-- The disconnected-provider notice used to sit here as a red
+               banner: the fifth place on a first-run screen saying the same
+               thing. The welcome card carries the verb, the toolbar carries
+               the one red pill, and the composer's placeholder says it once. -->
 
           <!-- Mid-turn steer pending: user submitted while a turn was streaming.
                Will fire as a fresh user turn the moment the stream ends. -->
@@ -142,19 +141,24 @@
               @change="handleFileSelect"
               style="display: none"
             />
+            <!-- Composer controls carry a word each. Four unlabelled circles
+                 were the first thing every new user asked about. -->
             <Tooltip text="Attach files" width="auto">
               <button v-if="!isStreaming" @click="triggerFileInput" :disabled="isInputDisabled" class="chat-attach-button">
                 <i class="fas fa-paperclip"></i>
+                <span class="chat-btn-label">Attach<span v-if="selectedFiles.length" class="chat-btn-count">{{ selectedFiles.length }}</span></span>
               </button>
             </Tooltip>
-            <Tooltip text="AI Provider Settings" width="auto">
+            <Tooltip text="Model & provider" width="auto">
               <button v-if="!isStreaming" @click="toggleProviderSelector" class="chat-provider-button">
                 <i class="fas fa-robot"></i>
+                <span class="chat-btn-label">Model</span>
               </button>
             </Tooltip>
-            <Tooltip text="Tool Settings" width="auto">
+            <Tooltip text="Tools this chat may use" width="auto">
               <button v-if="!isStreaming" @click="toggleToolSelector" class="chat-tools-button">
                 <i class="fas fa-wrench"></i>
+                <span class="chat-btn-label">Tools</span>
               </button>
             </Tooltip>
             <!--
@@ -176,6 +180,7 @@
                 aria-label="Toggle hands-free voice conversation"
               >
                 <i :class="voiceActive ? 'fas fa-headset' : 'far fa-comment-dots'"></i>
+                <span class="chat-btn-label">{{ voiceActive ? 'End voice' : 'Voice' }}</span>
               </button>
             </Tooltip>
             <template v-if="!isStreaming">
@@ -2811,6 +2816,8 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   transform: none;
 }
 
+
+
 .chat-provider-button {
   width: 36px;
   height: 36px;
@@ -2864,5 +2871,47 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 body[data-page='terminal-goals'] .scrollable-content {
   overflow-y: hidden !important;
   padding: 0;
+}
+
+/* AGNT One: the composer's controls are pills with a word. The words are
+   conditional on the COMPOSER's own width (container query, not viewport):
+   below 900px they go and the 36px circle comes back, so the text field
+   never shrinks under 60% of the row. */
+.input-container {
+  container-type: inline-size;
+  container-name: composer;
+}
+.input-line .chat-attach-button,
+.input-line .chat-provider-button,
+.input-line .chat-tools-button,
+.input-line .chat-voice-button {
+  width: auto;
+  min-width: 36px;
+  padding: 0 12px 0 10px;
+  border-radius: 18px;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+.chat-btn-label {
+  white-space: nowrap;
+}
+.chat-btn-count {
+  margin-left: 4px;
+  font-size: 9.5px;
+  opacity: 0.7;
+}
+@container composer (max-width: 900px) {
+  .chat-btn-label {
+    display: none;
+  }
+  .input-line .chat-attach-button,
+  .input-line .chat-provider-button,
+  .input-line .chat-tools-button,
+  .input-line .chat-voice-button {
+    width: 36px;
+    padding: 0;
+  }
 }
 </style>

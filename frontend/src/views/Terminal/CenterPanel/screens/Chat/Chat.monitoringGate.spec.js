@@ -34,9 +34,14 @@ describe('Chat.vue — the monitoring panel is gated on real activity', () => {
   it('REGRESSION: the panel element itself is conditional on it', () => {
     // Not merely "the string appears somewhere" — the v-if on the panel must
     // reference it, which is the single line that makes an empty chat clean.
-    const el = src.match(/<div\s+([\s\S]{0,200}?)class="monitoring-panel"/);
+    // AGNT One: the panel is teleported into the right-panel inspector, so
+    // the gate sits on the <Teleport> that wraps it — the element and the
+    // gate must still be adjacent, or the tiles could mount ungated.
+    const el = src.match(/<Teleport\s+([\s\S]{0,200}?)>\s*<div\s+[\s\S]{0,120}?class="monitoring-panel/);
     expect(el).toBeTruthy();
     expect(el[1]).toMatch(/v-if="[^"]*hasMonitoringData[^"]*"/);
+    expect(el[1]).toMatch(/\bdefer\b/);
+    expect(el[1]).toMatch(/to="#agnt-insp-context"/);
   });
 
   it('and that gate is closed for a conversation that has not started', () => {

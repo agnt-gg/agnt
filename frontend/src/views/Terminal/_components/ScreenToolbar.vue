@@ -134,6 +134,10 @@ export default {
   padding: 1px 6px;
   background: var(--color-darker-0);
   border-radius: 3px;
+  white-space: nowrap;
+}
+.wm-title {
+  white-space: nowrap;
 }
 
 .wm-header-right {

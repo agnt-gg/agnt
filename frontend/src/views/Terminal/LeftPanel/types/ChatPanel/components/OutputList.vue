@@ -8,6 +8,10 @@
           <i class="fas fa-file-alt"></i>
           {{ visibleOutputs.length }}
         </span>
+        <button v-tooltip="'New chat (⌘N)'" @click="handleNewChat" class="new-chat-btn header-new">
+          <i class="fas fa-plus"></i>
+          <span class="new-chat-label">New</span>
+        </button>
       </div>
     </div>
     <div class="card-inner output-list">
@@ -34,41 +38,44 @@
           <input v-model="searchQuery" type="text" placeholder="Search chats..." class="search-input" />
         </div>
         <div id="saved-outputs" class="saved-items">
+          <!-- One segmented control instead of Unread toggle + Date sort:
+               All (newest first) · Unread (needs attention) · Groups (the tree).
+               Sort direction lives on the small arrow at the right. -->
           <div class="sort-controls">
-            <div class="sort-modes">
-              <Tooltip text="Unread first" width="auto">
-                <button @click="sortBy('attention')" class="sort-button" :class="{ active: sortKey === 'attention' }">
-                  <i class="fas fa-bell"></i>
-                  <span>Unread</span>
-                  <span v-if="unreadConversations.length > 0" class="sort-unread-count">{{ unreadConversations.length }}</span>
-                </button>
-              </Tooltip>
-              <Tooltip v-if="unreadConversations.length > 0" text="Mark all as read" width="auto">
-                <button class="mark-all-read-btn" @click.stop="markAllUnreadRead" aria-label="Mark all as read">
-                  <i class="fas fa-check-double"></i>
-                </button>
-              </Tooltip>
-              <button @click="sortBy('updated_at')" class="sort-button" :class="{ active: sortKey === 'updated_at' }">
-                <span>Date</span>
-                <i :class="getSortIcon('updated_at')"></i>
+            <div class="view-seg" role="tablist">
+              <button role="tab" class="view-seg-btn" :class="{ on: viewMode === 'all' }" @click="setViewMode('all')">All</button>
+              <button role="tab" class="view-seg-btn" :class="{ on: viewMode === 'unread' }" @click="setViewMode('unread')">
+                Unread<span v-if="unreadConversations.length > 0" class="sort-unread-count">{{ unreadConversations.length }}</span>
+              </button>
+              <button role="tab" class="view-seg-btn" :class="{ on: viewMode === 'groups' }" @click="setViewMode('groups')">
+                Groups<span v-if="groups.length" class="sort-unread-count is-plain">{{ groups.length }}</span>
               </button>
             </div>
-            <button v-tooltip="'New Chat'" @click="handleNewChat" class="new-chat-btn">
-              <i class="fas fa-plus"></i>
-              <span class="new-chat-label">New Chat</span>
-            </button>
+            <Tooltip v-if="viewMode === 'unread' && unreadConversations.length > 0" text="Mark all as read" width="auto">
+              <button class="mark-all-read-btn" @click.stop="markAllUnreadRead" aria-label="Mark all as read">
+                <i class="fas fa-check-double"></i>
+              </button>
+            </Tooltip>
+            <Tooltip v-else :text="sortOrder === 'desc' ? 'Newest first' : 'Oldest first'" width="auto">
+              <button @click="sortBy('updated_at')" class="sort-dir-btn" aria-label="Toggle sort direction">
+                <i :class="getSortIcon('updated_at')"></i>
+              </button>
+            </Tooltip>
           </div>
 
           <!-- Groups Section -->
           <div class="groups-section">
             <!-- New Group Button -->
-            <button @click="showCreateGroup()" class="create-group-btn">
+            <button v-if="viewMode === 'groups'" @click="showCreateGroup()" class="create-group-btn">
               <i class="fas fa-folder-plus"></i>
               <span>New Group</span>
             </button>
+            <div v-if="viewMode === 'groups' && groups.length === 0" class="no-outputs">
+              <p>No groups yet. Make one and drag chats into it.</p>
+            </div>
 
             <!-- Recursive Group Tree -->
-            <template v-for="node in flatGroupTree" :key="node.id">
+            <template v-for="node in viewMode === 'groups' ? flatGroupTree : []" :key="node.id">
               <div class="group-section" :style="{ paddingLeft: node.depth * 16 + 'px' }">
                 <div
                   class="group-header"
@@ -128,7 +135,7 @@
             </template>
 
             <!-- Ungrouped Section (only when groups exist) -->
-            <div class="group-section ungrouped-section" v-if="groups.length > 0">
+            <div class="group-section ungrouped-section" v-if="viewMode === 'groups' && groups.length > 0">
               <div
                 class="group-header ungrouped-header"
                 @click="toggleGroup('__ungrouped__')"
@@ -189,13 +196,16 @@
               </div>
             </div>
 
-            <!-- Flat list when no groups exist -->
-            <div v-if="groups.length === 0" class="output-list-items">
+            <!-- Flat list: All and Unread views -->
+            <div v-if="viewMode !== 'groups'" class="output-list-items">
               <div v-if="visibleOutputs.length === 0" class="no-outputs">
                 <p>No saved chats yet. Start a chat to create one.</p>
               </div>
+              <div v-else-if="viewMode === 'unread' && flatListOutputs.length === 0" class="no-outputs">
+                <p>Nothing unread.</p>
+              </div>
               <div
-                v-for="output in sortedOutputs"
+                v-for="output in flatListOutputs"
                 :key="output.id"
                 class="output-item"
                 :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
@@ -404,6 +414,34 @@ export default {
     const savedSort = loadSortPreference();
     const sortKey = ref(savedSort.key);
     const sortOrder = ref(savedSort.order);
+
+    // View mode: All · Unread · Groups. Persisted; defaults to Groups when the
+    // user has groups (that is where their chats live) and All otherwise.
+    const VIEW_PREF_KEY = 'agnt:savedChats:view';
+    const viewMode = ref(
+      (() => {
+        try {
+          const v = localStorage.getItem(VIEW_PREF_KEY);
+          return ['all', 'unread', 'groups'].includes(v) ? v : null;
+        } catch {
+          return null;
+        }
+      })(),
+    );
+    function setViewMode(mode) {
+      viewMode.value = mode;
+      try {
+        localStorage.setItem(VIEW_PREF_KEY, mode);
+      } catch {
+        // survivable
+      }
+      // Unread view sorts by attention; the others by date.
+      if (mode === 'unread') sortKey.value = 'attention';
+      else if (sortKey.value === 'attention') {
+        sortKey.value = 'updated_at';
+        sortOrder.value = 'desc';
+      }
+    }
     watch([sortKey, sortOrder], ([key, order]) => {
       try {
         localStorage.setItem(SORT_PREF_KEY, JSON.stringify({ key, order }));
@@ -556,6 +594,15 @@ export default {
 
     // Groups
     const groups = computed(() => store.getters['groups/groups']);
+    // First run with no saved preference: land on Groups if the user has any,
+    // else on All. Decided once, when groups first resolve.
+    watch(
+      groups,
+      (g) => {
+        if (viewMode.value === null) viewMode.value = g && g.length ? 'groups' : 'all';
+      },
+      { immediate: true },
+    );
     const groupTree = computed(() => store.getters['groups/groupTree']);
 
     // Flatten tree into a visible list with depth info (only show children of expanded parents)
@@ -643,6 +690,14 @@ export default {
     }
 
     const sortedOutputs = computed(() => filterAndSort(visibleOutputs.value));
+    // What the flat (All / Unread) views render.
+    const flatListOutputs = computed(() => {
+      if (viewMode.value === 'unread') {
+        const unread = store.getters['contentOutputs/unreadOutputIdSet'];
+        return sortedOutputs.value.filter((o) => unread?.has?.(o.id));
+      }
+      return sortedOutputs.value;
+    });
 
     // Every unread conversation, longest-waiting first.
     //
@@ -1535,6 +1590,9 @@ export default {
       sortKey,
       sortOrder,
       sortedOutputs,
+      viewMode,
+      setViewMode,
+      flatListOutputs,
       activeMenu,
       menuPosition,
       createNewOutput,
@@ -1770,6 +1828,64 @@ div#saved-outputs {
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+/* AGNT One: All · Unread · Groups segment */
+.view-seg {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+}
+.view-seg-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.view-seg-btn.on {
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.14);
+}
+.sort-dir-btn {
+  width: 30px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.sort-dir-btn:hover {
+  color: var(--color-text);
+}
+.sort-unread-count.is-plain {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-muted);
+}
+.panel-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.new-chat-btn.header-new {
+  padding: 3px 9px;
+  font-size: 11px;
 }
 
 .sort-button {
