@@ -17,26 +17,37 @@
 // resolves the active row from the screen name alone, so a second owner would
 // light the wrong row. sections.spec.js enforces that.
 //
+// TAB FLAGS on a screen entry:
+//   tab: false  — owned and routed by the row, never drawn in the toolbar
+//                 (navigated from the screen's own left panel; SYSTEM screens).
+//   ctx: true   — a CONTEXTUAL tab: drawn only while it is the active screen.
+//                 The forges use this. Library would otherwise carry nine tabs
+//                 of which four are editors you enter from a card, not from the
+//                 toolbar; showing the editor's tab only while you are inside
+//                 it keeps the strip about destinations and still tells you
+//                 where you are.
+//   badge: fn   — optional getter (store) → number | '' rendered on the rail
+//                 row. Only rows with something live carry one.
+//
 // Every screen listed here must also exist in Terminal.vue's lazy-import map
 // and screenRoutes, and in router/index.js. sections.spec.js enforces that
 // agreement — if you add or move a screen and the spec fails, it is telling
 // you which of the hand-maintained lists you forgot.
 
 export const MAIN_SECTIONS = [
-  // ── WORK ── the three places you land: talk, browse, arrange.
+  // ── WORK ── the two places you land: talk, arrange.
   {
     id: 'chat',
     group: 'WORK',
     icon: 'fas fa-comments',
     label: 'Chat',
-    screens: [{ screen: 'ChatScreen', label: 'CHAT' }],
-  },
-  {
-    id: 'marketplace',
-    group: 'WORK',
-    icon: 'fas fa-store',
-    label: 'Marketplace',
-    screens: [{ screen: 'MarketplaceScreen', label: 'MARKETPLACE' }],
+    // Artifacts are what conversations produce. As a PLAN row it was a list
+    // you reached from nowhere in particular; as Chat's second tab it sits
+    // one click from the thread that made the file.
+    screens: [
+      { screen: 'ChatScreen', label: 'CHAT' },
+      { screen: 'ArtifactsScreen', label: 'ARTIFACTS' },
+    ],
   },
   {
     // Workspaces was a toolbar tab of Chat. It is its own destination now:
@@ -62,24 +73,19 @@ export const MAIN_SECTIONS = [
     group: 'PLAN',
     icon: 'fas fa-bullseye',
     label: 'Goals',
+    badge: 'goals',
     screens: [{ screen: 'GoalsScreen', label: 'GOALS' }],
-  },
-  {
-    id: 'artifacts',
-    group: 'PLAN',
-    icon: 'fas fa-cube',
-    label: 'Artifacts',
-    screens: [{ screen: 'ArtifactsScreen', label: 'ARTIFACTS' }],
   },
   {
     id: 'traces',
     group: 'PLAN',
     icon: 'fas fa-stream',
     label: 'Traces',
+    badge: 'traces',
     screens: [{ screen: 'TracesScreen', label: 'TRACES' }],
   },
 
-  // ── BUILD ── the workforce and what it can use. Library first, forge
+  // ── BUILD ── the workforce and what it can use. List first, forge
   // second: the sidebar row lands on the list, the forge is a toolbar tab.
   {
     id: 'agents',
@@ -102,40 +108,23 @@ export const MAIN_SECTIONS = [
     ],
   },
   {
-    id: 'tools',
+    // Tools · Skills · Plugins · Widgets · Marketplace were five rail rows for
+    // one idea — "things I can use" — and the grouping that would have said
+    // so was a 7px caption nobody could read. One row, five tabs, exactly the
+    // mechanism Agents and Workflows already use. Marketplace is the last tab
+    // because it is where the other four come from.
+    id: 'library',
     group: 'BUILD',
-    icon: 'fas fa-wrench',
-    label: 'Tools',
+    icon: 'fas fa-book',
+    label: 'Library',
     screens: [
-      { screen: 'ToolsScreen', label: 'MY TOOLS' },
-      { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
-    ],
-  },
-  {
-    id: 'skills',
-    group: 'BUILD',
-    icon: 'fas fa-graduation-cap',
-    label: 'Skills',
-    screens: [{ screen: 'SkillsScreen', label: 'SKILLS' }],
-  },
-  {
-    // An asset, not a connection: a plugin is a thing you install and own,
-    // the same kind of thing as an agent or a tool. It was a view inside
-    // Connectors, reachable only from that screen's panel nav.
-    id: 'plugins',
-    group: 'BUILD',
-    icon: 'fas fa-puzzle-piece',
-    label: 'Plugins',
-    screens: [{ screen: 'PluginsScreen', label: 'MY PLUGINS' }],
-  },
-  {
-    id: 'widgets',
-    group: 'BUILD',
-    icon: 'fas fa-shapes',
-    label: 'Widgets',
-    screens: [
-      { screen: 'WidgetManagerScreen', label: 'MY WIDGETS' },
-      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
+      { screen: 'ToolsScreen', label: 'TOOLS' },
+      { screen: 'ToolForgeScreen', label: 'TOOL FORGE', ctx: true },
+      { screen: 'SkillsScreen', label: 'SKILLS' },
+      { screen: 'PluginsScreen', label: 'PLUGINS' },
+      { screen: 'WidgetManagerScreen', label: 'WIDGETS' },
+      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE', ctx: true },
+      { screen: 'MarketplaceScreen', label: 'MARKETPLACE' },
     ],
   },
 ];
@@ -146,10 +135,10 @@ export const MAIN_SECTIONS = [
 // Both are a screen that carries its OWN left-panel nav, which is exactly why
 // each gets one row instead of several. Connect had six — API/OAuth, Emails,
 // MCP, Plugins, Vault, Webhooks — and every one of them landed on a screen
-// already listing those same six down its left side. The rail was spending
-// its longest group restating a menu the destination draws anyway. (Plugins
-// has since left for BUILD, where an installable asset belongs, so Connect is
-// now five views of things AGNT reaches out to.)
+// already listing those same six down its left side. (Plugins has since left
+// for BUILD › Library, where an installable asset belongs; AI providers has
+// since ARRIVED here from Settings, because a provider is a thing AGNT
+// reaches out to.)
 //
 // Settings is the same shape one level further: Profile, Billing, Theme,
 // Memory, Evolution, Autonomy and the rest are navigated from SettingsPanel.
@@ -159,15 +148,14 @@ export const MAIN_SECTIONS = [
 // sections, so the row has to list them: that is what keeps them inside
 // SECTION_ROUTES (without it the canvas reads them as custom pages and the
 // gear goes dark while you are on them) and lets them share SettingsPanel as
-// their left panel (see screenRegistry.js). None of that requires repeating
-// them across the top of the screen, one gap away from the panel that
-// navigates them — the same restating Connect was collapsed to stop.
+// their left panel (see screenRegistry.js).
 export const BOTTOM_SECTIONS = [
   {
     id: 'connect',
     group: 'SYSTEM',
     icon: 'fas fa-plug',
     label: 'Connectors',
+    badge: 'connect',
     screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTORS' }],
   },
   {
@@ -201,4 +189,14 @@ export function withGroupHeadings(sections) {
     previous = section.group;
     return { section, startsGroup, caption: startsGroup ? section.group : null };
   });
+}
+
+/**
+ * The toolbar tabs for a section given the screen that is active right now.
+ * `tab:false` entries never draw; `ctx:true` entries draw only while active.
+ * Pure so the toolbar and the tests share one definition of "visible".
+ */
+export function visibleTabs(section, activeScreen) {
+  if (!section) return [];
+  return section.screens.filter((t) => t.tab !== false && (!t.ctx || t.screen === activeScreen));
 }

@@ -123,6 +123,17 @@ export default {
       type: String,
       default: 'category',
     },
+    /**
+     * Drop main categories that hold nothing. A column of "(0)" rows was the
+     * most common shape of this panel: eight groups nobody had used, and the
+     * one that held everything at the bottom. Categories come from the items
+     * you have; empty ones are not listed. Subcategories are unaffected —
+     * they only render for an open, non-empty main.
+     */
+    hideEmpty: {
+      type: Boolean,
+      default: true,
+    },
   },
   emits: ['category-selected', 'all-selected'],
   setup(props, { emit }) {
@@ -199,8 +210,10 @@ export default {
       }
 
       // Render main categories in the order of mainCategories
-      props.mainCategories.forEach((main, idx) => {
-        if (idx > 0) result.push({ separator: true });
+      let rendered = 0;
+      props.mainCategories.forEach((main) => {
+        if (props.hideEmpty && !itemCounts[main.code]) return;
+        if (rendered++ > 0) result.push({ separator: true });
 
         // Main category entry, with count
         result.push({

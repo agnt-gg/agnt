@@ -22,26 +22,35 @@
         />
         <span v-if="searchScope" class="wm-search-scope"><i class="fas fa-store"></i>{{ searchScope }}</span>
       </div>
-      <Tooltip v-if="showCollapseToggle" :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
+      <!-- Every control carries a word. Seven unlabelled icons was the single
+           most-cited confusion on the list screens; the tooltips stay for
+           the narrow-window case where the words are hidden. -->
+      <Tooltip v-if="showCollapseToggle" :text="allCategoriesCollapsed ? 'Expand all groups' : 'Collapse all groups'" width="auto">
         <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="$emit('toggleCollapseAll')">
           <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
+          <span class="wm-btn-label">{{ allCategoriesCollapsed ? 'Expand' : 'Collapse' }}</span>
         </button>
       </Tooltip>
-      <Tooltip v-if="showHideEmpty" :text="hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'" width="auto">
+      <Tooltip v-if="showHideEmpty" :text="hideEmptyCategories ? 'Show empty groups' : 'Hide empty groups'" width="auto">
         <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="$emit('toggleHideEmpty')">
           <i :class="hideEmptyCategories ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+          <span class="wm-btn-label">{{ hideEmptyCategories ? 'Empty hidden' : 'Show empty' }}</span>
         </button>
       </Tooltip>
       <Tooltip :text="sortOrder === 'az' ? 'Sort Z → A' : 'Sort A → Z'" width="auto">
         <button class="wm-btn" @click="$emit('update:sortOrder', sortOrder === 'az' ? 'za' : 'az')">
           <i :class="sortOrder === 'az' ? 'fas fa-sort-alpha-down' : 'fas fa-sort-alpha-up-alt'"></i>
+          <span class="wm-btn-label">Sort {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</span>
         </button>
       </Tooltip>
-      <Tooltip v-for="opt in layoutOptions" :key="opt" :text="layoutLabels[opt] || opt" width="auto">
-        <button class="wm-btn" :class="{ active: currentLayout === opt }" @click="$emit('update:layout', opt)">
-          <i :class="layoutIcons[opt] || 'fas fa-th-large'"></i>
-        </button>
-      </Tooltip>
+      <div class="wm-seg" v-if="layoutOptions.length > 1">
+        <Tooltip v-for="opt in layoutOptions" :key="opt" :text="layoutLabels[opt] || opt" width="auto">
+          <button class="wm-btn wm-seg-btn" :class="{ active: currentLayout === opt }" @click="$emit('update:layout', opt)">
+            <i :class="layoutIcons[opt] || 'fas fa-th-large'"></i>
+            <span class="wm-btn-label">{{ layoutWords[opt] || opt }}</span>
+          </button>
+        </Tooltip>
+      </div>
       <slot name="extra-buttons"></slot>
       <Tooltip v-if="createLabel" :text="createLabel" width="auto">
         <button class="wm-btn wm-btn-create" @click="$emit('create')">
@@ -88,7 +97,8 @@ export default {
       table: 'fas fa-table',
       list: 'fas fa-table',
     };
-    return { layoutLabels, layoutIcons };
+    const layoutWords = { grid: 'Grid', table: 'Table', list: 'List' };
+    return { layoutLabels, layoutIcons, layoutWords };
   },
 };
 </script>
@@ -218,6 +228,29 @@ export default {
   color: var(--color-green);
   border-color: rgba(var(--green-rgb), 0.2);
   background: rgba(var(--green-rgb), 0.04);
+}
+
+.wm-btn-label {
+  white-space: nowrap;
+}
+@media (max-width: 1100px) {
+  .wm-btn-label {
+    display: none;
+  }
+}
+.wm-seg {
+  display: flex;
+  gap: 0;
+}
+.wm-seg :deep(.tooltip-container:first-child .wm-seg-btn) {
+  border-radius: 8px 0 0 8px;
+}
+.wm-seg :deep(.tooltip-container:last-child .wm-seg-btn) {
+  border-radius: 0 8px 8px 0;
+  margin-left: -1px;
+}
+.wm-seg-btn {
+  border-radius: 0;
 }
 
 .wm-btn-create {

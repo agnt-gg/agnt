@@ -10,6 +10,7 @@ import appAuth from './auth/appAuth';
 import userAuth from './auth/userAuth';
 import player from './features/player';
 import aiProvider from './app/aiProvider';
+import shell from './app/shell';
 import executionHistory from './user/executionHistory';
 import userStats from './user/userStats';
 // import missions from './features/_missions';
@@ -224,6 +225,8 @@ const store = createStore({
     wallets,
     contracts,
     mutations,
+    // UI-only shell state (inspector requests, ⌘K). Not user data.
+    shell,
   },
 });
 

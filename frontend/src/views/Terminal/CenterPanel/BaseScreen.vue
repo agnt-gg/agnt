@@ -1412,6 +1412,16 @@ export default {
       }
     };
 
+    // Keyboard panel toggles (⌘\ · ⌘⇧\) are dispatched by CanvasScreen as
+    // window events so the shortcut works from any screen without a prop
+    // chain; only the mounted (active) BaseScreen answers them.
+    const onToggleLeftPanel = () => {
+      if (leftPanelEnabled.value) toggleLeftPanelCollapsed();
+    };
+    const onToggleRightPanel = () => {
+      toggleRightPanelCollapsed();
+    };
+
     // --- Lifecycle ---
     onMounted(async () => {
       setDataPage();
@@ -1419,6 +1429,8 @@ export default {
       initializePanelWidths();
       observeLayout();
       terminalContentRef.value?.addEventListener('click', handleContainerClick);
+      window.addEventListener('agnt:toggle-left-panel', onToggleLeftPanel);
+      window.addEventListener('agnt:toggle-right-panel', onToggleRightPanel);
       // Only focus input if the input line exists
       if (inputEnabled.value) {
         focusInput();
@@ -1466,6 +1478,8 @@ export default {
         }
       }
       unobserveLayout();
+      window.removeEventListener('agnt:toggle-left-panel', onToggleLeftPanel);
+      window.removeEventListener('agnt:toggle-right-panel', onToggleRightPanel);
       if (terminalContentRef.value) {
         terminalContentRef.value.removeEventListener('click', handleContainerClick);
       }

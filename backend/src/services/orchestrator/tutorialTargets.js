@@ -8,23 +8,18 @@
 // `screen: null` means "visible on every screen" (e.g. sidebar, chrome).
 export const TOUR_TARGETS = [
   // ── Sidebar: WORK (global — always visible) ────────────────────────
-  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
-  { id: 'sidebar.marketplace',      screen: null, description: 'Sidebar button: Marketplace',  safeToSimulate: true },
+  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat (Chat, Artifacts)',         safeToSimulate: true },
   { id: 'sidebar.workspaces',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },
 
   // ── Sidebar: PLAN ──────────────────────────────────────────────────
   { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
   { id: 'sidebar.goals',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
-  { id: 'sidebar.artifacts',        screen: null, description: 'Sidebar button: Artifacts',    safeToSimulate: true },
   { id: 'sidebar.traces',           screen: null, description: 'Sidebar button: Traces',       safeToSimulate: true },
 
   // ── Sidebar: BUILD ─────────────────────────────────────────────────
   { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
   { id: 'sidebar.workflows',        screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
-  { id: 'sidebar.tools',            screen: null, description: 'Sidebar button: Tools',        safeToSimulate: true },
-  { id: 'sidebar.skills',           screen: null, description: 'Sidebar button: Skills',       safeToSimulate: true },
-  { id: 'sidebar.widgets',          screen: null, description: 'Sidebar button: Widgets',      safeToSimulate: true },
-  { id: 'sidebar.plugins',          screen: null, description: 'Sidebar button: Plugins',      safeToSimulate: true },
+  { id: 'sidebar.library',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Plugins, Widgets, Marketplace)', safeToSimulate: true },
 
   // ── Sidebar: foot of the rail ── one row; the screen carries its own nav.
   { id: 'sidebar.connect',          screen: null, description: 'Sidebar button: Connectors (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },

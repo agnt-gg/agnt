@@ -37,7 +37,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, shallowReactive, markRaw, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, shallowReactive, markRaw, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -181,6 +181,18 @@ export default {
           router.push({ path: targetPath, query: { executionId: options.selectedExecutionId } });
         } else if (screenName === 'ExperimentsScreen' && options.selectedInsight) {
           router.push({ path: targetPath, query: { insightId: options.selectedInsight.id } });
+        } else if (options.select || options.section || options.status || options.newGoal) {
+          // Generic AGNT One navigation intents, carried in the URL so a
+          // deep link reproduces them: `select` opens an entity in the
+          // screen's inspector, `section` picks a left-nav view (Settings /
+          // Connectors), `status` presets a list filter, `newGoal` opens the
+          // composer on Goals.
+          const query = {};
+          if (options.select) query.select = `${options.select.kind}:${options.select.id}`;
+          if (options.section) query.section = options.section;
+          if (options.status) query.status = options.status;
+          if (options.newGoal) query.new = '1';
+          router.push({ path: targetPath, query });
         } else if (route.path !== targetPath) {
           router.push(targetPath);
         }
@@ -221,6 +233,15 @@ export default {
       store.dispatch('tools/fetchTools').catch(() => {});
       store.dispatch('executionHistory/fetchExecutions').catch(() => {});
     };
+
+    // Deep components (EntityRef chips in a rendered message, the Jump
+    // palette's ⇧-open) navigate by window event rather than by prop chain.
+    const onNavigateEvent = (e) => {
+      const { screen, opts } = e.detail || {};
+      if (screen) changeScreen(screen, opts || {});
+    };
+    window.addEventListener('agnt:navigate', onNavigateEvent);
+    onBeforeUnmount(() => window.removeEventListener('agnt:navigate', onNavigateEvent));
 
     onMounted(() => {
       // Eagerly load the active screen if it's not already available

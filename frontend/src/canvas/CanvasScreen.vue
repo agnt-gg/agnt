@@ -17,7 +17,7 @@
             v-for="tab in activeSectionTabs"
             :key="tab.screen"
             class="cv-pbtn"
-            :class="{ on: screenName === tab.screen }"
+            :class="{ on: screenName === tab.screen, ctx: tab.ctx }"
             @click="$emit('screen-change', tab.screen)"
           >
             {{ tab.label }}
@@ -26,8 +26,30 @@
         </template>
       </div>
 
+      <!-- Jump (⌘K): the router when you do not know which row owns a thing.
+           Centred so it reads as the one global control on the bar. -->
+      <button class="cv-jump" data-tour-id="toolbar.jump" @click="openJump" :title="jumpHint">
+        <i class="fas fa-search"></i>
+        <span class="cv-jump-text">Jump to anything…</span>
+        <kbd class="cv-kbd">{{ jumpKey }}</kbd>
+      </button>
+
       <!-- Right side controls -->
       <div class="cv-right">
+        <!-- Live pills: each is a click into the thing it counts. Only the
+             provider pill is always drawn; the others appear when non-zero. -->
+        <button v-if="pills.running" class="cv-pill" @click="goRunning" title="Running now — open Traces">
+          <span class="cv-pill-dot is-live"></span>{{ pills.running }} running
+        </button>
+        <button v-if="pills.approvals" class="cv-pill" @click="goApprovals" title="Waiting for your approval — open Autonomy">
+          <span class="cv-pill-dot is-warn"></span>{{ pills.approvals }} to approve
+        </button>
+        <button v-if="updateAvailable" class="cv-pill is-update" @click="goAbout" title="An update is ready — Settings › About">
+          <i class="fas fa-arrow-circle-up"></i> update
+        </button>
+        <button v-if="!globalProviderLabel" class="cv-pill is-red" @click="goProviders" title="Connect an AI provider">
+          <span class="cv-pill-dot is-red"></span>no provider
+        </button>
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
         <Tooltip text="Click to change model" width="auto" position="bottom">
           <button
@@ -101,6 +123,7 @@
                 <span class="cv-sb-label" v-marquee>
                   <span class="cv-sb-label-inner">{{ row.section.label }}</span>
                 </span>
+                <span v-if="railBadges[row.section.id]" class="cv-sb-badge" :class="{ 'is-warn': row.section.id === 'connect' }">{{ railBadges[row.section.id] }}</span>
               </button>
             </Tooltip>
           </template>
@@ -150,6 +173,7 @@
               <span class="cv-sb-label" v-marquee>
                 <span class="cv-sb-label-inner">{{ section.label }}</span>
               </span>
+              <span v-if="railBadges[section.id]" class="cv-sb-badge" :class="{ 'is-warn': section.id === 'connect' }">{{ railBadges[section.id] }}</span>
             </button>
           </Tooltip>
         </div>
@@ -258,6 +282,9 @@
     </Teleport>
 
     <SimpleModal ref="simpleModal" />
+
+    <!-- ⌘K -->
+    <JumpPalette @navigate="onJumpNavigate" />
   </div>
 </template>
 
@@ -275,8 +302,10 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Sidebar icons + toolbar sub-tabs both derive from this registry.
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
-import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
+import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings, visibleTabs } from './sections.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
+import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
+import JumpPalette from './JumpPalette.vue';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -315,7 +344,7 @@ const marqueeDirective = {
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette },
   directives: { marquee: marqueeDirective },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
@@ -464,11 +493,73 @@ export default {
     });
 
     // Sub-tabs shown in toolbar = the active section's screens, minus any
-    // marked `tab: false` — those are routed and owned by the section but
-    // navigated from the screen's own left panel instead.
-    const activeSectionTabs = computed(() => {
-      return activeSection.value ? activeSection.value.screens.filter((t) => t.tab !== false) : [];
+    // marked `tab: false` (routed and owned by the section but navigated from
+    // the screen's own left panel) and minus `ctx: true` entries that are not
+    // the active screen (editors appear only while you are inside them).
+    const activeSectionTabs = computed(() => visibleTabs(activeSection.value, props.screenName));
+
+    // ── Rail badges ── the small live count on a row that has something
+    // happening. Readers live in railBadges.js so the number here and the
+    // number on the screen it leads to come from one getter.
+    const railBadges = computed(() => {
+      const out = {};
+      for (const section of ALL_SECTIONS) {
+        if (!section.badge) continue;
+        const reader = RAIL_BADGE_READERS[section.badge];
+        out[section.id] = reader ? badgeLabel(reader(store)) : '';
+      }
+      return out;
     });
+
+    // ── Toolbar pills ──
+    const pills = computed(() => ({
+      running: badgeLabel(RAIL_BADGE_READERS.traces(store)),
+      approvals: badgeLabel((store.getters['insights/escalatedInsights'] || []).length),
+    }));
+    const updateAvailable = computed(() => store.getters['shell/updateAvailable']);
+    function goRunning() {
+      store.dispatch('shell/inspect', { kind: 'running', screen: 'TracesScreen' });
+      onCustomPage.value = false;
+      emit('screen-change', 'TracesScreen', { status: 'running' });
+    }
+    function goApprovals() {
+      onCustomPage.value = false;
+      emit('screen-change', 'AutonomyScreen');
+    }
+    function goProviders() {
+      onCustomPage.value = false;
+      emit('screen-change', 'ConnectorsScreen', { section: 'providers' });
+    }
+    function goAbout() {
+      onCustomPage.value = false;
+      emit('screen-change', 'SettingsScreen', { section: 'about' });
+    }
+
+    // ── Jump (⌘K) ──
+    const isMacKeys = navigator.platform.toUpperCase().includes('MAC');
+    const jumpKey = isMacKeys ? '⌘K' : 'Ctrl K';
+    const jumpHint = `Jump to anything (${jumpKey})`;
+    function openJump() {
+      store.dispatch('shell/openJump');
+    }
+    function onJumpNavigate(screen, opts) {
+      onCustomPage.value = false;
+      emit('screen-change', screen, opts || {});
+    }
+    // Global shortcuts. ⌘K / Ctrl-K toggles Jump; ⌘\\ and ⌘⇧\\ toggle the side
+    // panels (BaseScreen owns the flags and listens for these events). Typing
+    // in an input never intercepts ⌘K — it is a chord, not a character.
+    function onGlobalKeydown(e) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key.toLowerCase() === 'k' && !e.altKey) {
+        e.preventDefault();
+        store.dispatch('shell/toggleJump');
+      } else if (e.key === '\\') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent(e.shiftKey ? 'agnt:toggle-right-panel' : 'agnt:toggle-left-panel'));
+      }
+    }
 
     // A screen hidden from its own tab strip has nothing in that strip to
     // highlight, so the toolbar would show a row of tabs with none of them
@@ -703,6 +794,7 @@ export default {
       clockTimer = setInterval(updateClock, 1000);
 
       document.addEventListener('click', closeCtx);
+      document.addEventListener('keydown', onGlobalKeydown);
 
       if (window.matchMedia) {
         narrowRailQuery = window.matchMedia(NARROW_RAIL_QUERY);
@@ -726,6 +818,7 @@ export default {
     onBeforeUnmount(() => {
       if (clockTimer) clearInterval(clockTimer);
       document.removeEventListener('click', closeCtx);
+      document.removeEventListener('keydown', onGlobalKeydown);
       narrowRailQuery?.removeEventListener('change', syncNarrowViewport);
     });
 
@@ -749,6 +842,17 @@ export default {
       activeSection,
       activeSectionTabs,
       untabbedScreenLabel,
+      railBadges,
+      pills,
+      updateAvailable,
+      goRunning,
+      goApprovals,
+      goProviders,
+      goAbout,
+      jumpKey,
+      jumpHint,
+      openJump,
+      onJumpNavigate,
       ctxMenu,
       openContextMenu,
       modal,
@@ -791,6 +895,7 @@ export default {
 
 /* ═══════════════════ TOOLBAR ═══════════════════ */
 .cv-toolbar {
+  position: relative; /* anchors the centred Jump field */
   height: 32px;
   min-height: 32px;
   background: var(--color-background);
@@ -852,6 +957,129 @@ export default {
   color: var(--color-primary);
   border-color: rgba(var(--primary-rgb), 0.15);
   background: rgba(var(--primary-rgb), 0.04);
+}
+
+/* Contextual tab: an editor you are inside right now. Amber so it reads as
+   "where you are", not "where you can go". */
+.cv-pbtn.ctx.on {
+  color: var(--color-yellow, #ffd700);
+  border-color: rgba(255, 215, 0, 0.22);
+  background: rgba(255, 215, 0, 0.05);
+}
+
+/* ── Jump (⌘K) ── */
+.cv-jump {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(360px, 34vw);
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-dull, #767888);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cv-jump:hover {
+  border-color: rgba(var(--primary-rgb), 0.35);
+  color: var(--color-text-muted);
+}
+.cv-jump i {
+  font-size: 10px;
+}
+.cv-jump-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-kbd {
+  font-family: inherit;
+  font-size: 9px;
+  padding: 0 4px;
+  border: 1px solid var(--terminal-border-color);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  line-height: 13px;
+}
+@media (max-width: 900px) {
+  .cv-jump-text,
+  .cv-kbd {
+    display: none;
+  }
+  .cv-jump {
+    width: 28px;
+    justify-content: center;
+  }
+}
+
+/* ── Live pills ── */
+.cv-pill {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--terminal-border-color);
+  background: rgba(255, 255, 255, 0.02);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cv-pill:hover {
+  border-color: rgba(var(--primary-rgb), 0.4);
+  color: var(--color-text);
+}
+.cv-pill.is-red {
+  color: #ff9a9a;
+  border-color: rgba(254, 78, 78, 0.35);
+}
+.cv-pill.is-update {
+  color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), 0.35);
+}
+.cv-pill-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-green);
+  box-shadow: 0 0 6px var(--color-green);
+}
+.cv-pill-dot.is-live {
+  background: var(--color-blue, #12e0ff);
+  box-shadow: 0 0 6px var(--color-blue, #12e0ff);
+  animation: cv-pill-pulse 1.8s infinite;
+}
+.cv-pill-dot.is-warn {
+  background: var(--color-yellow, #ffd700);
+  box-shadow: 0 0 6px var(--color-yellow, #ffd700);
+}
+.cv-pill-dot.is-red {
+  background: #fe4e4e;
+  box-shadow: 0 0 6px #fe4e4e;
+}
+@keyframes cv-pill-pulse {
+  70% {
+    box-shadow: 0 0 0 5px rgba(18, 224, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(18, 224, 255, 0);
+  }
 }
 
 /* Unread-chats indicator — same green as the sidebar rows' unread dot
@@ -1121,7 +1349,9 @@ export default {
 
 .cv-sb-cap-text {
   display: none;
-  font-size: 7px;
+  /* 9px: at 7px the three groups did not exist for anyone reading the rail,
+     and the grouping is the reason the rail makes sense. */
+  font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -1196,6 +1426,36 @@ export default {
   width: 16px;
   text-align: center;
   flex-shrink: 0;
+}
+
+/* Live count on a row that has something happening. Expanded it sits at the
+   row's right edge; collapsed it badges the icon's corner like the unread dot. */
+.cv-sb-badge {
+  display: none;
+  margin-left: 4px;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.cv-sb-badge.is-warn {
+  color: var(--color-yellow, #ffd700);
+}
+.cv-sidebar.expanded .cv-sb-badge {
+  display: inline-block;
+}
+.cv-sidebar:not(.expanded) .cv-sb-badge {
+  display: inline-block;
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  margin: 0;
+  font-size: 8px;
+  line-height: 10px;
+  padding: 0 3px;
+  border-radius: 5px;
+  background: var(--color-background);
+  border: 1px solid var(--terminal-border-color);
 }
 
 /* Label hidden by default - shown when sidebar is expanded */

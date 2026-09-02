@@ -15,8 +15,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings } from './sections.js';
+import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings, visibleTabs } from './sections.js';
 import { TOUR_TARGETS } from '@/views/_components/utility/tourTargets.js';
+import { RAIL_BADGE_READERS } from './railBadges.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const terminalSrc = read('../views/Terminal/Terminal.vue');
@@ -100,7 +101,7 @@ describe('canvas sections registry', () => {
     // selectors) is the whole contract: the backend copy deliberately ships no
     // selectors.
     const backendIds = [...backendTargetsSrc.matchAll(/id:\s*'([\w.-]+)'/g)].map((m) => m[1]);
-    expect(backendIds.length).toBeGreaterThanOrEqual(20);
+    expect(backendIds.length).toBeGreaterThanOrEqual(15);
     expect(backendIds.sort()).toEqual(TOUR_TARGETS.map((t) => t.id).sort());
   });
 
@@ -157,10 +158,53 @@ describe('canvas sections registry', () => {
   // ── Regression locks for the sidebar-categories re-parent (2026-08-31) ──
   it('Workspaces is its own sidebar row, not a Chat toolbar tab', () => {
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
-    expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen']);
+    expect(chat.screens.map((t) => t.screen)).toEqual(['ChatScreen', 'ArtifactsScreen']);
     const workspaces = MAIN_SECTIONS.find((s) => s.id === 'workspaces');
     expect(workspaces.screens.map((t) => t.screen)).toEqual(['WorkspaceScreen']);
     expect(workspaces.group).toBe('WORK');
+  });
+
+  // ── Regression locks for the AGNT One re-parent (2026-09-02) ──
+  it('Artifacts is a Chat tab, not a PLAN row', () => {
+    // A file a conversation produced belongs one click from that thread.
+    expect(MAIN_SECTIONS.some((s) => s.id === 'artifacts')).toBe(false);
+    const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
+    expect(chat.screens[1]).toMatchObject({ screen: 'ArtifactsScreen', label: 'ARTIFACTS' });
+  });
+
+  it('Library owns Tools · Skills · Plugins · Widgets · Marketplace as tabs, forges contextual', () => {
+    const library = MAIN_SECTIONS.find((s) => s.id === 'library');
+    expect(library?.group).toBe('BUILD');
+    // The rail row lands on Tools.
+    expect(library.screens[0].screen).toBe('ToolsScreen');
+    // Destinations (always drawn), in order; Marketplace last because it is
+    // where the other four come from.
+    expect(visibleTabs(library, 'ToolsScreen').map((t) => t.label)).toEqual(['TOOLS', 'SKILLS', 'PLUGINS', 'WIDGETS', 'MARKETPLACE']);
+    // Editors appear only while you are inside them.
+    expect(visibleTabs(library, 'ToolForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'TOOL FORGE', 'SKILLS', 'PLUGINS', 'WIDGETS', 'MARKETPLACE']);
+    expect(visibleTabs(library, 'WidgetForgeScreen').map((t) => t.label)).toContain('WIDGET FORGE');
+    expect(visibleTabs(library, 'WidgetForgeScreen').map((t) => t.label)).not.toContain('TOOL FORGE');
+    for (const id of ['tools', 'skills', 'plugins', 'widgets', 'marketplace']) {
+      expect(MAIN_SECTIONS.some((s) => s.id === id)).toBe(false);
+    }
+  });
+
+  it('visibleTabs honours tab:false and ctx:true, and the toolbar uses it', () => {
+    const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
+    expect(visibleTabs(settings, 'MemoryScreen').map((t) => t.label)).toEqual(['SETTINGS']);
+    expect(visibleTabs(null, 'ChatScreen')).toEqual([]);
+    // The toolbar must derive its strip from the same function the test does.
+    expect(canvasSrc).toMatch(/activeSectionTabs[\s\S]{0,220}?visibleTabs\(/);
+  });
+
+  it('every rail badge names a reader, and the canvas draws them', () => {
+    // A `badge` key with no reader is decoration; a reader with no key is
+    // dead code. railBadges.js declares the readers keyed by the same ids.
+    const badged = ALL_SECTIONS.filter((s) => s.badge).map((s) => s.badge);
+    expect(badged.length).toBeGreaterThanOrEqual(3);
+    for (const key of badged) expect(typeof RAIL_BADGE_READERS[key]).toBe('function');
+    for (const key of Object.keys(RAIL_BADGE_READERS)) expect(badged).toContain(key);
+    expect(canvasSrc).toMatch(/railBadges\[row\.section\.id\]/);
   });
 
   it('SYSTEM screens are reachable but absent from the main rail', () => {
@@ -210,7 +254,7 @@ describe('canvas sections registry', () => {
       // A registry flag nothing reads is decoration. The second half matters
       // too: without it the strip renders with nothing selected, which reads
       // as a bug rather than as a deliberate absence.
-      expect(canvasSrc).toMatch(/activeSectionTabs[\s\S]{0,220}?filter\(\(t\) => t\.tab !== false\)/);
+      expect(canvasSrc).toMatch(/activeSectionTabs[\s\S]{0,220}?visibleTabs\(/);
       expect(canvasSrc).toMatch(/untabbedScreenLabel/);
       expect(canvasSrc).toMatch(/v-else-if="untabbedScreenLabel"/);
     });
@@ -252,15 +296,15 @@ describe('canvas sections registry', () => {
     expect(connect.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen']);
   });
 
-  it('Plugins is a BUILD row of its own, and Connect no longer offers it', () => {
+  it('Plugins is a BUILD › Library tab, and Connect no longer offers it', () => {
     // A plugin is an installable asset — the same kind of thing as an agent or
     // a tool — not something AGNT reaches out to. Both ends are pinned because
     // either half alone fails quietly: left in the Connect nav it would be a
     // second door to a screen that moved, and left rendering inside
     // Connectors it would be an unreachable branch.
-    const plugins = MAIN_SECTIONS.find((s) => s.id === 'plugins');
-    expect(plugins?.group).toBe('BUILD');
-    expect(plugins?.screens.map((t) => t.screen)).toEqual(['PluginsScreen']);
+    const library = MAIN_SECTIONS.find((s) => s.id === 'library');
+    expect(library?.group).toBe('BUILD');
+    expect(library?.screens.some((t) => t.screen === 'PluginsScreen')).toBe(true);
 
     const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
     expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
