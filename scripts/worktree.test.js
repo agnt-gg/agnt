@@ -11,11 +11,14 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createWorktree,
   findOrphans,
+  isLinkNoise,
+  LINKED_DIRS,
   listWorktrees,
   removeWorktree,
   sweepOrphans,
@@ -37,10 +40,12 @@ beforeEach(() => {
   git(['config', 'user.name', 't']);
   git(['config', 'commit.gpgsign', 'false']);
   fs.writeFileSync(path.join(root, 'README.md'), 'x\n');
-  // Mirrors the real repo: node_modules and .env are ignored. Git on Windows
-  // sees a junction as a directory, so without this `git add .` in a
-  // worktree would commit the primary's node_modules through the link.
-  fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules/\n.env\n');
+  // Mirrors the real repo: node_modules and .env are ignored. The missing
+  // trailing slash is the whole point on POSIX, where the link is a symlink
+  // and a directory-only pattern would sail straight past it — see the
+  // ".gitignore contract" block, which checks the real file rather than this
+  // copy of it.
+  fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.env\n');
   git(['add', '.']);
   git(['commit', '-q', '-m', 'init']);
 
@@ -194,5 +199,67 @@ describe('sweep', () => {
     createWorktree(root, 'live');
     expect(sweepOrphans(root)).toEqual({ orphans: [], removed: [] });
     expect(onDisk()).toEqual(inGit());
+  });
+});
+
+/**
+ * The REAL .gitignore, not the fixture's copy of it.
+ *
+ * A trailing slash makes a pattern directory-only. Every link this script
+ * installs is a symlink on macOS and Linux, which git classifies as a file, so
+ * `node_modules/` did not cover them: they showed up as untracked, and a
+ * `git add .` inside a worktree committed a symlink pointing at the primary
+ * checkout. Asserting against the shipped file is the point — a fixture that
+ * merely claims to mirror the repo cannot catch the repo drifting.
+ */
+describe('.gitignore contract', () => {
+  const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+  it('ignores every linked directory when it is a symlink, not only a real one', () => {
+    const probe = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-ignore-')));
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: probe, stdio: ['ignore', 'pipe', 'ignore'] });
+      fs.copyFileSync(path.join(REPO_ROOT, '.gitignore'), path.join(probe, '.gitignore'));
+
+      const target = path.join(probe, 'real-deps');
+      fs.mkdirSync(target);
+      fs.writeFileSync(path.join(target, 'canary.txt'), 'x');
+      for (const rel of LINKED_DIRS) {
+        const link = path.join(probe, rel);
+        fs.mkdirSync(path.dirname(link), { recursive: true });
+        fs.symlinkSync(target, link, 'junction');
+      }
+
+      const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: probe, encoding: 'utf8' });
+      expect(status, 'a symlinked node_modules must not be reported as untracked').not.toMatch(/node_modules/);
+    } finally {
+      fs.rmSync(probe, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isLinkNoise', () => {
+  it('matches a link named on its own — how POSIX git reports a symlink', () => {
+    for (const rel of LINKED_DIRS) {
+      expect(isLinkNoise(rel), `${rel} on its own`).toBe(true);
+    }
+  });
+
+  it('matches paths inside a link — how Windows git reports a junction', () => {
+    expect(isLinkNoise('node_modules/.bin/vitest')).toBe(true);
+    expect(isLinkNoise('frontend/node_modules/vue/index.js')).toBe(true);
+  });
+
+  it('matches a hard-linked file', () => {
+    expect(isLinkNoise('backend/.env')).toBe(true);
+  });
+
+  it('never swallows the user’s own work', () => {
+    // The last two matter: widening the match to a bare prefix would silently
+    // discard real edits whose names merely begin with a linked path.
+    expect(isLinkNoise('work.txt')).toBe(false);
+    expect(isLinkNoise('backend/.env.example')).toBe(false);
+    expect(isLinkNoise('node_modules.txt')).toBe(false);
+    expect(isLinkNoise('node_modules-notes/readme.md')).toBe(false);
   });
 });

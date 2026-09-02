@@ -56,6 +56,25 @@ export const LINKED_FILES = [path.join('backend', '.env')];
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
+const toPosix = (p) => p.split(path.sep).join('/');
+
+/**
+ * Is this `git status` path the links we installed, rather than the user's work?
+ *
+ * Both spellings have to be covered, because git describes the same link
+ * differently per platform. On Windows a junction reads as a directory, so with
+ * `-uall` git names the files INSIDE it (`node_modules/.bin/x`). On macOS and
+ * Linux a symlink reads as a file, so git names the link ITSELF, with no
+ * trailing slash (`node_modules`). Matching only the `node_modules/` prefix
+ * missed that second form and reported the link as uncommitted work — which
+ * made `wt remove` refuse every worktree it had just created.
+ */
+export function isLinkNoise(file) {
+  const f = toPosix(file);
+  if (LINKED_FILES.map(toPosix).includes(f)) return true;
+  return LINKED_DIRS.map(toPosix).some((d) => f === d || f.startsWith(`${d}/`));
+}
+
 function git(repoRoot, args, opts = {}) {
   return execFileSync('git', args, {
     cwd: repoRoot,
@@ -213,18 +232,14 @@ export function removeWorktree(repoRoot, slug, { force = false } = {}) {
 
   if (!force) {
     // Anything under a linked directory, or a linked file, is not the
-    // user's work — it is the primary checkout seen through a link. Git on
-    // Windows reports a junction as an ordinary directory, so it must be
-    // filtered here whether or not .gitignore happens to cover it.
-    const toPosix = (p) => p.split(path.sep).join('/');
-    const linkedDirs = LINKED_DIRS.map((d) => `${toPosix(d)}/`);
-    const linkedFiles = new Set(LINKED_FILES.map(toPosix));
+    // user's work — it is the primary checkout seen through a link. This is
+    // filtered here whether or not .gitignore happens to cover it, because the
+    // two disagree per platform: see isLinkNoise.
     const dirty = git(dir, ['status', '--porcelain', '--untracked-files=all'])
       .split('\n')
       .filter((line) => {
         if (!line) return false;
-        const file = line.slice(3).trim();
-        return !linkedFiles.has(file) && !linkedDirs.some((d) => file.startsWith(d));
+        return !isLinkNoise(line.slice(3).trim());
       })
       .join('\n');
     if (dirty) throw new Error(`${slug} has uncommitted changes; commit them or pass --force:\n${dirty}`);

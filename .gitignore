@@ -6,9 +6,17 @@
 backend/plugins/tests/fixtures/registry-pre-*.json
 !backend/plugins/tests/fixtures/registry-pre-0.6.0.json
 # Dependencies
-node_modules/
+#
+# The two paths scripts/worktree.mjs links into every worktree carry NO
+# trailing slash, deliberately. A trailing slash matches directories only, and
+# on macOS/Linux those links are symlinks — which git classifies as files, not
+# directories. `node_modules/` therefore missed them completely, so they showed
+# up as untracked and `git add .` inside a worktree would commit a symlink
+# pointing at the primary checkout. On Windows the same links are junctions,
+# which git does report as directories, which is why this only ever bit POSIX.
+node_modules
 .npm-cache
-frontend/node_modules/
+frontend/node_modules
 backend/node_modules/
 
 # Plugin builds (generated during build, not stored in git)
