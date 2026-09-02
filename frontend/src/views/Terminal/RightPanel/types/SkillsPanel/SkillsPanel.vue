@@ -68,28 +68,29 @@
       </div>
     </div>
 
-    <!-- Placeholder when no skill selected -->
-    <div v-else class="panel-section placeholder-section">
-      <p>Select a skill to view details.</p>
-      <BaseButton variant="primary" class="create-skill-button" @click="$emit('panel-action', 'open-create-modal')">
-        <i class="fas fa-plus"></i>
-        Create New Skill
-      </BaseButton>
-    </div>
+    <!-- Nothing selected: the list beside this panel -->
+    <ListSummaryPanel
+      v-else
+      caption="Skills"
+      :stats="summaryStats"
+      hint="Click a skill card to read its playbook, resources and history here."
+      primary-label="New skill"
+      @primary="$emit('panel-action', 'open-create-modal')"
+    />
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
 <script>
+import { computed } from 'vue';
+import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'SkillsPanel',
-  components: { BaseButton, ResourcesSection, Tooltip },
+  components: { BaseButton, Tooltip, ListSummaryPanel },
   props: {
     selectedSkill: {
       type: Object,
@@ -106,6 +107,15 @@ export default {
   },
   emits: ['panel-action'],
   setup(props, { emit }) {
+    const store = useStore();
+    const summaryStats = computed(() => {
+      const all = store.getters['skills/allSkills'] || [];
+      return [
+        { label: 'Skills', value: all.length },
+        { label: 'Discovered', value: all.filter((s) => s.discovered || s.source === 'discovered').length },
+        { label: 'Enabled', value: all.filter((s) => s.enabled !== false).length },
+      ];
+    });
     const formatDate = (dateString) => {
       if (!dateString) return 'N/A';
       return new Date(dateString).toLocaleDateString(undefined, {
@@ -162,6 +172,7 @@ export default {
     };
 
     return {
+      summaryStats,
       formatDate,
       formatSkillName,
       formatAllowedTools,

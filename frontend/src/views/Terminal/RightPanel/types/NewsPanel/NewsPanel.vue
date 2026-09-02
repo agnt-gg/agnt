@@ -98,22 +98,18 @@
         </div>
       </template>
 
-      <!-- Resources Section -->
-      <ResourcesSection />
     </div>
   </div>
 </template>
 
 <script>
 import { ref, computed, onMounted } from 'vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG } from '@/tt.config.js';
 
 export default {
   name: 'NewsPanel',
   components: {
-    ResourcesSection,
   },
   setup() {
     // Use shared composable for app version

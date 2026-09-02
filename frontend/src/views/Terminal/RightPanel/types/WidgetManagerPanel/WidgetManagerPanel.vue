@@ -53,27 +53,28 @@
       </div>
     </div>
 
-    <!-- Placeholder when no widget selected -->
-    <div v-else class="panel-section placeholder-section">
-      <p>Select a widget to view details.</p>
-      <BaseButton variant="primary" class="create-widget-button" @click="$emit('panel-action', 'navigate', 'WidgetForgeScreen')">
-        <i class="fas fa-plus"></i>
-        Create New Widget
-      </BaseButton>
-    </div>
+    <!-- Nothing selected: the list beside this panel -->
+    <ListSummaryPanel
+      v-else
+      caption="Widgets"
+      :stats="summaryStats"
+      hint="Click a widget card to see its preview, config and where it is used."
+      primary-label="New widget"
+      @primary="$emit('panel-action', 'navigate', 'WidgetForgeScreen')"
+    />
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
 <script>
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
+import { computed } from 'vue';
+import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'WidgetManagerPanel',
-  components: { ResourcesSection, BaseButton },
+  components: { BaseButton, ListSummaryPanel },
   props: {
     selectedWidget: {
       type: Object,
@@ -82,13 +83,23 @@ export default {
   },
   emits: ['panel-action'],
   setup() {
+    const store = useStore();
+    const summaryStats = computed(() => {
+      const all = store.getters['widgetDefinitions/allDefinitions'] || [];
+      const cats = new Set(all.map((w) => w.category).filter(Boolean));
+      return [
+        { label: 'Widgets', value: all.length },
+        { label: 'Categories', value: cats.size },
+        { label: 'Custom', value: all.filter((w) => w.category === 'custom' || w.is_custom).length },
+      ];
+    });
     function formatSize(widget) {
       const size = widget.defaultSize || widget.default_size;
       if (!size) return '—';
       return `${size.cols}×${size.rows}`;
     }
 
-    return { formatSize };
+    return { formatSize, summaryStats };
   },
 };
 </script>

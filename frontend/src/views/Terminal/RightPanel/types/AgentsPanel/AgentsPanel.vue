@@ -105,17 +105,16 @@
       </div>
     </div>
 
-    <!-- Placeholder when no agent selected -->
-    <div v-else class="panel-section placeholder-section">
-      <p>Select an agent to view details.</p>
-      <BaseButton variant="primary" class="create-agent-button" @click="$emit('panel-action', 'navigate', 'AgentForgeScreen')">
-        <i class="fas fa-plus"></i>
-        Create New Agent
-      </BaseButton>
-    </div>
+    <!-- Nothing selected: the list beside this panel -->
+    <ListSummaryPanel
+      v-else
+      caption="Agents"
+      :stats="summaryStats"
+      hint="Click an agent card to inspect it here: details, tools, missions, actions. Esc comes back."
+      primary-label="New agent"
+      @primary="$emit('panel-action', 'navigate', 'AgentForgeScreen')"
+    />
 
-    <!-- Resources Section -->
-    <ResourcesSection />
 
     <!-- Publish Agent Modal -->
     <MarketplaceFormModal
@@ -141,21 +140,21 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import CustomCategoryDropdown from '../WorkflowsPanel/CustomCategoryDropdown.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'AgentsPanel',
   components: {
     BaseButton,
-    ResourcesSection,
     MarketplaceFormModal,
     SimpleModal,
     CustomCategoryDropdown,
     Tooltip,
+    ListSummaryPanel,
   },
   props: {
     selectedAgent: {
@@ -534,7 +533,21 @@ export default {
       localStorage.setItem('settings-initial-section', 'billing');
     };
 
+    // Nothing-selected summary: what the list beside this panel holds.
+    const summaryStats = computed(() => {
+      const all = store.getters['agents/allAgents'] || [];
+      const active = all.filter((a) => String(a.status || '').toUpperCase() === 'ACTIVE').length;
+      const running = (store.getters['executionHistory/getAgentExecutions'] || []).filter((e) => ['running', 'executing', 'in_progress'].includes(String(e.status || '').toLowerCase())).length;
+      return [
+        { label: 'Agents', value: all.length },
+        { label: 'Active', value: active },
+        { label: 'Running now', value: running, live: running > 0 },
+        { label: 'Categories', value: new Set(all.map((a) => a.category).filter(Boolean)).size },
+      ];
+    });
+
     return {
+      summaryStats,
       defaultAvatarUrl,
       handleAvatarUpload,
       removeAvatar,

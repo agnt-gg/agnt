@@ -63,19 +63,16 @@
       <p>Select a dataset to view details.</p>
     </div>
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
 <script>
 import { computed } from 'vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
 export default {
   name: 'EvalDatasetsPanel',
-  components: { BaseButton, ResourcesSection },
+  components: { BaseButton},
   props: {
     selectedDataset: {
       type: Object,

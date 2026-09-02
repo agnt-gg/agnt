@@ -291,15 +291,15 @@
       </div>
     </template>
 
-    <!-- ═══ PLACEHOLDER ═══ -->
-    <template v-else>
-      <div class="panel-section placeholder-section">
-        <i class="fas fa-lightbulb"></i>
-        <p>Select an insight, experiment, or dataset to view details.</p>
-      </div>
-    </template>
+    <!-- Nothing selected: the insights beside this panel -->
+    <ListSummaryPanel
+      v-else
+      caption="Evolution"
+      :stats="summaryStats"
+      hint="Click an insight, experiment or dataset to read it here: evidence, proposed change, actions. Esc comes back."
+      :actions="summaryActions"
+    />
 
-    <ResourcesSection />
   </div>
 </template>
 
@@ -307,11 +307,11 @@
   import { useStore } from 'vuex';
   import { safeTruncate } from '@/utils/safeTruncate.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'ExperimentsPanel',
-  components: { BaseButton, ResourcesSection },
+  components: { BaseButton, ListSummaryPanel },
   props: {
     selectedExperiment: { type: Object, default: null },
     selectedDataset: { type: Object, default: null },
@@ -320,6 +320,22 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
+
+    const summaryStats = computed(() => {
+      const all = store.getters['insights/allInsights'] || [];
+      const pending = store.getters['insights/pendingCount'] || 0;
+      const escalated = (store.getters['insights/escalatedInsights'] || []).length;
+      return [
+        { label: 'Insights', value: all.length },
+        { label: 'Pending', value: pending, live: pending > 0 },
+        { label: 'Escalated', value: escalated },
+        { label: 'Applied', value: all.filter((i) => i.status === 'applied').length },
+      ];
+    });
+    const summaryActions = [
+      { label: 'Route all pending', onClick: () => store.dispatch('insights/routeAllPending') },
+      { label: 'Trigger roll-up', onClick: () => store.dispatch('insights/triggerRollup') },
+    ];
 
     // Insight helpers
     const parsedEvidence = computed(() => {
@@ -450,6 +466,8 @@ export default {
     const truncate = (text, max) => safeTruncate(text, max, '...');
 
     return {
+      summaryStats,
+      summaryActions,
       parsedEvidence, parsedAppliedResult, sourceOriginItems,
       targetIcon, sourceIcon, formatCategory, formatSource,
       navigateToSourceTrace, navigateToTrace,

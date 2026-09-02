@@ -26,8 +26,6 @@
       </div>
     </div>
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
@@ -40,11 +38,10 @@ import BaseForm from '@/views/Terminal/_components/BaseForm.vue';
 import BaseInput from '@/views/Terminal/_components/BaseInput.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import BaseTextarea from '@/views/Terminal/_components/BaseTextarea.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
 export default {
   name: 'AgentForgePanel',
-  components: { BaseButton, BaseForm, BaseInput, BaseSelect, BaseTextarea, ResourcesSection },
+  components: { BaseButton, BaseForm, BaseInput, BaseSelect, BaseTextarea},
   props: {
     availableTools: {
       type: Array,

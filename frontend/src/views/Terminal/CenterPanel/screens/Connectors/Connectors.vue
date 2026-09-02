@@ -805,7 +805,6 @@
             </BaseTable>
           </div>
           <div class="connectors-section full-width">
-            <ResourcesSection />
           </div>
         </div>
       </div>
@@ -849,7 +848,6 @@ import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import ProviderSelector from '../Settings/components/ProviderSelector/ProviderSelector.vue';
 import FallbackProviders from './components/FallbackProviders.vue';
 import ChatBehaviorSettings from './components/ChatBehaviorSettings.vue';
-import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import Webhooks from './components/Webhooks.vue';
 import EmailServer from './components/EmailServer.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -873,7 +871,6 @@ export default {
     ProviderSelector,
     FallbackProviders,
     ChatBehaviorSettings,
-    ResourcesSection,
     Webhooks,
     EmailServer,
     Tooltip,

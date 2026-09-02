@@ -239,17 +239,17 @@
       </div>
     </div>
 
-    <!-- No goal selected -->
-    <div v-else class="no-goal-selected">
-      <p>Select a goal to view details.</p>
-      <BaseButton variant="primary" class="create-goal-button" @click="$emit('panel-action', 'create-goal')">
-        <i class="fas fa-plus"></i>
-        Create New Goal
-      </BaseButton>
-    </div>
+    <!-- Nothing selected: the board beside this panel -->
+    <ListSummaryPanel
+      v-else
+      caption="Goals"
+      overview-title="The board"
+      :stats="summaryStats"
+      hint="Click a goal to inspect it here: tasks, evaluation, plan, schedule, history. Esc comes back."
+      primary-label="New goal"
+      @primary="$emit('panel-action', 'create-goal')"
+    />
 
-    <!-- Resources Section -->
-    <ResourcesSection />
 
     <!-- Feedback Modal -->
     <Teleport to="body">
@@ -293,10 +293,10 @@ import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
 import DOMPurify from 'dompurify';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import BoundedJson from '@/components/common/BoundedJson.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 const mdConverter = new showdown.Converter({
   tables: true,
@@ -314,10 +314,10 @@ const renderMarkdown = (text) => DOMPurify.sanitize(mdConverter.makeHtml(text));
 export default {
   name: 'GoalsPanel',
   components: {
-    ResourcesSection,
     Tooltip,
     BaseButton,
     BoundedJson,
+    ListSummaryPanel,
   },
   props: {
     selectedGoalId: {
@@ -332,6 +332,18 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit, expose }) {
     const store = useStore();
+
+    // Nothing-selected summary: the board beside this panel.
+    const summaryStats = computed(() => {
+      const all = store.getters['goals/allGoals'] || [];
+      const by = (s) => all.filter((g) => g.status === s).length;
+      return [
+        { label: 'Goals', value: all.length },
+        { label: 'Executing', value: by('executing'), live: by('executing') > 0 },
+        { label: 'Planning', value: by('planning') + by('pending') },
+        { label: 'Completed', value: by('completed') },
+      ];
+    });
 
     // Node section expansion state
     const expandedNodeSections = ref({});
@@ -793,6 +805,7 @@ ${goal.tasks
     };
 
     return {
+      summaryStats,
       selectedGoal,
       showCopiedMessage,
       goalProgress,

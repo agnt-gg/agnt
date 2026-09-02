@@ -536,37 +536,18 @@
       </div>
     </div>
 
-    <!-- Default content when no execution selected -->
-    <div v-else class="default-content">
-      <!-- Goal Creation Section -->
-      <div class="panel-section goal-input-section">
-        <h4 class="section-title">
-          <i class="fas fa-plus"></i>
-          Create New Multi Agent Goal
-        </h4>
-        <div class="goal-input-container">
-          <textarea
-            ref="goalInputRef"
-            v-model="goalInput"
-            class="goal-input"
-            placeholder="Describe what you want to accomplish... (e.g., 'Research renewable energy trends and create a summary report')"
-            rows="3"
-            @keydown.ctrl.enter="createGoal"
-            @keydown.escape="clearGoalInput"
-            :disabled="isCreatingGoal"
-          ></textarea>
-          <button class="create-goal-button" :class="{ loading: isCreatingGoal }" @click="createGoal" :disabled="!goalInput.trim() || isCreatingGoal">
-            <i v-if="isCreatingGoal" class="fas fa-spinner fa-spin"></i>
-            <i v-else class="fas fa-plus"></i>
-            {{ isCreatingGoal ? 'Creating...' : 'Create Goal' }}
-          </button>
-        </div>
-        <div class="input-hint">
-          <i class="fas fa-info-circle"></i>
-          Press Ctrl+Enter to create, or Escape to clear
-        </div>
-      </div>
-
+    <!-- Nothing selected: what is running and what just ran. The "Create
+         multi-agent goal" textarea that used to live here is the Goals
+         screen's job (footer → New goal opens it there). -->
+    <ListSummaryPanel
+      v-else
+      caption="Traces"
+      overview-title="Right now"
+      :stats="summaryStats"
+      hint="Click a run to inspect its timeline, tools, tokens and raw output here. Esc comes back."
+      primary-label="New goal"
+      @primary="$emit('panel-action', 'navigate', 'GoalsScreen', { newGoal: true })"
+    >
       <!-- Recent Runs -->
       <div class="panel-section recent-runs-section">
         <h4 class="section-title">
@@ -594,15 +575,8 @@
           </div>
         </div>
       </div>
+    </ListSummaryPanel>
 
-      <!-- Placeholder message -->
-      <div class="panel-section placeholder-section">
-        <p>Select an execution to view details.</p>
-      </div>
-    </div>
-
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
@@ -611,8 +585,8 @@ import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
 import DOMPurify from 'dompurify';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 import BoundedJson from '@/components/common/BoundedJson.vue';
 import { originLabel } from '@/utils/originLabels';
 
@@ -632,9 +606,9 @@ const renderMarkdown = (text) => DOMPurify.sanitize(mdConverter.makeHtml(text));
 export default {
   name: 'TracesPanel',
   components: {
-    ResourcesSection,
     Tooltip,
     BoundedJson,
+    ListSummaryPanel,
   },
   props: {
     selectedExecutionId: {
@@ -660,6 +634,21 @@ export default {
     const goalInput = ref('');
     const goalInputRef = ref(null);
     const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
+
+    // Nothing-selected summary: the run list beside this panel.
+    const summaryStats = computed(() => {
+      const all = props.executions || [];
+      const st = (e) => String(e.status || '').toLowerCase();
+      const running = all.filter((e) => ['running', 'executing', 'in_progress'].includes(st(e))).length;
+      const failed = all.filter((e) => ['failed', 'error'].includes(st(e))).length;
+      const done = all.filter((e) => ['completed', 'success'].includes(st(e))).length;
+      return [
+        { label: 'Running', value: running, live: running > 0 },
+        { label: 'Completed', value: done },
+        { label: 'Failed', value: failed },
+        { label: 'Total', value: all.length },
+      ];
+    });
 
     // Watch for selectedExecutionId changes
     watch(
@@ -1412,6 +1401,7 @@ ${execution.log}
     };
 
     return {
+      summaryStats,
       selectedExecution,
       // Execution ledger
       ledger,

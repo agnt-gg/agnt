@@ -123,8 +123,6 @@
       <IntegrationHealth />
     </template>
 
-    <!-- Resources Section -->
-    <ResourcesSection />
 
     <!-- Publish Workflow Modal -->
     <MarketplaceFormModal
@@ -151,7 +149,6 @@ import { API_CONFIG } from '@/tt.config.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import CustomCategoryDropdown from './CustomCategoryDropdown.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import ReviewSection from './components/ReviewSection.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -161,7 +158,7 @@ import IntegrationHealth from '@/views/Terminal/RightPanel/types/ChatPanel/compo
 
 export default {
   name: 'WorkflowsPanel',
-  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ResourcesSection, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, IntegrationHealth },
+  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, IntegrationHealth },
   props: {
     selectedWorkflowId: {
       type: String,

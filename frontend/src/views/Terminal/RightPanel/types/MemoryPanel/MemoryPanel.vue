@@ -74,15 +74,16 @@
       </div>
     </template>
 
-    <!-- ═══ PLACEHOLDER ═══ -->
-    <template v-else>
-      <div class="panel-section placeholder-section">
-        <i class="fas fa-database"></i>
-        <p>Select a memory to view details.</p>
-      </div>
-    </template>
+    <!-- Nothing selected: the memory beside this panel -->
+    <ListSummaryPanel
+      v-else
+      caption="Memory"
+      :stats="summaryStats"
+      hint="Click a memory to read, edit or delete it here. Esc comes back."
+      primary-label="Add memory"
+      @primary="$emit('panel-action', 'add-memory')"
+    />
 
-    <ResourcesSection />
   </div>
 </template>
 
@@ -90,11 +91,11 @@
   import { useStore } from 'vuex';
   import { safeTruncate } from '@/utils/safeTruncate.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'MemoryPanel',
-  components: { BaseButton, ResourcesSection },
+  components: { BaseButton, ListSummaryPanel },
   props: {
     selectedMemory: { type: Object, default: null },
   },
@@ -102,6 +103,15 @@ export default {
   setup(props) {
     const store = useStore();
     const agents = computed(() => store.getters['agents/allAgents'] || []);
+    const summaryStats = computed(() => {
+      const all = store.getters['insights/agentMemories'] || [];
+      const types = new Set(all.map((m) => m.memory_type || m.type).filter(Boolean));
+      return [
+        { label: 'Memories', value: all.length },
+        { label: 'Types', value: types.size },
+        { label: 'Agents', value: new Set(all.map((m) => m.agent_id).filter(Boolean)).size },
+      ];
+    });
 
     const agentNameMap = computed(() => {
       const map = {};
@@ -134,7 +144,7 @@ export default {
 
     const truncate = (text, max) => safeTruncate(text, max, '...');
 
-    return { agentName, agentIcon, formatType, formatDate, truncate };
+    return { agentName, agentIcon, formatType, formatDate, truncate, summaryStats };
   },
 };
 </script>

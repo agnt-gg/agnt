@@ -55,9 +55,7 @@
         suggestions-context-label="workflow"
       />
 
-      <!-- Resources Section -->
       <div style="margin-top: 24px; padding: 0 16px">
-        <ResourcesSection />
       </div>
     </div>
     <div v-else-if="selectedNodeContent || selectedEdgeContent">
@@ -91,7 +89,6 @@ import { useStore } from 'vuex';
 import PanelTab from '@/views/Terminal/CenterPanel/screens/WorkflowForge/components/WorkflowDesigner/components/EditorPanel/components/PanelTab.vue';
 import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
 import { useWorkflowChatContext } from '@/composables/chat/useWorkflowChatContext.js';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const initialWorkflowSuggestions = [
@@ -104,7 +101,6 @@ export default {
   components: {
     PanelTab,
     UnifiedChatContainer,
-    ResourcesSection,
     Tooltip,
   },
   props: {

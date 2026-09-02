@@ -79,16 +79,15 @@
         </BaseButton>
       </div>
     </div>
-    <div v-else class="no-tool-selected">
-      <p>Select a tool to view details.</p>
-      <BaseButton variant="primary" class="create-tool-button" @click="$emit('panel-action', 'navigate', 'ToolForgeScreen')">
-        <i class="fas fa-plus"></i>
-        Create New Tool
-      </BaseButton>
-    </div>
+    <ListSummaryPanel
+      v-else
+      caption="Tools"
+      :stats="summaryStats"
+      hint="Click a tool card to inspect its schema, usage and tests here."
+      primary-label="New tool"
+      @primary="$emit('panel-action', 'navigate', 'ToolForgeScreen')"
+    />
 
-    <!-- Resources Section -->
-    <ResourcesSection />
 
     <!-- Publish Tool Modal -->
     <MarketplaceFormModal
@@ -114,14 +113,14 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { deleteTool } from '@/views/Terminal/RightPanel/types/ToolForgePanel/components/ToolPanel/components/TopMenu/components/ToolActions/toolActionsApi.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 export default {
   name: 'ToolsPanel',
-  components: { BaseButton, ResourcesSection, MarketplaceFormModal, SimpleModal },
+  components: { BaseButton, MarketplaceFormModal, SimpleModal, ListSummaryPanel },
   props: {
     selectedTool: {
       type: Object,
@@ -353,7 +352,19 @@ export default {
       localStorage.setItem('settings-initial-section', 'billing');
     };
 
+    // Nothing-selected summary: what the list beside this panel holds.
+    const summaryStats = computed(() => {
+      const all = store.getters['tools/allTools'] || [];
+      return [
+        { label: 'Tools', value: all.length },
+        { label: 'Custom', value: (store.getters['tools/customTools'] || []).length },
+        { label: 'Built in', value: (store.getters['tools/builtinTools'] || []).length },
+        { label: 'From plugins', value: all.filter((t) => t.is_plugin).length },
+      ];
+    });
+
     return {
+      summaryStats,
       formatConfigValue,
       isCustomTool,
       inputParams,

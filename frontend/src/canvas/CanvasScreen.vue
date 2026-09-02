@@ -550,6 +550,15 @@ export default {
     // panels (BaseScreen owns the flags and listens for these events). Typing
     // in an input never intercepts ⌘K — it is a chord, not a character.
     function onGlobalKeydown(e) {
+      // Esc pops one layer: Jump (handled by the palette itself) → inspector
+      // selection → nothing. Never while typing in a field.
+      if (e.key === 'Escape' && !store.getters['shell/jumpOpen'] && store.getters['shell/inspect']) {
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (!['input', 'textarea', 'select'].includes(tag) && !e.target?.isContentEditable) {
+          store.dispatch('shell/clearInspect');
+        }
+        return;
+      }
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key.toLowerCase() === 'k' && !e.altKey) {

@@ -41,19 +41,16 @@
       <p>Run experiments to see aggregated insights here.</p>
     </div>
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
 <script>
 import { computed } from 'vue';
 import { useStore } from 'vuex';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
 export default {
   name: 'ExperimentInsightsPanel',
-  components: { ResourcesSection },
+  components: {},
   emits: ['panel-action'],
   setup() {
     const store = useStore();

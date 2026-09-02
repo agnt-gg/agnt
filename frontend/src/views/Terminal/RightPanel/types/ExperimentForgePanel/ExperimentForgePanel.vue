@@ -36,18 +36,15 @@
       </div>
     </div>
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
 <script>
 import { computed } from 'vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
 export default {
   name: 'ExperimentForgePanel',
-  components: { ResourcesSection },
+  components: {},
   props: {
     form: {
       type: Object,

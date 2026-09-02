@@ -1,12 +1,14 @@
 <template>
   <div class="marketplace-right-panel">
-    <div v-if="!selectedWorkflow && !showItemSelection" class="no-selection">
-      <p>Select an asset to view details.</p>
-      <BaseButton variant="primary" class="publish-new-button" @click="showItemSelection = true">
-        <i class="fas fa-plus"></i>
-        Publish New Item
-      </BaseButton>
-    </div>
+    <ListSummaryPanel
+      v-if="!selectedWorkflow && !showItemSelection"
+      caption="Marketplace"
+      overview-title="Catalogue"
+      :stats="summaryStats"
+      hint="Click an item to see its overview, contents and reviews here, and install it. Esc comes back."
+      primary-label="Publish"
+      @primary="showItemSelection = true"
+    />
 
     <!-- Item Selection Screen -->
     <div v-if="showItemSelection && !selectedItemType" class="item-selection">
@@ -302,8 +304,6 @@
     <!-- Simple Modal for confirmations -->
     <SimpleModal ref="simpleModalRef" />
 
-    <!-- Resources Section -->
-    <ResourcesSection />
   </div>
 </template>
 
@@ -318,12 +318,12 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import ReviewCard from './components/ReviewCard.vue';
 import SubmitReviewModal from './components/SubmitReviewModal.vue';
-import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'MarketplacePanel',
-  components: { MarketplaceFormModal, SimpleModal, SvgIcon, BaseButton, ReviewCard, SubmitReviewModal, ResourcesSection, Tooltip },
+  components: { MarketplaceFormModal, SimpleModal, SvgIcon, BaseButton, ReviewCard, SubmitReviewModal, Tooltip, ListSummaryPanel },
   props: {
     selectedWorkflow: {
       type: Object,
@@ -337,6 +337,16 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit, expose }) {
     const store = useStore();
+    // Nothing-selected summary: the catalogue beside this panel.
+    const summaryStats = computed(() => {
+      const g = (k) => (store.getters[`marketplace/${k}`] || []).length;
+      return [
+        { label: 'Items', value: g('filteredMarketplaceItems') },
+        { label: 'Agents', value: g('filteredMarketplaceAgents') },
+        { label: 'Workflows', value: g('filteredMarketplaceWorkflows') },
+        { label: 'Tools', value: g('filteredMarketplaceTools') },
+      ];
+    });
     const showPublishModal = ref(false);
     const showEditModal = ref(false);
     const showItemSelection = ref(false);
@@ -1072,6 +1082,7 @@ export default {
     };
 
     return {
+      summaryStats,
       handleInstall,
       viewPublisher,
       openDemo,
