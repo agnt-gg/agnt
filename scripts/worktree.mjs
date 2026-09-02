@@ -58,6 +58,12 @@ const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 const toPosix = (p) => p.split(path.sep).join('/');
 
+// Normalised once, not per call. Both sources are `export const` arrays that
+// nothing reassigns or mutates, so there is no value here to go stale — the
+// usual hazard with hoisting a derived constant to module scope.
+const LINKED_FILES_POSIX = new Set(LINKED_FILES.map(toPosix));
+const LINKED_DIRS_POSIX = LINKED_DIRS.map(toPosix);
+
 /**
  * Is this `git status` path the links we installed, rather than the user's work?
  *
@@ -68,11 +74,18 @@ const toPosix = (p) => p.split(path.sep).join('/');
  * trailing slash (`node_modules`). Matching only the `node_modules/` prefix
  * missed that second form and reported the link as uncommitted work — which
  * made `wt remove` refuse every worktree it had just created.
+ *
+ * Called once per `git status` line. That is a handful of lines in normal use,
+ * because .gitignore keeps git from ever enumerating the links — but this
+ * filter deliberately does not depend on .gitignore being right, and the case
+ * it exists to survive is precisely the one where git walks all ~30k files
+ * under node_modules. Keeping it allocation-free costs nothing and makes the
+ * backstop cheap in the only scenario that reaches it.
  */
 export function isLinkNoise(file) {
   const f = toPosix(file);
-  if (LINKED_FILES.map(toPosix).includes(f)) return true;
-  return LINKED_DIRS.map(toPosix).some((d) => f === d || f.startsWith(`${d}/`));
+  if (LINKED_FILES_POSIX.has(f)) return true;
+  return LINKED_DIRS_POSIX.some((d) => f === d || f.startsWith(`${d}/`));
 }
 
 function git(repoRoot, args, opts = {}) {
