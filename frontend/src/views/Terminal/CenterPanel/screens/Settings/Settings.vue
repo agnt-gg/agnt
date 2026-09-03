@@ -37,6 +37,19 @@
           </div>
         </div>
 
+        <!-- Navigation Section -->
+        <div v-else-if="activeSection === 'navigation'" class="settings-content" data-section="navigation">
+          <div class="content-header">
+            <h2 class="content-title">Navigation</h2>
+            <p class="content-subtitle">Show, hide, arrange, group, add, and remove pages in the left sidebar</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <NavigationSettings />
+            </div>
+          </div>
+        </div>
+
         <!-- Theme Section -->
         <div v-else-if="activeSection === 'theme'" class="settings-content" data-section="theme">
           <div class="content-header">
@@ -291,6 +304,7 @@ import FallbackProviders from '../Connectors/components/FallbackProviders.vue';
 import ChatBehaviorSettings from '../Connectors/components/ChatBehaviorSettings.vue';
 import ApiKeyManager from './components/ApiKeyManager/ApiKeyManager.vue';
 import ThemeSelector from './components/ThemeSelector/ThemeSelector.vue';
+import NavigationSettings from './components/NavigationSettings/NavigationSettings.vue';
 import BillingManager from './components/BillingManager/BillingManager.vue';
 import CreditPurchase from '../../../../_components/common/CreditPurchase.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
@@ -318,6 +332,7 @@ export default {
     ChatBehaviorSettings,
     ApiKeyManager,
     ThemeSelector,
+    NavigationSettings,
     BillingManager,
     CreditPurchase,
     ResourcesSection,

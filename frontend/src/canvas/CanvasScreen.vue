@@ -104,46 +104,30 @@
     <div class="cv-main-area">
       <!-- Sidebar: section icons -->
       <div v-if="isAuthenticated" class="cv-sidebar" :class="{ expanded: isSidebarExpanded }">
-        <!-- Main sections (top), grouped under captions -->
+        <!-- User-managed navigation: built-in and custom pages share one ordered, grouped rail. -->
         <div class="cv-sb-pages">
-          <template v-for="(row, i) in mainRail" :key="row.section.id">
-            <!-- Caption doubles as the group divider; collapsed, only the rule survives. -->
-            <div v-if="row.caption" class="cv-sb-cap" :class="{ 'is-first': i === 0 }">
-              <span class="cv-sb-cap-text">{{ row.caption }}</span>
+          <template v-for="(group, groupIndex) in navigationGroups" :key="group.name">
+            <div class="cv-sb-cap" :class="{ 'is-first': groupIndex === 0 }">
+              <span class="cv-sb-cap-text">{{ group.name }}</span>
             </div>
-            <Tooltip :text="row.section.label" position="right" width="auto" :disabled="railLabelsVisible">
+            <Tooltip v-for="item in group.items" :key="item.key" :text="item.label" position="right" width="auto" :disabled="railLabelsVisible">
               <button
                 class="cv-sb-page"
-                :class="{ active: !onCustomPage && activeSection && activeSection.id === row.section.id }"
-                :data-tour-id="`sidebar.${row.section.id}`"
-                @click="navigateToSection(row.section)"
+                :class="{ active: item.type === 'section' ? (!onCustomPage && activeSection?.id === item.id) : (onCustomPage && item.id === activePageId) }"
+                :data-tour-id="item.type === 'section' ? `sidebar.${item.id}` : undefined"
+                @click="openNavigationItem(item)"
+                @contextmenu.prevent="item.type === 'page' && openContextMenu($event, item.page)"
               >
-                <i :class="row.section.icon"></i>
-                <span v-if="row.section.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
+                <i :class="item.icon"></i>
+                <span v-if="item.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
                 <span class="cv-sb-label" v-marquee>
-                  <span class="cv-sb-label-inner">{{ row.section.label }}</span>
+                  <span class="cv-sb-label-inner">{{ item.label }}</span>
                 </span>
-                <span v-if="railBadges[row.section.id]" class="cv-sb-badge" :class="{ 'is-warn': row.section.id === 'connect' }">{{ railBadges[row.section.id] }}</span>
+                <!-- Badge lookup stays keyed by the registry section id; the preference layer only changes presentation. -->
+                <span v-if="railBadges[item.id]" class="cv-sb-badge" :class="{ 'is-warn': item.id === 'connect' }">{{ railBadges[item.id] }}</span>
               </button>
             </Tooltip>
           </template>
-        </div>
-
-        <!-- Custom pages -->
-        <div class="cv-sb-custom" v-if="customPages.length > 0">
-          <Tooltip v-for="page in customPages" :key="page.id" :text="page.name" position="right" width="auto" :disabled="railLabelsVisible">
-            <button
-              class="cv-sb-page"
-              :class="{ active: onCustomPage && page.id === activePageId }"
-              @click="switchToPage(page.id)"
-              @contextmenu.prevent="openContextMenu($event, page)"
-            >
-              <i :class="page.icon || 'fas fa-th'"></i>
-              <span class="cv-sb-label" v-marquee>
-                <span class="cv-sb-label-inner">{{ page.name }}</span>
-              </span>
-            </button>
-          </Tooltip>
         </div>
 
         <!-- Add page button -->
@@ -308,12 +292,13 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Sidebar icons + toolbar sub-tabs both derive from this registry.
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
-import { MAIN_SECTIONS, BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, withGroupHeadings, visibleTabs } from './sections.js';
+import { BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, visibleTabs } from './sections.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
 import PanelBackdrop from './PanelBackdrop.vue';
 import { screenHasFrame } from '@/views/Terminal/CenterPanel/screenRegistry.js';
+import { groupedNavigation, NAVIGATION_CHANGED_EVENT } from '@/services/navigationPreferences.js';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -462,11 +447,10 @@ export default {
     // Track when user has navigated to a custom page (no section)
     const onCustomPage = ref(false);
 
-    // Section data (static)
-    const mainSections = MAIN_SECTIONS;
+    // Settings can hide, move, and regroup both built-in and custom pages.
     const bottomSections = BOTTOM_SECTIONS;
-    // Precomputed once: the registry is static, so group boundaries are too.
-    const mainRail = withGroupHeadings(MAIN_SECTIONS);
+    const navigationRevision = ref(0);
+    const refreshNavigation = () => { navigationRevision.value += 1; };
 
     // Green dot on the Chat nav: "a conversation finished changing and you
     // haven't seen it". EXACTLY the set that rings the chime — unread minus
@@ -489,6 +473,10 @@ export default {
         (p) => !SECTION_ROUTES.has(p.route) && !(typeof p.route === 'string' && p.route.startsWith('workspace:')),
       ),
     );
+    const navigationGroups = computed(() => {
+      navigationRevision.value;
+      return groupedNavigation(customPages.value);
+    });
 
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);
@@ -765,6 +753,10 @@ export default {
       onCustomPage.value = false;
       emit('screen-change', section.screens[0].screen);
     }
+    function openNavigationItem(item) {
+      if (item.type === 'page') switchToPage(item.id);
+      else navigateToSection(item.section);
+    }
 
     async function resetCurrentPage() {
       const page = activePage.value;
@@ -835,6 +827,7 @@ export default {
       syncBackdropClass();
       window.addEventListener('agnt:open-page', onOpenPageEvent);
       window.addEventListener('agnt:new-page', startAddPage);
+      window.addEventListener(NAVIGATION_CHANGED_EVENT, refreshNavigation);
 
       if (window.matchMedia) {
         narrowRailQuery = window.matchMedia(NARROW_RAIL_QUERY);
@@ -862,6 +855,7 @@ export default {
       document.body.classList.remove('has-panel-backdrop');
       window.removeEventListener('agnt:open-page', onOpenPageEvent);
       window.removeEventListener('agnt:new-page', startAddPage);
+      window.removeEventListener(NAVIGATION_CHANGED_EVENT, refreshNavigation);
       narrowRailQuery?.removeEventListener('change', syncNarrowViewport);
     });
 
@@ -874,9 +868,8 @@ export default {
       activePageId,
       activePage,
       allPages,
-      mainSections,
       bottomSections,
-      mainRail,
+      navigationGroups,
       railLabelsVisible,
       hasUnreadChats,
       customPages,
@@ -911,6 +904,7 @@ export default {
       startAddPage,
       switchToPage,
       navigateToSection,
+      openNavigationItem,
       resetCurrentPage,
       isElectron,
       isMac,

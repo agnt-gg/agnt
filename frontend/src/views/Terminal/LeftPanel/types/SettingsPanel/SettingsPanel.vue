@@ -146,6 +146,7 @@ const ASSISTANT_ITEMS = Object.freeze([
 ]);
 
 const CONFIG_ITEMS = Object.freeze([
+  { id: 'navigation', icon: 'fas fa-bars', label: 'Navigation' },
   { id: 'phone-access', icon: 'fas fa-mobile-alt', label: 'Remote Access' },
   { id: 'connection', icon: 'fas fa-server', label: 'Remote Backend' },
   { id: 'security', icon: 'fas fa-shield-alt', label: 'Security' },

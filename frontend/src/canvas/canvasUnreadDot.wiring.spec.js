@@ -33,7 +33,7 @@ describe('canvas unread-chats dot wiring', () => {
   });
 
   it('the sidebar Chat icon renders the dot — visible from any section', () => {
-    expect(SRC).toMatch(/section\.id === 'chat' && hasUnreadChats/);
+    expect(SRC).toMatch(/item\.id === 'chat' && hasUnreadChats/);
   });
 
   it('does not re-exclude the active conversation — selection is not attention', () => {

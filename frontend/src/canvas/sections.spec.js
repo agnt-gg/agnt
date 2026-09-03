@@ -217,7 +217,7 @@ describe('canvas sections registry', () => {
     expect(badged.length).toBeGreaterThanOrEqual(3);
     for (const key of badged) expect(typeof RAIL_BADGE_READERS[key]).toBe('function');
     for (const key of Object.keys(RAIL_BADGE_READERS)) expect(badged).toContain(key);
-    expect(canvasSrc).toMatch(/railBadges\[row\.section\.id\]/);
+    expect(canvasSrc).toMatch(/railBadges\[item\.id\]/);
   });
 
   it('SYSTEM screens are reachable but absent from the main rail', () => {
