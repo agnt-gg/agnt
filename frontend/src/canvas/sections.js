@@ -66,14 +66,12 @@ export const MAIN_SECTIONS = [
     screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }],
   },
   {
-    // "Runs" is the word; "Traces" is what engineers call the record of one.
-    // Route and screen keep their names.
-    id: 'traces',
+    id: 'goals',
     group: 'REVIEW',
-    icon: 'fas fa-stream',
-    label: 'Runs',
-    badge: 'traces',
-    screens: [{ screen: 'TracesScreen', label: 'RUNS' }],
+    icon: 'fas fa-bullseye',
+    label: 'Goals',
+    badge: 'goals',
+    screens: [{ screen: 'GoalsScreen', label: 'GOALS' }],
   },
   {
     // Files: the folder-backed workspace. Runs, goals, agents and chats write
@@ -89,12 +87,14 @@ export const MAIN_SECTIONS = [
     screens: [{ screen: 'ArtifactsScreen', label: 'FILES' }],
   },
   {
-    id: 'goals',
+    // "Runs" is the word; "Traces" is what engineers call the record of one.
+    // Route and screen keep their names.
+    id: 'traces',
     group: 'REVIEW',
-    icon: 'fas fa-bullseye',
-    label: 'Goals',
-    badge: 'goals',
-    screens: [{ screen: 'GoalsScreen', label: 'GOALS' }],
+    icon: 'fas fa-stream',
+    label: 'Runs',
+    badge: 'traces',
+    screens: [{ screen: 'TracesScreen', label: 'RUNS' }],
   },
 
   // ── BUILD ── the workforce and what it can use. List first, forge

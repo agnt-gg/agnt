@@ -149,12 +149,12 @@ describe('canvas sections registry', () => {
       expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'REVIEW', 'BUILD', 'CONNECT']);
     });
 
-    it('REVIEW is the morning sweep in order: Dashboard · Runs · Files · Goals', () => {
+    it('REVIEW is in order: Dashboard · Goals · Files · Runs', () => {
       // What ran, what it wrote, what is still moving. Goals last: it is
       // what you intend, the rows above are what you got.
       const review = MAIN_SECTIONS.filter((s) => s.group === 'REVIEW');
-      expect(review.map((s) => s.id)).toEqual(['dashboard', 'traces', 'artifacts', 'goals']);
-      expect(review.map((s) => s.label)).toEqual(['Dashboard', 'Runs', 'Files', 'Goals']);
+      expect(review.map((s) => s.id)).toEqual(['dashboard', 'goals', 'artifacts', 'traces']);
+      expect(review.map((s) => s.label)).toEqual(['Dashboard', 'Goals', 'Files', 'Runs']);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
