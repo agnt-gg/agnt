@@ -414,10 +414,11 @@ export function isCancellation(errorOrResult) {
  * @param {object} args
  * @param {Array} args.chain  output of buildProviderChain
  * @param {(tier:object)=>Promise<object>} args.runOne  builds+calls adapter for a tier
+ * @param {()=>boolean} [args.shouldStop] authoritative caller cancellation state
  * @param {(info:object)=>void} [args.onFallback]  notified before each rollover
  * @returns {Promise<{result: object, tier: object, attempts: object[]}>}
  */
-export async function runWithFallback({ chain, runOne, onFallback }) {
+export async function runWithFallback({ chain, runOne, shouldStop, onFallback }) {
   if (!Array.isArray(chain) || chain.length === 0) {
     throw new Error('runWithFallback: empty provider chain');
   }
@@ -447,16 +448,25 @@ export async function runWithFallback({ chain, runOne, onFallback }) {
     }
 
     lastResult = result;
-    const failed = shouldFailover(result);
+
+    // The caller owns cancellation. Some streaming adapters observe their
+    // AbortSignal, stop consuming cleanly, and then return an empty-response
+    // recovery object rather than throw AbortError. Looking only at `result`
+    // mistakes that deliberate Stop for provider failure and starts the same
+    // cancelled request on every fallback tier. Check the authoritative state
+    // after the attempt and before shouldFailover/onFallback.
+    const stopped = typeof shouldStop === 'function' && shouldStop();
+    const failed = !stopped && shouldFailover(result);
     attempts.push({
       tier: tier.tier,
       provider: tier.provider,
       model: tier.model,
       failed,
+      ...(stopped ? { stopped: true } : {}),
       reason: failed ? classifyFailure(result.recoveredError) : null,
     });
 
-    if (!failed) {
+    if (stopped || !failed) {
       return { result, tier, attempts };
     }
 

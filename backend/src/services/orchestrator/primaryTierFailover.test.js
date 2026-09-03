@@ -62,6 +62,14 @@ describe('primary-tier init failure is inside the failover boundary', () => {
   });
 });
 
+describe('a stopped chat cannot roll over to another provider', () => {
+  it('passes the run abort state into the failover boundary', () => {
+    expect(SRC).toMatch(
+      /runWithFallback\(\{[\s\S]*?shouldStop:\s*\(\)\s*=>\s*streamAbortController\.signal\.aborted,[\s\S]*?runOne:\s*runTierStream/
+    );
+  });
+});
+
 describe('the resulting behaviour, against the real failover helper', () => {
   const chain = buildProviderChain({
     provider: 'kimi',

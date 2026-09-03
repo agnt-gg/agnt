@@ -2328,6 +2328,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     const { result: _r0, tier: _r0Tier } = await runWithFallback({
       chain: providerChain,
+      shouldStop: () => streamAbortController.signal.aborted,
       runOne: runTierStream,
       onFallback: ({ from, to, reason }) => {
         console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);

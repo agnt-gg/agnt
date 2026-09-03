@@ -103,6 +103,46 @@ describe('ProviderFallback.runWithFallback', () => {
     })).rejects.toThrow();
   });
 
+  it('a cancellation noticed by the adapter after it returns never fails over', async () => {
+    // Anthropic sees the shared AbortSignal inside its event loop, stops the
+    // stream cleanly, then normalises the empty response as recoveredFromError.
+    // That is a RETURN, not a thrown AbortError, so isCancellation(error) can
+    // never see it. The caller's cancellation state is the authority.
+    const chain = [{ provider: 'A', tier: 0, primary: true }, { provider: 'B', tier: 1 }];
+    const seen = [];
+    let cancelled = false;
+    const { result, tier, attempts } = await PF.runWithFallback({
+      chain,
+      shouldStop: () => cancelled,
+      runOne: async (t) => {
+        seen.push(t.provider);
+        cancelled = true;
+        return { recoveredFromError: true, recoveredError: 'Provider returned empty response' };
+      },
+    });
+
+    expect(seen).toEqual(['A']);
+    expect(tier.provider).toBe('A');
+    expect(result.recoveredFromError).toBe(true);
+    expect(attempts).toEqual([expect.objectContaining({ provider: 'A', stopped: true, failed: false })]);
+  });
+
+  it('does not call onFallback when cancellation wins the race with a failed result', async () => {
+    const chain = [{ provider: 'A', tier: 0, primary: true }, { provider: 'B', tier: 1 }];
+    let cancelled = false;
+    let fallbackCalls = 0;
+    await PF.runWithFallback({
+      chain,
+      shouldStop: () => cancelled,
+      runOne: async () => {
+        cancelled = true;
+        return { recoveredFromError: true, recoveredError: 'Provider returned empty response' };
+      },
+      onFallback: () => { fallbackCalls++; },
+    });
+    expect(fallbackCalls).toBe(0);
+  });
+
   it('a thrown non-cancellation error on primary rolls to tier 1', async () => {
     const chain = [{ provider: 'A', tier: 0, primary: true }, { provider: 'B', tier: 1 }];
     const { tier } = await PF.runWithFallback({
