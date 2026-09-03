@@ -188,7 +188,7 @@ describe('how it fails', () => {
     expect(performBrowserAction).not.toHaveBeenCalled();
   });
 
-  it('forgets a browser that went away — surface AND driver — so retry starts clean', async () => {
+  it('forgets a browser that went away, and leaves the connection to its owner', async () => {
     waitForSurface.mockResolvedValue({ cdpUrl: WIDGET_CDP });
     performBrowserAction.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:51234'));
 
@@ -196,10 +196,13 @@ describe('how it fails', () => {
 
     expect(out.success).toBe(false);
     expect(out.error).toMatch(/run the action again/i);
-    // Both records of the dead browser, not just one — a forgotten surface
-    // with a cached driver still replays the dead socket.
+    // The surface registry is this tool's record to forget.
     expect(forgetSurfaceByUrl).toHaveBeenCalledWith('u1', WIDGET_CDP);
-    expect(dropDriver).toHaveBeenCalledWith('u1');
+    // The DRIVER is not. It drops itself inside performBrowserAction, under
+    // the per-user lock. Dropping it from out here runs after this verb has
+    // settled, when the next queued turn may already hold a NEW connection —
+    // and closing that one breaks a verb that is working.
+    expect(dropDriver).not.toHaveBeenCalled();
   });
 
   it('reports a page-level failure as itself, without burning the surface', async () => {

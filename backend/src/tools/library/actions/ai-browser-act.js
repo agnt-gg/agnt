@@ -6,7 +6,7 @@ import {
   ensureFallbackSurface, isLoopbackWebSocket, launchedBrowserLabel,
 } from './browserFallbackSurface.js';
 import { isCanvasTurn } from '../../../services/orchestrator/pageContext.js';
-import { performBrowserAction, dropDriver, BROWSER_ACTIONS } from '../../../services/browserActDriver.js';
+import { performBrowserAction, BROWSER_ACTIONS } from '../../../services/browserActDriver.js';
 
 /**
  * Browser Actions — the agent drives the browser with deterministic verbs.
@@ -202,7 +202,13 @@ class AIBrowserAct extends BaseAction {
       // instead of replaying the same refused socket.
       if (cdpUrl && /not open|connection closed|connection errored|ECONNREFUSED|refused|no page to show/i.test(err?.message || '')) {
         forgetSurfaceByUrl(userId, cdpUrl);
-        dropDriver(userId);
+        // The DRIVER is not dropped from here. It already drops itself inside
+        // performBrowserAction, under the per-user lock — and dropping from
+        // out here happens AFTER this turn's verb settled, by which time the
+        // next queued turn may already hold a fresh connection. Closing that
+        // one would break a verb that is working, which is the same
+        // wrong-page failure the lock exists to prevent. The surface registry
+        // is this tool's to forget; the connection is the driver's.
         return this.formatOutput({
           success: false,
           error: 'The browser this was driving is no longer reachable. It has been forgotten — '
