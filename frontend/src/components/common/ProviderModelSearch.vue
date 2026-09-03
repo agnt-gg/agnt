@@ -53,12 +53,19 @@ const MAX_RESULTS = 40;// Dispatch fetches for every provider that hasn't loaded
 // invocations are cheap and always converge on fresh data. Per-provider
 // failures (missing API key, not connected) are silenced so unrelated
 // providers still populate.
-async function ensureAllProviderModelsLoaded(store) {
+// `only` narrows the sweep to a specific set of providers. The mount-time call
+// omits it and covers everything; the custom-provider watcher passes just the
+// custom ids, because re-sweeping everything would re-fetch every built-in that
+// has no models — which is most of them, since an unconnected provider never
+// gets any. Measured on a realistic 20-built-in store with 2 connected: the
+// unnarrowed watcher fired 20 requests to obtain the 2 that were wanted.
+async function ensureAllProviderModelsLoaded(store, only = null) {
   const { allModels = {}, providers = [], customProviders = [] } = store.state.aiProvider;
-  const targets = [
+  const pool = only || [
     ...providers,
     ...customProviders.map((cp) => cp.id),
-  ].filter((p) => !allModels[p] || allModels[p].length === 0);
+  ];
+  const targets = pool.filter((p) => !allModels[p] || allModels[p].length === 0);
 
   if (!targets.length) return;
   await Promise.all(
@@ -250,7 +257,10 @@ export default {
     // (SET_CUSTOM_PROVIDERS) and an in-place push (ADD_CUSTOM_PROVIDER).
     watch(
       () => (store.state.aiProvider.customProviders || []).map((cp) => cp.id).join(','),
-      () => ensureAllProviderModelsLoaded(store),
+      () => ensureAllProviderModelsLoaded(
+        store,
+        (store.state.aiProvider.customProviders || []).map((cp) => cp.id),
+      ),
     );
 
     return {

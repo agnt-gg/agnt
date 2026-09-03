@@ -296,6 +296,34 @@ describe('ProviderModelSearch — model sweep reaches custom providers', () => {
     });
   });
 
+  it('sweeps ONLY the custom providers, not every model-less built-in', async () => {
+    // The watcher exists for a defect specific to custom providers, so its
+    // sweep has to be scoped to them. Left unnarrowed it re-fetches every
+    // built-in with no cached models — which is most of them, since an
+    // unconnected provider never has any. Measured on this shape before the
+    // fix: 20 requests dispatched to obtain the 2 that were wanted.
+    const builtIns = ['OpenAI', 'Anthropic', 'Gemini', 'Groq', 'DeepSeek', 'Cerebras'];
+    const { store, dispatched } = makeStore({
+      providers: builtIns,
+      customProviders: [],
+      allModels: { OpenAI: ['gpt-x'] }, // only one built-in is connected
+    });
+
+    mount(ProviderModelSearch, { global: { plugins: [store] } });
+    await flushPromises();
+    dispatched.length = 0;
+
+    store.commit('aiProvider/SET_CUSTOM_PROVIDERS', CUSTOMS);
+    await flushPromises();
+
+    const fetched = dispatched
+      .filter((d) => d.type === 'aiProvider/fetchProviderModels')
+      .map((d) => d.payload.provider);
+
+    expect(fetched.sort()).toEqual([OLLAMA, SPARK].sort());
+    expect(fetched.some((p) => builtIns.includes(p))).toBe(false);
+  });
+
   it('does not re-sweep a provider whose models are already cached', async () => {
     const { store, dispatched } = makeStore({
       customProviders: [],
