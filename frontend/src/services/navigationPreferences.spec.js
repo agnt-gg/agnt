@@ -17,7 +17,7 @@ describe('navigation preferences', () => {
   it('starts from every built-in section in registry order', () => {
     const items = groupedNavigation().flatMap((group) => group.items);
     expect(items[0].id).toBe('chat');
-    expect(items.some((item) => item.id === 'plugins')).toBe(true);
+    expect(items.some((item) => item.id === 'store')).toBe(true);
     expect(items.every((item) => item.visible)).toBe(true);
   });
 
@@ -46,7 +46,7 @@ describe('navigation preferences', () => {
 
   it('recovers from corrupt storage and notifies the live rail on reset', () => {
     localStorage.setItem('agnt:sidebarNavigation:v1', '{broken');
-    expect(loadNavigationPreferences().groups).toContain('WORK');
+    expect(loadNavigationPreferences().groups).toContain('MY WORK');
     const listener = vi.fn();
     window.addEventListener(NAVIGATION_CHANGED_EVENT, listener);
     resetNavigationPreferences();

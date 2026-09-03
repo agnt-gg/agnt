@@ -9,25 +9,25 @@
 // sections.spec.js: every section must be tour-able, and every sidebar target
 // must point at a section that actually renders.
 export const TOUR_TARGETS = [
-  // ── Sidebar: WORK (global — always visible) ────────────────────────
-  { id: 'sidebar.chat',             selector: '[data-tour-id="sidebar.chat"]',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
-  { id: 'sidebar.workspaces',       selector: '[data-tour-id="sidebar.workspaces"]',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },
+  // ── Sidebar: TODAY (global — always visible) ───────────────────────
+  { id: 'sidebar.chat',             selector: '[data-tour-id="sidebar.chat"]',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Workspaces)', safeToSimulate: true },
+  { id: 'sidebar.dashboard',        selector: '[data-tour-id="sidebar.dashboard"]',        screen: null, description: 'Sidebar button: Home (the dashboard)', safeToSimulate: true },
 
-  // ── Sidebar: PLAN ──────────────────────────────────────────────────
-  { id: 'sidebar.dashboard',        selector: '[data-tour-id="sidebar.dashboard"]',        screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
+  // ── Sidebar: MY WORK ───────────────────────────────────────────────
   { id: 'sidebar.goals',            selector: '[data-tour-id="sidebar.goals"]',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
-  { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Runs (every workflow, goal and agent execution)',       safeToSimulate: true },
+  { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Activity (every workflow, goal and agent run)', safeToSimulate: true },
   { id: 'sidebar.artifacts',         selector: '[data-tour-id="sidebar.artifacts"]',         screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
 
-  // ── Sidebar: BUILD ─────────────────────────────────────────────────
-  { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
-  { id: 'sidebar.workflows',        selector: '[data-tour-id="sidebar.workflows"]',        screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
-  { id: 'sidebar.library',          selector: '[data-tour-id="sidebar.library"]',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Widgets, Marketplace)', safeToSimulate: true },
+  // ── Sidebar: MY TEAM ───────────────────────────────────────────────
+  { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents (tabs: Agents, Skills, Memory, Approvals)', safeToSimulate: true },
+  { id: 'sidebar.automations',      selector: '[data-tour-id="sidebar.automations"]',      screen: null, description: 'Sidebar button: Automations (tabs: Workflows, Tools, Widgets)', safeToSimulate: true },
+
+  // ── Sidebar: MY TOOLKIT ────────────────────────────────────────────
+  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',             screen: null, description: 'Sidebar button: Apps (tabs: Connected apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Add-ons — plugins)', safeToSimulate: true },
+  { id: 'sidebar.store',            selector: '[data-tour-id="sidebar.store"]',            screen: null, description: 'Sidebar button: Store (the marketplace)', safeToSimulate: true },
 
   // ── Sidebar: foot of the rail + controls ───────────────────────────
-  { id: 'sidebar.connect',           selector: '[data-tour-id="sidebar.connect"]',           screen: null, description: 'Sidebar button: Connections (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
-  { id: 'sidebar.plugins',           selector: '[data-tour-id="sidebar.plugins"]',           screen: null, description: 'Sidebar button: Plugins', safeToSimulate: true },
-  { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
+  { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Improvements)', safeToSimulate: true },
   { id: 'sidebar.add-page',         selector: '[data-tour-id="sidebar.add-page"]',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
   { id: 'sidebar.toggle',           selector: '[data-tour-id="sidebar.toggle"]',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },
 

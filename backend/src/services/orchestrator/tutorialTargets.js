@@ -7,27 +7,25 @@
 // the assistant from triggering `simulateClick` on destructive controls.
 // `screen: null` means "visible on every screen" (e.g. sidebar, chrome).
 export const TOUR_TARGETS = [
-  // ── Sidebar: WORK (global — always visible) ────────────────────────
-  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat',         safeToSimulate: true },
-  { id: 'sidebar.workspaces',       screen: null, description: 'Sidebar button: Workspaces',   safeToSimulate: true },
+  // ── Sidebar: TODAY (global — always visible) ───────────────────────
+  { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Workspaces)', safeToSimulate: true },
+  { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Home (the dashboard)', safeToSimulate: true },
 
-  // ── Sidebar: PLAN ──────────────────────────────────────────────────
-  { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
+  // ── Sidebar: MY WORK ───────────────────────────────────────────────
   { id: 'sidebar.goals',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
-  { id: 'sidebar.traces',           screen: null, description: 'Sidebar button: Runs (execution traces)',       safeToSimulate: true },
-  { id: 'sidebar.artifacts',         screen: null, description: 'Sidebar button: Outputs (files produced by chats, runs, goals and agents)', safeToSimulate: true },
+  { id: 'sidebar.traces',           screen: null, description: 'Sidebar button: Activity (every workflow, goal and agent run)', safeToSimulate: true },
+  { id: 'sidebar.artifacts',         screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
 
-  // ── Sidebar: BUILD ─────────────────────────────────────────────────
-  { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },
-  { id: 'sidebar.workflows',        screen: null, description: 'Sidebar button: Workflows',    safeToSimulate: true },
-  { id: 'sidebar.library',          screen: null, description: 'Sidebar button: Library (Tools, Skills, Widgets, Marketplace)', safeToSimulate: true },
+  // ── Sidebar: MY TEAM ───────────────────────────────────────────────
+  { id: 'sidebar.agents',           screen: null, description: 'Sidebar button: Agents (tabs: Agents, Skills, Memory, Approvals)', safeToSimulate: true },
+  { id: 'sidebar.automations',      screen: null, description: 'Sidebar button: Automations (tabs: Workflows, Tools, Widgets)', safeToSimulate: true },
 
-  // ── Sidebar: foot of the rail ── one row; the screen carries its own nav.
-  { id: 'sidebar.connect',           screen: null, description: 'Sidebar button: Connections (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
-  { id: 'sidebar.plugins',           screen: null, description: 'Sidebar button: Plugins', safeToSimulate: true },
+  // ── Sidebar: MY TOOLKIT ────────────────────────────────────────────
+  { id: 'sidebar.apps',             screen: null, description: 'Sidebar button: Apps (tabs: Connected apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Add-ons — plugins)', safeToSimulate: true },
+  { id: 'sidebar.store',            screen: null, description: 'Sidebar button: Store (the marketplace)', safeToSimulate: true },
 
   // ── Sidebar: SYSTEM + controls ─────────────────────────────────────
-  { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Memory, Evolution, Autonomy)', safeToSimulate: true },
+  { id: 'sidebar.settings',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Improvements)', safeToSimulate: true },
   { id: 'sidebar.add-page',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
   { id: 'sidebar.toggle',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },
 

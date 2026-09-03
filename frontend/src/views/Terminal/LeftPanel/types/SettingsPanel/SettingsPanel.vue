@@ -139,10 +139,11 @@ const GENERAL_ITEMS = Object.freeze([
   { id: 'api-keys', icon: 'fas fa-key', label: 'API Key' },
 ]);
 
+// Memory and Approvals (Autonomy) are tabs of the Agents row now — they are
+// about the team, not the machine — so this list is the one power-user
+// surface that stays behind the gear.
 const ASSISTANT_ITEMS = Object.freeze([
-  { id: 'autonomy', icon: 'fas fa-user-shield', label: 'Autonomy', screen: 'AutonomyScreen' },
-  { id: 'evolution', icon: 'fas fa-dna', label: 'Evolution', screen: 'ExperimentsScreen' },
-  { id: 'memory', icon: 'fas fa-brain', label: 'Memory', screen: 'MemoryScreen' },
+  { id: 'evolution', icon: 'fas fa-dna', label: 'Improvements', screen: 'ExperimentsScreen' },
 ]);
 
 const CONFIG_ITEMS = Object.freeze([

@@ -1,10 +1,11 @@
 // systemNav — lets a non-Settings screen host SettingsPanel.
 //
-// Memory, Evolution and Autonomy render SettingsPanel on their left so the
-// SYSTEM list stays on screen while you move between them. That panel emits
-// two actions, and without this helper each of the three screens would have to
-// reimplement both — which is exactly how the second one drifts from the
-// first.
+// Improvements (Evolution) renders SettingsPanel on its left so the SYSTEM
+// list stays on screen while you move between them. That panel emits two
+// actions; keeping the handling here means any screen that hosts the panel
+// gets both without reimplementing them — which is exactly how a second copy
+// drifts from the first. (Memory and Autonomy hosted it too until they became
+// tabs of the Agents row.)
 //
 // 'settings-goto' → a sibling SYSTEM screen: navigate directly.
 // 'settings-nav'  → a section of SettingsScreen, which is a different screen

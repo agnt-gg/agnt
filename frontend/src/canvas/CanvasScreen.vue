@@ -124,7 +124,7 @@
                   <span class="cv-sb-label-inner">{{ item.label }}</span>
                 </span>
                 <!-- Badge lookup stays keyed by the registry section id; the preference layer only changes presentation. -->
-                <span v-if="railBadges[item.id]" class="cv-sb-badge" :class="{ 'is-warn': item.id === 'connect' }">{{ railBadges[item.id] }}</span>
+                <span v-if="railBadges[item.id]" class="cv-sb-badge" :class="{ 'is-warn': item.id === 'apps' }">{{ railBadges[item.id] }}</span>
               </button>
             </Tooltip>
           </template>
@@ -143,8 +143,8 @@
         <!-- Separator -->
         <div class="cv-sb-sep" v-if="bottomSections.length > 0"></div>
 
-        <!-- Foot of the rail: Connect, then Settings. No caption — each is a
-             single row whose screen carries its own left-panel nav. -->
+        <!-- Foot of the rail: Settings. No caption — a single row whose
+             screen carries its own left-panel nav. -->
         <div class="cv-sb-bottom">
           <Tooltip v-for="section in bottomSections" :key="section.id" :text="section.label" position="right" width="auto" :disabled="railLabelsVisible">
             <button
@@ -157,7 +157,7 @@
               <span class="cv-sb-label" v-marquee>
                 <span class="cv-sb-label-inner">{{ section.label }}</span>
               </span>
-              <span v-if="railBadges[section.id]" class="cv-sb-badge" :class="{ 'is-warn': section.id === 'connect' }">{{ railBadges[section.id] }}</span>
+              <span v-if="railBadges[section.id]" class="cv-sb-badge" :class="{ 'is-warn': section.id === 'apps' }">{{ railBadges[section.id] }}</span>
             </button>
           </Tooltip>
         </div>

@@ -30,27 +30,26 @@ export const SCREEN_DEFAULTS = Object.freeze({
   AgentForgeScreen: { rightPanel: 'AgentForgePanel', input: false },
   AgentsScreen: { leftPanel: 'AgentsPanel', input: false }, // right: dynamic
   ArtifactsScreen: { leftPanel: 'ArtifactsPanel', rightPanel: 'FileTreePanel', input: false },
-  // ── SYSTEM screens ──
-  // Memory / Evolution / Autonomy left the main sidebar and are now navigated
-  // from Settings' own nav, so they render SettingsPanel on the left: the
-  // SYSTEM list stays on screen and you can move between them without a trip
-  // back through the gear. Nothing is lost on the way — Memory and Evolution
-  // already rendered the SAME panel component on both sides, and Autonomy
-  // carries its own inline tab strip (see Autonomy.vue), so its left panel
-  // was duplicate navigation.
-  // Right: the approval queue (AGNT One). `null` used to fall back to Chat's
-  // panel beside the policy screen.
-  AutonomyScreen: { leftPanel: 'SettingsPanel', rightPanel: 'AutonomyPanel', input: false },
+  // Approvals is a tab of the Agents row (canvas/sections.js). Left: its own
+  // section list; right: the approval queue (AGNT One). `null` used to fall
+  // back to Chat's panel beside the policy screen.
+  AutonomyScreen: { leftPanel: 'AutonomyPanel', rightPanel: 'AutonomyPanel', input: false },
   ChatScreen: { input: true },
   ConnectorsScreen: { input: false }, // right: dynamic
   DashboardScreen: { leftPanel: 'DashboardPanel', rightPanel: 'DashboardPanel', input: false },
   EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
   ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
   ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },
+  // ── SYSTEM screen ──
+  // Improvements (Evolution) is navigated from Settings' own nav, so it renders
+  // SettingsPanel on the left: the SYSTEM list stays on screen and you can move
+  // back without a trip through the gear.
   ExperimentsScreen: { leftPanel: 'SettingsPanel', rightPanel: 'ExperimentsPanel', input: false },
   GoalsScreen: { leftPanel: 'GoalsPanel', rightPanel: 'GoalsPanel', input: false },
   MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
-  MemoryScreen: { leftPanel: 'SettingsPanel', rightPanel: 'MemoryPanel', input: false },
+  // Memory is a tab of the Agents row. Both sides render a MemoryPanel: left
+  // filters the list, right shows the selected memory.
+  MemoryScreen: { leftPanel: 'MemoryPanel', rightPanel: 'MemoryPanel', input: false },
   // No left column. Everything a Plugins panel could hold — the Installed /
   // Marketplace tabs, the search box, the counts — is already on the screen
   // itself, so the column had nothing to say. Right is dynamic (plugin detail

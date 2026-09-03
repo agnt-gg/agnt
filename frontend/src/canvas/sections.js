@@ -6,6 +6,13 @@
 // Moving a screen between surfaces is therefore a re-parent in THIS file,
 // nothing else.
 //
+// THE RAIL IS WRITTEN FOR THE MIDDLE OF THE BELL CURVE. Every caption is a
+// possessive a person would say about their own desk (TODAY · MY WORK · MY
+// TEAM · MY TOOLKIT), every row is one plain noun, and nothing on the rail is
+// a word only an engineer uses (runs, traces, artifacts, connectors, library,
+// plugins). Route names and screen names keep their old identifiers — this
+// file is about what a person READS, not what the code is called.
+//
 // GROUPS. Every main section declares a `group`. Sections are rendered in
 // array order and a caption + divider is emitted whenever the group changes,
 // so the grouping is expressed by ORDER here, not by a separate structure —
@@ -21,11 +28,10 @@
 //   tab: false  — owned and routed by the row, never drawn in the toolbar
 //                 (navigated from the screen's own left panel; SYSTEM screens).
 //   ctx: true   — a CONTEXTUAL tab: drawn only while it is the active screen.
-//                 The forges use this. Library would otherwise carry nine tabs
-//                 of which four are editors you enter from a card, not from the
-//                 toolbar; showing the editor's tab only while you are inside
-//                 it keeps the strip about destinations and still tells you
-//                 where you are.
+//                 Every forge uses this. A forge is an editor you enter from a
+//                 card, not a destination you pick from the strip; showing its
+//                 tab only while you are inside it keeps the strip about
+//                 destinations and still tells you where you are.
 //   badge: fn   — optional getter (store) → number | '' rendered on the rail
 //                 row. Only rows with something live carry one.
 //
@@ -35,153 +41,142 @@
 // you which of the hand-maintained lists you forgot.
 
 export const MAIN_SECTIONS = [
-  // ── WORK ── the two places you land: talk, arrange.
+  // ── TODAY ── where you land: talk, or see what is going on.
   {
+    // Workspaces is a tab of Chat, not a row. A workspace is a chat with a
+    // custom canvas around it — the same conversation, arranged — so it lives
+    // one tab to the right of the thread rather than one row down the rail
+    // under a word ("Workspaces") that means five things to five people.
     id: 'chat',
-    group: 'WORK',
+    group: 'TODAY',
     icon: 'fas fa-comments',
     label: 'Chat',
-    screens: [{ screen: 'ChatScreen', label: 'CHAT' }],
+    screens: [
+      { screen: 'ChatScreen', label: 'CHAT' },
+      { screen: 'WorkspaceScreen', label: 'WORKSPACES' },
+    ],
   },
   {
-    // Workspaces was a toolbar tab of Chat. It is its own destination now:
-    // grouping made the distinction legible (Chat is a thread, a Workspace is
-    // an arrangement), so it no longer needs to borrow Chat's row.
-    id: 'workspaces',
-    group: 'WORK',
-    icon: 'fas fa-columns',
-    label: 'Workspaces',
-    screens: [{ screen: 'WorkspaceScreen', label: 'WORKSPACES' }],
+    // "Home" is the universal first click. The route and screen are still
+    // Dashboard; the person reading the rail does not need to know that.
+    id: 'dashboard',
+    group: 'TODAY',
+    icon: 'fas fa-home',
+    label: 'Home',
+    screens: [{ screen: 'DashboardScreen', label: 'HOME' }],
   },
 
-  // ── REVIEW ── what happened, what is happening, what came out of it. The
-  // day starts here: runs overnight, the files they wrote, the goals still
-  // moving. Top to bottom is the morning sweep, which is why Goals is last
-  // (it is what you INTEND; the rows above it are what you GOT).
-  {
-    id: 'dashboard',
-    group: 'REVIEW',
-    icon: 'fas fa-tachometer-alt',
-    label: 'Dashboard',
-    screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }],
-  },
+  // ── MY WORK ── what I asked for, what happened, what came out of it.
   {
     id: 'goals',
-    group: 'REVIEW',
+    group: 'MY WORK',
     icon: 'fas fa-bullseye',
     label: 'Goals',
     badge: 'goals',
     screens: [{ screen: 'GoalsScreen', label: 'GOALS' }],
   },
   {
+    // "Activity" is the word every product a business user already knows
+    // uses for "what happened" (Slack, GitHub, their bank). "Runs" was the
+    // engineer's word; "Traces" is what engineers call the record of one.
+    id: 'traces',
+    group: 'MY WORK',
+    icon: 'fas fa-stream',
+    label: 'Activity',
+    badge: 'traces',
+    screens: [{ screen: 'TracesScreen', label: 'ACTIVITY' }],
+  },
+  {
     // Files: the folder-backed workspace. Runs, goals, agents and chats write
     // here by default, but you also drop reference material in and Annie reads
     // it back — inputs, knowledge and outputs are one tree, so the label names
-    // the place, not the direction of flow. It was a tab of Chat, which put a
-    // file the nightly digest wrote under the room you talk in. ("Artifacts"
-    // is the route and the store; nobody says artifact.)
+    // the place, not the direction of flow. ("Artifacts" is the route and the
+    // store; nobody says artifact.)
     id: 'artifacts',
-    group: 'REVIEW',
+    group: 'MY WORK',
     icon: 'fas fa-folder',
     label: 'Files',
     screens: [{ screen: 'ArtifactsScreen', label: 'FILES' }],
   },
-  {
-    // "Runs" is the word; "Traces" is what engineers call the record of one.
-    // Route and screen keep their names.
-    id: 'traces',
-    group: 'REVIEW',
-    icon: 'fas fa-stream',
-    label: 'Runs',
-    badge: 'traces',
-    screens: [{ screen: 'TracesScreen', label: 'RUNS' }],
-  },
 
-  // ── BUILD ── the workforce and what it can use. List first, forge
-  // second: the sidebar row lands on the list, the forge is a toolbar tab.
+  // ── MY TEAM ── who and what does the work for me.
   {
+    // One mental object — my team: who they are (Agents), what they know
+    // (Skills), what they remember (Memory), what they may do without asking
+    // (Approvals). Memory and Approvals were SYSTEM screens hidden behind the
+    // gear; "team" is the word that makes all four obvious at once.
     id: 'agents',
-    group: 'BUILD',
+    group: 'MY TEAM',
     icon: 'fas fa-robot',
     label: 'Agents',
     screens: [
-      { screen: 'AgentsScreen', label: 'MY AGENTS' },
-      { screen: 'AgentForgeScreen', label: 'AGENT FORGE' },
+      { screen: 'AgentsScreen', label: 'AGENTS' },
+      { screen: 'AgentForgeScreen', label: 'AGENT FORGE', ctx: true },
+      { screen: 'SkillsScreen', label: 'SKILLS' },
+      { screen: 'MemoryScreen', label: 'MEMORY' },
+      { screen: 'AutonomyScreen', label: 'APPROVALS' },
     ],
   },
   {
-    id: 'workflows',
-    group: 'BUILD',
+    // Workflows, tools and widgets are all "things that do work for me". One
+    // row, three destinations, three contextual editors — the same mechanism
+    // Agents uses. The rail row lands on Workflows.
+    id: 'automations',
+    group: 'MY TEAM',
     icon: 'fas fa-project-diagram',
-    label: 'Workflows',
+    label: 'Automations',
     screens: [
-      { screen: 'WorkflowsScreen', label: 'MY WORKFLOWS' },
-      { screen: 'WorkflowForgeScreen', label: 'WORKFLOW FORGE' },
-    ],
-  },
-  {
-    // Tools · Skills · Widgets · Marketplace were separate rail rows for one
-    // idea — "things I make or get" — and the grouping that would have said
-    // so was a 7px caption nobody could read. One row, four tabs, exactly the
-    // mechanism Agents and Workflows already use. Marketplace is the last tab
-    // because it is where the other three come from. (Plugins lived here for
-    // a while; it moved to CONNECT because to a user "install the Slack
-    // plugin" and "connect Slack" are the same intent.)
-    id: 'library',
-    group: 'BUILD',
-    icon: 'fas fa-book',
-    label: 'Library',
-    screens: [
+      { screen: 'WorkflowsScreen', label: 'WORKFLOWS' },
+      { screen: 'WorkflowForgeScreen', label: 'WORKFLOW FORGE', ctx: true },
       { screen: 'ToolsScreen', label: 'TOOLS' },
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE', ctx: true },
-      { screen: 'SkillsScreen', label: 'SKILLS' },
       { screen: 'WidgetManagerScreen', label: 'WIDGETS' },
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE', ctx: true },
-      { screen: 'MarketplaceScreen', label: 'MARKETPLACE' },
     ],
   },
 
-  // ── CONNECT ── what AGNT reaches out to. Two rows because there are two
-  // questions: what can she REACH (apps, models, servers) and what EXTENDS
-  // her (plugins). It was one captionless row at the foot; connecting things
-  // is most of the setup a new user does, and the rail should say so.
-  //
-  // AI Providers is deliberately NOT a third row. "Which model" is one more
-  // thing you connect, so it is the first view INSIDE Connections rather than
-  // a rail row beside it — see CONNECT_ITEMS in LeftPanel/ConnectorsPanel.
-  // MCP servers stay there for the same reason (a server you point at is a
-  // connection).
+  // ── MY TOOLKIT ── what the team works with, and where more comes from.
   {
-    id: 'connect',
-    group: 'CONNECT',
+    // To a business user "connect Slack" and "install the Slack plugin" are
+    // the same intent, so Connections and Plugins are two tabs of one row.
+    // AI Providers is deliberately not a row either: "which model" is one more
+    // thing you connect, so it is the first view INSIDE Connected apps — see
+    // CONNECT_ITEMS in LeftPanel/ConnectorsPanel. MCP servers stay there for
+    // the same reason.
+    id: 'apps',
+    group: 'MY TOOLKIT',
     icon: 'fas fa-plug',
-    label: 'Connections',
+    label: 'Apps',
     badge: 'connect',
-    screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTIONS' }],
+    screens: [
+      { screen: 'ConnectorsScreen', label: 'CONNECTED APPS' },
+      { screen: 'PluginsScreen', label: 'ADD-ONS' },
+    ],
   },
   {
-    id: 'plugins',
-    group: 'CONNECT',
-    icon: 'fas fa-puzzle-piece',
-    label: 'Plugins',
-    screens: [{ screen: 'PluginsScreen', label: 'PLUGINS' }],
+    // One word everyone already understands.
+    id: 'store',
+    group: 'MY TOOLKIT',
+    icon: 'fas fa-store',
+    label: 'Store',
+    screens: [{ screen: 'MarketplaceScreen', label: 'STORE' }],
   },
 ];
 
 // ── The foot of the rail ── below a separator, captionless: the one row you
-// visit to set the machine up rather than to do work with it. (Connect sat
-// here too until it became its own captioned group above.)
+// visit to set the machine up rather than to do work with it.
 //
 // Settings carries its OWN left-panel nav, which is why it gets one row
-// instead of several: Profile, Billing, Theme, Memory, Evolution, Autonomy
-// and the rest are navigated from SettingsPanel.
+// instead of several: Profile, Billing, Theme, Improvements and the rest are
+// navigated from SettingsPanel.
 //
 // `tab: false` — owned and routed by this row, but not drawn in the toolbar.
-// Memory / Evolution / Autonomy are full screens rather than Settings
-// sections, so the row has to list them: that is what keeps them inside
-// SECTION_ROUTES (without it the canvas reads them as custom pages and the
-// gear goes dark while you are on them) and lets them share SettingsPanel as
-// their left panel (see screenRegistry.js).
+// Improvements (ExperimentsScreen) is a full screen rather than a Settings
+// section, so the row has to list it: that is what keeps it inside
+// SECTION_ROUTES (without it the canvas reads it as a custom page and the
+// gear goes dark while you are on it) and lets it share SettingsPanel as its
+// left panel (see screenRegistry.js). It is genuinely a power-user surface,
+// which is why it stays reachable but off the rail.
 export const BOTTOM_SECTIONS = [
   {
     id: 'settings',
@@ -190,9 +185,7 @@ export const BOTTOM_SECTIONS = [
     label: 'Settings',
     screens: [
       { screen: 'SettingsScreen', label: 'SETTINGS' },
-      { screen: 'MemoryScreen', label: 'MEMORY', tab: false },
-      { screen: 'ExperimentsScreen', label: 'EVOLUTION', tab: false },
-      { screen: 'AutonomyScreen', label: 'AUTONOMY', tab: false },
+      { screen: 'ExperimentsScreen', label: 'IMPROVEMENTS', tab: false },
     ],
   },
 ];
