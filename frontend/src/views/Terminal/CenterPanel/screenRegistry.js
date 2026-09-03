@@ -44,10 +44,9 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // canvas expands it; the choice is remembered for THIS screen only.
   ChatScreen: { input: true, rightCollapsedDefault: true },
   ConnectorsScreen: { input: false }, // right: dynamic
-  // Left: the conversation list, same as Chat (the dashboard is where you
-  // land; the threads are what you came back for). Right: the dashboard's
-  // own summary — Active Workflows + Integration Health.
-  DashboardScreen: { leftPanel: 'ChatPanel', rightPanel: 'DashboardPanel', input: false },
+  // Left: a system overview — how many of everything, what is moving right
+  // now, every tile a door. Right: Active Workflows + Integration Health.
+  DashboardScreen: { leftPanel: 'SystemOverviewPanel', rightPanel: 'DashboardPanel', input: false },
   EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
   ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
   ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },

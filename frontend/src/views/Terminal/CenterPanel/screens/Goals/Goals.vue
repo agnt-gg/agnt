@@ -30,11 +30,25 @@
           </div>
         </div>
 
-        <!-- Board + inner detail drawer. The drawer replaces what used to be
-             the right panel: it lives inside the screen, opens on selection,
-             and Esc / ✕ closes it. On narrow screens it overlays the board. -->
-        <div v-else class="goals-body" :class="{ 'has-detail': !!selectedGoalId }">
-        <div class="kanban-board fade-in" @click.self="deselectGoal">
+        <!-- Selected goal: the detail REPLACES the board. Whole center, one
+             thing. Back / Esc returns to the board. -->
+        <div v-else-if="selectedGoalId" class="goal-detail-view fade-in" @keydown.esc.stop="deselectGoal">
+          <div class="goal-detail-bar">
+            <button type="button" class="goal-detail-back" @click="deselectGoal">
+              <i class="fas fa-arrow-left"></i> Back to board
+            </button>
+            <div class="goal-detail-crumb" v-if="selectedGoal">
+              <i :class="getStatusIcon(selectedGoal.status)"></i>
+              <span class="goal-detail-title">{{ selectedGoal.title || 'Untitled goal' }}</span>
+              <span class="goal-detail-status" :class="(selectedGoal.status || '').toLowerCase()">{{ selectedGoal.status }}</span>
+            </div>
+          </div>
+          <div class="goal-detail-body">
+            <GoalsPanel :selectedGoalId="selectedGoalId" :goals="allGoals || []" @panel-action="handlePanelAction" />
+          </div>
+        </div>
+
+        <div v-else class="kanban-board fade-in" @click.self="deselectGoal">
           <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']">
             <div class="column-header" :style="{ borderTopColor: column.color }">
               <h3>
@@ -124,13 +138,6 @@
               </div>
             </template>
           </div>
-        </div>
-
-        <Transition name="goal-drawer">
-          <aside v-if="selectedGoalId" class="goal-detail-drawer" @keydown.esc.stop="deselectGoal">
-            <GoalsPanel :selectedGoalId="selectedGoalId" :goals="allGoals || []" @panel-action="handlePanelAction" />
-          </aside>
-        </Transition>
         </div>
       </div>
 
@@ -422,6 +429,17 @@ export default {
     const simpleModal = ref(null);
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
+    const selectedGoal = computed(() => (allGoals.value || []).find((goal) => goal.id === selectedGoalId.value) || null);
+    const getStatusIcon = (status) =>
+      ({
+        planning: 'fas fa-lightbulb',
+        executing: 'fas fa-play',
+        paused: 'fas fa-pause',
+        completed: 'fas fa-check',
+        failed: 'fas fa-times',
+        stopped: 'fas fa-stop',
+        review: 'fas fa-eye',
+      })[String(status || '').toLowerCase()] || 'fas fa-bullseye';
 
     // Schedule a goal
     const scheduleModalGoal = ref(null);
@@ -900,6 +918,8 @@ export default {
       getEmptyText,
       emit,
       selectedGoalId,
+      selectedGoal,
+      getStatusIcon,
       allGoals,
       isLoading,
       showCreateModal,
@@ -948,16 +968,6 @@ body[data-page='terminal-goals'] .scrollable-content {
   padding: 0;
 }
 
-/* Board + drawer share the screen's remaining height. */
-.goals-body {
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  gap: 12px;
-}
-
 .kanban-board {
   display: flex;
   flex: 1;
@@ -970,43 +980,81 @@ body[data-page='terminal-goals'] .scrollable-content {
   scrollbar-width: thin;
 }
 
-/* Inner detail drawer — the goal's own panel, inside the screen. */
-.goal-detail-drawer {
-  flex: 0 0 400px;
-  width: 400px;
+/* Goal detail — replaces the board. Full width, one sheet. */
+.goal-detail-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   min-height: 0;
+  min-width: 0;
   margin-bottom: 16px;
-  overflow: hidden auto;
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   background: var(--color-popup);
+  overflow: hidden;
+}
+.goal-detail-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  flex: 0 0 auto;
+}
+.goal-detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.goal-detail-back:hover {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+}
+.goal-detail-crumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--color-text-muted);
+}
+.goal-detail-title {
+  color: var(--color-text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.goal-detail-status {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--terminal-border-color);
+}
+.goal-detail-status.executing { color: var(--color-primary); border-color: var(--color-primary); }
+.goal-detail-status.completed { color: var(--color-green); border-color: var(--color-green); }
+.goal-detail-status.failed { color: var(--color-red); border-color: var(--color-red); }
+.goal-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
   scrollbar-width: thin;
+  padding: 4px 18px 18px;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
 }
-.goal-detail-drawer :deep(.goal-panel) {
+.goal-detail-body :deep(.goal-panel) {
   height: auto;
-}
-
-.goal-drawer-enter-active,
-.goal-drawer-leave-active {
-  transition: transform 0.18s ease, opacity 0.18s ease;
-}
-.goal-drawer-enter-from,
-.goal-drawer-leave-to {
-  transform: translateX(12px);
-  opacity: 0;
-}
-
-/* Narrow: overlay the board instead of squeezing it. */
-@media (max-width: 1100px) {
-  .goal-detail-drawer {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 16px;
-    width: min(400px, 92%);
-    z-index: 5;
-    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
-  }
 }
 
 .kanban-column {
