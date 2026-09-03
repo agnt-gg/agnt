@@ -41,6 +41,10 @@ async function fakeBrowser() {
     textAppearsAfter: null, // { needle, atCall }
     selectOptions: ['United States', 'Canada', 'Mexico'],
     singleTab: false,
+    /** { method, ms } — makes one CDP command slow, so overlap is observable. */
+    slow: null,
+    /** CDP method whose next call returns a transport-shaped timeout error. */
+    failOnce: null,
     sockets: new Set(),
   };
   const tabOf = (sessionId) => state.tabs.find((t) => t.targetId === state.sessions.get(sessionId));
@@ -55,9 +59,18 @@ async function fakeBrowser() {
     socket.on('message', (raw) => {
       const m = JSON.parse(raw.toString());
       state.calls.push(m.method);
-      const reply = (result) => socket.send(JSON.stringify({ id: m.id, result }));
+      const reply = (result) => {
+        const payload = JSON.stringify({ id: m.id, result });
+        const delay = state.slow?.method === m.method ? state.slow.ms : 0;
+        if (delay) setTimeout(() => { try { socket.send(payload); } catch { /* closed */ } }, delay);
+        else socket.send(payload);
+      };
       const fail = (message) => socket.send(JSON.stringify({ id: m.id, error: { message } }));
       const tab = tabOf(m.sessionId) || state.tabs[0];
+      if (state.failOnce === m.method) {
+        state.failOnce = null;
+        return fail(`${m.method} timed out`);
+      }
 
       switch (m.method) {
         case 'Target.getTargets':
@@ -272,6 +285,16 @@ describe('tabs', () => {
     await expect(act('click', { ref: 'e1' })).resolves.toMatchObject({ url: 'https://two.example/' });
   });
 
+  it('tab switches replace observers instead of multiplying every event', async () => {
+    browser.state.tabs.push({ targetId: 'T2', url: 'https://two.example/', title: 'Two' });
+    await act('focus', { tabId: 'T2' });
+    await act('focus', { tabId: 'T1' });
+    await act('focus', { tabId: 'T2' });
+    browser.state.emit('Runtime.consoleAPICalled', { type: 'log', args: [{ value: 'once' }] }, 'S-T2');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect((await act('console')).count).toBe(1);
+  });
+
   it('open creates a tab and moves to it; close refuses to close the last one', async () => {
     const opened = await act('open', { url: 'new.example' });
     expect(opened.tabId).toBe('T2');
@@ -407,10 +430,11 @@ describe('web content is fenced and URLs are policed', () => {
     expect((await act('requests')).requests.startsWith(WEB_CONTENT_OPEN)).toBe(true);
   });
 
-  it('refuses file:, javascript: and chrome: by name; allows localhost dev servers', async () => {
+  it('refuses file:, javascript:, chrome: and data: by name; allows localhost dev servers', async () => {
     await expect(act('navigate', { url: 'file:///C:/Windows/win.ini' })).rejects.toThrow(/Refusing to navigate to a file: URL/);
     await expect(act('navigate', { url: 'javascript:alert(1)' })).rejects.toThrow(/javascript:/);
     await expect(act('navigate', { url: 'chrome://settings' })).rejects.toThrow(/chrome:/);
+    await expect(act('navigate', { url: 'data:text/html,<script>alert(1)</script>' })).rejects.toThrow(/data: URL/);
     await expect(act('navigate', { url: 'http://localhost:5173/' })).resolves.toMatchObject({ url: 'http://localhost:5173/' });
     await expect(act('open', { url: 'file:///etc/passwd' })).rejects.toThrow(/file:/);
   });
@@ -442,6 +466,82 @@ describe('the loop guard', () => {
     await act('read'); await act('read');
     expect((await act('read')).loopDetected).toBe(true);
     expect((await act('read')).loopDetected).toBeUndefined();
+  });
+});
+
+/**
+ * ONE BROWSER, ONE VERB AT A TIME.
+ *
+ * A user can have two turns in flight at once — a chat message while an agent
+ * runs, two workspace tabs, a workflow firing mid-conversation. They share one
+ * driver: one page session, one ref map, one dialog flag. Interleaved, `focus`
+ * swaps sessionId between another verb's resolve and its dispatch, and the
+ * result is a SUCCESSFUL-LOOKING action on the wrong page. Found by review,
+ * pinned here.
+ */
+describe('concurrent turns for one user', () => {
+  it('never replays a side-effecting verb after a transport-shaped timeout', async () => {
+    browser.state.failOnce = 'Page.navigate';
+    await expect(act('navigate', { url: 'https://must-not-repeat.example/' })).rejects.toThrow(/timed out/);
+    expect(browser.state.calls.filter((method) => method === 'Page.navigate')).toHaveLength(1);
+  });
+
+  it('serialises: a slow snapshot finishes on its own tab before a focus moves the driver', async () => {
+    browser.state.tabs.push({ targetId: 'T2', url: 'https://two.example/', title: 'Two' });
+    browser.state.slow = { method: 'Accessibility.getFullAXTree', ms: 120 };
+
+    // Fired in the same tick, as two turns would.
+    const [snap, focused] = await Promise.all([
+      act('snapshot'),
+      act('focus', { tabId: 'T2' }),
+    ]);
+
+    // Each verb saw exactly one page, and it was its own.
+    expect(snap.url).toBe('https://start.example/');
+    expect(snap.snapshot).toContain('URL: https://start.example/');
+    expect(focused.url).toBe('https://two.example/');
+    expect(focused.snapshot).toContain('URL: https://two.example/');
+
+    // And the driver ended where the LAST verb left it, coherently.
+    const after = await act('snapshot');
+    expect(after.url).toBe('https://two.example/');
+  });
+
+  it('a click never spends a ref another turn cleared out from under it', async () => {
+    await act('snapshot');
+    browser.state.slow = { method: 'DOM.getBoxModel', ms: 100 };
+
+    const [clicked, resnapped] = await Promise.all([
+      act('click', { ref: 'e1' }),
+      act('navigate', { url: 'https://moved.example/' }),
+    ]);
+
+    // The click resolved against the page it was issued for; the navigate then
+    // moved the driver. Neither observed a half-updated ref map.
+    expect(clicked.url).toBe('https://start.example/');
+    expect(resnapped.url).toBe('https://moved.example/');
+    expect(resnapped.snapshot).toContain('@e1 button "Go"');
+  });
+
+  it('a failing verb does not poison the queue behind it', async () => {
+    const results = await Promise.allSettled([
+      act('click', { ref: 'e99' }), // no snapshot yet — rejects
+      act('snapshot'),
+      act('read'),
+    ]);
+    expect(results[0].status).toBe('rejected');
+    expect(results[1].status).toBe('fulfilled');
+    expect(results[2].status).toBe('fulfilled');
+    expect(results[1].value.snapshot).toContain('@e1 button "Go"');
+  });
+
+  it('ten interleaved verbs all answer, in order, with no lost or crossed results', async () => {
+    const verbs = Array.from({ length: 10 }, (_, i) => (i % 2 ? act('read') : act('snapshot')));
+    const settled = await Promise.all(verbs);
+    expect(settled).toHaveLength(10);
+    for (const r of settled) expect(r.url).toBe('https://start.example/');
+    // One connection served all ten: the driver was reused, not rebuilt per call.
+    expect(browser.state.sockets.size).toBe(1);
   });
 });
 

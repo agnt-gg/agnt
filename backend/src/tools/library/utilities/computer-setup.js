@@ -287,10 +287,10 @@ class ComputerSetup extends BaseAction {
         case 'health': {
           const o = await callTool('health_report', {}, { timeoutMs: 90000 });
           return {
-            success: !o.refused && o.parsed,
+            success: o.ok && o.parsed,
             report: o.json ? JSON.stringify(o.json, null, 2) : o.raw,
             result: o.json,
-            error: o.refused ? o.summary : null,
+            error: o.ok ? null : o.summary,
             hint: 'Use this when a tool behaves oddly — it exercises the real paths rather than just describing the environment like action="doctor".',
           };
         }
@@ -298,10 +298,10 @@ class ComputerSetup extends BaseAction {
         case 'permissions': {
           const o = await callTool('check_permissions', {}, { timeoutMs: 30000 });
           return {
-            success: !o.refused,
+            success: o.ok,
             permissions: o.json,
             report: o.json ? JSON.stringify(o.json, null, 2) : o.raw,
-            error: o.refused ? o.summary : null,
+            error: o.ok ? null : o.summary,
             hint: 'Windows has no TCC equivalent: normal use needs no elevation. Elevation only matters for a system-wide autostart task, and UIAccess only for foreground escalation on stubborn legacy apps.',
           };
         }
@@ -314,14 +314,14 @@ class ComputerSetup extends BaseAction {
           const value = params?.value;
           if (!key) {
             const o = await callTool('get_config', {}, { timeoutMs: 15000 });
-            return { success: !o.refused, config: o.json, report: o.json ? JSON.stringify(o.json, null, 2) : o.raw, error: o.refused ? o.summary : null };
+            return { success: o.ok, config: o.json, report: o.json ? JSON.stringify(o.json, null, 2) : o.raw, error: o.ok ? null : o.summary };
           }
           if (value === undefined || value === '') return { success: false, error: 'Pass value to set a config key, or omit key to read the whole config.' };
           if (!confirm) return { success: false, error: 'Writing persistent driver config requires confirm=true — it affects every future run, not just this one.' };
           const num = Number(value);
           const coerced = String(value) === 'true' ? true : String(value) === 'false' ? false : (Number.isFinite(num) && String(num) === String(value).trim() ? num : String(value));
           const o = await callTool('set_config', { key, value: coerced }, { timeoutMs: 15000 });
-          return { success: !o.refused, key, value: coerced, result: o.json, error: o.refused ? o.summary : null };
+          return { success: o.ok, key, value: coerced, result: o.json, error: o.ok ? null : o.summary };
         }
 
         case 'tools': {

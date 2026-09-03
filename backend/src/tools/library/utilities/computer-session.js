@@ -187,7 +187,7 @@ class ComputerSession extends BaseAction {
           const o = await startSession(session, { captureScope, cursorThemeId: themeId });
           const j = o.json || {};
           return {
-            success: !o.refused,
+            success: o.ok,
             action, session,
             captureScope: j.capture_scope ?? captureScope,
             effectiveScope: j.effective_scope ?? null,
@@ -195,7 +195,7 @@ class ComputerSession extends BaseAction {
             active: j.active === true,
             revived: j.revived === true,
             result: j,
-            error: o.refused ? o.summary : null,
+            error: o.ok ? null : o.summary,
             hint: 'Pass this same session id to computer-observe / computer-input / the observe → input → verify loop so every call shares one cursor and one capture policy. Call action="end" when the run finishes — otherwise the idle TTL reclaims it and the cursor lingers.',
           };
         }
@@ -204,14 +204,14 @@ class ComputerSession extends BaseAction {
           const o = await getSessionState(session);
           const j = o.json || {};
           return {
-            success: !o.refused,
+            success: o.ok,
             action, session,
             captureScope: j.capture_scope ?? null,
             effectiveScope: j.effective_scope ?? null,
             desktopUnlocked: j.desktop_unlocked === true,
             escalationReason: j.escalation_reason ?? null,
             result: j,
-            error: o.refused ? o.summary : null,
+            error: o.ok ? null : o.summary,
           };
         }
 
@@ -225,12 +225,12 @@ class ComputerSession extends BaseAction {
           const o = await escalateSession(session, reason, detail);
           const j = o.json || {};
           return {
-            success: !o.refused,
+            success: o.ok,
             action, session,
             effectiveScope: j.effective_scope ?? null,
             desktopUnlocked: j.desktop_unlocked === true,
             result: j,
-            error: o.refused ? o.summary : null,
+            error: o.ok ? null : o.summary,
             hint: 'Desktop scope is now live: use computer-observe mode="desktop" and act with screen-absolute pixels. Window-scoped tools are disabled for this session — end it and start a new id to get them back.',
           };
         }
@@ -238,11 +238,11 @@ class ComputerSession extends BaseAction {
         case 'end': {
           const o = await endSession(session);
           return {
-            success: !o.refused,
+            success: o.ok,
             action, session,
             active: o.json?.active === true,
             result: o.json,
-            error: o.refused ? o.summary : null,
+            error: o.ok ? null : o.summary,
             hint: 'Cursor removed, recording stopped, per-session config cleared.',
           };
         }
@@ -250,13 +250,13 @@ class ComputerSession extends BaseAction {
         case 'cursor_on':
         case 'cursor_off': {
           const o = await callTool('set_agent_cursor_enabled', { session, enabled: action === 'cursor_on' }, { timeoutMs: 15000 });
-          return { success: !o.refused, action, session, result: o.json, error: o.refused ? o.summary : null };
+          return { success: o.ok, action, session, result: o.json, error: o.ok ? null : o.summary };
         }
 
         case 'cursor_theme': {
           if (!themeId) return { success: false, error: 'action="cursor_theme" requires themeId (a PREINSTALLED theme id — theme files and inline animation data are never accepted through an agent tool).' };
           const o = await callTool('set_agent_cursor_theme', { session, theme_id: themeId }, { timeoutMs: 15000 });
-          return { success: !o.refused, action, session, themeId, result: o.json, error: o.refused ? o.summary : null };
+          return { success: o.ok, action, session, themeId, result: o.json, error: o.ok ? null : o.summary };
         }
 
         default:

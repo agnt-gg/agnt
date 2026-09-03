@@ -14,7 +14,18 @@
 
 import { WebSocket } from 'ws';
 
-/** How long a CDP command may take before we stop waiting for it. */
+/**
+ * How long a CDP command may take before we stop waiting for it.
+ *
+ * This is the budget for a QUESTION — read a property, describe a node, get a
+ * box model. Commands that make the browser do WORK do not belong under it:
+ * MEASURED, a cold Chromium's first Page.navigate on a loaded machine takes
+ * longer than five seconds, and judging it failed here surfaces as
+ * "Page.navigate timed out" on a navigation that was about to succeed, drops
+ * the driver, and makes the browser look broken to the user. Callers pass
+ * their own budget for those — see NAVIGATE_TIMEOUT_MS / TREE_TIMEOUT_MS /
+ * TAB_TIMEOUT_MS in browserActDriver.js.
+ */
 const COMMAND_TIMEOUT_MS = 5000;
 
 let nextCommandId = 1;
@@ -82,7 +93,7 @@ export class CdpConnection {
     for (const listener of this.listeners) listener({ method: '__closed', params: { reason } });
   }
 
-  send(method, params = {}, sessionId = undefined) {
+  send(method, params = {}, sessionId = undefined, { timeoutMs = COMMAND_TIMEOUT_MS } = {}) {
     if (this.closed || this.socket?.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error('the browser connection is not open'));
     }
@@ -93,7 +104,7 @@ export class CdpConnection {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`${method} timed out`));
-      }, COMMAND_TIMEOUT_MS);
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
 
       const payload = { id, method, params };

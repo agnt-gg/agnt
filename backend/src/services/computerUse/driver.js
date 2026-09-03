@@ -205,6 +205,7 @@ export function readOutcome(r) {
     || /^\s*(performed|posted|invoked|clicked|typed)\b/i.test(plainText);
   out.plainTextError = !json && plainText.length > 0 && !affirmative;
   out.unparsedResponse = !json && plainText.length > 0;
+  out.emptyResponse = !json && plainText.length === 0;
 
   out.refused = json?.status === 'refused' || json?.effect === 'refused';
   // Spawn-level failure (binary missing, timeout) is separate from a refusal.
@@ -214,7 +215,7 @@ export function readOutcome(r) {
   // DELIVERED (see the note above); only an explicit refusal, a suspected
   // no-op, or a legacy delivery_failed marker counts as not delivered.
   const legacyFail = !json && /delivery_failed|background_unavailable/i.test(raw);
-  out.notDelivered = out.refused || out.effect === 'suspected_noop' || legacyFail || out.plainTextError;
+  out.notDelivered = out.refused || out.effect === 'suspected_noop' || legacyFail || out.plainTextError || out.emptyResponse;
   out.ok = !out.transportFailed && !out.notDelivered;
 
   // ONE CLASS FOR CALLERS: "this did not happen." A structured refusal and a
@@ -222,13 +223,15 @@ export function readOutcome(r) {
   // that branches only on `refused` under-reacts to the other. The act loop
   // learned this the hard way — it let a model re-issue a set_value that had
   // already been rejected twice, because the rejection was plain text.
-  out.failedHard = out.refused || out.plainTextError || out.effect === 'suspected_noop';
+  out.failedHard = out.refused || out.plainTextError || out.emptyResponse || out.effect === 'suspected_noop';
 
   // One human-readable line for prompts and tool output.
   out.summary = out.refused
     ? `REFUSED (${out.code || 'unknown'}): ${out.message || 'no message'}`
     : out.plainTextError
       ? `FAILED: ${plainText.slice(0, 300)}`
+      : out.emptyResponse
+        ? 'FAILED: driver returned no result'
       : out.transportFailed
       ? `TRANSPORT ERROR: ${(r?.stderr || r?.error || 'driver call failed').slice(0, 200)}`
       : out.effect

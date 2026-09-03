@@ -80,9 +80,24 @@ export function dropDriver(userId) {
 /** Test seam, and the shutdown path. */
 export function _resetDrivers() {
   for (const userId of [...drivers.keys()]) dropDriver(userId);
+  queues.clear();
 }
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * Commands that make the browser DO something, with the budget each needs.
+ *
+ * The connection's default is five seconds, which is right for reading a
+ * property and wrong for anything that loads a page or walks a whole DOM. A
+ * cold first navigation, a big accessibility tree, opening a tab — all of them
+ * routinely exceed it on a machine that is also running a build, and the
+ * failure reads as "timed out", drops the session, and looks like a broken
+ * browser instead of a slow one.
+ */
+const NAVIGATE_TIMEOUT_MS = 30000;
+const TREE_TIMEOUT_MS = 20000;
+const TAB_TIMEOUT_MS = 15000;
 
 /** Ring-buffer size for console / errors / requests. Enough to debug, bounded so a chatty page cannot grow memory. */
 const LOG_CAP = 200;
@@ -106,7 +121,11 @@ async function enableObservers(driver) {
   await connection.send('Runtime.enable', {}, sessionId).catch(() => {});
   await connection.send('Network.enable', {}, sessionId).catch(() => {});
 
-  connection.onEvent((message) => {
+  // Tab switches re-enable observers for a new session. Remove the old
+  // listener first or each event is recorded once per tab visited.
+  if (driver.observerListener) connection.offEvent(driver.observerListener);
+  const observerListener = (message) => {
+    // Flattened CDP events carry sessionId; Electron bridge events do not.
     if (message.sessionId && message.sessionId !== driver.sessionId) return;
     const p = message.params || {};
     switch (message.method) {
@@ -160,7 +179,9 @@ async function enableObservers(driver) {
         break;
       default:
     }
-  });
+  };
+  driver.observerListener = observerListener;
+  connection.onEvent(observerListener);
 }
 
 async function driverFor(userId, cdpUrl) {
@@ -188,6 +209,7 @@ async function driverFor(userId, cdpUrl) {
     lastState: { url: null, title: null },
     /** Rolling (verb, params, result) fingerprints for the loop guard. */
     history: [],
+    observerListener: null,
   };
   connection.onEvent((message) => {
     if (message.method === '__closed') drivers.delete(userId);
@@ -333,7 +355,7 @@ async function takeSnapshot(driver, { query = '', maxChars = 8000 } = {}) {
   if (state.blockedByDialog) {
     return { ...state, snapshot: `(page blocked by a ${state.blockedByDialog.type} dialog: "${state.blockedByDialog.message.slice(0, 200)}" — use action="dialog")`, stats: { refs: 0, newRefs: 0 } };
   }
-  const { nodes = [] } = await driver.connection.send('Accessibility.getFullAXTree', {}, driver.sessionId);
+  const { nodes = [] } = await driver.connection.send('Accessibility.getFullAXTree', {}, driver.sessionId, { timeoutMs: TREE_TIMEOUT_MS });
 
   // `[new]` is only meaningful against a previous snapshot of the SAME page.
   const sameDocument = driver.refUrl === state.url;
@@ -857,7 +879,10 @@ function normaliseUrl(url) {
   if (/^(file|javascript|chrome|chrome-extension|devtools|view-source):/i.test(target)) {
     throw new Error(`Refusing to navigate to a ${target.split(':')[0]}: URL.`);
   }
-  if (/^https?:\/\//i.test(target) || /^about:|^data:/i.test(target)) return target;
+  if (/^https?:\/\//i.test(target) || /^about:(blank)?$/i.test(target)) return target;
+  if (/^data:/i.test(target)) {
+    throw new Error('Refusing to navigate to a data: URL. Use an http(s) page; inline documents can contain executable page content.');
+  }
   // A bare domain is what agents type. Meeting them there beats an error.
   return `https://${target}`;
 }
@@ -866,7 +891,7 @@ async function navigateTo(driver, url) {
   const target = normaliseUrl(url);
   driver.refs.clear();
   driver.refUrl = null;
-  await driver.connection.send('Page.navigate', { url: target }, driver.sessionId);
+  await driver.connection.send('Page.navigate', { url: target }, driver.sessionId, { timeoutMs: NAVIGATE_TIMEOUT_MS });
   await waitForLoad(driver);
   const snap = await takeSnapshot(driver, { maxChars: INLINE_SNAPSHOT_CHARS }).catch(() => null);
   return snap || pageState(driver);
@@ -877,7 +902,7 @@ async function goBack(driver) {
   const history = await driver.connection.send('Page.getNavigationHistory', {}, driver.sessionId);
   const { currentIndex = 0, entries = [] } = history || {};
   if (currentIndex <= 0) return { ...before, note: 'already at the start of history' };
-  await driver.connection.send('Page.navigateToHistoryEntry', { entryId: entries[currentIndex - 1].id }, driver.sessionId);
+  await driver.connection.send('Page.navigateToHistoryEntry', { entryId: entries[currentIndex - 1].id }, driver.sessionId, { timeoutMs: NAVIGATE_TIMEOUT_MS });
   await waitForLoad(driver);
   driver.refs.clear();
   driver.refUrl = null;
@@ -890,7 +915,7 @@ async function openTab(driver, url) {
   const target = url ? normaliseUrl(url) : 'about:blank';
   let created;
   try {
-    created = await driver.connection.send('Target.createTarget', { url: target });
+    created = await driver.connection.send('Target.createTarget', { url: target }, undefined, { timeoutMs: TAB_TIMEOUT_MS });
   } catch (err) {
     throw new Error(`This browser surface cannot open a second tab (${err.message}). Navigate the current tab instead.`);
   }
@@ -964,9 +989,16 @@ function formatRequests(driver, { filter, maxChars = 6000 } = {}) {
 
 // ─── loop guard ─────────────────────────────────────────────────────────────
 
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function fingerprint(action, params, result) {
-  const stable = (v) => JSON.stringify(v, Object.keys(v || {}).sort());
-  return `${action}|${stable(params)}|${stable(result)}`;
+  return `${action}|${stableJson(params)}|${stableJson(result)}`;
 }
 
 /** Same verb, same args, same answer, LOOP_REPEATS times → the page is not moving. Say so. */
@@ -1005,7 +1037,7 @@ const PARAM_KEYS = ['url', 'ref', 'selector', 'text', 'submit', 'key', 'deltaY',
  * Transport-shaped failures drop the cached driver, so the next call
  * reconnects from scratch instead of replaying the same dead socket.
  */
-export async function performBrowserAction(userId, cdpUrl, action, params = {}, { retried = false } = {}) {
+async function runBrowserAction(userId, cdpUrl, action, params = {}, { retried = false } = {}) {
   let driver;
   let fresh = false;
   try {
@@ -1045,15 +1077,56 @@ export async function performBrowserAction(userId, cdpUrl, action, params = {}, 
     return guardLoop(driver, action, picked, result);
   } catch (err) {
     const transport = /not open|connection closed|connection errored|timed out|ECONNREFUSED|refused/i.test(err?.message || '');
-    if (transport) dropDriver(userId);
-    // MEASURED: a browser restored from a crashed profile (AGNT killed it last
-    // time) answers attach and Page.enable, then hangs its FIRST page command,
-    // and works after a reconnect. One retry on a fresh session turns that
-    // into a slow first verb instead of a failed one. Never retried twice, and
-    // never on a session that had been working — that is a real disconnect.
-    if (transport && fresh && !retried && /timed out/i.test(err.message)) {
-      return performBrowserAction(userId, cdpUrl, action, params, { retried: true });
+    if (transport) {
+      // Drop the driver that FAILED, not whatever is in the map now. They are
+      // the same object in the normal case; they are not after a reconnect,
+      // and closing the live one would take down a verb that is working.
+      if (driver && drivers.get(userId) !== driver) {
+        try { driver.connection.close(); } catch { /* already gone */ }
+      } else {
+        dropDriver(userId);
+      }
+    }
+    // A crashed profile can hang the first page read after reconnect. Retry
+    // ONLY observation verbs: replaying click/type/press/dialog/navigation can
+    // duplicate a real side effect whose acknowledgement was merely lost.
+    const safeToRetry = new Set(['snapshot', 'read', 'wait', 'tabs', 'console', 'errors', 'requests']);
+    if (transport && fresh && !retried && safeToRetry.has(action) && /timed out/i.test(err.message)) {
+      // Inner call on purpose: the wrapper below holds this user's lock, and
+      // re-entering it here would deadlock behind itself.
+      return runBrowserAction(userId, cdpUrl, action, params, { retried: true });
     }
     throw err;
   }
+}
+
+/**
+ * userId -> tail of that user's in-flight chain.
+ *
+ * ONE BROWSER, ONE VERB AT A TIME. The driver is shared mutable state — the
+ * page session, the ref map, the dialog flag, the buffers — and a user can
+ * have two turns in flight at once (a chat message while an agent runs, two
+ * workspace tabs, a workflow firing mid-conversation). Interleaved, `focus`
+ * can swap sessionId between another verb's resolve and its dispatch, a
+ * snapshot can clear the refs a click is spending, and one transport failure
+ * can close the connection another verb is mid-command on. All three fail
+ * SILENTLY-ish: they look like a successful action on the wrong page, which is
+ * the worst failure class this driver has.
+ *
+ * Serialising per user costs nothing real (verbs are milliseconds) and makes
+ * the invariant true instead of likely.
+ */
+const queues = new Map();
+
+export function performBrowserAction(userId, cdpUrl, action, params = {}) {
+  const tail = queues.get(userId) || Promise.resolve();
+  const start = () => runBrowserAction(userId, cdpUrl, action, params);
+  // Run next whether the previous verb resolved or threw — a failed verb must
+  // not poison every later one.
+  const run = tail.then(start, start);
+
+  const settled = run.then(() => {}, () => {});
+  queues.set(userId, settled);
+  settled.then(() => { if (queues.get(userId) === settled) queues.delete(userId); });
+  return run;
 }

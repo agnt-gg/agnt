@@ -134,6 +134,14 @@ describe('the outcome contract (measured 0.19.3 envelopes)', () => {
     expect(o.summary).toMatch(/^FAILED/);
   });
 
+  it('exit-zero with empty output is UNKNOWN and therefore failure', () => {
+    const o = readOutcome({ ok: true, stdout: '', stderr: '' });
+    expect(o.ok).toBe(false);
+    expect(o.emptyResponse).toBe(true);
+    expect(o.failedHard).toBe(true);
+    expect(o.summary).toMatch(/no result/);
+  });
+
   it('an explicit affirmative plain line is fine', () => {
     expect(readOutcome({ ok: true, stdout: '✅ waited 200ms' }).ok).toBe(true);
   });
