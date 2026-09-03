@@ -71,11 +71,16 @@ describe('abort settles what the ledger says is open', () => {
 });
 
 describe('the pending announcement is dedup-gated by the ledger', () => {
-  it('each tool_call_delta site asks the ledger before announcing', () => {
+  it('the one announcement site asks the ledger first, and every stream routes through it', () => {
+    // Three inline sites were consolidated into announceToolCallChunk when
+    // eager execution landed; the gate now lives in exactly one place and
+    // every streaming call in the turn feeds it.
     const sites = CODE.match(/sendEvent\('tool_pending'/g) || [];
-    expect(sites.length).toBeGreaterThanOrEqual(3);
+    expect(sites).toHaveLength(1);
     const gates = CODE.match(/!openToolCalls\.has\(tc\.id\)/g) || [];
-    expect(gates).toHaveLength(sites.length);
+    expect(gates).toHaveLength(1);
+    const routed = CODE.match(/announceToolCallChunk\(chunk\)/g) || [];
+    expect(routed.length).toBeGreaterThanOrEqual(3);
   });
 });
 

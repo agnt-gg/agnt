@@ -1401,10 +1401,13 @@ export default {
         }
         case 'tool_pending':
           // The model has named the tool and is still writing its arguments.
-          // Move the status line and spinner now; tool_start upgrades the
-          // wording once the arguments are in.
+          // Move the status line now; tool_start upgrades the wording once
+          // the arguments are in. NOT `runningToolCalls`: nothing is running
+          // yet, and MessageItem's pill reads that flag before anything else.
+          // Setting it here made every card in a fifteen-tool round say
+          // "running" from the moment the model named it — for the minutes
+          // it took to write the rest — while the store correctly said pending.
           if (isActiveView) {
-            runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = true;
             messageStates.value[data.assistantMessageId] = {
               type: 'tool',
               text: `Preparing ${data.toolCall.name}...`,

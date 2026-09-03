@@ -440,6 +440,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let accumulatedContent = '';
       let accumulatedReasoningContent = '';
       let accumulatedToolCalls = [];
+      // Indexes already announced as tool_call_complete (kept OFF the tool
+      // call objects — those go back to the provider verbatim).
+      const completeAnnounced = new Set();
       let role = 'assistant';
       let streamError = null;
       let finishReason = null;
@@ -594,6 +597,22 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
                 // Initialize tool call if needed
                 if (!accumulatedToolCalls[index]) {
+                  // Chat Completions never says "this call is finished"; the
+                  // only signal is the NEXT call starting. Announce the
+                  // previous call complete then — validated alone, so the
+                  // orchestrator may start it while this one streams
+                  // (eagerToolRuns.js). The whole-batch validation below is
+                  // unchanged; a later invalid call still re-streams the
+                  // attempt, and the orchestrator dedupes the repeat by
+                  // fingerprint.
+                  const previous = accumulatedToolCalls[index - 1];
+                  if (previous && onChunk && !completeAnnounced.has(index - 1)) {
+                    completeAnnounced.add(index - 1);
+                    const { valid } = validateToolCalls([previous], tools);
+                    if (valid.length === 1) {
+                      onChunk({ type: 'tool_call_complete', index: index - 1, toolCall: previous });
+                    }
+                  }
                   accumulatedToolCalls[index] = {
                     id: toolCallDelta.id || `tool-${Date.now()}-${index}`,
                     type: 'function',

@@ -44,6 +44,7 @@ import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/uti
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
 import { createOpenToolCallLedger, wrapSendEventWithLedger } from './orchestrator/openToolCalls.js';
+import { createEagerToolRuns } from './orchestrator/eagerToolRuns.js';
 import { persistTurnTranscript } from './orchestrator/persistTurnTranscript.js';
 import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
@@ -2212,446 +2213,50 @@ IMPORTANT: The image data is already available in the system context. You don't 
       ...agentMeta,
     });
 
-    // The streaming chunk handler is factored out so failover can reuse it
-    // across provider tiers. NOTE: the adapter only returns recoveredFromError
-    // when ZERO content chunks were emitted, so a failed tier never streams
-    // partial tokens — making pre-first-token failover clean.
-    const onStreamChunk = (chunk) => {
-        // Handle streaming chunks
-        if (chunk.type === 'content') {
-          sendEvent('content_delta', {
-            assistantMessageId,
-            delta: chunk.delta,
-            accumulated: chunk.accumulated,
-          });
-        } else if (chunk.type === 'reasoning') {
-          sendEvent('reasoning_delta', {
-            assistantMessageId,
-            delta: chunk.delta,
-            accumulated: chunk.accumulated,
-          });
-        } else if (chunk.type === 'tool_call_delta') {
-          // Announce the pending pill the moment we know the tool name+id, so
-          // the UI doesn't look frozen while args are still streaming. The
-          // canonical tool_start event below will upgrade it with full args.
-          // Adapters emit tool_call_delta repeatedly as args stream in; the
-          // ledger already knows the id after the first one, so announce once.
-          const tc = chunk.toolCall;
-          if (tc?.id && tc?.function?.name && !openToolCalls.has(tc.id)) {
-            sendEvent('tool_pending', {
-              assistantMessageId,
-              toolCall: { id: tc.id, name: tc.function.name },
-            });
-          }
-        }
-    };
-
-    // Every streaming LLM call in this turn (round 0, validation retry, tool
-    // loop, empty-response follow-up) goes through the same failover chain.
-    // A mid-turn 529 used to skip the chain: adapters exhausted retries, returned
-    // recoveredFromError, and the tool loop streamed the error card. Each tier
-    // rebuilds client+adapter; on failover we re-point the OUTER client/adapter/
-    // normalizedProvider/model so later rounds stay on the tier that worked.
-    const runTierStream = async (tier, messages, tools, onChunk) => {
-      if (tier.primary && !adapter) {
-        // The primary client could not be built (see primaryTierInitError
-        // above). Throwing HERE — inside runWithFallback — is what turns a
-        // missing credential into a normal failover instead of a silently
-        // empty "completed" turn.
-        throw primaryTierInitError
-          || new Error(`Could not initialise provider ${normalizedProvider}`);
-      }
-      if (!tier.primary) {
-        // Rebuild client+adapter for the fallback tier.
-        normalizedProvider = String(tier.provider).toLowerCase();
-        // Resolve the tier's model. buildProviderChain already fills tier.model
-        // with the provider's default when none was configured, so a null here
-        // means "provider default" — do NOT carry the PRIMARY provider's model
-        // across to a different provider (it would be an invalid model id).
-        model = tier.model || (await import('./ai/ProviderRegistry.js')).getTextModels(normalizedProvider)?.[0] || tier.model;
-        client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
-        conversationContext.llmClient = client;
-        // Keep the shared conversation context in sync so tools that resolve
-        // provider/model from context (analyze_image, custom tool execution,
-        // etc.) use the tier that actually served the turn — not the primary.
-        conversationContext.provider = normalizedProvider;
-        conversationContext.normalizedProvider = normalizedProvider;
-        conversationContext.model = model;
-        if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex') {
-          conversationContext.openai = client;
-        }
-      }
-      return adapter.callStream(
-        messages,
-        tools,
-        onChunk,
-        conversationContext // Pass context for vision image handling
-      );
-    };
-
-    const onProviderFallback = ({ from, to, reason }) => {
-      console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
-      if (conversationId) {
-        __failoverMemory.set(conversationId, { provider: to.provider, model: to.model });
-      }
-      sendEvent('provider_fallback', {
-        from: { provider: from.provider, model: from.model },
-        to: { provider: to.provider, model: to.model },
-        reason,
-        tier: to.tier,
-      });
-      __emitManifestForServedProvider(to.provider, to.model);
-    };
-
-    /**
-     * THE single place this turn executes the provider chain.
-     *
-     * Round 0, the validation retry, every tool-loop round and the no-text
-     * follow-up all go through here rather than reaching for the executor
-     * themselves. That is what keeps cancellation, rollover and the no-persist
-     * rule implemented — and provable — once instead of four times, which is
-     * the property dynamicRouting.invariants.test.js pins by counting this
-     * call site. Adding a stream that bypasses this wrapper would fork the
-     * failover semantics; toolLoopFailover.test.js guards against that too, by
-     * asserting runTierStream holds the only raw adapter.callStream in the file.
-     *
-     * The `await` is not incidental: this is the audited frame, and keeping it
-     * on the stack means a rejection from deep inside a tier still reports
-     * through here rather than losing the async boundary.
-     */
-    const streamAcrossChain = async (messages, tools, onChunk) => {
-      return await runWithFallback({
-        chain: providerChain,
-        // The user's Stop is not a provider failure. Every stream in the turn
-        // goes through this one call, so the guard covers all of them.
-        shouldStop: () => streamAbortController.signal.aborted,
-        runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
-        onFallback: onProviderFallback,
-      });
-    };
-
-    /**
-     * INVARIANT I3 — report the provider that SERVED, not the one requested.
-     *
-     * The manifest is built before the request goes out, from the requested
-     * provider. When the chain fails over, everything provider-dependent in it
-     * becomes a statement about a provider that never ran: measured 2026-08-09,
-     * a request for anthropic that Codex actually served still displayed
-     * Anthropic's 1h TTL and 0.1x cached rate. Observed on three separate
-     * providers, so it is the rule rather than an edge case.
-     *
-     * Token counts and the itemised inventory are provider-independent and
-     * unchanged, so only the economics/TTL/best-effort fields are recomputed
-     * and the existing context_manifest event is re-sent. The frontend already
-     * handles that event; a later one simply supersedes the earlier.
-     */
-    const __emitManifestForServedProvider = (servedProvider, servedModel) => {
-      if (!__lastManifest) return;
-      try {
-        const corrected = {
-          ...__lastManifest,
-          cacheTtlMs: promptCacheTtlMs(servedProvider, servedModel),
-          cacheBestEffort: promptCacheBestEffort(servedProvider),
-          economics: buildEconomics({
-            provider: servedProvider,
-            model: servedModel,
-            systemTokens: __manifestTokens.systemTokens,
-            toolTokens: __manifestTokens.toolTokens,
-          }),
-          servedProvider,
-          servedModel,
-        };
-        __lastManifest = corrected;
-        sendEvent('context_manifest', corrected);
-      } catch (err) {
-        // Never let an observability correction break a chat turn.
-        console.warn('[ContextManifest] Failed to re-emit for served provider:', err.message);
-      }
-    };
-
-    const { result: _r0, tier: _r0Tier } = await streamAcrossChain(
-      contextResult.messages,
-      finalToolSchemas,
-      onStreamChunk,
-    );
-
-    // Recovery banner (Option 2): if this turn ran on the PRIMARY provider and
-    // an earlier turn in this conversation had failed over, the default is back.
-    // Emit once and clear the memory so it only fires on the transition.
-    if (conversationId && _r0Tier && _r0Tier.primary && !_r0?.recoveredFromError && __failoverMemory.has(conversationId)) {
-      __failoverMemory.delete(conversationId);
-      console.log(`[Chat] Provider recovered: back on ${normalizedProvider}/${model || '?'}`);
-      sendEvent('provider_recovered', {
-        backTo: { provider: normalizedProvider, model },
-      });
-    }
-
-    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = _r0;
-    accumulateUsage(initialUsage);
-    // Fold this round's REAL prompt size (provider-reported) into the
-    // estimate calibration used by every subsequent manageContext call.
-    // Leftover error after the correction we actually applied. Must be
-    // measured BEFORE the fold below, which overwrites that correction.
-    {
-      const residual = computeResidualDrift(
-        conversationContext._estimateCalibration, initialUsage, contextResult.totalRequestTokens);
-      if (residual != null) {
-        conversationContext._residualDrift =
-          conversationContext._residualDrift == null
-            ? residual
-            : conversationContext._residualDrift * 0.5 + residual * 0.5;
-      }
-    }
-    conversationContext._estimateCalibration = updateEstimateCalibration(
-      conversationContext._estimateCalibration,
-      initialUsage,
-      contextResult.totalRequestTokens
-    );
-    if (conversationContext._estimateCalibration > 0) {
-      recordCalibration(normalizedProvider, model, conversationContext._estimateCalibration);
-    }
-
-    // Handle API errors that the adapter recovered from (401, 429, etc.)
-    // Also catches the wasEmpty branch — adapters mark empty responses with
-    // recoveredFromError so the user gets *something* in the bubble. We
-    // scrub the structural placeholder here so it doesn't render.
-    if (recoveredFromError) {
-      console.warn(
-        `[OrchestratorService] LLM adapter recovered from error ` +
-        `(provider=${normalizedProvider} model=${model} chatType=${chatType}): ${recoveredError}`
-      );
-      const extracted = extractDisplayText(responseMessage?.content);
-      const scrubbed = scrubEmptyPlaceholder(extracted);
-      if (scrubbed) {
-        sendEvent('content_delta', {
-          assistantMessageId,
-          delta: scrubbed,
-          accumulated: scrubbed,
-        });
-      } else {
-        console.warn(
-          `[Empty Response] provider=${normalizedProvider} model=${model} ` +
-          `round=0 chatType=${chatType} recoveredError="${recoveredError || 'unknown'}" ` +
-          `→ suppressing empty/error placeholder from chat stream`
-        );
-      }
-    }
-
-    // Handle tools being skipped (model doesn't support function calling)
-    if (toolsSkipped) {
-      console.log(`[OrchestratorService] Tools were skipped: ${toolsSkippedReason}`);
-      sendEvent('tools_skipped', {
-        assistantMessageId,
-        reason: toolsSkippedReason,
-        message: `⚠️ ${toolsSkippedReason}`,
-      });
-    }
-
-    // Handle invalid tool calls
-    if (invalidToolCalls && invalidToolCalls.length > 0) {
-      console.warn('Invalid tool calls detected and filtered out:', invalidToolCalls);
-      sendEvent('invalid_tool_calls', {
-        assistantMessageId,
-        invalidToolCalls: invalidToolCalls.map(({ toolCall, issues }) => ({
-          toolName: toolCall.function?.name || 'unknown',
-          issues: issues,
-          attemptedArgs: toolCall.function?.arguments,
-        })),
-        message: 'Some tool calls were malformed and have been filtered out. The system will continue with valid tool calls only.',
-      });
-
-      // Log invalid tool calls for debugging
-      allToolCallsForLogging.push({
-        type: 'invalid_tool_calls',
-        count: invalidToolCalls.length,
-        details: invalidToolCalls,
-      });
-    }
-
-    // Handle tool call errors
-    if (toolCallError) {
-      console.warn('Tool call error detected, retrying with context:', toolCallError);
-      sendEvent('tool_error', {
-        error: 'Tool call error: ' + toolCallError.message,
-        details: toolCallError.details,
-        continuing: true,
-        retrying: true,
-      });
-
-      if (!toolCalls || toolCalls.length === 0) {
-        console.log('Tool call error handled by adapter, continuing with recovery response');
-      }
-    }
-
-    // Tool-calls-filtered recovery:
-    // When the adapter's validation (AJV or JSON-salvage) dropped every tool
-    // call the model attempted, and the surviving text is trivially short
-    // ("I'll work on it now..."), the tool loop would otherwise exit silently
-    // and the user sees Annie stop mid-task. Do one orchestrator-level retry
-    // with explicit validation feedback, then surface clearly if still empty.
-    const allToolCallsWereInvalid =
-      invalidToolCalls && invalidToolCalls.length > 0 && (!toolCalls || toolCalls.length === 0);
-    const rawContentStr = typeof responseMessage?.content === 'string'
-      ? responseMessage.content
-      : Array.isArray(responseMessage?.content)
-        ? responseMessage.content.filter((b) => b?.type === 'text').map((b) => b.text || '').join(' ')
-        : '';
-    const contentIsWeak = rawContentStr.trim().length < 200;
-
-    if (allToolCallsWereInvalid && contentIsWeak && !recoveredFromError) {
-      console.warn('[Tool Retry] All tool calls were filtered out and content is minimal — retrying with explicit validation feedback');
-
-      const validationSummary = invalidToolCalls
-        .map(({ toolCall, issues }) => {
-          const name = toolCall?.function?.name || 'unknown';
-          const args = toolCall?.function?.arguments || '(empty)';
-          const issueList = Array.isArray(issues) ? issues.join('; ') : String(issues);
-          return `- Tool "${name}" failed validation: ${issueList}\n  Attempted args: ${args.substring(0, 300)}${args.length > 300 ? '...' : ''}`;
-        })
-        .join('\n');
-
-      sendEvent('tool_error', {
-        error: 'All tool calls were filtered out by schema validation; retrying with correction guidance.',
-        details: { invalidCount: invalidToolCalls.length },
-        continuing: true,
-        retrying: true,
-      });
-
-      // Build retry messages: include the failed assistant turn + a correction nudge
-      const retryMessages = [
-        ...contextResult.messages,
-        responseMessage,
-        {
-          role: 'user',
-          content: `[System: Your previous response generated ${invalidToolCalls.length} tool call(s) that failed schema validation. Specific failures:\n${validationSummary}\n\nPlease retry. Either (a) call the correct tool with parameters that match its schema exactly, or (b) respond with a plain-text answer if no tool is needed. Do not repeat the malformed call.]`,
-        },
-      ];
-
-      try {
-        const { result: retryResponse } = await streamAcrossChain(
-          retryMessages,
-          finalToolSchemas,
-          (chunk) => {
-            if (chunk.type === 'content') {
-              sendEvent('content_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
-            } else if (chunk.type === 'reasoning') {
-              sendEvent('reasoning_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
-            } else if (chunk.type === 'tool_call_delta') {
-              const tc = chunk.toolCall;
-              if (tc?.id && tc?.function?.name && !openToolCalls.has(tc.id)) {
-                sendEvent('tool_pending', {
-                  assistantMessageId,
-                  toolCall: { id: tc.id, name: tc.function.name },
-                });
-              }
-            }
-          },
-        );
-        accumulateUsage(retryResponse.usage);
-
-        if (retryResponse.toolCalls && retryResponse.toolCalls.length > 0) {
-          console.log(`[Tool Retry] Recovered ${retryResponse.toolCalls.length} valid tool call(s) after validation-feedback retry`);
-          responseMessage = retryResponse.responseMessage;
-          toolCalls = retryResponse.toolCalls;
-          invalidToolCalls = retryResponse.invalidToolCalls;
-        } else {
-          // Still no valid tool calls — accept the retry's text response if it's
-          // more substantial, and surface the failure clearly to the user.
-          const retryContentStr = typeof retryResponse.responseMessage?.content === 'string'
-            ? retryResponse.responseMessage.content
-            : '';
-          if (retryContentStr.trim().length > rawContentStr.trim().length) {
-            responseMessage = retryResponse.responseMessage;
-          }
-          sendEvent('tool_error', {
-            error: `The model was unable to produce valid tool calls after a correction retry. ${invalidToolCalls.length} attempt(s) failed schema validation. Try rephrasing your request or switching providers.`,
-            details: { invalidCount: invalidToolCalls.length },
-            continuing: false,
-            retrying: false,
-          });
-        }
-      } catch (retryErr) {
-        console.error('[Tool Retry] Validation-feedback retry failed:', retryErr.message);
-        sendEvent('tool_error', {
-          error: `Tool-call retry failed: ${retryErr.message}`,
-          continuing: true,
-          retrying: false,
-        });
-      }
-    }
-
-    safePushAssistantMessage(messages, responseMessage);
-
-    // Ensure agent execution record is ready before tool loop needs it
-    await agentExecutionPromise;
-
-    // Tool execution loop - LLM decides when to stop
-    let currentRound = 0;
+    // ---- One tool call, start to finish -----------------------------------
+    //
+    // Hoisted out of the round loop so a call can start the moment its
+    // transport says the arguments are complete (`tool_call_complete`),
+    // while the model is still writing the next one. See eagerToolRuns.js.
     const toolExecutionDetails = [];
-    // Set when mention_agent executes: the floor passes to another
-    // participant, so this speaker's turn ENDS — no further LLM rounds, no
-    // forced follow-up summary. The frontend dispatches the mentioned
-    // agent's turn when it sees the tool_end.
-    let floorPassed = false;
+    // Per-user "Async tool execution" toggle. Default is OFF (experimental
+    // opt-in). Strict-true check means any context that didn't go through
+    // chatConfigs (and therefore lacks _frozenAsyncToolsEnabled) is treated
+    // as disabled. When off, the prompt has no async guidance and the tool
+    // schemas have no async params, so the LLM shouldn't try to use them.
+    // Belt-and-suspenders: if a stale schema or in-flight turn slips one
+    // through anyway, force it to sync below.
+    const asyncToolsGloballyDisabled =
+      conversationContext._frozenAsyncToolsEnabled !== true;
 
-    // Gate on an EXPLICIT cancel, not on transport health. A closed socket used
-    // to stop the tool loop here, which is why refreshing mid-run killed the
-    // work outright instead of merely hiding it.
-    while (toolCalls && toolCalls.length > 0 && currentRound < config.maxToolRounds && !streamAbortController.signal.aborted) {
-      currentRound++;
-      console.log(`[Tool Loop] Round ${currentRound}: Executing ${toolCalls.length} tool(s)`);
-
-      // Per-user "Async tool execution" toggle. Default is OFF (experimental
-      // opt-in). Strict-true check means any context that didn't go through
-      // chatConfigs (and therefore lacks _frozenAsyncToolsEnabled) is treated
-      // as disabled. When off, the prompt has no async guidance and the tool
-      // schemas have no async params, so the LLM shouldn't try to use them.
-      // Belt-and-suspenders: if a stale schema or in-flight turn slips one
-      // through anyway, force it to sync below.
-      const asyncToolsGloballyDisabled =
-        conversationContext._frozenAsyncToolsEnabled !== true;
-
-      // Build the set of (toolName + arg-fingerprint) being queued async this
-      // round. Used to reject the LLM emitting BOTH an async + sync version of
-      // the *same logical call* (same args) — which would dump a preview
-      // answer into the queueing reply and double-output when the autonomous
-      // follow-up later delivers the real result.
-      //
-      // Keyed on name + clean-args (control params stripped) so legitimately
-      // distinct parallel calls — three `generate_image` with different
-      // prompts, etc. — are NOT collapsed into a single fingerprint.
-      //
-      // Also skipped entirely when the global toggle is off: nothing will
-      // actually queue async, so the dedup must be a no-op (otherwise sync
-      // calls get rejected pointing at an async result that never arrives).
-      const stripAsyncControlParams = (rawArgs) => {
-        const a = { ...rawArgs };
-        delete a._executeAsync;
-        delete a._estimatedMinutes;
-        delete a._interval;
-        delete a._stopAfter;
-        delete a._duration;
-        delete a._delayFirst;
-        return a;
-      };
-      const asyncQueuedFingerprints = new Set();
-      if (!asyncToolsGloballyDisabled) {
-        for (const tc of toolCalls) {
-          try {
-            const args = JSON.parse(tc.function.arguments);
-            if (args && args._executeAsync === true) {
-              asyncQueuedFingerprints.add(
-                `${tc.function.name}::${JSON.stringify(stripAsyncControlParams(args))}`
-              );
-            }
-          } catch {
-            // Per-call parse error is reported separately downstream.
-          }
-        }
-      }
-
-      const toolPromises = toolCalls.map(async (toolCall) => {
+    // Build the set of (toolName + arg-fingerprint) being queued async this
+    // round. Used to reject the LLM emitting BOTH an async + sync version of
+    // the *same logical call* (same args) — which would dump a preview
+    // answer into the queueing reply and double-output when the autonomous
+    // follow-up later delivers the real result.
+    //
+    // Keyed on name + clean-args (control params stripped) so legitimately
+    // distinct parallel calls — three `generate_image` with different
+    // prompts, etc. — are NOT collapsed into a single fingerprint.
+    //
+    // Also skipped entirely when the global toggle is off: nothing will
+    // actually queue async, so the dedup must be a no-op (otherwise sync
+    // calls get rejected pointing at an async result that never arrives).
+    const stripAsyncControlParams = (rawArgs) => {
+      const a = { ...rawArgs };
+      delete a._executeAsync;
+      delete a._estimatedMinutes;
+      delete a._interval;
+      delete a._stopAfter;
+      delete a._duration;
+      delete a._delayFirst;
+      return a;
+    };
+    const asyncQueuedFingerprints = new Set();
+    // Sync calls already running this round, by fingerprint, so an async
+    // twin arriving LATER is the one rejected (the sync result is coming).
+    const syncStartedFingerprints = new Set();
+    const runToolCall = async (toolCall) => {
         const functionName = toolCall.function.name;
         let functionArgs;
         let toolCallError = null;
@@ -2797,6 +2402,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
           `${functionName}::${JSON.stringify(stripAsyncControlParams(functionArgs))}`;
         const isDuplicateSyncOfAsyncTool =
           !shouldExecuteAsync && asyncQueuedFingerprints.has(callFingerprint);
+        // The mirror image, reachable only through eager starts: the sync
+        // call is already RUNNING when its async twin arrives. Reject the
+        // twin — the answer is already on its way in this reply.
+        const isDuplicateAsyncOfRunningSync =
+          shouldExecuteAsync && syncStartedFingerprints.has(callFingerprint);
+        if (!shouldExecuteAsync) syncStartedFingerprints.add(callFingerprint);
 
         // Pass raw args to AsyncToolQueue - it strips control params internally
         // For sync execution, strip them here
@@ -2811,7 +2422,15 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // Preserved before offloading to avoid DATA_REF placeholders in frontend events
         let preservedFrontendEvents = null;
 
-        if (isDuplicateSyncOfAsyncTool) {
+        if (isDuplicateAsyncOfRunningSync) {
+          console.warn(`[AsyncTool] Rejecting async duplicate of a sync call already running: ${functionName}`);
+          const dupError = {
+            success: false,
+            error: `Tool "${functionName}" with these arguments is already running synchronously in this turn. The async duplicate is rejected to prevent double-output; its result arrives in this reply.`,
+          };
+          functionResponseContent = JSON.stringify(dupError);
+          toolCallResult = dupError;
+        } else if (isDuplicateSyncOfAsyncTool) {
           console.warn(`[AsyncTool] Rejecting sync duplicate of async-queued tool: ${functionName}`);
           const dupError = {
             success: false,
@@ -3232,9 +2851,458 @@ IMPORTANT: The image data is already available in the system context. You don't 
           name: functionName,
           content: functionResponseContent,
         };
+    };
+
+    const eagerToolRuns = createEagerToolRuns((toolCall) =>
+      // The execution record is created asynchronously at turn start; a
+      // tool that runs before it resolves would go unrecorded.
+      agentExecutionPromise.then(() => runToolCall(toolCall)),
+    );
+
+    // Tool-call chunks from any streaming call in this turn. `tool_call_delta`
+    // draws the card (once per id); `tool_call_complete` starts the run.
+    const announceToolCallChunk = (chunk) => {
+      const tc = chunk.toolCall;
+      if (!tc?.id || !tc?.function?.name) return;
+      if (chunk.type === 'tool_call_delta') {
+        if (!openToolCalls.has(tc.id)) {
+          sendEvent('tool_pending', { assistantMessageId, toolCall: { id: tc.id, name: tc.function.name } });
+        }
+      } else if (chunk.type === 'tool_call_complete') {
+        if (streamAbortController.signal.aborted) return;
+        if (eagerToolRuns.start(tc)) {
+          console.log(`[Tool Loop] Started ${tc.function.name} while the model is still streaming`);
+        }
+      }
+    };
+
+    // The round's view of one call: the run already in flight, or a fresh
+    // one. A duplicate (same name + arguments re-streamed under a new id)
+    // reuses the first run's result re-keyed to the id the model now holds.
+    const claimToolRun = async (toolCall) => {
+      const claimed = eagerToolRuns.claim(toolCall.id);
+      if (!claimed) return runToolCall(toolCall);
+      const functionName = toolCall.function.name;
+      const result = await claimed.promise;
+      if (result && result.__eagerRunError) {
+        const message = `Tool execution failed: ${result.__eagerRunError?.message || result.__eagerRunError}`;
+        console.error(`[Tool Loop] Eager run of ${functionName} threw:`, result.__eagerRunError);
+        sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, name: functionName, error: message } });
+        return { tool_call_id: toolCall.id, role: 'tool', name: functionName, content: JSON.stringify({ success: false, error: message, recoverable: true }) };
+      }
+      if (claimed.duplicateOf === null) return result;
+      console.log(`[Tool Loop] ${functionName} ${toolCall.id} duplicates ${claimed.duplicateOf}; reusing its result`);
+      let args;
+      try { args = JSON.parse(toolCall.function.arguments); } catch { args = toolCall.function.arguments; }
+      let parsed;
+      try { parsed = JSON.parse(result.content); } catch { parsed = result.content; }
+      const error = parsed && typeof parsed === 'object' && parsed.success === false ? (parsed.error || 'Tool execution returned failure status') : null;
+      sendEvent('tool_start', { assistantMessageId, toolCall: { id: toolCall.id, name: functionName, args } });
+      sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, name: functionName, result: parsed, error } });
+      return { ...result, tool_call_id: toolCall.id };
+    };
+
+    // Runs the round never claimed: the adapter dropped the call after it
+    // was started. The work happened; settle it inside the turn.
+    const settleUnclaimedEagerRuns = async () => {
+      const unclaimed = eagerToolRuns.drain();
+      if (unclaimed.length === 0) return;
+      console.warn(`[Tool Loop] ${unclaimed.length} eager tool run(s) were never claimed by a round: ${unclaimed.map((u) => u.id).join(', ')}`);
+      await Promise.all(unclaimed.map((u) => u.promise));
+    };
+
+    // The streaming chunk handler is factored out so failover can reuse it
+    // across provider tiers. NOTE: the adapter only returns recoveredFromError
+    // when ZERO content chunks were emitted, so a failed tier never streams
+    // partial tokens — making pre-first-token failover clean.
+    const onStreamChunk = (chunk) => {
+        // Handle streaming chunks
+        if (chunk.type === 'content') {
+          sendEvent('content_delta', {
+            assistantMessageId,
+            delta: chunk.delta,
+            accumulated: chunk.accumulated,
+          });
+        } else if (chunk.type === 'reasoning') {
+          sendEvent('reasoning_delta', {
+            assistantMessageId,
+            delta: chunk.delta,
+            accumulated: chunk.accumulated,
+          });
+        } else {
+          announceToolCallChunk(chunk);
+        }
+    };
+
+    // Every streaming LLM call in this turn (round 0, validation retry, tool
+    // loop, empty-response follow-up) goes through the same failover chain.
+    // A mid-turn 529 used to skip the chain: adapters exhausted retries, returned
+    // recoveredFromError, and the tool loop streamed the error card. Each tier
+    // rebuilds client+adapter; on failover we re-point the OUTER client/adapter/
+    // normalizedProvider/model so later rounds stay on the tier that worked.
+    const runTierStream = async (tier, messages, tools, onChunk) => {
+      if (tier.primary && !adapter) {
+        // The primary client could not be built (see primaryTierInitError
+        // above). Throwing HERE — inside runWithFallback — is what turns a
+        // missing credential into a normal failover instead of a silently
+        // empty "completed" turn.
+        throw primaryTierInitError
+          || new Error(`Could not initialise provider ${normalizedProvider}`);
+      }
+      if (!tier.primary) {
+        // Rebuild client+adapter for the fallback tier.
+        normalizedProvider = String(tier.provider).toLowerCase();
+        // Resolve the tier's model. buildProviderChain already fills tier.model
+        // with the provider's default when none was configured, so a null here
+        // means "provider default" — do NOT carry the PRIMARY provider's model
+        // across to a different provider (it would be an invalid model id).
+        model = tier.model || (await import('./ai/ProviderRegistry.js')).getTextModels(normalizedProvider)?.[0] || tier.model;
+        client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
+        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
+        conversationContext.llmClient = client;
+        // Keep the shared conversation context in sync so tools that resolve
+        // provider/model from context (analyze_image, custom tool execution,
+        // etc.) use the tier that actually served the turn — not the primary.
+        conversationContext.provider = normalizedProvider;
+        conversationContext.normalizedProvider = normalizedProvider;
+        conversationContext.model = model;
+        if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex') {
+          conversationContext.openai = client;
+        }
+      }
+      return adapter.callStream(
+        messages,
+        tools,
+        onChunk,
+        conversationContext // Pass context for vision image handling
+      );
+    };
+
+    const onProviderFallback = ({ from, to, reason }) => {
+      console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+      if (conversationId) {
+        __failoverMemory.set(conversationId, { provider: to.provider, model: to.model });
+      }
+      sendEvent('provider_fallback', {
+        from: { provider: from.provider, model: from.model },
+        to: { provider: to.provider, model: to.model },
+        reason,
+        tier: to.tier,
+      });
+      __emitManifestForServedProvider(to.provider, to.model);
+    };
+
+    /**
+     * THE single place this turn executes the provider chain.
+     *
+     * Round 0, the validation retry, every tool-loop round and the no-text
+     * follow-up all go through here rather than reaching for the executor
+     * themselves. That is what keeps cancellation, rollover and the no-persist
+     * rule implemented — and provable — once instead of four times, which is
+     * the property dynamicRouting.invariants.test.js pins by counting this
+     * call site. Adding a stream that bypasses this wrapper would fork the
+     * failover semantics; toolLoopFailover.test.js guards against that too, by
+     * asserting runTierStream holds the only raw adapter.callStream in the file.
+     *
+     * The `await` is not incidental: this is the audited frame, and keeping it
+     * on the stack means a rejection from deep inside a tier still reports
+     * through here rather than losing the async boundary.
+     */
+    const streamAcrossChain = async (messages, tools, onChunk) => {
+      return await runWithFallback({
+        chain: providerChain,
+        // The user's Stop is not a provider failure. Every stream in the turn
+        // goes through this one call, so the guard covers all of them.
+        shouldStop: () => streamAbortController.signal.aborted,
+        runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
+        onFallback: onProviderFallback,
+      });
+    };
+
+    /**
+     * INVARIANT I3 — report the provider that SERVED, not the one requested.
+     *
+     * The manifest is built before the request goes out, from the requested
+     * provider. When the chain fails over, everything provider-dependent in it
+     * becomes a statement about a provider that never ran: measured 2026-08-09,
+     * a request for anthropic that Codex actually served still displayed
+     * Anthropic's 1h TTL and 0.1x cached rate. Observed on three separate
+     * providers, so it is the rule rather than an edge case.
+     *
+     * Token counts and the itemised inventory are provider-independent and
+     * unchanged, so only the economics/TTL/best-effort fields are recomputed
+     * and the existing context_manifest event is re-sent. The frontend already
+     * handles that event; a later one simply supersedes the earlier.
+     */
+    const __emitManifestForServedProvider = (servedProvider, servedModel) => {
+      if (!__lastManifest) return;
+      try {
+        const corrected = {
+          ...__lastManifest,
+          cacheTtlMs: promptCacheTtlMs(servedProvider, servedModel),
+          cacheBestEffort: promptCacheBestEffort(servedProvider),
+          economics: buildEconomics({
+            provider: servedProvider,
+            model: servedModel,
+            systemTokens: __manifestTokens.systemTokens,
+            toolTokens: __manifestTokens.toolTokens,
+          }),
+          servedProvider,
+          servedModel,
+        };
+        __lastManifest = corrected;
+        sendEvent('context_manifest', corrected);
+      } catch (err) {
+        // Never let an observability correction break a chat turn.
+        console.warn('[ContextManifest] Failed to re-emit for served provider:', err.message);
+      }
+    };
+
+    const { result: _r0, tier: _r0Tier } = await streamAcrossChain(
+      contextResult.messages,
+      finalToolSchemas,
+      onStreamChunk,
+    );
+
+    // Recovery banner (Option 2): if this turn ran on the PRIMARY provider and
+    // an earlier turn in this conversation had failed over, the default is back.
+    // Emit once and clear the memory so it only fires on the transition.
+    if (conversationId && _r0Tier && _r0Tier.primary && !_r0?.recoveredFromError && __failoverMemory.has(conversationId)) {
+      __failoverMemory.delete(conversationId);
+      console.log(`[Chat] Provider recovered: back on ${normalizedProvider}/${model || '?'}`);
+      sendEvent('provider_recovered', {
+        backTo: { provider: normalizedProvider, model },
+      });
+    }
+
+    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = _r0;
+    accumulateUsage(initialUsage);
+    // Fold this round's REAL prompt size (provider-reported) into the
+    // estimate calibration used by every subsequent manageContext call.
+    // Leftover error after the correction we actually applied. Must be
+    // measured BEFORE the fold below, which overwrites that correction.
+    {
+      const residual = computeResidualDrift(
+        conversationContext._estimateCalibration, initialUsage, contextResult.totalRequestTokens);
+      if (residual != null) {
+        conversationContext._residualDrift =
+          conversationContext._residualDrift == null
+            ? residual
+            : conversationContext._residualDrift * 0.5 + residual * 0.5;
+      }
+    }
+    conversationContext._estimateCalibration = updateEstimateCalibration(
+      conversationContext._estimateCalibration,
+      initialUsage,
+      contextResult.totalRequestTokens
+    );
+    if (conversationContext._estimateCalibration > 0) {
+      recordCalibration(normalizedProvider, model, conversationContext._estimateCalibration);
+    }
+
+    // Handle API errors that the adapter recovered from (401, 429, etc.)
+    // Also catches the wasEmpty branch — adapters mark empty responses with
+    // recoveredFromError so the user gets *something* in the bubble. We
+    // scrub the structural placeholder here so it doesn't render.
+    if (recoveredFromError) {
+      console.warn(
+        `[OrchestratorService] LLM adapter recovered from error ` +
+        `(provider=${normalizedProvider} model=${model} chatType=${chatType}): ${recoveredError}`
+      );
+      const extracted = extractDisplayText(responseMessage?.content);
+      const scrubbed = scrubEmptyPlaceholder(extracted);
+      if (scrubbed) {
+        sendEvent('content_delta', {
+          assistantMessageId,
+          delta: scrubbed,
+          accumulated: scrubbed,
+        });
+      } else {
+        console.warn(
+          `[Empty Response] provider=${normalizedProvider} model=${model} ` +
+          `round=0 chatType=${chatType} recoveredError="${recoveredError || 'unknown'}" ` +
+          `→ suppressing empty/error placeholder from chat stream`
+        );
+      }
+    }
+
+    // Handle tools being skipped (model doesn't support function calling)
+    if (toolsSkipped) {
+      console.log(`[OrchestratorService] Tools were skipped: ${toolsSkippedReason}`);
+      sendEvent('tools_skipped', {
+        assistantMessageId,
+        reason: toolsSkippedReason,
+        message: `⚠️ ${toolsSkippedReason}`,
+      });
+    }
+
+    // Handle invalid tool calls
+    if (invalidToolCalls && invalidToolCalls.length > 0) {
+      console.warn('Invalid tool calls detected and filtered out:', invalidToolCalls);
+      sendEvent('invalid_tool_calls', {
+        assistantMessageId,
+        invalidToolCalls: invalidToolCalls.map(({ toolCall, issues }) => ({
+          toolName: toolCall.function?.name || 'unknown',
+          issues: issues,
+          attemptedArgs: toolCall.function?.arguments,
+        })),
+        message: 'Some tool calls were malformed and have been filtered out. The system will continue with valid tool calls only.',
       });
 
+      // Log invalid tool calls for debugging
+      allToolCallsForLogging.push({
+        type: 'invalid_tool_calls',
+        count: invalidToolCalls.length,
+        details: invalidToolCalls,
+      });
+    }
+
+    // Handle tool call errors
+    if (toolCallError) {
+      console.warn('Tool call error detected, retrying with context:', toolCallError);
+      sendEvent('tool_error', {
+        error: 'Tool call error: ' + toolCallError.message,
+        details: toolCallError.details,
+        continuing: true,
+        retrying: true,
+      });
+
+      if (!toolCalls || toolCalls.length === 0) {
+        console.log('Tool call error handled by adapter, continuing with recovery response');
+      }
+    }
+
+    // Tool-calls-filtered recovery:
+    // When the adapter's validation (AJV or JSON-salvage) dropped every tool
+    // call the model attempted, and the surviving text is trivially short
+    // ("I'll work on it now..."), the tool loop would otherwise exit silently
+    // and the user sees Annie stop mid-task. Do one orchestrator-level retry
+    // with explicit validation feedback, then surface clearly if still empty.
+    const allToolCallsWereInvalid =
+      invalidToolCalls && invalidToolCalls.length > 0 && (!toolCalls || toolCalls.length === 0);
+    const rawContentStr = typeof responseMessage?.content === 'string'
+      ? responseMessage.content
+      : Array.isArray(responseMessage?.content)
+        ? responseMessage.content.filter((b) => b?.type === 'text').map((b) => b.text || '').join(' ')
+        : '';
+    const contentIsWeak = rawContentStr.trim().length < 200;
+
+    if (allToolCallsWereInvalid && contentIsWeak && !recoveredFromError) {
+      console.warn('[Tool Retry] All tool calls were filtered out and content is minimal — retrying with explicit validation feedback');
+
+      const validationSummary = invalidToolCalls
+        .map(({ toolCall, issues }) => {
+          const name = toolCall?.function?.name || 'unknown';
+          const args = toolCall?.function?.arguments || '(empty)';
+          const issueList = Array.isArray(issues) ? issues.join('; ') : String(issues);
+          return `- Tool "${name}" failed validation: ${issueList}\n  Attempted args: ${args.substring(0, 300)}${args.length > 300 ? '...' : ''}`;
+        })
+        .join('\n');
+
+      sendEvent('tool_error', {
+        error: 'All tool calls were filtered out by schema validation; retrying with correction guidance.',
+        details: { invalidCount: invalidToolCalls.length },
+        continuing: true,
+        retrying: true,
+      });
+
+      // Build retry messages: include the failed assistant turn + a correction nudge
+      const retryMessages = [
+        ...contextResult.messages,
+        responseMessage,
+        {
+          role: 'user',
+          content: `[System: Your previous response generated ${invalidToolCalls.length} tool call(s) that failed schema validation. Specific failures:\n${validationSummary}\n\nPlease retry. Either (a) call the correct tool with parameters that match its schema exactly, or (b) respond with a plain-text answer if no tool is needed. Do not repeat the malformed call.]`,
+        },
+      ];
+
+      try {
+        const { result: retryResponse } = await streamAcrossChain(
+          retryMessages,
+          finalToolSchemas,
+          (chunk) => {
+            if (chunk.type === 'content') {
+              sendEvent('content_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            } else if (chunk.type === 'reasoning') {
+              sendEvent('reasoning_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            } else {
+              announceToolCallChunk(chunk);
+            }
+          },
+        );
+        accumulateUsage(retryResponse.usage);
+
+        if (retryResponse.toolCalls && retryResponse.toolCalls.length > 0) {
+          console.log(`[Tool Retry] Recovered ${retryResponse.toolCalls.length} valid tool call(s) after validation-feedback retry`);
+          responseMessage = retryResponse.responseMessage;
+          toolCalls = retryResponse.toolCalls;
+          invalidToolCalls = retryResponse.invalidToolCalls;
+        } else {
+          // Still no valid tool calls — accept the retry's text response if it's
+          // more substantial, and surface the failure clearly to the user.
+          const retryContentStr = typeof retryResponse.responseMessage?.content === 'string'
+            ? retryResponse.responseMessage.content
+            : '';
+          if (retryContentStr.trim().length > rawContentStr.trim().length) {
+            responseMessage = retryResponse.responseMessage;
+          }
+          sendEvent('tool_error', {
+            error: `The model was unable to produce valid tool calls after a correction retry. ${invalidToolCalls.length} attempt(s) failed schema validation. Try rephrasing your request or switching providers.`,
+            details: { invalidCount: invalidToolCalls.length },
+            continuing: false,
+            retrying: false,
+          });
+        }
+      } catch (retryErr) {
+        console.error('[Tool Retry] Validation-feedback retry failed:', retryErr.message);
+        sendEvent('tool_error', {
+          error: `Tool-call retry failed: ${retryErr.message}`,
+          continuing: true,
+          retrying: false,
+        });
+      }
+    }
+
+    safePushAssistantMessage(messages, responseMessage);
+
+    // Ensure agent execution record is ready before tool loop needs it
+    await agentExecutionPromise;
+
+    // Tool execution loop - LLM decides when to stop
+    let currentRound = 0;
+    // Set when mention_agent executes: the floor passes to another
+    // participant, so this speaker's turn ENDS — no further LLM rounds, no
+    // forced follow-up summary. The frontend dispatches the mentioned
+    // agent's turn when it sees the tool_end.
+    let floorPassed = false;
+
+    // Gate on an EXPLICIT cancel, not on transport health. A closed socket used
+    // to stop the tool loop here, which is why refreshing mid-run killed the
+    // work outright instead of merely hiding it.
+    while (toolCalls && toolCalls.length > 0 && currentRound < config.maxToolRounds && !streamAbortController.signal.aborted) {
+      currentRound++;
+      console.log(`[Tool Loop] Round ${currentRound}: Executing ${toolCalls.length} tool(s)`);
+
+      if (!asyncToolsGloballyDisabled) {
+        for (const tc of toolCalls) {
+          try {
+            const args = JSON.parse(tc.function.arguments);
+            if (args && args._executeAsync === true) {
+              asyncQueuedFingerprints.add(
+                `${tc.function.name}::${JSON.stringify(stripAsyncControlParams(args))}`
+              );
+            }
+          } catch {
+            // Per-call parse error is reported separately downstream.
+          }
+        }
+      }
+
+      const toolPromises = toolCalls.map((toolCall) => claimToolRun(toolCall));
       const toolResponses = await Promise.all(toolPromises);
+      await settleUnclaimedEagerRuns();
+      asyncQueuedFingerprints.clear();
+      syncStartedFingerprints.clear();
       const formattedToolResponses = adapter.formatToolResults(toolResponses);
       messages.push(...formattedToolResponses);
 
@@ -3467,14 +3535,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
               delta: chunk.delta,
               accumulated: chunk.accumulated,
             });
-          } else if (chunk.type === 'tool_call_delta') {
-            const tc = chunk.toolCall;
-            if (tc?.id && tc?.function?.name && !openToolCalls.has(tc.id)) {
-              sendEvent('tool_pending', {
-                assistantMessageId,
-                toolCall: { id: tc.id, name: tc.function.name },
-              });
-            }
+          } else {
+            announceToolCallChunk(chunk);
           }
         },
       );
@@ -3551,6 +3613,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // assigned when a stream COMPLETES, but cards are drawn by tool_pending as
     // each call is announced mid-stream. Abort during that announcement and
     // the cards exist while `toolCalls` is still empty (#88).
+    //
+    // Runs started eagerly during the aborted stream are real work with a real
+    // result on the way; let them land first so only calls that never ran are
+    // told they were interrupted.
+    await settleUnclaimedEagerRuns();
     if (streamAbortController.signal.aborted && openToolCalls.size > 0) {
       const settled = openToolCalls.size;
       for (const event of openToolCalls.interruptionEvents(assistantMessageId)) {

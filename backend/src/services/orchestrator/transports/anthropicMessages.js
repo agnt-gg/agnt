@@ -1287,6 +1287,15 @@ Please carefully check the tool schema and ensure all parameters match the expec
                       index: accumulatedToolCalls.length - 1,
                       toolCall: toolCall,
                     });
+                    // The block is closed and its JSON parsed: this call will
+                    // be in the returned `toolCalls` exactly as it is now.
+                    // The orchestrator may start executing it while the
+                    // model writes the next one (eagerToolRuns.js).
+                    onChunk({
+                      type: 'tool_call_complete',
+                      index: accumulatedToolCalls.length - 1,
+                      toolCall: toolCall,
+                    });
                   }
                 }
               }
