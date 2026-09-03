@@ -27,11 +27,12 @@ describe('jumpIndex', () => {
       expect(screens).toContain(s);
     }
     // The first screen of a section is labelled with the section name.
-    expect(goto.find((i) => i.action.screen === 'WorkflowsScreen').label).toBe('Automations');
+    expect(goto.find((i) => i.action.screen === 'WorkflowsScreen').label).toBe('Workflows');
+    expect(goto.find((i) => i.action.screen === 'ToolsScreen').label).toBe('Tools');
     expect(goto.find((i) => i.action.screen === 'ArtifactsScreen').label).toBe('Files');
     expect(goto.find((i) => i.action.screen === 'TracesScreen').label).toBe('Activity');
     // Later tabs are qualified by their row so the palette reads like the rail.
-    expect(goto.find((i) => i.action.screen === 'ToolsScreen').label).toBe('Automations › Tools');
+    expect(goto.find((i) => i.action.screen === 'WidgetManagerScreen').label).toBe('Tools › Widgets');
     expect(goto.find((i) => i.action.screen === 'SkillsScreen').label).toBe('Agents › Skills');
     expect(goto.find((i) => i.action.screen === 'MemoryScreen').label).toBe('Agents › Memory');
     expect(goto.find((i) => i.action.screen === 'WorkspaceScreen').label).toBe('Chat › Workspaces');

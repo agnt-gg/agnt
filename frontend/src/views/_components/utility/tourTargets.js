@@ -13,21 +13,22 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.chat',             selector: '[data-tour-id="sidebar.chat"]',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Workspaces)', safeToSimulate: true },
   { id: 'sidebar.dashboard',        selector: '[data-tour-id="sidebar.dashboard"]',        screen: null, description: 'Sidebar button: Home (the dashboard)', safeToSimulate: true },
 
-  // ── Sidebar: MY WORK ───────────────────────────────────────────────
+  // ── Sidebar: WORK ──────────────────────────────────────────────────
   { id: 'sidebar.goals',            selector: '[data-tour-id="sidebar.goals"]',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
   { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Activity (every workflow, goal and agent run)', safeToSimulate: true },
   { id: 'sidebar.artifacts',         selector: '[data-tour-id="sidebar.artifacts"]',         screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
 
-  // ── Sidebar: MY TEAM ───────────────────────────────────────────────
-  { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents (tabs: Agents, Skills, Memory, Approvals)', safeToSimulate: true },
-  { id: 'sidebar.automations',      selector: '[data-tour-id="sidebar.automations"]',      screen: null, description: 'Sidebar button: Automations (tabs: Workflows, Tools, Widgets)', safeToSimulate: true },
+  // ── Sidebar: ASSETS ────────────────────────────────────────────────
+  { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents (tabs: Agents, Skills, Memory)', safeToSimulate: true },
+  { id: 'sidebar.workflows',        selector: '[data-tour-id="sidebar.workflows"]',        screen: null, description: 'Sidebar button: Workflows', safeToSimulate: true },
+  { id: 'sidebar.tools',            selector: '[data-tour-id="sidebar.tools"]',            screen: null, description: 'Sidebar button: Tools (tabs: Tools, Widgets)', safeToSimulate: true },
 
-  // ── Sidebar: MY TOOLKIT ────────────────────────────────────────────
-  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',             screen: null, description: 'Sidebar button: Apps (tabs: Connected apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Add-ons — plugins)', safeToSimulate: true },
+  // ── Sidebar: CONNECTORS ────────────────────────────────────────────
+  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',             screen: null, description: 'Sidebar button: Apps (tabs: Apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Add-ons — plugins)', safeToSimulate: true },
   { id: 'sidebar.store',            selector: '[data-tour-id="sidebar.store"]',            screen: null, description: 'Sidebar button: Store (the marketplace)', safeToSimulate: true },
 
   // ── Sidebar: foot of the rail + controls ───────────────────────────
-  { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Improvements)', safeToSimulate: true },
+  { id: 'sidebar.settings',         selector: '[data-tour-id="sidebar.settings"]',         screen: null, description: 'Sidebar button: Settings (Profile, Billing, Theme, Approvals, Improvements)', safeToSimulate: true },
   { id: 'sidebar.add-page',         selector: '[data-tour-id="sidebar.add-page"]',         screen: null, description: 'Sidebar button: + New custom page', safeToSimulate: true },
   { id: 'sidebar.toggle',           selector: '[data-tour-id="sidebar.toggle"]',           screen: null, description: 'Sidebar collapse/expand toggle', safeToSimulate: true },
 

@@ -145,28 +145,31 @@ describe('canvas sections registry', () => {
       expect(rows[0].startsGroup).toBe(true);
     });
 
-    it('renders the four intended main groups in order (today · my work · my team · my toolkit)', () => {
-      // Possessive captions a person would say about their own desk, in the
-      // order of the questions they ask: what is happening → what did I ask
-      // for → who is doing it → what are they working with.
-      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['TODAY', 'MY WORK', 'MY TEAM', 'MY TOOLKIT']);
+    it('renders the four intended main groups in order (today · work · assets · connectors)', () => {
+      // Four single-noun captions, in the order of the delegation chain a
+      // business user already understands: land and talk → what I want done
+      // and what came of it → the things I built that do it → the outside
+      // world they reach.
+      expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['TODAY', 'WORK', 'ASSETS', 'CONNECTORS']);
+      // Same part of speech throughout: one noun each, no verbs, no "my".
+      for (const caption of new Set(MAIN_SECTIONS.map((s) => s.group))) expect(caption).toMatch(/^[A-Z]+$/);
     });
 
-    it('the rail reads as nine plain nouns, in order', () => {
+    it('the rail reads as ten plain nouns, in order', () => {
       // The whole point of the grouping: cover the captions, read the rows
       // aloud, and a first-time user can say what each one holds. No verbs,
-      // no engineering words (runs, traces, artifacts, connectors, library,
-      // plugins, workspaces).
+      // no engineering words (runs, traces, artifacts, library, plugins,
+      // workspaces).
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
         'Chat', 'Home',
         'Goals', 'Activity', 'Files',
-        'Agents', 'Automations',
+        'Agents', 'Workflows', 'Tools',
         'Apps', 'Store',
       ]);
       expect(MAIN_SECTIONS.map((s) => s.id)).toEqual([
         'chat', 'dashboard',
         'goals', 'traces', 'artifacts',
-        'agents', 'automations',
+        'agents', 'workflows', 'tools',
         'apps', 'store',
       ]);
     });
@@ -187,41 +190,50 @@ describe('canvas sections registry', () => {
     expect(MAIN_SECTIONS.some((s) => s.id === 'workspaces')).toBe(false);
   });
 
-  it('Files (ArtifactsScreen) is a MY WORK row beside Activity, not a Chat tab', () => {
+  it('Files (ArtifactsScreen) is a WORK row beside Activity, not a Chat tab', () => {
     // Runs, goals, agents and chats all produce files; only one of those is
     // a conversation, so a Chat tab was the wrong owner. The Chat inspector
     // keeps the provenance link (its Artifacts section ⇧-clicks here).
     const outputs = MAIN_SECTIONS.find((s) => s.id === 'artifacts');
-    expect(outputs?.group).toBe('MY WORK');
+    expect(outputs?.group).toBe('WORK');
     expect(outputs.label).toBe('Files');
     expect(outputs.screens).toEqual([{ screen: 'ArtifactsScreen', label: 'FILES' }]);
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
     expect(chat.screens.some((t) => t.screen === 'ArtifactsScreen')).toBe(false);
   });
 
-  it('Agents is the team: Agents · Skills · Memory · Approvals, forge contextual', () => {
-    // Who they are, what they know, what they remember, what they may do
-    // without asking. Memory and Approvals were hidden behind the gear.
-    const agents = MAIN_SECTIONS.find((s) => s.id === 'agents');
-    expect(agents?.group).toBe('MY TEAM');
-    expect(agents.screens[0].screen).toBe('AgentsScreen');
-    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'SKILLS', 'MEMORY', 'APPROVALS']);
-    expect(visibleTabs(agents, 'AgentForgeScreen').map((t) => t.label)).toEqual(['AGENTS', 'AGENT FORGE', 'SKILLS', 'MEMORY', 'APPROVALS']);
-    expect(agents.screens.map((t) => t.screen)).toContain('MemoryScreen');
-    expect(agents.screens.map((t) => t.screen)).toContain('AutonomyScreen');
+  it('ASSETS is three rows — Agents · Workflows · Tools — the delegation chain', () => {
+    // An agent decides for itself; a workflow runs the same steps every time;
+    // tools are what both of them call. Three different things, three rows.
+    // A process is not staff and a tool has two callers, so none of the three
+    // may be a tab of another.
+    const assets = MAIN_SECTIONS.filter((s) => s.group === 'ASSETS');
+    expect(assets.map((s) => s.id)).toEqual(['agents', 'workflows', 'tools']);
   });
 
-  it('Automations owns Workflows · Tools · Widgets as tabs, every forge contextual', () => {
-    const automations = MAIN_SECTIONS.find((s) => s.id === 'automations');
-    expect(automations?.group).toBe('MY TEAM');
-    // The rail row lands on Workflows.
-    expect(automations.screens[0].screen).toBe('WorkflowsScreen');
-    expect(visibleTabs(automations, 'WorkflowsScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'TOOLS', 'WIDGETS']);
+  it('Agents owns Skills and Memory as tabs, forge contextual; Approvals is not here', () => {
+    // Skills and Memory are properties of an agent and of nothing else.
+    // Approvals is a rule you set once, so it lives behind Settings.
+    const agents = MAIN_SECTIONS.find((s) => s.id === 'agents');
+    expect(agents.screens[0].screen).toBe('AgentsScreen');
+    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'SKILLS', 'MEMORY']);
+    expect(visibleTabs(agents, 'AgentForgeScreen').map((t) => t.label)).toEqual(['AGENTS', 'AGENT FORGE', 'SKILLS', 'MEMORY']);
+    expect(agents.screens.some((t) => t.screen === 'AutonomyScreen')).toBe(false);
+  });
+
+  it('Workflows is its own row with only its forge; Tools owns Widgets as a tab', () => {
+    const workflows = MAIN_SECTIONS.find((s) => s.id === 'workflows');
+    expect(visibleTabs(workflows, 'WorkflowsScreen').map((t) => t.label)).toEqual(['WORKFLOWS']);
+    expect(visibleTabs(workflows, 'WorkflowForgeScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
+
+    // Widgets have the shape of tools: made here, used elsewhere.
+    const tools = MAIN_SECTIONS.find((s) => s.id === 'tools');
+    expect(tools.screens[0].screen).toBe('ToolsScreen');
+    expect(visibleTabs(tools, 'ToolsScreen').map((t) => t.label)).toEqual(['TOOLS', 'WIDGETS']);
     // Editors appear only while you are inside them, and only their own.
-    expect(visibleTabs(automations, 'WorkflowForgeScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'WORKFLOW FORGE', 'TOOLS', 'WIDGETS']);
-    expect(visibleTabs(automations, 'ToolForgeScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'TOOLS', 'TOOL FORGE', 'WIDGETS']);
-    expect(visibleTabs(automations, 'WidgetForgeScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'TOOLS', 'WIDGETS', 'WIDGET FORGE']);
-    for (const id of ['workflows', 'library', 'tools', 'skills', 'widgets', 'marketplace']) {
+    expect(visibleTabs(tools, 'ToolForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'TOOL FORGE', 'WIDGETS']);
+    expect(visibleTabs(tools, 'WidgetForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'WIDGETS', 'WIDGET FORGE']);
+    for (const id of ['automations', 'library', 'skills', 'widgets', 'marketplace', 'connect', 'plugins']) {
       expect(MAIN_SECTIONS.some((s) => s.id === id)).toBe(false);
     }
   });
@@ -252,12 +264,12 @@ describe('canvas sections registry', () => {
   });
 
   it('SYSTEM screens are reachable but absent from the main rail', () => {
-    // Improvements (Evolution) is navigated from SettingsPanel. It must stay
-    // inside SECTION_ROUTES (or the canvas treats it as a custom page and the
-    // gear goes dark while you are on it) while owning no row of its own in
-    // MAIN_SECTIONS. Memory and Approvals used to be here too; they are tabs
-    // of the Agents row now.
-    const systemScreens = ['ExperimentsScreen'];
+    // Approvals (Autonomy) and Improvements (Evolution) are navigated from
+    // SettingsPanel. They must stay inside SECTION_ROUTES (or the canvas
+    // treats them as custom pages and the gear goes dark while you are on
+    // them) while owning no row of their own in MAIN_SECTIONS. Memory used to
+    // be here too; it is a tab of the Agents row now.
+    const systemScreens = ['AutonomyScreen', 'ExperimentsScreen'];
     const mainScreens = MAIN_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen));
     for (const screen of systemScreens) {
       expect(SECTION_ROUTES.has(screen)).toBe(true);
@@ -290,7 +302,7 @@ describe('canvas sections registry', () => {
       // and the toolbar repeats the panel that navigates them.
       const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
       expect(settings.screens.filter((t) => t.tab !== false).map((t) => t.screen)).toEqual(['SettingsScreen']);
-      expect(SECTION_ROUTES.has('ExperimentsScreen')).toBe(true);
+      for (const screen of ['AutonomyScreen', 'ExperimentsScreen']) expect(SECTION_ROUTES.has(screen)).toBe(true);
     });
 
     it('the toolbar actually honours tab:false, and names the screen instead', () => {
@@ -338,18 +350,18 @@ describe('canvas sections registry', () => {
     });
   });
 
-  it('MY TOOLKIT is Apps (Connected apps · Add-ons) then Store, last in the main rail; Settings is the foot alone', () => {
+  it('CONNECTORS is Apps (Apps · Add-ons) then Store, last in the main rail; Settings is the foot alone', () => {
     // To a business user "connect Slack" and "install the Slack plugin" are
     // one intent, so Connections and Plugins are two tabs of one row. "Which
-    // model" is one more thing you connect, so it is a view inside Connected
-    // apps rather than a rail row of its own.
-    const toolkit = MAIN_SECTIONS.filter((s) => s.group === 'MY TOOLKIT');
-    expect(toolkit.map((s) => s.id)).toEqual(['apps', 'store']);
-    const apps = toolkit[0];
-    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['CONNECTED APPS', 'ADD-ONS']);
+    // model" is one more thing you connect, so it is a view inside Apps
+    // rather than a rail row of its own.
+    const connectors = MAIN_SECTIONS.filter((s) => s.group === 'CONNECTORS');
+    expect(connectors.map((s) => s.id)).toEqual(['apps', 'store']);
+    const apps = connectors[0];
+    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS', 'ADD-ONS']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
-    expect(toolkit[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'STORE' }]);
-    expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['MY TOOLKIT', 'MY TOOLKIT']);
+    expect(connectors[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'STORE' }]);
+    expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['CONNECTORS', 'CONNECTORS']);
     expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['settings']);
     // The attention badge rides the Apps row, and the canvas paints it as a warning there.
     expect(apps.badge).toBe('connect');

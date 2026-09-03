@@ -46,7 +46,7 @@ describe('navigation preferences', () => {
 
   it('recovers from corrupt storage and notifies the live rail on reset', () => {
     localStorage.setItem('agnt:sidebarNavigation:v1', '{broken');
-    expect(loadNavigationPreferences().groups).toContain('MY WORK');
+    expect(loadNavigationPreferences().groups).toContain('WORK');
     const listener = vi.fn();
     window.addEventListener(NAVIGATION_CHANGED_EVENT, listener);
     resetNavigationPreferences();

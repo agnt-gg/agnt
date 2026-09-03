@@ -6,12 +6,19 @@
 // Moving a screen between surfaces is therefore a re-parent in THIS file,
 // nothing else.
 //
-// THE RAIL IS WRITTEN FOR THE MIDDLE OF THE BELL CURVE. Every caption is a
-// possessive a person would say about their own desk (TODAY · MY WORK · MY
-// TEAM · MY TOOLKIT), every row is one plain noun, and nothing on the rail is
-// a word only an engineer uses (runs, traces, artifacts, connectors, library,
-// plugins). Route names and screen names keep their old identifiers — this
-// file is about what a person READS, not what the code is called.
+// THE RAIL IS WRITTEN FOR THE MIDDLE OF THE BELL CURVE. Four captions, each a
+// single plain noun (TODAY · WORK · ASSETS · CONNECTORS); every row one plain
+// noun; nothing on the rail is a word only an engineer uses (runs, traces,
+// artifacts, library, plugins). Route names and screen names keep their old
+// identifiers — this file is about what a person READS, not what the code is
+// called.
+//
+// The four captions follow the delegation chain a business user already
+// understands: you land and talk (TODAY), you say what you want done and see
+// what came of it (WORK), you build the things that do it — agents that decide
+// for themselves, workflows that run the same steps every time, and the tools
+// both of them call (ASSETS) — and you plug in the outside world (CONNECTORS).
+// ASSETS is the group that makes an account THEIRS: it is what they built.
 //
 // GROUPS. Every main section declares a `group`. Sections are rendered in
 // array order and a caption + divider is emitted whenever the group changes,
@@ -66,10 +73,10 @@ export const MAIN_SECTIONS = [
     screens: [{ screen: 'DashboardScreen', label: 'HOME' }],
   },
 
-  // ── MY WORK ── what I asked for, what happened, what came out of it.
+  // ── WORK ── what I asked for, what happened, what came out of it.
   {
     id: 'goals',
-    group: 'MY WORK',
+    group: 'WORK',
     icon: 'fas fa-bullseye',
     label: 'Goals',
     badge: 'goals',
@@ -80,7 +87,7 @@ export const MAIN_SECTIONS = [
     // uses for "what happened" (Slack, GitHub, their bank). "Runs" was the
     // engineer's word; "Traces" is what engineers call the record of one.
     id: 'traces',
-    group: 'MY WORK',
+    group: 'WORK',
     icon: 'fas fa-stream',
     label: 'Activity',
     badge: 'traces',
@@ -93,20 +100,20 @@ export const MAIN_SECTIONS = [
     // the place, not the direction of flow. ("Artifacts" is the route and the
     // store; nobody says artifact.)
     id: 'artifacts',
-    group: 'MY WORK',
+    group: 'WORK',
     icon: 'fas fa-folder',
     label: 'Files',
     screens: [{ screen: 'ArtifactsScreen', label: 'FILES' }],
   },
 
-  // ── MY TEAM ── who and what does the work for me.
+  // ── ASSETS ── the things they built. This is what makes the account theirs.
   {
-    // One mental object — my team: who they are (Agents), what they know
-    // (Skills), what they remember (Memory), what they may do without asking
-    // (Approvals). Memory and Approvals were SYSTEM screens hidden behind the
-    // gear; "team" is the word that makes all four obvious at once.
+    // An agent decides for itself. Skills (what it knows) and Memory (what it
+    // remembers) are properties of an agent and of nothing else, so they are
+    // its tabs. Approvals — what it may do without asking — is a rule you set
+    // once, so it lives behind Settings, not here.
     id: 'agents',
-    group: 'MY TEAM',
+    group: 'ASSETS',
     icon: 'fas fa-robot',
     label: 'Agents',
     screens: [
@@ -114,20 +121,30 @@ export const MAIN_SECTIONS = [
       { screen: 'AgentForgeScreen', label: 'AGENT FORGE', ctx: true },
       { screen: 'SkillsScreen', label: 'SKILLS' },
       { screen: 'MemoryScreen', label: 'MEMORY' },
-      { screen: 'AutonomyScreen', label: 'APPROVALS' },
     ],
   },
   {
-    // Workflows, tools and widgets are all "things that do work for me". One
-    // row, three destinations, three contextual editors — the same mechanism
-    // Agents uses. The rail row lands on Workflows.
-    id: 'automations',
-    group: 'MY TEAM',
+    // A workflow runs the same steps every time — the procedure, not the
+    // person. It is its own row, not a tab of Agents: a process is not staff.
+    id: 'workflows',
+    group: 'ASSETS',
     icon: 'fas fa-project-diagram',
-    label: 'Automations',
+    label: 'Workflows',
     screens: [
       { screen: 'WorkflowsScreen', label: 'WORKFLOWS' },
       { screen: 'WorkflowForgeScreen', label: 'WORKFLOW FORGE', ctx: true },
+    ],
+  },
+  {
+    // Tools are called by agents AND by workflows, so neither may own them.
+    // Widgets have the same shape — made here, used on Home, in Workspaces
+    // and on custom pages — so they ride this row as a tab: a tool does
+    // something, a widget shows something.
+    id: 'tools',
+    group: 'ASSETS',
+    icon: 'fas fa-wrench',
+    label: 'Tools',
+    screens: [
       { screen: 'ToolsScreen', label: 'TOOLS' },
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE', ctx: true },
       { screen: 'WidgetManagerScreen', label: 'WIDGETS' },
@@ -135,28 +152,30 @@ export const MAIN_SECTIONS = [
     ],
   },
 
-  // ── MY TOOLKIT ── what the team works with, and where more comes from.
+  // ── CONNECTORS ── the outside world, and where more of it comes from.
   {
     // To a business user "connect Slack" and "install the Slack plugin" are
     // the same intent, so Connections and Plugins are two tabs of one row.
     // AI Providers is deliberately not a row either: "which model" is one more
-    // thing you connect, so it is the first view INSIDE Connected apps — see
+    // thing you connect, so it is the first view INSIDE Apps — see
     // CONNECT_ITEMS in LeftPanel/ConnectorsPanel. MCP servers stay there for
     // the same reason.
     id: 'apps',
-    group: 'MY TOOLKIT',
+    group: 'CONNECTORS',
     icon: 'fas fa-plug',
     label: 'Apps',
     badge: 'connect',
     screens: [
-      { screen: 'ConnectorsScreen', label: 'CONNECTED APPS' },
+      { screen: 'ConnectorsScreen', label: 'APPS' },
       { screen: 'PluginsScreen', label: 'ADD-ONS' },
     ],
   },
   {
-    // One word everyone already understands.
+    // One word everyone already understands. It sells agents, workflows,
+    // tools, widgets and add-ons, so it is procurement for everything above
+    // rather than a tab of any one thing.
     id: 'store',
-    group: 'MY TOOLKIT',
+    group: 'CONNECTORS',
     icon: 'fas fa-store',
     label: 'Store',
     screens: [{ screen: 'MarketplaceScreen', label: 'STORE' }],
@@ -167,16 +186,17 @@ export const MAIN_SECTIONS = [
 // visit to set the machine up rather than to do work with it.
 //
 // Settings carries its OWN left-panel nav, which is why it gets one row
-// instead of several: Profile, Billing, Theme, Improvements and the rest are
-// navigated from SettingsPanel.
+// instead of several: Profile, Billing, Theme, Approvals, Improvements and the
+// rest are navigated from SettingsPanel.
 //
 // `tab: false` — owned and routed by this row, but not drawn in the toolbar.
-// Improvements (ExperimentsScreen) is a full screen rather than a Settings
-// section, so the row has to list it: that is what keeps it inside
-// SECTION_ROUTES (without it the canvas reads it as a custom page and the
-// gear goes dark while you are on it) and lets it share SettingsPanel as its
-// left panel (see screenRegistry.js). It is genuinely a power-user surface,
-// which is why it stays reachable but off the rail.
+// Approvals (AutonomyScreen) and Improvements (ExperimentsScreen) are full
+// screens rather than Settings sections, so the row has to list them: that is
+// what keeps them inside SECTION_ROUTES (without it the canvas reads them as
+// custom pages and the gear goes dark while you are on them) and lets them
+// share SettingsPanel as their left panel (see screenRegistry.js). Approvals
+// is a permission you grant once; Improvements is a power-user surface. Both
+// stay reachable but off the rail.
 export const BOTTOM_SECTIONS = [
   {
     id: 'settings',
@@ -185,6 +205,7 @@ export const BOTTOM_SECTIONS = [
     label: 'Settings',
     screens: [
       { screen: 'SettingsScreen', label: 'SETTINGS' },
+      { screen: 'AutonomyScreen', label: 'APPROVALS', tab: false },
       { screen: 'ExperimentsScreen', label: 'IMPROVEMENTS', tab: false },
     ],
   },
