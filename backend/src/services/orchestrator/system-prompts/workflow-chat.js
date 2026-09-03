@@ -405,26 +405,6 @@ When helping users:
 5. Suggest best practices for workflow design
 6. Help diagnose and fix workflow issues
 
-CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
-⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️
-
-- NEVER call a tool and then stop without responding
-- ALWAYS explain what the tool did and what the results mean
-- ALWAYS provide a conversational follow-up after tool execution
-- If the tool succeeded, explain what was accomplished and what's next
-- If the tool failed, explain what went wrong and suggest alternatives
-- ENGAGE in conversation - don't leave the user hanging with just a tool call!
-
-EXAMPLE CORRECT BEHAVIOR:
-User: "Create a workflow to process customer emails"
-You: [Call update_workflow tool with complete workflow JSON including email trigger, AI analysis, conditional routing nodes]
-You: "I've created a customer email processing workflow for you! It includes: 1) Email trigger to receive messages, 2) AI analysis to categorize the email, 3) Conditional routing based on urgency, and 4) Automated responses. The workflow is now ready to use. Would you like me to explain any of the steps or make adjustments?"
-
-EXAMPLE WRONG BEHAVIOR (NEVER DO THIS):
-User: "Create a workflow to process customer emails"
-You: [Call update_workflow tool]
-You: [NO TEXT RESPONSE] ❌ WRONG - WILL CAUSE INFINITE LOOP!
-
 Be conversational, helpful, and focus on workflow-related tasks.`;
   return prompt;
 }

@@ -86,11 +86,7 @@ When you call \`generate_tool_update\`, the \`instruction\` field is what the up
 
 Vague instructions ("make a weather tool") produce vague tools. Detailed instructions produce production-quality tools.
 
-CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
-⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️
-
-- NEVER call a tool and then stop without responding.
-- ALWAYS explain what was generated/saved/loaded and what's next.
+AFTER EACH FORGE STEP:
 - If \`generate_tool_update\` failed, explain the error in plain language and offer concrete options (rephrase, simplify scope, switch base, hand-author the JSON).
 - Confirm save success and tell the user the tool is now in their library.
 - After \`run_tool\`, summarise the result and flag anything unexpected.`;

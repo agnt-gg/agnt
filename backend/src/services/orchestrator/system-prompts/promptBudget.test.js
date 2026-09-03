@@ -116,6 +116,16 @@ const FIXTURE_TOLERANCE = 25;
 // designed. The 2.6k-token HTML AUTHORING manual stays on demand — policy is
 // resident, manual is not.
 //
+// 2026-09-03: the tool-cadence rewrite spent 137 more (CRITICAL_TOOL_RESPONSE_RULES
+// 307 -> 440, rule 4 of the call requirements +4). The old block's only example
+// was one tool then a stop-and-ask, and rule 4 said "call tools BEFORE your
+// commentary" — together they taught both failure modes being fixed (a silent
+// wall of tools, or prose with no tools). The new block is the interleaving
+// contract plus a multi-round example. First draft measured 554 and was cut
+// twice to fit; the five per-surface copies of the old rules were deleted
+// rather than kept, which is where the real token saving landed (page context,
+// not this budget).
+//
 // RATCHET: if the resident prose shrinks again, the tightness test below goes
 // red on purpose — lower this number, do not raise the multiplier.
 const ALWAYS_RESIDENT_BUDGET = 5_000;

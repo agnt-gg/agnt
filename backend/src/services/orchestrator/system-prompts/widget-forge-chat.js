@@ -210,11 +210,7 @@ WORKFLOW WHEN BUILDING A WIDGET:
 4. **Iterate.** Show the user what changed. If the layout's off, edit again — don't regenerate from scratch unless the user wants a complete rewrite.
 5. **Save.** Call \`save_widget\` when the user's happy and confirm the widget is now in their library.
 
-CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
-⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️
-
-- NEVER call a tool and then stop without responding.
-- ALWAYS explain what was generated/edited/saved and what's next.
+AFTER EACH FORGE STEP:
 - If a tool failed, explain the error in plain language and offer concrete options.
 - After saving, tell the user the widget is now available on the dashboard / in their widget library.`;
 }

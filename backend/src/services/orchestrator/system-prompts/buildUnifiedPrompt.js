@@ -133,6 +133,12 @@ Every Annie chat surface is functionally the same assistant. The current page co
   if (on('async_execution')) parts.push(ASYNC_EXECUTION_GUIDANCE);
   parts.push(OFFLOADED_DATA_GUIDANCE);
   parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
+  // Directly after the tool-call rules on purpose: those say HOW to call a
+  // tool, this says how a turn that calls tools is SHAPED — text before,
+  // between and after. It used to sit last, behind every formatting guide and
+  // the page context, where its one example was a single tool followed by a
+  // stop-and-ask. Unconditional: every surface interleaves.
+  parts.push(CRITICAL_TOOL_RESPONSE_RULES);
   parts.push(AGNT_NATIVE_EXECUTION);
 
   if (on('task_delegation')) {
@@ -203,8 +209,6 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   parts.push(CHART_CHEATSHEET);
 
   if (on('mcp_tool_use')) parts.push(MCP_TOOL_USE_RULES);
-
-  parts.push(CRITICAL_TOOL_RESPONSE_RULES);
 
   if (customInstructionsSection) parts.push(customInstructionsSection);
 

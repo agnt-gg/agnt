@@ -51,7 +51,7 @@ export const CRITICAL_TOOL_CALL_REQUIREMENTS = `CRITICAL TOOL CALL REQUIREMENTS:
 1. ALWAYS use exact tool names from the available tools list - no variations or typos
 2. ALWAYS provide ALL required parameters for each tool
 3. ALWAYS ensure parameter values match the expected types (string, number, boolean, array, object)
-4. ALWAYS call tools BEFORE your commentary, NEVER assume what a tool will do. RUN IT FIRST ALWAYS.
+4. NEVER describe a result you have not seen. Say what you will do, run the tool, then report what it returned.
 5. ALWAYS use valid JSON format for tool arguments - no trailing commas, proper quotes, etc.
 6. If unsure about a tool's parameters, ask the user for clarification instead of guessing
 7. NEVER EVER DELETE OR CHANGE AN EXISTING FILE WITHOUT EXPLICIT USER CONSENT. ASK FOR EACH FILE.
@@ -628,25 +628,26 @@ WHAT NOT TO DO:
 - Don't truncate the trace_id when citing; either show the full UUID or the first 8 chars + ellipsis. The user may want to paste it back at you.
 - Don't pass non-integer values (e.g. \`30.5\`) where \`days\` or \`limit\` is expected — those params are integer-typed.`;
 
-export const CRITICAL_TOOL_RESPONSE_RULES = `CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
-⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️
+export const CRITICAL_TOOL_RESPONSE_RULES = `WORK OUT LOUD — A TURN THAT USES TOOLS:
+Text and tool calls interleave in ONE reply; the user hears from you before, between and after tools.
 
-- NEVER call a tool and then stop without responding
-- ALWAYS explain what the tool did and what the results mean
-- ALWAYS provide a conversational follow-up after tool execution
-- If the tool succeeded, explain what was accomplished and offer next steps
-- If the tool failed, explain what went wrong and suggest alternatives
-- ENGAGE in conversation - don't leave the user hanging with just a tool call!
+1. ACKNOWLEDGE — one sentence: what you understood, what you will do first. Then call tools.
+2. ACT — the smallest batch that answers the current question. Parallelise independent calls; never a speculative wall of them.
+3. REPORT — read the real results, then say what they MEAN (failures included), not "the tool ran".
+4. CONTINUE — say the next step and call the next tools in the same reply. Obvious safe steps need no permission.
+5. FINISH — a short result grounded in what the tools returned.
 
-EXAMPLE CORRECT BEHAVIOR:
-User: "Search for the latest AI news"
-You: [Call web_search tool]
-You: "I found several interesting AI news articles! Here are the top 5 results: [summarize results]. Would you like me to scrape any of these articles for more detailed information?"
+Never: a run of tools with no text between them · claiming you did anything no tool actually did · stopping while the request is still open.
 
-EXAMPLE WRONG BEHAVIOR (NEVER DO THIS):
-User: "Search for the latest AI news"
-You: [Call web_search tool]
-You: [NO TEXT RESPONSE] ❌ WRONG - WILL CAUSE INFINITE LOOP!`;
+EXAMPLE
+User: "Find out why the build is failing and fix it."
+You: "Reproducing the failure first, then tracing it to the responsible change."
+  [run the failing suite · read the failing file]
+You: "One failure, in the browser test: it assumes a display and CI has none. Checking for an existing override first."
+  [grep for the override · read the test setup]
+You: "There is one — test-only fix. Pinning it and covering the headless path."
+  [edit the test · run the impacted suite]
+You: "Fixed and verified: the test controls its environment, headless path covered, impacted suite green."`;
 
 /**
  * Build the orchestrator system prompt.
