@@ -34,7 +34,10 @@ const dropDriver = vi.fn();
 vi.mock('../../../services/browserActDriver.js', () => ({
   performBrowserAction: (...a) => performBrowserAction(...a),
   dropDriver: (...a) => dropDriver(...a),
-  BROWSER_ACTIONS: ['navigate', 'snapshot', 'click', 'type', 'press', 'scroll', 'read', 'back'],
+  BROWSER_ACTIONS: [
+    'navigate', 'snapshot', 'click', 'type', 'press', 'scroll', 'read', 'back',
+    'wait', 'select', 'hover', 'dialog', 'tabs', 'open', 'focus', 'close', 'console', 'errors', 'requests',
+  ],
 }));
 
 const { default: action } = await import('./ai-browser-act.js');
@@ -101,9 +104,85 @@ describe('which browser it drives', () => {
   });
 });
 
+/**
+ * THE THREE PLACES A PERSON USES THE BROWSER, and the one driver behind them.
+ * Main chat and agent chat are the same shape to this tool (a provider, no
+ * canvas); a workspace turn is a canvas turn with a workspace id and, once the
+ * widget exists, its instance id; a workflow has no provider at all. Every
+ * path ends in performBrowserAction with the same verb and params — which is
+ * why a driver improvement lands on all of them at once.
+ */
+describe('one driver, every surface', () => {
+  const MAIN_CHAT = { userId: 'u1', provider: 'openai' };
+  const AGENT_CHAT = { userId: 'u1', provider: 'anthropic', agentId: 'agent_7', normalizedProvider: 'anthropic' };
+  const WORKSPACE = { userId: 'u1', provider: 'openai', workspaceState: { id: 'ws_9', browserInstanceId: 'inst_3' } };
+
+  it('main chat: no widget can appear, so it probes once and drives a hidden browser', async () => {
+    const out = await action.execute({ action: 'navigate', url: 'agnt.gg' }, {}, MAIN_CHAT);
+    expect(waitForSurface).toHaveBeenCalledWith('u1', { workspaceId: null, instanceId: null }, 0);
+    expect(ensureFallbackSurface.mock.calls[0][0].hidden).toBe(true);
+    expect(out.surface).toBe('Chrome');
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'navigate', expect.objectContaining({ url: 'agnt.gg' }));
+  });
+
+  it('agent chat: identical to main chat — an agent is a chat with a different author', async () => {
+    const out = await action.execute({ action: 'read' }, {}, AGENT_CHAT);
+    expect(waitForSurface.mock.calls[0][2]).toBe(0);
+    expect(out.surface).toBe('Chrome');
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', LAUNCHED_CDP, 'read', expect.anything());
+  });
+
+  it('workspace: a canvas turn waits for THIS workspace\'s widget instance and drives it', async () => {
+    isCanvasTurn.mockReturnValue(true);
+    waitForSurface.mockResolvedValue({ cdpUrl: WIDGET_CDP, transport: 'electron-bridge' });
+    const out = await action.execute({ action: 'snapshot' }, {}, WORKSPACE);
+    expect(waitForSurface).toHaveBeenCalledWith('u1', { workspaceId: 'ws_9', instanceId: 'inst_3' }, 8000);
+    expect(out.surface).toBe('widget');
+    expect(performBrowserAction).toHaveBeenCalledWith('u1', WIDGET_CDP, 'snapshot', expect.anything());
+    expect(ensureFallbackSurface).not.toHaveBeenCalled();
+  });
+
+  it('workspace with no widget yet: launches hidden and announces it to the workspace', async () => {
+    isCanvasTurn.mockReturnValue(true);
+    await action.execute({ action: 'snapshot' }, {}, WORKSPACE);
+    expect(announceHostSurface).toHaveBeenCalledWith('u1', LAUNCHED_CDP, { workspaceId: 'ws_9' });
+  });
+
+  it('the new verbs and their params reach the driver untouched, on every surface', async () => {
+    const cases = [
+      ['wait', { selector: '#done', timeoutMs: 3000 }],
+      ['select', { ref: 'e4', value: 'Canada' }],
+      ['dialog', { accept: false, text: 'nope' }],
+      ['focus', { tabId: 'T2' }],
+      ['requests', { filter: 'failed' }],
+      ['press', { key: 'Control+Shift+t' }],
+    ];
+    for (const engine of [MAIN_CHAT, AGENT_CHAT, WORKSPACE, { userId: 'u1' }]) {
+      for (const [verb, params] of cases) {
+        performBrowserAction.mockClear();
+        // eslint-disable-next-line no-await-in-loop
+        const out = await action.execute({ action: verb, ...params }, {}, engine);
+        expect(out.success, `${verb} on ${JSON.stringify(engine)}`).toBe(true);
+        expect(performBrowserAction).toHaveBeenCalledWith('u1', expect.any(String), verb, expect.objectContaining(params));
+      }
+    }
+  });
+
+  it('driver-level signals (navigated, blockedByDialog, newTab, loopDetected) pass through to the model', async () => {
+    performBrowserAction.mockResolvedValue({
+      url: 'https://b/', title: 'B', navigated: true, from: 'https://a/', snapshot: 'URL: https://b/',
+      blockedByDialog: { type: 'alert', message: 'hi' }, newTab: { id: 'T9' }, loopDetected: true, warning: 'stop',
+    });
+    const out = await action.execute({ action: 'click', ref: 'e1' }, {}, MAIN_CHAT);
+    expect(out).toMatchObject({
+      success: true, navigated: true, from: 'https://a/', blockedByDialog: { type: 'alert' }, newTab: { id: 'T9' }, loopDetected: true, warning: 'stop',
+    });
+  });
+});
+
 describe('how it fails', () => {
   it('names the verbs when given a verb it does not have', async () => {
-    const out = await action.execute({ action: 'hover' }, {}, CHAT);
+    const out = await action.execute({ action: 'teleport' }, {}, CHAT);
     expect(out.success).toBe(false);
     expect(out.error).toContain('navigate, snapshot, click');
     expect(performBrowserAction).not.toHaveBeenCalled();
