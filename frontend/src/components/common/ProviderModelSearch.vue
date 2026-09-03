@@ -25,7 +25,7 @@
       <template v-if="results.length">
         <div
           v-for="(result, idx) in results"
-          :key="`${result.provider}::${result.model}`"
+          :key="`${result.provider}::${result.model ?? '(provider-only)'}`"
           class="search-result"
           :class="{ active: idx === cursor }"
           @mousedown.prevent="select(result)"
@@ -33,7 +33,8 @@
         >
           <span class="result-provider">{{ result.providerLabel }}</span>
           <span class="result-divider">·</span>
-          <span class="result-model">{{ result.model }}</span>
+          <span v-if="result.model" class="result-model">{{ result.model }}</span>
+          <span v-else class="result-model result-model-none">no models loaded</span>
         </div>
       </template>
       <div v-else class="search-empty">No matches</div>
@@ -42,7 +43,7 @@
 </template>
 
 <script>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 
@@ -52,12 +53,19 @@ const MAX_RESULTS = 40;// Dispatch fetches for every provider that hasn't loaded
 // invocations are cheap and always converge on fresh data. Per-provider
 // failures (missing API key, not connected) are silenced so unrelated
 // providers still populate.
-async function ensureAllProviderModelsLoaded(store) {
+// `only` narrows the sweep to a specific set of providers. The mount-time call
+// omits it and covers everything; the custom-provider watcher passes just the
+// custom ids, because re-sweeping everything would re-fetch every built-in that
+// has no models — which is most of them, since an unconnected provider never
+// gets any. Measured on a realistic 20-built-in store with 2 connected: the
+// unnarrowed watcher fired 20 requests to obtain the 2 that were wanted.
+async function ensureAllProviderModelsLoaded(store, only = null) {
   const { allModels = {}, providers = [], customProviders = [] } = store.state.aiProvider;
-  const targets = [
+  const pool = only || [
     ...providers,
     ...customProviders.map((cp) => cp.id),
-  ].filter((p) => !allModels[p] || allModels[p].length === 0);
+  ];
+  const targets = pool.filter((p) => !allModels[p] || allModels[p].length === 0);
 
   if (!targets.length) return;
   await Promise.all(
@@ -107,11 +115,24 @@ export default {
           entries.push({ provider, providerLabel: label, model });
         }
       }
+      // A custom provider is user-created, and the picker is the only place it
+      // can be edited or deleted — so it has to stay findable precisely when it
+      // is broken. Its model list comes from its own endpoint, so an unreachable
+      // one has no models and would contribute no rows at all, disappearing from
+      // search exactly when the user needs to go fix it. Emit a single
+      // provider-only row instead.
+      //
+      // Built-ins deliberately get no such row: an empty built-in means "not
+      // connected", and listing every unconnected provider would bury the ones
+      // that actually work.
       for (const cp of customProviders) {
         const label = `${cp.provider_name} (Custom)`;
         const models = allModels[cp.id] || [];
         for (const model of models) {
           entries.push({ provider: cp.id, providerLabel: label, model });
+        }
+        if (!models.length) {
+          entries.push({ provider: cp.id, providerLabel: label, model: null });
         }
       }
       return entries;
@@ -124,14 +145,18 @@ export default {
       if (!q) return [];
       const scored = [];
       for (const entry of allEntries.value) {
-        const modelLower = entry.model.toLowerCase();
-        const providerLower = entry.providerLabel.toLowerCase();
-        const modelIdx = modelLower.indexOf(q);
-        const providerIdx = providerLower.indexOf(q);
+        // A provider-only row has no model name to match against.
+        const modelIdx = entry.model ? entry.model.toLowerCase().indexOf(q) : -1;
+        const providerIdx = entry.providerLabel.toLowerCase().indexOf(q);
         if (modelIdx === -1 && providerIdx === -1) continue;
         const score = (modelIdx === -1 ? Infinity : modelIdx) + (providerIdx === -1 ? 100 : providerIdx) * 0.01;
         scored.push({ entry, score });
       }
+      // Every provider-name-only match scores Infinity, so those rows all tie
+      // at Infinity - Infinity = NaN. That is not the hazard it looks like:
+      // ECMA-262 SortCompare specifies "If v is NaN, return +0", so the engine
+      // reads it as a genuine tie and the sort stays stable. Left as-is
+      // deliberately — guarding it would be redundant with the spec.
       scored.sort((a, b) => a.score - b.score);
       return scored.slice(0, MAX_RESULTS).map((s) => s.entry);
     });
@@ -183,13 +208,37 @@ export default {
       if (!result) return;
       close();
       query.value = '';
+
+      // A provider-only row carries no model, so resolve one first. The fetch
+      // routes custom-provider ids to their own endpoint, which means a provider
+      // that was merely never fetched (rather than unreachable) ends up behaving
+      // exactly like an ordinary model hit.
+      let picked = result;
+      if (!picked.model) {
+        const models = await store
+          .dispatch('aiProvider/fetchProviderModels', { provider: picked.provider })
+          .catch(() => []);
+        picked = { ...picked, model: Array.isArray(models) && models.length ? models[0] : null };
+      }
+
       if (props.applyGlobally) {
         // setProvider auto-picks the first model for that provider; setModel
-        // immediately overrides it with the user's chosen pair.
-        await store.dispatch('aiProvider/setProvider', result.provider);
-        await store.dispatch('aiProvider/setModel', result.model);
+        // immediately overrides it with the user's chosen pair. With nothing
+        // resolved there is no pair to pin, and dispatching a null model would
+        // undo the selection the provider mutation just made.
+        await store.dispatch('aiProvider/setProvider', picked.provider);
+        if (picked.model) {
+          await store.dispatch('aiProvider/setModel', picked.model);
+        }
+      } else if (!picked.model) {
+        // A per-conversation override pins provider AND model; a null model
+        // writes a half-pin that cannot route. Selecting an unreachable provider
+        // globally is a meaningful way to reach its Edit button — pinning one
+        // conversation to it is not.
+        return;
       }
-      emit('selected', result);
+
+      emit('selected', picked);
     };    // Models for a provider are only fetched when that provider is first
     // selected. To make search cover every provider, kick off background
     // fetches on mount — fetchProviderModels uses stale-while-revalidate,
@@ -198,6 +247,21 @@ export default {
     onMounted(() => {
       ensureAllProviderModelsLoaded(store);
     });
+
+    // The mount-time sweep above cannot see custom providers. This component is
+    // a child of the provider picker, Vue mounts children before parents, and it
+    // is the PARENT that dispatches fetchCustomProviders — so on mount the list
+    // is still empty and every custom provider is skipped, permanently. Re-run
+    // the sweep when the ids actually change. Keying on the joined ids rather
+    // than the array reference catches both a wholesale replace
+    // (SET_CUSTOM_PROVIDERS) and an in-place push (ADD_CUSTOM_PROVIDER).
+    watch(
+      () => (store.state.aiProvider.customProviders || []).map((cp) => cp.id).join(','),
+      () => ensureAllProviderModelsLoaded(
+        store,
+        (store.state.aiProvider.customProviders || []).map((cp) => cp.id),
+      ),
+    );
 
     return {
       rootRef,
@@ -340,6 +404,11 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.result-model-none {
+  color: var(--color-med-navy);
+  font-style: italic;
 }
 
 .search-empty {
