@@ -118,7 +118,7 @@ export function registerAllWidgets() {
   });
 
   registerWidget('traces', {
-    name: 'Traces',
+    name: 'Runs',
     icon: 'fas fa-play-circle',
     category: 'home',
     component: lazyComponent(() => import('@/views/Terminal/CenterPanel/screens/Traces/Traces.vue')),

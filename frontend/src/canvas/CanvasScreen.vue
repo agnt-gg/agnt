@@ -38,7 +38,7 @@
       <div class="cv-right">
         <!-- Live pills: each is a click into the thing it counts. Only the
              provider pill is always drawn; the others appear when non-zero. -->
-        <button v-if="pills.running" class="cv-pill" @click="goRunning" v-tooltip="'Running now — open Traces'">
+        <button v-if="pills.running" class="cv-pill" @click="goRunning" v-tooltip="'Running now — open Runs'">
           <span class="cv-pill-dot is-live"></span>{{ pills.running }} running
         </button>
         <button v-if="pills.approvals" class="cv-pill" @click="goApprovals" v-tooltip="'Waiting for your approval — open Autonomy'">

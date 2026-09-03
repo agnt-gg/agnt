@@ -2,7 +2,7 @@
   <div class="ui-panel traces-panel">
     <!-- Panel Header -->
     <div class="panel-header">
-      <h2 class="title">/ Traces</h2>
+      <h2 class="title">/ Runs</h2>
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-play-circle"></i>
@@ -11,11 +11,11 @@
       </div>
     </div>
 
-    <!-- Trace Statistics -->
+    <!-- Run Statistics -->
     <div class="traces-stats-section">
       <h4 class="section-title">
         <i class="fas fa-chart-bar"></i>
-        Trace Statistics
+        Run Statistics
       </h4>
       <div class="stats-grid">
         <div class="stat-card">
@@ -224,7 +224,7 @@ export default {
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `traces-export-${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `runs-export-${new Date().toISOString().split('T')[0]}.json`;
       link.click();
       URL.revokeObjectURL(url);
       emit('panel-action', 'show-feedback', {

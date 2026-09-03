@@ -58,10 +58,10 @@
               <i v-if="item.navigable" class="fas fa-external-link-alt origin-nav-icon"></i>
             </div>
           </div>
-          <!-- View in Traces link -->
+          <!-- View in Runs link -->
           <div v-if="selectedInsight.source_id" class="view-trace-link" @click="navigateToSourceTrace">
             <i class="fas fa-stream"></i>
-            <span>View Source Trace</span>
+            <span>View Source Run</span>
             <i class="fas fa-chevron-right"></i>
           </div>
         </div>

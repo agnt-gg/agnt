@@ -76,17 +76,17 @@ export const MAIN_SECTIONS = [
     screens: [{ screen: 'TracesScreen', label: 'RUNS' }],
   },
   {
-    // Outputs are what runs, goals, agents AND chats produce. It was a tab
-    // of Chat, which put a file the nightly digest wrote under the room you
-    // talk in; three different things make files and only one of them is a
-    // conversation. Beside Runs it reads as "what came out", and its left
-    // panel groups by the thing that made each file. ("Artifacts" is the
-    // route and the store; nobody says artifact.)
+    // Files: the folder-backed workspace. Runs, goals, agents and chats write
+    // here by default, but you also drop reference material in and Annie reads
+    // it back — inputs, knowledge and outputs are one tree, so the label names
+    // the place, not the direction of flow. It was a tab of Chat, which put a
+    // file the nightly digest wrote under the room you talk in. ("Artifacts"
+    // is the route and the store; nobody says artifact.)
     id: 'artifacts',
     group: 'REVIEW',
-    icon: 'fas fa-cube',
-    label: 'Outputs',
-    screens: [{ screen: 'ArtifactsScreen', label: 'OUTPUTS' }],
+    icon: 'fas fa-folder',
+    label: 'Files',
+    screens: [{ screen: 'ArtifactsScreen', label: 'FILES' }],
   },
   {
     id: 'goals',

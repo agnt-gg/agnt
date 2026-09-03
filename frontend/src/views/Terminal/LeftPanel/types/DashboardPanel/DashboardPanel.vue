@@ -66,7 +66,7 @@ import { SECTION_ROUTES } from '@/canvas/sections.js';
 
 const GOTO = Object.freeze([
   { screen: 'GoalsScreen', icon: 'fas fa-bullseye', label: 'Goals', count: 'goals' },
-  { screen: 'TracesScreen', icon: 'fas fa-stream', label: 'Traces', count: 'running' },
+  { screen: 'TracesScreen', icon: 'fas fa-stream', label: 'Runs', count: 'running' },
   { screen: 'AgentsScreen', icon: 'fas fa-robot', label: 'Agents' },
   { screen: 'WorkflowsScreen', icon: 'fas fa-project-diagram', label: 'Workflows' },
   { screen: 'ConnectorsScreen', icon: 'fas fa-plug', label: 'Connections' },

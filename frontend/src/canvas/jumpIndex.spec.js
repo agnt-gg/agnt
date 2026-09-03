@@ -28,7 +28,7 @@ describe('jumpIndex', () => {
     }
     // The first screen of a section is labelled with the section name.
     expect(goto.find((i) => i.action.screen === 'ToolsScreen').label).toBe('Library');
-    expect(goto.find((i) => i.action.screen === 'ArtifactsScreen').label).toBe('Outputs');
+    expect(goto.find((i) => i.action.screen === 'ArtifactsScreen').label).toBe('Files');
     expect(goto.find((i) => i.action.screen === 'TracesScreen').label).toBe('Runs');
     expect(goto.find((i) => i.action.screen === 'SkillsScreen').label).toBe('Library › Skills');
   });

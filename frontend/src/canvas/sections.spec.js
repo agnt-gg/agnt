@@ -149,12 +149,12 @@ describe('canvas sections registry', () => {
       expect([...new Set(MAIN_SECTIONS.map((s) => s.group))]).toEqual(['WORK', 'REVIEW', 'BUILD', 'CONNECT']);
     });
 
-    it('REVIEW is the morning sweep in order: Dashboard · Runs · Outputs · Goals', () => {
+    it('REVIEW is the morning sweep in order: Dashboard · Runs · Files · Goals', () => {
       // What ran, what it wrote, what is still moving. Goals last: it is
       // what you intend, the rows above are what you got.
       const review = MAIN_SECTIONS.filter((s) => s.group === 'REVIEW');
       expect(review.map((s) => s.id)).toEqual(['dashboard', 'traces', 'artifacts', 'goals']);
-      expect(review.map((s) => s.label)).toEqual(['Dashboard', 'Runs', 'Outputs', 'Goals']);
+      expect(review.map((s) => s.label)).toEqual(['Dashboard', 'Runs', 'Files', 'Goals']);
     });
 
     it('no group is a single row (a caption over one item is noise)', () => {
@@ -173,14 +173,14 @@ describe('canvas sections registry', () => {
   });
 
   // ── Regression locks for the AGNT One re-parent (2026-09-02) ──
-  it('Outputs (ArtifactsScreen) is a REVIEW row beside Runs, and Chat has one tab', () => {
+  it('Files (ArtifactsScreen) is a REVIEW row beside Runs, and Chat has one tab', () => {
     // Runs, goals, agents and chats all produce files; only one of those is
     // a conversation, so a Chat tab was the wrong owner. The Chat inspector
     // keeps the provenance link (its Artifacts section ⇧-clicks here).
     const outputs = MAIN_SECTIONS.find((s) => s.id === 'artifacts');
     expect(outputs?.group).toBe('REVIEW');
-    expect(outputs.label).toBe('Outputs');
-    expect(outputs.screens).toEqual([{ screen: 'ArtifactsScreen', label: 'OUTPUTS' }]);
+    expect(outputs.label).toBe('Files');
+    expect(outputs.screens).toEqual([{ screen: 'ArtifactsScreen', label: 'FILES' }]);
     const chat = MAIN_SECTIONS.find((s) => s.id === 'chat');
     expect(chat.screens.some((t) => t.screen === 'ArtifactsScreen')).toBe(false);
   });

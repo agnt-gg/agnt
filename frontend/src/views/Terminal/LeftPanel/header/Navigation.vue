@@ -162,7 +162,7 @@ export default {
         {
           screen: 'TracesScreen',
           icon: 'traces',
-          label: 'Traces',
+          label: 'Runs',
         },
         {
           screen: 'SkillsScreen',

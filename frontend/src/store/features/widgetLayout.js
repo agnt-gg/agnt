@@ -289,7 +289,7 @@ const actions = {
       WorkflowsScreen: 'Workflows',
       SettingsScreen: 'Settings',
       GoalsScreen: 'Goals',
-      TracesScreen: 'Traces',
+      TracesScreen: 'Runs',
       ConnectorsScreen: 'Connectors',
       MarketplaceScreen: 'Marketplace',
       WorkflowForgeScreen: 'Workflow Forge',

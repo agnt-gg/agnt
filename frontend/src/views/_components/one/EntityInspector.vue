@@ -259,9 +259,9 @@ export default {
       }
       if (k === 'trace' || k === 'execution') {
         const r = run.value;
-        return { ...base, title: r?.title || r?.name || r?.workflow_name || `run ${String(props.id || '').slice(0, 8)}`, sub: `run · ${r?.status || ''}`, icon: 'fas fa-stream', tone: 'indigo', badge: r?.status || '', badgeTone: statusTone(r?.status), openLabel: 'Open in Traces' };
+        return { ...base, title: r?.title || r?.name || r?.workflow_name || `run ${String(props.id || '').slice(0, 8)}`, sub: `run · ${r?.status || ''}`, icon: 'fas fa-stream', tone: 'indigo', badge: r?.status || '', badgeTone: statusTone(r?.status), openLabel: 'Open in Runs' };
       }
-      if (k === 'running') return { ...base, title: 'Running now', sub: `${running.value.length} running`, icon: 'fas fa-stream', tone: 'blue', badge: String(running.value.length), openScreen: 'TracesScreen', openLabel: 'Open Traces' };
+      if (k === 'running') return { ...base, title: 'Running now', sub: `${running.value.length} running`, icon: 'fas fa-stream', tone: 'blue', badge: String(running.value.length), openScreen: 'TracesScreen', openLabel: 'Open Runs' };
       if (k === 'autonomy') return { ...base, title: 'Awaiting approval', sub: `${escalated.value.length} actions`, icon: 'fas fa-user-shield', tone: 'yellow', badge: String(escalated.value.length), openScreen: 'AutonomyScreen', openLabel: 'Open Autonomy' };
       if (k === 'memory') return { ...base, title: 'Memory', sub: `${memories.value.length} entries`, icon: 'fas fa-brain', tone: 'pink', openScreen: 'MemoryScreen', openLabel: 'Open Memory' };
       return { ...base, title: String(k), sub: '' };

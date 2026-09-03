@@ -530,7 +530,7 @@
             </div>
           </div>
           <div v-else class="no-insights">
-            <span>No insights generated from this trace</span>
+            <span>No insights generated from this run</span>
           </div>
         </div>
       </div>
@@ -541,7 +541,7 @@
          screen's job (footer → New goal opens it there). -->
     <ListSummaryPanel
       v-else
-      caption="Traces"
+      caption="Runs"
       overview-title="Right now"
       :stats="summaryStats"
       hint="Click a run to inspect its timeline, tools, tokens and raw output here. Esc comes back."

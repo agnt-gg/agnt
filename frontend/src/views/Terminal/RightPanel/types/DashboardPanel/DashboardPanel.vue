@@ -57,7 +57,7 @@ export default {
       ];
     });
     const actions = [
-      { label: 'Open Traces', onClick: () => emit('panel-action', 'navigate', 'TracesScreen') },
+      { label: 'Open Runs', onClick: () => emit('panel-action', 'navigate', 'TracesScreen') },
       { label: 'Connectors', onClick: () => emit('panel-action', 'navigate', 'ConnectorsScreen') },
     ];
     const onEntityAction = (action, payload) => {

@@ -174,7 +174,7 @@ describe('titleFromEntryPath', () => {
 });
 
 // ?select=artifact:<file:/// href> is what the chat right panel emits when a
-// produced file is clicked. Outputs must open THAT file, not just the page.
+// produced file is clicked. Files must open THAT file, not just the page.
 describe('artifactSelectToWorkspacePath', () => {
   const ROOT = 'C:\\Users\\Studio\\AppData\\Roaming\\AGNT\\projects';
 

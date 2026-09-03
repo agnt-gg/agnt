@@ -21,8 +21,8 @@
           <!-- Header bar -->
           <div class="wm-header">
             <div class="wm-header-left">
-              <span class="wm-title">TRACES</span>
-              <span class="wm-count">{{ filteredExecutions.length }} traces</span>
+              <span class="wm-title">RUNS</span>
+              <span class="wm-count">{{ filteredExecutions.length }} runs</span>
             </div>
             <div class="wm-header-right">
               <input

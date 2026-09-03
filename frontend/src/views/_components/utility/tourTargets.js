@@ -16,8 +16,8 @@ export const TOUR_TARGETS = [
   // ── Sidebar: PLAN ──────────────────────────────────────────────────
   { id: 'sidebar.dashboard',        selector: '[data-tour-id="sidebar.dashboard"]',        screen: null, description: 'Sidebar button: Dashboard',    safeToSimulate: true },
   { id: 'sidebar.goals',            selector: '[data-tour-id="sidebar.goals"]',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },
-  { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Runs (execution traces)',       safeToSimulate: true },
-  { id: 'sidebar.artifacts',         selector: '[data-tour-id="sidebar.artifacts"]',         screen: null, description: 'Sidebar button: Outputs (files produced by chats, runs, goals and agents)', safeToSimulate: true },
+  { id: 'sidebar.traces',           selector: '[data-tour-id="sidebar.traces"]',           screen: null, description: 'Sidebar button: Runs (every workflow, goal and agent execution)',       safeToSimulate: true },
+  { id: 'sidebar.artifacts',         selector: '[data-tour-id="sidebar.artifacts"]',         screen: null, description: 'Sidebar button: Files (the workspace folder: what chats, runs, goals and agents produce, plus anything you drop in)', safeToSimulate: true },
 
   // ── Sidebar: BUILD ─────────────────────────────────────────────────
   { id: 'sidebar.agents',           selector: '[data-tour-id="sidebar.agents"]',           screen: null, description: 'Sidebar button: Agents',       safeToSimulate: true },

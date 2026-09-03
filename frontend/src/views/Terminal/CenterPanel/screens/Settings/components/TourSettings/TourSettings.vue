@@ -139,8 +139,8 @@ export default {
       },
       {
         id: 'traces',
-        name: 'Traces Tour',
-        description: 'Learn to track and manage execution traces',
+        name: 'Runs Tour',
+        description: 'Learn to track and manage your runs',
         screen: 'TracesScreen',
       },
       {

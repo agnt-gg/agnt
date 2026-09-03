@@ -108,7 +108,7 @@ export function toWorkspaceRelative(absolutePath, workspaceRoot) {
 const ARTIFACT_SELECT_PREFIX = 'artifact:';
 
 /**
- * The file an `?select=artifact:<id>` navigation intent asks Outputs to open,
+ * The file an `?select=artifact:<id>` navigation intent asks Files to open,
  * as a workspace-relative path `openFile` can read.
  *
  * The chat right panel lists every `file:///` link an assistant message
