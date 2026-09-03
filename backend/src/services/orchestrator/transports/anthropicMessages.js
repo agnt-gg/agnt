@@ -1068,7 +1068,6 @@ Please carefully check the tool schema and ensure all parameters match the expec
                 // pill while args still stream. Anthropic only emits the final
                 // tool_call_delta on content_block_stop (after full args parse),
                 // which is what made the UI look frozen during long arg writes.
-                console.log('[Anthropic DEBUG] content_block_start tool_use:', block.name, block.id);
                 if (onChunk) {
                   onChunk({
                     type: 'tool_call_delta',

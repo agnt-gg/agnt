@@ -43,6 +43,7 @@ import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
+import { createOpenToolCallLedger, wrapSendEventWithLedger } from './orchestrator/openToolCalls.js';
 import { persistTurnTranscript } from './orchestrator/persistTurnTranscript.js';
 import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
@@ -1299,6 +1300,13 @@ async function universalChatHandler(req, res, context = {}) {
     }
   }
 
+  // Which tool calls has the client been shown and not yet told the end of?
+  // Derived from the wire, at the one place every event passes through, so
+  // the abort settlement below can never disagree with what is on screen.
+  // See openToolCalls.js for the #88 window this closes.
+  const openToolCalls = createOpenToolCallLedger();
+  sendEvent = wrapSendEventWithLedger(openToolCalls, sendEvent);
+
   sendEvent('conversation_started', { conversationId });
 
   // Variables for logging
@@ -2203,11 +2211,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
       ...agentMeta,
     });
 
-    // Track which tool call IDs we've already announced as pending so we only
-    // fire tool_pending once per tool (adapters emit tool_call_delta repeatedly
-    // as args stream in).
-    const announcedToolIds = new Set();
-
     // The streaming chunk handler is factored out so failover can reuse it
     // across provider tiers. NOTE: the adapter only returns recoveredFromError
     // when ZERO content chunks were emitted, so a failed tier never streams
@@ -2230,11 +2233,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // Announce the pending pill the moment we know the tool name+id, so
           // the UI doesn't look frozen while args are still streaming. The
           // canonical tool_start event below will upgrade it with full args.
+          // Adapters emit tool_call_delta repeatedly as args stream in; the
+          // ledger already knows the id after the first one, so announce once.
           const tc = chunk.toolCall;
-          console.log('[tool_pending DEBUG] got tool_call_delta:', { id: tc?.id, name: tc?.function?.name, already: announcedToolIds.has(tc?.id) });
-          if (tc?.id && tc?.function?.name && !announcedToolIds.has(tc.id)) {
-            announcedToolIds.add(tc.id);
-            console.log('[tool_pending DEBUG] emitting tool_pending SSE event for', tc.function.name, tc.id);
+          if (tc?.id && tc?.function?.name && !openToolCalls.has(tc.id)) {
             sendEvent('tool_pending', {
               assistantMessageId,
               toolCall: { id: tc.id, name: tc.function.name },
@@ -2507,8 +2509,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
               sendEvent('reasoning_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
             } else if (chunk.type === 'tool_call_delta') {
               const tc = chunk.toolCall;
-              if (tc?.id && tc?.function?.name && !announcedToolIds.has(tc.id)) {
-                announcedToolIds.add(tc.id);
+              if (tc?.id && tc?.function?.name && !openToolCalls.has(tc.id)) {
                 sendEvent('tool_pending', {
                   assistantMessageId,
                   toolCall: { id: tc.id, name: tc.function.name },
@@ -3439,8 +3440,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
             });
           } else if (chunk.type === 'tool_call_delta') {
             const tc = chunk.toolCall;
-            if (tc?.id && tc?.function?.name && !announcedToolIds.has(tc.id)) {
-              announcedToolIds.add(tc.id);
+            if (tc?.id && tc?.function?.name && !openToolCalls.has(tc.id)) {
               sendEvent('tool_pending', {
                 assistantMessageId,
                 toolCall: { id: tc.id, name: tc.function.name },
@@ -3513,27 +3513,22 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
 
-    // The loop's guard is `!signal.aborted`. When Stop fires between rounds,
-    // `toolCalls` still holds the calls the model just issued: the client has
-    // their tool_start (the card is drawn) and will never get a tool_end, so
-    // the card spins forever — in the live tab and, once autosaved, on every
-    // reload. messageSanitizers already injects the cancelled result into the
-    // MODEL's history; this is the same fact told to the CLIENT.
-    if (streamAbortController.signal.aborted && toolCalls && toolCalls.length > 0) {
-      const interrupted = 'Tool call interrupted: the stream ended before a result arrived.';
-      for (const toolCall of toolCalls) {
-        sendEvent('tool_end', {
-          assistantMessageId,
-          toolCall: {
-            id: toolCall.id,
-            name: toolCall.function?.name,
-            result: JSON.stringify({ success: false, interrupted: true, error: interrupted }),
-            error: interrupted,
-            status: 'interrupted',
-          },
-        });
+    // The loop's guard is `!signal.aborted`. When Stop fires, every tool call
+    // the client has a card for and no result for would spin forever — in the
+    // live tab and, once autosaved, on every reload. messageSanitizers already
+    // injects the cancelled result into the MODEL's history; this is the same
+    // fact told to the CLIENT.
+    //
+    // The ledger, not `toolCalls`, decides what is open: `toolCalls` is only
+    // assigned when a stream COMPLETES, but cards are drawn by tool_pending as
+    // each call is announced mid-stream. Abort during that announcement and
+    // the cards exist while `toolCalls` is still empty (#88).
+    if (streamAbortController.signal.aborted && openToolCalls.size > 0) {
+      const settled = openToolCalls.size;
+      for (const event of openToolCalls.interruptionEvents(assistantMessageId)) {
+        sendEvent('tool_end', event);
       }
-      console.log(`[Tool Loop] Aborted with ${toolCalls.length} open tool call(s); settled as interrupted`);
+      console.log(`[Tool Loop] Aborted with ${settled} open tool call(s); settled as interrupted`);
     }
 
     // The between-rounds drain only fires when there's a next round. If the
