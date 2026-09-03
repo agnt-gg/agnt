@@ -53,13 +53,16 @@
       <div v-if="!hasContext" class="muted">Appears after the first turn.</div>
     </InspSection>
 
+    <!-- Click previews in place (you stay in the conversation); the small
+         arrow, or the preview's own link, goes to the Outputs screen. -->
     <InspSection title="Artifacts" v-if="artifacts.length">
-      <div v-for="a in artifacts" :key="a.href" class="li" @click="openArtifact(a)">
+      <div v-for="a in artifacts" :key="a.href" class="li li-artifact" @click="previewArtifact(a)" v-tooltip="'Preview ' + a.name">
         <span class="tile k-artifact"><i class="fas fa-cube"></i></span>
         <span class="nm">{{ a.name }}</span>
-        <span class="t">file</span>
+        <button type="button" class="li-go" v-tooltip="'Open in Outputs'" @click.stop="openArtifact(a)"><i class="fas fa-external-link-alt"></i></button>
       </div>
     </InspSection>
+    <ArtifactPreview ref="preview" @open-in-outputs="openArtifact" />
 
     <InspSection title="This chat">
       <div class="li" @click="$emit('panel-action', 'open-provider-selector')">
@@ -98,7 +101,7 @@
  * Integration Health on Connectors; Resources under Settings › About and in
  * the Jump palette.
  */
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useStore } from 'vuex';
 import InspectorShell from '@/views/_components/one/InspectorShell.vue';
 import InspSection from '@/views/_components/one/InspSection.vue';
@@ -106,13 +109,14 @@ import EntityInspector from '@/views/_components/one/EntityInspector.vue';
 import { useInspect } from '@/composables/useInspect.js';
 import { compileEntityMatchers, entityRegistryFromStore } from '@/utils/entityRefs.js';
 import { extractMessageArtifacts } from '@/utils/messageArtifacts.js';
+import ArtifactPreview from '@/views/_components/one/ArtifactPreview.vue';
 
 const RUNNING = new Set(['running', 'executing', 'in_progress', 'active']);
 const ICONS = { agent: 'fas fa-robot', workflow: 'fas fa-project-diagram', goal: 'fas fa-bullseye', trace: 'fas fa-stream', memory: 'fas fa-brain' };
 
 export default {
   name: 'ChatPanel',
-  components: { InspectorShell, InspSection, EntityInspector },
+  components: { InspectorShell, InspSection, EntityInspector, ArtifactPreview },
   props: {
     /** From Chat.vue via rightPanelProps. All optional. */
     participants: { type: Array, default: () => [] },
@@ -193,6 +197,10 @@ export default {
     function stopStreaming() {
       emit('panel-action', 'stop-streaming');
     }
+    const preview = ref(null);
+    function previewArtifact(a) {
+      preview.value?.show(a);
+    }
     function openArtifact(a) {
       emit('panel-action', 'open-artifact', a);
     }
@@ -204,7 +212,7 @@ export default {
       else emit('panel-action', action, payload);
     }
 
-    return { target, clear, isStreaming, isSaving, running, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, kindIcon, when, saveNow, stopStreaming, openArtifact, onEntityAction };
+    return { target, clear, isStreaming, isSaving, running, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, kindIcon, when, saveNow, stopStreaming, preview, previewArtifact, openArtifact, onEntityAction };
   },
 };
 </script>
@@ -261,6 +269,25 @@ export default {
 }
 .li:hover .nm {
   color: var(--color-green);
+}
+/* Small "go to Outputs" affordance on artifact rows; the row itself previews. */
+.li-go {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--color-text-dull, #767888);
+  font-size: 10px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.li:hover .li-go {
+  opacity: 1;
+}
+.li-go:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
 }
 .t {
   font-size: 10px;
