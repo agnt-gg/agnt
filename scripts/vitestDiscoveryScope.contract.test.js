@@ -12,7 +12,7 @@
  * 625 of them duplicates, a 338-file suite reporting 662 failures. The damage
  * scales with the number of branches in flight, so the more parallel the work
  * the redder the gate — which is the opposite of what a gate is for. Nothing
- * else reports it either: .worktrees/ is gitignored (.gitignore:26), so git,
+ * else reports it either: .worktrees/ is gitignored (.gitignore:34), so git,
  * CI and code review are all silent and the only symptom is a suite that
  * cannot go green.
  *
