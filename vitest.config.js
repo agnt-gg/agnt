@@ -54,8 +54,8 @@ import { onUnhandledError } from './tests/setup/unhandledErrorFilter.mjs';
  * collected, 625 of them duplicates from .worktrees — a 338-file suite
  * reporting 662 failures. The failure scales with parallelism, so the more
  * branches in flight the redder the gate gets, which is backwards. And because
- * .worktrees/ is gitignored (.gitignore:34), nothing in git, CI or review ever
- * mentions it; the only symptom is a suite that cannot go green.
+ * the `.worktrees/` rule in .gitignore hides it, nothing in git, CI or review
+ * ever mentions it; the only symptom is a suite that cannot go green.
  *
  * Guarded by scripts/vitestDiscoveryScope.contract.test.js.
  */
