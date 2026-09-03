@@ -2402,6 +2402,10 @@ export default {
       participants: chatParticipants.value,
       hasContext: hasMonitoringData.value,
       activeAgentName: activeAgentName.value,
+      // The panel must read the SAME transcript the user is looking at.
+      // store.state.chat.messages also carries the mirrored agent-side
+      // conversation, which this screen deliberately hides.
+      messages: displayMessages.value,
     }));
 
     const handlePanelAction = (action, payload) => {

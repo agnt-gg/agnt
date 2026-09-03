@@ -118,6 +118,63 @@ export function annotateEntityRefs(html, entities, opts = {}) {
 }
 
 /**
+ * Prose only. A name inside a fenced block, inline code, a URL or a file path
+ * is not somebody talking about an entity — it is a string that happens to
+ * collide with one. `annotateEntityRefs` already refuses to draw chips there
+ * (SKIP_TAGS runs over rendered HTML); this is the same rule for raw markdown.
+ */
+function prose(text) {
+  return String(text)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/~~~[\s\S]*?~~~/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/\]\([^)]*\)/g, '] ')
+    .replace(/\b[a-z][\w+.-]*:\/\/\S+/gi, ' ')
+    .replace(/[A-Za-z]:[\\/]\S+/g, ' ')
+    .replace(/(?:^|\s)[\\/]\S+/g, ' ');
+}
+
+/**
+ * The entities a transcript actually refers to, most recent first.
+ *
+ * Deliberately narrower than "a name appears somewhere":
+ *   · prose only (see above)
+ *   · deduped by kind + name, case-insensitively, so two agents that happen to
+ *     share a name are ONE row rather than the same word listed twice
+ *   · only the tail of the conversation is scanned, so this stays O(window)
+ *     while a reply streams
+ *
+ * @param {Array} messages  the messages the user can actually see
+ * @param {Array} matchers  compiled matchers, or a raw entity registry
+ * @param {{max?: number, scan?: number}} [opts]
+ */
+export function collectEntityRefs(messages, matchers, opts = {}) {
+  const msgs = Array.isArray(messages) ? messages : [];
+  const src = Array.isArray(matchers) ? matchers : [];
+  const list = src.length && src[0] && src[0].re ? src : compileEntityMatchers(src);
+  if (!list.length || !msgs.length) return [];
+
+  const max = opts.max ?? 8;
+  const scan = opts.scan ?? 50;
+  const stop = Math.max(0, msgs.length - scan);
+  const seen = new Map();
+  for (let i = msgs.length - 1; i >= stop && seen.size < max; i--) {
+    const raw = typeof msgs[i]?.content === 'string' ? msgs[i].content : '';
+    if (!raw) continue;
+    const text = prose(raw);
+    if (!text.trim()) continue;
+    for (const { entity, re } of list) {
+      if (seen.size >= max) break;
+      const key = `${entity.kind}:${String(entity.name).toLowerCase()}`;
+      if (seen.has(key)) continue;
+      re.lastIndex = 0;
+      if (re.test(text)) seen.set(key, entity);
+    }
+  }
+  return [...seen.values()];
+}
+
+/**
  * The owning screen for an entity kind — where ⇧-click goes, and where the
  * inspector request is routed when the current screen cannot show it.
  */

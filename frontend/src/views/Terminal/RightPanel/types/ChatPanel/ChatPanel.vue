@@ -29,7 +29,7 @@
       <div v-if="!isStreaming && !running.length" class="muted">Nothing is running.</div>
     </InspSection>
 
-    <InspSection title="Mentioned" v-if="mentioned.length">
+    <InspSection title="Referenced" v-if="mentioned.length">
       <div v-for="m in mentioned" :key="m.kind + ':' + m.id" class="li" @click="inspectKind(m.kind, m.id)">
         <span class="tile" :class="'k-' + m.kind"><i :class="kindIcon(m.kind)"></i></span>
         <span class="nm">{{ m.name }}</span>
@@ -107,7 +107,7 @@ import InspectorShell from '@/views/_components/one/InspectorShell.vue';
 import InspSection from '@/views/_components/one/InspSection.vue';
 import EntityInspector from '@/views/_components/one/EntityInspector.vue';
 import { useInspect } from '@/composables/useInspect.js';
-import { compileEntityMatchers, entityRegistryFromStore } from '@/utils/entityRefs.js';
+import { collectEntityRefs, compileEntityMatchers, entityRegistryFromStore } from '@/utils/entityRefs.js';
 import { extractMessageArtifacts } from '@/utils/messageArtifacts.js';
 import ArtifactPreview from '@/views/_components/one/ArtifactPreview.vue';
 
@@ -125,6 +125,14 @@ export default {
     toolsTotalCount: { type: Number, default: null },
     conversationTitle: { type: String, default: '' },
     activeAgentName: { type: String, default: '' },
+    /**
+     * The messages the user can actually SEE. Must come from the screen, not
+     * from `store.state.chat.messages` — that array also holds the mirrored
+     * agent-side conversation, which Chat.vue hides from the main transcript.
+     * Reading it directly listed agents from other threads as if this
+     * conversation had named them.
+     */
+    messages: { type: Array, default: () => [] },
   },
   emits: ['panel-action'],
   setup(props, { emit }) {
@@ -142,30 +150,16 @@ export default {
       return props.toolsTotalCount ? `${props.toolsEnabledCount} of ${props.toolsTotalCount}` : String(props.toolsEnabledCount);
     });
 
-    // Entities this conversation mentions, from the messages themselves and
-    // the same registry that draws the chips. Unique, most recent first.
-    const mentioned = computed(() => {
-      const msgs = store.state.chat?.messages || [];
-      const matchers = compileEntityMatchers(entityRegistryFromStore(store));
-      if (!matchers.length || !msgs.length) return [];
-      const seen = new Map();
-      for (let i = msgs.length - 1; i >= 0 && seen.size < 8; i--) {
-        const text = typeof msgs[i]?.content === 'string' ? msgs[i].content : '';
-        if (!text) continue;
-        for (const { entity, re } of matchers) {
-          const key = `${entity.kind}:${entity.id}`;
-          if (seen.has(key)) continue;
-          re.lastIndex = 0;
-          if (re.test(text)) seen.set(key, entity);
-        }
-      }
-      return [...seen.values()];
-    });
+    // Entities this conversation refers to, from the visible transcript and
+    // the same registry that draws the chips. Compiled separately so a
+    // streaming reply re-scans the tail without recompiling ~200 matchers.
+    const matchers = computed(() => compileEntityMatchers(entityRegistryFromStore(store)));
+    const mentioned = computed(() => collectEntityRefs(props.messages, matchers.value));
 
     // Files this thread produced: every real file:/// link in an assistant
     // message, newest first.
     const artifacts = computed(() => {
-      const msgs = store.state.chat?.messages || [];
+      const msgs = props.messages || [];
       const out = new Map();
       for (const m of msgs) {
         if (m?.role !== 'assistant') continue;
