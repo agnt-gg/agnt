@@ -434,7 +434,29 @@ export function serverMessagesToUi(messages) {
 
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
-    if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+    if (!m) continue;
+
+    // OpenAI-shaped transcripts (and several proxy providers) store tool
+    // results as their own role:'tool' rows. These rows have no utterance and
+    // must not render as bubbles; they exist only to complete earlier tool
+    // calls.
+    if (m.role === 'tool') {
+      const id = m.tool_call_id || m.tool_use_id || m.call_id || m.id;
+      if (id) {
+        const tc = callsById.get(id);
+        if (tc) {
+          // The tool row's `content` is already flattened plaintext/json.
+          // Treat its absence as an explicit empty string, not as "still open".
+          const body = m.content !== undefined && m.content !== null ? String(m.content) : '';
+          const isError = Boolean(m.is_error || m.error);
+          if (isError) { tc.error = body; tc.status = 'error'; }
+          else { tc.result = body; tc.status = 'completed'; }
+        }
+      }
+      continue;
+    }
+
+    if (m.role !== 'user' && m.role !== 'assistant') continue;
 
     const flat = flattenProviderMessage(m);
 
@@ -507,7 +529,13 @@ export function transcriptSubstance(messages) {
       substance += m.content.replace(COERCION_ARTIFACT, '').length;
     }
     // A turn can be pure tool work with no prose; that is still substance.
-    if (Array.isArray(m.toolCalls)) substance += m.toolCalls.length * 32;
+    // But a pending card (no result) is not as substantive as a completed one.
+    if (Array.isArray(m.toolCalls)) {
+      for (const tc of m.toolCalls) {
+        const hasResult = tc?.result !== undefined && tc?.result !== null;
+        substance += hasResult ? 64 : 32;
+      }
+    }
   }
   return substance;
 }
