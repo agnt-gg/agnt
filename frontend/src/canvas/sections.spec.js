@@ -284,36 +284,48 @@ describe('canvas sections registry', () => {
       expect(sectionIds.filter((id) => !branches.has(id))).toEqual([]);
     });
 
-    it('the AI Provider page still renders all three cards', () => {
+    it('the AI Provider page still renders all three cards, on both surfaces', () => {
       // It was briefly reduced to ProviderSelector alone while moving screens
       // between surfaces. Fallback and chat behaviour are the other two thirds
       // of that page and vanished silently, because a missing card looks like
       // a page that simply has less on it.
-      const providerBlock = settingsScreenSrc.split("activeSection === 'providers'")[1]?.split('activeSection ===')[0] ?? '';
-      for (const card of ['<ProviderSelector />', '<FallbackProviders />', '<ChatBehaviorSettings />']) {
-        expect(providerBlock).toContain(card);
+      //
+      // Two surfaces draw it — Connections › AI Providers is where the rail,
+      // the "no provider" pill and the Jump palette all land, and Settings ›
+      // AI Provider is where anyone who looks in Settings first ends up. They
+      // import the same components, so the risk is not that a card renders
+      // differently but that one surface quietly stops listing it.
+      const blocks = {
+        Settings: settingsScreenSrc,
+        Connections: connectorsScreenSrc,
+      };
+      for (const [surface, src] of Object.entries(blocks)) {
+        const providerBlock = src.split("activeSection === 'providers'")[1]?.split('activeSection ===')[0] ?? '';
+        for (const card of ['<ProviderSelector />', '<FallbackProviders />', '<ChatBehaviorSettings />']) {
+          expect(providerBlock, `${surface} → ${card}`).toContain(card);
+        }
       }
     });
   });
 
-  it('CONNECT is a captioned group of three rows, last in the main rail; Settings is the foot alone', () => {
+  it('CONNECT is a captioned group of two rows, last in the main rail; Settings is the foot alone', () => {
     // Connect was one captionless row at the foot. Connecting things is most
-    // of the setup a new user does, and it is three different questions —
-    // which apps, which model, which plugins — so it reads as a group with
-    // three rows, after BUILD (do · plan · build · connect).
+    // of the setup a new user does, so it reads as a captioned group — but of
+    // TWO questions, not three: what AGNT can reach, and what extends her.
+    // "Which model" is one more thing you connect, so it is a view inside
+    // Connections rather than a rail row of its own.
     const connect = MAIN_SECTIONS.filter((s) => s.group === 'CONNECT');
-    expect(connect.map((s) => s.id)).toEqual(['connect', 'providers', 'plugins']);
-    expect(connect.map((s) => s.screens[0].screen)).toEqual(['ConnectorsScreen', 'ProvidersScreen', 'PluginsScreen']);
-    expect(MAIN_SECTIONS.slice(-3).map((s) => s.group)).toEqual(['CONNECT', 'CONNECT', 'CONNECT']);
+    expect(connect.map((s) => s.id)).toEqual(['connect', 'plugins']);
+    expect(connect.map((s) => s.screens[0].screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
+    expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['CONNECT', 'CONNECT']);
     expect(BOTTOM_SECTIONS.map((s) => s.id)).toEqual(['settings']);
     // The attention badge rides the Connections row.
     expect(connect[0].badge).toBe('connect');
   });
 
-  it('Plugins and AI Providers are CONNECT rows, and neither Library nor the Connect nav offers them', () => {
+  it('Plugins is a CONNECT row Library does not repeat; AI Providers leads the Connect nav instead of taking a row', () => {
     // Each has exactly one door. Left in Library, Plugins would be an asset
-    // list beside a connection list one row away; left in the Connect nav,
-    // either would be a second door to a screen with its own rail row.
+    // list beside a connection list one row away.
     const library = MAIN_SECTIONS.find((s) => s.id === 'library');
     expect(library?.group).toBe('BUILD');
     expect(library?.screens.some((t) => t.screen === 'PluginsScreen')).toBe(false);
@@ -322,8 +334,13 @@ describe('canvas sections registry', () => {
     const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
     expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
     expect(connectNavIds).not.toContain('plugins');
-    expect(connectNavIds).not.toContain('providers');
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
+
+    // Providers is the FIRST row of that nav, not a rail row. Ordering is the
+    // whole point of the row — it is the most-touched setup decision in the
+    // app — so assert the position, not merely that it is listed somewhere.
+    expect(connectNavIds[0]).toBe('providers');
+    expect(MAIN_SECTIONS.some((s) => s.screens.some((t) => t.screen === 'ProvidersScreen'))).toBe(false);
   });
 
   it('every view the Connect panel lists has a branch on the Connect screen', () => {

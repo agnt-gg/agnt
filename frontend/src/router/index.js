@@ -97,10 +97,11 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'PluginsScreen' },
     },
     {
+      // AI Providers went back to being a view inside Connections. Kept as a
+      // redirect rather than deleted: the path shipped, and a bookmark that
+      // lands on the right page beats one that 404s.
       path: '/providers',
-      name: 'TerminalProviders',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'ProvidersScreen' },
+      redirect: { path: '/connectors', query: { section: 'providers' } },
     },
     {
       path: '/agents',

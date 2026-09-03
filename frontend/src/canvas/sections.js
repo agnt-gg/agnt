@@ -141,12 +141,16 @@ export const MAIN_SECTIONS = [
     ],
   },
 
-  // ── CONNECT ── what AGNT reaches out to. Three rows because each is a
-  // different question: which APPS can she use, which MODEL does she think
-  // with, which PLUGINS extend her. It was one captionless row at the foot;
-  // connecting things is most of the setup a new user does, and the rail
-  // should say so. MCP servers stay under Connections (a server you point at
-  // is a connection).
+  // ── CONNECT ── what AGNT reaches out to. Two rows because there are two
+  // questions: what can she REACH (apps, models, servers) and what EXTENDS
+  // her (plugins). It was one captionless row at the foot; connecting things
+  // is most of the setup a new user does, and the rail should say so.
+  //
+  // AI Providers is deliberately NOT a third row. "Which model" is one more
+  // thing you connect, so it is the first view INSIDE Connections rather than
+  // a rail row beside it — see CONNECT_ITEMS in LeftPanel/ConnectorsPanel.
+  // MCP servers stay there for the same reason (a server you point at is a
+  // connection).
   {
     id: 'connect',
     group: 'CONNECT',
@@ -154,16 +158,6 @@ export const MAIN_SECTIONS = [
     label: 'Connections',
     badge: 'connect',
     screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTIONS' }],
-  },
-  {
-    // The most-touched setup page: the toolbar's "no provider" pill and the
-    // first-run card both land here. Settings › AI Provider draws the same
-    // three cards for anyone who looks there first.
-    id: 'providers',
-    group: 'CONNECT',
-    icon: 'fas fa-robot',
-    label: 'AI Providers',
-    screens: [{ screen: 'ProvidersScreen', label: 'AI PROVIDERS' }],
   },
   {
     id: 'plugins',

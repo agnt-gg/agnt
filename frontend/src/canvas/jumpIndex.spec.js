@@ -44,7 +44,10 @@ describe('jumpIndex', () => {
     const a = buildJumpIndex({ ...src, query: 'approv' });
     expect(a.groups.find((g) => g.id === 'do').items[0].label).toMatch(/3 pending approvals/);
     const b = buildJumpIndex({ ...src, hasProvider: false, query: 'provider' });
-    expect(b.groups.find((g) => g.id === 'do').items[0].action.screen).toBe('ProvidersScreen');
+    // Naming the section matters as much as naming the screen: Connections
+    // opens on API / OAuth by default, so a bare screen jump would land one
+    // click away from the thing the verb promised.
+    expect(b.groups.find((g) => g.id === 'do').items[0].action).toMatchObject({ screen: 'ConnectorsScreen', opts: { section: 'providers' } });
   });
 
   it('falls through to Annie when nothing matches, and never when something does', () => {

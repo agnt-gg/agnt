@@ -78,10 +78,16 @@ import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 // row in the sidebar. Both this panel and the screen read and write ONE shared
 // value, so they cannot disagree about which view is showing.
 //
-// Two things are deliberately absent, because each has its own CONNECT rail
-// row now: AI Providers (ProvidersScreen) and Plugins (PluginsScreen). Listing
-// them here too would be a second door to a screen one row away.
+// AI Providers leads, because "which model does Annie think with" is the most
+// touched setup decision in the app and it is one more thing you connect — the
+// toolbar's "no provider" pill and the first-run card both land on it. It had a
+// CONNECT rail row of its own for a while; a whole row for one view of one
+// screen said it was a bigger idea than it is.
+//
+// Plugins is deliberately absent: it has its own rail row, and an installable
+// asset is not something AGNT reaches out to.
 const CONNECT_ITEMS = Object.freeze([
+  { id: 'providers', icon: 'fas fa-robot', label: 'AI Providers' },
   { id: 'oauth', icon: 'fas fa-plug', label: 'API / OAuth' },
   { id: 'email-server', icon: 'fas fa-envelope', label: 'Emails', pro: true },
   { id: 'mcp-servers', icon: 'fas fa-server', label: 'MCP' },

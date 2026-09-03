@@ -293,6 +293,7 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
 import { BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, visibleTabs } from './sections.js';
+import { setInnerSection } from './innerSection.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
@@ -522,9 +523,15 @@ export default {
       onCustomPage.value = false;
       emit('screen-change', 'AutonomyScreen');
     }
+    // AI Providers is a view INSIDE Connections, so landing on it means naming
+    // the view as well as the screen. Both halves are needed and neither is
+    // redundant: the shared ref moves a Connections that is ALREADY mounted
+    // (KeepAlive means initializeScreen will not run again), and ?section=
+    // survives a reload so the pill produces a link someone can send.
     function goProviders() {
       onCustomPage.value = false;
-      emit('screen-change', 'ProvidersScreen');
+      setInnerSection('providers');
+      emit('screen-change', 'ConnectorsScreen', { section: 'providers' });
     }
     function goAbout() {
       onCustomPage.value = false;
@@ -1444,7 +1451,7 @@ export default {
 
 .cv-sb-page {
   width: 32px;
-  height: 30px;
+  height: 28px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
@@ -1569,7 +1576,7 @@ export default {
 
 .cv-sb-add {
   width: 32px;
-  height: 30px;
+  height: 28px;
   border: 1px dashed var(--color-dull-navy);
   border-radius: 4px;
   background: none;
@@ -1600,7 +1607,7 @@ export default {
 /* Collapse / expand toggle button */
 .cv-sb-toggle {
   width: 32px;
-  height: 30px;
+  height: 28px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;

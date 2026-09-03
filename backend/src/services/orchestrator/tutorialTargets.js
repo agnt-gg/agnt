@@ -24,7 +24,6 @@ export const TOUR_TARGETS = [
 
   // ── Sidebar: foot of the rail ── one row; the screen carries its own nav.
   { id: 'sidebar.connect',           screen: null, description: 'Sidebar button: Connections (API/OAuth, Emails, MCP, Vault, Webhooks)', safeToSimulate: true },
-  { id: 'sidebar.providers',         screen: null, description: 'Sidebar button: AI Providers (default model, fallback, behaviour)', safeToSimulate: true },
   { id: 'sidebar.plugins',           screen: null, description: 'Sidebar button: Plugins', safeToSimulate: true },
 
   // ── Sidebar: SYSTEM + controls ─────────────────────────────────────

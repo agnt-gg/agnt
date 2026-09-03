@@ -19,7 +19,7 @@ describe('PanelBackdrop — exists only where the three-panel frame does', () =>
   });
 
   it('frame screens (and unknown screens) get the backdrop', () => {
-    for (const s of ['ChatScreen', 'AgentsScreen', 'TracesScreen', 'ProvidersScreen', 'SomeNewScreen']) {
+    for (const s of ['ChatScreen', 'AgentsScreen', 'TracesScreen', 'ConnectorsScreen', 'SomeNewScreen']) {
       expect(screenHasFrame(s), s).toBe(true);
     }
   });

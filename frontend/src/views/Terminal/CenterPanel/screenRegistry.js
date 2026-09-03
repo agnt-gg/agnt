@@ -56,9 +56,6 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // itself, so the column had nothing to say. Right is dynamic (plugin detail
   // vs. news).
   PluginsScreen: { leftPanel: false, input: false },
-  // CONNECT › AI Providers: three cards, no nav to draw on the left; right is
-  // the connection-health summary (context 'providers').
-  ProvidersScreen: { leftPanel: false, rightPanel: 'ConnectorsPanel', input: false },
   SettingsScreen: { input: false }, // right: dynamic
   SkillForgeScreen: { rightPanel: 'SkillsPanel', input: false },
   SkillsScreen: { leftPanel: 'SkillsPanel', rightPanel: 'SkillsPanel', input: false },
