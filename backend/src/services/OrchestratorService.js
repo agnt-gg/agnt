@@ -2304,14 +2304,32 @@ IMPORTANT: The image data is already available in the system context. You don't 
       __emitManifestForServedProvider(to.provider, to.model);
     };
 
-    const streamAcrossChain = (messages, tools, onChunk) => runWithFallback({
-      chain: providerChain,
-      // The user's Stop is not a provider failure. Every stream in the turn
-      // goes through this one call, so the guard covers all of them.
-      shouldStop: () => streamAbortController.signal.aborted,
-      runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
-      onFallback: onProviderFallback,
-    });
+    /**
+     * THE single place this turn executes the provider chain.
+     *
+     * Round 0, the validation retry, every tool-loop round and the no-text
+     * follow-up all go through here rather than reaching for the executor
+     * themselves. That is what keeps cancellation, rollover and the no-persist
+     * rule implemented — and provable — once instead of four times, which is
+     * the property dynamicRouting.invariants.test.js pins by counting this
+     * call site. Adding a stream that bypasses this wrapper would fork the
+     * failover semantics; toolLoopFailover.test.js guards against that too, by
+     * asserting runTierStream holds the only raw adapter.callStream in the file.
+     *
+     * The `await` is not incidental: this is the audited frame, and keeping it
+     * on the stack means a rejection from deep inside a tier still reports
+     * through here rather than losing the async boundary.
+     */
+    const streamAcrossChain = async (messages, tools, onChunk) => {
+      return await runWithFallback({
+        chain: providerChain,
+        // The user's Stop is not a provider failure. Every stream in the turn
+        // goes through this one call, so the guard covers all of them.
+        shouldStop: () => streamAbortController.signal.aborted,
+        runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
+        onFallback: onProviderFallback,
+      });
+    };
 
     /**
      * INVARIANT I3 — report the provider that SERVED, not the one requested.

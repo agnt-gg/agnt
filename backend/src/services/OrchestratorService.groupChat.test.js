@@ -80,9 +80,14 @@ describe('mention_agent terminal floor pass', () => {
     expect(after).toMatch(/sendEvent\('floor_passed'/);
     expect(after).toContain('break;');
     // Ordering: the terminal check sits AFTER tool_executions (results already
-    // streamed) and BEFORE the next adapter.callStream in the loop.
+    // streamed) and BEFORE the next round's streaming call.
+    //
+    // That next call is no longer a bare `adapter.callStream` — the tool loop
+    // streams through streamAcrossChain so a mid-turn overload can fail over to
+    // the next provider tier. The ORDERING is the contract here, not the callee,
+    // so the pin follows the call to its current spelling.
     const toolExecIdx = code.indexOf("sendEvent('tool_executions'");
-    const nextCallIdx = code.indexOf('const nextResponse = await adapter.callStream');
+    const nextCallIdx = code.indexOf('const { result: nextResponse } = await streamAcrossChain(');
     expect(toolExecIdx).toBeGreaterThan(-1);
     expect(nextCallIdx).toBeGreaterThan(-1);
     expect(breakIdx).toBeGreaterThan(toolExecIdx);
