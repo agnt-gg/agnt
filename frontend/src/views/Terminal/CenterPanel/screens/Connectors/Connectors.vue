@@ -2738,14 +2738,18 @@ body.dark .form-actions {
   padding: 0;
   border: none;
 }
+/* A real grid: the cards fill whatever width the container has, so the row
+   stays flush at every sidebar state. The flex-wrap version left a ragged
+   right gutter whenever the width was not a multiple of one card. */
 .oauth-app-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
   gap: 8.6px;
-  flex-wrap: wrap;
-  flex-direction: row;
   align-content: flex-start;
-  justify-content: flex-start;
-  align-items: flex-start;
+  width: 100%;
+}
+.oauth-app-grid > * {
+  min-width: 0;
 }
 
 .oauth-app-item {

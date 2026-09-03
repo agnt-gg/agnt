@@ -28,22 +28,15 @@
       </div>
     </div>
 
-    <!-- Nothing selected: THIS WORKFLOW. Annie's chat lives in the left panel
-         (LeftPanel/types/WorkflowForgePanel); this slot used to repeat it or,
-         worse, fall back to the Chat screen's panel. Now it is the graph as a
-         list — click a step to select it on the canvas — plus the last runs. -->
+    <!-- Nothing selected: the same block the forge always had on its right
+         (Active Workflows · Integration Health · Resources), plus this
+         workflow's last runs after the health section. -->
     <div class="panel-content wf-summary" v-if="!selectedNodeContent && !selectedEdgeContent">
-      <div class="wf-sum-sec">
-        <div class="wf-sum-hd">Steps <span class="wf-sum-ln"></span><span class="wf-sum-n">{{ nodes.length }}</span></div>
-        <div v-if="!nodes.length" class="wf-sum-empty">Drag a tool from the palette, or ask Annie on the left what this workflow should do.</div>
-        <div v-else class="wf-steps">
-          <div class="wf-spine"></div>
-          <button v-for="(n, i) in orderedNodes" :key="n.id" type="button" class="wf-step" :class="'is-' + (n.category || 'action')" @click="$emit('panel-action', 'select-node', n.id)">
-            <span class="wf-step-ty">{{ i + 1 }} · {{ n.category || n.type }}</span>
-            <span class="wf-step-nm">{{ n.text || n.title || n.type }}</span>
-          </button>
-        </div>
-      </div>
+      <ActiveWorkflows
+        @edit-workflow="(payload) => $emit('panel-action', 'edit-workflow', payload.workflowId)"
+        @panel-action="(action, ...args) => $emit('panel-action', action, ...args)"
+      />
+      <IntegrationHealth />
       <div class="wf-sum-sec">
         <div class="wf-sum-hd">Last runs <span class="wf-sum-ln"></span><span class="wf-sum-n">{{ lastRuns.length }}</span></div>
         <div v-if="!lastRuns.length" class="wf-sum-empty">No runs yet. ▶ in the toolbar runs it once.</div>
@@ -52,10 +45,7 @@
           <span class="wf-run-when">{{ relTime(r.started_at || r.startTime || r.created_at) }}</span>
         </button>
       </div>
-      <div class="wf-sum-sec">
-        <div class="wf-sum-hd">Inspector <span class="wf-sum-ln"></span></div>
-        <div class="wf-sum-empty">Click a node for its Parameters · Outputs · Docs, or an edge for its conditions. Esc comes back here.</div>
-      </div>
+      <ResourcesSection />
     </div>
     <div v-else-if="selectedNodeContent || selectedEdgeContent">
       <template v-if="selectedNodeContent && selectedNodeContent.error">
@@ -87,12 +77,18 @@ import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import PanelTab from '@/views/Terminal/CenterPanel/screens/WorkflowForge/components/WorkflowDesigner/components/EditorPanel/components/PanelTab.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ActiveWorkflows from '@/views/Terminal/RightPanel/types/ChatPanel/components/ActiveWorkflows.vue';
+import IntegrationHealth from '@/views/Terminal/RightPanel/types/ChatPanel/components/IntegrationHealth.vue';
+import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
 export default {
   name: 'WorkflowForgePanel',
   components: {
     PanelTab,
     Tooltip,
+    ActiveWorkflows,
+    IntegrationHealth,
+    ResourcesSection,
   },
   props: {
     selectedNodeContent: {
@@ -239,20 +235,10 @@ export default {
       if (props.selectedNodeContent) {
         return props.selectedNodeContent.text || 'Node Properties';
       }
-      return 'This workflow';
+      return 'Workflow';
     });
 
-    // Summary data for the nothing-selected state.
-    const orderedNodes = computed(() => {
-      const list = [...(props.nodes || [])];
-      // Triggers first, then by canvas position (top-left to bottom-right).
-      return list.sort((a, b) => {
-        const ta = a.category === 'trigger' ? 0 : 1;
-        const tb = b.category === 'trigger' ? 0 : 1;
-        if (ta !== tb) return ta - tb;
-        return (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0);
-      });
-    });
+    // Last runs for the nothing-selected state.
     const lastRuns = computed(() => {
       if (!props.workflowId) return [];
       const get = store.getters['executionHistory/getExecutionsByWorkflowId'];
@@ -318,7 +304,6 @@ export default {
       toggleFullScreen,
       updateNodeContent,
       updateEdgeContent,
-      orderedNodes,
       lastRuns,
       relTime,
     };

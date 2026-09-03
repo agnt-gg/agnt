@@ -192,29 +192,29 @@ describe('flexible sizing — a widget too big for the gap fills what is availab
 
   it('shrinks an oversized widget to the space that is left', async () => {
     const ws = await freshWorkspaces();
-    // workspace-chat occupies 4x8 at 0,0 — 8 columns remain.
+    // workspace-chat occupies 3x8 at 0,0 — 9 columns remain.
     ws.addWidget('workflow-forge'); // declares 12x8, cannot possibly fit
 
     const wf = ws.active.value.widgets.find((w) => w.widgetId === 'workflow-forge');
     expect(wf).toBeTruthy();
     // Filled the remaining space rather than stacking at the origin.
-    expect(wf.cols).toBe(8);
+    expect(wf.cols).toBe(9);
     expect(wf.rows).toBe(8);
-    expect(wf.col).toBe(4);
+    expect(wf.col).toBe(3);
     expect(wf.col + wf.cols).toBeLessThanOrEqual(12);
     expect(wf.row + wf.rows).toBeLessThanOrEqual(8);
   });
 
   it('never covers an existing widget while free space remains', async () => {
     const ws = await freshWorkspaces();
-    // chat 4x8 at 0,0 | traces 6x4 at 4,0 | workflow-forge shrinks into the
-    // largest remaining rectangle (8x4 at 4,4) rather than forcing its 12x8.
+    // chat 3x8 at 0,0 | traces 6x4 at 3,0 | workflow-forge shrinks into the
+    // largest remaining rectangle (9x4 at 3,4) rather than forcing its 12x8.
     ws.addWidget('traces');
     ws.addWidget('workflow-forge');
 
     const wf = ws.active.value.widgets.find((w) => w.widgetId === 'workflow-forge');
     expect({ col: wf.col, row: wf.row, cols: wf.cols, rows: wf.rows })
-      .toEqual({ col: 4, row: 4, cols: 8, rows: 4 });
+      .toEqual({ col: 3, row: 4, cols: 9, rows: 4 });
 
     const all = ws.active.value.widgets;
     for (let i = 0; i < all.length; i++) {

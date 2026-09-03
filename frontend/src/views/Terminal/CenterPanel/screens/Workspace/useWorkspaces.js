@@ -93,7 +93,7 @@ const blankWorkspace = (name = 'Workspace', { bootShell = false } = {}) => ({
     // (workspace:<wsId>). Chats added LATER get chatKey = their instanceId,
     // i.e. their own blank conversation — see addWidget.
     chatKey: '',
-    col: 0, row: 0, cols: 4, rows: 8,
+    col: 0, row: 0, cols: 3, rows: 8,
     collapsed: false, visible: true, zIndex: 1,
   })],
   createdAt: Date.now(),

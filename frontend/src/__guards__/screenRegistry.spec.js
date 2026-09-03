@@ -163,13 +163,18 @@ describe('a screen can have no left column at all', () => {
     expect(baseScreen).toMatch(/if \(showLeftPanel\.value\) \{\s*\n\s*usedWidth \+=/);
   });
 
-  it('nothing claims rightPanel: false, which BaseScreen does not implement', () => {
-    // The two sides are not symmetric. Asserting it stops someone assuming so
-    // and getting a right panel that renders anyway.
-    const bad = Object.entries(SCREEN_DEFAULTS)
-      .filter(([, v]) => v.rightPanel === false)
-      .map(([id]) => id);
-    expect(bad, `rightPanel: false is not supported: ${bad.join(', ')}`).toEqual([]);
+  it('rightPanel: false reaches the LAYOUT the same way the left opt-out does', () => {
+    // The right column is gated on showRightPanel in the same six places, so
+    // the opt-out is folded into that computed exactly like the left side.
+    // Without this, a screen that opts out gets a right panel that renders
+    // anyway (or a reserved gap where it would have been).
+    expect(baseScreen).toMatch(/const showRightPanel = computed\([^;]*rightPanelEnabled\.value\)/);
+    expect(baseScreen).toMatch(/if \(showRightPanel\.value\) \{\s*\n\s*usedWidth \+=/);
+    // ...and a false registry entry is never handed to RightPanel as a name.
+    expect(baseScreen).toMatch(/computedRightPanel = computed\(\(\) => \{[\s\S]*?if \(effective === false\) return null;/);
+    // Somebody actually uses it, so the guard cannot pass vacuously.
+    const optedOut = Object.entries(SCREEN_DEFAULTS).filter(([, v]) => v.rightPanel === false).map(([id]) => id);
+    expect(optedOut).toContain('GoalsScreen');
   });
 });
 
@@ -181,7 +186,9 @@ describe('resolution semantics', () => {
   });
 
   it('an omitted prop falls back to the registry entry', () => {
-    expect(resolvePanel(undefined, 'GoalsScreen', 'rightPanel')).toBe('GoalsPanel');
+    // Goals opted out of both columns; its detail is an inner drawer.
+    expect(resolvePanel(undefined, 'GoalsScreen', 'rightPanel')).toBe(false);
+    expect(resolvePanel(undefined, 'GoalsScreen', 'leftPanel')).toBe(false);
     expect(resolveInput(undefined, 'GoalsScreen')).toBe(false);
   });
 

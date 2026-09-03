@@ -161,7 +161,7 @@ describe('canvas sections registry', () => {
       // no engineering words (runs, traces, artifacts, library, plugins,
       // workspaces).
       expect(MAIN_SECTIONS.map((s) => s.label)).toEqual([
-        'Chat', 'Home',
+        'Chat', 'Dashboard',
         'Goals', 'Activity', 'Files',
         'Agents', 'Workflows', 'Tools',
         'Apps', 'Store',

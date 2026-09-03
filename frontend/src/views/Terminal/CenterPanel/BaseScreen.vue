@@ -290,7 +290,7 @@ import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
-import { resolvePanel, resolveInput } from './screenRegistry.js';
+import { resolvePanel, resolveInput, rightCollapsedDefault } from './screenRegistry.js';
 
 export default {
   name: 'BaseScreen',
@@ -612,9 +612,27 @@ export default {
     // construction.
     const leftPanelEnabled = computed(() => resolvePanel(props.activeLeftPanel, props.screenId, 'leftPanel') !== false);
     const showLeftPanel = computed(() => showLeftPanelSetting.value && leftPanelEnabled.value);
-    const showRightPanel = ref(store.getters['theme/showRightPanel']);
+    // Same opt-out for the right column (screenRegistry `rightPanel: false`),
+    // folded in the same way and for the same reason.
+    const showRightPanelSetting = ref(store.getters['theme/showRightPanel']);
+    const rightPanelEnabled = computed(() => resolvePanel(props.activeRightPanel, props.screenId, 'rightPanel') !== false);
+    const showRightPanel = computed(() => showRightPanelSetting.value && rightPanelEnabled.value);
     const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
-    const rightPanelCollapsed = ref(scopeGet('rightCollapsed', store.getters['theme/rightPanelCollapsed']));
+    // A screen may own its right-panel collapse state (screenRegistry
+    // `rightCollapsedDefault`): it starts from that default and remembers the
+    // user's last choice under its own key, independent of the global toggle.
+    const screenRightCollapsedDefault = rightCollapsedDefault(props.screenId);
+    const screenRightCollapsedKey = `rightPanelCollapsed:${props.screenId}`;
+    const initialRightCollapsed = () => {
+      if (screenRightCollapsedDefault === undefined) return store.getters['theme/rightPanelCollapsed'];
+      try {
+        const saved = localStorage.getItem(screenRightCollapsedKey);
+        return saved === null ? screenRightCollapsedDefault : saved === 'true';
+      } catch {
+        return screenRightCollapsedDefault;
+      }
+    };
+    const rightPanelCollapsed = ref(scopeGet('rightCollapsed', initialRightCollapsed()));
 
     // Track if user manually set panel widths (vs auto-adjusted)
     // If the stored width matches a "minimum" value (200, 280), it was likely auto-shrunk
@@ -657,6 +675,14 @@ export default {
     };
     const persistRightCollapsed = (v) => {
       if (panelWidthScope) return panelWidthScope.set('rightCollapsed', v);
+      if (screenRightCollapsedDefault !== undefined) {
+        try {
+          localStorage.setItem(screenRightCollapsedKey, String(v));
+        } catch {
+          // Private mode / quota: the session still toggles, it just is not remembered.
+        }
+        return undefined;
+      }
       return store.dispatch('theme/setRightPanelCollapsed', v);
     };
     const persistLeftUserSized = (v) => {
@@ -1522,6 +1548,8 @@ export default {
     watch(
       () => store.getters['theme/rightPanelCollapsed'],
       (newValue) => {
+        // A screen with its own remembered state ignores the global toggle.
+        if (screenRightCollapsedDefault !== undefined) return;
         rightPanelCollapsed.value = newValue;
         calculateMainContentWidth();
       },
@@ -1538,7 +1566,7 @@ export default {
     watch(
       () => store.getters['theme/showRightPanel'],
       (newValue) => {
-        showRightPanel.value = newValue;
+        showRightPanelSetting.value = newValue;
         calculateMainContentWidth();
       },
     );
@@ -1552,6 +1580,8 @@ export default {
     const computedRightPanel = computed(() => {
       // Explicit prop wins, else the screenRegistry entry for this screen.
       const effective = resolvePanel(props.activeRightPanel, props.screenId, 'rightPanel');
+      // `false` means the screen has no right column; it is not a panel name.
+      if (effective === false) return null;
       if (effective !== null && effective !== undefined) {
         return effective;
       }
@@ -1588,6 +1618,9 @@ export default {
       focusInput,
       scrollToBottom,
       triggerPanelMethod,
+      toggleRightPanelCollapsed,
+      rightPanelCollapsed,
+      showRightPanel,
     });
 
     return {

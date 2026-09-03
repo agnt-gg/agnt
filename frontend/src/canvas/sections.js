@@ -64,13 +64,11 @@ export const MAIN_SECTIONS = [
     ],
   },
   {
-    // "Home" is the universal first click. The route and screen are still
-    // Dashboard; the person reading the rail does not need to know that.
     id: 'dashboard',
     group: 'TODAY',
-    icon: 'fas fa-home',
-    label: 'Home',
-    screens: [{ screen: 'DashboardScreen', label: 'HOME' }],
+    icon: 'fas fa-th-large',
+    label: 'Dashboard',
+    screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }],
   },
 
   // ── WORK ── what I asked for, what happened, what came out of it.

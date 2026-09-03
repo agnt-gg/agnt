@@ -39,14 +39,23 @@ export const SCREEN_DEFAULTS = Object.freeze({
   // Right: the approval queue (AGNT One). `null` used to fall back to Chat's
   // panel beside the policy screen.
   AutonomyScreen: { leftPanel: 'SettingsPanel', rightPanel: 'AutonomyPanel', input: false },
-  ChatScreen: { input: true },
+  // Chat opens with the inspector (right panel) collapsed: the thread is the
+  // point, the inspector is on demand. A small toggle at the top-right of the
+  // canvas expands it; the choice is remembered for THIS screen only.
+  ChatScreen: { input: true, rightCollapsedDefault: true },
   ConnectorsScreen: { input: false }, // right: dynamic
-  DashboardScreen: { leftPanel: 'DashboardPanel', rightPanel: 'DashboardPanel', input: false },
+  // Left: the conversation list, same as Chat (the dashboard is where you
+  // land; the threads are what you came back for). Right: the dashboard's
+  // own summary — Active Workflows + Integration Health.
+  DashboardScreen: { leftPanel: 'ChatPanel', rightPanel: 'DashboardPanel', input: false },
   EvalDatasetsScreen: { leftPanel: 'EvalDatasetsPanel', rightPanel: 'EvalDatasetsPanel', input: false },
   ExperimentForgeScreen: { leftPanel: 'ExperimentForgePanel', rightPanel: 'ExperimentForgePanel', input: false },
   ExperimentInsightsScreen: { leftPanel: 'ExperimentInsightsPanel', rightPanel: 'ExperimentInsightsPanel', input: false },
   ExperimentsScreen: { leftPanel: 'SettingsPanel', rightPanel: 'ExperimentsPanel', input: false },
-  GoalsScreen: { leftPanel: 'GoalsPanel', rightPanel: 'GoalsPanel', input: false },
+  // Goals has no side columns: both used to show the same goal count the
+  // board already shows. The selected goal's detail opens INSIDE the screen
+  // (Goals.vue `goal-detail-drawer`, which hosts RightPanel/GoalsPanel).
+  GoalsScreen: { leftPanel: false, rightPanel: false, input: false },
   MarketplaceScreen: { leftPanel: 'MarketplacePanel', rightPanel: 'MarketplacePanel', input: false },
   // Memory is a tab of the Agents row. Both sides render a MemoryPanel: left
   // filters the list, right shows the selected memory.
@@ -88,6 +97,18 @@ export function resolvePanel(propValue, screenId, slot) {
   const entry = SCREEN_DEFAULTS[screenId];
   if (entry && slot in entry) return entry[slot];
   return null; // matches the old prop default
+}
+
+/**
+ * Per-screen right-panel collapse. Most screens follow the ONE global
+ * theme/rightPanelCollapsed setting. A screen that declares
+ * `rightCollapsedDefault` keeps its own remembered state instead (the global
+ * toggle never touches it), starting from that default. Returns
+ * `undefined` when the screen has no such preference.
+ */
+export function rightCollapsedDefault(screenId) {
+  const entry = SCREEN_DEFAULTS[screenId];
+  return entry && 'rightCollapsedDefault' in entry ? entry.rightCollapsedDefault : undefined;
 }
 
 /** Resolve whether the input line shows. */

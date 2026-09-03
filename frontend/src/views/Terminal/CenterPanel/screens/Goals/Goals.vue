@@ -1,10 +1,6 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    :panelProps="{
-      selectedGoalId: selectedGoalId,
-      goals: allGoals,
-    }"
     screenId="GoalsScreen"
     :terminalLines="terminalLines"
     @panel-action="handlePanelAction"
@@ -34,7 +30,11 @@
           </div>
         </div>
 
-        <div v-else class="kanban-board fade-in" @click.self="deselectGoal">
+        <!-- Board + inner detail drawer. The drawer replaces what used to be
+             the right panel: it lives inside the screen, opens on selection,
+             and Esc / ✕ closes it. On narrow screens it overlays the board. -->
+        <div v-else class="goals-body" :class="{ 'has-detail': !!selectedGoalId }">
+        <div class="kanban-board fade-in" @click.self="deselectGoal">
           <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']">
             <div class="column-header" :style="{ borderTopColor: column.color }">
               <h3>
@@ -124,6 +124,13 @@
               </div>
             </template>
           </div>
+        </div>
+
+        <Transition name="goal-drawer">
+          <aside v-if="selectedGoalId" class="goal-detail-drawer" @keydown.esc.stop="deselectGoal">
+            <GoalsPanel :selectedGoalId="selectedGoalId" :goals="allGoals || []" @panel-action="handlePanelAction" />
+          </aside>
+        </Transition>
         </div>
       </div>
 
@@ -342,6 +349,9 @@ import GoalsToolbar from './components/GoalsToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ScheduleGoalModal from './components/ScheduleGoalModal.vue';
+// The goal detail. It was the screen's right panel; it is the same component,
+// now hosted inside the screen so the board and the detail share one surface.
+import GoalsPanel from '@/views/Terminal/RightPanel/types/GoalsPanel/GoalsPanel.vue';
 
 // Status sets shared across column filtering
 const DONE_SUCCESS = ['completed', 'validated'];
@@ -395,6 +405,7 @@ export default {
   components: {
     CustomSelect,
     BaseScreen,
+    GoalsPanel,
     GoalCard,
     GoalsToolbar,
     Tooltip,
@@ -762,6 +773,11 @@ export default {
         selectedGoalId.value = null;
       } else if (action === 'create-goal') {
         showCreateModal.value = true;
+      } else if (action === 'show-feedback' && payload?.message) {
+        // The detail's run/approve/evaluate outcomes. Used to be dropped on the
+        // floor when the panel sat in the right column; the terminal line is
+        // the screen's diagnostic trail.
+        terminalLines.value.push(payload.message);
       }
     };
 
@@ -932,6 +948,16 @@ body[data-page='terminal-goals'] .scrollable-content {
   padding: 0;
 }
 
+/* Board + drawer share the screen's remaining height. */
+.goals-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  gap: 12px;
+}
+
 .kanban-board {
   display: flex;
   flex: 1;
@@ -942,6 +968,45 @@ body[data-page='terminal-goals'] .scrollable-content {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+}
+
+/* Inner detail drawer — the goal's own panel, inside the screen. */
+.goal-detail-drawer {
+  flex: 0 0 400px;
+  width: 400px;
+  min-height: 0;
+  margin-bottom: 16px;
+  overflow: hidden auto;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 10px;
+  background: var(--color-popup);
+  scrollbar-width: thin;
+}
+.goal-detail-drawer :deep(.goal-panel) {
+  height: auto;
+}
+
+.goal-drawer-enter-active,
+.goal-drawer-leave-active {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.goal-drawer-enter-from,
+.goal-drawer-leave-to {
+  transform: translateX(12px);
+  opacity: 0;
+}
+
+/* Narrow: overlay the board instead of squeezing it. */
+@media (max-width: 1100px) {
+  .goal-detail-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 16px;
+    width: min(400px, 92%);
+    z-index: 5;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+  }
 }
 
 .kanban-column {

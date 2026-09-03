@@ -101,6 +101,20 @@
 
         <!-- Conversation Canvas -->
         <div class="conversation-canvas-wrapper">
+          <!-- Inspector toggle. The right panel is collapsed by default on
+               Chat (screenRegistry `rightCollapsedDefault`); this is the one
+               visible way back in from the thread itself. -->
+          <button
+            v-if="!isMobile && baseScreenRef?.showRightPanel"
+            type="button"
+            class="inspector-toggle"
+            :class="{ 'is-open': !baseScreenRef?.rightPanelCollapsed }"
+            v-tooltip="baseScreenRef?.rightPanelCollapsed ? 'Show inspector' : 'Hide inspector'"
+            :aria-label="baseScreenRef?.rightPanelCollapsed ? 'Show inspector' : 'Hide inspector'"
+            @click="baseScreenRef?.toggleRightPanelCollapsed()"
+          >
+            <i :class="baseScreenRef?.rightPanelCollapsed ? 'fas fa-angle-double-left' : 'fas fa-angle-double-right'"></i>
+          </button>
           <div class="conversation-canvas" ref="conversationSpace" @scroll.passive="scheduleScrollCapture">
             <!-- Loading state masks the heavy MessageItem mount cost during
                  conversation cold-open / switch. Without it the user sees a
@@ -3326,6 +3340,35 @@ export default {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Inspector toggle: small, top-right, out of the transcript's way. */
+.inspector-toggle {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 5;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  background: var(--color-popup);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.inspector-toggle:hover {
+  opacity: 1;
+  color: var(--color-text);
+}
+.inspector-toggle.is-open {
+  color: var(--color-primary);
 }
 
 .conversation-canvas {

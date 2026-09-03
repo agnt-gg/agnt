@@ -61,7 +61,7 @@
       </button>
 
       <div class="ws-tabbar-right">
-        <!-- Per-workspace AI: lives with auto/widget (active tab only), not on the tab name. -->
+        <!-- Per-workspace AI: lives beside the widget button (active tab only), not on the tab name. -->
         <button
           v-if="active"
           class="ws-pill ws-ai-pill"
@@ -71,20 +71,6 @@
         >
           <i class="fas fa-robot"></i>
           {{ aiBadgeLabel(active) }}
-        </button>
-
-        <button
-          class="ws-pill"
-          :class="{ on: autoOpen }"
-          v-tooltip="
-            autoOpen
-              ? 'Annie places the matching widget when she touches a domain — click to disable'
-              : 'Auto-open is off — widgets only appear when you add them'
-          "
-          @click="setAutoOpen(!autoOpen)"
-        >
-          <i class="fas fa-magic"></i>
-          auto
         </button>
 
         <button class="ws-pill ws-pill-primary" v-tooltip="'Add a widget to this workspace'" @click="togglePalette">

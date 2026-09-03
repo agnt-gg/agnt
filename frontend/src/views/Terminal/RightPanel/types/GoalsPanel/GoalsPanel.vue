@@ -17,9 +17,13 @@
         </Tooltip>
       </div>
 
-      <!-- Description -->
-      <div v-if="selectedGoal.description" class="goal-description">
-        {{ selectedGoal.description }}
+      <!-- Description: clamped to a few lines; long ones expand on demand. -->
+      <div v-if="selectedGoal.description" class="goal-description" :class="{ 'is-clamped': descriptionIsLong && !descriptionExpanded }">
+        <div class="goal-description-text">{{ selectedGoal.description }}</div>
+        <button v-if="descriptionIsLong" type="button" class="goal-description-toggle" @click="descriptionExpanded = !descriptionExpanded">
+          {{ descriptionExpanded ? 'Show less' : 'Show more' }}
+          <i :class="descriptionExpanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+        </button>
       </div>
 
       <!-- Info rows -->
@@ -757,6 +761,17 @@ ${goal.tasks
       emit('panel-action', 'close-panel');
     };
 
+    // Description clamp. ~4 lines at panel width; anything past it expands.
+    const DESCRIPTION_CLAMP_CHARS = 220;
+    const descriptionExpanded = ref(false);
+    const descriptionIsLong = computed(() => (selectedGoal.value?.description || '').length > DESCRIPTION_CLAMP_CHARS);
+    watch(
+      () => selectedGoal.value?.id,
+      () => {
+        descriptionExpanded.value = false;
+      },
+    );
+
     // Tool execution helpers
     const getToolExecutions = (output) => {
       if (!output) return [];
@@ -823,6 +838,8 @@ ${goal.tasks
       updateSelectedGoal,
       handlePanelAction,
       closePanel,
+      descriptionExpanded,
+      descriptionIsLong,
       // Tool execution helpers
       getToolExecutions,
       toolHasError,
@@ -934,8 +951,35 @@ ${goal.tasks
 /* Description */
 .goal-description {
   margin-bottom: 18px;
-  line-height: 1.4;
-  color: var(--text-primary);
+  line-height: 1.45;
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+}
+.goal-description-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.goal-description.is-clamped .goal-description-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.goal-description-toggle {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.goal-description-toggle:hover {
+  text-decoration: underline;
 }
 
 /* Info rows */

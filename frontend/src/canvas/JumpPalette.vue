@@ -188,7 +188,8 @@ export default {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: var(--color-background);
+  /* Modals ALWAYS use --color-popup. Never the page background. */
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);

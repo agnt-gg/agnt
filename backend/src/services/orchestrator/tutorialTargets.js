@@ -9,7 +9,7 @@
 export const TOUR_TARGETS = [
   // ── Sidebar: TODAY (global — always visible) ───────────────────────
   { id: 'sidebar.chat',             screen: null, description: 'Sidebar button: Chat (tabs: Chat, Workspaces)', safeToSimulate: true },
-  { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Home (the dashboard)', safeToSimulate: true },
+  { id: 'sidebar.dashboard',        screen: null, description: 'Sidebar button: Dashboard', safeToSimulate: true },
 
   // ── Sidebar: WORK ──────────────────────────────────────────────────
   { id: 'sidebar.goals',            screen: null, description: 'Sidebar button: Goals',        safeToSimulate: true },

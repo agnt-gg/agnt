@@ -1867,6 +1867,19 @@ div#saved-outputs {
   color: var(--color-text-muted);
   cursor: pointer;
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+/* fa-sort-up / fa-sort-down are half-height glyphs drawn at the top / bottom
+   of the em box, so a centred box still shows them off-centre. Pull each
+   half back toward the middle. */
+.sort-dir-btn .fa-sort-up {
+  transform: translateY(3px);
+}
+.sort-dir-btn .fa-sort-down {
+  transform: translateY(-3px);
 }
 .sort-dir-btn:hover {
   color: var(--color-text);

@@ -208,8 +208,8 @@ describe('executeCanvasCommand — writes ride the UI mutation path', () => {
     const res = await executeCanvasCommand('open', { widgetId: 'traces' });
     expect(res.success).toBe(true);
     expect(res.instanceId).toBeTruthy();
-    // occupancy-checked placement: must not land on the auto-added chat (4x8 at 0,0)
-    expect(res.placed.col).toBeGreaterThanOrEqual(4);
+    // occupancy-checked placement: must not land on the auto-added chat (3x8 at 0,0)
+    expect(res.placed.col).toBeGreaterThanOrEqual(3);
 
     const { useWorkspaces } = await import('./useWorkspaces.js');
     expect(useWorkspaces().active.value.widgets.some((w) => w.instanceId === res.instanceId)).toBe(true);
