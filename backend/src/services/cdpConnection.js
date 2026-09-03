@@ -125,6 +125,8 @@ export class CdpConnection {
 
   onEvent(listener) { this.listeners.add(listener); }
 
+  offEvent(listener) { this.listeners.delete(listener); }
+
   close() {
     this.closed = true;
     try { this.socket?.close(); } catch { /* already gone */ }

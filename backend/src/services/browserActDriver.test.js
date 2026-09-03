@@ -9,7 +9,9 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { WebSocketServer } from 'ws';
-import { performBrowserAction, _resetDrivers } from './browserActDriver.js';
+import {
+  performBrowserAction, _resetDrivers, parseKeyChord, WEB_CONTENT_OPEN, WEB_CONTENT_CLOSE,
+} from './browserActDriver.js';
 
 /**
  * A fake browser. Answers the protocol, records every Input.* dispatch, and
@@ -164,10 +166,12 @@ describe('click: lands at the centre of the ref\'s box', () => {
     await act('click', { ref: 'e1' });
 
     const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
-    expect(mouse.map((m) => m.params.type)).toEqual(['mousePressed', 'mouseReleased']);
+    // A hover precedes the press, as a real pointer would — :hover styles and
+    // mouseenter handlers fire before the click lands.
+    expect(mouse.map((m) => m.params.type)).toEqual(['mouseMoved', 'mousePressed', 'mouseReleased']);
     // content quad [10,20 110,20 110,60 10,60] -> centre (60, 40)
-    expect(mouse[0].params.x).toBe(60);
-    expect(mouse[0].params.y).toBe(40);
+    expect(mouse[1].params.x).toBe(60);
+    expect(mouse[1].params.y).toBe(40);
   });
 
   it('accepts the @ spelling, because that is how snapshots print refs', async () => {
@@ -182,10 +186,25 @@ describe('click: lands at the centre of the ref\'s box', () => {
 
   it('refuses refs from a page that has been left — a stale click that "works" is worse', async () => {
     await act('snapshot');
-    browser.state.navOnClick = 'https://elsewhere.example/';
-    await act('click', { ref: 'e1' }); // this click navigates
+    // The page moved on its own (meta refresh, JS redirect, the user typed a
+    // URL) — no verb saw it, so the agent still holds the old refs.
+    browser.state.url = 'https://elsewhere.example/';
 
     await expect(act('type', { ref: 'e2', text: 'x' })).rejects.toThrow(/new snapshot/i);
+  });
+
+  it('a click that navigates returns the NEW page inline — refs in the result supersede the old ones', async () => {
+    await act('snapshot');
+    browser.state.navOnClick = 'https://elsewhere.example/';
+    const result = await act('click', { ref: 'e1' });
+
+    expect(result.navigated).toBe(true);
+    expect(result.from).toBe('https://start.example/');
+    expect(result.url).toBe('https://elsewhere.example/');
+    expect(result.snapshot).toContain('URL: https://elsewhere.example/');
+    expect(result.snapshot).toContain('@e1 button');
+    // And those refs are spendable without another snapshot call.
+    await expect(act('type', { ref: 'e2', text: 'x' })).resolves.toMatchObject({ url: 'https://elsewhere.example/' });
   });
 });
 
@@ -195,7 +214,7 @@ describe('a CSS selector is the deterministic handle — no snapshot, no model, 
     // read a snapshot. The selector is resolved LIVE against the document.
     const result = await act('click', { selector: '#go' });
 
-    const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
+    const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent' && i.params.type !== 'mouseMoved');
     expect(mouse.map((x) => x.params.type)).toEqual(['mousePressed', 'mouseReleased']);
     expect(mouse[0].params.x).toBe(60);
     expect(result.url).toBeTruthy();
@@ -217,7 +236,7 @@ describe('a CSS selector is the deterministic handle — no snapshot, no model, 
     // click failed on a raw CDP "Could not compute box model".
     const result = await act('click', { selector: '#hidden-first' });
 
-    const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent');
+    const mouse = browser.state.inputs.filter((i) => i.method === 'Input.dispatchMouseEvent' && i.params.type !== 'mouseMoved');
     expect(mouse.map((x) => x.params.type)).toEqual(['mousePressed', 'mouseReleased']);
     // The centre of the VISIBLE node's box, not a failure on the hidden one.
     expect(mouse[0].params.x).toBe(60);
@@ -272,6 +291,15 @@ describe('the other verbs', () => {
     await expect(act('press', { key: 'F13' })).rejects.toThrow(/Enter, Tab/);
   });
 
+  it('press sends chords with the modifier bitmask and no text for Control+a', async () => {
+    await act('press', { key: 'Control+a' });
+    const keys = browser.state.inputs.filter((i) => i.method === 'Input.dispatchKeyEvent');
+    expect(keys[0].params.type).toBe('rawKeyDown');
+    expect(keys[0].params.modifiers).toBe(2);
+    expect(keys[0].params.windowsVirtualKeyCode).toBe(65);
+    expect(keys[0].params.text).toBeUndefined();
+  });
+
   it('scroll wheels at the viewport centre, positive down', async () => {
     await act('scroll', { deltaY: 500 });
     const wheel = browser.state.inputs.find((i) => i.params.type === 'mouseWheel');
@@ -281,7 +309,11 @@ describe('the other verbs', () => {
 
   it('read returns the page text, truncated at maxChars with a hint', async () => {
     const { text } = await act('read', { maxChars: 100 });
-    expect(text.length).toBeLessThan(200);
+    // Fenced as untrusted web content; the budget applies to the page text inside.
+    expect(text.startsWith(WEB_CONTENT_OPEN)).toBe(true);
+    expect(text.endsWith(WEB_CONTENT_CLOSE)).toBe(true);
+    const inner = text.slice(WEB_CONTENT_OPEN.length, -WEB_CONTENT_CLOSE.length);
+    expect(inner.length).toBeLessThan(200);
     expect(text).toContain('truncated at 100');
   });
 

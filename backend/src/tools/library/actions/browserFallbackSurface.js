@@ -554,6 +554,24 @@ export function closeFallbackSurface() {
   } catch { /* it may already be gone */ }
 }
 
+/**
+ * Close the launched browser THE WAY IT WANTS TO BE CLOSED.
+ *
+ * closeFallbackSurface() is a kill: fast, synchronous, and it marks the
+ * profile crashed, so the next headless launch on it hangs its first page
+ * commands on the restore path (see the flag note in launchBrowser). Browser
+ * shutdown over CDP releases the profile cleanly. Anything that has the time
+ * to wait a few seconds — app shutdown, tests — should prefer this.
+ */
+export async function closeFallbackSurfaceGracefully({ log = () => {} } = {}) {
+  const current = session;
+  if (!current?.cdpUrl) return closeFallbackSurface();
+  const port = String(current.cdpUrl).match(/^ws:\/\/(?:127\.0\.0\.1|\[::1\]):(\d+)\//)?.[1];
+  await closeOverCdp(current.cdpUrl, port, log);
+  // Whatever is left (a browser that ignored Browser.close) gets the kill.
+  if (session === current) closeFallbackSurface();
+}
+
 /** Which browser is currently launched, if any. */
 export function launchedBrowserLabel() {
   return isAlive() ? session.label : null;

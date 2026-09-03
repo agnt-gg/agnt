@@ -126,7 +126,7 @@ describe('script goes to the raw-control engine', () => {
 
 describe('a wrong action teaches the shape of the tool', () => {
   it('names the verbs AND both delegation actions', async () => {
-    const out = await browser.execute({ action: 'hover' }, {}, ENGINE);
+    const out = await browser.execute({ action: 'teleport' }, {}, ENGINE);
     expect(out.success).toBe(false);
     expect(out.error).toContain('navigate, snapshot, click');
     expect(out.error).toContain('"run"');
