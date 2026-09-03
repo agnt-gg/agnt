@@ -335,6 +335,20 @@ describe('MessageItem — offloaded DATA_REF payloads', () => {
   });
 });
 
+describe('MessageItem — a card whose arguments have not arrived yet', () => {
+  // tool_pending draws the card before the model has finished writing the
+  // arguments; tool_start fills them in. Between the two, `args` is undefined.
+  it('says the arguments are still being written instead of throwing on expand', () => {
+    const wrapper = mountItem(expandedProps({ args: undefined }));
+    expect(wrapper.find('.params-content').text()).toContain('Writing arguments');
+  });
+
+  it('serialises a missing payload as an empty string, never undefined', () => {
+    const wrapper = mountItem(expandedProps({}));
+    expect(wrapper.vm.serializeToolPayload(undefined)).toBe('');
+  });
+});
+
 describe('MessageItem — tool output cannot inject markup', () => {
   it('escapes HTML in a tool result', () => {
     // JSON.stringify does not escape < or >, so the original raw v-html let tool

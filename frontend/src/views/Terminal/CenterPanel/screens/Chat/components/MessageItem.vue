@@ -84,7 +84,14 @@
                 </div>
 
                 <div v-if="isExpanded(tc.index)" class="tool-call-content">
-                  <div class="tool-params">
+                  <!-- tool_pending draws the card before the arguments exist;
+                       tool_start fills them in. Say so rather than render an
+                       empty payload. -->
+                  <div v-if="tc.toolCall.args === undefined" class="tool-params">
+                    <div class="params-label"><span>Input Parameters:</span></div>
+                    <pre class="params-content"><code>Writing arguments…</code></pre>
+                  </div>
+                  <div v-else class="tool-params">
                     <div class="params-label">
                       <span>Input Parameters:</span>
                       <template v-if="payloadInfo(tc.toolCall.args, payloadKey(tc, 'args')).canExpand">
@@ -2557,7 +2564,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
         const resolvedObj = resolveDataRefs(obj);
         if (typeof resolvedObj === 'string') return resolvedObj;
-        return JSON.stringify(resolvedObj, null, 2);
+        // JSON.stringify(undefined) is undefined, and every caller reads
+        // `.length` off the result. A payload that does not exist yet is ''.
+        return JSON.stringify(resolvedObj, null, 2) ?? '';
       } catch (e) {
         return String(obj);
       }

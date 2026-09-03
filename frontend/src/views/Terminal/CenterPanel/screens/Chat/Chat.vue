@@ -1399,6 +1399,19 @@ export default {
           };
           break;
         }
+        case 'tool_pending':
+          // The model has named the tool and is still writing its arguments.
+          // Move the status line and spinner now; tool_start upgrades the
+          // wording once the arguments are in.
+          if (isActiveView) {
+            runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = true;
+            messageStates.value[data.assistantMessageId] = {
+              type: 'tool',
+              text: `Preparing ${data.toolCall.name}...`,
+            };
+          }
+          if (ms) addActivityTo(ms, { type: 'tool', text: `Preparing ${data.toolCall.name}` });
+          break;
         case 'tool_start':
           if (isActiveView) {
             runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = true;

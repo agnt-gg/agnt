@@ -1148,19 +1148,33 @@ export default {
       }
     },
 
+    // Upsert by id. The same call arrives twice: `tool_pending` the moment the
+    // model names the tool (no arguments yet), then `tool_start` once the
+    // arguments have finished streaming. The first draws the card; the second
+    // must fill that card in, never draw another. Only fields the update
+    // actually carries are merged, so a later event with `args: undefined`
+    // cannot erase arguments an earlier one delivered.
     SCOPED_ADD_TOOL_CALL(state, { conversationId, messageId, toolCall }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
       const message = conv.messages.find(m => m.id === messageId);
-      if (message) {
-        if (!message.toolCalls) message.toolCalls = [];
-        if (!message.toolCalls.some(tc => tc.id === toolCall.id)) {
-          message.toolCalls.push(toolCall);
-          // Track content parts for interleaved rendering
-          if (!message.contentParts) message.contentParts = [];
-          message.contentParts.push({ type: 'tool_call', toolCallId: toolCall.id });
-        }
+      if (!message) return;
+      if (!message.toolCalls) message.toolCalls = [];
+      const idx = message.toolCalls.findIndex(tc => tc.id === toolCall.id);
+      if (idx === -1) {
+        message.toolCalls.push(toolCall);
+        // Track content parts for interleaved rendering
+        if (!message.contentParts) message.contentParts = [];
+        message.contentParts.push({ type: 'tool_call', toolCallId: toolCall.id });
+        return;
       }
+      const merged = { ...message.toolCalls[idx] };
+      for (const [key, value] of Object.entries(toolCall)) {
+        if (value !== undefined) merged[key] = value;
+      }
+      // Replace rather than mutate: MessageItem recomputes its render
+      // signature from these fields and memoises on object identity.
+      message.toolCalls.splice(idx, 1, merged);
     },
 
     SCOPED_UPDATE_TOOL_CALL_RESULT(state, { conversationId, messageId, toolCallId, result, error, status }) {
@@ -3900,6 +3914,16 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
         conversationId,
         messageId: data.assistantMessageId,
         delta: data.delta,
+      });
+      break;
+    case 'tool_pending':
+      // The model has named the tool; its arguments are still streaming. For
+      // a long write this is the whole file — draw the card NOW so the turn
+      // does not look hung until tool_start arrives with the parsed args.
+      commit('SCOPED_ADD_TOOL_CALL', {
+        conversationId,
+        messageId: data.assistantMessageId,
+        toolCall: { id: data.toolCall.id, name: data.toolCall.name, status: 'pending' },
       });
       break;
     case 'tool_start':
