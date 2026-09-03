@@ -42,7 +42,7 @@ describe('primary-tier init failure is inside the failover boundary', () => {
   });
 
   it('re-throws that failure from inside runTierStream, where failover can see it', () => {
-    const start = SRC.indexOf('const runTierStream = async (tier) => {');
+    const start = SRC.indexOf('const runTierStream = async (tier, messages, tools, onChunk) => {');
     expect(start, 'runTierStream must exist').toBeGreaterThan(-1);
     const body = SRC.slice(start, start + 900);
     expect(body).toMatch(/if \(tier\.primary && !adapter\)/);
@@ -51,7 +51,8 @@ describe('primary-tier init failure is inside the failover boundary', () => {
 
   it('runTierStream is the runOne passed to runWithFallback (reachability)', () => {
     // Without this, the throw above would sit in a function nobody calls.
-    expect(SRC).toMatch(/runWithFallback\(\{[\s\S]{0,120}runOne: runTierStream/);
+    expect(SRC).toMatch(/runOne:\s*\(tier\)\s*=>\s*runTierStream\(tier,/);
+    expect(SRC).toMatch(/const streamAcrossChain = /);
   });
 
   it('ANTI-VACUITY: the primary client is still constructed somewhere', () => {
@@ -63,9 +64,11 @@ describe('primary-tier init failure is inside the failover boundary', () => {
 });
 
 describe('a stopped chat cannot roll over to another provider', () => {
-  it('passes the run abort state into the failover boundary', () => {
+  it('passes the run abort state into the one failover call site', () => {
+    // Every stream in the turn goes through streamAcrossChain, so the guard
+    // must live THERE — a Stop mid-tool-loop is as much a Stop as one at round 0.
     expect(SRC).toMatch(
-      /runWithFallback\(\{[\s\S]*?shouldStop:\s*\(\)\s*=>\s*streamAbortController\.signal\.aborted,[\s\S]*?runOne:\s*runTierStream/
+      /const streamAcrossChain = [\s\S]*?runWithFallback\(\{[\s\S]*?shouldStop:\s*\(\)\s*=>\s*streamAbortController\.signal\.aborted,[\s\S]*?runOne:\s*\(tier\)\s*=>\s*runTierStream\(tier,/
     );
   });
 });
