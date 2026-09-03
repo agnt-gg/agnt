@@ -310,42 +310,27 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         loopMessages = sanitizeEmptyAssistantMessages(loopMessages);
 
         let roundResponse, rawToolCalls;
-        if (round === 0 && autoProviderChain.length > 1) {
-          // Round-0 failover: if the primary tier exhausts retries, roll over to
-          // the next tier and adopt its adapter for all subsequent rounds.
-          const { result: r0 } = await runWithFallback({
-            chain: autoProviderChain,
-            onFallback: ({ from, to, reason }) => {
-              log(`[AutonomousMessage] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
-            },
-            runOne: async (tier) => {
-              if (!tier.primary) {
-                const np = String(tier.provider).toLowerCase();
-                // Resolve the tier's model; null means "provider default" — never
-                // carry the primary provider's model onto a different provider.
-                const { getTextModels } = await import('./ai/ProviderRegistry.js');
-                const tierModel = tier.model || getTextModels(np)?.[0] || tier.model;
-                client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
-                adapter = await createLlmAdapter(np, client, tierModel);
-                // Keep the shared context in sync so the tool loop + downstream
-                // tools resolve the tier that served the turn, not the primary.
-                context.provider = np;
-                context.normalizedProvider = np;
-                context.model = tierModel;
-              }
-              return adapter.callStream(loopMessages, tools, contentDeltaCb, context);
-            },
-          });
-          roundResponse = r0.responseMessage;
-          rawToolCalls = r0.toolCalls;
-        } else {
-          ({ responseMessage: roundResponse, toolCalls: rawToolCalls } = await adapter.callStream(
-            loopMessages,
-            tools,
-            contentDeltaCb,
-            context
-          ));
-        }
+        const { result: r0 } = await runWithFallback({
+          chain: autoProviderChain.length ? autoProviderChain : [{ provider: context.normalizedProvider, model: context.model, primary: true, tier: 0 }],
+          onFallback: ({ from, to, reason }) => {
+            log(`[AutonomousMessage] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+          },
+          runOne: async (tier) => {
+            if (!tier.primary) {
+              const np = String(tier.provider).toLowerCase();
+              const { getTextModels } = await import('./ai/ProviderRegistry.js');
+              const tierModel = tier.model || getTextModels(np)?.[0] || tier.model;
+              client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
+              adapter = await createLlmAdapter(np, client, tierModel);
+              context.provider = np;
+              context.normalizedProvider = np;
+              context.model = tierModel;
+            }
+            return adapter.callStream(loopMessages, tools, contentDeltaCb, context);
+          },
+        });
+        roundResponse = r0.responseMessage;
+        rawToolCalls = r0.toolCalls;
 
         responseMessage = roundResponse;
         newMessages.push(responseMessage);
@@ -419,14 +404,27 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         loopMessages = sanitizeUnexpectedToolResults(loopMessages);
         loopMessages = sanitizeEmptyAssistantMessages(loopMessages);
 
-        const { responseMessage: finalResponse } = await adapter.callStream(
-          loopMessages,
-          [],
-          contentDeltaCb,
-          context
-        );
+        const { result: finalWrapped } = await runWithFallback({
+          chain: autoProviderChain.length ? autoProviderChain : [{ provider: context.normalizedProvider, model: context.model, primary: true, tier: 0 }],
+          onFallback: ({ from, to, reason }) => {
+            log(`[AutonomousMessage] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+          },
+          runOne: async (tier) => {
+            if (!tier.primary) {
+              const np = String(tier.provider).toLowerCase();
+              const { getTextModels } = await import('./ai/ProviderRegistry.js');
+              const tierModel = tier.model || getTextModels(np)?.[0] || tier.model;
+              client = await createLlmClient(np, context.userId, { conversationId, authToken: context.authToken });
+              adapter = await createLlmAdapter(np, client, tierModel);
+              context.provider = np;
+              context.normalizedProvider = np;
+              context.model = tierModel;
+            }
+            return adapter.callStream(loopMessages, [], contentDeltaCb, context);
+          },
+        });
 
-        responseMessage = finalResponse;
+        responseMessage = finalWrapped.responseMessage;
         newMessages.push(responseMessage);
       }
 

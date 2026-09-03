@@ -921,7 +921,8 @@ async function universalChatHandler(req, res, context = {}) {
   // NOTE: normalizedProvider/model are LET (not const) because automatic
   // provider failover (buildProviderChain/runWithFallback) may re-point them
   // to a fallback tier for the remainder of the turn if the primary provider
-  // exhausts its retries on the first LLM call.
+  // exhausts its retries on any streaming call (round 0, retry, tool loop,
+  // follow-up).
   let normalizedProvider = resolvedProvider.toLowerCase();
   let model = resolvedModel;
 
@@ -2243,11 +2244,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
     };
 
-    // Run the first LLM call across the provider failover chain. Each tier
+    // Every streaming LLM call in this turn (round 0, validation retry, tool
+    // loop, empty-response follow-up) goes through the same failover chain.
+    // A mid-turn 529 used to skip the chain: adapters exhausted retries, returned
+    // recoveredFromError, and the tool loop streamed the error card. Each tier
     // rebuilds client+adapter; on failover we re-point the OUTER client/adapter/
-    // normalizedProvider/model so the rest of the turn (tool loop) continues on
-    // the tier that actually worked.
-    const runTierStream = async (tier) => {
+    // normalizedProvider/model so later rounds stay on the tier that worked.
+    const runTierStream = async (tier, messages, tools, onChunk) => {
       if (tier.primary && !adapter) {
         // The primary client could not be built (see primaryTierInitError
         // above). Throwing HERE — inside runWithFallback — is what turns a
@@ -2278,12 +2281,32 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       }
       return adapter.callStream(
-        contextResult.messages,
-        finalToolSchemas,
-        onStreamChunk,
+        messages,
+        tools,
+        onChunk,
         conversationContext // Pass context for vision image handling
       );
     };
+
+    const onProviderFallback = ({ from, to, reason }) => {
+      console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
+      if (conversationId) {
+        __failoverMemory.set(conversationId, { provider: to.provider, model: to.model });
+      }
+      sendEvent('provider_fallback', {
+        from: { provider: from.provider, model: from.model },
+        to: { provider: to.provider, model: to.model },
+        reason,
+        tier: to.tier,
+      });
+      __emitManifestForServedProvider(to.provider, to.model);
+    };
+
+    const streamAcrossChain = (messages, tools, onChunk) => runWithFallback({
+      chain: providerChain,
+      runOne: (tier) => runTierStream(tier, messages, tools, onChunk),
+      onFallback: onProviderFallback,
+    });
 
     /**
      * INVARIANT I3 — report the provider that SERVED, not the one requested.
@@ -2324,25 +2347,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     };
 
-    const { result: _r0, tier: _r0Tier } = await runWithFallback({
-      chain: providerChain,
-      runOne: runTierStream,
-      onFallback: ({ from, to, reason }) => {
-        console.warn(`[Chat] Provider failover: ${from.provider}/${from.model || '?'} → ${to.provider}/${to.model || '?'} (${reason})`);
-        // Remember, for THIS conversation, that we failed over — so a later
-        // turn that succeeds back on the primary can announce the recovery.
-        if (conversationId) {
-          __failoverMemory.set(conversationId, { provider: to.provider, model: to.model });
-        }
-        sendEvent('provider_fallback', {
-          from: { provider: from.provider, model: from.model },
-          to: { provider: to.provider, model: to.model },
-          reason,
-          tier: to.tier,
-        });
-        __emitManifestForServedProvider(to.provider, to.model);
-      },
-    });
+    const { result: _r0, tier: _r0Tier } = await streamAcrossChain(
+      contextResult.messages,
+      finalToolSchemas,
+      onStreamChunk,
+    );
 
     // Recovery banner (Option 2): if this turn ran on the PRIMARY provider and
     // an earlier turn in this conversation had failed over, the default is back.
@@ -2497,7 +2506,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       ];
 
       try {
-        const retryResponse = await adapter.callStream(
+        const { result: retryResponse } = await streamAcrossChain(
           retryMessages,
           finalToolSchemas,
           (chunk) => {
@@ -2516,7 +2525,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
               }
             }
           },
-          conversationContext
         );
         accumulateUsage(retryResponse.usage);
 
@@ -3420,7 +3428,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       // Make next LLM call with streaming to get response to tool results
       console.log(`[Tool Loop] Round ${currentRound}: Calling LLM for response to tool results`);
-      const nextResponse = await adapter.callStream(
+      const { result: nextResponse } = await streamAcrossChain(
         loopContextResult.messages,
         finalToolSchemas,
         (chunk) => {
@@ -3448,7 +3456,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
             }
           }
         },
-        conversationContext
       );
 
       responseMessage = nextResponse.responseMessage;
@@ -3587,7 +3594,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // Do NOT reassign `messages` — the adapter call below reads
         // followUpContext.messages directly; `messages` must stay intact
         // for full_history persistence.
-        const followUpResponse = await adapter.callStream(
+        const { result: followUpResponse } = await streamAcrossChain(
           followUpContext.messages,
           [], // No tools - force a text-only response
           (chunk) => {
@@ -3605,7 +3612,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
               });
             }
           },
-          conversationContext
         );
 
         accumulateUsage(followUpResponse.usage);

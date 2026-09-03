@@ -42,7 +42,7 @@ describe('primary-tier init failure is inside the failover boundary', () => {
   });
 
   it('re-throws that failure from inside runTierStream, where failover can see it', () => {
-    const start = SRC.indexOf('const runTierStream = async (tier) => {');
+    const start = SRC.indexOf('const runTierStream = async (tier, messages, tools, onChunk) => {');
     expect(start, 'runTierStream must exist').toBeGreaterThan(-1);
     const body = SRC.slice(start, start + 900);
     expect(body).toMatch(/if \(tier\.primary && !adapter\)/);
@@ -51,7 +51,8 @@ describe('primary-tier init failure is inside the failover boundary', () => {
 
   it('runTierStream is the runOne passed to runWithFallback (reachability)', () => {
     // Without this, the throw above would sit in a function nobody calls.
-    expect(SRC).toMatch(/runWithFallback\(\{[\s\S]{0,120}runOne: runTierStream/);
+    expect(SRC).toMatch(/runOne:\s*\(tier\)\s*=>\s*runTierStream\(tier,/);
+    expect(SRC).toMatch(/const streamAcrossChain = /);
   });
 
   it('ANTI-VACUITY: the primary client is still constructed somewhere', () => {

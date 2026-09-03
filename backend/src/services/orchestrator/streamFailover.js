@@ -11,9 +11,9 @@
  * additionally rebuilds the client+adapter per tier via injected builders, so
  * it stays testable (no direct LlmService dependency).
  *
- * CONTRACTS (identical to the Phase-2 inline wrap):
- *   - Failover only on the FIRST call (round-0). Mid-tool-loop rounds are the
- *     caller's responsibility and are NOT wrapped here.
+ * CONTRACTS:
+ *   - Any streaming call the caller wraps (round 0, tool loop, follow-up)
+ *     can fail over. OrchestratorService uses streamAcrossChain for all of them.
  *   - The adapter only returns recoveredFromError when ZERO tokens were emitted,
  *     so a failed tier never streams partial output → clean rollover.
  *   - Cancellations propagate untouched (never failover a cancelled turn).
