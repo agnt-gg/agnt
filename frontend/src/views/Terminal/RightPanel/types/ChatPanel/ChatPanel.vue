@@ -105,6 +105,7 @@ import InspSection from '@/views/_components/one/InspSection.vue';
 import EntityInspector from '@/views/_components/one/EntityInspector.vue';
 import { useInspect } from '@/composables/useInspect.js';
 import { compileEntityMatchers, entityRegistryFromStore } from '@/utils/entityRefs.js';
+import { extractMessageArtifacts } from '@/utils/messageArtifacts.js';
 
 const RUNNING = new Set(['running', 'executing', 'in_progress', 'active']);
 const ICONS = { agent: 'fas fa-robot', workflow: 'fas fa-project-diagram', goal: 'fas fa-bullseye', trace: 'fas fa-stream', memory: 'fas fa-brain' };
@@ -157,16 +158,15 @@ export default {
       return [...seen.values()];
     });
 
-    // Files this thread produced: any file:// link in an assistant message.
+    // Files this thread produced: every real file:/// link in an assistant
+    // message, newest first.
     const artifacts = computed(() => {
       const msgs = store.state.chat?.messages || [];
       const out = new Map();
       for (const m of msgs) {
-        if (m?.role !== 'assistant' || typeof m.content !== 'string') continue;
-        for (const hit of m.content.matchAll(/file:\/\/\/[^\s)"'<>]+/g)) {
-          const href = hit[0];
-          if (out.has(href)) continue;
-          out.set(href, { href, name: decodeURIComponent(href.split(/[\\/]/).pop() || href) });
+        if (m?.role !== 'assistant') continue;
+        for (const a of extractMessageArtifacts(m.content)) {
+          if (!out.has(a.href)) out.set(a.href, a);
         }
       }
       return [...out.values()].slice(-8).reverse();
