@@ -19,6 +19,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { getSettings } from '@/services/fileSystemService.js';
+import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 
 const LOCAL_FILE_SEGMENT = '/local-file/';
 
@@ -101,6 +102,35 @@ export function toWorkspaceRelative(absolutePath, workspaceRoot) {
   // A traversal or empty segment means the path was never really inside the
   // root. The backend rejects these too; refusing here keeps the button honest.
   if (!relative || relative.split('/').some((part) => !part || part === '.' || part === '..')) return '';
+  return relative;
+}
+
+const ARTIFACT_SELECT_PREFIX = 'artifact:';
+
+/**
+ * The file an `?select=artifact:<id>` navigation intent asks Outputs to open,
+ * as a workspace-relative path `openFile` can read.
+ *
+ * The chat right panel lists every `file:///` link an assistant message
+ * produced and emits that href verbatim as the id, so the common shape is an
+ * absolute file URL. A deep link or the Jump palette may already carry a
+ * workspace-relative path; that passes through the same traversal check.
+ *
+ * '' means "nothing to open": not an artifact intent, or a file outside the
+ * workspace root (which the filesystem API would refuse anyway).
+ */
+export function artifactSelectToWorkspacePath(select, workspaceRoot) {
+  const raw = String(select || '');
+  if (!raw.startsWith(ARTIFACT_SELECT_PREFIX)) return '';
+  const id = raw.slice(ARTIFACT_SELECT_PREFIX.length).trim();
+  if (!id) return '';
+
+  const absolute = absolutePathFromFileUrl(id);
+  if (absolute) return toWorkspaceRelative(absolute, workspaceRoot);
+
+  const relative = normalizeSeparators(id).replace(/^\/+|\/+$/g, '');
+  if (!relative || /^[a-z]:/i.test(relative)) return '';
+  if (relative.split('/').some((part) => !part || part === '.' || part === '..')) return '';
   return relative;
 }
 

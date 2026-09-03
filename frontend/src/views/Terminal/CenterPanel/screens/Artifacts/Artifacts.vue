@@ -364,6 +364,7 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute } from 'vue-router';
 import { useSurfaceContribution, useSurfaceAddressing } from '@/canvas/surfaceFederation.js';
 import { Codemirror } from 'vue-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
@@ -378,6 +379,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, getSettings, saveFile } from '@/services/fileSystemService.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
+import { artifactSelectToWorkspacePath } from '@/utils/workspacePath.js';
 import { injectArtifactPreviewBase } from '@/utils/artifactPreviewBase.js';
 import { dirtyOverrides, prepareArtifactBundle, publishArtifactBundle } from '@/services/artifactBundlePublisher.js';
 import { parseChartConfig, chartErrorHtml } from '@/utils/chartConfig';
@@ -2253,6 +2255,18 @@ export default {
       }
     };
 
+    // ?select=artifact:<file:/// href | workspace path> — the chat right
+    // panel's Artifacts list, ⌘K and deep links all land here asking for ONE
+    // file, not just the page. Needs the workspace root to turn an absolute
+    // href into the relative path the filesystem API reads, so it runs after
+    // settings resolve and again whenever the query changes while mounted.
+    const route = useRoute();
+    const applySelectIntent = () => {
+      const relativePath = artifactSelectToWorkspacePath(route.query?.select, workspaceRoot.value);
+      if (relativePath) openFile(relativePath);
+    };
+    watch(() => route.query?.select, () => applySelectIntent());
+
     onMounted(async () => {
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('code-file-written', handleFileWritten);
@@ -2266,6 +2280,7 @@ export default {
       } catch (error) {
         console.error('[Artifacts] Failed to load workspace root for HTML preview:', error);
       }
+      applySelectIntent();
     });
 
     onUnmounted(() => {

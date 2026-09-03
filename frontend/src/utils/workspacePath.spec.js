@@ -13,6 +13,7 @@ import {
   resetWorkspaceRootCache,
   resolveWorkspaceEntry,
   titleFromEntryPath,
+  artifactSelectToWorkspacePath,
 } from './workspacePath.js';
 
 beforeEach(() => {
@@ -169,5 +170,35 @@ describe('titleFromEntryPath', () => {
 
   it('falls back when there is nothing to name', () => {
     expect(titleFromEntryPath('')).toBe('My Creation');
+  });
+});
+
+// ?select=artifact:<file:/// href> is what the chat right panel emits when a
+// produced file is clicked. Outputs must open THAT file, not just the page.
+describe('artifactSelectToWorkspacePath', () => {
+  const ROOT = 'C:\\Users\\Studio\\AppData\\Roaming\\AGNT\\projects';
+
+  it('resolves a file:/// href under the workspace to a relative path', () => {
+    expect(artifactSelectToWorkspacePath('artifact:file:///C:/Users/Studio/AppData/Roaming/AGNT/projects/whitney/index.html', ROOT)).toBe(
+      'whitney/index.html',
+    );
+  });
+
+  it('decodes percent-encoded hrefs (the panel stores them raw)', () => {
+    expect(artifactSelectToWorkspacePath('artifact:file:///C:/Users/Studio/AppData/Roaming/AGNT/projects/My%20Site/a%20b.html', ROOT)).toBe(
+      'My Site/a b.html',
+    );
+  });
+
+  it('accepts a workspace-relative id as-is (⌘K / deep links)', () => {
+    expect(artifactSelectToWorkspacePath('artifact:whitney/index.html', ROOT)).toBe('whitney/index.html');
+  });
+
+  it('refuses files outside the workspace and non-artifact intents', () => {
+    expect(artifactSelectToWorkspacePath('artifact:file:///C:/Windows/system.ini', ROOT)).toBe('');
+    expect(artifactSelectToWorkspacePath('artifact:../../etc/passwd', ROOT)).toBe('');
+    expect(artifactSelectToWorkspacePath('goal:42', ROOT)).toBe('');
+    expect(artifactSelectToWorkspacePath('', ROOT)).toBe('');
+    expect(artifactSelectToWorkspacePath(undefined, ROOT)).toBe('');
   });
 });
