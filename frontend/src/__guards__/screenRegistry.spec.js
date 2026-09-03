@@ -178,6 +178,23 @@ describe('a screen can have no left column at all', () => {
   });
 });
 
+describe('dashboard right panel has no inspector', () => {
+  // ListSummaryPanel / InspectorShell add a caption, a stats block and a
+  // section literally titled "Inspector" (hint has a default, so you get it
+  // without asking). There is nothing to inspect on a dashboard, so its
+  // panel must stay plain: Active Workflows + Integration Health.
+  const src = fs.readFileSync(path.join(SRC, 'views/Terminal/RightPanel/types/DashboardPanel/DashboardPanel.vue'), 'utf8');
+
+  it('does not use the inspector shell, the summary panel, or useInspect', () => {
+    expect(src).not.toMatch(/InspectorShell|ListSummaryPanel|EntityInspector|useInspect|InspSection/);
+    expect(src).not.toMatch(/Inspector/);
+  });
+
+  it('renders Active Workflows then Integration Health', () => {
+    expect(src).toMatch(/<ActiveWorkflows[\s\S]*<IntegrationHealth \/>/);
+  });
+});
+
 describe('resolution semantics', () => {
   it('an explicitly passed prop always wins over the registry', () => {
     expect(resolvePanel('CustomPanel', 'GoalsScreen', 'rightPanel')).toBe('CustomPanel');
