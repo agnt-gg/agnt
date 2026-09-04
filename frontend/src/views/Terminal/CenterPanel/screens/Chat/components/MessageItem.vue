@@ -403,7 +403,7 @@
 </template>
 
 <script>
-import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, inject } from 'vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import { useStore } from 'vuex';
 import DOMPurify from 'dompurify';
@@ -613,6 +613,11 @@ export default {
   },
   emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message'],
   setup(props, { emit }) {
+    // A workspace already has a canvas dedicated to live surfaces. Browser
+    // calls render there as a Browser widget; standalone chat has no canvas
+    // and owns the inline live card instead.
+    const insideWidgetCanvas = inject('isInsideWidgetCanvas', false);
+
     // Get Vuex store for auth token
     const store = useStore();
 
@@ -2663,7 +2668,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       'ai_browser_control',
     ]);
     const hasBrowserToolCall = computed(
-      () => (props.message?.toolCalls || []).some((tc) => BROWSER_TOOL_NAMES.has(tc?.name)),
+      () => !insideWidgetCanvas
+        && (props.message?.toolCalls || []).some((tc) => BROWSER_TOOL_NAMES.has(tc?.name)),
     );
 
     /**

@@ -992,7 +992,9 @@ export function useWorkspaces() {
    * deliberate exceptions: each chat is a separate conversation, and each
    * browser is a separate live page/agent target with its own instance id.
    */
-  function addWidget(widgetId, at = null, { workspaceId, allowDuplicate = false, auto = false } = {}) {
+  function addWidget(widgetId, at = null, {
+    workspaceId, allowDuplicate = false, auto = false, required = false,
+  } = {}) {
     if (!widgetId) return null;
     const ws = resolveWorkspace(workspaceId);
     if (!ws) return null;
@@ -1000,7 +1002,7 @@ export function useWorkspaces() {
     // not". Both directions live here so no caller can forget one: a reflex
     // never overrides a close, and a deliberate open re-arms the reflex.
     if (auto) {
-      if (isAutoOpenDismissed(ws.id, widgetId)) return null;
+      if (!required && isAutoOpenDismissed(ws.id, widgetId)) return null;
     } else {
       clearAutoOpenDismissed(ws.id, widgetId);
     }

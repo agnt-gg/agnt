@@ -36,6 +36,7 @@ const TEST_WIDGETS = [
   ['artifacts', { name: 'Artifacts', icon: 'fas fa-cube', category: 'assets', component: { template: '<div/>' }, defaultSize: { cols: 6, rows: 4 }, minSize: { cols: 2, rows: 2 } }],
   ['cw_custom1', { name: 'Buzz Console', icon: 'fas fa-shapes', category: 'custom', component: { template: '<div/>' }, isCustomWidget: true, customDefinition: { id: 'cw_custom1' }, defaultSize: { cols: 4, rows: 4 }, minSize: { cols: 2, rows: 2 } }],
   ['workspace-chat', { name: 'Chat', icon: 'fas fa-comments', category: 'home', component: { template: '<div class="stub-ws-chat"/>' }, defaultSize: { cols: 4, rows: 8 }, minSize: { cols: 3, rows: 4 }, isScreenWidget: true }],
+  ['browser', { name: 'Browser', icon: 'fas fa-globe', category: 'home', component: { template: '<div class="stub-browser"/>' }, defaultSize: { cols: 8, rows: 8 }, minSize: { cols: 4, rows: 4 } }],
 ];
 
 beforeEach(() => {
@@ -463,6 +464,17 @@ describe('useWorkspaces — auto-open the user can refuse', () => {
     ws.setAutoOpen(false);
     ws.setAutoOpen(true);   // an explicit "do this again"
     expect(ws.addWidget('artifacts', null, { auto: true })).toBeTruthy();
+  });
+
+  it('reopens a required Browser surface even after its prior window was closed', async () => {
+    const ws = await freshWorkspaces();
+    const first = ws.addWidget('browser', null, { auto: true });
+    ws.removeWidget(first);
+
+    // Ordinary suggestions still respect the close.
+    expect(ws.addWidget('browser', null, { auto: true })).toBeNull();
+    // A live browser call cannot run on the requested canvas without a surface.
+    expect(ws.addWidget('browser', null, { auto: true, required: true })).toBeTruthy();
   });
 
   // Every screen widget declares 12x8 — the whole grid — so before this an
@@ -1082,6 +1094,21 @@ describe('Workspace.vue', () => {
     };
     const artifactWindows = (wrapper) =>
       wrapper.findAll('.stub-frame').filter((f) => f.attributes('data-widget-id') === 'artifacts');
+    const browserWindows = (wrapper) =>
+      wrapper.findAll('.stub-frame').filter((f) => f.attributes('data-widget-id') === 'browser');
+
+    it('opens the Browser widget as soon as a browser call starts', async () => {
+      const wrapper = await mountPage();
+      const key = await channelOf();
+      store.commit('chatUnified/SET_MESSAGES', {
+        key,
+        messages: [turnWith('m-browser', { id: 't-browser', name: 'browser', args: { action: 'navigate' } })],
+      });
+      store.state.chatUnified.runningToolCalls[key] = { 'm-browser-t-browser': true };
+      await nextTick();
+
+      expect(browserWindows(wrapper)).toHaveLength(1);
+    });
 
     it('opens nothing when a transcript hydrates with completed tool calls', async () => {
       const wrapper = await mountPage();

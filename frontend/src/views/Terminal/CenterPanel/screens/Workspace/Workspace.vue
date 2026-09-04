@@ -543,7 +543,7 @@ export default {
     // ── opening widgets (user or Annie) ──────────────────────────────
     const open = (widgetId, {
       objectId = '', routeParam = '', custom = false, at = null, allowDuplicate = false,
-      auto = false,
+      auto = false, required = false,
     } = {}) => {
       if (custom) {
         // Make sure the definition is loadable before the renderer asks for it.
@@ -559,7 +559,7 @@ export default {
       applyRouteParam(routeParam, objectId);
       // `auto` = Annie placed this, the user did not. useWorkspaces uses it to
       // honour a previous close and to cap the footprint.
-      addWidget(widgetId, at, { allowDuplicate, auto });
+      addWidget(widgetId, at, { allowDuplicate, auto, required });
     };
 
     // ── embedded screen-change → canvas action ──────────────────────
@@ -649,6 +649,27 @@ export default {
     const runningMap = computed(() => store.state.chatUnified.runningToolCalls[chatChannelKey.value] || {});
     const isStreaming = computed(() => store.getters['chatUnified/isStreaming'](chatChannelKey.value));
 
+    const browserToolNames = new Set(['browser', 'ai_browser_act', 'ai_browser_use', 'ai_browser_control']);
+
+    /**
+     * Browser is not an optional post-result suggestion. It is the surface the
+     * backend is about to drive, and resolveSurface waits briefly for this
+     * workspace to publish it before falling back to a hidden browser.
+     *
+     * Read the named calls from the live transcript instead of decoding
+     * runningToolCalls' composite keys: message and tool ids may themselves
+     * contain dashes, while toolCalls already carry the exact identity.
+     */
+    const scanForRunningBrowser = () => {
+      if (!Object.keys(runningMap.value).length) return;
+      const messages = store.getters['chatUnified/getMessages'](chatChannelKey.value) || [];
+      const hasRunningBrowser = messages.slice(-6).some((message) =>
+        (message.toolCalls || []).some((toolCall) => browserToolNames.has(toolCall?.name)
+          && runningMap.value[`${message.id}-${toolCall.id}`]),
+      );
+      if (hasRunningBrowser) open('browser', { auto: true, required: true });
+    };
+
     const scanForWidgets = () => {
       if (!autoOpen.value) return;
       const messages = store.getters['chatUnified/getMessages'](chatChannelKey.value) || [];
@@ -692,7 +713,10 @@ export default {
       }
     };
 
-    watch(runningMap, scanForWidgets, { deep: true });
+    watch(runningMap, () => {
+      scanForRunningBrowser();
+      scanForWidgets();
+    }, { deep: true });
     watch(isStreaming, (now, before) => {
       if (before && !now) scanForWidgets();
     });
