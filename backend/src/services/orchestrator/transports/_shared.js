@@ -27,6 +27,8 @@ import {
   // said exact-match), which silently no-ops the UI toggle on any newly listed
   // model in the gap. Import, never redefine — enforced by
   // noDuplicateProviderPredicates.test.js.
+  isOpenAIGen5OrLater,
+  isOpenAIGen6OrLater,
   isGroqGptOssReasoningModel,
   isGroqQwenReasoningModel,
   isCerebrasGptOssReasoningModel,
@@ -325,8 +327,16 @@ function requiresResponsesApi(model) {
 
   const modelLower = model.toLowerCase();
 
-  // GPT-5+ models (gpt-5, gpt-5.1-codex, gpt-5.2-codex, gpt-5.3-codex, gpt-5.4, etc.)
+  // GPT-5 family (gpt-5, gpt-5.1-codex, gpt-5.2-codex, gpt-5.3-codex, gpt-5.4, etc.)
   if (modelLower.startsWith('gpt-5')) return true;
+
+  // GPT-6 and every later generation. This clause exists because the gpt-5
+  // prefix test above was, on its own, a claim that OpenAI would never ship a
+  // GPT-6 — and the day gpt-6-astra appeared in the Codex model list the
+  // openai-codex adapter refused to construct at all, taking the whole
+  // provider offline and silently demoting every request to the failover
+  // tier. A generation test cannot fail that way.
+  if (isOpenAIGen5OrLater(modelLower)) return true;
 
   // o-series reasoning models (o1, o3, o4, and future o-series)
   if (/^o\d/.test(modelLower)) return true;
@@ -345,6 +355,25 @@ function getOpenAIReasoningValues(model) {
 
   if ((lower.startsWith('gpt-5.2') || lower.startsWith('gpt-5.3')) && lower.includes('codex')) {
     return new Set(['low', 'medium', 'high', 'xhigh']);
+  }
+  // GPT-6+ contract. Astra's model page enumerates exactly five levels —
+  // "reasoning.effort supports low, medium, high, xhigh, and max"
+  // (developers.openai.com/api/docs/models/gpt-6-astra, retrieved 2026-09-04).
+  //
+  // Two differences from the 5.x set, and both matter:
+  //   'max' is NEW — a tier above xhigh that no earlier model had, so a
+  //         generation that merely inherited 5.x could never reach the top of
+  //         the model it is running on.
+  //   'none' is ABSENT — so it is not offered here. buildResponsesReasoningConfig
+  //         drops an unlisted effort rather than sending it, which keeps a
+  //         stale 'off' preference from becoming a 400 at request time.
+  //
+  // This clause must also come BEFORE the 5.x branch below: without any gen-6
+  // clause at all the model fell through to the empty set, which is read as
+  // "send no effort" — a silent downgrade indistinguishable from the model
+  // simply being dumber than advertised.
+  if (isOpenAIGen6OrLater(lower)) {
+    return new Set(['low', 'medium', 'high', 'xhigh', 'max']);
   }
   // Modern gpt-5.x contract (5.1, 5.2 non-codex, 5.4, 5.5+): 'none' instead of
   // 'minimal', plus 'xhigh'. The Codex Responses API rejects 'minimal' for

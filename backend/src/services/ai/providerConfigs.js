@@ -20,6 +20,8 @@ import { OPENAI_GPT56_OR_LATER as GPT_56_OR_LATER } from '../../utils/promptCach
 // tests) keep their current import paths.
 import {
   isOpenAIResponsesReasoningModel,
+  isOpenAIGen5OrLater,
+  isOpenAIGen6OrLater,
   isAnthropicAdaptiveThinkingModel,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
@@ -43,6 +45,8 @@ import {
 
 export {
   isOpenAIResponsesReasoningModel,
+  isOpenAIGen5OrLater,
+  isOpenAIGen6OrLater,
   isAnthropicAdaptiveThinkingModel,
   isGemini3ReasoningModel,
   isGemini25ReasoningModel,
@@ -105,9 +109,22 @@ const PROVIDER_CONFIGS = [
         supportsStyle: false,
       },
     },
-    recommendedModels: ['gpt-5.6', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],
-    fallbackModels: ['gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
-    fallbackVisionModels: ['gpt-5.2', 'gpt-4.1'],    modelMetadata: {
+    recommendedModels: ['gpt-6-astra', 'gpt-5.6', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],
+    fallbackModels: ['gpt-6-astra', 'gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
+    fallbackVisionModels: ['gpt-6-astra', 'gpt-5.2', 'gpt-4.1'],    modelMetadata: {
+      // gpt-6-astra: the true window is 1,050,000, but this entry is capped at
+      // the 272k pricing cliff for the SAME reason as gpt-5.6-sol below —
+      // "Prompts with more than 272K input tokens are priced at 2x input and
+      // cache rates and 1.5x output for the full request."
+      // (developers.openai.com/api/docs/models/gpt-6-astra, retrieved
+      // 2026-09-04). Crossing the cliff re-prices the ENTIRE request, so a
+      // single token over quietly doubles the bill on everything before it.
+      //
+      // openai-codex declares its OWN 1,050,000 entry, because the ChatGPT
+      // rate card exempts Codex from this multiplier by name. Same model, two
+      // billing contracts — which is exactly why that provider needs its own
+      // row rather than inheriting this one through PROVIDER_METADATA_FALLBACK.
+      'gpt-6-astra': { contextWindow: 272000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, inputCacheReadCostPer1M: 1.0, supportsVision: true, supportsTools: true, reasoning: true },
       // gpt-5.6-sol: capped at 272k (not the true 400k window) because OpenAI
       // bills 2x input / 1.5x output on the ENTIRE request once tokenized input
       // exceeds 272,000. Keeping contextWindow at the cliff makes compression
@@ -171,8 +188,26 @@ const PROVIDER_CONFIGS = [
     // last-successful cache on disk (see codex-last-models.json / persistent
     // fallback in ModelRoutes). Bumped 2026-07 to include gpt-5.6 variants so
     // a degraded state doesn't hide the currently-shipping models.
-    fallbackModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.2-codex'],
-    fallbackVisionModels: ['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.2-codex'],
+    fallbackModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.2-codex'],
+    fallbackVisionModels: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5', 'gpt-5.2-codex'],
+    // Codex normally inherits OpenAI's table via PROVIDER_METADATA_FALLBACK,
+    // and for every model before Astra that is correct. Astra is the first
+    // model whose billing DIFFERS between the two surfaces:
+    //
+    //   "GPT-6 Astra usage in Codex does not incur additional long-context
+    //    multipliers above 272K input tokens."
+    //   — help.openai.com ChatGPT Rate Card (retrieved 2026-09-04)
+    //
+    // So the 272k cap that protects api.openai.com users from a 2x bill would,
+    // if inherited here, throw away 778,000 tokens of a window Codex grants
+    // for free. Rates are identical to the API entry, so this row changes the
+    // usable window ONLY — it is not a pricing change for existing models.
+    //
+    // getModelMetadata step 1 requires a row to be priceable before it wins,
+    // hence the rates are repeated rather than omitted.
+    modelMetadata: {
+      'gpt-6-astra': { contextWindow: 1050000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, inputCacheReadCostPer1M: 1.0, supportsVision: true, supportsTools: true, reasoning: true },
+    },
     compat: {},
     sdkOptions: {},
   },
@@ -2656,6 +2691,29 @@ export function getReasoningControl(providerKey, modelId) {
     // Covers 5.1, 5.2 (non-codex), 5.4, 5.5+. The Codex Responses API rejects
     // 'minimal' for gpt-5.5+, so this branch must catch them before the
     // legacy gpt-5* fallback below. Regex handles 5.10+ for future versions.
+    // GPT-6+ ladder. Astra adds a real 'max' above 'xhigh', so the two cannot
+    // share a branch: the 5.x list labels xhigh "Max" because xhigh WAS the
+    // ceiling there, and reusing it here would leave the actual top tier
+    // unreachable from the UI while a button named "Max" sent something else.
+    // No 'Off' either — Astra's documented set has no 'none', and offering a
+    // control the wire silently drops is the failure mode this file exists to
+    // prevent.
+    //
+    // Without any gen-6 clause a gen-6 model passed the reasoning gate above
+    // and then matched no branch at all, returning null — the UI simply omits
+    // the effort selector, so the model looks like it has no reasoning support
+    // rather than like a missing case.
+    if (isOpenAIGen6OrLater(lowerModel)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'Extra High' },
+        { value: 'max', label: 'Max' },
+      ]);
+    }
+
     if (
       lowerModel.startsWith('gpt-5.1') ||
       lowerModel.startsWith('gpt-5.2') ||

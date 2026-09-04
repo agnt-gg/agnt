@@ -66,9 +66,37 @@ export function isAnthropicAdaptiveThinkingModel(modelId) {
 }
 
 // ── OpenAI ──────────────────────────────────────────────────────────────────
+// OpenAI encodes the generation in the model id, and every gate that meant
+// "modern OpenAI" was written as startsWith('gpt-5'). A prefix test like that
+// is also a prediction that GPT-6 will never ship. It shipped: `gpt-6-astra`
+// failed the openai-codex dispatch gate in llmAdapters, so the adapter refused
+// to construct at all and every request was silently demoted to the failover
+// provider — the user picks Astra in settings and quietly gets something else.
+//
+// These are GENERATION tests. The `(?:[.\-]|$)` tail means only a version
+// separator or end-of-string may follow the generation digit, which keeps
+// gpt-4o, gpt-4.1 and gpt-image out while admitting gpt-6, gpt-6-astra,
+// gpt-7.2 and (via \d{2,}) gpt-10 without another edit.
+//
+// Two boundaries, because they answer different questions:
+//   GEN5+  — does this speak the Responses API at all?
+//   GEN6+  — does it use the modern reasoning-effort contract? The original
+//            un-decimalled gpt-5 uses the legacy 'minimal' set, so it must
+//            NOT be swept into the modern branch.
+export const OPENAI_GEN5_OR_LATER_RE = /^gpt-(?:[5-9]|\d{2,})(?:[.\-]|$)/;
+export const OPENAI_GEN6_OR_LATER_RE = /^gpt-(?:[6-9]|\d{2,})(?:[.\-]|$)/;
+
+export function isOpenAIGen5OrLater(modelId) {
+  return OPENAI_GEN5_OR_LATER_RE.test(lc(modelId));
+}
+
+export function isOpenAIGen6OrLater(modelId) {
+  return OPENAI_GEN6_OR_LATER_RE.test(lc(modelId));
+}
+
 export function isOpenAIResponsesReasoningModel(modelId) {
   const m = lc(modelId);
-  return m.startsWith('gpt-5') || /^o\d/.test(m);
+  return isOpenAIGen5OrLater(m) || /^o\d/.test(m);
 }
 
 // ── Gemini ──────────────────────────────────────────────────────────────────
@@ -132,9 +160,13 @@ export function supportsKimiReasoningToggle(providerKey, modelId) {
 }
 
 // ── OpenRouter (routes by the vendor named in the slug) ─────────────────────
+// Delegates to the direct-OpenAI predicate rather than repeating the family
+// rule with a vendor prefix glued on — that duplication is why the same
+// gpt-6 gap would otherwise have to be fixed twice.
 export function isOpenRouterOpenAIReasoningModel(modelId) {
   const m = lc(modelId);
-  return m.startsWith('openai/gpt-5') || /^openai\/o\d/.test(m);
+  if (!m.startsWith('openai/')) return false;
+  return isOpenAIResponsesReasoningModel(m.slice('openai/'.length));
 }
 
 // Intentionally broader than isAnthropicReasoningModel: OpenRouter exposes

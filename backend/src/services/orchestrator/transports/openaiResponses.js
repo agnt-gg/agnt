@@ -28,6 +28,7 @@ import {
   isGroqQwenReasoningModel,
   isCerebrasGptOssReasoningModel,
   isCerebrasGlmReasoningModel,
+  isOpenAIGen5OrLater,
   isTogetherGptOssReasoningModel,
   isChutesKimiReasoningModel,
   isChutesGlmReasoningModel,
@@ -130,7 +131,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
    */
   supportsReasoning() {
     const modelLower = this.model.toLowerCase();
-    return this.reasoningModels.has(this.model) || /^o\d/.test(modelLower) || modelLower.startsWith('gpt-5');
+    return this.reasoningModels.has(this.model) || /^o\d/.test(modelLower) || isOpenAIGen5OrLater(modelLower);
   }
 
   /**
@@ -999,7 +1000,14 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   _getCodexContextWindow() {
     const meta = getModelMetadata('openai-codex', this.model);
     if (meta?.contextWindow) return meta.contextWindow;
-    if (/^gpt-5/i.test(this.model)) return 400_000;
+    // Fallback for a model Codex lists before we enumerate it in metadata.
+    // 400k is the floor across every gen-5-or-later Codex model that has real
+    // metadata (the narrower ones — 5.6-sol at 272k, 5.3-codex-spark at 200k —
+    // are enumerated and never reach this line). Matching on the generation
+    // rather than on `gpt-5` keeps a brand-new flagship from silently
+    // inheriting the 128k legacy floor and truncating long sessions; the
+    // bounded shrink-retry above recovers if a future model is narrower.
+    if (isOpenAIGen5OrLater(this.model)) return 400_000;
     return 128_000;
   }
 
@@ -1241,7 +1249,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    */
   supportsReasoning() {
     const m = this.model.toLowerCase();
-    return m.startsWith('gpt-5') || /^o\d/.test(m);
+    return isOpenAIGen5OrLater(m) || /^o\d/.test(m);
   }
 
   /**
