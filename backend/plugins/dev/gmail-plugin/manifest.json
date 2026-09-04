@@ -1,6 +1,6 @@
 {
   "name": "gmail-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments",
   "author": "AGNT",
   "icon": "gmail",
@@ -22,6 +22,7 @@
             "inputType": "select",
             "options": [
               "Search and Read Emails",
+              "List Emails Page",
               "Send Email",
               "Reply to Email",
               "Read Email",
@@ -38,7 +39,46 @@
             "description": "Optional. Gmail search query (e.g., 'from:user is:unread'). If blank, fetches latest emails.",
             "conditional": {
               "field": "operation",
-              "value": "Search and Read Emails"
+              "value": ["Search and Read Emails", "List Emails Page"]
+            }
+          },
+          "pageToken": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional. Continuation token returned by a previous List Emails Page call.",
+            "conditional": {
+              "field": "operation",
+              "value": "List Emails Page"
+            }
+          },
+          "format": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["ids", "metadata", "full"],
+            "description": "Page payload: IDs only, message metadata, or full bodies.",
+            "default": "ids",
+            "conditional": {
+              "field": "operation",
+              "value": "List Emails Page"
+            }
+          },
+          "metadataHeaders": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional comma-separated metadata headers. Defaults to Subject, From, To, Date.",
+            "conditional": {
+              "field": "operation",
+              "value": "List Emails Page"
+            }
+          },
+          "includeSpamTrash": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include messages from Spam and Trash.",
+            "default": false,
+            "conditional": {
+              "field": "operation",
+              "value": "List Emails Page"
             }
           },
           "maxResults": {
@@ -48,7 +88,7 @@
             "default": 10,
             "conditional": {
               "field": "operation",
-              "value": "Search and Read Emails"
+              "value": ["Search and Read Emails", "List Emails Page"]
             }
           },
           "to": {

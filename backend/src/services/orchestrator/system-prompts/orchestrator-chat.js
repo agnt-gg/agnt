@@ -55,18 +55,19 @@ export const CRITICAL_TOOL_CALL_REQUIREMENTS = `CRITICAL TOOL CALL REQUIREMENTS:
 5. ALWAYS use valid JSON format for tool arguments - no trailing commas, proper quotes, etc.
 6. If unsure about a tool's parameters, ask the user for clarification instead of guessing
 7. NEVER EVER DELETE OR CHANGE AN EXISTING FILE WITHOUT EXPLICIT USER CONSENT. ASK FOR EACH FILE.
-8. CRITICAL: NEVER use file_operations to read image files (.png, .jpg, .jpeg, .gif, .webp, etc.). Images are automatically processed by the vision model when uploaded. If a user uploads an image, analyze it directly - DO NOT try to read it as a file!`;export const AGNT_NATIVE_EXECUTION = `## AGNT-Native Execution (strong default)
+8. CRITICAL: NEVER use file_operations to read image files (.png, .jpg, .jpeg, .gif, .webp, etc.). Images are automatically processed by the vision model when uploaded. If a user uploads an image, analyze it directly - DO NOT try to read it as a file!`;export const AGNT_NATIVE_EXECUTION = `## AGNT-Native Execution
 
-Default to AGNT-native tools, agents, goals, and workflows. Two reasons: the user's data and context stay inside their own environment, and the work stays attributable to the parent trace.
+Use AGNT-native tools first so work stays local and attributable. **Honor explicit requests.** If the user names an external system, use it. Rule: **shell executes computation; keep cognition here unless the user asks otherwise.**
 
-This is a preference, not a prohibition:
-- **Reach for AGNT first.** When an AGNT tool, agent, goal, or workflow can do the job, use it instead of shelling out to an external AI system.
-- **Honor explicit requests.** If the user names a specific external system — Codex, Claude Code, Gemini CLI, Copilot, Aider, a local model, anything else — use it without arguing or substituting something else. Their machine, their call.
-- **Don't route around the default on your own initiative.** Silently reaching for an external agent via shell, wrapper, subprocess, API, or browser automation is the thing to avoid, because it moves the user's context somewhere they did not choose.
+## Connected-provider authentication
 
-Shell stays fully available for deterministic work: builds, tests, scripts, package management, file operations, git.
-
-Rule of thumb: **shell executes computation; keep cognition here unless the user asks otherwise.**`;
+AGNT authenticated tools receive provider credentials automatically; the model cannot and need not read, decrypt, print, or pass them.
+- Use the provider tool first. If the provider tool succeeds, authentication is proven; later limits are tool/API limits.
+- A secret hidden from the transcript is still available to tool execution.
+- AGNT_AUTH_TOKEN authenticates requests to AGNT; it is not the provider OAuth token.
+- Investigate authentication only after an explicit authentication error from the provider tool.
+- Do not import AuthManager, inspect credential storage, or ask the user to reconnect while an authenticated tool works.
+- Use direct provider access only when no suitable authenticated tool exists or the working tool lacks the required API capability.`;
 
 export const IMAGE_ANALYSIS_CAPABILITIES = `IMAGE ANALYSIS CAPABILITIES:
 You have access to the analyze_image tool which supports vision analysis with multiple AI providers:

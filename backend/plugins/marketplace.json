@@ -586,12 +586,12 @@
       "name": "gmail-plugin",
       "displayName": "Gmail",
       "icon": "gmail",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
-      "size": 12532601,
+      "size": 12526577,
       "tags": [
         "gmail",
         "email",
@@ -608,7 +608,7 @@
           }
         }
       ],
-      "integrity": "sha256-/Zzflfsh77anZtHYMWefwOBpA5Hj6jGd+Cb3XSzOHsU=",
+      "integrity": "sha256-IeqwOJbbcVNIjvLuyfgWbTVQcxHPV7e9F9StJPtXZPk=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []

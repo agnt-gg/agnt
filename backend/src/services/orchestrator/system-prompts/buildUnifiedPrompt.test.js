@@ -131,6 +131,20 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
     }
   });
 
+  it('teaches connected-provider auth without exposing credentials or bypassing working tools', async () => {
+    const ctx = { userId: 'u1', latestUserMessage: 'read my Gmail', normalizedProvider: 'anthropic' };
+    const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
+
+    expect(prompt).toContain('## Connected-provider authentication');
+    expect(prompt).toContain('authenticated tools receive provider credentials automatically');
+    expect(prompt).toContain('If the provider tool succeeds, authentication is proven');
+    expect(prompt).toContain('AGNT_AUTH_TOKEN authenticates requests to AGNT');
+    expect(prompt).toContain('not the provider OAuth token');
+    expect(prompt).toContain('Investigate authentication only after an explicit authentication error');
+    expect(prompt).toContain('Do not import AuthManager');
+    expect(prompt.match(/## Connected-provider authentication/g)).toHaveLength(1);
+  });
+
   it('places customInstructions at the very end so prefix invalidation is bounded', async () => {
     const ctx = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };
     const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);

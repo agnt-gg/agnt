@@ -13,9 +13,10 @@ class GmailAPI {
   }
 
   async execute(params, inputData, workflowEngine) {
-    console.log('[GmailPlugin] Executing with params:', JSON.stringify(params, null, 2));
-
     try {
+      params = params ?? {};
+      console.log('[GmailPlugin] Executing operation:', params.operation || '(missing)');
+
       const accessToken = params.__auth?.token;
       if (!accessToken) throw new Error('Not connected to Google. Connect in Settings → Connections.');
 
@@ -37,6 +38,9 @@ class GmailAPI {
         case 'Search and Read Emails':
           result = await this.searchAndReadEmails(gmail, params);
           break;
+        case 'List Emails Page':
+          result = await this.listEmailsPage(gmail, params);
+          break;
         case 'Read Email':
           result = await this.readEmail(gmail, params);
           break;
@@ -56,11 +60,14 @@ class GmailAPI {
         error: null,
       };
     } catch (error) {
-      console.error('[GmailPlugin] Error:', error);
+      // Message only: provider client errors carry the outgoing request on
+      // `error.config`, including the Authorization header, so logging the
+      // error object writes the user's bearer token to disk.
+      console.error('[GmailPlugin] Error:', error?.message || 'Unknown Gmail error');
       return {
         success: false,
         result: null,
-        error: error.message,
+        error: error?.message || 'Unknown Gmail error',
       };
     }
   }
@@ -194,30 +201,113 @@ class GmailAPI {
     return res.data;
   }
 
-  async searchAndReadEmails(gmail, { searchQuery, maxResults = 10 }) {
+  normalizeMaxResults(maxResults) {
+    const parsed = Number.parseInt(maxResults, 10);
+    if (!Number.isFinite(parsed)) return 10;
+    return Math.min(500, Math.max(1, parsed));
+  }
+
+  async mapWithConcurrency(items, concurrency, mapItem) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapItem(items[currentIndex], currentIndex);
+      }
+    };
+
+    const workerCount = Math.min(concurrency, items.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return results;
+  }
+
+  async readEmailMetadata(gmail, { messageId, metadataHeaders }) {
+    const res = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'metadata',
+      metadataHeaders,
+    });
+    const headers = res.data.payload?.headers || [];
+    const getHeader = (name) => headers.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+    return {
+      id: res.data.id,
+      threadId: res.data.threadId,
+      snippet: res.data.snippet,
+      subject: getHeader('Subject'),
+      from: getHeader('From'),
+      to: getHeader('To'),
+      date: getHeader('Date'),
+      labels: res.data.labelIds,
+    };
+  }
+
+  async listEmailsPage(
+    gmail,
+    { searchQuery, pageToken, maxResults = 10, format = 'ids', metadataHeaders, includeSpamTrash = false }
+  ) {
+    const normalizedFormat = ['ids', 'metadata', 'full'].includes(format) ? format : 'ids';
+    const normalizedHeaders = Array.isArray(metadataHeaders)
+      ? metadataHeaders
+      : typeof metadataHeaders === 'string' && metadataHeaders.trim()
+        ? metadataHeaders.split(',').map((header) => header.trim()).filter(Boolean)
+        : ['Subject', 'From', 'To', 'Date'];
+
     const listRes = await gmail.users.messages.list({
       userId: 'me',
       q: searchQuery || '',
-      maxResults: parseInt(maxResults, 10),
+      maxResults: this.normalizeMaxResults(maxResults),
+      pageToken: pageToken || undefined,
+      includeSpamTrash: includeSpamTrash === true || includeSpamTrash === 'true',
     });
 
-    const messages = listRes.data.messages || [];
-    if (messages.length === 0) {
-      return [];
+    const listedMessages = listRes.data.messages || [];
+    let messages = listedMessages.map(({ id, threadId }) => ({ id, threadId }));
+
+    const failedMessageIds = [];
+    const readMessage = async (message, read) => {
+      try {
+        return await read();
+      } catch (error) {
+        failedMessageIds.push(message.id);
+        console.error(`Failed to read email ${message.id}:`, error?.message || 'Unknown Gmail error');
+        return null;
+      }
+    };
+
+    if (normalizedFormat === 'metadata') {
+      messages = await this.mapWithConcurrency(listedMessages, 10, (message) =>
+        readMessage(message, () => this.readEmailMetadata(gmail, {
+          messageId: message.id,
+          metadataHeaders: normalizedHeaders,
+        }))
+      );
+    } else if (normalizedFormat === 'full') {
+      messages = await this.mapWithConcurrency(listedMessages, 10, (message) =>
+        readMessage(message, () => this.readEmail(gmail, { messageId: message.id }))
+      );
     }
 
-    const emails = await Promise.all(
-      messages.map(async (message) => {
-        try {
-          return await this.readEmail(gmail, { messageId: message.id });
-        } catch (error) {
-          console.error(`Failed to read email ${message.id}:`, error);
-          return null;
-        }
-      })
-    );
+    const result = {
+      messages: messages.filter(Boolean),
+      nextPageToken: listRes.data.nextPageToken || null,
+      resultSizeEstimate: listRes.data.resultSizeEstimate || 0,
+    };
+    if (failedMessageIds.length > 0) result.failedMessageIds = failedMessageIds;
+    return result;
+  }
 
-    return emails.filter((email) => email !== null);
+  async searchAndReadEmails(gmail, { searchQuery, maxResults = 10 }) {
+    const page = await this.listEmailsPage(gmail, {
+      searchQuery,
+      maxResults,
+      format: 'full',
+    });
+    return page.messages;
   }
 
   async modifyEmail(gmail, { messageId, addLabelIds, removeLabelIds }) {

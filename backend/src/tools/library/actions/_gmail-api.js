@@ -16,7 +16,7 @@ class GmailAPI extends BaseAction {
       operation: {
         type: 'string',
         inputType: 'select',
-        options: ['Search and Read Emails', 'Send Email', 'Reply to Email', 'Read Email', 'Modify Email', 'Get Attachments'],
+        options: ['Search and Read Emails', 'List Emails Page', 'Send Email', 'Reply to Email', 'Read Email', 'Modify Email', 'Get Attachments'],
         description: 'The Gmail operation to perform.',
         default: 'Search and Read Emails',
         inputSize: 'full',
@@ -27,8 +27,35 @@ class GmailAPI extends BaseAction {
         description: "Optional. Gmail search query (e.g., 'from:user is:unread'). If blank, fetches latest emails.",
         conditional: {
           field: 'operation',
-          value: 'Search and Read Emails',
+          value: ['Search and Read Emails', 'List Emails Page'],
         },
+      },
+      pageToken: {
+        type: 'string',
+        inputType: 'text',
+        description: 'Optional. Continuation token returned by a previous List Emails Page call.',
+        conditional: { field: 'operation', value: 'List Emails Page' },
+      },
+      format: {
+        type: 'string',
+        inputType: 'select',
+        options: ['ids', 'metadata', 'full'],
+        description: 'Page payload: IDs only, message metadata, or full bodies.',
+        default: 'ids',
+        conditional: { field: 'operation', value: 'List Emails Page' },
+      },
+      metadataHeaders: {
+        type: 'string',
+        inputType: 'text',
+        description: 'Optional comma-separated metadata headers. Defaults to Subject, From, To, Date.',
+        conditional: { field: 'operation', value: 'List Emails Page' },
+      },
+      includeSpamTrash: {
+        type: 'boolean',
+        inputType: 'checkbox',
+        description: 'Include messages from Spam and Trash.',
+        default: false,
+        conditional: { field: 'operation', value: 'List Emails Page' },
       },
       maxResults: {
         type: 'number',
@@ -37,7 +64,7 @@ class GmailAPI extends BaseAction {
         default: 10,
         conditional: {
           field: 'operation',
-          value: 'Search and Read Emails',
+          value: ['Search and Read Emails', 'List Emails Page'],
         },
       },
       to: {
@@ -153,6 +180,9 @@ class GmailAPI extends BaseAction {
         case 'Search and Read Emails':
           result = await this.searchAndReadEmails(gmail, resolvedParams);
           break;
+        case 'List Emails Page':
+          result = await this.listEmailsPage(gmail, resolvedParams);
+          break;
         case 'Read Email':
           result = await this.readEmail(gmail, resolvedParams);
           break;
@@ -172,11 +202,13 @@ class GmailAPI extends BaseAction {
         error: null,
       });
     } catch (error) {
-      console.error('Error executing Gmail API action:', error);
+      // Message only: provider client errors carry the outgoing request on
+      // `error.config`, including the Authorization header.
+      console.error('Error executing Gmail API action:', error?.message || 'Unknown Gmail error');
       return this.formatOutput({
         success: false,
         result: null,
-        error: error.message,
+        error: error?.message || 'Unknown Gmail error',
       });
     }
   }
@@ -301,30 +333,97 @@ class GmailAPI extends BaseAction {
     return res.data;
   }
 
-  async searchAndReadEmails(gmail, { searchQuery, maxResults = 10 }) {
+  normalizeMaxResults(maxResults) {
+    const parsed = Number.parseInt(maxResults, 10);
+    if (!Number.isFinite(parsed)) return 10;
+    return Math.min(500, Math.max(1, parsed));
+  }
+
+  async mapWithConcurrency(items, concurrency, mapItem) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapItem(items[currentIndex], currentIndex);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+    return results;
+  }
+
+  async readEmailMetadata(gmail, { messageId, metadataHeaders }) {
+    const res = await gmail.users.messages.get({
+      userId: 'me', id: messageId, format: 'metadata', metadataHeaders,
+    });
+    const headers = res.data.payload?.headers || [];
+    const getHeader = (name) => headers.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value || '';
+    return {
+      id: res.data.id,
+      threadId: res.data.threadId,
+      snippet: res.data.snippet,
+      subject: getHeader('Subject'),
+      from: getHeader('From'),
+      to: getHeader('To'),
+      date: getHeader('Date'),
+      labels: res.data.labelIds,
+    };
+  }
+
+  async listEmailsPage(
+    gmail,
+    { searchQuery, pageToken, maxResults = 10, format = 'ids', metadataHeaders, includeSpamTrash = false }
+  ) {
+    const normalizedFormat = ['ids', 'metadata', 'full'].includes(format) ? format : 'ids';
+    const normalizedHeaders = Array.isArray(metadataHeaders)
+      ? metadataHeaders
+      : typeof metadataHeaders === 'string' && metadataHeaders.trim()
+        ? metadataHeaders.split(',').map((header) => header.trim()).filter(Boolean)
+        : ['Subject', 'From', 'To', 'Date'];
     const listRes = await gmail.users.messages.list({
       userId: 'me',
       q: searchQuery || '',
-      maxResults: parseInt(maxResults, 10),
+      maxResults: this.normalizeMaxResults(maxResults),
+      pageToken: pageToken || undefined,
+      includeSpamTrash: includeSpamTrash === true || includeSpamTrash === 'true',
     });
-
-    const messages = listRes.data.messages || [];
-    if (messages.length === 0) {
-      return [];
+    const listedMessages = listRes.data.messages || [];
+    let messages = listedMessages.map(({ id, threadId }) => ({ id, threadId }));
+    const failedMessageIds = [];
+    const readMessage = async (message, read) => {
+      try {
+        return await read();
+      } catch (error) {
+        failedMessageIds.push(message.id);
+        console.error(`Failed to read email ${message.id}:`, error?.message || 'Unknown Gmail error');
+        return null;
+      }
+    };
+    if (normalizedFormat === 'metadata') {
+      messages = await this.mapWithConcurrency(listedMessages, 10, (message) =>
+        readMessage(message, () => this.readEmailMetadata(gmail, {
+          messageId: message.id,
+          metadataHeaders: normalizedHeaders,
+        }))
+      );
+    } else if (normalizedFormat === 'full') {
+      messages = await this.mapWithConcurrency(listedMessages, 10, (message) =>
+        readMessage(message, () => this.readEmail(gmail, { messageId: message.id }))
+      );
     }
+    const result = {
+      messages: messages.filter(Boolean),
+      nextPageToken: listRes.data.nextPageToken || null,
+      resultSizeEstimate: listRes.data.resultSizeEstimate || 0,
+    };
+    if (failedMessageIds.length > 0) result.failedMessageIds = failedMessageIds;
+    return result;
+  }
 
-    const emails = await Promise.all(
-      messages.map(async (message) => {
-        try {
-          return await this.readEmail(gmail, { messageId: message.id });
-        } catch (error) {
-          console.error(`Failed to read email ${message.id}:`, error);
-          return null;
-        }
-      })
-    );
-
-    return emails.filter((email) => email !== null);
+  async searchAndReadEmails(gmail, { searchQuery, maxResults = 10 }) {
+    const page = await this.listEmailsPage(gmail, { searchQuery, maxResults, format: 'full' });
+    return page.messages;
   }
 
   async modifyEmail(gmail, { messageId, addLabelIds, removeLabelIds }) {

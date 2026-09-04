@@ -1,15 +1,24 @@
 ---
 name: annie-universal-api-orchestrator
-description: Use AGNT's stored OAuth tokens and API keys to call ANY third-party API directly from the orchestrator, without building a tool or plugin first. Use this skill whenever the user asks you to "do something with my GitHub / Gmail / Drive / Slack / Notion / Stripe / Shopify / Discord / Linear / Jira / Vercel / Netlify / [any connected provider]", wants one-off data pulled from a service they're already authenticated to, says things like "check my X", "pull my Y", "list my Z", "can you see my...", "grab data from my...", or anything that requires calling an external API on their behalf. Also trigger when the user wants to prototype an integration, explore a provider's API surface, or do something no existing AGNT tool covers but their credentials already exist in the AGNT auth vault. This is the fastest path to action — skip plugin-building entirely for read-only queries, ad-hoc reports, dashboards, and exploratory work.
+description: Use AGNT's stored OAuth tokens and API keys for a third-party API only when no suitable authenticated AGNT tool exists or a working tool lacks the required API capability. Existing provider tools are always the first choice.
 ---
 
 # Annie Universal API Orchestrator
 
 ## What this skill does
 
-AGNT stores the user's OAuth tokens and API keys in a credential vault (managed by `AuthManager`). Normally, plugins and workflow tools are the "approved hands" that reach into the vault for specific purposes. But the orchestrator runs inside the same Node.js process as the AGNT backend, which means it can bypass the tool layer entirely: dynamically `import()` AuthManager, request a valid token for any connected provider, and call that provider's API directly with `fetch`.
+This is an escape hatch for provider API capabilities that AGNT's authenticated tools do not expose. It is not the normal way to use connected apps.
 
-This turns the orchestrator into a just-in-time bridge to any API the user has authorized — with zero plugin-building, zero workflow authoring, and zero reinstalls required.
+AGNT resolves and injects stored credentials into authenticated tools automatically. The model's inability to print a credential is an intentional security boundary, not evidence that execution lacks it.
+
+## Mandatory decision order
+
+1. Call the existing authenticated provider tool.
+2. If scripting is needed, call that same tool through `POST /api/tools/:toolName/execute` using `AGNT_AUTH_TOKEN`.
+3. Use direct provider API access only if no suitable tool exists or a successful tool lacks the required API capability.
+4. Investigate auth only after an explicit authentication error. A successful provider-tool call proves auth works.
+
+Never import `AuthManager`, inspect credential storage, or ask the user to reconnect merely because a tool lacks pagination, filtering, batching, or another API feature.
 
 ---
 
@@ -34,11 +43,10 @@ If you see that error, you're in the workflow-node sandbox. Either switch to `ex
 ## When to use this vs. building a plugin
 
 Use this pattern when:
-- The user wants a **one-off** query, report, or action (e.g., "what's in my GitHub issues?", "show me my Stripe revenue this month")
-- The user is **exploring** an API or prototyping an integration
-- A plugin doesn't exist yet and building one would be overkill for the task
-- The task involves **novel aggregation** across multiple endpoints that no single tool exposes
-- The user wants to **fan out** many API calls in parallel inside one custom script
+- No authenticated AGNT tool exists for the provider capability
+- A working tool has a confirmed API-surface gap that the task requires
+- The user is exploring or prototyping an API capability not represented by a tool
+- The task needs novel aggregation across endpoints that existing tools cannot express
 
 Prefer building a plugin (via the `agnt-plugin-builder` skill) when:
 - The behavior needs to be reused across many workflows or by other users
