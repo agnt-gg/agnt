@@ -77,6 +77,45 @@ describe('the manifests match the code the model will actually run', () => {
     }
   });
 
+  /**
+   * FOUND BY CALLING THE TOOL, NOT BY READING IT.
+   *
+   * orchestrator/toolRegistry._createOpenApiSchema marks a parameter REQUIRED
+   * unless it has a default, is conditional, or says `required: false`. Every
+   * verb tool is one action plus a bag of per-verb parameters, so that rule
+   * turned `browser` into 21-of-24 mandatory and the live call came back
+   * "Missing required parameters: ref, selector, text, value, ms, tabId, ..."
+   * — the tool could not be called AT ALL. Every unit test still passed,
+   * because they all call the execute() function directly and never cross the
+   * schema the model is handed.
+   *
+   * One verb selector is mandatory. Nothing else can be.
+   */
+  it('asks the model for nothing but the verb — anything else makes the tool uncallable', () => {
+    for (const { manifestPath, manifest } of manifests) {
+      for (const type of ['browser', 'ai-browser-act']) {
+        const params = entryFor(manifest, type).parameters;
+        const mandatory = Object.entries(params)
+          .filter(([, def]) => def.default === undefined && !def.conditional && def.required !== false)
+          .map(([name]) => name);
+        expect(mandatory, `${path.relative(REPO_ROOT, manifestPath)} ${type}`).toEqual(['action']);
+      }
+    }
+  });
+
+  it('the computer tools kept the optionality their plugin schemas declared', () => {
+    for (const type of ['computer-setup', 'computer-session', 'computer-windows', 'computer-observe', 'computer-input']) {
+      const params = entryFor(manifests[0].manifest, type).parameters;
+      const mandatory = Object.entries(params)
+        .filter(([, def]) => def.default === undefined && !def.conditional && def.required !== false)
+        .map(([name]) => name);
+      // computer-session is the one tool that genuinely cannot act without an
+      // identity: every driver call it makes is scoped to a session id.
+      const allowed = type === 'computer-session' ? ['session'] : [];
+      expect(mandatory, type).toEqual(allowed);
+    }
+  });
+
   it('every entry is shaped the way the catalog expects', () => {
     for (const tool of TOOLS) {
       const entry = entryFor(manifests[0].manifest, tool.constructor.schema.type);

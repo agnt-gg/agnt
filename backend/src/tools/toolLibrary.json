@@ -1322,114 +1322,133 @@
         "url": {
           "type": "string",
           "inputType": "text",
-          "description": "For navigate: where to go. A bare domain is fine — https:// is assumed."
+          "description": "For navigate: where to go. A bare domain is fine — https:// is assumed.",
+          "required": false
         },
         "ref": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For click/type: the @ref from the latest snapshot, e.g. \"e12\" or \"@e12\"."
+          "description": "For click/type: the @ref from the latest snapshot, e.g. \"e12\" or \"@e12\".",
+          "required": false
         },
         "selector": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For click/type/select/hover/read/wait: CSS selector instead of a ref — stable across page loads, so it is the right handle for workflows."
+          "description": "For click/type/select/hover/read/wait: CSS selector instead of a ref — stable across page loads, so it is the right handle for workflows.",
+          "required": false
         },
         "text": {
           "type": "string",
           "inputType": "text",
-          "description": "For type: replaces what is in the field (it is selected first). For wait: text the page must contain. For dialog: the prompt answer."
+          "description": "For type: replaces what is in the field (it is selected first). For wait: text the page must contain. For dialog: the prompt answer.",
+          "required": false
         },
         "value": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For select: the option to choose, by value or visible label."
+          "description": "For select: the option to choose, by value or visible label.",
+          "required": false
         },
         "ms": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "For wait: plain sleep in milliseconds (prefer selector/text/url)."
+          "description": "For wait: plain sleep in milliseconds (prefer selector/text/url).",
+          "required": false
         },
         "tabId": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For focus/close: the tab id from \"tabs\" or a newTab result."
+          "description": "For focus/close: the tab id from \"tabs\" or a newTab result.",
+          "required": false
         },
         "accept": {
           "type": "boolean",
           "inputType": "checkbox",
           "inputSize": "half",
           "default": true,
-          "description": "For dialog: true accepts (OK), false dismisses (Cancel)."
+          "description": "For dialog: true accepts (OK), false dismisses (Cancel).",
+          "required": false
         },
         "filter": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For console: level or substring. For requests: \"failed\", a method, a status, or a URL fragment."
+          "description": "For console: level or substring. For requests: \"failed\", a method, a status, or a URL fragment.",
+          "required": false
         },
         "submit": {
           "type": "boolean",
           "inputType": "checkbox",
           "inputSize": "half",
           "default": false,
-          "description": "For type: press Enter afterwards."
+          "description": "For type: press Enter afterwards.",
+          "required": false
         },
         "key": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For press: a key (Enter, Tab, Escape, Arrow*, F1-F12, any character) or a chord like Control+a."
+          "description": "For press: a key (Enter, Tab, Escape, Arrow*, F1-F12, any character) or a chord like Control+a.",
+          "required": false
         },
         "deltaY": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
           "default": 600,
-          "description": "For scroll: pixels; positive scrolls down."
+          "description": "For scroll: pixels; positive scrolls down.",
+          "required": false
         },
         "query": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For snapshot: only include elements whose name or role contains this."
+          "description": "For snapshot: only include elements whose name or role contains this.",
+          "required": false
         },
         "maxChars": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "Cap for snapshot (default 8000) and read (default 6000)."
+          "description": "Cap for snapshot (default 8000) and read (default 6000).",
+          "required": false
         },
         "instructions": {
           "type": "string",
           "inputType": "textarea",
-          "description": "For run: the whole task in plain English. The autonomous agent does the reasoning and reports back when finished."
+          "description": "For run: the whole task in plain English. The autonomous agent does the reasoning and reports back when finished.",
+          "required": false
         },
         "python": {
           "type": "string",
           "inputType": "textarea",
-          "description": "For script (chat only): Python to run against the browser, with the browser-use helpers pre-imported."
+          "description": "For script (chat only): Python to run against the browser, with the browser-use helpers pre-imported.",
+          "required": false
         },
         "provider": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For run in a workflow: which AI provider drives the agent. In chat the conversation’s provider is used."
+          "description": "For run in a workflow: which AI provider drives the agent. In chat the conversation’s provider is used.",
+          "required": false
         },
         "model": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For run in a workflow: the model for the agent. In chat the conversation’s model is used."
+          "description": "For run in a workflow: the model for the agent. In chat the conversation’s model is used.",
+          "required": false
         },
         "secrets": {
           "type": "string",
           "inputType": "textarea",
-          "description": "For run: optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder."
+          "description": "For run: optional JSON map of placeholder → secret. The agent types the value but only ever sees the placeholder.",
+          "required": false
         },
         "externalWindow": {
           "type": "string",
@@ -1437,25 +1456,29 @@
           "options": [
             "true"
           ],
-          "description": "For run: open a separate, visible OS browser window. ONLY when the user explicitly asked for one."
+          "description": "For run: open a separate, visible OS browser window. ONLY when the user explicitly asked for one.",
+          "required": false
         },
         "timeoutSeconds": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "For run/script: how long the step may take before it is stopped."
+          "description": "For run/script: how long the step may take before it is stopped.",
+          "required": false
         },
         "timeoutMs": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "For wait: give up after this long (default 10000, max 60000)."
+          "description": "For wait: give up after this long (default 10000, max 60000).",
+          "required": false
         },
         "browser": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For script: launch a specific installed browser (chrome, brave, edge, chromium) instead of the widget."
+          "description": "For script: launch a specific installed browser (chrome, brave, edge, chromium) instead of the widget.",
+          "required": false
         }
       },
       "outputs": {
@@ -1524,93 +1547,108 @@
         "url": {
           "type": "string",
           "inputType": "text",
-          "description": "For navigate: where to go. A bare domain is fine — https:// is assumed."
+          "description": "For navigate: where to go. A bare domain is fine — https:// is assumed.",
+          "required": false
         },
         "ref": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For click/type: the @ref from the latest snapshot, e.g. \"e12\" or \"@e12\"."
+          "description": "For click/type: the @ref from the latest snapshot, e.g. \"e12\" or \"@e12\".",
+          "required": false
         },
         "text": {
           "type": "string",
           "inputType": "text",
-          "description": "For type: replaces what is in the field (it is selected first). For wait: text the page must contain. For dialog: the prompt answer."
+          "description": "For type: replaces what is in the field (it is selected first). For wait: text the page must contain. For dialog: the prompt answer.",
+          "required": false
         },
         "value": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For select: the option to choose, by value or visible label."
+          "description": "For select: the option to choose, by value or visible label.",
+          "required": false
         },
         "ms": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "For wait: plain sleep in milliseconds (prefer selector/text/url)."
+          "description": "For wait: plain sleep in milliseconds (prefer selector/text/url).",
+          "required": false
         },
         "timeoutMs": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "For wait: give up after this long (default 10000, max 60000)."
+          "description": "For wait: give up after this long (default 10000, max 60000).",
+          "required": false
         },
         "tabId": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For focus/close: the tab id from \"tabs\" or a newTab result."
+          "description": "For focus/close: the tab id from \"tabs\" or a newTab result.",
+          "required": false
         },
         "accept": {
           "type": "boolean",
           "inputType": "checkbox",
           "inputSize": "half",
           "default": true,
-          "description": "For dialog: true accepts (OK), false dismisses (Cancel)."
+          "description": "For dialog: true accepts (OK), false dismisses (Cancel).",
+          "required": false
         },
         "filter": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For console: level or substring. For requests: \"failed\", a method, a status, or a URL fragment."
+          "description": "For console: level or substring. For requests: \"failed\", a method, a status, or a URL fragment.",
+          "required": false
         },
         "submit": {
           "type": "boolean",
           "inputType": "checkbox",
           "inputSize": "half",
           "default": false,
-          "description": "For type: press Enter afterwards."
+          "description": "For type: press Enter afterwards.",
+          "required": false
         },
         "key": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For press: a key (Enter, Tab, Escape, Backspace, Delete, Arrow*, PageUp/Down, Home, End, Space, F1-F12, any character) or a chord like Control+a, Control+Shift+t."
+          "description": "For press: a key (Enter, Tab, Escape, Backspace, Delete, Arrow*, PageUp/Down, Home, End, Space, F1-F12, any character) or a chord like Control+a, Control+Shift+t.",
+          "required": false
         },
         "deltaY": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
           "default": 600,
-          "description": "For scroll: pixels; positive scrolls down."
+          "description": "For scroll: pixels; positive scrolls down.",
+          "required": false
         },
         "selector": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For click/type/select/hover: CSS selector instead of a ref. For read: scope the text. For wait: the element that must appear."
+          "description": "For click/type/select/hover: CSS selector instead of a ref. For read: scope the text. For wait: the element that must appear.",
+          "required": false
         },
         "query": {
           "type": "string",
           "inputType": "text",
           "inputSize": "half",
-          "description": "For snapshot: only include elements whose role or name contains every word of this."
+          "description": "For snapshot: only include elements whose role or name contains every word of this.",
+          "required": false
         },
         "maxChars": {
           "type": "number",
           "inputType": "number",
           "inputSize": "half",
-          "description": "Cap for snapshot (default 8000) and read (default 6000)."
+          "description": "Cap for snapshot (default 8000) and read (default 6000).",
+          "required": false
         }
       },
       "outputs": {
