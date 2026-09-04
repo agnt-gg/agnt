@@ -1,6 +1,35 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('googleapis', () => ({ google: {} }));
+/**
+ * The mock has to be COMPLETE ENOUGH TO RUN execute(), not merely present.
+ *
+ * `googleapis` is declared by backend/plugins/dev/gmail-plugin/package.json and
+ * installed into that plugin's own node_modules — which .gitignore excludes and
+ * no install step in CI creates (the workflow runs `npm ci` at the root only).
+ * So on a fresh clone the plugin's `import { google } from 'googleapis'` has no
+ * real module to resolve and this mock is what answers it.
+ *
+ * The first version returned `{ google: {} }`. That passed HERE only because a
+ * developer machine has the plugin's node_modules, so the real library shadowed
+ * the mock and it was never exercised. The moment it did apply — CI, or any
+ * fresh checkout — execute() died on `new google.auth.OAuth2()` with
+ * "Cannot read properties of undefined (reading 'OAuth2')".
+ *
+ * Only the two execute() tests reach this; every other test passes its own
+ * gmail fixture straight to listEmailsPage. So the stub covers exactly the two
+ * calls execute() makes, and the suite now runs identically with or without
+ * the real library installed.
+ */
+vi.mock('googleapis', () => ({
+  google: {
+    auth: {
+      OAuth2: class {
+        setCredentials(credentials) { this.credentials = credentials; }
+      },
+    },
+    gmail: () => ({ users: { messages: { list: async () => ({ data: {} }), get: async () => ({ data: {} }) } } }),
+  },
+}));
 
 import fs from 'fs';
 import { fileURLToPath } from 'url';
