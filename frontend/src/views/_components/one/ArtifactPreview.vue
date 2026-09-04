@@ -5,18 +5,24 @@
      assistant made and stay in the conversation; leaving the page for a
      two-second look is the wrong trade. This is a teleported overlay that
      previews by kind (html/pdf in an iframe, media in the native element,
-     text in a <pre>) and offers "Open in Outputs" / "Open with system" as
-     small secondary actions. Esc, the backdrop, or × closes it. -->
+     text in a <pre>) and offers "Open in Files" / "Open with system" as
+     small secondary actions. Esc, the backdrop, or × closes it.
+
+     A message's path is a SNAPSHOT and files move, so the overlay asks the
+     server where the bytes actually came from and acts on THAT path — see
+     backend/src/utils/localFileResolve.js. When nothing can be recovered it
+     says so plainly instead of showing a broken image icon. -->
 <template>
   <Teleport to="body">
     <div v-if="open" class="ap-overlay" @click.self="close" tabindex="-1" ref="root">
       <div class="ap-dialog" role="dialog" :aria-label="name">
         <header class="ap-head">
           <i :class="icon" class="ap-icon"></i>
-          <span class="ap-name" v-tooltip="absPath">{{ name }}</span>
+          <span class="ap-name" v-tooltip="effectivePath">{{ name }}</span>
           <span class="ap-kind">{{ kind }}</span>
+          <span v-if="relocated" class="ap-moved" v-tooltip="'This message points at ' + absPath">moved</span>
           <span class="ap-spacer"></span>
-          <button type="button" class="ap-link" @click="openInOutputs"><i class="fas fa-cube"></i> Open in Outputs</button>
+          <button type="button" class="ap-link" @click="openInFiles"><i class="fas fa-cube"></i> Open in Files</button>
           <button type="button" class="ap-link" @click="openWithSystem"><i class="fas fa-external-link-alt"></i> Open with system</button>
           <button type="button" class="ap-x" aria-label="Close" @click="close"><i class="fas fa-times"></i></button>
         </header>
@@ -25,7 +31,13 @@
           <!-- A loaded iframe takes focus; key events then go to ITS document
                and Esc never reaches ours. Hand focus back to the overlay on
                load so Esc works until the user deliberately clicks inside. -->
-          <iframe v-if="kind === 'html' || kind === 'pdf'" :src="url" class="ap-frame" sandbox="allow-scripts allow-same-origin" :aria-label="name" tabindex="-1" @load="root?.focus()"></iframe>
+          <div v-if="status === 'missing'" class="ap-none">
+            <i class="fas fa-unlink"></i>
+            <p><strong>{{ name }}</strong> is no longer where this message recorded it.</p>
+            <p class="ap-path">{{ absPath }}</p>
+            <p>I looked for it nearby and could not find it. It was most likely deleted or moved outside this folder.</p>
+          </div>
+          <iframe v-else-if="kind === 'html' || kind === 'pdf'" :src="url" class="ap-frame" sandbox="allow-scripts allow-same-origin" :aria-label="name" tabindex="-1" @load="root?.focus()"></iframe>
           <img v-else-if="kind === 'image'" :src="url" :alt="name" class="ap-media" />
           <video v-else-if="kind === 'video'" :src="url" controls class="ap-media"></video>
           <audio v-else-if="kind === 'audio'" :src="url" controls class="ap-audio"></audio>
@@ -59,33 +71,78 @@ const TEXT_LIMIT = 200_000;
 
 export default {
   name: 'ArtifactPreview',
-  emits: ['open-in-outputs'],
+  emits: ['open-in-files'],
   setup(_, { emit, expose }) {
     const open = ref(false);
     const href = ref('');
     const name = ref('');
     const text = ref(null);
     const root = ref(null);
+    /** 'loading' until the server confirms the bytes; 'missing' when it cannot. */
+    const status = ref('loading');
+    /** Where the server actually found the file, which may differ from absPath. */
+    const resolvedPath = ref('');
 
     const absPath = computed(() => absolutePathFromFileUrl(href.value));
     const url = computed(() => (absPath.value ? buildLocalFileUrl(absPath.value) : ''));
+    /** The path to ACT on — recovered when the recorded one went stale. */
+    const effectivePath = computed(() => resolvedPath.value || absPath.value);
+    const relocated = computed(() => Boolean(resolvedPath.value) && resolvedPath.value !== absPath.value);
     const ext = computed(() => (name.value.split('.').pop() || '').toLowerCase());
     const kind = computed(() => KIND_BY_EXT[ext.value] || 'other');
     const icon = computed(() => ICON_BY_KIND[kind.value]);
 
+    const authHeaders = () => ({ Authorization: 'Bearer ' + (localStorage.getItem('token') || '') });
+
+    /**
+     * Confirm the file is reachable and learn where it really is, without
+     * downloading it: a one-byte Range costs nothing even for a 4 GB video.
+     * 416 means the file exists but is empty — still a hit, not a miss.
+     */
+    async function probe() {
+      status.value = 'loading';
+      resolvedPath.value = '';
+      if (!url.value) {
+        status.value = 'missing';
+        return;
+      }
+      const requested = url.value;
+      try {
+        const res = await fetch(requested, { headers: { ...authHeaders(), Range: 'bytes=0-0' } });
+        if (requested !== url.value) return; // superseded by a newer show()
+        if (!res.ok && res.status !== 416) {
+          status.value = 'missing';
+          return;
+        }
+        const header = res.headers.get('X-Local-File-Path');
+        if (header) {
+          try {
+            resolvedPath.value = decodeURI(header);
+          } catch {
+            resolvedPath.value = header;
+          }
+        }
+        status.value = 'ok';
+      } catch {
+        if (requested === url.value) status.value = 'missing';
+      }
+    }
+
     async function loadText() {
       text.value = null;
       try {
-        const res = await fetch(url.value, { headers: { Authorization: 'Bearer ' + (localStorage.getItem('token') || '') } });
+        const res = await fetch(url.value, { headers: authHeaders() });
         const body = await res.text();
-        text.value = body.length > TEXT_LIMIT ? body.slice(0, TEXT_LIMIT) + `\n\n… (${body.length - TEXT_LIMIT} more characters — Open in Outputs for the whole file)` : body;
+        text.value = body.length > TEXT_LIMIT ? body.slice(0, TEXT_LIMIT) + `\n\n… (${body.length - TEXT_LIMIT} more characters — Open in Files for the whole file)` : body;
       } catch (e) {
         text.value = `Could not load file: ${e?.message || e}`;
       }
     }
 
-    watch([open, kind, url], ([isOpen, k]) => {
-      if (isOpen && k === 'text' && url.value) loadText();
+    // Only fetch the body once the probe says there IS one, so a stale path
+    // renders the missing panel instead of a 404 payload in a <pre>.
+    watch([open, kind, url, status], ([isOpen, k, u, s]) => {
+      if (isOpen && s === 'ok' && k === 'text' && u) loadText();
     });
 
     // Esc is listened for on the document, not the overlay: an HTML/PDF
@@ -103,24 +160,27 @@ export default {
       open.value = true;
       document.addEventListener('keydown', onKey, true);
       nextTick(() => root.value?.focus());
+      probe();
     }
     function close() {
       open.value = false;
       text.value = null;
+      status.value = 'loading';
+      resolvedPath.value = '';
       document.removeEventListener('keydown', onKey, true);
     }
     onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true));
-    function openInOutputs() {
+    function openInFiles() {
       const a = { href: href.value, name: name.value };
       close();
-      emit('open-in-outputs', a);
+      emit('open-in-files', a);
     }
     function openWithSystem() {
-      openLocalPath(absPath.value);
+      openLocalPath(effectivePath.value);
     }
 
     expose({ show, close });
-    return { open, name, absPath, url, ext, kind, icon, text, root, close, openInOutputs, openWithSystem };
+    return { open, name, absPath, effectivePath, relocated, status, url, ext, kind, icon, text, root, close, openInFiles, openWithSystem };
   },
 };
 </script>
@@ -174,6 +234,16 @@ export default {
   border-radius: 4px;
   padding: 1px 5px;
 }
+.ap-moved {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-warning, #d9a441);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 5px;
+  opacity: 0.85;
+}
 .ap-spacer { flex: 1; }
 .ap-link,
 .ap-x,
@@ -225,6 +295,13 @@ export default {
   align-items: center;
 }
 .ap-none i { font-size: 34px; }
+.ap-none p { margin: 0; max-width: 60ch; }
+.ap-path {
+  font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 11px;
+  word-break: break-all;
+  opacity: 0.75;
+}
 .ap-btn { border-color: var(--terminal-border-color); color: var(--color-text); }
 .ap-btn:hover { background: rgba(255, 255, 255, 0.05); }
 </style>

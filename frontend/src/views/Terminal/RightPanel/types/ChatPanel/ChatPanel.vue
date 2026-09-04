@@ -54,15 +54,15 @@
     </InspSection>
 
     <!-- Click previews in place (you stay in the conversation); the small
-         arrow, or the preview's own link, goes to the Outputs screen. -->
+         arrow, or the preview's own link, goes to the Files screen. -->
     <InspSection title="Artifacts" v-if="artifacts.length">
       <div v-for="a in artifacts" :key="a.href" class="li li-artifact" @click="previewArtifact(a)" v-tooltip="'Preview ' + a.name">
         <span class="tile k-artifact"><i class="fas fa-cube"></i></span>
         <span class="nm">{{ a.name }}</span>
-        <button type="button" class="li-go" v-tooltip="'Open in Outputs'" @click.stop="openArtifact(a)"><i class="fas fa-external-link-alt"></i></button>
+        <button type="button" class="li-go" v-tooltip="'Open in Files'" @click.stop="openArtifact(a)"><i class="fas fa-external-link-alt"></i></button>
       </div>
     </InspSection>
-    <ArtifactPreview ref="preview" @open-in-outputs="openArtifact" />
+    <ArtifactPreview ref="preview" @open-in-files="openArtifact" />
 
     <InspSection title="This chat">
       <div class="li" @click="$emit('panel-action', 'open-provider-selector')">

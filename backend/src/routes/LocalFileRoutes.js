@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import { isSecretPath, assertWithinRoots, describeRoots } from '../utils/localFileScope.js';
+import { resolveLocalFile } from '../utils/localFileResolve.js';
 
 import { MAX_PREVIEW_TEXT_BYTES, preparePreviewHTML, previewResourceURL, previewChannel, previewDocumentBase } from '../utils/artifactPreviewDocument.js';
 import { rewritePreviewCSS } from '../utils/artifactPreviewUrls.js';
@@ -102,9 +103,20 @@ const serveLocalFile = async (req, res, { preview = false } = {}) => {
       return res.status(403).json({ error: 'Refused: path is outside the configured local-file roots' });
     }
 
+    // A chat message stores a path SNAPSHOT. Worktrees get reaped and folders
+    // get renamed, so a path that was correct when it was written can point at
+    // nothing today while the file itself sits a level away. Recover it rather
+    // than tell the user their own artifact does not exist. Exact hits take a
+    // single stat and never enter the fallback. See utils/localFileResolve.js.
+    const hit = resolveLocalFile(resolved);
+    if (!hit) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    const target = hit.path;
+
     let stat;
     try {
-      stat = fs.statSync(resolved);
+      stat = fs.statSync(target);
     } catch {
       return res.status(404).json({ error: 'File not found' });
     }
@@ -112,13 +124,21 @@ const serveLocalFile = async (req, res, { preview = false } = {}) => {
       return res.status(404).json({ error: 'Not a file' });
     }
 
-    const ext = path.extname(resolved).toLowerCase();
+    const ext = path.extname(target).toLowerCase();
     const contentType = MIME[ext] || 'application/octet-stream';
     const fileSize = stat.size;
     const range = req.headers.range;
 
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Type', contentType);
+    // Where the bytes actually came from. Clients that offer "open with system"
+    // or show the path in a tooltip read this so they act on the real file
+    // rather than the stale string. encodeURI keeps non-ASCII header-safe.
+    res.setHeader('X-Local-File-Path', encodeURI(target.replace(/\\/g, '/')));
+    res.setHeader('X-Local-File-Resolved-Via', hit.via);
+    // The dev frontend is a different origin from this server, so custom
+    // response headers are invisible to fetch() unless they are exposed.
+    res.setHeader('Access-Control-Expose-Headers', 'X-Local-File-Path, X-Local-File-Resolved-Via');
 
     if (preview && ['.html', '.htm', '.css'].includes(ext)) {
       if (fileSize > MAX_PREVIEW_TEXT_BYTES) {
@@ -153,12 +173,12 @@ const serveLocalFile = async (req, res, { preview = false } = {}) => {
       res.status(206);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
       res.setHeader('Content-Length', String(end - start + 1));
-      fs.createReadStream(resolved, { start, end }).pipe(res);
+      fs.createReadStream(target, { start, end }).pipe(res);
       return;
     }
 
     res.setHeader('Content-Length', String(fileSize));
-    fs.createReadStream(resolved).pipe(res);
+    fs.createReadStream(target).pipe(res);
   } catch (err) {
     console.error('[local-file] error serving', req.path || req.query.path, err);
     res.status(500).json({ error: 'Failed to serve file' });
