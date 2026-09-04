@@ -274,7 +274,10 @@ describe('a chat run with no widget NEVER opens an OS window', () => {
   it('announces it, so the Browser widget can stream what the agent is doing', async () => {
     await action.resolveSurface({}, CHAT, 'u1', 0);
 
-    const surface = getActiveSurface('u1');
+    // Looked up the way the widget looks it up: with the workspace the turn
+    // announced it under. A bare selector is an UNBOUND request, and those may
+    // not see into a workspace — that is the cross-workspace rule, not a miss.
+    const surface = getActiveSurface('u1', { workspaceId: 'ws_1' });
     expect(surface).not.toBeNull();
     expect(surface.transport).toBe('host-cdp');
   });
