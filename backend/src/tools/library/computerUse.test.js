@@ -51,7 +51,8 @@ switch (tool) {
     ], tree_markdown: '- Button Seven\n- Text Display is 0', total_element_count: 2 });
     break;
   case 'click':
-    if (arg.element_token === 'stale') out({ status: 'refused', refusal: { code: 'stale_element_token', message: 'token superseded' } });
+    if (arg.element_token === 'stale') out({ status: 'refused', refusal: { code: 'invalid_element_token', message: 'token superseded' } });
+    else if (arg.element_token === 'stale-legacy') out({ status: 'refused', refusal: { code: 'stale_element_token', message: 'token superseded' } });
     else if (arg.element_token === 'tok-seven') out({ effect: 'unverifiable', route: 'accessibility', delivery: { mode: 'background' } });
     else out({ effect: 'confirmed', route: 'accessibility', delivery: { mode: 'background' } });
     break;
@@ -207,13 +208,23 @@ describe('against the fake driver', () => {
     expect(c.proven).toBe(true);
   });
 
-  it('input: a stale token is refused with the re-observe hint', async () => {
-    const r = await input.execute({ action: 'click', pid: 100, elementToken: 'stale', confirm: true });
-    expect(r.success).toBe(false);
-    expect(r.refused).toBe(true);
-    expect(r.code).toBe('stale_element_token');
-    expect(r.hint).toMatch(/fresh computer-observe snapshot/);
-  });
+  /**
+   * The code here is the one driver 0.19.3 ACTUALLY returns, measured against a
+   * real window. The fake used to emit `stale_element_token` — the documented
+   * name — so the hint branch keyed on it passed while the real refusal fell
+   * through with no next move. Both names are accepted now, and both are
+   * pinned, because a fake that is kinder than the driver proves nothing.
+   */
+  it.each([['invalid_element_token', 'stale'], ['stale_element_token', 'stale-legacy']])(
+    'input: a %s refusal carries the re-observe hint',
+    async (code, token) => {
+      const r = await input.execute({ action: 'click', pid: 100, elementToken: token, confirm: true });
+      expect(r.success).toBe(false);
+      expect(r.refused).toBe(true);
+      expect(r.code).toBe(code);
+      expect(r.hint).toMatch(/fresh computer-observe snapshot/);
+    },
+  );
 
   it('input: ambiguous window is refused rather than guessed, and the hint names windowId', async () => {
     const r = await input.execute({ action: 'type', pid: 100, text: 'hi', confirm: true });

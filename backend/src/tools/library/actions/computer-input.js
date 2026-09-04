@@ -597,7 +597,11 @@ class ComputerInput extends BaseAction {
 
   /** Turn the driver's own escalation instruction into the caller's next move. */
   hintFor(o, action) {
-    if (o.code === 'stale_element_token' || /stale/i.test(o.message || '')) {
+    // MEASURED against driver 0.19.3: a token from a superseded snapshot comes
+    // back as `invalid_element_token`, NOT `stale_element_token`. Keying the
+    // hint on the documented name alone left the real refusal with no next
+    // move, and the fake driver in the tests hid it by emitting the wrong code.
+    if (o.code === 'stale_element_token' || o.code === 'invalid_element_token' || /stale|invalid element/i.test(o.message || '')) {
       return 'The element handle is stale. Take a fresh computer-observe snapshot and retry with the new token — every snapshot of a window replaces the previous one.';
     }
     if (o.code === 'ambiguous_window_target') {
