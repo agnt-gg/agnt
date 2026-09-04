@@ -201,6 +201,14 @@ export function forgetSurfaceByUrl(userId, cdpUrl) {
  * the original cross-window bug: opening/navigating browser B made it globally
  * newest, so chat A silently started driving B.
  *
+ * The mirror of that rule, and the one this file used to get wrong: an UNBOUND
+ * turn — main chat, an agent chat, a workflow — never reaches INTO a workspace
+ * either. Those turns arrive with workspaceId null, so "account-wide newest"
+ * happily handed them whichever workspace widget was touched last, and a chat
+ * that owns no browser would type into a page the user had open somewhere
+ * else. Unbound means unbound: only surfaces that belong to no workspace (the
+ * launched browser this run announced, or a widget outside any workspace).
+ *
  * An EXACT request resolves to one candidate or none. If the browser a turn
  * named is gone, driving a different window would be worse than not running.
  */
@@ -213,7 +221,7 @@ function candidatesFor(surfaces, { instanceId = null, workspaceId = null } = {})
   }
 
   return [...surfaces.entries()]
-    .filter(([, entry]) => !workspaceId || entry.workspaceId === workspaceId)
+    .filter(([, entry]) => (workspaceId ? entry.workspaceId === workspaceId : !entry.workspaceId))
     .map(([candidateId, entry]) => ({ instanceId: candidateId, ...entry }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }

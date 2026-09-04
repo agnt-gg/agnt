@@ -126,6 +126,28 @@ describe('finding the browser a chat turn means', () => {
     expect(getActiveSurface('u1', { workspaceId: 'ws_a', instanceId: 'w_b' })).toBeNull();
   });
 
+  /**
+   * THE MIRROR OF THE CROSS-WORKSPACE RULE, and the one that was missing.
+   *
+   * Main chat, an agent chat and a workflow all resolve with workspaceId null.
+   * "Newest anywhere" therefore handed them the workspace widget the user had
+   * most recently touched, and a chat that owns no browser would click and
+   * type inside a workspace it was never pointed at. Reproduced against this
+   * registry before the fix: an unbound selector returned workspace-A's widget.
+   */
+  it('an unbound turn never reaches into a workspace', () => {
+    registerSurface('u1', 'w_ws', { workspaceId: 'ws_a', cdpUrl: 'ws://127.0.0.1:1111/aaa' });
+    expect(getActiveSurface('u1', { workspaceId: null, instanceId: null })).toBeNull();
+    expect(getActiveSurface('u1', {})).toBeNull();
+
+    // ...and it does find the browser THIS run announced for itself.
+    registerSurface('u1', 'host:u1', { workspaceId: null, cdpUrl: 'ws://127.0.0.1:2222/host', transport: 'host-cdp' });
+    expect(getActiveSurface('u1', { workspaceId: null, instanceId: null }).instanceId).toBe('host:u1');
+
+    // The workspace still gets its own, and still only its own.
+    expect(getActiveSurface('u1', { workspaceId: 'ws_a' }).instanceId).toBe('w_ws');
+  });
+
   it('never falls through from a workspace to another workspace', () => {
     registerSurface('u1', 'w_b', { workspaceId: 'ws_b', cdpUrl: CDP });
     expect(getActiveSurface('u1', { workspaceId: 'ws_a' })).toBeNull();
@@ -277,7 +299,9 @@ describe('forgetting a surface by its endpoint', () => {
   });
 
   it('is a no-op for a URL nobody registered', () => {
-    registerSurface('u1', 'w_1', { workspaceId: 'ws_a', cdpUrl: CDP });
+    // Registered unbound on purpose: this is about forgetting by URL, and a
+    // bare selector is an UNBOUND request, which may not see into a workspace.
+    registerSurface('u1', 'w_1', { workspaceId: null, cdpUrl: CDP });
     expect(forgetSurfaceByUrl('u1', 'ws://127.0.0.1:9/nope')).toBe(false);
     expect(getActiveSurface('u1').instanceId).toBe('w_1');
   });
