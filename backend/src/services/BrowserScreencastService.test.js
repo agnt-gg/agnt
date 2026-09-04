@@ -17,7 +17,8 @@ vi.mock('../utils/realtimeSync.js', () => ({
 }));
 
 const {
-  startViewing, stopViewing, dispatchInput, acknowledgeFrame, isStreaming, streamsForUser, _stopAll,
+  startViewing, stopViewing, dispatchInput, acknowledgeFrame, isStreaming, streamsForUser,
+  getBrowserState, controlBrowser, _stopAll,
 } = await import('./BrowserScreencastService.js');
 
 /**
@@ -27,7 +28,17 @@ const {
  * port-0 server has not been ASSIGNED a port before then, and reading it early
  * fails every test with a TypeError that says nothing about the real code.
  */
-async function fakeBrowser({ pages = [{ targetId: 'T1', type: 'page' }] } = {}) {
+async function fakeBrowser({
+  pages = [{ targetId: 'T1', type: 'page' }],
+  history = {
+    currentIndex: 1,
+    entries: [
+      { id: 10, url: 'https://agnt.gg/', title: 'AGNT' },
+      { id: 11, url: 'https://x.com/', title: 'X' },
+      { id: 12, url: 'https://github.com/', title: 'GitHub' },
+    ],
+  },
+} = {}) {
   const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await new Promise((resolve) => server.once('listening', resolve));
   const received = [];
@@ -43,6 +54,8 @@ async function fakeBrowser({ pages = [{ targetId: 'T1', type: 'page' }] } = {}) 
         socket.send(JSON.stringify({ id: message.id, result: { targetInfos: pages } }));
       } else if (message.method === 'Target.attachToTarget') {
         socket.send(JSON.stringify({ id: message.id, result: { sessionId: 'S1' } }));
+      } else if (message.method === 'Page.getNavigationHistory') {
+        socket.send(JSON.stringify({ id: message.id, result: history }));
       } else if (message.id !== undefined) {
         socket.send(JSON.stringify({ id: message.id, result: {} }));
       }
@@ -244,6 +257,62 @@ describe('what a viewer is allowed to send back', () => {
       userId: 'u1', instanceId: 'nope', method: 'Input.dispatchKeyEvent', params: {},
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('ordinary browser chrome', () => {
+  beforeEach(async () => {
+    await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+  });
+
+  it('reports the current address and honest back/forward availability', async () => {
+    const state = await getBrowserState({ userId: 'u1', instanceId: 'host:u1' });
+
+    expect(state).toEqual({
+      ok: true,
+      url: 'https://x.com/',
+      title: 'X',
+      canGoBack: true,
+      canGoForward: true,
+    });
+  });
+
+  it.each([
+    ['back', 'Page.navigateToHistoryEntry', { entryId: 10 }],
+    ['forward', 'Page.navigateToHistoryEntry', { entryId: 12 }],
+    ['reload', 'Page.reload', { ignoreCache: false }],
+    ['navigate', 'Page.navigate', { url: 'https://example.com/path' }],
+  ])('executes %s against the page session', async (action, method, params) => {
+    const result = await controlBrowser({
+      userId: 'u1', instanceId: 'host:u1', action,
+      ...(action === 'navigate' ? { url: params.url } : {}),
+    });
+    await settle();
+
+    expect(result.ok).toBe(true);
+    const command = browser.received.find((message) => message.method === method);
+    expect(command.params).toEqual(params);
+    expect(command.sessionId).toBe('S1');
+  });
+
+  it('refuses non-web schemes rather than navigating the browser to them', async () => {
+    const result = await controlBrowser({
+      userId: 'u1', instanceId: 'host:u1', action: 'navigate', url: 'file:///C:/Windows/win.ini',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/HTTP and HTTPS/);
+    expect(browser.methods()).not.toContain('Page.navigate');
+  });
+
+  it('refuses controls from someone who does not own the browser', async () => {
+    const result = await controlBrowser({
+      userId: 'u2', instanceId: 'host:u1', action: 'reload',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/belongs to someone else/i);
+    expect(browser.methods()).not.toContain('Page.reload');
   });
 });
 

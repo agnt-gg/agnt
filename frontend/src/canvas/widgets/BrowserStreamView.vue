@@ -6,10 +6,21 @@
     that is on the wrong machine to be driven.
   -->
   <div class="stream-view">
-    <canvas
+    <BrowserToolbar
+      :url="currentUrl"
+      :can-go-back="canGoBack"
+      :can-go-forward="canGoForward"
+      :busy="navigating"
+      @back="goBack"
+      @forward="goForward"
+      @reload="reload"
+      @navigate="navigate"
+    />
+
+    <div class="stream-page">
+      <canvas
       ref="canvasRef"
       class="stream-canvas"
-      :class="{ interactive: canInteract }"
       tabindex="0"
       @mousedown="onMouse"
       @mouseup="onMouse"
@@ -19,26 +30,11 @@
       @keyup.prevent="onKey"
     ></canvas>
 
-    <div v-if="!hasFrame" class="stream-status">
-      <i :class="waiting ? 'fas fa-circle-notch fa-spin' : 'fas fa-globe'"></i>
-      <p>{{ statusText }}</p>
+      <div v-if="!hasFrame" class="stream-status">
+        <i :class="waiting ? 'fas fa-circle-notch fa-spin' : 'fas fa-globe'"></i>
+        <p>{{ statusText }}</p>
+      </div>
     </div>
-
-    <!--
-      Interaction is OFF by default and named as a mode. The agent is usually
-      mid-task, and a stray click from someone watching would fight it for the
-      page — a race with no winner and no error message.
-    -->
-    <button
-      v-if="hasFrame"
-      class="interact-toggle"
-      :class="{ on: canInteract }"
-      type="button"
-      @click="canInteract = !canInteract"
-    >
-      <i :class="canInteract ? 'fas fa-hand-pointer' : 'fas fa-eye'"></i>
-      {{ canInteract ? 'Interactive' : 'Watching' }}
-    </button>
   </div>
 </template>
 
@@ -47,6 +43,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { getRealtimeSocket } from '@/composables/useRealtimeSync.js';
 import { viewportToPage } from './streamGeometry.js';
+import BrowserToolbar from './BrowserToolbar.vue';
 
 const props = defineProps({
   workspaceId: { type: String, default: '' },
@@ -62,13 +59,16 @@ const props = defineProps({
   launch: { type: Boolean, default: true },
 });
 
-const emit = defineEmits(['page']);
+const emit = defineEmits(['page', 'history']);
 
 const canvasRef = ref(null);
 const hasFrame = ref(false);
 const waiting = ref(true);
 const error = ref('');
-const canInteract = ref(false);
+const currentUrl = ref('about:blank');
+const canGoBack = ref(false);
+const canGoForward = ref(false);
+const navigating = ref(false);
 
 let instanceId = null;
 let socket = null;
@@ -173,7 +173,11 @@ async function startWatching() {
     instanceId = body.instanceId;
     error.value = '';
     socket?.emit('browser:watching', { instanceId });
-    if (body.url) emit('page', { url: body.url, title: '' });
+    if (body.url) {
+      currentUrl.value = body.url;
+      emit('page', { url: body.url, title: '' });
+    }
+    await refreshHistory();
     return true;
   } catch (err) {
     error.value = `Could not reach the server: ${err.message}`;
@@ -213,12 +217,11 @@ function pagePoint(event) {
 const MOUSE_TYPES = { mousedown: 'mousePressed', mouseup: 'mouseReleased', mousemove: 'mouseMoved' };
 
 function sendInput(method, params) {
-  if (!instanceId || !canInteract.value) return;
+  if (!instanceId) return;
   socket?.emit('browser:input', { instanceId, method, params });
 }
 
 function onMouse(event) {
-  if (!canInteract.value) return;
   canvasRef.value?.focus();
   // null means the letterbox bar rather than the page.
   const point = pagePoint(event);
@@ -235,7 +238,6 @@ function onMouse(event) {
 
 let lastMoveAt = 0;
 function onMouseMove(event) {
-  if (!canInteract.value) return;
   // A mousemove per pixel would be hundreds of socket messages a second for a
   // signal the page samples far more coarsely than that.
   const now = Date.now();
@@ -249,7 +251,6 @@ function onMouseMove(event) {
 }
 
 function onWheel(event) {
-  if (!canInteract.value) return;
   const point = pagePoint(event);
   if (!point) return;
   sendInput('Input.dispatchMouseEvent', {
@@ -268,7 +269,6 @@ function modifierBits(event) {
 }
 
 function onKey(event) {
-  if (!canInteract.value) return;
   const isDown = event.type === 'keydown';
 
   // A printable character needs `text`, or the page receives the keystroke but
@@ -296,8 +296,62 @@ function onFrame(payload) {
 
 function onNavigated(payload) {
   if (!instanceId || payload.instanceId !== instanceId) return;
-  emit('page', { url: payload.url || '', title: '' });
+  currentUrl.value = payload.url || '';
+  emit('page', { url: currentUrl.value, title: '' });
+  refreshHistory();
 }
+
+async function command(action, url = undefined) {
+  if (!instanceId || navigating.value) return false;
+  navigating.value = true;
+  try {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/control`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ instanceId, action, ...(url ? { url } : {}) }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      error.value = body.error || 'The browser command failed.';
+      return false;
+    }
+    applyBrowserState(body);
+    return true;
+  } catch (err) {
+    error.value = `Could not control the browser: ${err.message}`;
+    return false;
+  } finally {
+    navigating.value = false;
+  }
+}
+
+async function refreshHistory() {
+  if (!instanceId) return;
+  try {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/control/${encodeURIComponent(instanceId)}`, {
+      credentials: 'include',
+      headers: authHeaders(),
+    });
+    if (!response.ok) return;
+    applyBrowserState(await response.json());
+  } catch { /* page events still keep the URL current */ }
+}
+
+function applyBrowserState(body) {
+  if (body.url) {
+    currentUrl.value = body.url;
+    emit('page', { url: body.url, title: body.title || '' });
+  }
+  canGoBack.value = Boolean(body.canGoBack);
+  canGoForward.value = Boolean(body.canGoForward);
+  emit('history', { canGoBack: canGoBack.value, canGoForward: canGoForward.value });
+}
+
+const goBack = () => command('back');
+const goForward = () => command('forward');
+const reload = () => command('reload');
+const navigate = (url) => command('navigate', url);
 
 /**
  * The browser we were watching went away.
@@ -313,7 +367,9 @@ function onStopped(payload) {
   instanceId = null;
   hasFrame.value = false;
   waiting.value = true;
-  canInteract.value = false;
+  canGoBack.value = false;
+  canGoForward.value = false;
+  emit('history', { canGoBack: false, canGoForward: false });
   pollForSurface();
 }
 
@@ -346,6 +402,17 @@ function attachWhenReady() {
   pollForSurface();
 }
 
+defineExpose({
+  goBack,
+  goForward,
+  reload,
+  navigate,
+  canGoBack,
+  canGoForward,
+  navigating,
+  currentUrl,
+});
+
 onBeforeUnmount(() => {
   clearTimeout(retryTimer);
   clearTimeout(socketTimer);
@@ -372,7 +439,16 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   background: #fff;
+  overflow: hidden;
+}
+
+.stream-page {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -383,10 +459,6 @@ onBeforeUnmount(() => {
   object-fit: contain;
   outline: none;
   cursor: default;
-}
-
-.stream-canvas.interactive {
-  cursor: crosshair;
 }
 
 .stream-status {
@@ -404,28 +476,4 @@ onBeforeUnmount(() => {
   padding: 20px;
 }
 
-.interact-toggle {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  background: var(--color-popup);
-  color: var(--color-text-muted, #556);
-  font-size: 11px;
-  cursor: pointer;
-  opacity: 0.75;
-}
-
-.interact-toggle:hover { opacity: 1; }
-
-.interact-toggle.on {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.4);
-  opacity: 1;
-}
 </style>

@@ -6,16 +6,29 @@
     streamed view arrived.
   -->
   <div class="native-view">
-    <webview
-      ref="viewRef"
-      class="browser-webview"
-      src="about:blank"
-      partition="persist:agnt-browser"
-    ></webview>
+    <BrowserToolbar
+      :url="pageUrl"
+      :can-go-back="canGoBack"
+      :can-go-forward="canGoForward"
+      :busy="loading"
+      @back="goBack"
+      @forward="goForward"
+      @reload="reload"
+      @navigate="navigate"
+    />
 
-    <div v-if="status" class="view-status">
+    <div class="native-page">
+      <webview
+        ref="viewRef"
+        class="browser-webview"
+        src="about:blank"
+        partition="persist:agnt-browser"
+      ></webview>
+
+      <div v-if="status" class="view-status">
       <i class="fas fa-plug"></i>
-      <p>{{ status }}</p>
+        <p>{{ status }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -24,6 +37,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { createBridgeSession } from './browserBridgeSession.js';
+import BrowserToolbar from './BrowserToolbar.vue';
 
 const props = defineProps({
   widgetInstanceId: { type: String, default: '' },
@@ -34,11 +48,13 @@ const emit = defineEmits(['page']);
 
 const viewRef = ref(null);
 const status = ref('');
+const pageUrl = ref('about:blank');
+const pageTitle = ref('');
+const canGoBack = ref(false);
+const canGoForward = ref(false);
+const loading = ref(false);
 let session = null;
 let heartbeat = null;
-
-let pageUrl = 'about:blank';
-let pageTitle = '';
 
 // The heartbeat re-asserts BOTH halves of this surface's existence: the bridge
 // itself and the backend's knowledge of it.
@@ -72,8 +88,8 @@ async function announce(cdpUrl) {
         instanceId: props.widgetInstanceId,
         workspaceId: props.workspaceId,
         cdpUrl,
-        url: pageUrl,
-        title: pageTitle,
+        url: pageUrl.value,
+        title: pageTitle.value,
       }),
     });
 
@@ -92,13 +108,32 @@ async function announce(cdpUrl) {
 
 function syncPage() {
   try {
-    pageUrl = view()?.getURL() || 'about:blank';
-    pageTitle = view()?.getTitle() || '';
+    pageUrl.value = view()?.getURL() || 'about:blank';
+    pageTitle.value = view()?.getTitle() || '';
+    canGoBack.value = Boolean(view()?.canGoBack());
+    canGoForward.value = Boolean(view()?.canGoForward());
   } catch { /* the guest is gone */ }
-  emit('page', { url: pageUrl, title: pageTitle });
+  emit('page', { url: pageUrl.value, title: pageTitle.value });
   // Re-assert rather than announce: a navigation is also the moment a crashed
   // guest comes back with a new webContents id and no bridge behind it.
   session?.refresh();
+}
+
+function goBack() {
+  if (view()?.canGoBack()) view().goBack();
+}
+
+function goForward() {
+  if (view()?.canGoForward()) view().goForward();
+}
+
+function reload() {
+  view()?.reload();
+}
+
+function navigate(url) {
+  if (!/^https?:\/\//i.test(url)) return;
+  view()?.loadURL(url);
 }
 
 onMounted(async () => {
@@ -127,6 +162,11 @@ onMounted(async () => {
   el.addEventListener('did-navigate', syncPage);
   el.addEventListener('did-navigate-in-page', syncPage);
   el.addEventListener('page-title-updated', syncPage);
+  el.addEventListener('did-start-loading', () => { loading.value = true; });
+  el.addEventListener('did-stop-loading', () => {
+    loading.value = false;
+    syncPage();
+  });
   // Belt and braces: react to the guest dying instead of waiting for the next
   // navigation or the next heartbeat tick.
   el.addEventListener('destroyed', () => session?.refresh());
@@ -161,6 +201,14 @@ defineExpose({ status });
   position: relative;
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.native-page {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .browser-webview {

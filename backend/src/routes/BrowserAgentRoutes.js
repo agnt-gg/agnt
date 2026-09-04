@@ -191,6 +191,33 @@ router.post('/view', authenticateToken, async (req, res) => {
   }
 });
 
+/** GET /api/browser-agent/control/:instanceId — state for browser chrome. */
+router.get('/control/:instanceId', authenticateToken, async (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  const { getBrowserState } = await import('../services/BrowserScreencastService.js');
+  try {
+    const result = await getBrowserState({ userId: req.user.id, instanceId: req.params.instanceId });
+    return res.status(result.ok ? 200 : 404).json(result);
+  } catch (err) {
+    return res.status(502).json({ ok: false, error: `Could not read browser state: ${err.message}` });
+  }
+});
+
+/** POST /api/browser-agent/control — back, forward, reload or navigate. */
+router.post('/control', authenticateToken, async (req, res) => {
+  if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
+  const { instanceId, action, url } = req.body || {};
+  if (!instanceId) return res.status(400).json({ ok: false, error: 'instanceId is required.' });
+
+  const { controlBrowser } = await import('../services/BrowserScreencastService.js');
+  try {
+    const result = await controlBrowser({ userId: req.user.id, instanceId, action, url });
+    return res.status(result.ok ? 200 : 400).json(result);
+  } catch (err) {
+    return res.status(502).json({ ok: false, error: `Browser command failed: ${err.message}` });
+  }
+});
+
 /** DELETE /api/browser-agent/view/:instanceId — one viewer leaves. */
 router.delete('/view/:instanceId', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });

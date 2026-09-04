@@ -28,7 +28,7 @@ import { WebSocketServer } from 'ws';
 /** Authentication is not what this file is about. */
 vi.mock('./Middleware.js', () => ({
   authenticateToken: (req, _res, next) => {
-    req.user = { id: 'u1', isAuthenticated: true };
+    req.user = { id: req.headers['x-test-user'] || 'u1', isAuthenticated: true };
     next();
   },
 }));
@@ -58,15 +58,26 @@ let base;
 
 /** A browser that answers, so "live" means live on the wire. */
 async function fakeBrowser() {
+  const received = [];
   const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await new Promise((resolve) => wss.once('listening', resolve));
   wss.on('connection', (socket) => {
     socket.on('message', (raw) => {
       const m = JSON.parse(raw.toString());
+      received.push(m);
       if (m.method === 'Target.getTargets') {
         socket.send(JSON.stringify({ id: m.id, result: { targetInfos: [{ targetId: 'T1', type: 'page' }] } }));
       } else if (m.method === 'Target.attachToTarget') {
         socket.send(JSON.stringify({ id: m.id, result: { sessionId: 'S1' } }));
+      } else if (m.method === 'Page.getNavigationHistory') {
+        socket.send(JSON.stringify({
+          id: m.id,
+          sessionId: m.sessionId,
+          result: {
+            currentIndex: 0,
+            entries: [{ id: 7, url: 'https://example.com/', title: 'Example' }],
+          },
+        }));
       } else if (m.id !== undefined) {
         socket.send(JSON.stringify({ id: m.id, result: {} }));
       }
@@ -74,6 +85,7 @@ async function fakeBrowser() {
   });
   return {
     url: `ws://127.0.0.1:${wss.address().port}/devtools/browser/live`,
+    methods: () => received.map((message) => message.method),
     /**
      * `wss.close(cb)` only stops the server ACCEPTING — it waits for existing
      * connections to end and never calls back while the screencast service is
@@ -161,6 +173,84 @@ describe('a dead surface is never handed to a viewer', () => {
     expect(response.status).toBe(200);
     expect((await response.json()).instanceId).toBe('w_live');
     await browser.close();
+  });
+});
+
+describe('streamed browser chrome routes', () => {
+  it('reports state and executes a validated navigation for the owner', async () => {
+    const browser = await fakeBrowser();
+    registerSurface('u1', 'w_live', { cdpUrl: browser.url, transport: 'host-cdp' });
+    expect((await view({ launch: false })).status).toBe(200);
+
+    const stateResponse = await fetch(`${base}/api/browser-agent/control/w_live`);
+    expect(stateResponse.status).toBe(200);
+    expect(await stateResponse.json()).toEqual({
+      ok: true,
+      url: 'https://example.com/',
+      title: 'Example',
+      canGoBack: false,
+      canGoForward: false,
+    });
+
+    const commandResponse = await fetch(`${base}/api/browser-agent/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instanceId: 'w_live', action: 'navigate', url: 'https://agnt.gg/docs' }),
+    });
+    expect(commandResponse.status).toBe(200);
+    expect(browser.methods()).toContain('Page.navigate');
+    await browser.close();
+  });
+
+  it('rejects a non-web address before CDP sees it', async () => {
+    const browser = await fakeBrowser();
+    registerSurface('u1', 'w_live', { cdpUrl: browser.url, transport: 'host-cdp' });
+    expect((await view({ launch: false })).status).toBe(200);
+
+    const response = await fetch(`${base}/api/browser-agent/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instanceId: 'w_live', action: 'navigate', url: 'file:///C:/Windows/win.ini' }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/HTTP and HTTPS/);
+    expect(browser.methods()).not.toContain('Page.navigate');
+    await browser.close();
+  });
+
+  it('does not expose another user’s stream', async () => {
+    const browser = await fakeBrowser();
+    registerSurface('u1', 'w_live', { cdpUrl: browser.url, transport: 'host-cdp' });
+    expect((await view({ launch: false })).status).toBe(200);
+
+    const stateResponse = await fetch(`${base}/api/browser-agent/control/w_live`, {
+      headers: { 'x-test-user': 'u2' },
+    });
+    expect(stateResponse.status).toBe(404);
+    expect((await stateResponse.json()).error).toMatch(/belongs to someone else/);
+
+    const commandResponse = await fetch(`${base}/api/browser-agent/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-test-user': 'u2' },
+      body: JSON.stringify({ instanceId: 'w_live', action: 'reload' }),
+    });
+    expect(commandResponse.status).toBe(400);
+    expect((await commandResponse.json()).error).toMatch(/belongs to someone else/);
+    await browser.close();
+  });
+
+  it('fails plainly when the request omits or names no stream', async () => {
+    const missingId = await fetch(`${base}/api/browser-agent/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reload' }),
+    });
+    expect(missingId.status).toBe(400);
+    expect((await missingId.json()).error).toMatch(/instanceId/);
+
+    const absent = await fetch(`${base}/api/browser-agent/control/missing`);
+    expect(absent.status).toBe(404);
+    expect((await absent.json()).error).toMatch(/nothing is streaming/);
   });
 });
 

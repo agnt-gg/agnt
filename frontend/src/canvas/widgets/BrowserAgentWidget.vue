@@ -1,11 +1,10 @@
 <template>
   <div class="browser-widget">
     <!--
-      Deliberately ONLY the browser. No task box, no provider picker, no
-      toolbar. This widget is a surface, not an app: it is driven from the
-      workspace chat exactly like Workflow Forge is, so every control it could
-      grow would be a second place to steer from and a second place for the
-      provider choice to disagree with the conversation's.
+      Deliberately ONLY the browser. It has ordinary browser chrome — history,
+      reload and address entry — but no task box or provider picker. Agent work
+      is still driven from workspace chat exactly like Workflow Forge is, so
+      there is one place for provider and model resolution.
 
       ONE WIDGET, TWO VIEWS. Which one renders is decided below, and the backend
       never learns the difference — it only ever asks "is there a surface, and

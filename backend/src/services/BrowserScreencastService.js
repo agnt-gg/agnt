@@ -194,6 +194,68 @@ export function dispatchInput({ userId, instanceId, method, params }) {
   return { ok: true };
 }
 
+function ownedSession(userId, instanceId) {
+  const session = sessions.get(instanceId);
+  if (!session) return { error: 'nothing is streaming there' };
+  if (session.userId !== userId) return { error: 'that browser belongs to someone else' };
+  return { session };
+}
+
+/** Read the state required to render ordinary browser chrome. */
+export async function getBrowserState({ userId, instanceId }) {
+  const ownership = ownedSession(userId, instanceId);
+  if (ownership.error) return { ok: false, error: ownership.error };
+
+  const { session } = ownership;
+  const history = await session.connection.send('Page.getNavigationHistory', {}, session.sessionId);
+  const entries = history.entries || [];
+  const currentIndex = Number.isInteger(history.currentIndex) ? history.currentIndex : -1;
+  const current = entries[currentIndex] || {};
+  return {
+    ok: true,
+    url: current.url || 'about:blank',
+    title: current.title || '',
+    canGoBack: currentIndex > 0,
+    canGoForward: currentIndex >= 0 && currentIndex < entries.length - 1,
+  };
+}
+
+/**
+ * Execute one user-facing browser-chrome command.
+ *
+ * This allowlist is intentionally separate from ALLOWED_INPUT. A page click may
+ * never become Page.navigate merely because both arrived from the same viewer.
+ */
+export async function controlBrowser({ userId, instanceId, action, url }) {
+  const ownership = ownedSession(userId, instanceId);
+  if (ownership.error) return { ok: false, error: ownership.error };
+  const { session } = ownership;
+
+  const history = await session.connection.send('Page.getNavigationHistory', {}, session.sessionId);
+  const entries = history.entries || [];
+  const currentIndex = Number.isInteger(history.currentIndex) ? history.currentIndex : -1;
+
+  if (action === 'back' || action === 'forward') {
+    const targetIndex = currentIndex + (action === 'back' ? -1 : 1);
+    const entry = entries[targetIndex];
+    if (!entry) return { ok: false, error: `cannot go ${action}` };
+    await session.connection.send('Page.navigateToHistoryEntry', { entryId: entry.id }, session.sessionId);
+  } else if (action === 'reload') {
+    await session.connection.send('Page.reload', { ignoreCache: false }, session.sessionId);
+  } else if (action === 'navigate') {
+    let destination;
+    try { destination = new URL(String(url || '')); } catch { return { ok: false, error: 'enter a valid web address' }; }
+    if (!['http:', 'https:'].includes(destination.protocol)) {
+      return { ok: false, error: 'only HTTP and HTTPS addresses can be opened' };
+    }
+    await session.connection.send('Page.navigate', { url: destination.href }, session.sessionId, { timeoutMs: 30000 });
+  } else {
+    return { ok: false, error: 'unknown browser command' };
+  }
+
+  return getBrowserState({ userId, instanceId });
+}
+
 /** Drop one viewer; stop the stream when the last one leaves. */
 export function stopViewing(instanceId) {
   const session = sessions.get(instanceId);
