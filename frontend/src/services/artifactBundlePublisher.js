@@ -46,10 +46,21 @@ export function dirtyOverrides(openTabs, rootPath) {
   return openTabs.filter((tab) => tab.isDirty && tab.path.replace(/\\/g, '/').startsWith(prefix)).map((tab) => ({ path: tab.path.replace(/\\/g, '/').slice(prefix.length), content: tab.content }));
 }
 export async function prepareArtifactBundle(entryPath, token, rootPath) {
-  const response = await fetch(`${API_CONFIG.BASE_URL}/filesystem/publish-manifest`, { method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}), body:JSON.stringify({ entryPath, ...(rootPath === undefined ? {} : { rootPath }) }) });
+  const source = typeof entryPath === 'object' ? entryPath : { entryPath, ...(rootPath === undefined ? {} : { rootPath }) };
+  const response = await fetch(`${API_CONFIG.BASE_URL}/filesystem/publish-manifest`, { method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}), body:JSON.stringify(source) });
   return (await checked(response, 'Bundle preflight')).json();
 }
 export async function publishArtifactBundle({ title, manifest, token, overrides = [], bundleId = null, concurrency = 4, onBundle = () => {}, onProgress = () => {}, fetchImpl = fetch }) {
+  if (manifest.preparationId && overrides.length) {
+    // Artifacts always supplies the active editor content. Resolve that content
+    // before declaring hashes; otherwise it restores file:/// URLs after preflight.
+    const response = await checked(await fetchImpl(`${API_CONFIG.BASE_URL}/filesystem/publish-manifest`, {
+      method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}),
+      body:JSON.stringify({ ...manifest.preparationSource, overrides }),
+    }), 'Bundle preflight');
+    manifest = await response.json();
+    overrides = [];
+  }
   const overrideMap = new Map(overrides.map((item) => [item.path, item.content]));
   const files = await Promise.all(manifest.files.map(async (file) => {
     if (!overrideMap.has(file.path)) return file;
@@ -63,8 +74,15 @@ export async function publishArtifactBundle({ title, manifest, token, overrides 
     bundle = await status.json();
     if (bundle.status !== 'staging') throw new Error(`Bundle cannot resume from ${bundle.status} state`);
     alreadyUploaded = new Set(bundle.uploaded || []);
-  } else {
-    const init = await checked(await fetchImpl(REMOTE_BUNDLE_API, { method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}), body:JSON.stringify({ title, source:'desktop-app', entryPath:manifest.entryPath, manifest:{...manifest, files} }) }), 'Bundle initialization');
+    if (manifest.preparationId && bundle.manifest?.manifestHash !== manifest.manifestHash) {
+      // Changed editor bytes or newly collected files cannot reuse old uploads.
+      bundle = null;
+      alreadyUploaded = new Set();
+    }
+  }
+  if (!bundle) {
+    const { preparationId, preparationSource, imported, rootPath, ...publicManifest } = manifest;
+    const init = await checked(await fetchImpl(REMOTE_BUNDLE_API, { method:'POST', headers:authHeaders(token, {'Content-Type':'application/json'}), body:JSON.stringify({ title, source:'desktop-app', entryPath:manifest.entryPath, manifest:{...publicManifest, files} }) }), 'Bundle initialization');
     bundle = await init.json();
     onBundle(bundle.id);
   }
@@ -79,7 +97,7 @@ export async function publishArtifactBundle({ title, manifest, token, overrides 
       if (overrideMap.has(file.path)) body = new TextEncoder().encode(overrideMap.get(file.path));
       else {
         const params = new URLSearchParams({
-          rootPath: manifest.rootPath || '', path:file.path,
+          ...(manifest.preparationId ? { preparationId:manifest.preparationId } : { rootPath:manifest.rootPath || '' }), path:file.path,
           expectedSize: String(file.size), expectedModifiedMs: String(file.modifiedMs),
         });
         const source = await checked(await fetchImpl(`${API_CONFIG.BASE_URL}/filesystem/publish-file?${params}`, { headers:authHeaders(token) }), `Reading ${file.path}`);

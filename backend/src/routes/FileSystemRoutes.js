@@ -7,7 +7,8 @@ import { authenticateToken } from './Middleware.js';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import { prepareWrite } from '../utils/lineEndings.js';
 import { describeUnsafeRoot } from '../utils/installDirGuard.js';
-import { buildArtifactManifest, resolveManifestFile } from '../services/artifactBundles/manifest.js';
+import { resolveManifestFile } from '../services/artifactBundles/manifest.js';
+import { preparePortableBundle, readPreparedFile } from '../services/artifactBundles/portableBundle.js';
 import {
   DEFAULT_WORKSPACE_ROOT,
   getWorkspaceRoot,
@@ -419,18 +420,21 @@ router.post('/rename', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/filesystem/publish-manifest { entryPath }
-// Scans the complete directory containing the HTML entry. Publishing a
-// directory rather than parsing references is what captures runtime-generated
-// URLs, workers, modules, fonts, WASM and model sidecars correctly.
+// Prepare an owner-bound upload snapshot. Preserve directory capture for
+// runtime assets, then collect external dependencies and rewrite local URLs.
+// Chat HTML and editor overrides go through the same path as disk entries.
 router.post('/publish-manifest', authenticateToken, async (req, res) => {
   try {
     const workspaceRoot = await getWorkspaceRoot();
-    const manifest = await buildArtifactManifest({ workspaceRoot, entryPath: req.body?.entryPath, rootPath: req.body?.rootPath });
+    const manifest = await preparePortableBundle({
+      workspaceRoot, ownerId: req.user.id,
+      entryPath: req.body?.entryPath, rootPath: req.body?.rootPath,
+      html: req.body?.html, baseDir: req.body?.baseDir, overrides: req.body?.overrides,
+    });
     res.json(manifest);
   } catch (error) {
     console.error('[ArtifactBundles] Manifest failed:', error);
-    res.status(/required|Unsafe|exceeds|escapes|missing|excluded/.test(error.message) ? 400 : 500).json({ error: error.message });
+    res.status(/required|Unsafe|exceeds|escapes|missing|excluded|cannot include|not declared|not a regular/.test(error.message) || error.code === 'ENOENT' ? 400 : 500).json({ error: error.message });
   }
 });
 
@@ -440,6 +444,10 @@ router.post('/publish-manifest', authenticateToken, async (req, res) => {
 router.get('/publish-file', authenticateToken, async (req, res) => {
   try {
     const workspaceRoot = await getWorkspaceRoot();
+    if (req.query.preparationId) {
+      const bytes = await readPreparedFile(req.query.preparationId, req.query.path, req.user.id);
+      return res.type('application/octet-stream').send(bytes);
+    }
     const absolutePath = resolveManifestFile(workspaceRoot, req.query.rootPath || '', req.query.path);
     const stat = await fs.stat(absolutePath);
     if (!stat.isFile()) return res.status(400).json({ error: 'path is not a file' });
@@ -451,7 +459,7 @@ router.get('/publish-file', authenticateToken, async (req, res) => {
     res.sendFile(absolutePath);
   } catch (error) {
     if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
-    res.status(/Unsafe|escapes|required/.test(error.message) ? 400 : 500).json({ error: error.message });
+    res.status(/preparation|changed after preflight/.test(error.message) ? 409 : /Unsafe|escapes|required|not declared/.test(error.message) ? 400 : 500).json({ error: error.message });
   }
 });
 

@@ -171,23 +171,23 @@ describe('previews the bundle pipeline cannot accept', () => {
     w.unmount();
   });
 
-  it('never reveals Share for an HTML file outside the workspace', async () => {
+  it('reveals Share for local HTML outside the workspace', async () => {
     // Plugin output under %APPDATA% renders fine but cannot be relativized, so
     // the button must stay hidden rather than fail on click.
     const outside = 'C:/Users/Studio/AppData/Roaming/AGNT/plugin-data/render/out.html';
     const w = mountMessage({ content: `<iframe src="${localFileUrl(outside)}"></iframe>` });
     expect(await waitFor(() => hasIframeChrome(w))).toBe(true);
     await settle();
-    expect(isVisible(shareButton(w))).toBe(false);
+    expect(isVisible(shareButton(w))).toBe(true);
     w.unmount();
   });
 
-  it('keeps Share hidden when the workspace root cannot be read', async () => {
+  it('allows an absolute-path share when workspace lookup is unavailable', async () => {
     getSettings.mockRejectedValue(new Error('offline'));
     const w = mountMessage({ content: `<iframe src="${localFileUrl(ENTRY)}"></iframe>` });
     expect(await waitFor(() => hasIframeChrome(w))).toBe(true);
     await settle();
-    expect(isVisible(shareButton(w))).toBe(false);
+    expect(isVisible(shareButton(w))).toBe(true);
     w.unmount();
   });
 });
@@ -217,33 +217,33 @@ describe('html code block paired with a file on disk', () => {
     w.unmount();
   });
 
-  it('offers the code-only publish when the file is outside the workspace', async () => {
+  it('prepares outside-workspace files without a code-only fallback', async () => {
     getSettings.mockResolvedValue({ workspaceRoot: 'D:/somewhere-else' });
     const w = mountMessage(codeBlockMessage([READ_CALL]));
     await clickCodeShare(w);
-
-    // Offered, never taken silently — a creation missing its assets must be a
-    // choice the user makes, not a substitution we make for them.
-    const findFallback = () =>
-      [...document.querySelectorAll('.share-error-actions button')].find((b) => b.textContent.includes('Publish the code only'));
-    expect(await waitFor(findFallback)).toBe(true);
-    expect(prepareArtifactBundle).not.toHaveBeenCalled();
-
-    findFallback().click();
-    expect(await waitFor(() => document.querySelector('.share-submit-btn'))).toBe(true);
-    document.querySelector('.share-submit-btn').click();
-    expect(await waitFor(() => global.fetch.mock.calls.some((c) => c[0] === 'https://agnt.gg/api/previews'))).toBe(true);
+    expect(await waitFor(() => prepareArtifactBundle.mock.calls.length > 0)).toBe(true);
+    expect(prepareArtifactBundle).toHaveBeenCalledWith(ENTRY, 'test-token');
     w.unmount();
   });
-
-  it('publishes as a single document when no file backs the block', async () => {
+  it('prepares dependencies even when no file backs the code block', async () => {
     const w = mountMessage(codeBlockMessage([]));
     await clickCodeShare(w);
+    expect(await waitFor(() => prepareArtifactBundle.mock.calls.length > 0)).toBe(true);
+    expect(prepareArtifactBundle).toHaveBeenCalledWith({html:HTML,baseDir:undefined}, 'test-token');
     expect(await waitFor(() => document.querySelector('.share-submit-btn'))).toBe(true);
     document.querySelector('.share-submit-btn').click();
-
-    expect(await waitFor(() => global.fetch.mock.calls.some((c) => c[0] === 'https://agnt.gg/api/previews'))).toBe(true);
-    expect(prepareArtifactBundle).not.toHaveBeenCalled();
+    expect(await waitFor(() => publishArtifactBundle.mock.calls.length > 0)).toBe(true);
+    expect(global.fetch.mock.calls.some(c => c[0] === 'https://agnt.gg/api/previews')).toBe(false);
+    w.unmount();
+  });
+  it('does not publish code-only when dependency preparation fails', async () => {
+    prepareArtifactBundle.mockRejectedValue(new Error('preview.html: missing dependency'));
+    const w = mountMessage(codeBlockMessage([]));
+    await clickCodeShare(w);
+    expect(await waitFor(() => w.vm.shareError)).toBe(true);
+    await w.vm.submitShare();
+    expect(publishArtifactBundle).not.toHaveBeenCalled();
+    expect(global.fetch.mock.calls.some(c => c[0] === 'https://agnt.gg/api/previews')).toBe(false);
     w.unmount();
   });
 });

@@ -328,7 +328,7 @@
             <p>{{ shareError }}</p>
             <div class="share-error-actions">
               <button v-if="canRetryShare" class="share-retry-btn" @click="retryShare">Try Again</button>
-              <button v-if="shareFallbackHTML" class="share-retry-btn" @click="shareFallbackCodeOnly">Publish the code only</button>
+              <button v-if="shareFallbackHTML" class="share-retry-btn" @click="shareFallbackCodeOnly">Prepare from chat HTML</button>
             </div>
           </div>
 
@@ -772,7 +772,7 @@ export default {
     const previewSharePath = ref('');
 
     // AGNT Creations API URL (single-snippet path only)
-    const CREATIONS_API_URL = 'https://agnt.gg/api/previews';
+
 
     // Computed embed code
     const shareEmbedCode = computed(() => {
@@ -916,8 +916,7 @@ export default {
 
     // Open preview modal pointing at a URL (e.g. an LLM-generated <iframe src="...">
     // for a local HTML file). Uses the same modal chrome as the HTML code preview.
-    // Share appears once the URL is confirmed to be a workspace HTML file, since
-    // that is the only case the bundle pipeline can publish.
+    // Local HTML entries can be prepared from any explicit filesystem path.
     const openIframeFullscreen = (src) => {
       previewIframeSrc.value = src;
       previewHTML.value = '';
@@ -930,7 +929,7 @@ export default {
       resolveWorkspaceEntry(absolutePath).then((entryPath) => {
         // Guard against a stale resolution: the user can close this modal or
         // open a different preview before the workspace lookup returns.
-        if (entryPath && previewIframeSrc.value === src) previewSharePath.value = absolutePath;
+        if ((entryPath || isPublishableEntry(absolutePath)) && previewIframeSrc.value === src) previewSharePath.value = absolutePath;
       });
     };
 
@@ -1462,7 +1461,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             };
             rightGroup.appendChild(shareBtn);
             resolveWorkspaceEntry(absolutePath).then((entryPath) => {
-              if (entryPath && shareBtn.isConnected) shareBtn.style.display = '';
+              if ((entryPath || isPublishableEntry(absolutePath)) && shareBtn.isConnected) shareBtn.style.display = '';
             });
           }
 
@@ -2832,22 +2831,27 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       copiedEmbed.value = false;
     };
 
-    // Open share modal for a standalone HTML string (a ```html block with no
-    // file behind it). Publishes as a single document — correct here, because
-    // there is no directory of assets to gather.
-    const openShareModal = (html) => {
+    // Unpaired chat HTML can still reference local files. Prepare it through
+    // the same dependency collector as Artifacts, never the string-only API.
+    const openShareModal = async (html) => {
       resetShareState();
       pendingShareHTML.value = html;
       shareTitle.value = 'My Creation';
       showShareModal.value = true;
+      isPreparingShare.value = true;
+      try {
+        shareManifest.value = await prepareArtifactBundle({ html, baseDir:getBaseDirFromToolCalls() || undefined }, store.state.userAuth?.token);
+        shareRootPath.value = shareManifest.value.rootPath;
+      } catch (error) {
+        shareError.value = error.message || 'Could not inspect this creation.';
+      } finally {
+        isPreparingShare.value = false;
+      }
     };
 
     // Open share modal for a preview backed by a real file, publishing the
-    // whole directory. `fallbackHTML` is the code-block text when one exists:
-    // if the file turns out to be unpublishable (outside the workspace, or
-    // rejected by preflight) the user is offered the single-document publish
-    // instead of a dead end — but never silently, because that would ship a
-    // creation missing every asset the preview showed.
+    // whole directory. `fallbackHTML` allows another preparation from the chat
+    // source when the backing file is unavailable; dependencies are still collected.
     const openBundleShareModal = async (absolutePath, fallbackHTML = '') => {
       resetShareState();
       pendingShareHTML.value = '';
@@ -2857,9 +2861,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       isPreparingShare.value = true;
       try {
         const entryPath = await resolveWorkspaceEntry(absolutePath);
-        if (!entryPath) throw new Error('This file lives outside your workspace folder, so its assets cannot be gathered.');
-        shareEntryPath.value = entryPath;
-        shareManifest.value = await prepareArtifactBundle(entryPath, store.state.userAuth?.token);
+        shareEntryPath.value = entryPath || absolutePath;
+        shareManifest.value = await prepareArtifactBundle(shareEntryPath.value, store.state.userAuth?.token);
         shareRootPath.value = shareManifest.value.rootPath;
       } catch (error) {
         shareError.value = error.message || 'Could not inspect this creation.';
@@ -2887,8 +2890,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       }
     };
 
-    // Abandon the bundle and publish just the code block. Only reachable from
-    // the error state, and only when a code block was the source.
+    // Retry preparation from the chat source, never publish an incomplete wrapper.
     const shareFallbackCodeOnly = () => {
       const html = shareFallbackHTML.value;
       if (!html) return;
@@ -2931,52 +2933,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       }
     };
 
-    // Submit share to AGNT Creations API
+    // Every Share button publishes prepared dependencies, including chat HTML.
     const submitShare = async () => {
-      // A manifest means a real directory was inspected; publish all of it.
+      if (isPreparingShare.value) return;
       if (shareManifest.value) return submitBundleShare();
-      if (!pendingShareHTML.value || !shareTitle.value.trim()) return;
-
-      isSharing.value = true;
-      shareError.value = null;
-
-      try {
-        // Build headers with auth token if available
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-
-        // Get auth token from Vuex store
-        const token = store.state.userAuth?.token;
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-          console.log('[Share] Including auth token for user ownership');
-        }
-
-        const response = await fetch(CREATIONS_API_URL, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            html: pendingShareHTML.value,
-            title: shareTitle.value.trim(),
-            source: 'desktop-app',
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Failed to share (${response.status})`);
-        }
-
-        const result = await response.json();
-        shareResult.value = result;
-        console.log('[Share] Successfully shared to AGNT Creations:', result);
-      } catch (error) {
-        console.error('[Share] Error sharing to AGNT Creations:', error);
-        shareError.value = error.message || 'Failed to share. Please try again.';
-      } finally {
-        isSharing.value = false;
-      }
+      if (pendingShareHTML.value) return openShareModal(pendingShareHTML.value);
     };
 
     // Retry the step that actually failed. A bundle that never got past
