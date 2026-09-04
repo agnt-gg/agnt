@@ -1068,8 +1068,8 @@ ${this.contactForm.message}
     // Define base and discount prices for both monthly and yearly
     const basePrices = {
       personal: {
-        monthly: { price: '$33/mo', originalPrice: null },
-        yearly: { price: '$333/year', originalPrice: null },
+        monthly: { price: '$29/mo', originalPrice: null },
+        yearly: { price: '$290/year', originalPrice: null },
       },
       business: {
         monthly: { price: '$333/mo', originalPrice: null },
