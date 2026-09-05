@@ -1,3 +1,4 @@
+import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
  * The Anthropic Messages transport — anthropic and claude-code.
  *
@@ -341,12 +342,12 @@ class AnthropicAdapter extends BaseAdapter {
     return BaseAdapter._splitTextAfterToolResults(merged);
   }
 
-  async call(messages, tools) {
+  async call(messages, tools, context = {}) {
     let lastError;
     // PRD-083 (CTO follow-up): mirror callStream's one-shot refusal fallback
     // here too so the suggestions feature (and other non-streaming consumers)
     // also benefits from auto-fallback to Opus 4.8 on Fable/Mythos refusals.
-    let currentMessages = messages;
+    let currentMessages = appendComputerImages(messages, context.computerImages, 'anthropic', ProviderRegistry.supportsVision(context.provider || 'anthropic', this.model));
     let fallbackAttempted = false;
     const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
 
@@ -784,6 +785,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
+
+    currentMessages = appendComputerImages(currentMessages, context.computerImages, 'anthropic', ProviderRegistry.supportsVision(context.provider || 'anthropic', this.model));
 
     // Labeled so the in-catch `continue streamingAttemptLoop` below skips the
     // inner pause_turn-resume `while` and restarts the whole attempt cleanly.

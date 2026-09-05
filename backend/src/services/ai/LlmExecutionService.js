@@ -1,6 +1,8 @@
 import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { stripProviderIncompatibleTools } from '../orchestrator/providerToolCompat.js';
+import { captureComputerImages } from '../computerUse/observationImages.js';
+import { mapOrderedComputerCalls } from '../computerUse/operationQueue.js';
 import { executeTool } from '../orchestrator/tools.js';
 import { manageContext } from '../../utils/contextManager.js';
 import { recordLlmCall } from '../execution/LedgerRecorder.js';
@@ -208,6 +210,7 @@ class LlmExecutionService {
     // Store client in context for tool execution
     const executionContext = {
       ...context,
+      computerImages: [],
       llmClient: client,
       userId,
       provider,
@@ -216,11 +219,13 @@ class LlmExecutionService {
       role: context?.role || 'agent',
     };
 
+    executionContext.abortSignal = signal || context.abortSignal;
+
     // Track accumulated token usage across all LLM calls
     const accumulatedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
     // Initial LLM call (raced against abort so pause/stop unblocks immediately)
-    let { responseMessage, toolCalls, usage: initialUsage } = await raceWithAbort(() => adapter.call(messages, finalToolSchemas), signal);
+    let { responseMessage, toolCalls, usage: initialUsage } = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
     if (initialUsage) {
       accumulatedUsage.inputTokens += initialUsage.prompt_tokens || initialUsage.input_tokens || 0;
       accumulatedUsage.outputTokens += initialUsage.completion_tokens || initialUsage.output_tokens || 0;
@@ -235,7 +240,7 @@ class LlmExecutionService {
     while (toolCalls && toolCalls.length > 0 && currentRound < maxToolRounds) {
       currentRound++;
 
-      const toolPromises = toolCalls.map(async (toolCall) => {
+      const toolPromises = mapOrderedComputerCalls(toolCalls, async (toolCall) => {
         const functionName = toolCall.function.name;
         let functionArgs;
 
@@ -257,7 +262,9 @@ class LlmExecutionService {
         console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
 
         try {
-          const functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          let functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          if (/^computer[-_]input$/.test(functionName)) executionContext.computerImages = [];
+          functionResponse = captureComputerImages(functionResponse, functionName, toolCall.id, executionContext);
 
           // Store execution details
           allToolExecutions.push({
@@ -310,7 +317,7 @@ class LlmExecutionService {
       messages = sanitizeEmptyAssistantMessages(messages);
 
       // Get next response (factory form: never fires if already aborted)
-      const nextResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas), signal);
+      const nextResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas, executionContext), signal);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
       if (nextResponse.usage) {
@@ -440,6 +447,7 @@ class LlmExecutionService {
     // Store client in context for tool execution
     const executionContext = {
       ...context,
+      computerImages: [],
       llmClient: client,
       userId,
       provider,
@@ -449,7 +457,7 @@ class LlmExecutionService {
     };
 
     // Initial LLM call with streaming
-    let { responseMessage, toolCalls } = await adapter.callStream(messages, finalToolSchemas, onChunk);
+    let { responseMessage, toolCalls } = await adapter.callStream(messages, finalToolSchemas, onChunk, executionContext);
     messages.push(responseMessage);
 
     // Tool execution loop
@@ -459,7 +467,7 @@ class LlmExecutionService {
     while (toolCalls && toolCalls.length > 0 && currentRound < maxToolRounds) {
       currentRound++;
 
-      const toolPromises = toolCalls.map(async (toolCall) => {
+      const toolPromises = mapOrderedComputerCalls(toolCalls, async (toolCall) => {
         const functionName = toolCall.function.name;
         let functionArgs;
 
@@ -481,7 +489,9 @@ class LlmExecutionService {
         console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
 
         try {
-          const functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          let functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          if (/^computer[-_]input$/.test(functionName)) executionContext.computerImages = [];
+          functionResponse = captureComputerImages(functionResponse, functionName, toolCall.id, executionContext);
 
           // Store execution details
           allToolExecutions.push({
@@ -534,7 +544,7 @@ class LlmExecutionService {
       messages = sanitizeEmptyAssistantMessages(messages);
 
       // Get next response with streaming
-      const nextResponse = await adapter.callStream(messages, finalToolSchemas, onChunk);
+      const nextResponse = await adapter.callStream(messages, finalToolSchemas, onChunk, executionContext);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
 
