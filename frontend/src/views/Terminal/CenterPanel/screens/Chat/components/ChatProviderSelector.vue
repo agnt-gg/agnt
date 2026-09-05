@@ -789,6 +789,12 @@ export default {
 </script>
 
 <style scoped>
+@media (max-width: 800px) {
+  .chat-provider-selector { left: 8px !important; right: 8px !important; top: auto !important; bottom: max(8px, env(safe-area-inset-bottom)) !important; width: auto !important; min-width: 0 !important; max-width: none !important; max-height: calc(var(--app-height) - 80px); overflow-y: auto; transform: none !important; }
+  .chat-provider-selector input, .chat-provider-selector select { font-size: 16px; }
+  .chat-provider-selector button { min-height: 44px; }
+}
+
 .chat-provider-selector {
   position: fixed;
   z-index: 10000;

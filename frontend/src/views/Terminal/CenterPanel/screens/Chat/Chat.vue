@@ -29,7 +29,7 @@
              every measurement stays wired to this component. `defer` waits for
              the panel to mount; if the right panel is hidden the tiles simply
              do not render, which is the same as the old collapsed state. -->
-        <Teleport v-if="!isMobile && hasMonitoringData" defer to="#agnt-insp-context">
+        <Teleport v-if="hasMonitoringData && contextHost" :to="contextHost">
         <div
           class="monitoring-panel in-inspector"
           :class="{ collapsed: isMonitoringCollapsed }"
@@ -340,6 +340,8 @@ export default {
     const router = useRouter();
     const cleanup = useCleanup();
     const baseScreenRef = ref(null);
+    const contextHost = ref(null);
+    const setContextHost = element => { contextHost.value = element; };
     const conversationSpace = ref(null);
     const isMobile = inject('isMobile', ref(false));
 
@@ -2401,6 +2403,7 @@ export default {
     // What the right panel ("This conversation") needs from this screen.
     watch(activeConversationIdForSelector, () => { if(store.getters['shell/inspect']?.kind==='artifact') store.dispatch('shell/clearInspect'); });
     const inspectorProps = computed(() => ({
+      contextHostReady: setContextHost,
       participants: chatParticipants.value,
       hasContext: hasMonitoringData.value,
       activeAgentName: activeAgentName.value,
@@ -2971,6 +2974,7 @@ export default {
     return {
       ...tutorialWithCallback,
       baseScreenRef,
+      contextHost,
       conversationSpace,
       scheduleScrollCapture,
       terminalLines,

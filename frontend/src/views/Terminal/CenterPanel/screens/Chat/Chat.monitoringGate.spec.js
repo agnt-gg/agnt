@@ -40,8 +40,12 @@ describe('Chat.vue — the monitoring panel is gated on real activity', () => {
     const el = src.match(/<Teleport\s+([\s\S]{0,200}?)>\s*<div\s+[\s\S]{0,120}?class="monitoring-panel/);
     expect(el).toBeTruthy();
     expect(el[1]).toMatch(/v-if="[^"]*hasMonitoringData[^"]*"/);
-    expect(el[1]).toMatch(/\bdefer\b/);
-    expect(el[1]).toMatch(/to="#agnt-insp-context"/);
+    // The instance-owned DOM target exists before Teleport mounts. A fixed
+    // global id can point at another cached/widget Chat and excludes mobile.
+    expect(el[1]).toMatch(/v-if="hasMonitoringData && contextHost"/);
+    expect(el[1]).toContain(':to="contextHost"');
+    expect(el[1]).not.toContain('!isMobile');
+    expect(src).toContain('contextHostReady: setContextHost');
   });
 
   it('and that gate is closed for a conversation that has not started', () => {

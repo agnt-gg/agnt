@@ -536,6 +536,12 @@ export default {
 </script>
 
 <style scoped>
+@media (max-width: 800px) {
+  .chat-tool-selector { left: 8px !important; right: 8px !important; top: auto !important; bottom: max(8px, env(safe-area-inset-bottom)) !important; width: auto !important; min-width: 0 !important; max-width: none !important; max-height: calc(var(--app-height) - 80px); overflow-y: auto; transform: none !important; }
+  .chat-tool-selector input, .chat-tool-selector select { font-size: 16px; }
+  .chat-tool-selector button { min-height: 44px; }
+}
+
 .chat-tool-selector {
   position: fixed;
   bottom: 140px;

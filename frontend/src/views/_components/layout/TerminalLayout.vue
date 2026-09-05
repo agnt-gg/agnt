@@ -208,7 +208,7 @@ export default {
     onUnmounted(() => window.removeEventListener('agnt:appearance-background', onAppearanceBackground));
 
     // --- Mobile Detection ---
-    const isMobile = ref(false);
+    const isMobile = ref(window.innerWidth <= 800);
     const checkMobile = () => {
       isMobile.value = window.innerWidth <= 800; // Breakpoint at 800px
     };

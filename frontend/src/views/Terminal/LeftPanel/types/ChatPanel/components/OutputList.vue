@@ -4,6 +4,7 @@
     <div class="panel-header">
       <h2 class="title">/ Saved Chats</h2>
       <div class="panel-stats">
+        <button v-if="isMobile" type="button" class="new-chat-btn" :aria-pressed="mobileSelection" @click="mobileSelection = !mobileSelection">{{ mobileSelection ? 'Done' : 'Select' }}</button>
         <span class="stat-item">
           <i class="fas fa-file-alt"></i>
           {{ visibleOutputs.length }}
@@ -97,6 +98,7 @@
                 <div class="group-header-right">
                   <span v-if="getGroupUnreadBadge(node.id) > 0" class="group-unread-badge" v-tooltip="'Unread chats'">{{ getGroupUnreadBadge(node.id) }}</span>
                   <span class="group-count">{{ searchQuery ? getGroupOutputs(node.id).length : getTotalConversationCount(node.id) }}</span>
+                  <button v-if="isMobile" type="button" class="mobile-group-menu" :aria-label="'Actions for group ' + node.name" @click.stop="openGroupMenu($event, node)"><i class="fas fa-ellipsis-v"></i></button>
                 </div>
               </div>
                 <div v-if="expandedGroups.has(node.id)" class="group-items">
@@ -465,6 +467,8 @@ export default {
 
     // Multi-select state
     const selectedOutputIds = ref(new Set());
+    const isMobile = inject('isMobile', ref(false));
+    const mobileSelection = ref(false);
     const lastSelectedId = ref(null);
 
     // Active/current conversation — DERIVED, never click-written. Two
@@ -1012,7 +1016,7 @@ export default {
 
     function openGroupMenu(event, group) {
       groupMenu.value = group;
-      groupMenuPosition.value = {
+      groupMenuPosition.value = isMobile.value ? { position: 'fixed', left: '8px', right: '8px', bottom: 'max(8px, env(safe-area-inset-bottom))', top: 'auto', width: 'auto', maxHeight: '70%', overflowY: 'auto' } : {
         position: 'fixed',
         top: `${event.clientY}px`,
         left: `${event.clientX}px`,
@@ -1179,7 +1183,7 @@ export default {
 
     // Handle output click with shift detection
     function handleOutputClick(outputId, event) {
-      if (event.shiftKey) {
+      if (event.shiftKey || (isMobile.value && mobileSelection.value)) {
         event.preventDefault();
         playSound('buttonClick');
 
@@ -1388,7 +1392,7 @@ export default {
           const rect = button.getBoundingClientRect();
 
           // Calculate position - menu appears to the right of the button
-          menuPosition.value = {
+          menuPosition.value = isMobile.value ? { position: 'fixed', left: '8px', right: '8px', bottom: 'max(8px, env(safe-area-inset-bottom))', top: 'auto', width: 'auto', maxHeight: '70%', overflowY: 'auto' } : {
             position: 'fixed',
             top: `${rect.top}px`,
             left: `${rect.right + 8}px`,
@@ -1577,6 +1581,7 @@ export default {
     });
 
     return {
+      isMobile, mobileSelection,
       simpleModal,
       outputs,
       totalCount,
@@ -1677,6 +1682,13 @@ export default {
 </script>
 
 <style scoped>
+.mobile-group-menu { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: inherit; }
+@media (max-width: 800px) {
+  .search-input { font-size: 16px; }
+  .group-header-right { display: flex; align-items: center; }
+  .output-content { min-width: 0; }
+  .menu-item { min-height: 44px; }
+}
 .panel-header {
   display: flex;
   flex-direction: row;

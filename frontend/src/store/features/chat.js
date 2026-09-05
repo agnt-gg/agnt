@@ -2528,9 +2528,11 @@ export default {
       }
       if (streamReader) {
         try {
-          streamReader.cancel();
-        } catch (e) {
-          // Reader may already be aborted — ignore
+          // Abort above can make cancel() reject asynchronously. Catching only
+          // synchronous throws left an unhandled rejection on every such Stop.
+          await streamReader.cancel();
+        } catch (error) {
+          if (error?.name !== 'AbortError') console.warn('[Chat] Reader cleanup after stop failed:', error);
         }
         if (conv) {
           commit('SCOPED_SET_STREAM_READER', { conversationId: convId, reader: null });

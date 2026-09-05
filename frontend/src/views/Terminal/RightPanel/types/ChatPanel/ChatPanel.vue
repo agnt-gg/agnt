@@ -73,7 +73,7 @@
          with all its data intact. Absent until the conversation has produced a
          measurement (same rule as before). -->
     <InspSection title="Context & cost">
-      <div id="agnt-insp-context" class="ctx-host"></div>
+      <div :ref="contextHostReady" data-chat-context-host class="ctx-host"></div>
       <div v-if="!hasContext" class="muted">Appears after the first turn.</div>
     </InspSection>
 
@@ -146,6 +146,7 @@ export default {
   components: { InspectorShell, InspSection, EntityInspector, ArtifactInspector },
   props: {
     /** From Chat.vue via rightPanelProps. All optional. */
+    contextHostReady: { type: Function, default: () => {} },
     participants: { type: Array, default: () => [] },
     hasContext: { type: Boolean, default: false },
     toolsEnabledCount: { type: Number, default: null },

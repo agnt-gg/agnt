@@ -2,6 +2,7 @@
   <div
     class="terminal-content"
     :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen, 'artifact-active': artifactTarget, 'artifact-expanded': artifactExpanded }"
+    :class="{ 'is-resizing': isResizing, 'mobile-presentation': isMobile }"
     ref="terminalContentRef"
     tabindex="-1"
   >
@@ -9,12 +10,22 @@
     <RateLimitBanner />
     <!-- <PromoBanner /> -->
 
+    <nav v-if="isMobile && !hidePanels" class="mobile-screen-actions" aria-label="Page panels">
+      <button v-if="leftPanelEnabled" type="button" data-mobile-panel="left" :aria-expanded="mobilePanel === 'left'" @click="openMobilePanel('left')"><i class="fas fa-comments"></i>{{ screenId === 'ChatScreen' ? 'Saved Chats' : 'Browse' }}</button>
+      <button v-if="screenId === 'ChatScreen'" type="button" @click="mobileNewChat"><i class="fas fa-plus"></i>New chat</button>
+      <button v-if="rightPanelEnabled" type="button" data-mobile-panel="right" :aria-expanded="mobilePanel === 'right'" @click="openMobilePanel('right')"><i class="fas fa-info-circle"></i>{{ screenId === 'ChatScreen' ? 'This chat' : 'Inspector' }}</button>
+    </nav>
     <div class="three-panel-container">
+      <button v-if="isMobile && mobilePanel" class="mobile-panel-scrim" aria-label="Close panel" @click="closeMobilePanel()"></button>
       <!-- Left Panel -->
       <LeftPanel
-        v-if="!hidePanels && showLeftPanel"
+        v-if="!hidePanels && leftPanelEnabled && (showLeftPanel || hasUsedMobilePanels)"
+        v-show="showLeftPanel"
         class="left-panel-component"
-        :class="{ collapsed: leftPanelCollapsed }"
+        :class="{ collapsed: !isMobile && leftPanelCollapsed, 'mobile-panel-visible': isMobile && mobilePanel === 'left' }"
+        :role="isMobile ? 'dialog' : undefined" :aria-modal="isMobile && mobilePanel === 'left' ? 'true' : undefined"
+        :aria-label="isMobile ? (screenId === 'ChatScreen' ? 'Saved Chats' : 'Browse') : undefined"
+        :inert="isMobile && mobilePanel !== 'left' ? true : undefined" :aria-hidden="isMobile && mobilePanel !== 'left' ? 'true' : undefined" tabindex="-1"
         ref="leftPanel"
         :active-panel="computedLeftPanel"
         :active-screen="screenId"
@@ -39,6 +50,7 @@
       <div
         class="main-panel"
         ref="mainPanelRef"
+        :inert="isMobile && mobilePanel ? true : undefined"
         :class="{ 'centered-content': hidePanels, 'is-drag-over': isDragOver }"
         :style="!isMobile && !hidePanels ? { width: `${mainContentWidth}px` } : {}"
         @dragenter.prevent="onDragEnter"
@@ -50,13 +62,7 @@
           <i class="fas fa-cloud-upload-alt"></i>
           <span>Drop files to attach</span>
         </div>
-        <!-- The hamburger slides the left panel in. On a screen that has no
-             left panel it would be a control that does nothing. -->
-        <div class="mobile-panel-toggle" v-if="isMobile && leftPanelEnabled" @click="togglePanel">
-          <span class="hamburger-bar"></span>
-          <span class="hamburger-bar"></span>
-          <span class="hamburger-bar"></span>
-        </div>
+
         <div class="scrollable-content">
           <slot :terminal-lines="terminalLines"></slot>
         </div>
@@ -144,7 +150,7 @@
             <!-- Composer controls carry a word each. Four unlabelled circles
                  were the first thing every new user asked about. -->
             <Tooltip text="Attach files" width="auto">
-              <button v-if="!isStreaming" @click="triggerFileInput" :disabled="isInputDisabled" class="chat-attach-button">
+              <button v-if="!isStreaming" @click="triggerFileInput" :disabled="isInputDisabled" class="chat-attach-button" aria-label="Attach files">
                 <i class="fas fa-paperclip"></i>
                 <span class="chat-btn-label">Attach<span v-if="selectedFiles.length" class="chat-btn-count">{{ selectedFiles.length }}</span></span>
               </button>
@@ -185,7 +191,7 @@
             </Tooltip>
             <template v-if="!isStreaming">
               <Tooltip text="Send message" width="auto">
-                <button @click="triggerSubmit" :disabled="!currentUserInput.trim() || isInputDisabled" class="chat-send-button">
+                <button @click="triggerSubmit" :disabled="!currentUserInput.trim() || isInputDisabled" class="chat-send-button" aria-label="Send message">
                   <i class="fas fa-paper-plane"></i>
                 </button>
               </Tooltip>
@@ -210,9 +216,13 @@
 
       <!-- Right Panel -->
       <RightPanel
-        v-if="!hidePanels && showRightPanel"
+        v-if="!hidePanels && rightPanelEnabled && (showRightPanel || hasUsedMobilePanels)"
+        v-show="showRightPanel"
         class="right-panel-component"
-        :class="{ collapsed: rightPanelCollapsed }"
+        :class="{ collapsed: !isMobile && rightPanelCollapsed, 'mobile-panel-visible': isMobile && mobilePanel === 'right' }"
+        :role="isMobile ? 'dialog' : undefined" :aria-modal="isMobile && mobilePanel === 'right' ? 'true' : undefined"
+        :aria-label="isMobile ? (screenId === 'ChatScreen' ? 'This conversation' : 'Inspector') : undefined"
+        :inert="isMobile && mobilePanel !== 'right' ? true : undefined" :aria-hidden="isMobile && mobilePanel !== 'right' ? 'true' : undefined" tabindex="-1"
         ref="rightPanel"
         :active-panel="computedRightPanel"
         :panel-props="panelProps"
@@ -235,6 +245,7 @@
     <!-- Provider Selector Dropdown -->
     <Teleport to="body">
       <ChatProviderSelector
+        ref="mobileProviderPicker"
         v-if="isProviderSelectorOpen"
         :isOpen="isProviderSelectorOpen"
         :clean-position="true"
@@ -248,6 +259,7 @@
     <!-- Tool Selector Dropdown -->
     <Teleport to="body">
       <ChatToolSelector
+        ref="mobileToolPicker"
         v-if="isToolSelectorOpen"
         :isOpen="isToolSelectorOpen"
         :channel-key="channelKey"
@@ -273,9 +285,10 @@
 </template>
 
 <script>
-import { ref, onMounted, onActivated, nextTick, computed, watch, toRefs, defineExpose, onUnmounted, inject } from 'vue';
+import { ref, onMounted, onActivated, nextTick, computed, watch, toRefs, defineExpose, onUnmounted, onDeactivated, inject } from 'vue';
 import { useStore } from 'vuex';
 import LeftPanel from '../LeftPanel/LeftPanel.vue';
+import { useMobileOverlay } from '@/composables/useMobileOverlay.js';
 import RightPanel from '../RightPanel/RightPanel.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import ChatProviderSelector from './screens/Chat/components/ChatProviderSelector.vue';
@@ -404,7 +417,7 @@ export default {
     const fileInputRef = ref(null);
 
     // --- Mobile & Panel State ---
-    const isMobile = inject('isMobile');
+    const isMobile = inject('isMobile', ref(false));
 
     // --- Panel geometry scope ---
     // Standalone, panel widths are app-global state (vuex theme) and that is
@@ -418,7 +431,20 @@ export default {
       const v = panelWidthScope.get(key);
       return v === undefined || v === null ? fallback : v;
     };
-    const isPanelOpen = ref(false);
+    const hasUsedMobilePanels = ref(isMobile.value);
+    watch(isMobile, mobile => { if (mobile) hasUsedMobilePanels.value = true; });
+    const isPanelOpen = ref(false); // legacy public API; mobilePanel owns compact presentation
+    const { active: mobilePanel, open: openPanel, close: closeMobilePanel } = useMobileOverlay(isMobile, side => side === 'left' ? leftPanel.value : rightPanel.value, {
+      beforeClose: () => { if (mobilePanel.value === 'right' && store.getters['shell/inspect']) { store.dispatch('shell/clearInspect'); return false; } },
+    });
+    const openMobilePanel = side => {
+      if (side === 'left' && !leftPanelEnabled.value || side === 'right' && !rightPanelEnabled.value) return;
+      openPanel(side);
+    };
+    const mobileNewChat = () => { closeMobilePanel({ restoreFocus: false }); emit('panel-action', 'new-chat'); };
+    let screenActive = true;
+    watch(() => props.conversationId, (id, previous) => { if (id !== previous) closeMobilePanel({ restoreFocus: false }); });
+    watch(() => store.getters['shell/inspect'], target => { if (target && isMobile.value && screenActive && !insideWidgetCanvas) openPanel('right'); });
 
     // --- Speech Recognition ---
 
@@ -611,7 +637,7 @@ export default {
     // gap where the panel used to be. ANDing once makes all six correct by
     // construction.
     const leftPanelEnabled = computed(() => resolvePanel(props.activeLeftPanel, props.screenId, 'leftPanel') !== false);
-    const showLeftPanel = computed(() => showLeftPanelSetting.value && leftPanelEnabled.value);
+    const showLeftPanel = computed(() => (isMobile.value || showLeftPanelSetting.value) && leftPanelEnabled.value);
     // Same opt-out for the right column (screenRegistry `rightPanel: false`),
     // folded in the same way and for the same reason.
     const showRightPanelSetting = ref(store.getters['theme/showRightPanel']);
@@ -619,6 +645,7 @@ export default {
     const artifactTarget = computed(() => props.screenId === 'ChatScreen' && (!store.getters['shell/inspect']?.screen || store.getters['shell/inspect']?.screen==='ChatScreen') && ['artifact','agent','workflow','goal','trace','execution','memory','running','autonomy'].includes(store.getters['shell/inspect']?.kind));
     const artifactExpanded = ref(false);
     const showRightPanel = computed(() => (showRightPanelSetting.value || artifactTarget.value) && rightPanelEnabled.value);
+    const showRightPanel = computed(() => (isMobile.value || showRightPanelSetting.value) && rightPanelEnabled.value);
     const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
     // A screen may own its right-panel collapse state (screenRegistry
     // `rightCollapsedDefault`): it starts from that default and remembers the
@@ -768,7 +795,7 @@ export default {
 
     const focusInput = async () => {
       // Only handle input focus if the input line exists
-      if (!inputEnabled.value || isInputDisabled.value) return;
+      if (!inputEnabled.value || isInputDisabled.value || (isMobile.value && mobilePanel.value)) return;
 
       await nextTick();
       textareaRef.value?.focus();
@@ -781,6 +808,7 @@ export default {
         return;
       }
 
+      if (event.target.closest('button, a, [role="button"], [role="dialog"]')) return;
       const isFormElement = event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT';
       if (!isFormElement) {
         focusInput();
@@ -860,6 +888,8 @@ export default {
       if (action === 'close-panel') {
         if (artifactTarget.value) store.dispatch('shell/clearInspect');
         isPanelOpen.value = false;
+        if (isMobile.value && store.getters['shell/inspect']) { store.dispatch('shell/clearInspect'); return; }
+        closeMobilePanel();
         return;
       }
       // `navigate` with an object payload { screen, opts } is a navigation
@@ -915,6 +945,16 @@ export default {
     const removeMentionedAgent = (index) => {
       mentionedAgents.value.splice(index, 1);
     };
+
+    const mobileProviderPicker = ref(null);
+    const mobileToolPicker = ref(null);
+    const pickerLayer = useMobileOverlay(isMobile, name => name === 'provider' ? mobileProviderPicker.value : mobileToolPicker.value, {
+      beforeClose: () => { isProviderSelectorOpen.value = false; isToolSelectorOpen.value = false; },
+    });
+    watch([isProviderSelectorOpen, isToolSelectorOpen, isMobile], ([provider, tools, mobile]) => {
+      if (mobile && (provider || tools)) pickerLayer.open(provider ? 'provider' : 'tools');
+      else pickerLayer.close({ restoreFocus: mobile });
+    });
 
     const toggleProviderSelector = () => {
       // Positioning is handled by the corner anchor, which measures on open.
@@ -1156,7 +1196,8 @@ export default {
     // --- Left Panel Action Handler ---
     const handleLeftPanelAction = (action, payload) => {
       if (action === 'close-left-panel') {
-        store.dispatch('theme/setShowLeftPanel', false);
+        if (isMobile.value) closeMobilePanel();
+        else store.dispatch('theme/setShowLeftPanel', false);
         return;
       }
       // Both panels use the same navigation contract: { screen, opts } must
@@ -1339,6 +1380,8 @@ export default {
     };
 
     const calculateMainContentWidth = () => {
+      // Compact panels overlay the content; their geometry is never desktop state.
+      if (isMobile.value) return;
       if (!terminalContentRef.value) return;
 
       const containerWidth = terminalContentRef.value.clientWidth;
@@ -1382,6 +1425,7 @@ export default {
     };
 
     const initializePanelWidths = () => {
+      if (isMobile.value) return;
       if (terminalContentRef.value) {
         const screenWidth = layoutWidth();
 
@@ -1486,11 +1530,15 @@ export default {
     // window events so the shortcut works from any screen without a prop
     // chain; only the mounted (active) BaseScreen answers them.
     const onToggleLeftPanel = () => {
+      if (!screenActive || insideWidgetCanvas) return;
+      if (isMobile.value) { openMobilePanel('left'); return; }
       if (leftPanelEnabled.value) toggleLeftPanelCollapsed();
     };
     const onExpandArtifact = () => { if (artifactTarget.value) artifactExpanded.value=!artifactExpanded.value; };
     const onArtifactEscape = (event) => { if(event.key==='Escape' && artifactTarget.value && !store.getters['shell/jumpOpen']){event.preventDefault();store.dispatch('shell/clearInspect');} };
     const onToggleRightPanel = () => {
+      if (!screenActive || insideWidgetCanvas) return;
+      if (isMobile.value) { openMobilePanel('right'); return; }
       toggleRightPanelCollapsed();
     };
 
@@ -1506,7 +1554,7 @@ export default {
       window.addEventListener('agnt:expand-artifact',onExpandArtifact);
       window.addEventListener('keydown',onArtifactEscape);
       // Only focus input if the input line exists
-      if (inputEnabled.value) {
+      if (inputEnabled.value && !isMobile.value) {
         focusInput();
       }
       // scrollToBottom(); // Call scrollToBottom after terminalLines might have rendered
@@ -1534,10 +1582,12 @@ export default {
     });
 
     // KeepAlive re-activation — restore data-page and re-emit base-mounted
+    onDeactivated(() => { screenActive = false; closeMobilePanel({ restoreFocus: false }); isProviderSelectorOpen.value = false; isToolSelectorOpen.value = false; });
     onActivated(() => {
+      screenActive = true;
       setDataPage();
       emit('base-mounted');
-      if (inputEnabled.value) {
+      if (inputEnabled.value && !isMobile.value) {
         nextTick(focusInput);
       }
     });
@@ -1651,6 +1701,7 @@ export default {
 
     // Expose methods for parent component control
     expose({
+      openMobilePanel, closeMobilePanel, mobilePanel, toggleProviderSelector, toggleToolSelector,
       setInputDisabled,
       clearInput,
       focusInput,
@@ -1666,6 +1717,7 @@ export default {
     return {
       artifactTarget,
       artifactExpanded,
+      mobilePanel, openMobilePanel, closeMobilePanel, mobileNewChat, rightPanelEnabled, hasUsedMobilePanels, mobileProviderPicker, mobileToolPicker,
       // Refs
       terminalContentRef,
       mainPanelRef,
@@ -1772,6 +1824,16 @@ export default {
 <style scoped>
 .terminal-content.artifact-active.artifact-expanded .main-panel,.terminal-content.artifact-active.artifact-expanded .left-panel-component,.terminal-content.artifact-active.artifact-expanded .resize-handle{display:none!important}.terminal-content.artifact-active.artifact-expanded .right-panel-component{width:100%!important;flex:1!important}
 @media screen and (max-width:800px){.terminal-content.artifact-active .right-panel-component{display:flex!important;position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;transform:none!important;z-index:100;background:var(--color-popup)}.terminal-content.artifact-active .main-panel{visibility:hidden}.terminal-content.artifact-active .right-panel-component.collapsed{width:100%!important}}
+.mobile-screen-actions { display: flex; flex: 0 0 auto; justify-content: space-between; gap: 4px; border-bottom: 1px solid var(--terminal-border-color); padding: 4px 8px; }
+.mobile-screen-actions button { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--color-text); display: flex; align-items: center; gap: 7px; font: inherit; font-size: 12px; cursor: pointer; }
+.mobile-panel-scrim { position: absolute; inset: 0; border: 0; background: rgba(0,0,0,.45); z-index: 1198; }
+.terminal-content.mobile-presentation .left-panel-component, .terminal-content.mobile-presentation .right-panel-component { position: absolute; inset: 0; width: 100%; max-width: 100%; height: 100%; z-index: 1199; transform: none; visibility: hidden; pointer-events: none; background: var(--color-background); }
+.terminal-content.mobile-presentation .mobile-panel-visible { visibility: visible; pointer-events: auto; }
+.terminal-content.mobile-presentation .main-panel { width: 100%; min-width: 0; }
+.terminal-content.mobile-presentation .mobile-panel-visible :deep(.mobile-close-button) { min-height: 44px; align-self: flex-start; }
+.terminal-content.mobile-presentation .chat-input-textarea { font-size: 16px; }
+.terminal-content.mobile-presentation .chat-btn-label { display: inline; }
+.terminal-content.mobile-presentation .chat-attach-button, .terminal-content.mobile-presentation .chat-provider-button, .terminal-content.mobile-presentation .chat-tools-button, .terminal-content.mobile-presentation .chat-voice-button { width: auto; min-width: 44px; padding: 8px; }
 
 .terminal-header {
   display: flex;

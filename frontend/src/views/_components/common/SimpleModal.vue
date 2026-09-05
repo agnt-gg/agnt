@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div v-if="isOpen" class="modal-overlay">
-      <div class="modal-content">
+      <div ref="mobileModalElement" class="modal-content" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1">
         <h3>{{ title }}</h3>
         <p v-if="message" v-html="formattedMessage" class="modal-message"></p>
         <template v-if="isPrompt">
@@ -23,10 +23,18 @@
 </template>
 
 <script>
+import { inject, ref } from 'vue';
+import { useMobileOverlay } from '@/composables/useMobileOverlay.js';
 import { resizeTextarea } from '@/views/_components/base/fields.js';
 
 export default {
   name: 'SimpleModal',
+  setup() {
+    const mobilePresentation = inject('isMobile', ref(false));
+    const mobileModalElement = ref(null);
+    const { active: mobileDialog, open: openMobileDialog, close: closeMobileDialog } = useMobileOverlay(mobilePresentation, () => mobileModalElement.value);
+    return { mobilePresentation, mobileModalElement, mobileDialog, openMobileDialog, closeMobileDialog };
+  },
   data() {
     return {
       isOpen: false,
@@ -100,7 +108,10 @@ export default {
     },
   },
   watch: {
+    mobileDialog(value) { if (!value && this.isOpen && this.mobilePresentation) this.cancel(); },
     isOpen(newVal) {
+      if (newVal && this.mobilePresentation) this.openMobileDialog('confirmation');
+      else if (!newVal) this.closeMobileDialog();
       if (newVal && this.isPrompt) {
         this.$nextTick(() => {
           // Add a delay to prevent Enter key from button triggering input's enter handler

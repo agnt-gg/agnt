@@ -1,7 +1,8 @@
 <template>
-  <div class="cv-root">
+  <div class="cv-root" :class="{ 'cv-compact': compactLayout }">
     <!-- ── TOOLBAR (top bar + titlebar) ── -->
     <div v-if="isAuthenticated" class="cv-toolbar">
+      <button v-if="compactLayout" type="button" class="cv-mobile-menu" aria-label="Open navigation" :aria-expanded="!!navigationOpen" @click="openMobileNavigation"><i class="fas fa-bars"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
@@ -121,6 +122,12 @@
             </button>
           </Tooltip>
         </nav>
+      <button v-if="compactLayout && navigationOpen" class="cv-nav-scrim" aria-label="Close navigation" @click="closeMobileNavigation()"></button>
+      <div v-if="isAuthenticated" ref="navigationElement" class="cv-sidebar" :class="{ expanded: isSidebarExpanded, 'cv-navigation-open': navigationOpen }"
+        :role="compactLayout ? 'dialog' : undefined" :aria-modal="compactLayout && navigationOpen ? 'true' : undefined"
+        :aria-label="compactLayout ? 'Navigation' : undefined" :inert="compactLayout && !navigationOpen ? true : undefined"
+        :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
+        <button v-if="compactLayout" type="button" class="cv-mobile-nav-close" @click="closeMobileNavigation()">Close navigation <i class="fas fa-times"></i></button>
         <!-- User-managed navigation: built-in and custom pages share one ordered, grouped rail. -->
         <div class="cv-sb-pages">
           <template v-for="(group, groupIndex) in navigationGroups" :key="group.name">
@@ -132,7 +139,7 @@
                 class="cv-sb-page"
                 :class="{ active: item.type === 'section' ? (!showLibrary && !showTeamWorkspace && !onCustomPage && activeSection?.id === item.id) : (onCustomPage && item.id === activePageId) }"
                 :data-tour-id="item.type === 'section' ? `sidebar.${item.id}` : undefined"
-                @click="openNavigationItem(item)"
+                @click="openMobileNavigationItem(item)"
                 @contextmenu.prevent="item.type === 'page' && openContextMenu($event, item.page)"
               >
                 <i :class="item.icon"></i>
@@ -149,7 +156,7 @@
 
         <!-- Add page button -->
         <Tooltip text="Add page" position="right" width="auto" :disabled="railLabelsVisible">
-          <button class="cv-sb-add" data-tour-id="sidebar.add-page" @click="startAddPage">
+          <button class="cv-sb-add" data-tour-id="sidebar.add-page" @click="startMobileAddPage">
             <span class="cv-sb-add-icon">+</span>
             <span class="cv-sb-label" v-marquee>
               <span class="cv-sb-label-inner">New page</span>
@@ -168,7 +175,7 @@
               class="cv-sb-page"
               :class="{ active: !showLibrary && !showTeamWorkspace && !onCustomPage && activeSection && activeSection.id === section.id }"
               :data-tour-id="`sidebar.${section.id}`"
-              @click="navigateToSection(section)"
+              @click="navigateMobileSection(section)"
             >
               <i :class="section.icon"></i>
               <span class="cv-sb-label" v-marquee>
@@ -198,7 +205,7 @@
       </div>
 
       <!-- Main content area -->
-      <div class="cv-dashboard">
+      <div class="cv-dashboard" :inert="compactLayout && navigationOpen ? true : undefined">
         <!-- Persistent panel surfaces under the swapping screen: the frame
              each screen mounts is torn down on navigation, and for a frame or
              two nothing opaque covers this box (transparent under custom-bg).
@@ -320,6 +327,7 @@ import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
 import LibraryHome from './LibraryHome.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { useMobileOverlay } from '@/composables/useMobileOverlay.js';
 import PanelBackdrop from './PanelBackdrop.vue';
 import { screenHasFrame } from '@/views/Terminal/CenterPanel/screenRegistry.js';
 import { groupedNavigation, NAVIGATION_CHANGED_EVENT } from '@/services/navigationPreferences.js';
@@ -374,6 +382,15 @@ export default {
     const clock = ref('00:00:00');
     const modalInputRef = ref(null);
     const simpleModal = ref(null);
+    const isNarrowViewport = ref(window.matchMedia?.('(max-width: 800px)').matches ?? false);
+    const compactLayout = computed(() => isNarrowViewport.value);
+    const navigationElement = ref(null);
+    const { active: navigationOpen, open: openNavigation, close: closeMobileNavigation } = useMobileOverlay(compactLayout, () => navigationElement.value);
+    const openMobileNavigation = () => openNavigation('navigation');
+    function openMobileNavigationItem(item) { closeMobileNavigation({ restoreFocus: false }); openNavigationItem(item); }
+    function navigateMobileSection(section) { closeMobileNavigation({ restoreFocus: false }); navigateToSection(section); }
+    function startMobileAddPage() { closeMobileNavigation({ restoreFocus: false }); startAddPage(); }
+    watch(() => props.screenName, () => closeMobileNavigation({ restoreFocus: false }));
     let clockTimer = null;
 
     // Sidebar collapse/expand state (persisted to localStorage, expanded by default)
@@ -399,7 +416,7 @@ export default {
     // stylesheet), so the flag alone does not tell you whether a label is on
     // screen. Keep this in sync with that @media rule.
     const NARROW_RAIL_QUERY = '(max-width: 800px)';
-    const isNarrowViewport = ref(false);
+
     let narrowRailQuery = null;
     const syncNarrowViewport = (event) => {
       isNarrowViewport.value = event.matches;
@@ -416,7 +433,7 @@ export default {
     // because those differ: a narrow desktop window renders the icon strip
     // with the flag still true, and that is precisely the case that needs its
     // tooltips back.
-    const railLabelsVisible = computed(() => isSidebarExpanded.value && !isNarrowViewport.value);
+    const railLabelsVisible = computed(() => compactLayout.value ? !!navigationOpen.value : isSidebarExpanded.value && !isNarrowViewport.value);
 
     // Window controls
     const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -660,6 +677,7 @@ export default {
     function onGlobalKeydown(e) {
       // Esc pops one layer: Jump (handled by the palette itself) → inspector
       // selection → nothing. Never while typing in a field.
+      if (e.key === 'Escape' && compactLayout.value) return;
       if (e.key === 'Escape' && !store.getters['shell/jumpOpen'] && store.getters['shell/inspect']) {
         const tag = (e.target?.tagName || '').toLowerCase();
         if (!['input', 'textarea', 'select'].includes(tag) && !e.target?.isContentEditable) {
@@ -971,6 +989,8 @@ export default {
     });
 
     return {
+      compactLayout, navigationElement, navigationOpen, openMobileNavigation, closeMobileNavigation,
+      openMobileNavigationItem, navigateMobileSection, startMobileAddPage,
       isAuthenticated,
       primaryItems, primaryActive, openPrimary,
       selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
@@ -1047,6 +1067,23 @@ export default {
 
 .cv-personal-content{height:100%;min-height:0;display:flex;flex-direction:column}.cv-personal-content>*{flex:1;min-height:0}
 
+.cv-mobile-menu, .cv-mobile-nav-close { border: 0; background: transparent; color: var(--color-text); min-width: 44px; min-height: 44px; cursor: pointer; -webkit-app-region: no-drag; }
+.cv-mobile-nav-close { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; width: 100%; border-bottom: 1px solid var(--terminal-border-color); }
+.cv-nav-scrim { position: fixed; inset: 0; height: var(--app-height); border: 0; background: rgba(0,0,0,.5); z-index: 1200; }
+.cv-root.cv-compact .cv-sidebar { box-sizing: border-box; align-items: stretch; position: fixed; top: 0; left: 0; width: min(340px, 100%); min-width: 0; height: var(--app-height); z-index: 1201; background: var(--color-background); transform: translateX(-100%); visibility: hidden; }
+.cv-root.cv-compact .cv-sidebar.cv-navigation-open { transform: none; visibility: visible; }
+.cv-root.cv-compact .cv-sidebar.expanded .cv-sb-label, .cv-root.cv-compact .cv-sidebar .cv-sb-label, .cv-root.cv-compact .cv-sb-cap-text { display: block; opacity: 1; width: auto; }
+.cv-root.cv-compact .cv-sidebar.expanded .cv-sb-page, .cv-root.cv-compact .cv-sidebar.expanded .cv-sb-add { justify-content: flex-start; gap: 12px; min-height: 48px; padding: 8px 16px; }
+.cv-root.cv-compact .cv-sb-cap { display: block; height: auto; padding: 16px 16px 6px; }
+.cv-root.cv-compact .cv-sb-toggle { display: none; }
+.cv-root.cv-compact .cv-toolbar { height: auto; min-height: 52px; flex-wrap: wrap; padding: 0 6px; }
+.cv-root.cv-compact .cv-brand-logo { display: none; }
+.cv-root.cv-compact .cv-nav-panels { flex: 1; min-width: 0; overflow-x: auto; }
+.cv-root.cv-compact .cv-jump { position: static; transform: none; width: 44px; min-width: 44px; height: 44px; margin: 0; display: flex; justify-content: center; }
+.cv-root.cv-compact .cv-jump-text, .cv-root.cv-compact .cv-kbd, .cv-root.cv-compact .cv-clock { display: none; }
+.cv-root.cv-compact .cv-right { width: 100%; justify-content: flex-end; min-width: 0; flex-wrap: wrap; gap: 4px; }
+.cv-root.cv-compact .cv-global-model { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-root.cv-compact .cv-dashboard { min-width: 0; width: 100%; }
 .cv-root {
   display: flex;
   flex-direction: column;
