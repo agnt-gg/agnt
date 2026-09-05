@@ -10,7 +10,7 @@
      beside them. (v1 shipped a bespoke pane component. That was a mistake:
      it duplicated a system that already existed one directory over.) -->
 <template>
-  <div class="ws-root">
+  <div class="ws-root" :class="{ 'ws-compact': compact }">
     <!-- ══ workspace tabs ══ -->
     <div class="ws-tabbar">
       <div ref="tabStripRef" class="ws-tabs" :class="{ 'more-left': tabsMoreLeft, 'more-right': tabsMoreRight }" @scroll="updateTabOverflow">
@@ -25,7 +25,7 @@
             'drop-before': dropIndex === i,
             'drop-after': dropIndex === workspaces.length && i === workspaces.length - 1,
           }"
-          :draggable="renamingId !== ws.id"
+          :draggable="!compact && renamingId !== ws.id"
           @click="setActive(ws.id)"
           @dblclick="beginRename(ws)"
           @dragstart="onTabDragStart(ws, $event)"
@@ -46,6 +46,7 @@
           />
           <span v-else class="ws-tab-name">{{ ws.name }}</span>
           <span class="ws-count">{{ ws.widgets.length }}</span>
+          <button v-if="compact" class="ws-mobile-rename" :aria-label="'Rename workspace ' + ws.name" @click.stop="beginRename(ws)"><i class="fas fa-pen"></i></button>
           <button v-if="workspaces.length > 1" class="ws-tab-x" v-tooltip="'Close workspace'" @click.stop="onCloseWorkspace(ws)">
             <i class="fas fa-times"></i>
           </button>
@@ -273,7 +274,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, provide, onMounted, onActivated, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, provide, onMounted, onActivated, onBeforeUnmount, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import WidgetFrame from '@/canvas/WidgetFrame.vue';
@@ -298,6 +299,7 @@ export default {
   components: { WidgetFrame, CustomWidgetRenderer, EmbedScope, CustomSelect, SimpleModal },
   setup() {
     const store = useStore();
+    const compact = inject('isMobile', ref(false));
     const route = useRoute();
     const router = useRouter();
 
@@ -501,11 +503,13 @@ export default {
     };
 
     const onFrameDragEnd = ({ instanceId, col, row }) => {
+      if (compact.value) return;
       showGrid.value = false;
       updateWidgetGeometry(instanceId, { col, row });
     };
 
     const onFrameResizeEnd = ({ instanceId, cols, rows, col, row }) => {
+      if (compact.value) return;
       showGrid.value = false;
       // Restoring from maximised also returns a position; apply both so the
       // window lands where it was rather than at the maximised origin.
@@ -1246,6 +1250,7 @@ export default {
     });
 
     return {
+      compact,
       // workspace state
       workspaces,
       activeId,

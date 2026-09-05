@@ -126,6 +126,7 @@
               <div class="spinner"></div>
             </div>
             <div v-else class="conversation-container">
+              <div v-if="isMobile" class="mobile-conversation-heading"><strong>{{ $store.state.chat.savedOutputTitle || 'New conversation' }}</strong><small>{{ $store.state.chat.savedOutputTitle ? 'Saved' : 'New chat' }}</small></div>
               <!-- Group-chat roster: who's in this room (Annie is implicit) -->
               <div v-if="chatParticipants.length > 0" class="chat-roster">
                 <span class="chat-roster-label"><i class="fas fa-users"></i></span>

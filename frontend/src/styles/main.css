@@ -47,4 +47,7 @@
 /* Original CSS files to be migrated */
 @import '../base/css/main.css';
 
+/* One compact presentation of the existing screens; no alternate data layer. */
+@import './components/_compact-app.css';
+
 /* Component styles would be imported here as needed */

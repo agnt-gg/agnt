@@ -1,5 +1,5 @@
 <template>
-  <div id="canvas-container">
+  <div id="canvas-container" @pointerdown="onTouchStart" @pointermove="onTouchMove" @pointerup="onTouchEnd" @pointercancel="onTouchEnd" @lostpointercapture="onTouchEnd">
     <div
       id="canvas"
       class="tiny-nodes"
@@ -131,6 +131,7 @@ export default {
       // Media file drag state
       isCanvasDragHover: false,
       dragCounter: 0,
+      touchGesture: null,
     };
   },
   computed: {
@@ -336,6 +337,37 @@ export default {
       ];
 
       return validImageTypes.includes(file.type) || validVideoTypes.includes(file.type);
+    },
+    onTouchStart(e) {
+      if (e.pointerType === 'mouse' || this.touchGesture || e.target.closest('input,textarea,select,button,a,iframe,.connector')) return;
+      const nodeElement = e.target.closest('.node');
+      const index = nodeElement ? this.nodes.findIndex(n => n.id === nodeElement.dataset.id) : -1;
+      const node = this.nodes[index];
+      this.touchGesture = { pointerId:e.pointerId, index, x:e.clientX, y:e.clientY, offsetX:this.canvasOffsetX, offsetY:this.canvasOffsetY, nodeX:node?.x, nodeY:node?.y };
+      e.currentTarget.setPointerCapture?.(e.pointerId); e.preventDefault();
+    },
+    onTouchMove(e) {
+      const g = this.touchGesture; if (!g || g.pointerId !== e.pointerId) return;
+      const dx=e.clientX-g.x, dy=e.clientY-g.y;
+      g.moved = g.moved || Math.abs(dx) + Math.abs(dy) > 6;
+      if (g.index >= 0 && this.nodes[g.index]) { this.nodes[g.index].x=g.nodeX+dx/this.zoomLevel; this.nodes[g.index].y=g.nodeY+dy/this.zoomLevel; this.$emit('update-edges'); }
+      else { this.canvasOffsetX=g.offsetX+dx; this.canvasOffsetY=g.offsetY+dy; this.updateCanvasTransform(); }
+      e.preventDefault();
+    },
+    onTouchEnd(e) {
+      const gesture = this.touchGesture;
+      if (gesture?.pointerId !== e.pointerId) return;
+      this.touchGesture = null;
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+      if (!['pointercancel', 'lostpointercapture'].includes(e.type) && gesture.index >= 0 && !gesture.moved) this.$emit('select-node', gesture.index);
+    },
+    mobileZoom(delta) { this.zoomLevel=Math.max(.2,Math.min(2,this.zoomLevel+delta)); this.updateCanvasTransform(); },
+    fitMobileGraph() {
+      if(!this.nodes.length) return;
+      const host=this.$el.getBoundingClientRect();const minX=Math.min(...this.nodes.map(n=>n.x)), minY=Math.min(...this.nodes.map(n=>n.y));
+      const width=Math.max(...this.nodes.map(n=>n.x+this.nodeWidth))-minX+40,height=Math.max(...this.nodes.map(n=>n.y+100))-minY+40;
+      this.zoomLevel=Math.max(.2,Math.min(1,(host.width-24)/width,(host.height-24)/height));
+      this.canvasOffsetX=12-minX*this.zoomLevel;this.canvasOffsetY=12-minY*this.zoomLevel;this.updateCanvasTransform();
     },
     startDragging(e, index) {
       // Deselect edge immediately when starting to drag a node

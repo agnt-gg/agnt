@@ -1,7 +1,7 @@
 <template>
-  <div id="sidebar-wrapper" :class="{ closed: isClosed }">
+  <div id="sidebar-wrapper" :class="{ closed: compact ? !mobileOpen : isClosed }">
     <SimpleModal ref="simpleModal" />
-    <div id="sidebar" class="no-select" :class="{ closed: isClosed }">
+    <div id="sidebar" class="no-select" :class="{ closed: compact ? !mobileOpen : isClosed }">
       <button class="close-sidebar-button" @click="toggleSidebar" type="button">&lsaquo;</button>
       <div class="inner-sidebar">
         <input v-model="searchQuery" type="text" placeholder="Search tools..." class="search-input" />
@@ -20,6 +20,8 @@
             :data-plugin-name="node.pluginName || ''"
             :draggable="!isNodeLocked(node)"
             @dragstart="handleDragStart"
+            :role="compact ? 'button' : undefined" :tabindex="compact ? 0 : undefined"
+            @click="addByTap(node)" @keydown.enter="addByTap(node)"
           >
             <SvgIcon :name="node.icon" />
             <p>{{ node.title }}</p>
@@ -59,8 +61,12 @@ export default {
     SvgIcon,
     SimpleModal,
   },
-  setup() {
+  props: { mobileOpen: Boolean },
+  emits: ['mobile-close', 'add-node'],
+  setup(props, { emit }) {
     const store = useStore();
+    const compact = inject('isMobile', ref(false));
+    const addByTap = node => { if (!compact.value || isNodeLocked(node)) return; emit('add-node', node); emit('mobile-close'); };
     const playSound = inject('playSound', () => {});
     const isClosed = ref(localStorage.getItem('sidebarClosed') === 'true');
     const expandedSections = reactive({});
@@ -210,6 +216,7 @@ export default {
     };
 
     const toggleSidebar = () => {
+      if (compact.value) { emit('mobile-close'); return; }
       isClosed.value = !isClosed.value;
       localStorage.setItem('sidebarClosed', isClosed.value);
     };
@@ -255,6 +262,7 @@ export default {
     };
 
     return {
+      compact, addByTap,
       simpleModal,
       allTools,
       filteredTools,

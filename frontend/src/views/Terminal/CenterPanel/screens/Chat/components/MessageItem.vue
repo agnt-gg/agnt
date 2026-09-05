@@ -13,6 +13,7 @@
     >{{ emojiAvatar }}</div>
     <img v-else-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
     <div class="message-content">
+      <div v-if="message.role === 'assistant'" class="compact-speaker"><span>a</span>{{ message.agentName || 'Annie' }}</div>
       <div class="message-card">
         <!-- Edit mode for user messages -->
         <div v-if="isEditing" class="message-edit-container">

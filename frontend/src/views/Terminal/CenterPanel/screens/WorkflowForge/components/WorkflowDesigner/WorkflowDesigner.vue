@@ -2,7 +2,7 @@
   <div class="node-based-tool">
     <!-- <div class="scanline-overlay"></div> -->
     <!-- <LoadingOverlay v-if="isLoading" /> -->
-    <ToolSidebar></ToolSidebar>
+    <ToolSidebar :mobile-open="mobilePaletteOpen" @mobile-close="mobilePaletteOpen = false" @add-node="addMobileNode"></ToolSidebar>
     <div class="canvas-state-controls">
       <div id="workflow-name">{{ workflowName }}</div>
 
@@ -41,6 +41,13 @@
       />
     </div>
 
+    <nav v-if="compact" class="compact-workflow-controls" aria-label="Workflow touch controls"><button @click="mobilePaletteOpen = !mobilePaletteOpen">Add node</button><button @click="$refs.canvas.fitMobileGraph()">Fit graph</button><button @click="$refs.canvas.mobileZoom(-0.1)">Zoom −</button><button @click="$refs.canvas.mobileZoom(0.1)">Zoom +</button><button @click="mobileConnections = !mobileConnections">Connections</button></nav>
+    <form v-if="compact && mobileConnections" class="compact-connection-form" @submit.prevent="connectMobileNodes">
+      <label>From node<CustomSelect v-model="mobileFrom" :options="nodes.map(n => ({ label: n.text, value: n.id }))" placeholder="Select source" /></label>
+      <label>To node<CustomSelect v-model="mobileTo" :options="nodes.map(n => ({ label: n.text, value: n.id }))" placeholder="Select destination" /></label>
+      <button :disabled="!mobileFrom || !mobileTo || mobileFrom === mobileTo">Connect nodes</button>
+      <button v-for="edge in edges" :key="edge.id" type="button" @click="selectEdge(edge.id)">{{ nodes.find(n => n.id === edge.start.id)?.text }} → {{ nodes.find(n => n.id === edge.end.id)?.text }} · Edit</button>
+    </form>
     <CanvasViewControls :isTinyNodeMode="isTinyNodeMode" @toggle-tiny-node-mode="toggleTinyNodeMode" />
     <Canvas
       ref="canvas"
@@ -126,7 +133,8 @@
 
 <script>
 import { useRoute } from 'vue-router';
-import { ref, onMounted, watch, getCurrentInstance } from 'vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import { ref, onMounted, watch, getCurrentInstance, inject } from 'vue';
 import { useCleanup } from '@/composables/useCleanup';
 import { encrypt, decrypt } from '@/views/_utils/encryption.js';
 import ToolSidebar from './components/ToolSidebar/ToolSidebar.vue';
@@ -150,6 +158,7 @@ import AgentChat from './components/AgentChat/AgentChat.vue';
 export default {
   name: 'WorkflowDesignerView',
   components: {
+    CustomSelect,
     ToolSidebar,
     Canvas,
     WorkflowGenerator,
@@ -282,6 +291,15 @@ export default {
 
       // 3) Now simply call your existing save logic (no repeated prompt)
       await this.saveCanvasState(false, false);
+    },
+    addMobileNode(schema) {
+      this.createNode(schema, 180, 80 + this.nodes.length * 140);
+      this.$nextTick(() => { this.selectNode(this.nodes.length - 1); this.$refs.canvas?.fitMobileGraph(); });
+    },
+    connectMobileNodes() {
+      if (!this.mobileFrom || !this.mobileTo || this.mobileFrom === this.mobileTo) return;
+      this.createEdge({ nodeId: this.mobileFrom, type: 'output' }, { nodeId: this.mobileTo, type: 'input' });
+      this.mobileConnections = false;
     },
     createNode(data, x, y) {
       console.log('🔧 createNode called with data:', data);
@@ -2389,6 +2407,8 @@ export default {
   },
   setup() {
     const route = useRoute();
+    const compact = inject('isMobile', ref(false));
+    const mobilePaletteOpen = ref(false), mobileConnections = ref(false), mobileFrom = ref(''), mobileTo = ref('');
     const cleanup = useCleanup();
     const handleWorkflowGeneratorRef = ref(null);
     const pollWorkflowStatusRef = ref(null);
@@ -2699,6 +2719,7 @@ export default {
     );
 
     return {
+      compact, mobilePaletteOpen, mobileConnections, mobileFrom, mobileTo,
       tutorialConfig,
       startTutorial,
       onTutorialClose,

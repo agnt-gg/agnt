@@ -1,13 +1,14 @@
 <template>
   <main-area>
     <LoadingOverlay v-if="isLoading" />
-    <div class="docs-container">
+    <div class="docs-container" :class="{ 'docs-navigation-open': mobileContentsOpen }">
+      <button class="docs-mobile-toggle" type="button" :aria-expanded="mobileContentsOpen" @click="mobileContentsOpen = !mobileContentsOpen">{{ mobileContentsOpen ? 'Back to article' : 'Documentation contents' }}</button>
       <div class="sidebar">
         <div v-for="(docsList, type) in docsLists" :key="type" class="sidebar-section">
           <h3>{{ type.charAt(0).toUpperCase() + type.slice(1) }}</h3>
           <ul>
             <li v-for="doc in docsList" :key="doc.path">
-              <a href="#" @click.prevent="navigateTo(doc.path)">
+              <a href="#" @click.prevent="mobileContentsOpen = false; navigateTo(doc.path)">
                 {{ doc.title }}
               </a>
             </li>
@@ -79,6 +80,7 @@ export default {
     const router = useRouter();
     const cleanup = useCleanup();
     const docs = ref({});
+    const mobileContentsOpen = ref(false);
     const docsLists = ref({});
     const renderedContent = ref('');
     const contentWrapper = ref(null);
@@ -289,6 +291,7 @@ export default {
       }
     );
     return {
+      mobileContentsOpen,
       docsLists,
       renderedContent,
       navigateTo,

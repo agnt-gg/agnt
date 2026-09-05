@@ -6,7 +6,8 @@
     @panel-action="handlePanelAction"
   >
     <template #default>
-      <div class="ce-root">
+      <div class="ce-root" :class="{ 'ce-compact': isMobile, 'ce-show-editor': mobileFileView === 'editor' }">
+        <nav v-if="isMobile" class="ce-mobile-modes" aria-label="File view"><button :aria-pressed="mobileFileView === 'preview'" @click="mobileFileView = 'preview'">Preview</button><button :aria-pressed="mobileFileView === 'editor'" @click="mobileFileView = 'editor'">Source</button><button :disabled="!activeTab?.isDirty || isSaving" @click="saveActiveFile">Save</button></nav>
         <!-- Tab bar (full width) -->
         <div class="ce-tabs" v-if="openTabs.length > 0">
           <div class="ce-tabs-scroll" ref="tabsScrollRef" @wheel="handleTabsWheel">
@@ -39,7 +40,7 @@
         <!-- Body: editor + divider + preview -->
         <div class="ce-body" ref="bodyRef" :class="{ 'is-resizing': isResizing }">
           <!-- Editor half (toggled) -->
-          <template v-if="showCode">
+          <template v-if="showCode || isMobile">
             <div class="ce-editor-half" :style="{ width: editorWidth + '%' }">
               <!-- Info bar -->
               <div class="ce-info" v-if="activeTab">
@@ -90,7 +91,7 @@
               </span>
               <div class="ce-preview-actions">
                 <Tooltip :text="showCode ? 'Hide source' : 'Show source'">
-                  <button class="ce-preview-btn" :class="{ active: showCode }" @click="showCode = !showCode">
+                  <button class="ce-preview-btn" :class="{ active: showCode }" @click="isMobile ? mobileFileView = 'editor' : showCode = !showCode">
                     <i class="fas fa-code"></i>
                   </button>
                 </Tooltip>
@@ -364,6 +365,7 @@
 <script>
 import '@/styles/components/artifactMarkdown.css';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import { useSurfaceContribution, useSurfaceAddressing } from '@/canvas/surfaceFederation.js';
@@ -772,6 +774,8 @@ export default {
     const editorWidth = ref(50);
     const isResizing = ref(false);
     const showCode = ref(false);
+    const isMobile = inject('isMobile', ref(false));
+    const mobileFileView = ref('preview');
 
     // Preview console state
     const showConsole = ref(false);
@@ -2317,7 +2321,7 @@ export default {
       isSaving,
       editorWidth,
       isResizing,
-      showCode,
+      showCode, isMobile, mobileFileView,
       showConsole,
       consoleMessages,
       consoleFilter,

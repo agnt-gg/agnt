@@ -3,6 +3,8 @@
     <!-- ── TOOLBAR (top bar + titlebar) ── -->
     <div v-if="isAuthenticated" class="cv-toolbar">
       <button v-if="compactLayout" type="button" class="cv-mobile-menu" aria-label="Open navigation" :aria-expanded="!!navigationOpen" @click="openMobileNavigation"><i class="fas fa-bars"></i></button>
+      <div v-if="compactLayout" class="cv-mobile-identity"><small>AGNT / ONE</small><strong>{{ activePage?.name && onCustomPage ? activePage.name : (untabbedScreenLabel || activeSectionTabs.find(tab => tab.screen === screenName)?.label || activeSection?.label || 'AGNT') }}</strong></div>
+      <button v-if="compactLayout" class="cv-mobile-inspector" type="button" aria-label="Open page inspector" @click="requestMobileInspector"><i class="fas fa-info-circle"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
@@ -989,6 +991,7 @@ export default {
     });
 
     return {
+      requestMobileInspector: () => window.dispatchEvent(new CustomEvent('toggle-right-panel')),
       compactLayout, navigationElement, navigationOpen, openMobileNavigation, closeMobileNavigation,
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage,
       isAuthenticated,

@@ -3,10 +3,11 @@
     class="widget-frame"
     :class="{
       'is-dragging': isDragging,
-      'is-collapsed': widget.collapsed,
+      'is-collapsed': !compact && widget.collapsed,
       'is-maximized': isMaximized,
       'is-hidden': !widget.visible,
       'is-screen-widget': isScreenWidget && !isCustomPage,
+      'compact-widget': compact, 'compact-expanded': compactExpanded, 'compact-collapsed': compactCollapsed,
     }"
     :style="frameStyle"
     :data-instance-id="widget.instanceId"
@@ -23,16 +24,17 @@
       <span class="wf-icon"><i :class="widgetDef?.icon"></i></span>
       <span class="wf-title">{{ widgetDef?.name }}</span>
       <div class="wf-ctrl">
+        <button v-if="compact" :aria-label="compactExpanded ? 'Restore widget size' : 'Expand widget'" :aria-pressed="compactExpanded" @click.stop="compactExpanded = !compactExpanded"><i :class="compactExpanded ? 'fas fa-compress' : 'fas fa-expand'"></i></button>
         <Tooltip v-if="widgetDef?.isCustomWidget" text="Edit widget">
           <button @mousedown.stop @click="$emit('edit', widget)"><i class="fas fa-pen" style="font-size: 9px;"></i></button>
         </Tooltip>
-        <button @mousedown.stop @click="$emit('collapse', widget.instanceId)">{{ widget.collapsed ? '&#43;' : '&#9472;' }}</button>
+        <button @mousedown.stop @click="compact ? compactCollapsed = !compactCollapsed : $emit('collapse', widget.instanceId)">{{ (compact ? compactCollapsed : widget.collapsed) ? '&#43;' : '&#9472;' }}</button>
         <button @mousedown.stop @click="$emit('close', widget.instanceId)">&#10005;</button>
       </div>
     </div>
 
     <!-- Body / content -->
-    <div class="wf-body">
+    <div class="wf-body" :inert="compact && compactCollapsed ? true : undefined">
       <slot></slot>
     </div>
 
@@ -42,7 +44,7 @@
 </template>
 
 <script>
-import { ref, computed, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount, inject } from 'vue';
 import { gridToPixel, snapToGrid, snapSizeToGrid, clampToGrid, GRID_COLS, GRID_ROWS, GRID_GAP } from './gridUtils.js';
 import { getWidget, registryVersion } from './widgetRegistry.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -59,6 +61,9 @@ export default {
   emits: ['drag-start', 'drag-end', 'resize-start', 'resize-end', 'close', 'collapse', 'bring-to-front', 'edit'],
   setup(props, { emit }) {
     const frameRef = ref(null);
+    const compact = inject('isMobile', ref(false));
+    const compactExpanded = ref(false);
+    const compactCollapsed = ref(false);
     const isDragging = ref(false);
     const isMaximized = ref(false);
     let dragState = null;
@@ -77,6 +82,7 @@ export default {
     const showControls = computed(() => props.isCustomPage || !isScreenWidget.value);
 
     const frameStyle = computed(() => {
+      if (compact.value) return {};
       if (isMaximized.value) {
         return {
           left: GRID_GAP + 'px',
@@ -97,6 +103,7 @@ export default {
     });
 
     function bringToFront() {
+      if (compact.value) return;
       emit('bring-to-front', props.widget.instanceId);
     }
 
@@ -111,7 +118,7 @@ export default {
 
     // ── Drag ──
     function onDragStart(e) {
-      if (isMaximized.value) return;
+      if (compact.value || isMaximized.value) return;
 
       isDragging.value = true;
       blockIframes();
@@ -172,6 +179,7 @@ export default {
 
     // ── Resize ──
     function onResizeStart(e) {
+      if (compact.value) return;
       blockIframes();
       resizeState = {
         startX: e.clientX,
@@ -244,6 +252,7 @@ export default {
     });
 
     return {
+      compact, compactExpanded, compactCollapsed,
       frameRef,
       isDragging,
       isMaximized,

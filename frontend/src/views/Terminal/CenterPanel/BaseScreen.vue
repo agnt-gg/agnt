@@ -10,7 +10,7 @@
     <RateLimitBanner />
     <!-- <PromoBanner /> -->
 
-    <nav v-if="isMobile && !hidePanels" class="mobile-screen-actions" aria-label="Page panels">
+    <nav v-if="isMobile && !hidePanels && screenId !== 'ChatScreen'" class="mobile-screen-actions" aria-label="Page panels">
       <button v-if="leftPanelEnabled" type="button" data-mobile-panel="left" :aria-expanded="mobilePanel === 'left'" @click="openMobilePanel('left')"><i class="fas fa-comments"></i>{{ screenId === 'ChatScreen' ? 'Saved Chats' : 'Browse' }}</button>
       <button v-if="screenId === 'ChatScreen'" type="button" @click="mobileNewChat"><i class="fas fa-plus"></i>New chat</button>
       <button v-if="rightPanelEnabled" type="button" data-mobile-panel="right" :aria-expanded="mobilePanel === 'right'" @click="openMobilePanel('right')"><i class="fas fa-info-circle"></i>{{ screenId === 'ChatScreen' ? 'This chat' : 'Inspector' }}</button>
@@ -66,6 +66,11 @@
         <div class="scrollable-content">
           <slot :terminal-lines="terminalLines"></slot>
         </div>
+        <nav v-if="isMobile && screenId === 'ChatScreen' && !hidePanels" class="mobile-chat-navigation" aria-label="Conversation navigation">
+          <button type="button" data-mobile-panel="left" :aria-expanded="mobilePanel === 'left'" @click="openMobilePanel('left')"><i class="fas fa-comments"></i>Saved Chats</button>
+          <button type="button" @click="mobileNewChat"><i class="fas fa-plus"></i>New chat</button>
+          <button type="button" data-mobile-panel="right" :aria-expanded="mobilePanel === 'right'" @click="openMobilePanel('right')"><i class="fas fa-info-circle"></i>This chat</button>
+        </nav>
         <!-- Input line container -->
         <div class="input-container" :class="{ 'input-disabled': isInputDisabled }" v-if="showInputLine">
           <!-- The disconnected-provider notice used to sit here as a red
@@ -120,7 +125,7 @@
           </div>
 
           <!-- Input line with textarea and buttons on same row -->
-          <div class="terminal-line input-line" :class="{ 'is-expanded': isTextareaExpanded }">
+          <div class="terminal-line input-line" :class="{ 'is-expanded': isTextareaExpanded }" :data-mobile-composer="isMobile || undefined">
             <span v-if="showPrompt" class="prompt">> </span>
             <div class="input-highlight-container">
               <div class="input-backdrop" ref="inputBackdropRef">
@@ -443,6 +448,13 @@ export default {
     };
     const mobileNewChat = () => { closeMobilePanel({ restoreFocus: false }); emit('panel-action', 'new-chat'); };
     let screenActive = true;
+    // Existing screens pass their selected entity through panelProps. Present
+    // that same inspector on phones, without inventing a second selection store.
+    const mobileSelectionKey = computed(() => Object.entries(props.panelProps || {})
+      .filter(([key, value]) => /^selected/.test(key) && value != null)
+      .map(([key, value]) => key + ':' + (typeof value === 'object' ? value.id || value.name || value.text || '' : value)).join('|'));
+    watch(mobileSelectionKey, (key, previous) => { if (props.screenId !== 'AgentsScreen' && key && key !== previous && isMobile.value && screenActive) openMobilePanel('right'); });
+
     watch(() => props.conversationId, (id, previous) => { if (id !== previous) closeMobilePanel({ restoreFocus: false }); });
     watch(() => store.getters['shell/inspect'], target => { if (target && isMobile.value && screenActive && !insideWidgetCanvas) openPanel('right'); });
 
@@ -1195,6 +1207,7 @@ export default {
 
     // --- Left Panel Action Handler ---
     const handleLeftPanelAction = (action, payload) => {
+      if (isMobile.value && ['settings-nav','settings-goto','navigate','change-section','select-section','connectors-nav'].includes(action)) closeMobilePanel({ restoreFocus: false });
       if (action === 'close-left-panel') {
         if (isMobile.value) closeMobilePanel();
         else store.dispatch('theme/setShowLeftPanel', false);
