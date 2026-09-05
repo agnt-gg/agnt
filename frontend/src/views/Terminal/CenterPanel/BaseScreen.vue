@@ -1130,6 +1130,9 @@ export default {
         store.dispatch('theme/setShowLeftPanel', false);
         return;
       }
+      // Both panels use the same navigation contract: { screen, opts } must
+      // be unpacked before it reaches a screen's bare-string navigate handler.
+      if (action === 'navigate') return handlePanelAction(action, payload);
       // Always pass through to parent so screen-specific handlers run
       emit('panel-action', action, payload);
     };

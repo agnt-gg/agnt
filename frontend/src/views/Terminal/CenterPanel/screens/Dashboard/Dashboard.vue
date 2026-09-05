@@ -10,7 +10,7 @@
       :terminalLines="terminalLines"
       @submit-input="handleUserInputSubmit"
       @panel-action="handlePanelAction"
-      @screen-change="(screenName) => handleScreenChange(screenName)"
+      @screen-change="handleScreenChange"
       @base-mounted="initializeScreen"
     >
       <!-- Default slot content: Main content for the Dashboard -->
@@ -153,9 +153,9 @@ export default {
     const missionDetailsRef = ref(null);
     const scrollAnchorRef = ref(null);
 
-    // Add proper emit handling for screen change
-    const handleScreenChange = (screenName) => {
-      emit('screen-change', screenName);
+    // Preserve navigation presets (for example, Activity's running filter).
+    const handleScreenChange = (screenName, options) => {
+      emit('screen-change', screenName, options);
     };
 
     // Add this computed property
