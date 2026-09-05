@@ -1,50 +1,53 @@
 <template>
-  <!-- System overview — the dashboard's left panel. One glance: what is moving
-       right now, and how much of everything the account has. Every row is a
-       door to the screen that owns the number.
-
-       Counts come from the store modules the screens already load. The
-       dashboard is a legitimate first screen, though, so a module nobody has
-       opened yet would read zero forever — hydrate() fills only what is still
-       empty, and until that settles a zero renders as an em dash rather than
-       lying about an empty account. -->
+  <!-- Presentation only: every count retains its store binding and destination. -->
   <div class="sys-overview">
-    <div class="sys-head">
-      <span class="sys-cap">System</span>
+    <header class="sys-head">
+      <h2 class="sys-cap">System overview</h2>
       <span class="sys-live" :class="{ on: live.running > 0 }">
-        <i class="fas fa-circle"></i> {{ live.running }} running
+        <span class="sys-live-dot" aria-hidden="true"></span>{{ display(live.running) }} running
       </span>
-    </div>
+    </header>
 
-    <div class="sys-sec-title">Right now</div>
-    <div class="sys-cards">
-      <button
-        v-for="t in liveTiles"
-        :key="t.label"
-        type="button"
-        class="sys-card"
-        :class="{ 'is-hot': t.hot }"
-        @click="go(t.screen, t.opts)"
-      >
-        <span class="sys-card-v">{{ display(t.value) }}</span>
-        <span class="sys-card-l"><i :class="t.icon"></i>{{ t.label }}</span>
-      </button>
-    </div>
+    <section class="sys-status" aria-label="Right now">
+      <h3 class="sys-sec-title">Right now</h3>
+      <div class="sys-activities">
+        <button
+          v-for="tile in liveTiles"
+          :key="tile.label"
+          type="button"
+          class="sys-activity"
+          :class="{ 'is-hot': tile.hot }"
+          :aria-label="`${tile.label}: ${display(tile.value)}`"
+          @click="go(tile.screen, tile.opts)"
+        >
+          <span class="sys-activity-icon" aria-hidden="true"><i :class="tile.icon"></i></span>
+          <span class="sys-activity-label">{{ tile.label }}</span>
+          <span class="sys-activity-value">{{ display(tile.value) }}</span>
+          <i class="fas fa-chevron-right sys-arrow" aria-hidden="true"></i>
+        </button>
+      </div>
+    </section>
 
-    <div class="sys-sec-title">Inventory</div>
-    <div class="sys-rows">
-      <button
-        v-for="t in inventoryTiles"
-        :key="t.label"
-        type="button"
-        class="sys-row"
-        @click="go(t.screen, t.opts)"
-      >
-        <i class="sys-row-i" :class="t.icon"></i>
-        <span class="sys-row-l">{{ t.label }}</span>
-        <span class="sys-row-v" :class="{ 'is-empty': isEmpty(t.value) }">{{ display(t.value) }}</span>
-      </button>
-    </div>
+    <section class="sys-inventory" aria-label="Inventory">
+      <h3 class="sys-sec-title">Inventory</h3>
+      <div class="sys-grid">
+        <button
+          v-for="tile in inventoryTiles"
+          :key="tile.label"
+          type="button"
+          class="sys-tile"
+          :class="{ 'sys-tile--wide': tile.screen === 'ConnectorsScreen' }"
+          :aria-label="`${tile.label}: ${display(tile.value)}${tile.screen === 'ConnectorsScreen' ? ' healthy / total' : ''}`"
+          @click="go(tile.screen, tile.opts)"
+        >
+          <span class="sys-tile-icon" aria-hidden="true"><i :class="tile.icon"></i></span>
+          <span class="sys-tile-value" :class="{ 'is-empty': isEmpty(tile.value) }">{{ display(tile.value) }}</span>
+          <span class="sys-tile-label">{{ tile.label }}</span>
+          <span v-if="tile.screen === 'ConnectorsScreen'" class="sys-tile-detail">Healthy / total</span>
+          <i class="fas fa-chevron-right sys-arrow" aria-hidden="true"></i>
+        </button>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -167,160 +170,252 @@ export default {
 .sys-overview {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 14px;
+  min-height: 0;
+  min-width: 0;
   height: 100%;
+  padding: 4px 2px 12px;
+  box-sizing: border-box;
   overflow: hidden auto;
   scrollbar-width: thin;
+  color: var(--color-text);
+  container-type: inline-size;
 }
 .sys-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--terminal-border-color);
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px;
 }
 .sys-cap {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 .sys-live {
-  font-size: 11px;
-  color: var(--color-text-muted);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-.sys-live i {
-  font-size: 7px;
+  padding: 4px 7px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 20px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 .sys-live.on {
-  color: var(--color-green);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.08);
+  border-color: rgba(var(--primary-rgb), 0.22);
 }
-.sys-live.on i {
-  animation: sys-pulse 1.4s ease-in-out infinite;
-}
-@keyframes sys-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+.sys-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
 }
 .sys-sec-title {
-  margin-top: 2px;
+  margin: 0;
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.1em;
+  line-height: 1.4;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  opacity: 0.75;
 }
-
-/* Right now — three cards, because these are the numbers worth a glance.
-   Labels wrap rather than truncate; the panel is narrow and "Goals executing"
-   has to survive it. */
-.sys-cards {
+.sys-status {
+  flex: none;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: var(--color-darker-0);
+}
+.sys-status > .sys-sec-title {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+.sys-activities {
+  padding: 4px;
+}
+.sys-activity,
+.sys-tile {
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.sys-activity {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: 26px minmax(0, 1fr) auto 8px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
 }
-.sys-card {
+.sys-activity-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--color-darker-0);
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.sys-activity-label {
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.sys-activity-value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.sys-activity.is-hot .sys-activity-icon {
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-primary);
+}
+.sys-activity.is-hot .sys-activity-value {
+  color: var(--color-primary);
+}
+.sys-inventory {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  gap: 10px;
+  flex: none;
+}
+.sys-inventory > .sys-sec-title {
+  padding: 0 2px;
+}
+.sys-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sys-tile {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-areas: 'icon value' 'label arrow';
+  align-items: center;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
   padding: 10px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  background: transparent;
-  color: var(--color-text);
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  background: var(--color-darker-0);
 }
-.sys-card:hover {
-  border-color: var(--color-primary);
+.sys-tile-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(var(--primary-rgb), 0.12);
+  border-radius: 6px;
+  background: rgba(var(--primary-rgb), 0.07);
+  color: var(--color-primary);
+  font-size: 10px;
+}
+.sys-tile-value {
+  grid-area: value;
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  font-size: clamp(16px, 7cqi, 22px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.sys-tile-value.is-empty {
+  color: var(--color-text-muted);
+}
+.sys-tile-label {
+  grid-area: label;
+  grid-column: 1 / -1;
+  padding-right: 14px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.sys-arrow {
+  color: var(--color-text-muted);
+  font-size: 8px;
+  transition: color 150ms ease;
+}
+.sys-tile > .sys-arrow {
+  grid-area: arrow;
+  align-self: center;
+  justify-self: end;
+}
+.sys-tile--wide {
+  grid-column: 1 / -1;
+  grid-template-columns: 22px minmax(0, 1fr) auto 8px;
+  grid-template-areas: 'icon label value arrow' 'icon detail value arrow';
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 3px;
+}
+.sys-tile--wide .sys-tile-label {
+  grid-column: 2;
+  padding: 0;
+  color: var(--color-text);
+}
+.sys-tile--wide .sys-tile-value {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.sys-tile-detail {
+  grid-area: detail;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.sys-activity:hover,
+.sys-tile:hover {
+  border-color: rgba(var(--primary-rgb), 0.4);
   background: rgba(var(--primary-rgb), 0.06);
 }
-.sys-card-v {
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.sys-card-l {
-  font-size: 10px;
-  line-height: 1.3;
-  color: var(--color-text-muted);
-}
-.sys-card-l i {
-  margin-right: 4px;
-  opacity: 0.7;
-}
-.sys-card.is-hot {
-  border-color: rgba(var(--primary-rgb), 0.5);
-  background: rgba(var(--primary-rgb), 0.08);
-}
-.sys-card.is-hot .sys-card-v {
+.sys-activity:hover .sys-arrow,
+.sys-tile:hover .sys-arrow {
   color: var(--color-primary);
 }
-
-/* Inventory — one row per thing. A grid of boxes made twelve equal-weight
-   numbers compete and clipped their own labels; a list reads top to bottom,
-   right-aligns the numbers into a column the eye can scan, and never
-   truncates. */
-.sys-rows {
-  display: flex;
-  flex-direction: column;
+.sys-activity:focus-visible,
+.sys-tile:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
-.sys-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+/* Match the resizable panel, not the viewport. At its narrowest, use rows
+   rather than shrinking or truncating the labels and exact counts. */
+@container (max-width: 225px) {
+  .sys-grid { grid-template-columns: minmax(0, 1fr); }
+  .sys-tile {
+    grid-template-columns: 22px minmax(0, 1fr) auto 8px;
+    grid-template-areas: 'icon label value arrow';
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+  }
+  .sys-tile-value { font-size: 18px; margin: 0; }
+  .sys-tile-label { grid-column: 2; padding: 0; }
+  .sys-tile--wide { grid-template-areas: 'icon label value arrow' 'icon detail value arrow'; }
 }
-.sys-row + .sys-row {
-  border-top: 1px solid var(--terminal-border-color);
-  border-radius: 0;
-}
-.sys-row:hover {
-  background: rgba(var(--primary-rgb), 0.08);
-  color: var(--color-primary);
-}
-.sys-row-i {
-  width: 14px;
-  font-size: 11px;
-  text-align: center;
-  color: var(--color-text-muted);
-  flex: none;
-}
-.sys-row:hover .sys-row-i {
-  color: var(--color-primary);
-}
-.sys-row-l {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sys-row-v {
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  flex: none;
-}
-.sys-row-v.is-empty {
-  color: var(--color-text-muted);
-  font-weight: 400;
+@media (prefers-reduced-motion: reduce) {
+  .sys-activity, .sys-tile, .sys-arrow { transition: none; }
 }
 </style>
