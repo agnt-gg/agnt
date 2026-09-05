@@ -15,11 +15,12 @@
           v-model:activeFilters="activeFilters"
           v-model:sortBy="sortBy"
           :goals="allGoals || []"
+          @create-goal="showCreateModal = true"
         />
 
         <!-- Loading skeleton -->
         <div v-if="isLoading && (!allGoals || allGoals.length === 0)" class="kanban-board">
-          <div v-for="i in 4" :key="'skeleton-' + i" class="kanban-column">
+          <div v-for="i in 5" :key="'skeleton-' + i" class="kanban-column">
             <div class="column-header">
               <div class="skeleton-block" style="height: 16px; width: 70px"></div>
               <div class="skeleton-block" style="height: 16px; width: 30px; border-radius: 12px"></div>
@@ -49,72 +50,25 @@
         </div>
 
         <div v-else class="kanban-board fade-in" @click.self="deselectGoal">
-          <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']">
+          <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']" :data-stage="column.id">
             <div class="column-header" :style="{ borderTopColor: column.color }">
-              <h3>
-                <i :class="column.icon" :style="{ color: column.color }"></i>
-                {{ column.title }}
-              </h3>
+              <div class="column-heading">
+                <h3>
+                  <i :class="column.icon" :style="{ color: column.color }"></i>
+                  {{ column.title }}
+                </h3>
+                <p class="column-description">{{ column.description }}</p>
+              </div>
               <div class="column-header-right">
-                <Tooltip v-if="column.id === 'planning'" text="Create new goal (N)">
-                  <button class="add-goal-btn" @click="showCreateModal = true">
+                <Tooltip v-if="column.id === 'todo'" text="Create new goal (N)">
+                  <button type="button" class="add-goal-btn" aria-label="New goal" @click="showCreateModal = true">
                     <i class="fas fa-plus"></i>
                   </button>
                 </Tooltip>
-                <span
-                  class="column-count"
-                  :class="{
-                    'at-limit': column.wipLimit && column.goals.length >= column.wipLimit,
-                    'over-limit': column.wipLimit && column.goals.length > column.wipLimit,
-                  }"
-                >
-                  {{ column.goals.length }}<span v-if="column.wipLimit" class="wip-limit"> / {{ column.wipLimit }}</span>
-                </span>
+                <span class="column-count">{{ column.goals.length }}</span>
               </div>
             </div>
 
-            <!-- Done column has sub-sections for success vs failure -->
-            <template v-if="column.id === 'done'">
-              <div class="column-content done-column-content" @click.self="deselectGoal">
-                <div v-if="doneSuccessGoals.length > 0" class="done-sub-list">
-                  <GoalCard
-                    v-for="element in doneSuccessGoals"
-                    :key="element.id"
-                    :goal="element"
-                    :isSelected="selectedGoalId === element.id"
-                    :liveIteration="getLiveIteration(element.id)"
-                    @click="handleGoalClick"
-                    @pause="pauseGoal"
-                    @resume="resumeGoal"
-                    @delete="deleteGoal"
-                    @schedule="openScheduleModal"
-                  />
-                </div>
-
-                <div v-if="doneFailureGoals.length > 0" class="done-section-label failure"><i class="fas fa-times-circle"></i> Failed</div>
-                <div v-if="doneFailureGoals.length > 0" class="done-sub-list">
-                  <GoalCard
-                    v-for="element in doneFailureGoals"
-                    :key="element.id"
-                    :goal="element"
-                    :isSelected="selectedGoalId === element.id"
-                    :liveIteration="getLiveIteration(element.id)"
-                    @click="handleGoalClick"
-                    @pause="pauseGoal"
-                    @resume="resumeGoal"
-                    @delete="deleteGoal"
-                    @schedule="openScheduleModal"
-                  />
-                </div>
-
-                <div v-if="column.goals.length === 0" class="empty-column">
-                  <div class="empty-icon">{{ getEmptyIcon(column.id) }}</div>
-                  <div class="empty-text">{{ getEmptyText(column.id) }}</div>
-                </div>
-              </div>
-            </template>
-
-            <template v-else>
               <div class="column-content" @click.self="deselectGoal">
                 <GoalCard
                   v-for="element in column.goals"
@@ -131,12 +85,14 @@
                 <div v-if="column.goals.length === 0" class="empty-column">
                   <div class="empty-icon">{{ getEmptyIcon(column.id) }}</div>
                   <div class="empty-text">{{ getEmptyText(column.id) }}</div>
-                  <button v-if="column.id === 'planning'" @click="showCreateModal = true" class="empty-cta">
+                  <button v-if="column.id === 'todo'" @click="showCreateModal = true" class="empty-cta">
                     <i class="fas fa-plus"></i> Create your first goal
                   </button>
                 </div>
+                <button v-if="column.id === 'todo' && column.goals.length > 0" type="button" class="empty-cta" @click="showCreateModal = true">
+                  <i class="fas fa-plus"></i> Add an idea or link
+                </button>
               </div>
-            </template>
           </div>
         </div>
       </div>
@@ -206,7 +162,7 @@
                 <div class="label-row">
                   <label class="modal-label">Priority</label>
                   <Tooltip
-                    text="Higher priority surfaces the goal earlier in the Planning column and biases the scheduler to pick it up sooner."
+                    text="Use the Priority sort to surface higher-priority goals first."
                     width="260px"
                   >
                     <i class="fas fa-info-circle info-icon"></i>
@@ -239,7 +195,7 @@
                 <div class="label-row">
                   <label class="modal-label">Schedule <span class="optional">(optional)</span></label>
                   <Tooltip
-                    text="Run this goal on a recurring schedule. 'Run once' fires immediately; 'Interval' repeats on a fixed cadence; 'Specific time' fires at a chosen time on chosen days."
+                    text="Run this goal on a recurring schedule. 'No schedule' creates a plan without starting execution; 'Interval' repeats on a fixed cadence; 'Specific time' fires at a chosen time on chosen days."
                     width="300px"
                   >
                     <i class="fas fa-info-circle info-icon"></i>
@@ -251,7 +207,7 @@
                     :class="['schedule-tab', { active: scheduleType === 'none' }]"
                     @click="scheduleType = 'none'"
                   >
-                    Run once
+                    No schedule
                   </button>
                   <button
                     type="button"
@@ -321,8 +277,8 @@
                   "
                 >
                   <i v-if="isCreatingGoal" class="fas fa-spinner fa-spin"></i>
-                  <i v-else :class="scheduleType !== 'none' ? 'fas fa-clock' : 'fas fa-rocket'"></i>
-                  {{ isCreatingGoal ? 'Creating...' : scheduleType !== 'none' ? 'Create & Schedule' : 'Create & Run' }}
+                  <i v-else :class="scheduleType !== 'none' ? 'fas fa-clock' : 'fas fa-file-alt'"></i>
+                  {{ isCreatingGoal ? 'Creating...' : scheduleType !== 'none' ? 'Create & Schedule' : 'Create plan' }}
                 </button>
               </div>
             </div>
@@ -360,9 +316,7 @@ import ScheduleGoalModal from './components/ScheduleGoalModal.vue';
 // now hosted inside the screen so the board and the detail share one surface.
 import GoalsPanel from '@/views/Terminal/RightPanel/types/GoalsPanel/GoalsPanel.vue';
 
-// Status sets shared across column filtering
-const DONE_SUCCESS = ['completed', 'validated'];
-const DONE_FAILURE = ['failed', 'error', 'stopped'];
+import { GOAL_COLUMNS, getGoalStage, matchesGoalFilter } from './goalBoard.js';
 
 // Schedule options — mirrors the Timer Trigger tool's UX (Interval or
 // Specific Time + Days) so users see the same vocabulary they already know
@@ -438,7 +392,7 @@ export default {
         completed: 'fas fa-check',
         failed: 'fas fa-times',
         stopped: 'fas fa-stop',
-        review: 'fas fa-eye',
+        needs_review: 'fas fa-eye',
       })[String(status || '').toLowerCase()] || 'fas fa-bullseye';
 
     // Schedule a goal
@@ -553,12 +507,7 @@ export default {
 
       if (activeFilters.value.length > 0) {
         goals = goals.filter((g) => {
-          // "completed" chip covers validated; "failed" chip covers error/stopped;
-          // "planning" chip also covers review-rejected `queued` goals.
-          if (activeFilters.value.includes('completed') && DONE_SUCCESS.includes(g.status)) return true;
-          if (activeFilters.value.includes('failed') && DONE_FAILURE.includes(g.status)) return true;
-          if (activeFilters.value.includes('planning') && g.status === 'queued') return true;
-          return activeFilters.value.includes(g.status);
+          return activeFilters.value.some((filter) => matchesGoalFilter(g, filter));
         });
       }
 
@@ -578,52 +527,10 @@ export default {
       return goals;
     });
 
-    const columns = computed(() => {
-      const goals = filteredGoals.value;
-      return [
-        {
-          id: 'planning',
-          // Review-rejected goals come back from the backend as `queued`; show them
-          // here so they stay visible even though the dedicated Queued column is gone.
-          title: 'Planning',
-          icon: 'fas fa-lightbulb',
-          color: 'var(--color-violet)',
-          statuses: ['planning', 'queued'],
-          goals: goals.filter((g) => g.status === 'planning' || g.status === 'queued'),
-          wipLimit: 10,
-        },
-        {
-          id: 'done',
-          title: 'Done',
-          icon: 'fas fa-check-circle',
-          color: 'var(--color-green)',
-          statuses: [...DONE_SUCCESS, ...DONE_FAILURE],
-          goals: goals.filter((g) => [...DONE_SUCCESS, ...DONE_FAILURE].includes(g.status)),
-          wipLimit: null,
-        },
-        {
-          id: 'active',
-          title: 'Active',
-          icon: 'fas fa-cog',
-          color: 'var(--color-green)',
-          statuses: ['executing', 'paused'],
-          goals: goals.filter((g) => ['executing', 'paused'].includes(g.status)),
-          wipLimit: 6,
-        },
-        {
-          id: 'review',
-          title: 'Needs Review',
-          icon: 'fas fa-exclamation-triangle',
-          color: 'var(--color-orange)',
-          statuses: ['needs_review'],
-          goals: goals.filter((g) => g.status === 'needs_review'),
-          wipLimit: 10,
-        },
-      ];
-    });
-
-    const doneSuccessGoals = computed(() => filteredGoals.value.filter((g) => DONE_SUCCESS.includes(g.status)));
-    const doneFailureGoals = computed(() => filteredGoals.value.filter((g) => DONE_FAILURE.includes(g.status)));
+    const columns = computed(() => GOAL_COLUMNS.map((column) => ({
+      ...column,
+      goals: filteredGoals.value.filter((goal) => getGoalStage(goal) === column.id),
+    })));
 
     // Navigation intents carried in the URL (AGNT One): ?new=1 opens the
     // composer (Traces' "New goal", Dashboard quick action, ⌘K); ?select=goal:ID
@@ -801,17 +708,19 @@ export default {
 
     const getEmptyIcon = (columnId) =>
       ({
-        planning: '💡',
-        active: '🚀',
-        review: '⚠️',
+        todo: '💡',
+        plan: '📋',
+        build: '🚀',
+        review: '👀',
         done: '🏆',
       })[columnId] || '📋';
 
     const getEmptyText = (columnId) =>
       ({
-        planning: 'No goals being planned',
-        active: 'No active executions',
-        review: 'Nothing needs review',
+        todo: 'No incoming ideas yet',
+        plan: 'No plans to review',
+        build: 'No work in progress',
+        review: 'No results to review',
         done: 'No completed goals yet',
       })[columnId] || 'No goals';
 
@@ -900,8 +809,6 @@ export default {
       simpleModal,
       terminalLines,
       columns,
-      doneSuccessGoals,
-      doneFailureGoals,
       initializeScreen,
       handleGoalClick,
       scheduleModalGoal,
@@ -1058,8 +965,8 @@ body[data-page='terminal-goals'] .scrollable-content {
 }
 
 .kanban-column {
-  flex: 1 1 220px;
-  min-width: 220px;
+  flex: 1 0 200px;
+  min-width: 200px;
   flex-shrink: 0;
   background: transparent;
   border: 1px solid var(--terminal-border-color);
@@ -1091,6 +998,17 @@ body[data-page='terminal-goals'] .scrollable-content {
   gap: 8px;
 }
 
+.column-heading {
+  min-width: 0;
+}
+
+.column-description {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.72em;
+  line-height: 1.4;
+}
+
 .column-header-right {
   display: flex;
   align-items: center;
@@ -1101,8 +1019,8 @@ body[data-page='terminal-goals'] .scrollable-content {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;

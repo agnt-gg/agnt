@@ -211,8 +211,10 @@
         <!-- Needs review actions -->
         <template v-if="selectedGoal.status === 'needs_review'">
           <button class="action-button edit" @click="reviewOutputs"><i class="fas fa-file-alt"></i> Review Outputs</button>
-          <button class="action-button start" @click="approveGoal"><i class="fas fa-check"></i> Approve</button>
-          <button class="action-button" @click="showRejectModal = true"><i class="fas fa-comment-dots"></i> Send Feedback</button>
+          <button class="action-button start" @click="approveGoal" :disabled="isStartingAutonomous">
+            <i class="fas fa-check"></i> {{ boardStage === 'plan' ? 'Approve plan & build' : 'Accept result' }}
+          </button>
+          <button class="action-button" @click="showRejectModal = true"><i class="fas fa-comment-dots"></i> {{ boardStage === 'plan' ? 'Send feedback & retry' : 'Request changes' }}</button>
           <button class="action-button" @click="startAutonomous" :disabled="isStartingAutonomous">
             <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-redo'"></i>
             {{ isStartingAutonomous ? 'Starting...' : 'Retry' }}
@@ -223,7 +225,7 @@
         <template v-else-if="canStartAutonomous">
           <button class="action-button start" @click="startAutonomous" :disabled="isStartingAutonomous">
             <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-infinity'"></i>
-            {{ isStartingAutonomous ? 'Starting...' : 'Start Autonomous' }}
+            {{ isStartingAutonomous ? 'Starting...' : boardStage === 'plan' ? 'Approve plan & build' : 'Start build' }}
           </button>
           <button class="action-button" @click="executeSinglePass"><i class="fas fa-play"></i> Execute Once</button>
         </template>
@@ -301,6 +303,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import BoundedJson from '@/components/common/BoundedJson.vue';
 import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
+import { getGoalStage } from '@/views/Terminal/CenterPanel/screens/Goals/goalBoard.js';
 
 const mdConverter = new showdown.Converter({
   tables: true,
@@ -451,6 +454,8 @@ export default {
       return store.getters['goals/getLiveIteration'](selectedGoal.value.id);
     });
 
+    const boardStage = computed(() => getGoalStage(selectedGoal.value || {}));
+
     const canStartAutonomous = computed(() => {
       if (!selectedGoal.value) return false;
       const s = selectedGoal.value.status;
@@ -494,13 +499,13 @@ export default {
     const approveGoal = async () => {
       if (!selectedGoal.value) return;
       try {
-        await store.dispatch('goals/reviewGoal', {
+        const result = await store.dispatch('goals/reviewGoal', {
           goalId: selectedGoal.value.id,
           action: 'approve',
         });
         emit('panel-action', 'show-feedback', {
           type: 'success',
-          message: 'Goal approved and validated',
+          message: result.message || (result.status === 'validated' ? 'Result accepted' : 'Plan approved; execution started'),
         });
       } catch (error) {
         emit('panel-action', 'show-feedback', {
@@ -848,6 +853,7 @@ ${goal.tasks
       // AGI Loop
       goalIterations,
       liveIteration,
+      boardStage,
       canStartAutonomous,
       isGoalDone,
       isStartingAutonomous,

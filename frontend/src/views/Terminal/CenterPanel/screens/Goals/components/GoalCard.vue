@@ -39,6 +39,17 @@
         </div>
       </div>
 
+      <BaseButton
+        type="button"
+        class="card-primary-action"
+        :variant="boardColumn.decision ? 'primary' : 'secondary'"
+        :aria-label="`${boardColumn.action}: ${goal.title || 'Untitled goal'}`"
+        @click.stop="$emit('click', goal)"
+      >
+        {{ boardColumn.action }}
+        <i v-if="boardColumn.decision" class="fas fa-arrow-right" aria-hidden="true"></i>
+      </BaseButton>
+
       <div class="card-footer">
         <span class="task-count">
           <i class="fas fa-tasks"></i>
@@ -81,6 +92,8 @@ import { computed } from 'vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { serverAge } from '@/utils/serverTime.js';
+import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import { getGoalColumn } from '../goalBoard.js';
 
 const AGING_THRESHOLDS = {
   warning: 24 * 60 * 60 * 1000,
@@ -92,7 +105,7 @@ const TERMINAL_STATUSES = ['completed', 'validated', 'failed', 'error', 'stopped
 
 export default {
   name: 'GoalCard',
-  components: { Tooltip },
+  components: { Tooltip, BaseButton },
   props: {
     goal: { type: Object, required: true },
     isSelected: { type: Boolean, default: false },
@@ -102,6 +115,7 @@ export default {
   emits: ['click', 'pause', 'resume', 'delete', 'schedule'],
   setup(props) {
     const store = useStore();
+    const boardColumn = computed(() => getGoalColumn(props.goal));
     const priority = computed(() => (props.goal.priority || 'medium').toLowerCase());
     const scheduleCount = computed(() => {
       const fn = store.getters['schedules/schedulesForGoal'];
@@ -189,6 +203,7 @@ export default {
     };
 
     return {
+      boardColumn,
       priority,
       scheduleCount,
       agingClass,
@@ -240,6 +255,16 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.card-primary-action {
+  min-height: 36px;
+  padding: 8px;
+  font-size: 0.85em;
+}
+
+.card-primary-action.secondary {
+  border-radius: var(--border-radius-sm);
 }
 
 .card-meta-row {

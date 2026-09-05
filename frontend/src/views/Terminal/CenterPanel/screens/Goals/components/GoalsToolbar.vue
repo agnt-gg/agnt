@@ -6,6 +6,7 @@
         ref="searchRef"
         :value="searchQuery"
         placeholder="Search goals..."
+        aria-label="Search goals"
         @input="onSearchInput"
       />
       <kbd v-if="!searchQuery">/</kbd>
@@ -17,6 +18,7 @@
         :key="filter.value"
         class="filter-chip"
         :class="{ active: activeFilters.includes(filter.value) }"
+        :aria-pressed="activeFilters.includes(filter.value)"
         @click="toggleFilter(filter.value)"
       >
         <span class="chip-dot" :class="filter.value"></span>
@@ -45,40 +47,40 @@
       ]"
       @update:model-value="$emit('update:sortBy', $event)"
     />
+    <BaseButton type="button" class="new-goal-button" @click="$emit('create-goal')">
+      <i class="fas fa-plus" aria-hidden="true"></i> New goal
+    </BaseButton>
   </div>
 </template>
 
 <script>
 import { ref, computed } from 'vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import { GOAL_COLUMNS, getGoalStage, needsGoalReview } from '../goalBoard.js';
 
 export default {
   name: 'GoalsToolbar',
-  components: { CustomSelect },
+  components: { CustomSelect, BaseButton },
   props: {
     searchQuery: { type: String, default: '' },
     activeFilters: { type: Array, default: () => [] },
     sortBy: { type: String, default: 'created_desc' },
     goals: { type: Array, default: () => [] },
   },
-  emits: ['update:searchQuery', 'update:activeFilters', 'update:sortBy'],
+  emits: ['update:searchQuery', 'update:activeFilters', 'update:sortBy', 'create-goal'],
   setup(props, { emit }) {
     const searchRef = ref(null);
 
     const statusFilters = computed(() => {
-      const counts = props.goals.reduce((acc, g) => {
-        acc[g.status] = (acc[g.status] || 0) + 1;
-        return acc;
+      const counts = props.goals.reduce((counts, goal) => {
+        const stage = getGoalStage(goal);
+        counts[stage] = (counts[stage] || 0) + 1;
+        return counts;
       }, {});
       return [
-        // Rejected-review goals come back as `queued`; bundle them into Planning
-        // since the dedicated Queued column was removed.
-        { label: 'Planning', value: 'planning', count: (counts.planning || 0) + (counts.queued || 0) },
-        { label: 'Executing', value: 'executing', count: counts.executing || 0 },
-        { label: 'Paused', value: 'paused', count: counts.paused || 0 },
-        { label: 'Review', value: 'needs_review', count: counts.needs_review || 0 },
-        { label: 'Done', value: 'completed', count: (counts.completed || 0) + (counts.validated || 0) },
-        { label: 'Failed', value: 'failed', count: (counts.failed || 0) + (counts.error || 0) + (counts.stopped || 0) },
+        { label: 'Needs my review', value: 'attention', count: props.goals.filter(needsGoalReview).length },
+        ...GOAL_COLUMNS.map((column) => ({ label: column.title, value: column.id, count: counts[column.id] || 0 })),
       ];
     });
 
@@ -202,13 +204,11 @@ export default {
   border-radius: 50%;
   background: var(--color-text-muted);
 }
-.chip-dot.planning { background: var(--color-violet); }
-.chip-dot.queued { background: var(--color-indigo); }
-.chip-dot.executing { background: var(--color-green); }
-.chip-dot.paused { background: var(--color-yellow); }
-.chip-dot.needs_review { background: var(--color-orange); }
-.chip-dot.completed { background: var(--color-green); }
-.chip-dot.failed { background: var(--color-red); }
+.chip-dot.attention { background: var(--color-primary); }
+.chip-dot.plan { background: var(--color-violet); }
+.chip-dot.build { background: var(--color-green); }
+.chip-dot.review { background: var(--color-orange); }
+.chip-dot.done { background: var(--color-green); }
 
 .chip-count {
   background: var(--color-darker-2);
@@ -224,6 +224,13 @@ export default {
 .clear-chip {
   color: var(--color-red);
   border-color: rgba(var(--red-rgb), 0.3);
+}
+
+.new-goal-button {
+  width: auto;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 0.85em;
 }
 
 .sort-select {
