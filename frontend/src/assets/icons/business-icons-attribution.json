@@ -102,9 +102,9 @@
   },
   {
     "provider": "typeform",
-    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/typeform.svg",
+    "source": "https://raw.githubusercontent.com/gilbarbara/logos/main/logos/typeform-icon.svg",
     "license": "Simple Icons CC0; trademarks remain their owners",
-    "modification": "Standalone typeform-icon from gilbarbara/logos"
+    "modification": "Solid adaptation of sourced Typeform mark: retained outer silhouette and transparent T; removed inner outline contour."
   },
   {
     "provider": "jotform",
