@@ -22,6 +22,8 @@
       /> -->
 
       <div class="tools-panel">
+<MobileCollection v-if="mobileView" view-id="tools" title="Tools" count-label="tools" :items="filteredTools" :search="searchQuery" :tabs="tabs" :active="activeTab" :selected-id="selectedTool?.id" create-label="Create tool" icon="fas fa-wrench" @update:search="handleSearch" @tab="selectTab" @select="selectTool" @create="handlePanelAction('navigate', 'ToolForgeScreen')"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button></template></MobileCollection>
+<div v-show="!mobileView" class="desktop-view-container">
         <!-- Header bar -->
         <ScreenToolbar
           title="TOOLS"
@@ -290,6 +292,8 @@
             </div>
           </main>
         </div>
+
+</div>
       </div>
     </template>
   </BaseScreen>
@@ -302,6 +306,7 @@
 import { ref, onMounted, onUnmounted, nextTick, computed, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseCardGrid from '../../../_components/BaseCardGrid/BaseCardGrid.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
@@ -325,9 +330,10 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
+  components: { BaseScreen, MobileCollection, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
   emits: ['screen-change'],
   setup(props, { emit }) {
+    const mobileView = inject('isMobile', ref(false));
     // Initialize tutorial
     const { tutorialConfig, startTutorial, onTutorialClose, initializeToolsTutorial } = useToolsTutorial();
 
@@ -649,7 +655,7 @@ export default {
 
     // --- Methods ---
     const onContentClick = (e) => {
-      if (!e.target.closest('.tool-card, .wm-list-row')) {
+      if (!e.target.closest('.tool-card, .wm-list-row, .m-collection')) {
         selectedTool.value = null;
       }
     };
@@ -951,6 +957,7 @@ export default {
     });
 
     return {
+      mobileView,
       baseScreenRef,
       terminalLines,
       filteredTools,

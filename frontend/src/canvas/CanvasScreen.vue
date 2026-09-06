@@ -11,6 +11,8 @@
       <div class="cv-nav-panels">
         <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : workspaceLabel }}</span></template>
         <template v-else-if="onCustomPage && activePage">
+      <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
+        <template v-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
         <template v-else-if="untabbedScreenLabel">

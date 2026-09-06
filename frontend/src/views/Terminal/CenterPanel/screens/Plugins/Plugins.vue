@@ -26,7 +26,7 @@
       <!-- Click-away clears the selection, which is what closes the detail
            panel on the right. Carried over from Connectors unchanged. -->
       <div class="plugins-content" @click="handlePluginAreaClick">
-        <div class="content-header">
+        <div v-if="!mobileView" class="content-header">
           <h2 class="content-title">My Plugins</h2>
           <p class="content-subtitle">
             Extend AGNT with community plugins. Install tools like Discord, Slack, GitHub and more without bloating your app.
@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, inject, watch } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -51,8 +51,10 @@ import PluginManager from '../Connectors/components/Plugins.vue';
 
 const emit = defineEmits(['screen-change']);
 const store = useStore();
+const mobileView = inject('isMobile', ref(false));
 const baseScreenRef = ref(null);
 const modalRef = ref(null);
+watch(() => store.getters['connectors/selectedPlugin'], plugin => { if (mobileView.value && plugin) baseScreenRef.value?.openMobilePanel('right'); });
 
 // The right panel is ConnectorsPanel in both states: a selected plugin shows
 // its detail; nothing selected shows the plugins summary (context: 'plugins').
@@ -65,7 +67,7 @@ async function showAlert(title, message) {
 
 function handlePluginAreaClick(event) {
   // Anything that is not a plugin card deselects, closing the right panel.
-  if (!event.target.closest('.plugin-card')) {
+  if (!event.target.closest('.plugin-card, .m-collection')) {
     store.dispatch('connectors/selectPlugin', null);
   }
 }

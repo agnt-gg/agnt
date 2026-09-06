@@ -24,6 +24,15 @@
       /> -->
 
       <div class="workflows-panel" @click="onContentClick">
+<MobileCollection v-if="mobileView" view-id="workflows" title="Workflows" count-label="workflows" :items="mobileWorkflows" :search="searchQuery" :tabs="tabs" :active="activeTab" :selected-id="selectedWorkflowId" create-label="Create workflow" icon="fas fa-project-diagram" @update:search="handleSearch" @tab="selectTab" @select="handleWorkflowClick" @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="triggerWorkflowImport">Import</button><button :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button></template></MobileCollection>
+<input
+              ref="workflowImportInput"
+              type="file"
+              accept="application/json,.json"
+              style="display: none"
+              @change="handleWorkflowImportFile"
+            />
+<div v-show="!mobileView" class="desktop-view-container">
         <!-- Header bar -->
         <ScreenToolbar
           title="WORKFLOWS"
@@ -59,13 +68,7 @@
                 <i class="fas fa-file-export"></i>
               </button>
             </Tooltip>
-            <input
-              ref="workflowImportInput"
-              type="file"
-              accept="application/json,.json"
-              style="display: none"
-              @change="handleWorkflowImportFile"
-            />
+
           </template>
         </ScreenToolbar>
 
@@ -296,6 +299,8 @@
             </div>
           </main>
         </div>
+
+</div>
       </div>
     </template>
   </BaseScreen>
@@ -310,6 +315,7 @@ import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -324,9 +330,10 @@ import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
+  components: { BaseScreen, MobileCollection, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
   emits: ['screen-change'],
   setup(props, { emit }) {
+    const mobileView = inject('isMobile', ref(false));
     const store = useStore();
     const route = useRoute();
     const cleanup = useCleanup();
@@ -471,6 +478,10 @@ export default {
       return workflows;
     });
 
+    const mobileWorkflows = computed(() => {
+      const query = searchQuery.value.trim().toLowerCase();
+      return filteredWorkflows.value.filter(w => !query || [w.name,w.title,w.description,w.status,w.category].some(v => String(v || '').toLowerCase().includes(query)));
+    });
     // Add this computed property after the existing computed properties
     const categoriesWithCounts = computed(() => {
       const categories = store.getters['workflows/workflowCategories'] || [];
@@ -658,7 +669,7 @@ export default {
     const setInputDisabled = (disabled) => baseScreenRef.value?.setInputDisabled(disabled);
 
     const onContentClick = (e) => {
-      if (!e.target.closest('.workflow-card, .table-row, .screen-toolbar, .wm-tabs')) {
+      if (!e.target.closest('.workflow-card, .table-row, .screen-toolbar, .wm-tabs, .m-collection')) {
         selectedWorkflowId.value = null;
       }
     };
@@ -1241,6 +1252,7 @@ export default {
     };
 
     return {
+      mobileView, mobileWorkflows,
       baseScreenRef,
       simpleModalRef,
       terminalLines,

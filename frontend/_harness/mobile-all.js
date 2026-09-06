@@ -26,12 +26,15 @@ const tools=[{id:'tool-1',name:'Feedback summary',title:'Feedback summary',descr
 const workflow={id:'workflow-1',name:'Morning briefing',description:'Prepare a verified morning briefing.',category:'Research',status:'stopped',updated_at:new Date(now).toISOString(),nodes:[{id:'n1',type:'trigger-timer',text:'Timer',x:40,y:40,category:'trigger',parameters:{fireOnStart:'Yes',scheduleType:'Interval',schedule:'Daily'}}],edges:[]};
 const goals=[{id:'goal-1',title:'Weekly briefing',description:'Write an attributed weekly report.',status:'planning',priority:'high',progress:0,tasks:[{id:'task-1',title:'Verify sources',description:'Check source dates',status:'pending',progress:0}],created_at:new Date(now).toISOString(),updated_at:new Date(now).toISOString()}];
 const skills=[{id:'skill-1',name:'Source verification',description:'Verify source dates and attribution.',instructions:'Read the primary source and record its date.',category:'research',source:'user',created_at:new Date(now).toISOString()}];
+const listings=[{id:'listing-1',asset_id:'agent-1',asset_type:'agent',name:'Research assistant',title:'Research assistant',description:'Primary-source research with explicit verification and approval.',category:'Research',price:0,rating:4.8,downloads:12,publisher_pseudonym:'Research team',version:'1.0.0',tags:['research'],requirements:'Web search'}];
+const plugins=[{name:'browser-tools',displayName:'Browser tools',description:'Navigate and inspect web pages.',version:'1.0.0',author:'AGNT',trustTier:'verified',tools:[{type:'browser',schema:{title:'Browser'}}]}];
 const widgets=[{id:'widget-1',name:'Activity feed',description:'Recent work',widget_type:'html',source_code:'<h2>Recent activity</h2><p>Briefing ready.</p>',icon:'fas fa-list',category:'custom',default_size:{cols:4,rows:3},min_size:{cols:2,rows:2}}];
 const fixtureSchemas={triggers:[{type:'trigger-timer',title:'Timer Trigger',category:'trigger',icon:'clock',parameters:{fireOnStart:{type:'string',inputType:'select',options:['Yes','No'],default:'Yes'},scheduleType:{type:'string',inputType:'select',options:['Interval','Specific Time'],default:'Interval'},schedule:{type:'string',inputType:'select',options:['Daily','Hourly'],default:'Daily'}}}],actions:[{type:'web-search',title:'Web Search',category:'action',icon:'search',parameters:{query:{type:'string',default:''}},outputs:{result:{type:'string'}}}],utilities:[],widgets:[],controls:[],custom:[]};
 function allScreenAnswer(p,method,body){
  if(p.endsWith('/executions/activity'))return [];
  if(p.includes('/ledger/summary'))return {calls:1,totalCost:0.02,estimatedCost:0.02,inputTokens:1200,outputTokens:140,cachedInputTokens:0};
  if(p.includes('/ledger/breakdown'))return {rows:[]};
+ if(p.endsWith('/agents/agent-1')&&method==='PUT'){const patch=typeof body==='string'?JSON.parse(body):body;Object.assign(agents[0],patch);return {agent:agents[0],success:true};}
  if(p.includes('/agents/')||p.endsWith('/agents'))return p.endsWith('/agent-1')?agents[0]:{agents};
  if(p.includes('workflow-tools'))return fixtureSchemas;
  if(p.includes('/custom-tools')||p.includes('/orchestrator/tools'))return {tools};
@@ -41,15 +44,18 @@ function allScreenAnswer(p,method,body){
  if(p.includes('/memories')||p.includes('/memory'))return {memories:[{id:'mem-1',agent_id:'agent-1',memory_type:'preference',content:'Keep source links in the report.',created_at:new Date(now).toISOString()}]};
  if(p.includes('/experiments/datasets'))return {datasets:[{id:'dataset-1',name:'Research examples',source:'synthetic',item_count:20}]};
  if(p.includes('/experiments'))return {experiments:[{id:'experiment-1',name:'Source dates',type:'ab_test',status:'completed',hypothesis:'Explicit dates improve attribution'}]};
- if(p.includes('/insights'))return {insights:[],stats:{}};
+ if(p.includes('/insights'))return {insights:[{id:'insight-1',title:'Verify source dates',description:'Include source publication dates in reports.',target_type:'agent',target_id:'agent-1',category:'prompt_refinement',status:'pending',confidence:0.9,evidence:{runs:3},created_at:new Date(now).toISOString()}],stats:{}};
  if(p.includes('/widget-definitions'))return {widgets};
  if(p.includes('/workspaces'))return {workspaces:[]};
  if(p.includes('/filesystem/settings'))return {workspaceRoot:'/projects',defaultWorkspaceRoot:'/projects'};
  if(p.includes('/filesystem/tree'))return {items:[{name:'briefing.md',path:'briefing.md',type:'file',isDirectory:false}],root:'/projects'};
  if(p.includes('/filesystem/file'))return {path:'briefing.md',name:'briefing.md',content:'# Briefing\nPrimary sources verified.',extension:'.md',mimeType:'text/markdown',size:38};
+ if(p.endsWith('/executions'))return [{id:'exec-1',workflowId:'workflow-1',workflowName:'Morning briefing',status:'completed',startTime:new Date(now-60000).toISOString(),endTime:new Date(now).toISOString(),nodeCount:2}];
+ if(p.endsWith('/executions/agents/list'))return [];
+ if(p.endsWith('/executions/exec-1'))return {id:'exec-1',workflowId:'workflow-1',workflowName:'Morning briefing',status:'completed',startTime:new Date(now-60000).toISOString(),endTime:new Date(now).toISOString(),nodeExecutions:[],logs:[]};
  if(p.includes('/executions')&&!p.includes('/conversation/'))return {executions:[],runs:[],pagination:{page:1,pageSize:20,total:0}};
- if(p.includes('/marketplace'))return {items:[],workflows:[],plugins:[],purchases:[],earnings:[],stats:{},sales:[]};
- if(p.includes('/plugins'))return {success:true,plugins:[]};
+ if(p.includes('/marketplace'))return {items:listings,workflows:listings,plugins,purchases:[],earnings:[],stats:{},sales:[]};
+ if(p.includes('/plugins'))return {success:true,plugins};
  if(p.includes('/mcp'))return {success:true,servers:[],tools:[],resources:[],prompts:[]};
  if(p.includes('/security-policy'))return {policy:{mode:'balanced',outputScanning:'report',categoryOverrides:{},ruleOverrides:{}},rules:[],balancedRuleDefaults:{}};
  if(p.includes('/autonomy')||p.includes('/schedules')||p.includes('/contracts')||p.includes('/mutations'))return {schedules:[],contracts:[],mutations:[],escalations:[],policy:{enabled:false,allowedCategories:[]}};
@@ -58,7 +64,7 @@ function allScreenAnswer(p,method,body){
 
 function answer(url, method='GET', body) {
   const p=new URL(url,location.origin).pathname;
-  requests.push({path:p,method});
+  requests.push({path:p,method,body: typeof body==='string' ? body : JSON.stringify(body)});
   const scoped=allScreenAnswer(p,method,body);if(scoped!==null)return scoped;
   if(p.includes('/executions/conversation/'))return {executionsCount:1,latest:{tokenUsage:{inputTokens:1200,outputTokens:140},estimatedCost:0.02},cumulative:{inputTokens:1200,outputTokens:140,totalTokens:1340,estimatedCost:0.02}};
   if(p.endsWith('/content-outputs/save'))return {id:'one',output:outputs[0]};

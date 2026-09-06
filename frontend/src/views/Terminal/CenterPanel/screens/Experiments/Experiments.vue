@@ -10,7 +10,7 @@
   >
     <template #default>
       <div class="experiments-screen">
-        <ScreenToolbar
+        <ScreenToolbar v-show="!mobileView"
           title="EVOLUTION"
           :count="activeViewCount"
           :countLabel="activeView"
@@ -53,7 +53,7 @@
           <div class="tab-sep"></div>
 
           <!-- Insight filter tabs -->
-          <div v-if="activeView === 'insights'" class="status-tabs">
+          <div v-if="!mobileView && activeView === 'insights'" class="status-tabs">
             <button
               v-for="tab in insightStatusTabs"
               :key="tab.value"
@@ -77,7 +77,7 @@
           </div>
 
           <!-- Status filter tabs (experiments view) -->
-          <div v-if="activeView === 'experiments'" class="status-tabs">
+          <div v-if="!mobileView && activeView === 'experiments'" class="status-tabs">
             <button
               v-for="tab in statusTabs"
               :key="tab.value"
@@ -91,7 +91,7 @@
           </div>
 
           <!-- Source filter tabs (datasets view) -->
-          <div v-if="activeView === 'datasets'" class="status-tabs">
+          <div v-if="!mobileView && activeView === 'datasets'" class="status-tabs">
             <button
               v-for="tab in sourceTabs"
               :key="tab.value"
@@ -105,7 +105,7 @@
           </div>
         </div>
 
-        <!-- ═══ INSIGHTS VIEW ═══ -->
+<MobileCollection v-if="mobileView" :view-id="'improvements-' + activeView" :title="activeView === 'insights' ? 'Insights' : activeView === 'experiments' ? 'Experiments' : 'Evaluation datasets'" :count-label="activeView" :tabs="activeView === 'insights' ? insightStatusTabs : activeView === 'experiments' ? statusTabs : sourceTabs" :active="activeView === 'insights' ? activeInsightStatus : activeView === 'experiments' ? activeStatusTab : activeSourceTab" @tab="activeView === 'insights' ? activeInsightStatus = $event : activeView === 'experiments' ? activeStatusTab = $event : activeSourceTab = $event" :items="activeView === 'insights' ? filteredInsights : activeView === 'experiments' ? filteredExperiments : filteredDatasets" v-model:search="searchQuery" :create-label="createLabel" icon="fas fa-flask" @select="activeView === 'insights' ? selectInsight($event) : activeView === 'experiments' ? selectExperiment($event) : selectDataset($event)" @create="handleCreate"><template #actions><button @click="openSettings">Evolution Settings</button><template v-if="activeView === 'insights'"><button v-for="tab in insightTargetTabs" :key="tab.value" :aria-pressed="activeInsightTarget === tab.value" @click="activeInsightTarget = tab.value">{{ tab.label }}</button></template></template></MobileCollection><div v-show="!mobileView" class="desktop-view-container">        <!-- ═══ INSIGHTS VIEW ═══ -->
         <template v-if="activeView === 'insights'">
           <!-- Stats bar -->
           <div v-if="insightStats" class="insights-stats-bar">
@@ -310,7 +310,7 @@
             </div>
           </div>
         </template>
-      </div>
+</div>      </div>
 
       <!-- ═══ NEW EXPERIMENT MODAL ═══ -->
       <Teleport to="body">
@@ -544,10 +544,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch , inject } from 'vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -558,6 +559,7 @@ import DatasetCard from '../EvalDatasets/_components/DatasetCard.vue';
 import { handleSystemNav } from '../systemNav.js';
 
 const store = useStore();
+const mobileView = inject('isMobile', ref(false));
 const route = useRoute();
 const router = useRouter();
 const emit = defineEmits(['screen-change']);

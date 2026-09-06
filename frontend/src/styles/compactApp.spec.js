@@ -12,6 +12,7 @@ describe('whole-app compact presentation boundaries', () => {
  it('keeps every visual adaptation inside the existing compact breakpoint', () => {
   root.walkRules(rule => {
    if (['.compact-speaker', '.docs-mobile-toggle'].includes(rule.selector)) return;
+   if (rule.selector === '.desktop-view-container,.mobile-section-body') { expect(rule.nodes).toHaveLength(1); expect(rule.nodes[0].prop).toBe('display'); expect(rule.nodes[0].value).toBe('contents'); return; }
    let parent=rule.parent;while(parent && !(parent.type==='atrule' && parent.name==='media'))parent=parent.parent;
    expect(parent?.params, rule.selector).toMatch(/max-width:\s*800px/);
   });

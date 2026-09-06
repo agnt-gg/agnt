@@ -10,6 +10,9 @@
     @base-mounted="initializeScreen"
   >
     <template #default>
+      <MobileDirectory v-if="mobileView" v-show="mobileDirectoryOpen" title="Apps" view-id="apps" :groups="appsDirectory" @select="mobileSelectSection" />
+      <div v-show="!mobileView || !mobileDirectoryOpen" class="mobile-section-body">
+      <button v-if="mobileView" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Apps</button>
       <!-- Providers Section -->
       <div v-if="activeSection === 'providers'" class="connectors-content">
         <div class="content-header">
@@ -809,6 +812,7 @@
         </div>
       </div>
 
+      </div>
       <SimpleModal ref="modalRef" />
       <Popup v-if="popup.show" :show="popup.show" :type="popup.type" :message="popup.message" :icon="popup.icon" @close="popup.show = false" />
 
@@ -819,7 +823,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted , inject } from 'vue';
 import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
@@ -827,6 +831,8 @@ import {
   isTrustedOAuthMessageOrigin,
   hasOAuthMessagePayload,
 } from '@/utils/oauthMessageOrigin.js';
+import MobileDirectory from '@/mobile/MobileDirectory.vue';
+import { appsDirectory } from '@/mobile/sectionDirectories.js';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import BaseForm from '../../../_components/BaseForm.vue';
@@ -854,7 +860,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'ConnectorsScreen',
-  components: {
+  components: { MobileDirectory,
     BaseScreen,
     BaseTable,
     BaseForm,
@@ -880,6 +886,10 @@ export default {
     const route = useRoute();
     const router = useRouter();
     const baseScreenRef = ref(null);
+    const mobileView = inject('isMobile', ref(false));
+    const mobileDirectoryOpen = ref(!route?.query?.section);
+    const mobileSelectSection = item => { mobileDirectoryOpen.value = false; setInnerSection(item.id); showSection(item.id); };
+
 
     // Fan a provider-changed event to other tabs via the local backend's
     // socket broadcast. Same-tab refresh is handled by the forceRefresh
@@ -899,6 +909,7 @@ export default {
     // Opens on the first row of the panel's nav. It was 'plugins' until that
     // view left for its own screen.
     const activeSection = ref('oauth');
+    watch(() => route?.query?.section, section => { if (section) mobileDirectoryOpen.value = false; });
     const searchQuery = ref('');
     const selectedSecret = ref(null);
     const form = ref({
@@ -1823,6 +1834,7 @@ export default {
       } else if (action === 'cancel') {
         resetForm();
       } else if (action === 'connectors-nav') {
+        mobileDirectoryOpen.value = false;
         // Publish to the shared value so the sidebar highlight follows the
         // in-screen nav; the watcher above applies it.
         setInnerSection(payload);
@@ -2451,7 +2463,7 @@ export default {
     }
 
 
-    return {
+    return { mobileView, mobileDirectoryOpen, mobileSelectSection, appsDirectory,
       baseScreenRef,
       activeRightPanel,
       showAlert,

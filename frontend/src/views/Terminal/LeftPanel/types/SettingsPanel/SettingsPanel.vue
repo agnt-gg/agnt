@@ -126,47 +126,24 @@
 </template>
 
 <script>
+import { settingsDirectory } from '@/mobile/sectionDirectories.js';
 import { toRefs } from 'vue';
 
 // `screen` present → the row navigates to a whole screen rather than swapping
 // the Settings body. Everything else is a Settings section id, matching the
 // `activeSection === '…'` branches in Settings.vue.
-const GENERAL_ITEMS = Object.freeze([
-  { id: 'providers', icon: 'fas fa-robot', label: 'AI Provider' },
-  { id: 'billing', icon: 'fas fa-wallet', label: 'Billing' },
-  { id: 'profile', icon: 'fas fa-user', label: 'Profile' },
-  { id: 'referrals', icon: 'fas fa-users', label: 'Referrals' },
-  { id: 'api-keys', icon: 'fas fa-key', label: 'API Key' },
-]);
+const GENERAL_ITEMS = settingsDirectory[0].items;
 
 // Memory is a tab of the Agents row (it is a property of an agent). What
 // stays behind the gear is what you decide once about the machine: what she
 // may do without asking, and how she improves herself.
-const ASSISTANT_ITEMS = Object.freeze([
-  { id: 'autonomy', icon: 'fas fa-user-shield', label: 'Approvals', screen: 'AutonomyScreen' },
-  { id: 'evolution', icon: 'fas fa-dna', label: 'Improvements', screen: 'ExperimentsScreen' },
-]);
+const ASSISTANT_ITEMS = settingsDirectory[1].items;
 
-const CONFIG_ITEMS = Object.freeze([
-  { id: 'navigation', icon: 'fas fa-bars', label: 'Navigation' },
-  { id: 'phone-access', icon: 'fas fa-mobile-alt', label: 'Remote Access' },
-  { id: 'connection', icon: 'fas fa-server', label: 'Remote Backend' },
-  { id: 'security', icon: 'fas fa-shield-alt', label: 'Security' },
-  { id: 'theme', icon: 'fas fa-palette', label: 'Theme' },
-  { id: 'sounds', icon: 'fas fa-volume-up', label: 'Sounds' },
-  { id: 'notifications', icon: 'fas fa-bell', label: 'Notifications' },
-  { id: 'tours', icon: 'fas fa-route', label: 'Tours' },
-]);
+const CONFIG_ITEMS = settingsDirectory[2].items;
 
-const DATA_ITEMS = Object.freeze([
-  { id: 'backup', icon: 'fas fa-database', label: 'Backup & Export' },
-  { id: 'reset', icon: 'fas fa-undo', label: 'Reset' },
-]);
+const DATA_ITEMS = settingsDirectory[3].items;
 
-const ABOUT_ITEMS = Object.freeze([
-  { id: 'about', icon: 'fas fa-info-circle', label: 'About & Resources' },
-  { id: 'leaderboard', icon: 'fas fa-trophy', label: 'Leaderboard' },
-]);
+const ABOUT_ITEMS = settingsDirectory[4].items;
 
 const LOGOUT_ITEM = Object.freeze({ id: 'general', icon: 'fas fa-sign-out-alt', label: 'Logout' });
 

@@ -6,8 +6,9 @@
     @panel-action="handlePanelAction"
   >
     <template #default>
-      <div class="ce-root" :class="{ 'ce-compact': isMobile, 'ce-show-editor': mobileFileView === 'editor' }">
-        <nav v-if="isMobile" class="ce-mobile-modes" aria-label="File view"><button :aria-pressed="mobileFileView === 'preview'" @click="mobileFileView = 'preview'">Preview</button><button :aria-pressed="mobileFileView === 'editor'" @click="mobileFileView = 'editor'">Source</button><button :disabled="!activeTab?.isDirty || isSaving" @click="saveActiveFile">Save</button></nav>
+      <MobileFileBrowser v-if="isMobile" v-show="mobileFileBrowserOpen" @open="mobileOpenFile" @manage="baseScreenRef.openMobilePanel('right')" />
+      <div v-show="!isMobile || !mobileFileBrowserOpen" class="ce-root" :class="{ 'ce-compact': isMobile, 'ce-show-editor': mobileFileView === 'editor' }">
+        <nav v-if="isMobile" class="ce-mobile-modes" aria-label="File view"><button aria-label="Back to files" @click="mobileFileBrowserOpen = true">Files</button><button :aria-pressed="mobileFileView === 'preview'" @click="mobileFileView = 'preview'">Preview</button><button :aria-pressed="mobileFileView === 'editor'" @click="mobileFileView = 'editor'">Source</button><button :disabled="!activeTab?.isDirty || isSaving" @click="saveActiveFile">Save</button></nav>
         <!-- Tab bar (full width) -->
         <div class="ce-tabs" v-if="openTabs.length > 0">
           <div class="ce-tabs-scroll" ref="tabsScrollRef" @wheel="handleTabsWheel">
@@ -377,6 +378,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import showdown from 'showdown';
 import 'highlight.js/styles/atom-one-dark.css';
 import draggable from 'vuedraggable';
+import MobileFileBrowser from '@/mobile/MobileFileBrowser.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, getSettings, saveFile } from '@/services/fileSystemService.js';
@@ -748,7 +750,7 @@ function parseDelimited(content, delimiter) {
 
 export default {
   name: 'ArtifactsScreen',
-  components: { BaseScreen, Codemirror, Tooltip, draggable },
+  components: { BaseScreen, MobileFileBrowser, Codemirror, Tooltip, draggable },
   emits: ['screen-change'],
   setup(_, { emit }) {
     const baseScreenRef = ref(null);
@@ -776,6 +778,9 @@ export default {
     const showCode = ref(false);
     const isMobile = inject('isMobile', ref(false));
     const mobileFileView = ref('preview');
+    const mobileFileBrowserOpen = ref(true);
+    const mobileOpenFile = filePath => { mobileFileBrowserOpen.value = false; openFile(filePath); };
+    watch(activeTabPath, path => { if(path) mobileFileBrowserOpen.value = false; });
 
     // Preview console state
     const showConsole = ref(false);
@@ -2185,6 +2190,7 @@ export default {
     const handlePanelAction = (action, data) => {
       if (action === 'open-file' && data?.path) {
         openFile(data.path);
+        if (isMobile.value) baseScreenRef.value?.closeMobilePanel({ restoreFocus: false });
       } else if (action === 'file-renamed' && data?.oldPath && data?.newPath) {
         const tab = openTabs.value.find((t) => t.path === data.oldPath);
         if (tab) {
@@ -2321,7 +2327,7 @@ export default {
       isSaving,
       editorWidth,
       isResizing,
-      showCode, isMobile, mobileFileView,
+      showCode, isMobile, mobileFileView, mobileFileBrowserOpen, mobileOpenFile,
       showConsole,
       consoleMessages,
       consoleFilter,

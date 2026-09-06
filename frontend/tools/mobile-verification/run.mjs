@@ -16,7 +16,7 @@ await build({ configFile: false, root: frontendRoot, base: '/', publicDir: path.
   target: 'esnext', copyPublicDir: false, outDir: path.join(evidence, 'bundle'), emptyOutDir: false,
   rollupOptions: { input: { all: path.join(frontendRoot, '_harness/mobile-all.html'), chat: path.join(frontendRoot, '_harness/mobile.html') } },
 } });
-for (const script of ['matrix.mjs', 'journeys.mjs', 'nested.mjs', 'docs.mjs']) {
+for (const script of ['matrix.mjs', 'reference.mjs', 'journeys.mjs', 'nested.mjs', 'docs.mjs', 'chat.mjs']) {
   const result = spawnSync(process.execPath, [new URL(script, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')], { cwd: frontendRoot, stdio: 'inherit', env: process.env, timeout: 300000 });
   if (result.error) throw result.error;
   if (result.status !== 0) throw Error(script + ' failed with exit code ' + result.status);

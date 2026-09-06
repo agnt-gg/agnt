@@ -10,6 +10,8 @@
   >
     <template #default>
       <div class="memory-screen">
+<MobileCollection v-if="mobileView" view-id="memory" title="Memory" count-label="memories" :items="filteredMemories" v-model:search="searchQuery" :tabs="typeTabs" :active="activeTypeFilter" :selected-id="selectedMemory?.id" title-key="content" description-key="memory_type" create-label="Add memory" icon="fas fa-brain" @tab="activeTypeFilter = $event" @select="selectMemory" @create="showAddModal = true"><template #filters><div class="view-tabs"><button v-for="tab in agentTabs" :key="tab.value" @click="activeAgentFilter = tab.value">{{ tab.label }}</button></div></template><template #actions><button v-if="hasOrphaned" @click="clearOrphaned">Clear deleted-agent memories</button></template></MobileCollection>
+<div v-show="!mobileView" class="desktop-view-container">
         <ScreenToolbar
           title="MEMORY"
           :count="filteredMemories.length"
@@ -144,8 +146,8 @@
             <button class="create-button" @click="showAddModal = true"><i class="fas fa-plus"></i> Add Memory</button>
           </div>
         </div>
+</div>
       </div>
-
       <!-- Add/Edit Memory Modal -->
       <Teleport to="body">
         <div v-if="showAddModal || showEditModal" class="modal-overlay" @click.self="closeModals">
@@ -210,14 +212,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted , inject } from 'vue';
 import { useStore } from 'vuex';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 const store = useStore();
+const mobileView = inject('isMobile', ref(false));
 const emit = defineEmits(['screen-change']);
 const simpleModal = ref(null);
 

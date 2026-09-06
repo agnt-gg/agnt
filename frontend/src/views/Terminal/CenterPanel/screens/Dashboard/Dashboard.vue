@@ -39,6 +39,7 @@
             <template v-else>
               <!-- <TerminalHeader title="AGNT BIRDS-EYE TERMINAL" subtitle="Time: 17:04 CDT | Mode: LIVE | License: ACTIVE | Uptime: 3d 14h 22m" /> -->
 
+              <MobileDashboardOverview v-if="mobileView" :goals="goalsData" :agents="agentsData" :workflows="workflowsData" :runs="runsData" @navigate="handleScreenChange" />
               <!-- Cumulative Credits Usage Chart - Full Width -->
               <CumulativeCreditsChart class="fade-in" />
 
@@ -106,6 +107,7 @@
 <script>
 import { ref, onMounted, onUnmounted, nextTick, computed, inject } from 'vue';
 import { useStore } from 'vuex';
+import MobileDashboardOverview from '@/mobile/MobileDashboardOverview.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import StatsCards from './components/StatsCards.vue';
@@ -127,7 +129,7 @@ import { useDashboardTutorial } from './useDashboardTutorial.js';
 export default {
   name: 'DashboardScreen',
   components: {
-    BaseScreen,
+    BaseScreen, MobileDashboardOverview,
     TerminalHeader,
     StatsCards,
     ChartCard,
@@ -147,6 +149,7 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
+    const mobileView = inject('isMobile', ref(false));
     const baseScreenRef = ref(null);
     const selectedMissionId = ref(null);
     const terminalLines = ref([]);
@@ -625,7 +628,7 @@ export default {
       selectedMissionId.value = null;
     });
 
-    return {
+    return { mobileView,
       baseScreenRef,
       terminalLines,
       selectedMissionId,

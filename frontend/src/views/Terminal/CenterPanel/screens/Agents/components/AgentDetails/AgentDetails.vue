@@ -1,5 +1,6 @@
 <template>
   <div class="agent-details-section" :class="{ expanded: isDetailsExpanded }">
+    <header v-if="mobileView" class="m-agent-detail-header"><button type="button" aria-label="Back to agents" @click="closeDetails"><i class="fas fa-arrow-left"></i></button><strong>{{ activeTab === 'configure' ? 'Configure ' : '' }}{{ selectedAgent.name }}</strong><button type="button" class="close-button" aria-label="Close agent details" @click="closeDetails"><i class="fas fa-times"></i></button></header>
     <div class="tabs-header">
       <div class="tabs-left">
         <button v-for="tab in tabs" :key="tab.id" :class="['tab-button', { active: activeTab === tab.id }]" @click="activeTab = tab.id">
@@ -7,7 +8,7 @@
           {{ tab.name }}
         </button>
       </div>
-      <div class="tabs-right">
+      <div v-if="!mobileView" class="tabs-right">
         <Tooltip :text="isDetailsExpanded ? 'Minimize' : 'Expand'" width="auto">
           <button class="expand-button" @click="toggleDetailsExpanded">
             <i :class="isDetailsExpanded ? 'fas fa-compress' : 'fas fa-expand'"></i>
@@ -101,7 +102,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, inject } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 
@@ -116,6 +117,7 @@ import ConfigureTab from './tabs/ConfigureTab.vue';
 import SkillsTab from './tabs/SkillsTab.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
+const mobileView = inject('isMobile', ref(false));
 const props = defineProps({
   selectedAgent: {
     type: Object,

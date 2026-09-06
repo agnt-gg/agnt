@@ -10,6 +10,9 @@
     @base-mounted="initializeScreen"
   >
     <template #default>
+      <MobileDirectory v-if="mobileView && isLoggedIn" v-show="mobileDirectoryOpen" title="Settings" view-id="settings" :groups="settingsDirectory" @select="mobileSelectSection" />
+      <div v-show="!mobileView || !isLoggedIn || !mobileDirectoryOpen" class="mobile-section-body">
+      <button v-if="mobileView && isLoggedIn" class="mobile-section-back" @click="mobileDirectoryOpen = true"><i class="fas fa-arrow-left"></i>Settings</button>
       <template v-if="isLoggedIn">
         <!-- General Settings Section -->
         <div v-if="activeSection === 'general'" class="settings-content" data-section="general">
@@ -277,6 +280,7 @@
         <LoginSection @login-success="handleLoginSuccess" />
       </template>
 
+      </div>
       <!-- Tutorial - Only show when logged in -->
       <PopupTutorial
         v-if="isLoggedIn"
@@ -290,9 +294,11 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch , inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
+import MobileDirectory from '@/mobile/MobileDirectory.vue';
+import { settingsDirectory } from '@/mobile/sectionDirectories.js';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
@@ -323,7 +329,7 @@ import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
 export default {
   name: 'Settings',
-  components: {
+  components: { MobileDirectory,
     BaseScreen,
     TerminalHeader,
     LoginSection,
@@ -353,7 +359,12 @@ export default {
     const store = useStore();
     const route = useRoute();
     const baseScreenRef = ref(null);
+    const mobileView = inject('isMobile', ref(false));
+    const mobileDirectoryOpen = ref(!route?.query?.section);
+    const mobileSelectSection = item => { mobileDirectoryOpen.value = false; handlePanelAction(item.screen ? 'settings-goto' : 'settings-nav', item.screen || item.id); };
+
     const activeSection = ref('profile');
+    watch(() => route?.query?.section, section => { if (section) mobileDirectoryOpen.value = false; });
     const componentKey = ref(0);
 
     const isLoggedIn = computed(() => store.getters['userAuth/isAuthenticated']);
@@ -379,6 +390,7 @@ export default {
       const urlSection = typeof route?.query?.section === 'string' ? route.query.section : '';
       const requestedSection = urlSection || localStorage.getItem('settings-initial-section');
       if (requestedSection) {
+        mobileDirectoryOpen.value = false;
         activeSection.value = requestedSection;
         localStorage.removeItem('settings-initial-section'); // Clean up
       }
@@ -416,6 +428,7 @@ export default {
     const handlePanelAction = (action, payload) => {
       console.log('Settings: Received panel action:', action, payload);
       if (action === 'settings-nav') {
+        mobileDirectoryOpen.value = false;
         activeSection.value = payload;
       } else if (action === 'settings-goto') {
         // A SYSTEM row that is a whole screen (Memory / Evolution / Autonomy)
@@ -446,7 +459,7 @@ export default {
       }
     });
 
-    return {
+    return { mobileView, mobileDirectoryOpen, mobileSelectSection, settingsDirectory,
       baseScreenRef,
       emit,
       initializeScreen,

@@ -12,7 +12,7 @@
   >
     <template #default>
       <div class="skills-screen">
-        <ScreenToolbar
+        <ScreenToolbar v-show="!mobileView"
           :title="activeView === 'skills' ? 'SKILLS' : 'EVOLUTION'"
           :count="activeView === 'skills' ? filteredSkills.length : leaderboard.length"
           :countLabel="activeView === 'skills' ? 'skills' : 'evolved skills'"
@@ -55,7 +55,7 @@
           </div>
         </div>
 
-        <!-- ═══ SKILLS VIEW ═══ -->
+<MobileCollection v-if="mobileView && activeView !== 'evolution'" :view-id="activeView === 'skills' ? 'skills' : 'skills-discovered'" :title="activeView === 'skills' ? 'Skills' : 'Discovered skills'" count-label="skills" :items="activeView === 'skills' ? filteredSkills : filteredDiscoveredSkills" v-model:search="searchQuery" :selected-id="selectedSkill?.id" :create-label="activeView === 'skills' ? 'Create skill' : ''" icon="fas fa-brain" @select="activeView === 'skills' ? selectSkill($event) : selectDiscoveredSkill($event)" @create="openCreateModal"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button v-if="activeView === 'skills'" @click="triggerImport">Import SKILL.md</button><button v-else @click="rescanSkills">Rescan</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button><div v-if="activeView === 'discovered'" class="m-scan-locations"><strong>Scan locations</strong><p v-for="location in discoveryScanLocations" :key="typeof location === 'string' ? location : location.path">{{ typeof location === 'string' ? location : location.path }}</p><small v-if="discoveryLastScan">Last scan: {{ discoveryLastScan }}</small></div></template></MobileCollection><div v-show="!mobileView" class="desktop-view-container">        <!-- ═══ SKILLS VIEW ═══ -->
         <template v-if="activeView === 'skills'">
           <div v-if="filteredSkills.length > 0" class="card-grid skills-grid">
             <div
@@ -210,7 +210,7 @@
           </div>
         </template>
 
-        <!-- ═══ EVOLUTION VIEW (SkillForge) ═══ -->
+</div>        <!-- ═══ EVOLUTION VIEW (SkillForge) ═══ -->
         <template v-if="activeView === 'evolution'">
           <!-- Evolution sub-tabs -->
           <div class="sf-tabs">
@@ -450,8 +450,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, reactive } from 'vue';
+import { ref, computed, onMounted, watch, reactive , inject } from 'vue';
 import { useStore } from 'vuex';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
@@ -503,6 +504,7 @@ const SKILL_ICONS = [
 ];
 
 const store = useStore();
+const mobileView = inject('isMobile', ref(false));
 const emit = defineEmits(['screen-change']);
 const baseScreenRef = ref(null);
 const simpleModal = ref(null);

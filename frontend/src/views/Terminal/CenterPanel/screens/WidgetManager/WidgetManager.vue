@@ -8,6 +8,8 @@
   >
     <template #default>
       <div class="wm-root">
+<MobileCollection v-if="mobileView" view-id="widgets" title="Widgets" count-label="widgets" :items="filteredWidgets" v-model:search="searchQuery" :tabs="categoryTabs" :active="activeCategory" :selected-id="selectedWidget?.id" create-label="Create widget" icon="fas fa-th-large" @tab="activeCategory = $event" @select="selectWidget" @create="createNewWidget"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="showImportModal = true">Import widget</button></template><template #item="{ item }"><template v-if="item._isCustom"><button @click="openEditor(item)">Edit</button><button @click="duplicateWidget(item)">Duplicate</button><button @click="exportWidget(item)">Export</button><button @click="confirmDelete(item)">Delete</button><button @click="captureWidgetPreview(item)" :disabled="capturingId === item.id">Capture preview</button></template><small v-else>Built-in widget</small></template></MobileCollection>
+<div v-show="!mobileView" class="desktop-view-container">
         <!-- Header bar -->
         <ScreenToolbar
           title="WIDGET MANAGER"
@@ -189,6 +191,8 @@
           </main>
         </div>
 
+
+</div>
         <!-- Import Modal -->
         <Teleport to="body">
           <div v-if="showImportModal" class="wm-modal-overlay" @click.self="closeImportModal">
@@ -259,6 +263,7 @@ import { useStore } from 'vuex';
 import { getAllWidgets } from '@/canvas/widgetRegistry.js';
 import { captureWidgetThumbnail } from '@/utils/widgetThumbnail.js';
 import { API_CONFIG } from '@/tt.config.js';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
@@ -267,9 +272,10 @@ import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 
 export default {
   name: 'WidgetManagerScreen',
-  components: { BaseScreen, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
+  components: { BaseScreen, MobileCollection, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
   emits: ['screen-change'],
   setup(props, { emit }) {
+    const mobileView = inject('isMobile', ref(false));
     const store = useStore();
     const playSound = inject('playSound', () => {});
     const searchQuery = ref('');
@@ -288,7 +294,7 @@ export default {
     };
 
     function onContentClick(e) {
-      if (!e.target.closest('.wm-card, .wm-list-row')) {
+      if (!e.target.closest('.wm-card, .wm-list-row, .m-collection')) {
         selectedWidget.value = null;
       }
     }
@@ -655,6 +661,7 @@ export default {
     }
 
     return {
+      mobileView,
       searchQuery,
       shelfAvailable,
       ownsNothing,

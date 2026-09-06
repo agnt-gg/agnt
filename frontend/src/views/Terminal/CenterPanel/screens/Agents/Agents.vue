@@ -17,6 +17,15 @@
   >
     <template #default="{ terminalLines }">
       <div class="agents-panel" :class="{ 'has-details': selectedAgent && agentTab !== 'marketplace', expanded: isDetailsExpanded }" @click="onContentClick">
+<MobileCollection v-if="mobileView" v-show="!selectedAgent || agentTab === 'marketplace'" view-id="agents" title="Agents" count-label="agents" :items="filteredAgentsGrid" :search="searchQuery" :tabs="agentTabs" :active="agentTab" :selected-id="selectedAgent?.id" create-label="Create agent" icon="fas fa-robot" @update:search="handleSearch" @tab="onAgentTabSelect" @select="selectMobileAgent" @create="handlePanelAction('navigate', 'AgentForgeScreen')"><template #actions><button @click="sortOrder = sortOrder === 'az' ? 'za' : 'az'">Sort: {{ sortOrder === 'az' ? 'A–Z' : 'Z–A' }}</button><button @click="triggerAgentImport">Import</button><button :disabled="!selectedAgent" @click="exportSelectedAgent">Export selected</button><button @click="baseScreenRef.openMobilePanel('left')">Categories</button></template></MobileCollection>
+<input
+              ref="agentImportInput"
+              type="file"
+              accept="application/json,.json"
+              style="display: none"
+              @change="handleAgentImportFile"
+            />
+<div v-show="!mobileView" class="desktop-view-container">
         <!-- Header bar -->
         <ScreenToolbar
           title="AGENTS"
@@ -52,13 +61,7 @@
                 <i class="fas fa-file-export"></i>
               </button>
             </Tooltip>
-            <input
-              ref="agentImportInput"
-              type="file"
-              accept="application/json,.json"
-              style="display: none"
-              @change="handleAgentImportFile"
-            />
+
           </template>
         </ScreenToolbar>
 
@@ -301,6 +304,8 @@
           </main>
         </div>
 
+
+</div>
         <!-- Agent Details Tabs Section - Only show for non-marketplace tabs -->
         <AgentDetails
           v-if="selectedAgent && agentTab !== 'marketplace'"
@@ -339,6 +344,7 @@ import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import { API_CONFIG } from '@/tt.config.js';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SidebarCategories from '../../../_components/SidebarCategories.vue';
@@ -355,9 +361,10 @@ import { useAgentsTutorial } from './useAgentsTutorial.js';
 
 export default {
   name: 'AgentsScreen',
-  components: { BaseScreen, TerminalHeader, SidebarCategories, AgentList, Tooltip, ScreenToolbar, MarketplaceShelf, AgentDetails, SvgIcon, SimpleModal, PopupTutorial, FilterTabs, },
+  components: { BaseScreen, MobileCollection, TerminalHeader, SidebarCategories, AgentList, Tooltip, ScreenToolbar, MarketplaceShelf, AgentDetails, SvgIcon, SimpleModal, PopupTutorial, FilterTabs, },
   emits: ['screen-change'],
   setup(props, { emit }) {
+    const mobileView = inject('isMobile', ref(false));
     const store = useStore();
     const route = useRoute();
     const playSound = inject('playSound', () => {});
@@ -605,11 +612,12 @@ export default {
     };
 
     const onContentClick = (e) => {
-      if (!e.target.closest('.agent-card, .table-row, .screen-toolbar, .wm-tabs, .agent-details-section')) {
+      if (!e.target.closest('.agent-card, .table-row, .screen-toolbar, .wm-tabs, .agent-details-section, .m-collection')) {
         selectedAgent.value = null;
       }
     };
 
+    const selectMobileAgent = agent => { selectAgent(agent); if (agentTab.value === 'marketplace') nextTick(() => baseScreenRef.value?.openMobilePanel('right')); };
     const selectAgent = (agent) => {
       // Play sound when selecting an agent
       if (playSound) {
@@ -1828,6 +1836,7 @@ export default {
     });
 
     return {
+      mobileView,
       simpleModal,
       baseScreenRef,
       terminalLines,
@@ -1840,7 +1849,7 @@ export default {
       shelfHasFocus,
       onShelfInstalled,
       onContentClick,
-      selectAgent,
+      selectAgent, selectMobileAgent,
       formatUptime,
       emit,
       initializeScreen,

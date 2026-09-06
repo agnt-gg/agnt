@@ -1,3 +1,4 @@
+import { settingsDirectory, appsDirectory } from '@/mobile/sectionDirectories.js';
 // sections.spec.js — holds the canvas navigation registry (sections.js) to
 // the OTHER hand-maintained screen lists it must agree with:
 //
@@ -286,7 +287,7 @@ describe('canvas sections registry', () => {
   // is unreachable, and a nav row naming a screen that is not a SYSTEM tab
   // navigates somewhere the gear does not stay lit for. Neither crashes.
   describe('SYSTEM sub-nav (SettingsPanel)', () => {
-    const navScreens = [...settingsPanelSrc.matchAll(/screen:\s*'(\w+Screen)'/g)].map((m) => m[1]);
+    const navScreens = settingsDirectory.flatMap(g => g.items).filter(i => i.screen).map(i => i.screen);
     // Scoped to the Settings row specifically — Connect sits beside it at the
     // foot of the rail but is navigated from the rail, not from this panel.
     const systemTabs = BOTTOM_SECTIONS.find((s) => s.id === 'settings').screens.map((t) => t.screen);
@@ -317,10 +318,7 @@ describe('canvas sections registry', () => {
     it('every nav row that is a Settings SECTION has a matching v-if branch', () => {
       // A row whose id no longer matches any `activeSection === '…'` branch
       // renders a blank page rather than erroring.
-      const sectionIds = [...settingsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)',[^}]*\}/g)]
-        .map((m) => m[0])
-        .filter((entry) => !/screen:/.test(entry))
-        .map((entry) => entry.match(/id:\s*'([\w-]+)'/)[1]);
+      const sectionIds = settingsDirectory.flatMap(g => g.items).filter(i => !i.screen).map(i => i.id);
       const branches = new Set([...settingsScreenSrc.matchAll(/activeSection === '([\w-]+)'/g)].map((m) => m[1]));
       expect(sectionIds.length).toBeGreaterThanOrEqual(9);
       expect(sectionIds.filter((id) => !branches.has(id))).toEqual([]);
@@ -371,7 +369,7 @@ describe('canvas sections registry', () => {
   it('AI Providers leads the Connect nav instead of taking a row; Plugins has one door', () => {
     expect(ALL_SECTIONS.filter((s) => s.screens.some((t) => t.screen === 'PluginsScreen')).map((s) => s.id)).toEqual(['apps']);
 
-    const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
+    const connectNavIds = appsDirectory.flatMap(g => g.items).map(i => i.id);
     expect(connectNavIds.length).toBeGreaterThanOrEqual(4);
     expect(connectNavIds).not.toContain('plugins');
     expect(connectorsScreenSrc).not.toMatch(/activeSection === 'plugins'/);
@@ -386,7 +384,7 @@ describe('canvas sections registry', () => {
   it('every view the Connect panel lists has a branch on the Connect screen', () => {
     // The panel is the only way to reach these views, so a row naming a view
     // the screen cannot render shows a blank page rather than erroring.
-    const connectNavIds = [...connectorsPanelSrc.matchAll(/\{\s*id:\s*'([\w-]+)'/g)].map((m) => m[1]);
+    const connectNavIds = appsDirectory.flatMap(g => g.items).map(i => i.id);
     const branches = new Set([...connectorsScreenSrc.matchAll(/activeSection === '([\w-]+)'/g)].map((m) => m[1]));
     expect(connectNavIds.filter((id) => !branches.has(id))).toEqual([]);
   });

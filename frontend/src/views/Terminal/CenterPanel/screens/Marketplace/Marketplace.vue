@@ -21,7 +21,7 @@
       <div class="marketplace-panel">
         <SimpleModal ref="simpleModal" />
         <!-- Sticky Header Container -->
-        <div class="sticky-header">
+        <div v-show="!mobileView || activeTab === 'my-earnings'" class="sticky-header">
           <BaseTabControls
             :tabs="tabs"
             :active-tab="activeTab"
@@ -46,7 +46,8 @@
         </div>
 
         <!-- Main Content -->
-        <div class="marketplace-content">
+        <MobileCollection v-if="mobileView && activeTab !== 'my-earnings'" view-id="store" :title="profileUserId ? (profileInfo?.name || 'Publisher') : 'Store'" count-label="assets" :items="profileUserId ? profileItems : filteredWorkflows" :search="filters.search" :tabs="tabs" :active="activeTab" :selected-id="selectedWorkflow?.id" title-key="title" icon="fas fa-store" @update:search="handleSearch" @tab="selectTab" @select="handleWorkflowClick"><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Price, rating & sort</button><button @click="baseScreenRef.openMobilePanel('right')">Publish asset</button></template><template #item="{item}"><span class="m-store-price">{{ item.price ? '$' + Number(item.price).toFixed(2) : 'Free' }}</span><button @click="handleWorkflowClick(item)">Details & reviews</button></template></MobileCollection>
+        <div v-show="!mobileView || activeTab === 'my-earnings'" class="marketplace-content">
           <!-- ── Toolbar ── Screen chrome, so it lives OUTSIDE the scroller.
                A pinned bar INSIDE the scroll flow can only hide the cards
                passing behind it by painting an opaque background, which is
@@ -574,6 +575,7 @@ import { ref, computed, nextTick, inject, watch, onMounted, onBeforeUnmount } fr
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTabControls from '../../../_components/BaseTabControls.vue';
 import BaseTable from '../../../_components/BaseTable.vue';import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -597,12 +599,13 @@ import {
 
 export default {
   name: 'MarketplaceScreen',
-  components: { CustomSelect, BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial, Tooltip },
+  components: { MobileCollection, CustomSelect, BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
     // Initialize tutorial
     const { tutorialConfig, startTutorial, onTutorialClose, initializeMarketplaceTutorial } = useMarketplaceTutorial();
     const store = useStore();
+    const mobileView = inject('isMobile', ref(false));
     const route = useRoute();
     const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
@@ -1818,7 +1821,7 @@ export default {
       window.removeEventListener('resize', syncRail);
     });
 
-    return {
+    return { mobileView,
       baseScreenRef,
       simpleModal,
       terminalLines,

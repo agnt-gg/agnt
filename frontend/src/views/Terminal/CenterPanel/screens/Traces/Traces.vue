@@ -18,7 +18,7 @@
     >
       <template #default>
         <div class="traces-panel">
-          <!-- Header bar -->
+<MobileCollection v-if="mobileView" view-id="activity" title="Activity" count-label="executions" :items="filteredExecutions" :search="searchQuery" :tabs="tabs" :active="activeTab" :selected-id="selectedExecutionId" title-key="workflowName" description-key="type" icon="fas fa-stream" @update:search="handleSearch" @tab="selectTab" @select="handleExecutionClick"><template #filters><div class="m-secondary-tabs"><button v-for="tab in typeFilters" :key="tab.id" @click="selectTypeFilter(tab.id)">{{ tab.label || tab.name }}</button></div></template><template #actions><button @click="baseScreenRef.openMobilePanel('left')">Date range, type & sort</button></template><template #footer><button v-if="hasMoreExecutions" class="m-more" @click="loadMoreExecutions">Load more executions</button></template></MobileCollection><div v-show="!mobileView" class="desktop-view-container">          <!-- Header bar -->
           <div class="wm-header">
             <div class="wm-header-left">
               <span class="wm-title">RUNS</span>
@@ -246,7 +246,7 @@
               </div>
             </main>
           </div>
-        </div>
+</div>        </div>
       </template>
     </BaseScreen>
 
@@ -260,6 +260,7 @@ import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -271,10 +272,11 @@ import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 
 export default {
   name: 'TracesScreen',
-  components: { CustomSelect, BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip, FilterTabs },
+  components: { MobileCollection, CustomSelect, BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip, FilterTabs },
   emits: ['screen-change', 'panel-action'],
   setup(props, { emit }) {
     const store = useStore();
+    const mobileView = inject('isMobile', ref(false));
     const router = useRouter();
     const route = useRoute();
     const cleanup = useCleanup();
@@ -1345,6 +1347,7 @@ ${execution.log}
     });
 
     return {
+      mobileView,
       simpleModal,
       baseScreenRef,
       terminalLines,

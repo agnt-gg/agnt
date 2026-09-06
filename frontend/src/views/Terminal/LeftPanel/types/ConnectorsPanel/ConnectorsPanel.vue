@@ -70,6 +70,7 @@
 </template>
 
 <script>
+import { appsDirectory } from '@/mobile/sectionDirectories.js';
 import { computed } from 'vue';
 import { useStore } from 'vuex';
 import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
@@ -86,14 +87,7 @@ import { activeInnerSection, setInnerSection } from '@/canvas/innerSection.js';
 //
 // Plugins is deliberately absent: it has its own rail row, and an installable
 // asset is not something AGNT reaches out to.
-const CONNECT_ITEMS = Object.freeze([
-  { id: 'providers', icon: 'fas fa-robot', label: 'AI Providers' },
-  { id: 'oauth', icon: 'fas fa-plug', label: 'API / OAuth' },
-  { id: 'email-server', icon: 'fas fa-envelope', label: 'Emails', pro: true },
-  { id: 'mcp-servers', icon: 'fas fa-server', label: 'MCP' },
-  { id: 'api-keys', icon: 'fas fa-key', label: 'Vault' },
-  { id: 'webhooks', icon: 'fas fa-link', label: 'Webhooks', pro: true },
-]);
+const CONNECT_ITEMS = appsDirectory[0].items;
 
 export default {
   name: 'ConnectorsPanel',

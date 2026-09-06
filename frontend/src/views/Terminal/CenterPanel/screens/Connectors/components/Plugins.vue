@@ -1,7 +1,7 @@
 <template>
   <div class="plugins-container">
     <!-- PRO Badge Header -->
-    <div class="plugins-header">
+    <div v-if="!mobileView" class="plugins-header">
       <h3>
         Plugin Manager
         <span v-if="!isPro" class="pro-badge-label"> <i class="fas fa-lock"></i> PRO </span>
@@ -26,7 +26,7 @@
     </div>
 
     <!-- Controls Bar - Only for PRO -->
-    <div v-if="isPro" class="controls-bar">
+    <div v-if="isPro && !mobileView" class="controls-bar">
       <div class="search-wrapper">
         <BaseInput v-model="searchQuery" placeholder="Search plugins..." :clearable="true" />
       </div>
@@ -54,7 +54,7 @@
       </button>
     </div>
 
-    <!-- Example plugins for non-pro users -->
+<MobileCollection v-if="mobileView && isPro && (activeTab === 'installed' || activeTab === 'marketplace')" view-id="addons" :title="activeTab === 'installed' ? 'Add-ons' : 'Plugin Marketplace'" count-label="plugins" :items="activeTab === 'installed' ? filteredInstalledPlugins : filteredMarketplacePlugins" v-model:search="searchQuery" :selected-id="selectedPlugin?.name" icon="fas fa-plug" @select="selectPlugin"><template #item="{item}"><span class="m-addon-version">v{{item.version}} · {{item.trustTier || 'Trust not reported'}}</span><button v-if="activeTab === 'installed'" @click="togglePin(item)">{{isPinned(item) ? 'Allow automatic updates' : 'Pin version'}}</button><button v-if="pluginNotices[item.name]?.needsReview" @click="reviewUpdate(item)">Review update</button><button @click="selectPlugin(item)">Details & tools</button></template></MobileCollection><template v-if="!mobileView || !isPro">    <!-- Example plugins for non-pro users -->
     <div v-if="!isPro" class="plugins-list locked">
       <div v-for="i in 3" :key="'example-' + i" class="plugin-card locked">
         <div class="plugin-header">
@@ -243,8 +243,8 @@
       </div>
     </div>
 
-    <!-- Plugin Builder Tab -->
-    <div v-else-if="activeTab === 'builder'" class="plugins-list">
+</template>    <!-- Plugin Builder Tab -->
+    <div v-if="isPro && activeTab === 'builder'" class="plugins-list">
       <PluginBuilder @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
     </div>
 
@@ -414,6 +414,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
+import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseInput from '@/views/Terminal/_components/BaseInput.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
@@ -458,7 +459,7 @@ function escapeHtml(value) {
 export default {
   name: 'Plugins',
   directives: { clickOutside },
-  components: {
+  components: { MobileCollection,
     BaseInput,
     BaseSelect,
     BaseButton,
@@ -471,6 +472,7 @@ export default {
   emits: ['show-alert'],
   setup(props, { emit }) {
     const store = useStore();
+    const mobileView = inject('isMobile', ref(false));
     const modalRef = ref(null);
     const searchQuery = ref('');
     const isLoading = ref(false);
@@ -1572,7 +1574,7 @@ export default {
       window.removeEventListener('plugin-uninstalled', handlePluginUninstalled);
     });
 
-    return {
+    return { mobileView,
       emit,
       modalRef,
       searchQuery,
