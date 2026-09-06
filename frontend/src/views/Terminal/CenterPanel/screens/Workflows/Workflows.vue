@@ -677,6 +677,7 @@ export default {
     const handleWorkflowClick = (workflow) => {
       playSound('typewriterKeyPress');
       selectedWorkflowId.value = workflow.id;
+      if (mobileView.value) baseScreenRef.value?.openMobilePanel('right');
       addLine(`Selected workflow: ${workflow.id}`, 'info');
     };
 

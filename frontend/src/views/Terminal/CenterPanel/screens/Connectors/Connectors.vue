@@ -385,7 +385,7 @@
             </div>
 
             <!-- NPM Browser Modal -->
-            <div v-if="showNPMBrowser" class="mcp-server-form-overlay" @click.self="showNPMBrowser = false">
+            <Teleport to="body"><div v-if="showNPMBrowser" class="mcp-server-form-overlay" @click.self="showNPMBrowser = false">
               <div class="mcp-server-form" style="max-width: 1048px">
                 <div class="form-header">
                   <h3>Browse NPM Packages</h3>
@@ -461,10 +461,10 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </div></Teleport>
 
             <!-- Add/Edit Server Form -->
-            <div v-if="showAddMCPServerForm || editingMCPServer" class="mcp-server-form-overlay" @click.self="closeMCPServerForm">
+            <Teleport to="body"><div v-if="showAddMCPServerForm || editingMCPServer" class="mcp-server-form-overlay" @click.self="closeMCPServerForm">
               <div class="mcp-server-form">
                 <div class="form-header">
                   <h3>{{ editingMCPServer ? 'Edit MCP Server' : 'Add MCP Server' }}</h3>
@@ -516,7 +516,7 @@
                   </BaseButton>
                 </div>
               </div>
-            </div>
+            </div></Teleport>
           </div>
         </div>
       </div>
@@ -551,7 +551,7 @@
            installable asset is not a connection. See screens/Plugins. -->
 
       <!-- Add/Edit Provider Modal -->
-      <div v-if="showEditProviderModal || showAddProviderModal" class="mcp-server-form-overlay" @click.self="closeProviderModal">
+      <Teleport to="body"><div v-if="showEditProviderModal || showAddProviderModal" class="mcp-server-form-overlay" @click.self="closeProviderModal">
         <div class="mcp-server-form">
           <div class="form-header">
             <h3>{{ editingProvider ? 'Edit Provider' : 'Add New Integration' }}</h3>
@@ -676,10 +676,10 @@
             </BaseButton>
           </div>
         </div>
-      </div>
+      </div></Teleport>
 
       <!-- Add Provider Section -->
-      <div v-else-if="activeSection === 'add-provider'" class="connectors-content">
+      <div v-if="activeSection === 'add-provider' && !showEditProviderModal && !showAddProviderModal" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Add New Integration</h2>
           <p class="content-subtitle">Create a new app provider to connect additional services</p>

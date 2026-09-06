@@ -352,6 +352,7 @@ export default {
     // Stable panelProps — only recalculated when dependencies change (not on every render)
     const panelProps = computed(() => ({
       selectedExecutionId: selectedExecutionId.value,
+      executionDetail: selectedExecution.value,
       executions: allExecutions.value,
     }));
 
@@ -569,10 +570,15 @@ export default {
     const handleExecutionClick = async (execution) => {
       playSound('typewriterKeyPress');
 
-      // Skip if already selected — avoids redundant API call + re-render
-      if (selectedExecutionId.value === execution.id) return;
+      if (mobileView.value) baseScreenRef.value?.openMobilePanel('right');
+      // Reopening the same run restores its mounted/lazy panel without a new request.
+      if (selectedExecutionId.value === execution.id) {
+        baseScreenRef.value?.triggerPanelMethod('updateSelectedExecution', selectedExecution.value || execution);
+        return;
+      }
 
       selectedExecutionId.value = execution.id;
+      selectedExecution.value = execution; // never show the previous run while detail loads
       addLine(`Selected execution: ${execution.id} (${execution.workflowName || 'Unnamed'})`, 'info');
 
       // Load details lazily using store action

@@ -3,7 +3,7 @@
     <button v-if="isMobile" @click="closePanel" class="mobile-close-button">< Back</button>
 
     <!-- Dynamic panel content -->
-    <div class="panel-content-wrapper">
+    <div class="panel-content-wrapper" :class="{ 'mobile-panel-body': isMobile }">
       <component
         v-if="activePanelComponent"
         :is="activePanelComponent"

@@ -611,6 +611,7 @@ export default {
     ListSummaryPanel,
   },
   props: {
+    executionDetail: { type: Object, default: null },
     selectedExecutionId: {
       type: String,
       default: null,
@@ -629,6 +630,10 @@ export default {
     const rawViewTasks = ref({});
     const selectedExecution = ref(null);
     const showCopiedMessage = ref(false);
+    // Selection data must survive a lazy panel mount. An imperative method
+    // call alone can arrive before this component exists and leave a summary
+    // where the selected execution should be.
+    watch(() => props.executionDetail, detail => { selectedExecution.value = detail; }, { immediate: true });
 
     // Goal creation state
     const goalInput = ref('');

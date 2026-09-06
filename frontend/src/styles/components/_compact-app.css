@@ -68,7 +68,7 @@
   body :is(.table-container,.table-view-container,.memory-table-container,.experiments-table-container) table { width: max-content; min-width: 100%; }
   body :is(.wm-list-row,.mk-list-row) { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
   body :is(.wm-list-desc,.wm-list-name,.mk-list-name) { min-width: 0; overflow-wrap: anywhere; }
-  body :is(.agent-details-section,.goal-detail-view) { position: absolute; inset: 0; z-index: 30; height: 100% !important; width: 100%; background: var(--color-background); border-radius: 0; margin: 0; max-height: none; overflow: auto; }
+  body .agents-panel > .agent-details-section, body .goals-screen > .goal-detail-view { position: absolute; inset: 0; z-index: 30; height: 100% !important; width: 100%; background: var(--color-background); border-radius: 0; margin: 0; max-height: none; overflow: auto; }
   body .agent-details-section .tab-content { overflow: auto; flex: 1; min-height: 0; }
   body :is(.modal-overlay,.popup-overlay,.terminal-modal,.workflow-security-overlay) { padding: 8px !important; align-items: flex-end; }
   body :is(.modal-content,.modal-container,.popup-content,.terminal-modal-content,.workflow-security-dialog) { min-width: 0 !important; width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px) !important; max-height: calc(var(--app-height) - 32px) !important; overflow-y: auto; border-radius: 18px 18px 10px 10px; padding: 16px; }
@@ -305,4 +305,105 @@
 @media(max-width:800px){
  body .agents-panel.has-details>.agent-details-section{margin:0!important;}
  body .agent-details-section .tab-content,body .agent-details-section .tab-pane,body .agent-details-section .configure-section,body .agent-details-section .config-group,body .agent-details-section .config-row,body .agent-details-section .config-item{box-sizing:border-box;max-width:100%;}
+}
+
+/* Side-panel contract: the frame paints, the body supplies the single safe
+   gutter, and the existing view owns its content. No child has to guess whether
+   it was opened as a mobile sheet or a desktop sidebar. */
+@media (max-width: 800px) {
+  body .terminal-content.mobile-presentation > .three-panel-container > .mobile-panel-visible {
+    gap: 0;
+    overflow: hidden;
+    background: var(--color-popup) !important;
+    opacity: 1;
+    isolation: isolate;
+  }
+  body .mobile-panel-visible > .mobile-close-button {
+    margin: 0;
+    padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    background: var(--color-popup);
+  }
+  body .mobile-panel-visible > .mobile-panel-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 16px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    overflow-wrap: anywhere;
+  }
+  body .mobile-panel-body > * {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  /* Suspended content stays mounted (drafts/selection survive) but cannot
+     protrude through transparent child cards or outrank the open sheet. */
+  .terminal-content.mobile-presentation > .three-panel-container > .main-panel[inert] { visibility: hidden; }
+  body .mobile-panel-body > :is(.workflow-panel,.ui-panel,.insp,.file-tree-panel,.config-form) { padding: 0; }
+  body .mobile-panel-body > .insp > :is(.insp-cap,.insp-head,.insp-body,.insp-foot) { padding-left: 0; padding-right: 0; box-sizing: border-box; }
+  body .mobile-panel-body :is(.detail-grid,.workflow-info,.selected-execution-content) { min-width: 0; max-width: 100%; }
+  body .mobile-panel-body .detail-grid { grid-template-columns: minmax(0,1fr); }
+  body .mobile-panel-body :is(.selected-execution-header,.workflow-header,.header-actions,.workflow-actions,.button-group) { flex-wrap: wrap; min-width: 0; gap: 8px; }
+  body .mobile-panel-body :is(.detail-item,.info-item,.workflow-description,.workflow-title,.detail-section) { min-width: 0; overflow-wrap: anywhere; }
+  body .mobile-panel-body :is(input,textarea,select,pre,.code-block,.panel-section) { box-sizing: border-box; max-width: 100%; }
+  body .mobile-panel-body pre { overflow-x: auto; }
+  /* Dialog bodies use the same popup paint even in custom-background mode.
+     The viewport scrim remains separate; keep long dialog content scrollable. */
+  body :is(.modal-overlay,.popup-overlay,.terminal-modal,.workflow-security-overlay) { box-sizing: border-box; }
+  body :is(.modal-overlay,.popup-overlay,.terminal-modal,.workflow-security-overlay) > :is(.modal-content,.modal-container,.popup-content,.terminal-modal-content,.workflow-security-dialog) {
+    box-sizing: border-box;
+    background: var(--color-popup) !important;
+    padding: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  body :is(.modal-header,.modal-body,.modal-footer) { min-width: 0; box-sizing: border-box; max-width: 100%; }
+}
+
+@media (max-width:800px) {
+  /* These existing dialogs have their own component classes rather than
+     .modal-content; retain padded header/body/footer but share popup paint. */
+  body :is(.modal-card,.wm-modal,.mcp-server-form,.dialog-container) {
+    box-sizing:border-box;
+    width:calc(100vw - 16px);
+    max-width:calc(100vw - 16px);
+    max-height:calc(var(--app-height) - 24px);
+    overflow-y:auto;
+    overflow-x:hidden;
+    background:var(--color-popup) !important;
+  }
+  body :is(.wm-modal-overlay,.mcp-server-form-overlay,.dialog-overlay) {
+    padding:8px;
+    box-sizing:border-box;
+  }
+  body :is(.modal-card,.wm-modal,.mcp-server-form,.dialog-container) > :is(.modal-head,.modal-body,.modal-foot,.wm-modal-header,.wm-modal-body,.wm-modal-footer,.form-header,.form-body,.form-footer,.dialog-header,.dialog-content,.dialog-footer) {
+    box-sizing:border-box;
+    padding:16px;
+    min-width:0;
+    max-width:100%;
+  }
+  body .agents-panel.has-details > .agent-details-section,
+  body .goal-detail-view {
+    background:var(--color-popup) !important;
+    isolation:isolate;
+  }
+  body .goal-detail-body { padding:16px; box-sizing:border-box; }
+}
+
+@media (max-width:800px) {
+  body .modal-content .icon-grid { grid-template-columns:repeat(auto-fit,minmax(40px,1fr)); width:100%; min-width:0; }
+  body .modal-content .icon-btn { min-width:0; width:100%; }
 }
