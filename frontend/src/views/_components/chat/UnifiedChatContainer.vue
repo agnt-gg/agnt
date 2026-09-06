@@ -402,6 +402,9 @@ export default {
       if (document.querySelector('.modal-overlay')) return;
 
       const active = document.activeElement;
+      // A workspace/custom-page scroll region is independently focusable on
+      // mobile. Its paging keys belong to the stack, not an embedded chat.
+      if (active?.matches?.('.ws-canvas, .widget-canvas')) return;
       const isEditable =
         !!active &&
         (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);

@@ -1,5 +1,5 @@
 <template>
-  <div class="widget-canvas" ref="canvasRef" @dblclick="onDoubleClick">
+  <div class="widget-canvas" ref="canvasRef" :tabindex="compact ? 0 : undefined" :role="compact ? 'region' : undefined" :aria-label="compact ? 'Page widgets' : undefined" @dblclick="onDoubleClick">
     <!-- Grid overlay shown during drag/resize -->
     <div v-if="isCustomPage" class="grid-overlay" :class="{ visible: showGrid }">
       <div
@@ -54,7 +54,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount, provide, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, provide, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import { calculateCellDimensions, GRID_COLS, GRID_ROWS, GRID_GAP } from './gridUtils.js';
 import { getWidget } from './widgetRegistry.js';
@@ -71,6 +71,7 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const canvasRef = ref(null);
+    const compact = inject('isMobile', ref(false));
     const cellWidth = ref(100);
     const cellHeight = ref(80);
     const showGrid = ref(false);
@@ -217,6 +218,7 @@ export default {
     const isCustomPage = computed(() => props.isCustomPage);
 
     return {
+      compact,
       canvasRef,
       cellWidth,
       cellHeight,

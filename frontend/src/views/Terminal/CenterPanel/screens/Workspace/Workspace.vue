@@ -121,7 +121,7 @@
     </div>
 
     <!-- ══ canvas — a pure widget grid, chat included ══ -->
-    <div class="ws-canvas">
+    <div class="ws-canvas" :tabindex="compact ? 0 : undefined" :role="compact ? 'region' : undefined" :aria-label="compact ? 'Workspace widgets' : undefined">
       <div
         ref="gridRef"
         class="ws-surfaces"
@@ -1733,6 +1733,13 @@ body.custom-bg .ws-root {
  * used to carry produced a 12px outer inset against a 4px inner gap, which
  * reads as the canvas being "off" even though the grid itself was correct.
  * The rail gets its own margin below instead. */
+/* The compact stack has natural height inside a bounded scroll viewport.
+   Keep this contract beside the desktop clip so lazy stylesheet order cannot
+   turn a phone workspace back into a non-scrolling desktop canvas. */
+@media (max-width: 800px) {
+  .ws-root.ws-compact > .ws-canvas { overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; }
+  .ws-root.ws-compact .ws-surfaces { overflow: visible; }
+}
 .ws-canvas {
   flex: 1;
   min-height: 0;

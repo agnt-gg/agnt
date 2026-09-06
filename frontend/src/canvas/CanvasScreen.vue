@@ -1079,7 +1079,19 @@ export default {
 .cv-root.cv-compact .cv-sidebar.cv-navigation-open { transform: none; visibility: visible; }
 .cv-root.cv-compact .cv-sidebar.expanded .cv-sb-label, .cv-root.cv-compact .cv-sidebar .cv-sb-label, .cv-root.cv-compact .cv-sb-cap-text { display: block; opacity: 1; width: auto; }
 .cv-root.cv-compact .cv-sidebar.expanded .cv-sb-page, .cv-root.cv-compact .cv-sidebar.expanded .cv-sb-add { justify-content: flex-start; gap: 12px; min-height: 48px; padding: 8px 16px; }
-.cv-root.cv-compact .cv-sb-cap { display: block; height: auto; padding: 16px 16px 6px; }
+.cv-root.cv-compact .cv-sidebar .cv-sb-pages { align-items: stretch; min-height: 0; }
+/* Compact drawers always show full captions, independent of the saved rail
+   collapse state. border-box prevents 100% + padding from spilling left. */
+.cv-root.cv-compact .cv-sidebar .cv-sb-cap {
+  display: block; box-sizing: border-box; width: 100%; height: auto;
+  margin: 8px 0 0; padding: 16px 16px 8px; min-height: 36px;
+}
+.cv-root.cv-compact .cv-sidebar .cv-sb-cap.is-first { display: block; margin-top: 0; padding-top: 12px; }
+.cv-root.cv-compact .cv-sidebar .cv-sb-cap-text { display: block; opacity: 1; font-size: 10px; }
+.cv-root.cv-compact .cv-sidebar .cv-sb-page,
+.cv-root.cv-compact .cv-sidebar .cv-sb-add { box-sizing: border-box; width: 100%; min-height: 48px; justify-content: flex-start; padding: 8px 16px; gap: 12px; }
+.cv-root.cv-compact .cv-sidebar .cv-sb-label { margin-left: 0; font-size: 12px; }
+.cv-root.cv-compact .cv-sidebar .cv-sb-badge { position: static; margin-left: 4px; }
 .cv-root.cv-compact .cv-sb-toggle { display: none; }
 .cv-root.cv-compact .cv-toolbar { height: auto; min-height: 52px; flex-wrap: wrap; padding: 0 6px; }
 .cv-root.cv-compact .cv-brand-logo { display: none; }
@@ -1089,6 +1101,16 @@ export default {
 .cv-root.cv-compact .cv-right { width: 100%; justify-content: flex-end; min-width: 0; flex-wrap: wrap; gap: 4px; }
 .cv-root.cv-compact .cv-global-model { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-root.cv-compact .cv-dashboard { min-width: 0; width: 100%; }
+/* Custom-page stacks are the one direct canvas child that scrolls. The
+   desktop frame's general > * overflow:hidden rule must not clip them. */
+.cv-root.cv-compact .cv-dashboard > .widget-canvas {
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain;
+  padding: 12px; box-sizing: border-box;
+}
+.cv-root.cv-compact .cv-navigation-open {
+  background: var(--color-popup) !important;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
 .cv-root {
   display: flex;
   flex-direction: column;

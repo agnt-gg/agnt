@@ -15,7 +15,7 @@
     >
       <!-- Default slot content: Main content for the Dashboard -->
       <template #default>
-        <div class="dashboard-content">
+        <div class="dashboard-content" :tabindex="mobileView ? 0 : undefined" :role="mobileView ? 'region' : undefined" :aria-label="mobileView ? 'Dashboard' : undefined">
           <div class="dashboard-inner-content">
             <!-- Loading skeleton while critical data loads -->
             <template v-if="!dataReady">
@@ -826,6 +826,25 @@ export default {
 
   .top-row > :nth-child(3) {
     grid-column: 1 / -1;
+  }
+}
+
+/* On phones the content column, not the fixed-height inner dashboard grid,
+   owns scrolling. Keep the visualizations at their natural height. */
+@media (max-width: 800px) {
+  .dashboard-screen-root .dashboard-content {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+  }
+  .dashboard-screen-root .dashboard-inner-content {
+    height: auto;
+    min-height: 100%;
+  }
+  .dashboard-screen-root .dashboard-inner-content > *,
+  .dashboard-screen-root .dashboard-grid,
+  .dashboard-screen-root .grid-row {
+    flex: 0 0 auto;
   }
 }
 

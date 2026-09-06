@@ -1842,6 +1842,13 @@ export default {
 .mobile-panel-scrim { position: absolute; inset: 0; border: 0; background: rgba(0,0,0,.45); z-index: 1198; }
 .terminal-content.mobile-presentation .left-panel-component, .terminal-content.mobile-presentation .right-panel-component { position: absolute; inset: 0; width: 100%; max-width: 100%; height: 100%; z-index: 1199; transform: none; visibility: hidden; pointer-events: none; background: var(--color-background); }
 .terminal-content.mobile-presentation .mobile-panel-visible { visibility: visible; pointer-events: auto; }
+/* PanelBackdrop supplies desktop paint, but a phone panel overlays the main
+   page. Its popup surface must beat custom-bg's transparent panel override. */
+body .terminal-content.mobile-presentation > .three-panel-container > .left-panel-component.mobile-panel-visible,
+body .terminal-content.mobile-presentation > .three-panel-container > .right-panel-component.mobile-panel-visible {
+  background: var(--color-popup) !important;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
 .terminal-content.mobile-presentation .main-panel { width: 100%; min-width: 0; }
 .terminal-content.mobile-presentation .mobile-panel-visible :deep(.mobile-close-button) { min-height: 44px; align-self: flex-start; }
 .terminal-content.mobile-presentation .chat-input-textarea { font-size: 16px; }
