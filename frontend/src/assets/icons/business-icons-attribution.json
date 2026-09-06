@@ -1,0 +1,127 @@
+[
+  {
+    "provider": "hubspot",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/hubspot.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "airtable",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/airtable.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "microsoft365",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoftoffice.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "quickbooks",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/quickbooks.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "xero",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/xero.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "shopify",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/shopify.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "zendesk",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/zendesk.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "intercom",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/intercom.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "linear",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/linear.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "asana",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/asana.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "clickup",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/clickup.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "monday",
+    "source": "https://raw.githubusercontent.com/gilbarbara/logos/main/logos/monday-icon.svg",
+    "license": "Provider trademark; see upstream terms"
+  },
+  {
+    "provider": "ga4",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/googleanalytics.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "searchconsole",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/googlesearchconsole.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "posthog",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/posthog.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "brevo",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/brevo.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "mailchimp",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/mailchimp.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "klaviyo",
+    "source": "https://www.klaviyo.com",
+    "license": "Provider trademark; see upstream terms"
+  },
+  {
+    "provider": "twilio",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/twilio.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "pandadoc",
+    "source": "https://www.vectorlogo.zone/logos/pandadoc/pandadoc-icon.svg",
+    "license": "Provider trademark; see upstream terms"
+  },
+  {
+    "provider": "typeform",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/typeform.svg",
+    "license": "Simple Icons CC0; trademarks remain their owners"
+  },
+  {
+    "provider": "jotform",
+    "source": "https://cdn.jotfor.ms/assets/img/logo2021/jotform-logo.svg",
+    "license": "Provider trademark; see upstream terms"
+  },
+  {
+    "provider": "pipedrive",
+    "source": "https://raw.githubusercontent.com/gilbarbara/logos/main/logos/pipedrive.svg",
+    "license": "Provider trademark; see upstream terms"
+  },
+  {
+    "provider": "freshdesk",
+    "source": "https://www.freshworks.com/beta/icons/template-2026/freshdesk-logo-icon.svg",
+    "license": "Provider trademark; see upstream terms"
+  },
+  {
+    "provider": "bamboohr",
+    "source": "https://api.iconify.design/arcticons/bamboohr.svg",
+    "license": "CC BY-SA 4.0 Arcticons contributors; recolored"
+  }
+]
