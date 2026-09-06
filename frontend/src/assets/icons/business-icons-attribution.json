@@ -87,7 +87,8 @@
   {
     "provider": "klaviyo",
     "source": "https://www.klaviyo.com",
-    "license": "Provider trademark; see upstream terms"
+    "license": "Provider trademark; see upstream terms",
+    "modification": "Standalone flag geometry extracted from official wordmark; translated to square canvas"
   },
   {
     "provider": "twilio",
@@ -102,26 +103,25 @@
   {
     "provider": "typeform",
     "source": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/typeform.svg",
-    "license": "Simple Icons CC0; trademarks remain their owners"
+    "license": "Simple Icons CC0; trademarks remain their owners",
+    "modification": "Standalone typeform-icon from gilbarbara/logos"
   },
   {
     "provider": "jotform",
     "source": "https://cdn.jotfor.ms/assets/img/logo2021/jotform-logo.svg",
-    "license": "Provider trademark; see upstream terms"
+    "license": "Provider trademark; see upstream terms",
+    "modification": "Removed wordmark path; retained standalone logomark"
   },
   {
     "provider": "pipedrive",
     "source": "https://raw.githubusercontent.com/gilbarbara/logos/main/logos/pipedrive.svg",
-    "license": "Provider trademark; see upstream terms"
+    "license": "Provider trademark; see upstream terms",
+    "modification": "Isolated first p glyph as compact monogram"
   },
   {
     "provider": "freshdesk",
     "source": "https://www.freshworks.com/beta/icons/template-2026/freshdesk-logo-icon.svg",
-    "license": "Provider trademark; see upstream terms"
-  },
-  {
-    "provider": "bamboohr",
-    "source": "https://api.iconify.design/arcticons/bamboohr.svg",
-    "license": "CC BY-SA 4.0 Arcticons contributors; recolored"
+    "license": "Provider trademark; see upstream terms",
+    "modification": "Combined background and foreground as even-odd transparent cutout"
   }
 ]
