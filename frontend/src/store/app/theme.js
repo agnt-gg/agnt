@@ -6,29 +6,40 @@ const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'no
 /* Themes that carry their own light and dark face and follow the desktop's colour scheme. */
 const SYSTEM_FOLLOWING_THEMES = ['everforest'];
 
+/* Which face of a system-following theme to show. 'auto' asks the desktop; the other two are an
+   explicit choice by the user, which is the only thing that works on a desktop that has no
+   day/night switch to ask -- there, `prefers-color-scheme` answers light forever. */
+export const THEME_FACES = ['auto', 'light', 'dark'];
+
+function readStoredFace() {
+  const stored = localStorage.getItem('themeFace');
+  return THEME_FACES.includes(stored) ? stored : 'auto';
+}
+
 function prefersDarkScheme() {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-color-scheme: dark)').matches
     : true;
 }
 
-/* The legacy isDarkMode flag. A system-following theme is dark only while the desktop is. */
-function isDarkFace(theme) {
-  return SYSTEM_FOLLOWING_THEMES.includes(theme)
-    ? prefersDarkScheme()
-    : !['light', 'rose'].includes(theme);
+/* The legacy isDarkMode flag, and the one rule for which face is showing. */
+function isDarkFace(theme, face = 'auto') {
+  if (!SYSTEM_FOLLOWING_THEMES.includes(theme)) return !['light', 'rose'].includes(theme);
+  if (face === 'dark') return true;
+  if (face === 'light') return false;
+  return prefersDarkScheme();
 }
 
 /* One place that decides which classes a theme puts on <body>, so startup and later switches
-   cannot drift apart. A system-following theme adds `.dark` only while the desktop asks for it. */
-function applyThemeClasses(theme) {
+   cannot drift apart. A system-following theme adds `.dark` only while its face resolves dark. */
+function applyThemeClasses(theme, face = 'auto') {
   document.body.classList.remove(
     'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose', 'everforest',
   );
   const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
   if (SYSTEM_FOLLOWING_THEMES.includes(theme)) {
     document.body.classList.add(theme);
-    if (prefersDarkScheme()) {
+    if (isDarkFace(theme, face)) {
       document.body.classList.add('dark');
     }
   } else if (darkVariants.includes(theme)) {
@@ -42,19 +53,19 @@ function applyThemeClasses(theme) {
   // light theme has no classes (default)
 }
 
-/* Re-apply on a desktop day/night flip. Registered once; a no-op unless the active theme
-   follows the system. */
+/* Re-apply on a desktop day/night flip. Registered once; a no-op unless the active theme follows
+   the system AND the user has not pinned a face, because a pinned face outranks the desktop. */
 let systemSchemeWatcher = null;
-function watchSystemScheme(getTheme, onSchemeChange) {
+function watchSystemScheme(getContext, onSchemeChange) {
   if (systemSchemeWatcher || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return;
   }
   systemSchemeWatcher = window.matchMedia('(prefers-color-scheme: dark)');
   const onChange = () => {
-    const theme = getTheme();
-    if (!SYSTEM_FOLLOWING_THEMES.includes(theme)) return;
-    applyThemeClasses(theme);
-    onSchemeChange(theme);
+    const { theme, face } = getContext();
+    if (!SYSTEM_FOLLOWING_THEMES.includes(theme) || face !== 'auto') return;
+    applyThemeClasses(theme, face);
+    onSchemeChange(theme, face);
   };
   if (typeof systemSchemeWatcher.addEventListener === 'function') {
     systemSchemeWatcher.addEventListener('change', onChange);
@@ -198,6 +209,9 @@ export default {
     rateLimitInfo: null, // { resetAt, limit, window, currentPlan, hitCount }
     rateLimitHitCount: 0,
 
+    /* 'auto' follows the desktop; 'light'/'dark' pin a system-following theme's face. */
+    themeFace: readStoredFace(),
+
     // Legacy support - computed from currentTheme
     isDarkMode: localStorage.getItem('currentTheme') !== null ? !['light', 'rose'].includes(localStorage.getItem('currentTheme')) : true,
     isCyberpunkMode: localStorage.getItem('currentTheme') !== null ? localStorage.getItem('currentTheme') === 'cyberpunk' : true,
@@ -208,15 +222,28 @@ export default {
       state.currentTheme = theme;
       localStorage.setItem('currentTheme', theme);
 
+      // Choosing a theme from the picker starts it following the desktop again. That is also the
+      // way back to 'auto' after pinning a face, without a third control in the UI.
+      state.themeFace = 'auto';
+      localStorage.setItem('themeFace', 'auto');
+
       // Update legacy state for backward compatibility
-      state.isDarkMode = isDarkFace(theme);
+      state.isDarkMode = isDarkFace(theme, state.themeFace);
       state.isCyberpunkMode = theme === 'cyberpunk';
 
       // Apply theme classes to body
-      applyThemeClasses(theme);
+      applyThemeClasses(theme, state.themeFace);
     },
 
     // Legacy mutations for backward compatibility
+    /* Pin or release the face of a system-following theme. */
+    SET_THEME_FACE(state, face) {
+      state.themeFace = THEME_FACES.includes(face) ? face : 'auto';
+      localStorage.setItem('themeFace', state.themeFace);
+      applyThemeClasses(state.currentTheme, state.themeFace);
+      state.isDarkMode = isDarkFace(state.currentTheme, state.themeFace);
+    },
+
     SET_DARK_MODE(state, isDarkMode) {
       state.isDarkMode = isDarkMode;
       localStorage.setItem('darkMode', isDarkMode);
@@ -364,11 +391,11 @@ export default {
     async initTheme({ commit, state, dispatch }) {
       // Apply CSS classes IMMEDIATELY from localStorage state (no async dependency)
       // This prevents theme flash while IndexedDB loads background images
-      applyThemeClasses(state.currentTheme);
-      commit('SET_DARK_MODE', isDarkFace(state.currentTheme));
+      applyThemeClasses(state.currentTheme, state.themeFace);
+      commit('SET_DARK_MODE', isDarkFace(state.currentTheme, state.themeFace));
       watchSystemScheme(
-        () => state.currentTheme,
-        (theme) => commit('SET_DARK_MODE', isDarkFace(theme)),
+        () => ({ theme: state.currentTheme, face: state.themeFace }),
+        (theme, face) => commit('SET_DARK_MODE', isDarkFace(theme, face)),
       );
 
       // Initialize greyscale and visual settings synchronously
@@ -384,6 +411,13 @@ export default {
 
     // Legacy actions for backward compatibility
     toggleDarkMode({ commit, state }) {
+      // For a theme that carries both faces, the toggle chooses one and keeps it. Without this it
+      // would flip the class and the next desktop event, or any re-apply, would undo it -- and on
+      // a desktop with no day/night switch there would be no way to reach the other face at all.
+      if (SYSTEM_FOLLOWING_THEMES.includes(state.currentTheme)) {
+        commit('SET_THEME_FACE', state.isDarkMode ? 'light' : 'dark');
+        return;
+      }
       commit('SET_DARK_MODE', !state.isDarkMode);
     },
     initDarkMode({ commit, state }) {
@@ -684,6 +718,7 @@ export default {
 
     // Legacy getters for backward compatibility
     isDarkMode: (state) => state.isDarkMode,
+    themeFace: (state) => state.themeFace,
     isCyberpunkMode: (state) => state.isCyberpunkMode,
     isGreyscaleMode: (state) => state.isGreyscaleMode,
     isAssetPanelFullWidth: (state) => state.isAssetPanelFullWidth,
