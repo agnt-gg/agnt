@@ -1,0 +1,172 @@
+/* EVERFOREST THEME - Follows the desktop between day and night.
+ *
+ * Unlike the other themes, `everforest` is a single id with two faces. The store adds `.dark`
+ * alongside `.everforest` when the desktop asks for a dark colour scheme, so this one theme
+ * tracks the system the way the terminal and the desktop shell already do.
+ *
+ * The dark face rides `body.dark` and the light face rides the default light base. The light
+ * selector carries `:not(.dark)` so it matches `_light.css`'s specificity, and this file is
+ * imported after it, so equal weight resolves in source order to the values below.
+ *
+ * Palette: Everforest Dark Hard and Everforest Light Medium, the same two the terminal uses.
+ */
+
+body.dark.everforest {
+  --color-background: #1e2326;
+  --color-background-rgb: 30, 35, 38;
+
+  /* Background hierarchy — Everforest bg0 through bg5 */
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
+  --color-ultra-dark-navy: #232a2e;
+  --color-dark-navy: #272e33;
+  --color-navy: #2e383c;
+  --color-dull-navy: #374145;
+  --color-duller-navy: #4f585e;
+
+  /* Text hierarchy — Everforest greys against the tan foreground */
+  --color-med-navy: #859289;
+  --color-light-med-navy: #d3c6aa;
+  --color-light-navy: #9da9a0;
+  --color-bright-light-navy: #7a8478;
+  --color-ultra-light-navy: #2e383c;
+  --color-dull-white: #d3c6aa;
+  --color-white: #f2efdf;
+
+  /* Accent colors — the terminal's own palette, so a card reads like its output */
+  --color-green: #a7c080;
+  --color-blue: #7fbbb3;
+  --color-pink: #d699b6;
+  --color-red: #e67e80;
+  --color-yellow: #dbbc7f;
+  --color-orange: #e69875;
+  --color-indigo: #d699b6;
+  --color-violet: #d699b6;
+
+  /* Semantic colors */
+  --color-light-green: #d3c6aa;
+  --color-primary: #a7c080;
+  --color-secondary: #7fbbb3;
+  --svg-gradient-start: #a7c080;
+  --svg-gradient-end: #7fbbb3;
+
+  /* Overlays */
+  --color-popup: rgba(35, 42, 46, 0.95);
+  --color-lighter-0: rgba(211, 198, 170, 0.06);
+  --color-lighter-1: rgba(211, 198, 170, 0.1);
+  --color-lighter-2: rgba(211, 198, 170, 0.18);
+  --color-lighter-3: rgba(211, 198, 170, 0.3);
+  --color-darker-0: rgba(0, 0, 0, 0.2);
+  --color-darker-1: rgba(0, 0, 0, 0.3);
+  --color-darker-2: rgba(0, 0, 0, 0.45);
+  --color-darker-3: rgba(0, 0, 0, 0.6);
+  --color-dark-0: rgba(0, 0, 0, 0.2);
+  --color-dark-1: rgba(0, 0, 0, 0.3);
+  --color-dark-2: rgba(0, 0, 0, 0.45);
+  --color-dark-3: rgba(0, 0, 0, 0.6);
+
+  /* Terminal */
+  --terminal-border-color: #374145;
+  --terminal-border-color-light: #4f585e;
+  --terminal-muted-color: #374145;
+
+  /* Text */
+  --color-text: #d3c6aa;
+  --color-text-muted: #9da9a0;
+  --color-text-secondary: #a6b0a0;
+  --color-text-dull: #4f585e;
+
+  /* RGB components */
+  --green-rgb: 167, 192, 128;
+  --blue-rgb: 127, 187, 179;
+  --pink-rgb: 214, 153, 182;
+  --red-rgb: 230, 126, 128;
+  --yellow-rgb: 219, 188, 127;
+  --indigo-rgb: 214, 153, 182;
+  --primary-rgb: 167, 192, 128;
+}
+
+body.everforest:not(.dark) {
+  --color-background: #efebd4;
+  --color-background-rgb: 239, 235, 212;
+
+  /* Background hierarchy — light warm parchment, raised surfaces lighter */
+  --color-black-navy: var(--color-background); /* alias, not a copy — see themeCanvas.spec.js */
+  --color-ultra-dark-navy: #fdf6e3;
+  --color-dark-navy: #f4f0d9;
+  --color-navy: #fdf6e3;
+  --color-dull-navy: #e6e2cc;
+  --color-duller-navy: #bdc3af;
+
+  /* Text hierarchy — dark slate greens */
+  --color-med-navy: #829181;
+  --color-light-med-navy: #4f585e;
+  --color-light-navy: #e0dcc7;
+  --color-bright-light-navy: #d3cfbb;
+  --color-ultra-light-navy: #fdf6e3;
+  --color-dull-white: #5c6a72;
+  --color-white: #fdf6e3;
+
+  /* Accent colors — Everforest's bright light-mode set, dark enough to read on parchment */
+  --color-green: #8da101;
+  --color-blue: #3a94c5;
+  --color-pink: #df69ba;
+  --color-red: #f85552;
+  --color-yellow: #dfa000;
+  --color-orange: #f57d26;
+  --color-indigo: #df69ba;
+  --color-violet: #df69ba;
+
+  /* Semantic colors */
+  --color-light-green: #5c6a72;
+  --color-primary: #8da101;
+  --color-secondary: #3a94c5;
+  --svg-gradient-start: #8da101;
+  --svg-gradient-end: #3a94c5;
+
+  /* Overlays */
+  --color-popup: rgba(244, 240, 217, 0.95);
+  --color-darker-0: rgba(92, 106, 114, 0.06);
+  --color-darker-1: rgba(92, 106, 114, 0.1);
+  --color-darker-2: rgba(92, 106, 114, 0.18);
+  --color-darker-3: rgba(92, 106, 114, 0.3);
+  --color-lighter-0: rgba(253, 246, 227, 0.3);
+  --color-lighter-1: rgba(253, 246, 227, 0.5);
+  --color-lighter-2: rgba(253, 246, 227, 0.7);
+  --color-lighter-3: rgba(253, 246, 227, 0.9);
+  --color-dark-0: rgba(92, 106, 114, 0.06);
+  --color-dark-1: rgba(92, 106, 114, 0.1);
+  --color-dark-2: rgba(92, 106, 114, 0.18);
+  --color-dark-3: rgba(92, 106, 114, 0.3);
+
+  /* Terminal */
+  --terminal-width: 100%;
+  --terminal-height: 100%;
+  --terminal-border-radius: 0;
+  --terminal-border-color: #e0dcc7;
+  --terminal-border-color-light: #d3cfbb;
+  --terminal-screen-lines: 0.125;
+  --terminal-box-shadow: none;
+  --terminal-muted-color: #e0dcc7;
+
+  /* Text — each tier one step darker than Everforest Light's own #5c6a72 foreground.
+     secondaryInkContrast.spec.js composites --color-text at the dimming alphas this codebase
+     uses (down to 0.78) over BOTH the page and the raised card; #5c6a72 lands at 3.11:1 and
+     #4f585e at 3.75:1, so the readable ink here is the darker slate #374145 (4.90:1 worst case). */
+  --color-text: #374145;
+  --color-text-muted: #4f585e;
+  --color-text-secondary: #5c6a72;
+  --color-text-dull: #bdc3af;
+
+  /* RGB components */
+  --green-rgb: 141, 161, 1;
+  --blue-rgb: 58, 148, 197;
+  --pink-rgb: 223, 105, 186;
+  --red-rgb: 248, 85, 82;
+  --yellow-rgb: 223, 160, 0;
+  --indigo-rgb: 223, 105, 186;
+  --primary-rgb: 141, 161, 1;
+
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
+  color: var(--color-text);
+}
