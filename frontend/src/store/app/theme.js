@@ -244,15 +244,11 @@ export default {
       state.isDarkMode = isDarkFace(state.currentTheme, state.themeFace);
     },
 
+    /* A mirror of what the theme already decided, for the components that still read the flag.
+       It does NOT own the body classes (applyThemeClasses does) and does not persist: the theme
+       name is the persisted truth, and `darkMode`/`cyberpunkMode` were written but never read. */
     SET_DARK_MODE(state, isDarkMode) {
       state.isDarkMode = isDarkMode;
-      localStorage.setItem('darkMode', isDarkMode);
-      document.body.classList.toggle('dark', isDarkMode);
-    },
-    SET_CYBERPUNK_MODE(state, isCyberpunkMode) {
-      state.isCyberpunkMode = isCyberpunkMode;
-      localStorage.setItem('cyberpunkMode', isCyberpunkMode);
-      document.body.classList.toggle('cyberpunk', isCyberpunkMode);
     },
     SET_GREYSCALE_MODE(state, isGreyscaleMode) {
       state.isGreyscaleMode = isGreyscaleMode;
@@ -409,25 +405,18 @@ export default {
       });
     },
 
-    // Legacy actions for backward compatibility
+    /* Both Settings toggles choose a THEME. They used to flip a body class on their own, which
+       the theme name then contradicted on the next re-apply or reload. */
     toggleDarkMode({ commit, state }) {
-      // For a theme that carries both faces, the toggle chooses one and keeps it. Without this it
-      // would flip the class and the next desktop event, or any re-apply, would undo it -- and on
-      // a desktop with no day/night switch there would be no way to reach the other face at all.
+      // A theme that carries both faces switches face, not theme.
       if (SYSTEM_FOLLOWING_THEMES.includes(state.currentTheme)) {
         commit('SET_THEME_FACE', state.isDarkMode ? 'light' : 'dark');
         return;
       }
-      commit('SET_DARK_MODE', !state.isDarkMode);
-    },
-    initDarkMode({ commit, state }) {
-      document.body.classList.toggle('dark', state.isDarkMode);
+      commit('SET_THEME', state.isDarkMode ? 'light' : 'dark');
     },
     toggleCyberpunkMode({ commit, state }) {
-      commit('SET_CYBERPUNK_MODE', !state.isCyberpunkMode);
-    },
-    initCyberpunkMode({ state }) {
-      document.body.classList.toggle('cyberpunk', state.isCyberpunkMode);
+      commit('SET_THEME', state.isCyberpunkMode ? 'dark' : 'cyberpunk');
     },
     toggleGreyscaleMode({ commit, state }) {
       commit('SET_GREYSCALE_MODE', !state.isGreyscaleMode);
