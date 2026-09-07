@@ -1,7 +1,67 @@
 import { mediaStorage } from '../../utils/mediaStorage.js';
 import { maxBytesFor, formatMb } from '../../services/backgroundLimits.js';
 
-const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose'];
+const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose', 'everforest'];
+
+/* Themes that carry their own light and dark face and follow the desktop's colour scheme. */
+const SYSTEM_FOLLOWING_THEMES = ['everforest'];
+
+function prefersDarkScheme() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : true;
+}
+
+/* The legacy isDarkMode flag. A system-following theme is dark only while the desktop is. */
+function isDarkFace(theme) {
+  return SYSTEM_FOLLOWING_THEMES.includes(theme)
+    ? prefersDarkScheme()
+    : !['light', 'rose'].includes(theme);
+}
+
+/* One place that decides which classes a theme puts on <body>, so startup and later switches
+   cannot drift apart. A system-following theme adds `.dark` only while the desktop asks for it. */
+function applyThemeClasses(theme) {
+  document.body.classList.remove(
+    'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose', 'everforest',
+  );
+  const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
+  if (SYSTEM_FOLLOWING_THEMES.includes(theme)) {
+    document.body.classList.add(theme);
+    if (prefersDarkScheme()) {
+      document.body.classList.add('dark');
+    }
+  } else if (darkVariants.includes(theme)) {
+    document.body.classList.add('dark');
+    if (theme !== 'dark') {
+      document.body.classList.add(theme);
+    }
+  } else if (theme === 'rose') {
+    document.body.classList.add('rose');
+  }
+  // light theme has no classes (default)
+}
+
+/* Re-apply on a desktop day/night flip. Registered once; a no-op unless the active theme
+   follows the system. */
+let systemSchemeWatcher = null;
+function watchSystemScheme(getTheme, onSchemeChange) {
+  if (systemSchemeWatcher || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return;
+  }
+  systemSchemeWatcher = window.matchMedia('(prefers-color-scheme: dark)');
+  const onChange = () => {
+    const theme = getTheme();
+    if (!SYSTEM_FOLLOWING_THEMES.includes(theme)) return;
+    applyThemeClasses(theme);
+    onSchemeChange(theme);
+  };
+  if (typeof systemSchemeWatcher.addEventListener === 'function') {
+    systemSchemeWatcher.addEventListener('change', onChange);
+  } else if (typeof systemSchemeWatcher.addListener === 'function') {
+    systemSchemeWatcher.addListener(onChange);
+  }
+}
 
 function mediaKeyFor(theme) {
   return `customBackgroundImage_${theme}`;
@@ -149,21 +209,11 @@ export default {
       localStorage.setItem('currentTheme', theme);
 
       // Update legacy state for backward compatibility
-      state.isDarkMode = !['light', 'rose'].includes(theme);
+      state.isDarkMode = isDarkFace(theme);
       state.isCyberpunkMode = theme === 'cyberpunk';
 
       // Apply theme classes to body
-      document.body.classList.remove('dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose');
-      const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
-      if (darkVariants.includes(theme)) {
-        document.body.classList.add('dark');
-        if (theme !== 'dark') {
-          document.body.classList.add(theme);
-        }
-      } else if (theme === 'rose') {
-        document.body.classList.add('rose');
-      }
-      // light theme has no classes (default)
+      applyThemeClasses(theme);
     },
 
     // Legacy mutations for backward compatibility
@@ -314,16 +364,12 @@ export default {
     async initTheme({ commit, state, dispatch }) {
       // Apply CSS classes IMMEDIATELY from localStorage state (no async dependency)
       // This prevents theme flash while IndexedDB loads background images
-      document.body.classList.remove('dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose');
-      const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
-      if (darkVariants.includes(state.currentTheme)) {
-        document.body.classList.add('dark');
-        if (state.currentTheme !== 'dark') {
-          document.body.classList.add(state.currentTheme);
-        }
-      } else if (state.currentTheme === 'rose') {
-        document.body.classList.add('rose');
-      }
+      applyThemeClasses(state.currentTheme);
+      commit('SET_DARK_MODE', isDarkFace(state.currentTheme));
+      watchSystemScheme(
+        () => state.currentTheme,
+        (theme) => commit('SET_DARK_MODE', isDarkFace(theme)),
+      );
 
       // Initialize greyscale and visual settings synchronously
       document.documentElement.classList.toggle('greyscale', state.isGreyscaleMode);

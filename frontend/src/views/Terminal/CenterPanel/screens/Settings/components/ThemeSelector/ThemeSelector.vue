@@ -143,6 +143,7 @@ export default {
         { id: 'ember', name: 'Ember', icon: 'fas fa-fire' },
         { id: 'nord', name: 'Nord', icon: 'fas fa-snowflake' },
         { id: 'hacker', name: 'Hacker', icon: 'fas fa-terminal' },
+        { id: 'everforest', name: 'Everforest', icon: 'fas fa-tree' },
         { id: 'light', name: 'Light', icon: 'fas fa-sun' },
         { id: 'rose', name: 'Rose', icon: 'fas fa-heart' },
       ],
