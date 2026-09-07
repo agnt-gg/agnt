@@ -2,6 +2,9 @@ import express from 'express';
 import { authenticateToken, sessionMiddleware, getUserTokenFromSession } from './Middleware.js';
 import UserService from '../services/UserService.js';
 import { requireAuth } from '../utils/authGuard.js';
+import db from '../models/database/index.js';
+import { activationMilestoneHandler } from './activationMilestoneHandler.js';
+import packageInfo from '../../../package.json' with { type: 'json' };
 
 // Set up new route
 const UserRoutes = express.Router();
@@ -21,6 +24,7 @@ const authenticateSSEToken = requireAuth({ allowQuery: true });
 // Define routes
 UserRoutes.get('/health', UserService.healthCheck);
 UserRoutes.get('/user-stats', authenticateToken, UserService.getUserStats);
+UserRoutes.post('/activation-sync', requireAuth(), activationMilestoneHandler({ db, appVersion: packageInfo.version }));
 
 // User settings routes
 UserRoutes.get('/settings', authenticateToken, UserService.getUserSettings);
