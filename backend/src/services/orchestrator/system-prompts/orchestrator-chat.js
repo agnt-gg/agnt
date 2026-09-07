@@ -178,25 +178,24 @@ Either way the user still SEES the result: "artifact" says where the file lives,
  */
 export const HTML_INLINE_RENDERING = `HTML RENDERS LIVE IN THE CHAT — THE DEFAULT WAY TO SHOW ANYTHING VISUAL:
 
-A \`\`\`html fenced block is NOT a code listing. The chat replaces it with a live,
-interactive, sandboxed iframe, auto-sized to its content, source behind a
-toggle. No tool call, no window — available on every turn.
+Render inline, not only LINKING to it. No tool call, no window.
 
-So when you have made something meant to be LOOKED AT — a report, mockup,
-dashboard, table, comparison, diagram, page — put it in a \`\`\`html block rather
-than only describing it, linking to it, or opening it elsewhere.
+SAVED HTML: after writing or locating the file, emit a closed \`\`\`artifact block
+containing JSON: {"path":"C:/absolute/path/site.html","title":"Site"}.
+Use forward slashes; optional "view" selects a hash route.
+One sandboxed iframe. Do not repeat the file or invent a wrapper.
 
-IF YOU ALSO WRITE THE FILE TO DISK, DO BOTH: write the file, then echo the same
-markup in a \`\`\`html block. The renderer notices the block matches a file you
-just wrote and points the iframe at the REAL file, so relative <img>/<link>
-paths resolve. The user gets the saved file AND the live render.
+INLINE HTML: a \`\`\`html block renders the self-contained page live.
+Existing write-and-echo blocks still pair with their file.
+Never put a launcher HTML document around another local iframe just for display.
+Use embedded or relative assets in saved HTML;
+internal file URLs are not universally portable. Never construct localhost API URLs.
 
-TWO THINGS TO AVOID:
-- Writing an HTML file and only LINKING to it — that makes the user click out to
-  another application to see work you could have shown in place. Link a file
-  only when they want the FILE itself, and render it inline as well.
-- Opening the browser to view HTML you just wrote. The browser is for REMOTE
-  pages you need to read or drive, never for your own local output.`;
+Use direct media tags for images/video/audio/PDF. Link files to keep.
+The browser is for REMOTE pages, not for presenting your local output.
+Test the chat HTTP origin, sandbox and resources;
+opening file:// alone is not chat QA. A load event is not proof of correctness.
+Distinguish isolated renderer tests from observing the user’s actual chat.`;
 
 export const LOCAL_FILE_RENDERING = `LOCAL FILE RENDERING:
 
@@ -217,7 +216,7 @@ Example in Markdown:
 ![Generated chart](file:///C:/Users/.../chart.png)
 \\\`\\\`\\\`
 
-LINKING to a file (as opposed to embedding it) uses the SAME \`file:///\` URL, in the \`href\`. A link is opened by the operating system from the real path, so the user gets the file itself in their default application. Link a file only when the user wants the FILE — to edit, send, or keep it. Anything they merely want to LOOK at should be shown in the message instead: media with the tags above, HTML with a \`\`\`html block.
+LINKING to a file (as opposed to embedding it) uses the SAME \`file:///\` URL, in the \`href\`. A link is opened by the operating system from the real path, so the user gets the file itself in their default application. Link a file only when the user wants the FILE — to edit, send, or keep it. Anything they merely want to LOOK at should be shown in the message instead: media with the tags above, saved HTML with a \`\`\`artifact block, inline HTML with a \`\`\`html block.
 - GOOD: \`<a href="file:///C:/Users/.../report.pdf">Open the report</a>\` — also \`[Open the report](file:///C:/Users/.../report.pdf)\` in Markdown.
 - NEVER hand-write an \`http://localhost:<port>/api/...\` URL for a local file, in an \`href\` or anywhere else. That endpoint is authenticated and the browser that opens the link is not signed in, so the user gets "Authentication required" instead of their file. Write the \`file:///\` path and let the app do the rest.
 

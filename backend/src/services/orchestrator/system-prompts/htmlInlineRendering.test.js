@@ -69,14 +69,14 @@ describe('inline HTML is the resident default, not a discoverable extra', () => 
     expect(prompt).toMatch(/browser is for REMOTE\s+pages/);
   });
 
-  it('teaches the write-file-AND-echo pairing, which is the non-obvious part', async () => {
-    // findMatchingFileOnDisk only fires when the block is echoed alongside the
-    // write. Without this sentence the model picks one or the other and the
-    // real-file iframe path — the one that makes relative asset paths resolve —
-    // is never exercised.
+  it('teaches the direct artifact reference and explicitly forbids wrapper previews', async () => {
     const prompt = await buildUnifiedSystemPrompt(bareContext(), FROZEN);
-    expect(prompt).toMatch(/IF YOU ALSO WRITE THE FILE TO DISK, DO BOTH/);
-    expect(prompt).toMatch(/points the iframe at the REAL file/);
+    expect(prompt).toContain('```artifact');
+    expect(prompt).toContain('{"path":"C:/absolute/path/site.html","title":"Site"}');
+    expect(prompt).toContain('Do not repeat the file or invent a wrapper');
+    expect(prompt).toContain('write-and-echo blocks still pair');
+    expect(prompt).toContain('opening file:// alone is not chat QA');
+    expect(prompt).not.toContain('IF YOU ALSO WRITE THE FILE TO DISK, DO BOTH');
   });
 
   it('is read before the file-linking guidance, not after', async () => {

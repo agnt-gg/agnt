@@ -49,6 +49,7 @@ export function localFileUrlToAbsolutePath(value) {
     candidates.push(`/api${LOCAL_FILE_SEGMENT}`);
   }
 
+  candidates.push(...candidates.map(prefix => prefix.replace('/local-file/', '/local-preview/')));
   const base = candidates.find((prefix) => raw.startsWith(prefix));
   if (!base) return '';
 

@@ -4,7 +4,11 @@ import path from 'path';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import { isSecretPath, assertWithinRoots, describeRoots } from '../utils/localFileScope.js';
 
+import { MAX_PREVIEW_TEXT_BYTES, preparePreviewHTML, previewResourceURL, previewChannel } from '../utils/artifactPreviewDocument.js';
+import { rewritePreviewCSS } from '../utils/artifactPreviewUrls.js';
+
 const LocalFileRoutes = express.Router();
+export const LocalPreviewRoutes = express.Router();
 
 const MIME = {
   // video
@@ -58,7 +62,7 @@ const MIME = {
 //       served HTML resolve against this base, so ../videos/foo.mp4 works.)
 //   2) QUERY-based: /api/local-file?path=C:/Users/.../file.html  ← legacy
 //
-const serveLocalFile = (req, res) => {
+const serveLocalFile = async (req, res, { preview = false } = {}) => {
   try {
     // Prefer path-based (anything after the mount point); fall back to ?path=
     const rawFromUrl = req.path && req.path !== '/' ? decodeURIComponent(req.path.replace(/^\//, '')) : '';
@@ -116,6 +120,28 @@ const serveLocalFile = (req, res) => {
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Type', contentType);
 
+    if (preview && ['.html', '.htm', '.css'].includes(ext)) {
+      if (fileSize > MAX_PREVIEW_TEXT_BYTES) {
+        return res.status(413).json({ error: 'Artifact is too large for an inline preview. Open the original file instead.' });
+      }
+      const source = await fs.promises.readFile(resolved, 'utf8');
+      const prefix = '/api/local-preview/';
+      const documentURL = prefix + resolved.replace(/\\/g, '/').split('/').map((part, index) =>
+        index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part)
+      ).join('/');
+      const rendered = ext === '.css'
+        ? rewritePreviewCSS(source, value => previewResourceURL(value, prefix))
+        : preparePreviewHTML(source, {
+          documentURL: req.baseUrl + req.path === documentURL ? undefined : documentURL,
+          prefix,
+          channel: previewChannel(req.query),
+        });
+      res.setHeader('Accept-Ranges', 'none');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Content-Length', String(Buffer.byteLength(rendered)));
+      return res.end(req.method === 'HEAD' ? undefined : rendered);
+    }
+
     if (range) {
       const m = /bytes=(\d+)-(\d+)?/.exec(range);
       const start = m ? parseInt(m[1], 10) : 0;
@@ -147,11 +173,15 @@ const serveLocalFile = (req, res) => {
 LocalFileRoutes.use(requireAuthMedia);
 
 // Legacy query-string form: /api/local-file?path=...
-LocalFileRoutes.get('/', serveLocalFile);
+LocalFileRoutes.get('/', (req, res) => serveLocalFile(req, res));
 // Path-based form: /api/local-file/<full-path>
 // express 5 / path-to-regexp v6 uses {*splat} or /{*all} for wildcards.
 // Use a regex to match anything for broad compatibility.
-LocalFileRoutes.get(/.*/, serveLocalFile);
+LocalFileRoutes.get(/.*/, (req, res) => serveLocalFile(req, res));
+
+// The same authentication and scope guards apply to all nested preview assets.
+LocalPreviewRoutes.use(requireAuthMedia);
+LocalPreviewRoutes.get(/.*/, (req, res) => serveLocalFile(req, res, { preview: true }));
 
 console.log('Local File Routes Started...');
 

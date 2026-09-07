@@ -426,10 +426,13 @@ import { renderMentionPills } from '@/utils/agentMentions.js';
 import { API_CONFIG } from '@/../user.config.js';
 import {
   buildLocalFileUrl as sharedBuildLocalFileUrl,
+  buildLocalPreviewUrl,
+  toLocalPreviewUrl,
   fileUrlToLocalFileUrl as sharedFileUrlToLocalFileUrl,
   rewriteLocalFileURLsInHTML as sharedRewriteLocalFileURLsInHTML,
 } from '@/utils/localFileUrl.js';
 import { handleLocalFileLinkClick } from '@/utils/openLocalFile.js';
+import { monitorArtifactPreview } from '@/utils/artifactPreviewStatus.js';
 import {
   findMatchingFileOnDisk as pairingMatch,
   getBaseDirFromToolCalls as pairingBaseDir,
@@ -887,10 +890,8 @@ export default {
 
     // Pair a ```html code block with a file the LLM just wrote or read, so we
     // can render the block via iframe.src pointing at the real file. The
-    // browser then uses the file's URL as the iframe's base, and every asset
-    // reference inside the HTML — relative (../videos/x.mp4), absolute
-    // (/images/y.png), protocol-relative, or file:// — resolves exactly as it
-    // would if you opened the file directly.
+    // preview representation keeps relative paths based on the resolved file
+    // and rewrites local subresources. Raw downloads stay byte-identical.
     //
     // Tools recognized — reads AND writes. See utils/htmlBlockFilePairing.js for
     // the matching rules and why a written file counts as strong a claim as a
@@ -918,6 +919,7 @@ export default {
     // for a local HTML file). Uses the same modal chrome as the HTML code preview.
     // Local HTML entries can be prepared from any explicit filesystem path.
     const openIframeFullscreen = (src) => {
+      src = toLocalPreviewUrl(src);
       previewIframeSrc.value = src;
       previewHTML.value = '';
       previewSharePath.value = '';
@@ -1285,7 +1287,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             // Otherwise fall back to srcdoc with synthesized <base href=…>.
             const matchedFilePath = findMatchingFileOnDisk(htmlCode);
             if (matchedFilePath) {
-              iframe.src = buildLocalFileUrl(matchedFilePath);
+              iframe.src = buildLocalPreviewUrl(matchedFilePath, props.message?.id);
               iframe.setAttribute('data-local-file', matchedFilePath);
             } else {
               const codeBlockBaseDir = getBaseDirFromToolCalls();
@@ -1354,7 +1356,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             fsBtn.onclick = (e) => {
               e.stopPropagation();
               if (matchedFilePath) {
-                openIframeFullscreen(buildLocalFileUrl(matchedFilePath));
+                openIframeFullscreen(buildLocalPreviewUrl(matchedFilePath, props.message?.id));
               } else {
                 openPreviewModal(htmlCode);
               }
@@ -1397,9 +1399,25 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             wrapper.appendChild(codePre);
 
             pre.replaceWith(wrapper);
+            if (matchedFilePath) attachPreviewDiagnostics(iframe, wrapper, buttonContainer, matchedFilePath);
           });
         }
       });
+    };
+
+    const attachPreviewDiagnostics = (iframe, wrapper, actions, absolutePath) => {
+      const status = document.createElement('div');
+      status.className = 'artifact-preview-status';
+      wrapper.insertBefore(status, wrapper.querySelector('iframe')?.parentElement === wrapper ? iframe : wrapper.querySelector('.html-inline-iframe-scroller'));
+      const original = document.createElement('a');
+      original.className = 'html-action-btn';
+      original.textContent = 'Open original';
+      original.href = 'file:///' + absolutePath.replace(/\\/g, '/').replace(/^\//, '').split('/').map((part, index) =>
+        index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part)
+      ).join('/');
+      original.setAttribute('data-local-path', absolutePath);
+      actions.prepend(original);
+      monitorArtifactPreview(iframe, status);
     };
 
     // Wrap plain LLM-rendered iframes (pointing at URLs, e.g. local HTML files
@@ -1422,8 +1440,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             iframe.setAttribute('data-fs-added', 'true');
             return;
           }
-          const src = iframe.getAttribute('src') || '';
-          if (!src) return;
+          const source = iframe.getAttribute('src') || '';
+          if (!source) return;
+          const src = toLocalPreviewUrl(source);
+          if (src !== source) iframe.setAttribute('src', src);
 
           iframe.setAttribute('data-fs-added', 'true');
 
@@ -1474,6 +1494,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           iframe.parentNode.insertBefore(wrapper, iframe);
           wrapper.appendChild(actions);
           wrapper.appendChild(iframe);
+          if (absolutePath && isPublishableEntry(absolutePath)) attachPreviewDiagnostics(iframe, wrapper, actions, absolutePath);
         });
       });
     };
@@ -5256,4 +5277,8 @@ span.nodeLabel p {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.artifact-preview-status { padding: 12px 16px; font-size: 13px; line-height: 1.5; color: var(--color-text); background: var(--color-navy); border-bottom: 1px solid var(--color-duller-navy); }
+.artifact-preview-status[data-state="warning"], .artifact-preview-status[data-state="error"], .artifact-preview-status[data-state="unconfirmed"] { color: var(--color-orange); }
+.artifact-preview-status[hidden] { display: none; }
 </style>
