@@ -8,8 +8,11 @@ import { requireAuthHeader } from '../utils/authGuard.js';
 import { synthesize, listEngines, availableEngines, MAX_TTS_CHARS } from '../services/ttsService.js';
 import { createRealtimeCall, REALTIME_VOICES, DEFAULT_VOICE, REALTIME_MODEL } from '../services/realtimeVoiceService.js';
 import { hasOpenAiVoiceCredential } from '../services/auth/openAiVoiceCredential.js';
+import { createCodexVoiceRouter } from './codexVoiceRoutes.js';
 
 const router = express.Router();
+// Explicit opt-in native Codex protocol; legacy realtime route is unchanged.
+router.use('/codex', createCodexVoiceRouter());
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({

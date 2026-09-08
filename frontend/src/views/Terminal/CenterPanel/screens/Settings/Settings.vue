@@ -76,6 +76,7 @@
           -->
           <div class="settings-grid">
             <ProviderSelector />
+            <CodexVoiceSettings />
             <FallbackProviders />
             <ChatBehaviorSettings />
           </div>
@@ -279,6 +280,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
 import ProviderSelector from './components/ProviderSelector/ProviderSelector.vue';
+import CodexVoiceSettings from '@/components/CodexVoiceSettings.vue';
 // Owned by the Connectors screen directory, which is where this page lived
 // before it moved under SYSTEM. Imported rather than copied so there is still
 // exactly one implementation of each card.
@@ -308,6 +310,7 @@ export default {
     TerminalHeader,
     LoginSection,
     ProviderSelector,
+    CodexVoiceSettings,
     FallbackProviders,
     ChatBehaviorSettings,
     ApiKeyManager,

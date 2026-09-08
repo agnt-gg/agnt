@@ -897,6 +897,8 @@ export default {
         model,
         onFrontendEvent,
         files,
+        onVoiceStreamEvent,
+        voiceMetadata,
       } = payload;
 
       // A send needs *something* — text OR attached files. Files alone with no
@@ -921,6 +923,7 @@ export default {
         role: 'user',
         content: displayContent,
         timestamp: Date.now(),
+        ...(voiceMetadata ? { voiceProvenance: { kind: 'provider-delegation', delegationId: voiceMetadata.delegationId, observedTranscript: voiceMetadata.transcript || null } } : {}),
       };
       commit('ADD_MESSAGE', { channelKey, message: userMessage });
 
@@ -946,7 +949,7 @@ export default {
       // A typed turn during a live voice session is NOT spoken and must not be
       // marked; the arm is keyed by the message text, so only the turn the
       // voice path armed can consume it. See services/voiceTurn.js.
-      const isVoiceTurn = consumeVoiceTurn(trimmedContent);
+      const isVoiceTurn = !!voiceMetadata || consumeVoiceTurn(trimmedContent);
       // Per-workspace AI override: a workspace chat channel is keyed
       // 'workspace:<id>'. If that workspace declares its own ai provider, it
       // wins for this turn only and must NOT be persisted as the global
@@ -1008,9 +1011,13 @@ export default {
               markRunStarted(data.conversationId, { chatType, channelKey });
             }
             handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent });
+            if (typeof onVoiceStreamEvent === 'function') {
+              try { onVoiceStreamEvent(eventName, data); } catch { /* voice observer cannot break chat */ }
+            }
           },
         });
       } catch (error) {
+        if (typeof onVoiceStreamEvent === 'function') { try { onVoiceStreamEvent('error', {}); } catch { /* observer only */ } }
         if (error?.name === 'AbortError') {
           // User-initiated stop — drop any pending steer too. They aborted
           // for a reason; auto-firing the steer as a new turn would override

@@ -199,6 +199,7 @@ import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/componen
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
+import { createRequestVoiceBridge } from '@/voice/requestVoiceBridge.js';
 import { getDraft, setDraft } from '@/services/chatDrafts';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
@@ -559,6 +560,21 @@ export default {
       toggleVoice,
     } = useVoiceEngines({
       surface: props.chatType || 'chat',
+      submitVoiceTurn: async ({ text, transcript, delegationId, onAccepted, onSpeech }) => {
+        if (isProcessing.value) return { accepted: false, reason: 'voice_turn_busy' };
+        const bridge = createRequestVoiceBridge({ onAccepted, onSpeech });
+        await store.dispatch('chatUnified/sendMessage', {
+          channelKey: props.channelKey,
+          chatType: props.chatType,
+          content: text,
+          pageContext: props.pageContext || {},
+          pageState: props.pageState || {},
+          onFrontendEvent: handleFrontendEvent,
+          voiceMetadata: { transcript, delegationId },
+          onVoiceStreamEvent: bridge.event,
+        });
+        return bridge.finish();
+      },
       submit: (text) => {
         chatInput.value = text;
         onSend();

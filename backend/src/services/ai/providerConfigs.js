@@ -183,6 +183,8 @@ const PROVIDER_CONFIGS = [
       // and adapter would silently drop uploaded images for Codex sessions.
       // https://openai.com/index/introducing-gpt-5-2-codex/
       vision: { supportsStreaming: true },
+      // Protocol capability is not proof of this account's voice entitlement.
+      realtimeVoice: { protocol: 'codex-live-client-delegation-v1', model: 'gpt-live-1-codex', requiresVerifiedSession: true },
     },
     // Fallback used only when Codex upstream is unreachable AND we have no
     // last-successful cache on disk (see codex-last-models.json / persistent
