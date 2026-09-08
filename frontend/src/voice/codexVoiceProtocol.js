@@ -9,23 +9,30 @@ export function parseCodexEvent(raw){
   if(x?.type!=='delegation'||x.target!=='client'||typeof x.id!=='string'||!x.id||size(x.id)>256||!Array.isArray(x.content))throw new Error('invalid_voice_delegation');
   const text=x.content.map(p=>{if(p?.type!=='input_text'||typeof p.text!=='string')throw new Error('invalid_voice_content');return p.text;}).join('').trim();
   if(!text||size(text)>16384)throw new Error('invalid_voice_content');
-  return {type:'delegation',id:x.id,text};
+  if(x.user_bidi_turn_id!==undefined&&(typeof x.user_bidi_turn_id!=='string'||!x.user_bidi_turn_id||size(x.user_bidi_turn_id)>256))throw new Error('invalid_voice_turn_id');
+  return {type:'delegation',id:x.id,text,...(x.user_bidi_turn_id?{turnId:x.user_bidi_turn_id}:{})};
  }
  if(['input_transcript.added','output_transcript.added'].includes(event?.type)){
   const text=event.item?.text;if(typeof text!=='string'||size(text)>32768)throw new Error('invalid_voice_transcript');
   return {type:'transcript',role:event.type==='input_transcript.added'?'user':'assistant',text,final:false};
  }
+ if(event?.type==='turn.created'&&event.turn?.role==='user'){
+  const id=event.turn.id;
+  if(typeof id!=='string'||!id||size(id)>256)throw new Error('invalid_voice_turn_id');
+  return {type:'user-turn-start',id};
+ }
  if(event?.type==='turn.done'){
   const {role,transcript:text}=event.turn||{};
   if(!['user','assistant'].includes(role)||typeof text!=='string'||size(text)>32768)throw new Error('invalid_voice_turn');
-  return {type:'transcript',role,text,final:true};
+  if(event.turn.id!==undefined&&(typeof event.turn.id!=='string'||!event.turn.id||size(event.turn.id)>256))throw new Error('invalid_voice_turn_id');
+  return {type:'transcript',role,text,final:true,...(event.turn.id?{id:event.turn.id}:{})};
  }
  return {type:'ignore'};
 }
 export function codexContextFrames(id,channel,text){
- if(typeof id!=='string'||!id||size(id)>256||!['commentary','speakable'].includes(channel)||typeof text!=='string'||size(text)>65536)throw new Error('invalid_voice_context');
+ if((id!==null&&(typeof id!=='string'||!id||size(id)>256))||!['commentary','speakable'].includes(channel)||typeof text!=='string'||size(text)>65536)throw new Error('invalid_voice_context');
  const parts=[];let part='',n=0;
  for(const c of text){const count=size(c);if(n+count>500){parts.push(part);part='';n=0;}part+=c;n+=count;}
  if(part)parts.push(part);
- return parts.map(text=>({type:'delegation.context.append',delegation_item_id:id,channel,content:[{type:'input_text',text}]}));
+ return parts.map(text=>({type:id===null?'session.context.append':'delegation.context.append',...(id===null?{}:{delegation_item_id:id}),channel,content:[{type:'input_text',text}]}));
 }

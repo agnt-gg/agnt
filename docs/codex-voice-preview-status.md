@@ -1,4 +1,6 @@
-# Codex voice #108 — isolated preview checkpoint, 2026-09-08
+# Historical Codex voice #108 checkpoint, 2026-09-08
+
+**Superseded for current status by [codex-voice-live-evidence.md](codex-voice-live-evidence.md).** The text below records the earlier pre-dogfood checkpoint, not the current implementation.
 
 This is an unfinished opt-in integration, NOT live-qualified or release-ready.
 

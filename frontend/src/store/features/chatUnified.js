@@ -923,7 +923,7 @@ export default {
         role: 'user',
         content: displayContent,
         timestamp: Date.now(),
-        ...(voiceMetadata ? { voiceProvenance: { kind: 'provider-delegation', delegationId: voiceMetadata.delegationId, observedTranscript: voiceMetadata.transcript || null } } : {}),
+        ...(voiceMetadata ? { metadata: [{ type: 'voice-input', kind: voiceMetadata.commitKind === 'correlated-delegation' ? 'correlated-delegation' : 'native-final', utteranceId: String(voiceMetadata.utteranceId || '').slice(0,256), observedTranscript: voiceMetadata.transcript == null ? null : String(voiceMetadata.transcript).slice(0,16384), delegatedInterpretation: voiceMetadata.delegatedInterpretation == null ? null : String(voiceMetadata.delegatedInterpretation).slice(0,16384) }] } : {}),
       };
       commit('ADD_MESSAGE', { channelKey, message: userMessage });
 

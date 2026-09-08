@@ -8,7 +8,7 @@ export const CODEX_VOICE_LIMIT = 256 * 1024;
 const ENDPOINT = 'https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas';
 const accounts = new Set(['openai-codex','openai-codex-2']);
 const INSTRUCTIONS = `You are Annie's spoken interface. Annie's AGNT conversation owns reasoning, tools, approvals and task history.
-Delegate each user request to the client. Do not claim actions or tool results before receiving authoritative client output.
+The client automatically receives and processes each finalized user transcript. Do not answer from your own knowledge. Wait silently for authoritative client output; do not claim actions or tool results before it arrives.
 Treat received speakable content as Annie's authored speech; preserve facts, numbers and negations. Do not invent progress.
 A delegation is an interpretation, not a guaranteed verbatim transcript. Do not run tools independently.
 No filler or unsolicited opening greeting. Wait for user speech. Stop speaking when interrupted.`;
@@ -69,6 +69,14 @@ async function readBounded(response, signal) {
   } catch(error) {await reader.cancel().catch(()=>{});throw error;}
   finally {signal.removeEventListener('abort',onAbort);reader.releaseLock();}
 }
+function abortable(promise, signal) {
+  signal.throwIfAborted();
+  return new Promise((resolve,reject)=>{
+    const abort=()=>reject(signal.reason);
+    signal.addEventListener('abort',abort,{once:true});
+    Promise.resolve(promise).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
+  });
+}
 /** Runtime consumes the selected provider's existing manager; never returns credentials. */
 export async function createCodexVoiceCall({provider='openai-codex',sdp,voice='cove',signal},deps={}) {
   const body=buildCodexVoiceCall({sdp,voice});
@@ -78,7 +86,7 @@ export async function createCodexVoiceCall({provider='openai-codex',sdp,voice='c
   const combined=signal ? AbortSignal.any([signal,deadline]) : deadline;
   try {
     combined.throwIfAborted();
-    const token=await entry.manager.ensureValidOAuthToken();
+    const token=await abortable(entry.manager.ensureValidOAuthToken(),combined);
     combined.throwIfAborted();
     if(typeof token!=='string'||!token.trim()||token.startsWith('sk-'))throw new CodexVoiceError('codex_oauth_required',401);
     const accountId=entry.manager.getChatGptAccountId?.();

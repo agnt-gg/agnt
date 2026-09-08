@@ -560,7 +560,7 @@ export default {
       toggleVoice,
     } = useVoiceEngines({
       surface: props.chatType || 'chat',
-      submitVoiceTurn: async ({ text, transcript, delegationId, onAccepted, onSpeech }) => {
+      submitVoiceTurn: async ({ text, transcript, utteranceId, commitKind, delegatedInterpretation, onAccepted, onSpeech }) => {
         if (isProcessing.value) return { accepted: false, reason: 'voice_turn_busy' };
         const bridge = createRequestVoiceBridge({ onAccepted, onSpeech });
         await store.dispatch('chatUnified/sendMessage', {
@@ -570,7 +570,7 @@ export default {
           pageContext: props.pageContext || {},
           pageState: props.pageState || {},
           onFrontendEvent: handleFrontendEvent,
-          voiceMetadata: { transcript, delegationId },
+          voiceMetadata: { transcript, utteranceId, commitKind, delegatedInterpretation },
           onVoiceStreamEvent: bridge.event,
         });
         return bridge.finish();

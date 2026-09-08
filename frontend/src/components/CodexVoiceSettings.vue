@@ -7,7 +7,7 @@
    <label>Existing provider account <select v-model="settings.provider" @change="refresh"><option value="openai-codex">OpenAI Codex</option><option value="openai-codex-2">OpenAI Codex · Account 2 (if registered)</option></select></label>
    <label>Voice <select v-model="settings.voice" @change="save"><option v-for="voice in voices" :key="voice" :value="voice">{{ voice }}</option></select></label>
    <p role="status">{{ status }}</p>
-   <p>No account or metered API fallback. Raw audio goes to the selected Codex voice service. Changing settings ends the active voice session. Model changes and overlapping voice commands are not yet supported in this preview.</p>
+   <p>No account or metered API fallback. Raw audio goes to the selected Codex voice service. Changing settings ends the active voice session. Model changes and overlapping voice commands are not yet supported in this preview. Voice may paraphrase; exact wording is not guaranteed. Interruption responsiveness is still under qualification.</p>
    <button type="button" @click="refresh">Check registration (not a paid call)</button>
   </template>
  </section>
