@@ -116,6 +116,16 @@ export function createPlaybackQueue(config = {}) {
     return true;
   }
 
+  // A failed chunk is not a completed chunk. Freeze only actual playback
+  // progress; synthesis wait time must never enter the heard transcript.
+  function markFailed(id, now) {
+    const item = items.find(i => i.id === id);
+    if (!item) return false;
+    item.state = item.state === 'playing' ? 'interrupted' : 'discarded';
+    item.endedAt = Number.isFinite(now) ? now : 0;
+    return true;
+  }
+
   /**
    * Freeze the queue at `now`. Everything queued-but-unplayed is discarded —
    * the user will never hear it, so it must not enter the transcript.
@@ -184,6 +194,7 @@ export function createPlaybackQueue(config = {}) {
     enqueue,
     markPlaying,
     markDone,
+    markFailed,
     interrupt,
     spokenPrefix,
     reset() {

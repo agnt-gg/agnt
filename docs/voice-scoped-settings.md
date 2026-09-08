@@ -1,0 +1,21 @@
+# Voice profile isolation (batch 5)
+
+Native voice preferences are browser-local, scoped to the verified AGNT user ID and configured API installation (normalized origin plus API path). App.vue binds the existing Vuex `userAuth.sessionState === 'valid'` and `userAuth.user.id` contract once. No token parsing, auth storage, extra login, or cross-device preference claim.
+
+The ownerless v1 preference remains untouched and is not imported. Scoped v2 profiles contain engine/provider/voice and optional output/providerEngine, with fixed allowlists and a 1 KiB read limit. Output is `webspeech` or `local-stream`; the latter requires an explicit `pocket-tts-cpu` or `faster-qwen-candidate` providerEngine. No PCM candidate is selected by default. Select the server-configured candidate before selecting local streaming; missing/cloud/URL destinations fail closed before microphone permission. The server must independently admit the exact engine for the authenticated user; selection is not an availability or qualification claim. Invalid input cannot be saved; invalid stored data loads defaults. Logout/revocation or identity change synchronously ends voice sessions, clears input display, and resets the profile even when both users chose identical settings. Accepted chat tasks are not cancelled. Settings changes stop voice synchronously; no implicit account fallback.
+
+The settings panel checks both exact existing Codex account registrations through the existing capabilities endpoint, not a paid voice call. Account 2 is selectable only when registered; an already selected unavailable account is retained visibly rather than replaced. Registration does NOT prove entitlement. Responses must match the requested provider and supported voice allowlist. Each refresh is bounded to five seconds and 8 KiB per account; identity changes and unmount abort requests, clear timers and invalidate stale responses.
+
+Native controller rejects invalid provider/voice before microphone permission or HTTP setup. The native composable refuses starts without a verified user scope. The selected reasoning model is not read or modified by this feature.
+
+## Pocket selection integration — 2026-09-08
+
+Both local input and Codex input pass scoped output/providerEngine into the production final-text narrator. Native Codex generative output remains unconditionally muted; this is not unchanged realtime Codex narration. Changing either narration setting stops the voice session, not an accepted reasoning task. Pocket is an explicit CPU availability alternative while faster-Qwen owner admission is denied, never automatic fallback or canonical TTS promotion. The native session voice is not forwarded as a Pocket voice.
+
+One fresh isolated rendered selected-model run used `openai-codex / gpt-6-astra`, production submit/store/router and backend request/run machinery, saved synthetic input WAV, real Pocket `createSpeechOut` streaming/parser/sink, and post-gain canonical ASR. Exact answer and restored transcript matched: “You have five apples.” Twenty PCM chunks, 38,400 received/allowed samples; first sink callback 23.6 seconds (cold startup), total playback 25.3 seconds. This does not establish warm latency or human acoustic acceptance. Evidence: mission `evidence/ui-pocket/handoff.json`; original harness preserved. Production SpeechRoutes and Pocket backend files were not edited in this frontend batch.
+
+## Historical evidence and limits (batch 5; not current completion status)
+
+Batch-5 receipt under the mission directory contains baseline/red/green/build/gate/challenge commands and file hashes. Tests mount the real settings component and composable with synthetic HTTP/media dependencies. They are not live UI dogfood or an authenticated server persistence roundtrip. The production build reused installed dependencies, not a clean install.
+
+Remaining: native submission adapters for main/agent/mobile; authenticated request/account terminal binding and server metadata roundtrip; owner-admitted faster-Qwen streaming; selected-model post-gate PCM + independent ASR dogfood. Current native support remains panel/workspace preview. The live app was not edited or restarted. Human microphone/speaker acceptance remains PENDING_USER.

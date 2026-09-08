@@ -1,0 +1,22 @@
+import {it,expect,vi} from 'vitest';
+import {ref,defineComponent,h,nextTick} from 'vue';
+import {mount,flushPromises} from '@vue/test-utils';
+const f=vi.hoisted(()=>({capture:null,asr:null,narrator:null}));
+vi.mock('../voice/localPcmCapture.js',()=>({createLocalPcmCapture:()=>f.capture}));
+vi.mock('../voice/localAsrClient.js',()=>({createLocalAsrClient:()=>f.asr}));
+vi.mock('../voice/speechOut.js',()=>({createSpeechOut:()=>f.narrator,isWebSpeechAvailable:()=>true}));
+import {useVoiceEngines} from './useVoiceEngines.js';
+import {codexVoiceProfiles as p} from '../voice/codexVoiceSettings.js';
+it('rendered shared engine controls send only explicit hard final, retain selected-model callback, stop on navigation',async()=>{
+ f.capture={start:vi.fn(async()=>true),stop:vi.fn(),finish:()=>new Uint8Array([0,1])};
+ f.asr={stopListening:vi.fn(),transcribe:vi.fn(async({utteranceId})=>({ok:true,turn:{utteranceId,text:'Do not move it.',transcript:'Do not move it.',commitKind:'local-asr-hard-final'}}))};
+ f.narrator={cancel:vi.fn(),speak:vi.fn(async()=>({ok:true})),on:()=>()=>{}};
+ p.setScope({userId:'local-controls',installation:'http://localhost:3333/api'});p.settings.engine='local';
+ const epoch=ref(0),submit=vi.fn(),receipt={accepted:true,completed:true,executionId:'e',conversationId:'c',assistantMessageId:'a'};
+ const native=vi.fn(async turn=>{turn.onAccepted(receipt);turn.onSpeech('It will not be moved.','a');return receipt;});
+ let voice;const w=mount(defineComponent({setup(){voice=useVoiceEngines({submit,submitVoiceTurn:native,streamingAnswer:()=>'',isStreaming:ref(false),epoch});return()=>h('div',[h('button',{onClick:voice.toggleVoice},'Voice'),voice.voiceManualCommit.value?h('button',{disabled:!voice.voiceListening.value,onClick:voice.commitVoiceInput},'Send voice utterance'):null,h('button',{onClick:voice.toggleVoiceListening},voice.voiceListening.value?'Pause mic':'Resume mic')]);}}));
+ await w.findAll('button')[0].trigger('click');await flushPromises();expect(w.text()).toContain('Send voice utterance');expect(native).not.toHaveBeenCalled();
+ await w.findAll('button')[1].trigger('click');await flushPromises();expect(native).toHaveBeenCalledTimes(1);expect(submit).not.toHaveBeenCalled();expect(f.narrator.speak).toHaveBeenCalledWith('It will not be moved.');
+ expect(w.findAll('button')[1].attributes('disabled')).toBeDefined();await w.findAll('button')[2].trigger('click');await flushPromises();expect(voice.voiceListening.value).toBe(true);
+ epoch.value++;await nextTick();expect(voice.voiceActive.value).toBe(false);expect(f.capture.stop).toHaveBeenCalled();w.unmount();p.setScope(null);
+});

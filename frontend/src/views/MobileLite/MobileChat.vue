@@ -101,7 +101,10 @@
           <template v-else>Voice ready</template>
           <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
         </span>
-        <button type="button" class="ml-voice-end" @click="toggleVoice">End</button>
+        <button v-if="voiceManualCommit" type="button" class="ml-voice-end" :disabled="!voiceListening" @click="commitVoiceInput">Send voice utterance</button>
+        <button v-if="voiceSeparateControls" type="button" class="ml-voice-end" @click="stopVoicePlayback" v-tooltip="'Stop audio only; accepted task keeps running'">Stop playback</button>
+        <button v-if="voiceSeparateControls" type="button" class="ml-voice-end" @click="toggleVoiceListening" :aria-pressed="!voiceListening">{{ voiceListening ? 'Pause mic' : 'Resume mic' }}</button>
+        <button type="button" class="ml-voice-end" @click="toggleVoice" v-tooltip="'End voice; does not cancel an accepted task'">End voice</button>
       </div>
       <div class="ml-row">
         <textarea
@@ -152,7 +155,9 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { streamChat, toChatHistory } from '@/services/chatService.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import { createAssistantMessage, applyStreamEvent, hydrateMessage } from '@/services/chatStreamReducer.js';
+import { createNativeVoiceSubmit, nativeVoiceMetadata, observeVoiceEvent } from '@/voice/nativeVoiceSubmit.js';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
+import { codexVoiceProfiles } from '@/voice/codexVoiceSettings.js';
 import { canUseMediaCapture } from '@/services/mobileLiteNative.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import {
@@ -219,9 +224,10 @@ const canSend = computed(
  * supplies only the four things that genuinely differ between surfaces. A
  * "mobile version" of any of the rest is how voice drifted four times before.
  */
-const { voiceActive, voiceState, voicePartial, voiceError, voiceNatural, toggleVoice } =
+const { voiceActive, voiceState, voicePartial, voiceError, voiceNatural, toggleVoice, voiceSeparateControls, voiceListening, stopVoicePlayback, toggleVoiceListening, voiceManualCommit, commitVoiceInput } =
   useVoiceEngines({
     surface: 'chat',
+    submitVoiceTurn: createNativeVoiceSubmit({ send: (text, options) => send(text, options), isBusy: () => streaming.value }),
     submit: (text) => {
       draft.value = text;
       return send();
@@ -351,8 +357,8 @@ function touchMessages() {
   messages.value = [...messages.value];
 }
 
-async function send() {
-  const text = draft.value.trim();
+async function send(voiceText = null, voiceOptions = {}) {
+  const text = typeof voiceText === 'string' ? voiceText.trim() : draft.value.trim();
   if (!text || streaming.value) return;
   if (!providerRef.value || !modelRef.value) {
     await refreshProviderModel();
@@ -364,17 +370,18 @@ async function send() {
   }
 
   error.value = '';
-  draft.value = '';
+  if (!voiceOptions.voiceMetadata) draft.value = '';
 
   // Will this answer be SPOKEN as well as shown? Consumed here, once, matched
   // by text, so only the turn voice armed carries the spoken register — a
   // typed message during a voice session is still answered in full.
-  const isVoiceTurn = consumeVoiceTurn(text);
+  const isVoiceTurn = !!voiceOptions.voiceMetadata || consumeVoiceTurn(text);
 
   const userMsg = hydrateMessage({
     id: newMessageId(),
     role: 'user',
     content: text,
+    metadata: nativeVoiceMetadata(voiceOptions.voiceMetadata),
     timestamp: Date.now(),
   });
   messages.value.push(userMsg);
@@ -397,12 +404,16 @@ async function send() {
     await streamChat({
       chatType: 'orchestrator',
       messages: history,
+      voiceMetadata: voiceOptions.voiceMetadata ? nativeVoiceMetadata(voiceOptions.voiceMetadata) : undefined,
+      bindVoiceRequest: voiceOptions.bindVoiceRequest,
+      voiceUserId: codexVoiceProfiles.identity.ready ? codexVoiceProfiles.identity.userId : undefined,
       provider: providerRef.value,
       model: modelRef.value,
       conversationId: conversationId.value,
       pageContext: isVoiceTurn ? { voiceMode: true } : {},
       signal: abortController.signal,
       onEvent: (eventName, data) => {
+        observeVoiceEvent(voiceOptions.onVoiceStreamEvent, eventName, data);
         // One shared reducer owns the wire protocol for every surface.
         const r = applyStreamEvent(assistantMsg, eventName, data);
         if (r.error) error.value = r.error;
@@ -414,6 +425,7 @@ async function send() {
       },
     });
   } catch (e) {
+    observeVoiceEvent(voiceOptions.onVoiceStreamEvent, 'error', {});
     if (e?.name !== 'AbortError') {
       error.value = e?.message || 'Failed to reach Annie';
       if (!assistantMsg.content) assistantMsg.content = '(no response)';

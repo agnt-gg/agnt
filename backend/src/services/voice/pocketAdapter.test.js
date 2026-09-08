@@ -1,0 +1,6 @@
+import {it,expect,vi} from 'vitest';
+import {createPocketAdapter,createPocketResolver} from './pocketAdapter.js';
+it('unconfigured or nonabsolute executable stays unavailable',()=>{expect(createPocketAdapter()).toBeNull();expect(createPocketAdapter({python:'python',cacheDir:'/cache'})).toBeNull();});
+it('only configured users resolve the explicit CPU identity',()=>{const resolve=createPocketResolver({python:'/env/bin/python',cacheDir:'/cache',users:['allowed']});expect(resolve('other')).toBeNull();expect(resolve('allowed').id).toBe('pocket-tts-cpu');});
+it('invalid language cannot silently use English model',()=>{expect(createPocketAdapter({python:'/env/python',cacheDir:'/cache',language:'bogus'})).toBeNull();});
+it('voice or abort rejection happens before starting worker',async()=>{const spawnImpl=vi.fn(),adapter=createPocketAdapter({python:'/env/python',cacheDir:'/cache',spawnImpl});await expect(adapter.generate({text:'hello',requestId:'r',voice:'other'})[Symbol.asyncIterator]().next()).rejects.toThrow('unsupported-voice');const c=new AbortController();c.abort();await expect(adapter.generate({text:'hello',requestId:'r',signal:c.signal})[Symbol.asyncIterator]().next()).rejects.toThrow();expect(spawnImpl).not.toHaveBeenCalled();});

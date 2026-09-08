@@ -26,6 +26,7 @@
  */
 
 import authManager from './auth/AuthManager.js';
+import { TtsError } from './ttsError.js';
 
 /** Hard cap on a single synthesis request. Guards cost and latency alike. */
 export const MAX_TTS_CHARS = 4000;
@@ -155,21 +156,22 @@ export async function synthesize({ text, engine = 'openai', voice, model, speed,
 
   const { url, options } = def.build({ text: input, voice, model, speed, apiKey });
 
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    // Read the body for the message but NEVER echo headers or the key back.
-    let detail = '';
-    try {
-      detail = (await res.text()).slice(0, 400);
-    } catch {
-      detail = '';
+  let res;
+  let audio;
+  try {
+    res = await fetch(url, { ...options, signal: AbortSignal.timeout(30000) });
+    if (!res.ok) {
+      // Do not reflect upstream diagnostics; providers may echo credentials or
+      // private request text. Release the body without reading it into logs.
+      try { await res.body?.cancel(); } catch { /* response already closed */ }
+      throw new TtsError('tts-provider-rejected', { providerStatus: res.status });
     }
-    const err = new Error(`TTS provider ${def.id} failed (${res.status}): ${detail}`);
-    err.status = res.status;
-    throw err;
+    audio = Buffer.from(await res.arrayBuffer());
+  } catch (error) {
+    if (error instanceof TtsError) throw error;
+    throw new TtsError(error?.name === 'TimeoutError' ? 'tts-timeout' : 'tts-network-error');
   }
-
-  const audio = Buffer.from(await res.arrayBuffer());
+  if (!audio.length) throw new TtsError('tts-empty-audio');
   return { available: true, audio, contentType: def.contentType, engine: def.id };
 }
 

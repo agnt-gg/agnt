@@ -14,12 +14,14 @@ export function parseCodexEvent(raw){
  }
  if(['input_transcript.added','output_transcript.added'].includes(event?.type)){
   const text=event.item?.text;if(typeof text!=='string'||size(text)>32768)throw new Error('invalid_voice_transcript');
-  return {type:'transcript',role:event.type==='input_transcript.added'?'user':'assistant',text,final:false};
+  const id=event.item?.turn_id ?? event.turn_id;
+  if(id!==undefined&&(typeof id!=='string'||!id||size(id)>256))throw new Error('invalid_voice_turn_id');
+  return {type:'transcript',role:event.type==='input_transcript.added'?'user':'assistant',text,final:false,...(id?{id}:{})};
  }
- if(event?.type==='turn.created'&&event.turn?.role==='user'){
+ if(event?.type==='turn.created'&&['user','assistant'].includes(event.turn?.role)){
   const id=event.turn.id;
   if(typeof id!=='string'||!id||size(id)>256)throw new Error('invalid_voice_turn_id');
-  return {type:'user-turn-start',id};
+  return {type:event.turn.role==='user'?'user-turn-start':'assistant-turn-start',id};
  }
  if(event?.type==='turn.done'){
   const {role,transcript:text}=event.turn||{};

@@ -6,13 +6,24 @@ import os from 'os';
 import { whisperService } from '../services/whisperService.js';
 import { requireAuthHeader } from '../utils/authGuard.js';
 import { synthesize, listEngines, availableEngines, MAX_TTS_CHARS } from '../services/ttsService.js';
+import { ttsErrorResponse } from '../services/ttsError.js';
 import { createRealtimeCall, REALTIME_VOICES, DEFAULT_VOICE, REALTIME_MODEL } from '../services/realtimeVoiceService.js';
 import { hasOpenAiVoiceCredential } from '../services/auth/openAiVoiceCredential.js';
 import { createCodexVoiceRouter } from './codexVoiceRoutes.js';
+import { createPcmStreamHandler } from '../services/voice/pcmStreamHandler.js';
+import { createLocalAsrHandler } from '../services/voice/localAsrHandler.js';
+import { createOwnerAsrResolver } from '../services/voice/ownerAsrBinding.js';
+import { createPocketResolver } from '../services/voice/pocketAdapter.js';
 
 const router = express.Router();
 // Explicit opt-in native Codex protocol; legacy realtime route is unchanged.
 router.use('/codex', createCodexVoiceRouter());
+// Fail-closed until owner-governed candidate registration is implemented.
+// Browser requests cannot choose an endpoint, admission claim or credential.
+router.post('/synthesize-stream', requireAuthHeader, createPcmStreamHandler({ resolveAdapter: createPocketResolver() }));
+// Explicit administrator opt-in to the existing canonical owner ASR contract.
+// Unconfigured/unlisted users remain unavailable; browser cannot select URLs.
+router.post('/transcribe-local', requireAuthHeader, createLocalAsrHandler({ resolveBinding: createOwnerAsrResolver() }));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -175,12 +186,9 @@ router.post('/synthesize', requireAuthHeader, async (req, res) => {
     res.setHeader('X-TTS-Engine', result.engine);
     return res.send(result.audio);
   } catch (error) {
-    console.error('[speech] synthesize failed:', error.message);
-    return res.status(502).json({
-      success: false,
-      error: 'Speech synthesis failed',
-      message: error.message,
-    });
+    const failure = ttsErrorResponse(error);
+    console.error('[speech] synthesize failed:', failure.body.code, failure.body.providerStatus);
+    return res.status(failure.status).json(failure.body);
   }
 });
 

@@ -14,6 +14,7 @@ function makeSynth() {
     speak(u) {
       spoken.push(u.text);
       pending.push(u);
+      u.onstart?.(); // Explicit simulated playback, not synthesis submission.
     },
     cancel() {
       for (const u of pending) u.onerror?.({ error: 'interrupted' });
@@ -328,8 +329,8 @@ describe('speechOut — provider engine and fallback', () => {
           }),
           createAudio: (src) => {
             played.push(src);
-            const audio = { play: () => Promise.resolve(), pause() {}, volume: 1 };
-            Object.defineProperty(audio, 'onended', { set: (fn) => setTimeout(fn, 0) });
+            const audio = { play: () => { audio.onplaying?.(); return Promise.resolve(); }, pause() {}, volume: 1 };
+            Object.defineProperty(audio, 'onended', { set: (fn) => { if (typeof fn === 'function') setTimeout(fn, 0); } });
             return audio;
           },
         }
@@ -630,7 +631,8 @@ describe('speechOut — session housekeeping', () => {
 
   it('survives a missing speechSynthesis entirely', async () => {
     const out = createSpeechOut({ engine: 'webspeech' }, { speechSynthesis: null, SpeechSynthesisUtterance: null });
-    await expect(out.speak('nothing to play')).resolves.toBeUndefined();
+    await expect(out.speak('nothing to play')).resolves.toEqual({ ok: false, reason: 'unavailable' });
+    expect(out.spokenPrefix()).toBe('');
     expect(() => out.cancel()).not.toThrow();
   });
 });

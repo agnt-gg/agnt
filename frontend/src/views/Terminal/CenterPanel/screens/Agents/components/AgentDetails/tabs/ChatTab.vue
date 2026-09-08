@@ -42,7 +42,10 @@
             <template v-else>Voice ready</template>
             <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
           </span>
-          <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
+          <button v-if="voiceManualCommit" type="button" class="voice-end-btn" :disabled="!voiceListening" @click="commitVoiceInput">Send voice utterance</button>
+          <button v-if="voiceSeparateControls" type="button" class="voice-end-btn" @click="stopVoicePlayback" v-tooltip="'Stop audio only; accepted task keeps running'">Stop playback</button>
+          <button v-if="voiceSeparateControls" type="button" class="voice-end-btn" @click="toggleVoiceListening" :aria-pressed="!voiceListening">{{ voiceListening ? 'Pause mic' : 'Resume mic' }}</button>
+          <button type="button" class="voice-end-btn" @click="toggleVoice" v-tooltip="'End voice; does not cancel an accepted task'">End voice</button>
         </div>
         <div class="chat-input-wrapper">
           <input
@@ -92,6 +95,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '../../../../Chat/components/MessageItem.vue';
 import ProcessingState from '../../../../Chat/components/ProcessingState.vue';
 import QuickActions from '../../../../Chat/components/QuickActions.vue';
+import { createNativeVoiceSubmit, nativeVoiceMetadata } from '@/voice/nativeVoiceSubmit.js';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { resolveChannelRouting } from '@/services/chatChannelConfig.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -198,8 +202,10 @@ const {
   voiceError,
   voiceNatural,
   toggleVoice,
+  voiceSeparateControls, voiceListening, stopVoicePlayback, toggleVoiceListening, voiceManualCommit, commitVoiceInput,
 } = useVoiceEngines({
   surface: 'agent',
+  submitVoiceTurn: createNativeVoiceSubmit({ send: (text, options) => sendChatMessage(text, options), isBusy: () => isProcessing.value }),
   // eslint-disable-next-line no-use-before-define -- submit runs at commit
   // time, long after setup; sendChatMessage exists by then.
   submit: (text) => {
@@ -332,10 +338,12 @@ onUnmounted(() => {
   }
 });
 
-const sendChatMessage = async () => {
-  if (!chatInput.value.trim() || !props.selectedAgent) return;
-
-  const messageToSend = chatInput.value.trim();
+const sendChatMessage = async (voiceText = null, voiceOptions = {}) => {
+  const messageToSend = typeof voiceText === 'string' ? voiceText.trim() : chatInput.value.trim();
+  if (!messageToSend || !props.selectedAgent) return;
+  const selectedAgent = props.selectedAgent;
+  const routing = resolveChannelRouting(agentChannelKey.value, store.state.aiProvider);
+  const historyProvider = selectedAgent.provider || store.state.aiProvider.selectedProvider;
 
   // The address for this whole send. Captured ONCE, before any await, so the
   // turn cannot follow the user's eyes into another conversation mid-flight.
@@ -350,12 +358,13 @@ const sendChatMessage = async () => {
     id: generateMessageId(),
     role: 'user',
     content: messageToSend,
+    metadata: nativeVoiceMetadata(voiceOptions.voiceMetadata),
     timestamp: Date.now(),
   };
   store.commit('chat/SCOPED_ADD_MESSAGE', { conversationId: convId, message: userMessage });
   emit('add-terminal-line', `[Chat] You: ${userMessage.content}`);
 
-  chatInput.value = '';
+  if (!voiceOptions.voiceMetadata) chatInput.value = '';
   await nextTick();
   scrollChatToBottom();
 
@@ -376,18 +385,17 @@ const sendChatMessage = async () => {
    * owner had chosen a specific model, which is the one thing dynamic routing
    * promises never to do.
    */
-  const routing = resolveChannelRouting(agentChannelKey.value, store.state.aiProvider);
-
   await store.dispatch('chat/startAgentStreamingConversation', {
-    agentId: props.selectedAgent.id,
+    agentId: selectedAgent.id,
     userInput: messageToSend,
+    ...voiceOptions,
     provider: routing.provider,
     model: routing.model,
     routingMode: routing.mode === 'default' ? null : routing.mode,
     // Formatting only — decides whether reasoning_content is replayed. A guess
     // is fine here and wrong-model is not, which is why it is a separate
     // argument from the pin above.
-    historyProvider: props.selectedAgent.provider || store.state.aiProvider.selectedProvider,
+    historyProvider,
     conversationId: convId,
   });
 };

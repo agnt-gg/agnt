@@ -31,6 +31,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { hydrateMessage } from './chatStreamReducer.js';
+import { normalizeVoiceMetadata } from '../voice/voiceMetadata.js';
 
 const authHeaders = () => {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -53,12 +54,14 @@ export function toStoredMessage(msg = {}) {
     role: msg.role,
     content: typeof msg.content === 'string' ? msg.content : '',
     timestamp: msg.timestamp || Date.now(),
-    metadata: msg.metadata || [],
+    metadata: normalizeVoiceMetadata(msg.metadata),
     toolCalls: msg.toolCalls || [],
     contentParts: msg.contentParts || [],
   };
   // Only carry optional fields when present, so a plain chat's payload stays
   // small and diffable.
+  if (msg.streamFinalized === true) stored.streamFinalized = true;
+  if (msg.streamTerminal === true) stored.streamTerminal = true;
   if (msg.reasoning) stored.reasoning = msg.reasoning;
   if (msg.reasoning_content) stored.reasoning_content = msg.reasoning_content;
   if (msg.files?.length) stored.files = msg.files;
@@ -207,6 +210,14 @@ export async function loadTranscriptByConversationId(conversationId) {
     if (!parsed.messages.length) return null;
     return {
       outputId: row.id,
+      conversationId,
+      ...(row.server_revision > 0 && (() => {
+        try {
+          const body = JSON.parse(row.content), seal = body.serverCompletion;
+          return seal?.revision === row.server_revision && body.messages?.at(-1)?.id === seal.assistantMessageId
+            ? { status: 'completed', executionId: seal.executionId, revision: row.server_revision } : {};
+        } catch { return {}; }
+      })()),
       title: parsed.title || row.title || null,
       messages: parsed.messages,
       updatedAt: row.updated_at || row.updatedAt || null,

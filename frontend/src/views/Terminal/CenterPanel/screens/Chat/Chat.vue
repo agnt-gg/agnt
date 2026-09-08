@@ -9,6 +9,7 @@
     :terminalLines="terminalLines"
     :disableInputInitially="!hasConnectedAIProvider"
     @submit-input="handleUserInputSubmit"
+    :native-voice-send="handleUserInputSubmit"
     @panel-action="handlePanelAction"
     @screen-change="handleScreenChange"
     @base-mounted="initializeScreen"
@@ -233,6 +234,8 @@
 </template>
 
 <script>
+import { nativeVoiceMetadata } from '@/voice/nativeVoiceSubmit.js';
+
 import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated, nextTick, computed, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
@@ -1147,7 +1150,7 @@ export default {
       }
     };
 
-    const handleUserInputSubmit = async (input, files = null, mentionedAgents = null) => {
+    const handleUserInputSubmit = async (input, files = null, mentionedAgents = null, voiceOptions = {}) => {
       // Empty submit while in goal-create mode = cancel the mode silently.
       // Other chat surfaces stay no-op on empty submits (existing behavior).
       if (!input || !input.trim()) {
@@ -1163,7 +1166,7 @@ export default {
       // Bare "/goal" (no description) falls through to the regular slash
       // handler so the menu still opens for the two-step / picker flow.
       const inlineGoalMatch = input.trim().match(/^\/goal\s+(.+)/is);
-      if (inlineGoalMatch && (!mentionedAgents || mentionedAgents.length === 0)) {
+      if (!voiceOptions.voiceMetadata && inlineGoalMatch && (!mentionedAgents || mentionedAgents.length === 0)) {
         await createAndStartGoal(inlineGoalMatch[1]);
         return;
       }
@@ -1171,7 +1174,7 @@ export default {
       // /goal create mode: the next message creates and attaches a new goal
       // instead of being chatted. Set by selecting "+ Create new goal" in
       // the /goal picker (the two-step path).
-      if (goalCreateMode.value) {
+      if (!voiceOptions.voiceMetadata && goalCreateMode.value) {
         store.commit('chat/SET_GOAL_CREATE_MODE', false);
         await createAndStartGoal(input);
         return;
@@ -1183,6 +1186,7 @@ export default {
       // before another round happens — the auto-fire watcher below sends
       // it as a fresh user turn.
       if (store.state.chat.isStreaming && store.state.chat.currentConversationId) {
+        if (voiceOptions.voiceMetadata) return;
         const resp = await store.dispatch('chat/steerInFlight', { content: input });
         if (resp?.ok) {
           clearInput();
@@ -1193,14 +1197,14 @@ export default {
       }
 
       const command = input.trim().toLowerCase();
-      if (command === 'clear' || command === 'cls') {
+      if (!voiceOptions.voiceMetadata && (command === 'clear' || command === 'cls')) {
         clearConversation();
         return;
       }
 
       // --- Handle slash commands (client-side actions) ---
       const slashMatch = input.trim().match(/^\/(\S+)/);
-      if (slashMatch && (!mentionedAgents || mentionedAgents.length === 0)) {
+      if (!voiceOptions.voiceMetadata && slashMatch && (!mentionedAgents || mentionedAgents.length === 0)) {
         const cmd = slashMatch[1].toLowerCase().replace(/\s+/g, '-');
         switch (cmd) {
           case 'new-chat':
@@ -1256,6 +1260,7 @@ export default {
         id: generateMessageId(),
         role: 'user',
         content: input,
+        metadata: nativeVoiceMetadata(voiceOptions.voiceMetadata),
         timestamp: Date.now(),
       };
 
@@ -1295,7 +1300,7 @@ export default {
 
       nextTick(() => scrollToBottom());
 
-      clearInput();
+      if (!voiceOptions.voiceMetadata) clearInput();
 
       // Mentioned agents respond SEQUENTIALLY, in mention order — each agent's
       // history is rendered after the previous agent finished, so every
@@ -1311,6 +1316,7 @@ export default {
       for (const agent of agents) {
         sendConvId = await store.dispatch('chat/startStreamingConversation', {
           userInput: input,
+          ...voiceOptions,
           files: files,
           provider: store.state.aiProvider.selectedProvider,
           model: store.state.aiProvider.selectedModel,

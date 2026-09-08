@@ -205,7 +205,7 @@ class RunService {
       // column untouched — see ContentOutputModel.createOrUpdate.
       const participants = contentType === 'conversation' ? serializeParticipants(content) : null;
 
-      await ContentOutputModel.createOrUpdate(
+      const savedWrite = await ContentOutputModel.createOrUpdate(
         outputId,
         userId,
         workflowId,
@@ -217,6 +217,14 @@ class RunService {
         title || null,
         { channelKey: channelKey || null, participants }
       );
+
+      if (savedWrite.changes !== 1) {
+        return res.status(409).json({
+          error: 'completed_transcript_conflict', id: outputId,
+          message: 'The completed transcript was preserved. Reload before saving.',
+          output: await ContentOutputModel.findMetaById(outputId),
+        });
+      }
 
       // The row's list metadata (no content column) rides on BOTH the
       // response and the broadcast. Event-carried state: clients patch this

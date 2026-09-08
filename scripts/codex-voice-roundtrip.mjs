@@ -1,3 +1,7 @@
+// QUARANTINED: retained historical implementation, NOT valid dogfood evidence.
+// This fails before imports with runtime side effects, filesystem, auth or provider use.
+throw new Error('VOICE_DOGFOOD_QUARANTINED: this historical harness injects an expected answer, pins a model, proxies live history, and records pre-permission received audio. It must not run or qualify playback. Use a reviewed rendered selected-model isolated replacement.');
+// Historical implementation follows solely for audit; no opt-in bypass.
 // User-requested real Codex + real Annie roundtrip, synthetic question only.
 import fs from 'node:fs/promises';import path from 'node:path';import {fileURLToPath} from 'node:url';import {once} from 'node:events';
 if(process.env.AGNT_LIVE_VOICE_TEST!=='1')throw new Error('Set AGNT_LIVE_VOICE_TEST=1 to authorize a real Codex/Annie audio test.');

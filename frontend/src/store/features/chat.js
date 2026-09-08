@@ -1,13 +1,17 @@
 import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
+import { canAdoptCompletedTranscript } from '@/services/transcriptAuthority.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
-import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
+import { serverMessagesToUi, transcriptSubstance, applyStreamEvent } from '@/services/chatStreamReducer.js';
+import { createBoundedSseReader } from '@/services/boundedSseReader.js';
 import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { observeVoiceEvent, nativeVoiceMetadata } from '@/voice/nativeVoiceSubmit.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
+import { bindVoiceRequestOrigin, verifiedVoiceUser } from '@/voice/voiceRequestOrigin.js';
 import { findAgentMentions } from '@/utils/agentMentions.js';
 import { renameScrollPosition } from '@/services/chatScrollPositions.js';
 import { healStaleToolCalls, settleOpenToolCalls } from '@/utils/toolCallSettlement.js';
@@ -661,15 +665,7 @@ export default {
     APPEND_MESSAGE_CONTENT(state, { messageId, delta }) {
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
-        message.content = (message.content || '') + delta;
-        // Track content parts for interleaved rendering
-        if (!message.contentParts) message.contentParts = [];
-        const lastPart = message.contentParts[message.contentParts.length - 1];
-        if (lastPart && lastPart.type === 'text') {
-          lastPart.text += delta;
-        } else {
-          message.contentParts.push({ type: 'text', text: delta });
-        }
+        applyStreamEvent(message, 'content_delta', { delta });
       }
     },
     APPEND_MESSAGE_REASONING(state, { messageId, delta }) {
@@ -1121,20 +1117,17 @@ export default {
       }
     },
 
+    SCOPED_FINAL_MESSAGE_CONTENT(state, { conversationId, messageId, content }) {
+      const message = state.conversations[conversationId]?.messages.find(m => m.id === messageId);
+      if (message) applyStreamEvent(message, 'final_content', { content });
+    },
+
     SCOPED_APPEND_MESSAGE_CONTENT(state, { conversationId, messageId, delta }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
       const message = conv.messages.find(m => m.id === messageId);
       if (message) {
-        message.content = (message.content || '') + delta;
-        // Track content parts for interleaved rendering
-        if (!message.contentParts) message.contentParts = [];
-        const lastPart = message.contentParts[message.contentParts.length - 1];
-        if (lastPart && lastPart.type === 'text') {
-          lastPart.text += delta;
-        } else {
-          message.contentParts.push({ type: 'text', text: delta });
-        }
+        applyStreamEvent(message, 'content_delta', { delta });
       }
     },
 
@@ -1629,7 +1622,7 @@ export default {
      */
     async startStreamingConversation(
       { commit, state, dispatch, rootState },
-      { userInput, files = [], provider, model, reasoningValue = 'default', reasoningEnabled = false, mentionedAgent = null, isFloorDispatch = false, conversationId = null },
+      { userInput, files = [], provider, model, reasoningValue = 'default', reasoningEnabled = false, mentionedAgent = null, isFloorDispatch = false, conversationId = null, onVoiceStreamEvent = null, voiceMetadata = null, bindVoiceRequest = null },
     ) {
       // Determine which conversation to stream in. An EXPLICIT conversationId
       // (floor dispatches) is authoritative — resolving the ACTIVE conversation
@@ -1705,8 +1698,8 @@ export default {
 
       // What actually goes on the wire. Omitting the pair is the mechanism
       // that hands the choice to the server; sending it would be read as a pin.
-      const wireProvider = deferToServer ? undefined : effectiveProvider;
-      const wireModel = deferToServer ? undefined : effectiveModel;
+      const wireProvider = deferToServer && !bindVoiceRequest ? undefined : effectiveProvider;
+      const wireModel = deferToServer && !bindVoiceRequest ? undefined : effectiveModel;
 
       // Resolve the responding speaker BEFORE rendering history — the shared
       // transcript is rendered from that speaker's point of view (their own
@@ -1796,20 +1789,21 @@ export default {
         // so the backend can ask for a spoken opening register
         // (system-prompts/voiceRegister.js). A typed turn during a live voice
         // session is not spoken and must not be marked — see voiceTurn.js.
-        const isVoiceTurn = consumeVoiceTurn(userInput);
+        const isVoiceTurn = !!voiceMetadata || consumeVoiceTurn(userInput);
 
         // Use FormData if files are present, otherwise use JSON
         if (files && files.length > 0) {
           const formData = new FormData();
           formData.append('message', userInput);
           if (isVoiceTurn) formData.append('voiceMode', 'true');
+          if (voiceMetadata) formData.append('voiceMetadata', JSON.stringify(nativeVoiceMetadata(voiceMetadata)));
           formData.append('history', JSON.stringify(deduped));
           if (conv.conversationId && !conv.conversationId.startsWith('temp-')) {
             formData.append('conversationId', conv.conversationId);
           }
           if (wireProvider) formData.append('provider', wireProvider);
           if (wireModel) formData.append('model', wireModel);
-          formData.append('routingMode', convRoutingMode);
+          formData.append('routingMode', bindVoiceRequest ? 'pinned' : convRoutingMode);
           if (hasConvAiOverride) {
             // Turn-only provider — the backend normalizes the string 'false'.
             formData.append('persistDefault', 'false');
@@ -1876,7 +1870,7 @@ export default {
             conversationId: conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
             provider: wireProvider,
             model: wireModel,
-            routingMode: convRoutingMode,
+            routingMode: bindVoiceRequest ? 'pinned' : convRoutingMode,
             persistDefault: hasConvAiOverride ? false : undefined,
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
@@ -1890,9 +1884,14 @@ export default {
             // undefined → field omitted by JSON.stringify; array (incl. []) → preserved
             enabledTools: Array.isArray(channelToolsForJson) ? channelToolsForJson : undefined,
             voiceMode: isVoiceTurn || undefined,
+            voiceMetadata: voiceMetadata ? nativeVoiceMetadata(voiceMetadata) : undefined,
           });
         }
 
+        const voiceRequestId = bindVoiceRequestOrigin(bindVoiceRequest, {
+          userId: verifiedVoiceUser(rootState), provider: wireProvider, model: wireModel, conversationId: conv.conversationId,
+        });
+        if (voiceRequestId) headers['X-AGNT-Voice-Request-Id'] = voiceRequestId;
         const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/chat`, {
           method: 'POST',
           headers: headers,
@@ -1923,8 +1922,7 @@ export default {
         const reader = response.body.getReader();
         commit('SCOPED_SET_STREAM_READER', { conversationId: capturedConvId, reader });
 
-        const decoder = new TextDecoder();
-        let buffer = '';
+        const framedReader = createBoundedSseReader(reader);
         // Track the current conversation ID (may change on conversation_started event)
         let activeConvId = capturedConvId;
         // Did the server actually FINISH this turn? A stream that ends without
@@ -1936,11 +1934,10 @@ export default {
 
         // Process stream — returns a promise that resolves when the stream ends
         // so callers can await sequential streams (e.g. multi-agent mentions)
-        const processStream = () => new Promise((resolveStream) => {
-          (async () => {
+        const processStream = async () => {
           try {
             while (true) {
-              const { done, value } = await reader.read();
+              const { done, events } = await framedReader.read();
               if (done) {
                 // Decrement concurrent stream counter; only clear isStreaming when all done
                 const doneConv = state.conversations[activeConvId];
@@ -1959,70 +1956,63 @@ export default {
                 if (!sawTerminal && !abortController.signal.aborted) {
                   await dispatch('recoverInterruptedStream', { conversationId: activeConvId });
                 }
-                resolveStream();
                 break;
               }
 
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n\n');
-              buffer = lines.pop() || '';
+              for (const { name: eventName, data } of events) {
+                const dataLine = '[validated SSE frame]';
+                if (eventName === 'done' || eventName === 'error') sawTerminal = true;
 
-              for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                  const eventLine = line.substring(7);
-                  const dataLine = eventLine.substring(eventLine.indexOf('\n') + 6);
-                  const eventName = eventLine.split('\n')[0].trim();
-                  if (eventName === 'done' || eventName === 'error') sawTerminal = true;
+                try {
+                  observeVoiceEvent(onVoiceStreamEvent, eventName, data);
 
-                  try {
-                    const data = JSON.parse(dataLine);
-
-                    // Handle conversation_started: migrate temp ID to server-assigned ID.
-                    // Unconditional — this stream is the only one in the slot, so it is
-                    // the one that must adopt the id the server minted for it.
-                    if (eventName === 'conversation_started' && data.conversationId) {
-                      const oldId = activeConvId;
-                      if (oldId !== data.conversationId) {
-                        commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
-                        commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
-                        // An AI override picked before the first message was
-                        // keyed on the temp id and couldn't be persisted —
-                        // persist it now under the server-assigned id.
-                        if (state.aiByConv[data.conversationId]) {
-                          dispatch('persistConversationAi', { conversationId: data.conversationId });
-                        }
-                        activeConvId = data.conversationId;
+                  // Handle conversation_started: migrate temp ID to server-assigned ID.
+                  // Unconditional — this stream is the only one in the slot, so it is
+                  // the one that must adopt the id the server minted for it.
+                  if (eventName === 'conversation_started' && data.conversationId) {
+                    const oldId = activeConvId;
+                    if (oldId !== data.conversationId) {
+                      commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
+                      commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
+                      // An AI override picked before the first message was
+                      // keyed on the temp id and couldn't be persisted —
+                      // persist it now under the server-assigned id.
+                      if (state.aiByConv[data.conversationId]) {
+                        dispatch('persistConversationAi', { conversationId: data.conversationId });
                       }
-                      // Note the in-flight turn under its SERVER id (the temp id
-                      // is unknown to the backend and cannot be reattached to).
-                      markRunStarted(data.conversationId, { chatType: 'orchestrator', channelKey: null });
+                      activeConvId = data.conversationId;
                     }
+                    // Note the in-flight turn under its SERVER id (the temp id
+                    // is unknown to the backend and cannot be reattached to).
+                    markRunStarted(data.conversationId, { chatType: 'orchestrator', channelKey: null });
+                  }
 
-                    // Emit event to all registered callbacks.
-                    // Pass activeConvId so consumers can filter events for
-                    // conversations the user isn't currently viewing.
-                    state.streamEventCallbacks.forEach((callback) => {
-                      try {
-                        callback(eventName, data, activeConvId);
-                      } catch (callbackError) {
-                        console.error('Error in stream event callback:', callbackError);
-                      }
-                    });
-
-                    // Handle core events in store — scoped to this conversation
-                    handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, activeConvId);
-                  } catch (e) {
-                    console.error('Error parsing stream data:', e, 'Raw data:', dataLine);
-                    if (eventName === 'error') {
-                      handleScopedStreamEvent({ commit, state, dispatch }, 'error', {
-                        error: `Stream error (unparseable response): ${dataLine?.substring(0, 200) || 'No data'}`,
-                      }, activeConvId);
+                  // Emit event to all registered callbacks.
+                  // Pass activeConvId so consumers can filter events for
+                  // conversations the user isn't currently viewing.
+                  state.streamEventCallbacks.forEach((callback) => {
+                    try {
+                      callback(eventName, data, activeConvId);
+                    } catch (callbackError) {
+                      console.error('Error in stream event callback:', callbackError);
                     }
+                  });
+
+                  // Handle core events in store — scoped to this conversation
+                  handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, activeConvId);
+                } catch (e) {
+                  observeVoiceEvent(onVoiceStreamEvent, 'error', {});
+                  console.error('Error applying validated stream event:', e);
+                  if (eventName === 'error') {
+                    handleScopedStreamEvent({ commit, state, dispatch }, 'error', {
+                      error: `Stream error (unparseable response): ${dataLine?.substring(0, 200) || 'No data'}`,
+                    }, activeConvId);
                   }
                 }
               }
             }
           } catch (error) {
+            observeVoiceEvent(onVoiceStreamEvent, 'error', {});
             if (error.name === 'AbortError') {
               console.log('Stream aborted by user');
             } else {
@@ -2043,16 +2033,19 @@ export default {
             if (error.name !== 'AbortError' && !abortController.signal.aborted) {
               await dispatch('recoverInterruptedStream', { conversationId: activeConvId });
             }
-            resolveStream();
+          } finally {
+            await framedReader.close(true);
+            commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
+            commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
           }
-          })();
-        });
+        };
 
         await processStream();
         // The id AFTER migration — `conversation_started` renames a temp slot
         // to the server's real id partway through this stream.
         return activeConvId;
       } catch (error) {
+        observeVoiceEvent(onVoiceStreamEvent, 'error', {});
         console.error('Error starting stream:', error);
         commit('SCOPED_SET_STREAMING', { conversationId: capturedConvId, value: false });
         commit('SCOPED_SET_STREAM_READER', { conversationId: capturedConvId, reader: null });
@@ -2336,11 +2329,14 @@ export default {
       // had more rows and less content.
       try {
         const remote = await fetchConversation(conversationId);
-        const remoteMessages = serverMessagesToUi(remote?.messages);
+        const remoteMessages = remote?.messageFormat === 'ui' ? remote.messages : serverMessagesToUi(remote?.messages);
         const localMessages = (state.conversations[conversationId]?.messages || [])
           .filter((m) => m.role === 'user' || m.role === 'assistant');
-        if (remoteMessages.length > 0
-          && transcriptSubstance(remoteMessages) >= transcriptSubstance(localMessages)) {
+        const authoritative = canAdoptCompletedTranscript(remote, localMessages, conversationId,
+          state.conversations[conversationId]?.serverRevision || 0);
+        if (remoteMessages.length > 0 && (authoritative
+          || (!remote?.status && transcriptSubstance(remoteMessages) >= transcriptSubstance(localMessages)))) {
+          if (authoritative) state.conversations[conversationId].serverRevision = remote.revision || 0;
           commit('SCOPED_SET_MESSAGES', { conversationId, messages: remoteMessages });
           markRunEnded(conversationId);
           dispatch('autosaveConversation', { debounce: false, conversationId });
@@ -2950,7 +2946,7 @@ export default {
      * Uses the agent-specific endpoint. Supports concurrent streams.
      */
     async startAgentStreamingConversation(
-      { commit, state, dispatch },
+      { commit, state, dispatch, rootState },
       {
         agentId,
         userInput,
@@ -2977,6 +2973,9 @@ export default {
         reasoningValue = null,
         reasoningEnabled = false,
         conversationId = null,
+        onVoiceStreamEvent = null,
+        voiceMetadata = null,
+        bindVoiceRequest = null,
       },
     ) {
       // A WRITE MUST CARRY ITS ADDRESS — the same rule startStreamingConversation
@@ -3056,7 +3055,7 @@ export default {
         // Spoken turns ask for a two-register answer. This endpoint funnels
         // into universalChatHandler like every other chat, so voiceMode reaches
         // the prompt builder the same way here as it does in the main chat.
-        const isVoiceTurn = consumeVoiceTurn(userInput);
+        const isVoiceTurn = !!voiceMetadata || consumeVoiceTurn(userInput);
 
         /**
          * OMITTING THE PAIR IS THE MECHANISM, NOT AN OVERSIGHT.
@@ -3083,7 +3082,8 @@ export default {
           history: deduped,
           provider: provider || undefined,
           model: model || undefined,
-          routingMode: routingMode || undefined,
+          conversationId: bindVoiceRequest && conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
+          routingMode: bindVoiceRequest ? 'pinned' : routingMode || undefined,
           /**
            * AN AGENT TURN MAY NOT REDEFINE THE ACCOUNT DEFAULT.
            *
@@ -3099,8 +3099,13 @@ export default {
           reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
           reasoningEnabled: effectiveReasoningEnabled || undefined,
           voiceMode: isVoiceTurn || undefined,
+          voiceMetadata: voiceMetadata ? nativeVoiceMetadata(voiceMetadata) : undefined,
         });
 
+        const voiceRequestId = bindVoiceRequestOrigin(bindVoiceRequest, {
+          userId: verifiedVoiceUser(rootState), provider, model, conversationId: conv.conversationId,
+        });
+        if (voiceRequestId) headers['X-AGNT-Voice-Request-Id'] = voiceRequestId;
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agentId}/chat-stream`, {
           method: 'POST',
           headers: headers,
@@ -3131,14 +3136,13 @@ export default {
         const reader = response.body.getReader();
         commit('SCOPED_SET_STREAM_READER', { conversationId: capturedConvId, reader });
 
-        const decoder = new TextDecoder();
-        let buffer = '';
+        const framedReader = createBoundedSseReader(reader);
         let activeConvId = capturedConvId;
 
         const processStream = async () => {
           try {
             while (true) {
-              const { done, value } = await reader.read();
+              const { done, events } = await framedReader.read();
               if (done) {
                 commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
                 commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
@@ -3146,49 +3150,43 @@ export default {
                 break;
               }
 
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n\n');
-              buffer = lines.pop() || '';
+              for (const { name: eventName, data } of events) {
+                const dataLine = '[validated SSE frame]';
 
-              for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                  const eventLine = line.substring(7);
-                  const dataLine = eventLine.substring(eventLine.indexOf('\n') + 6);
-                  const eventName = eventLine.split('\n')[0].trim();
+                try {
+                  observeVoiceEvent(onVoiceStreamEvent, eventName, data);
 
-                  try {
-                    const data = JSON.parse(dataLine);
-
-                    if (eventName === 'conversation_started' && data.conversationId) {
-                      const oldId = activeConvId;
-                      if (oldId !== data.conversationId) {
-                        commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
-                        commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
-                        activeConvId = data.conversationId;
-                      }
+                  if (eventName === 'conversation_started' && data.conversationId) {
+                    const oldId = activeConvId;
+                    if (oldId !== data.conversationId) {
+                      commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
+                      commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
+                      activeConvId = data.conversationId;
                     }
+                  }
 
-                    state.streamEventCallbacks.forEach((callback) => {
-                      try {
-                        callback(eventName, data, activeConvId);
-                      } catch (callbackError) {
-                        console.error('Error in stream event callback:', callbackError);
-                      }
-                    });
-
-                    handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, activeConvId);
-                  } catch (e) {
-                    console.error('Error parsing stream data:', e, 'Raw data:', dataLine);
-                    if (eventName === 'error') {
-                      handleScopedStreamEvent({ commit, state, dispatch }, 'error', {
-                        error: `Stream error (unparseable response): ${dataLine?.substring(0, 200) || 'No data'}`,
-                      }, activeConvId);
+                  state.streamEventCallbacks.forEach((callback) => {
+                    try {
+                      callback(eventName, data, activeConvId);
+                    } catch (callbackError) {
+                      console.error('Error in stream event callback:', callbackError);
                     }
+                  });
+
+                  handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, activeConvId);
+                } catch (e) {
+                  observeVoiceEvent(onVoiceStreamEvent, 'error', {});
+                  console.error('Error applying validated stream event:', e);
+                  if (eventName === 'error') {
+                    handleScopedStreamEvent({ commit, state, dispatch }, 'error', {
+                      error: `Stream error (unparseable response): ${dataLine?.substring(0, 200) || 'No data'}`,
+                    }, activeConvId);
                   }
                 }
               }
             }
           } catch (error) {
+            observeVoiceEvent(onVoiceStreamEvent, 'error', {});
             if (error.name === 'AbortError') {
               console.log('Stream aborted by user');
             } else {
@@ -3197,11 +3195,17 @@ export default {
               commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
               commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
             }
+          } finally {
+            await framedReader.close(true);
+            commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
+            commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
+            commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
           }
         };
 
-        processStream();
+        await processStream();
       } catch (error) {
+        observeVoiceEvent(onVoiceStreamEvent, 'error', {});
         console.error('Error starting agent stream:', error);
         commit('SCOPED_SET_STREAMING', { conversationId: capturedConvId, value: false });
         commit('SCOPED_SET_STREAM_READER', { conversationId: capturedConvId, reader: null });
@@ -3996,9 +4000,8 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       });
       break;
     case 'final_content':
-      console.log('[Stream] final_content received (not replacing accumulated content)', {
-        messageId: data.assistantMessageId,
-        contentLength: data.content?.length || 0,
+      commit('SCOPED_FINAL_MESSAGE_CONTENT', {
+        conversationId, messageId: data.assistantMessageId, content: data.content,
       });
       break;
     case 'tools_skipped':

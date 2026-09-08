@@ -3,13 +3,10 @@
  *
  * ENGINE CHOICE: THE FLOOR MUST ALWAYS WORK
  * -----------------------------------------
- * Voice output has one non-negotiable property: it works. An assistant that
- * cannot speak because a key is missing, a model has not downloaded, or the
- * network is down is not "degraded" — it is broken, and the user cannot tell
- * why. So the DEFAULT engine is the browser's own synthesiser: no key, no
- * download, no network, no cost, present on every OS AGNT ships to. Provider
- * TTS (OpenAI, ElevenLabs) is strictly an upgrade layered on top, and a failure
- * there falls back rather than going silent.
+ * Browser synthesis is the default, not an availability guarantee. It can be
+ * absent, blocked or backed by an OS network service. Every speak() returns a
+ * typed playback receipt; failed synthesis must not enter the heard record.
+ * Provider fallback is allowed only before any playback has started.
  *
  * CANCELLATION IS THE WHOLE GAME
  * ------------------------------
@@ -34,6 +31,8 @@
  */
 
 import { createPlaybackQueue, estimateDurationMs } from './spokenPrefix.js';
+import { consumePcmStream } from './pcmStream.js';
+import { createPcmPlaybackSink } from './pcmPlaybackSink.js';
 
 export const OutputState = Object.freeze({
   IDLE: 'idle',
@@ -41,7 +40,7 @@ export const OutputState = Object.freeze({
 });
 
 export const DEFAULT_OUTPUT_CONFIG = Object.freeze({
-  /** 'webspeech' (always works) or 'provider' (better, needs a key). */
+  /** 'webspeech' or 'provider'; either can return a typed failure. */
   engine: 'webspeech',
   /** Provider engine id passed to the backend when engine === 'provider'. */
   providerEngine: 'openai',
@@ -51,6 +50,8 @@ export const DEFAULT_OUTPUT_CONFIG = Object.freeze({
   volume: 1,
   /** Backend base path. */
   apiBase: '/api',
+  /** Hard bound for synthesis plus playback; a stalled engine is not success. */
+  playbackTimeoutMs: 120000,
 });
 
 /** Is the browser synthesiser usable in this runtime? */
@@ -88,6 +89,9 @@ export function createSpeechOut(config = {}, deps = {}) {
   let currentAudio = null;
   let currentUtterance = null;
   let startedAt = null;
+  let cancelCurrent = null;
+  let requestAbort = null;
+  let cancelWait = null;
 
   const listeners = { state: [], chunk: [] };
 
@@ -117,9 +121,9 @@ export function createSpeechOut(config = {}, deps = {}) {
 
   // --- engines ------------------------------------------------------------
 
-  function speakWebSpeech(text, gen) {
+  function speakWebSpeech(text, gen, onPlaying) {
     return new Promise((resolve) => {
-      if (!_synth || !_Utterance) return resolve({ ok: false, reason: 'unavailable' });
+      if (typeof _synth?.speak !== 'function' || !_Utterance) return resolve({ ok: false, reason: 'unavailable' });
 
       const u = new _Utterance(text);
       u.rate = cfg.rate;
@@ -127,15 +131,17 @@ export function createSpeechOut(config = {}, deps = {}) {
       u.volume = cfg.volume;
       if (cfg.voice) u.voice = cfg.voice;
 
-      let settled = false;
+      let settled = false, playbackStarted = false;
       const done = (ok, reason) => {
         if (settled) return;
         settled = true;
         currentUtterance = null;
+        cancelCurrent = null;
         resolve({ ok, reason });
       };
 
-      u.onend = () => done(true);
+      u.onstart = () => { if (!settled && gen === generation) { playbackStarted = true; onPlaying(); } };
+      u.onend = () => done(playbackStarted, playbackStarted ? undefined : 'zero-audio');
       // `cancel()` fires onerror with 'interrupted'/'canceled'. That is an
       // expected control-flow event, not a failure, and must not trigger the
       // provider fallback or a retry.
@@ -143,17 +149,20 @@ export function createSpeechOut(config = {}, deps = {}) {
 
       currentUtterance = u;
       if (gen !== generation) return done(false, 'stale');
-      _synth.speak(u);
+      cancelCurrent = () => done(false, 'stale');
+      try { _synth.speak(u); } catch { done(false, 'synthesis'); }
     });
   }
 
-  async function speakProvider(text, gen) {
+  async function speakProvider(text, gen, onPlaying) {
     if (!_fetch) return { ok: false, reason: 'no-fetch' };
 
     let res;
     try {
       const token = _getToken();
+      requestAbort = new AbortController();
       res = await _fetch(`${cfg.apiBase}/speech/synthesize`, {
+        signal: requestAbort.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -186,12 +195,18 @@ export function createSpeechOut(config = {}, deps = {}) {
 
     const type = res.headers?.get?.('content-type') || '';
     if (type.includes('application/json')) {
-      // The documented "no credentials configured" answer. Fall back quietly.
+      // A normal unavailable answer must demote once too; otherwise every
+      // queued sentence retries a provider already known to be unconfigured.
+      let body;
+      try { body = await res.json(); } catch { return { ok: false, reason: 'invalid-response' }; }
+      if (gen !== generation) return { ok: false, reason: 'stale' };
+      if (body?.available === false) cfg.engine = 'webspeech';
       return { ok: false, reason: 'unavailable' };
     }
 
     const blob = await res.blob();
     if (gen !== generation) return { ok: false, reason: 'stale' };
+    if (!blob.size) return { ok: false, reason: 'zero-audio' };
 
     // Object URLs are not universally available (older webviews, and jsdom in
     // tests). Treat an absent implementation as "provider unusable here" so we
@@ -207,7 +222,7 @@ export function createSpeechOut(config = {}, deps = {}) {
     return new Promise((resolve) => {
       const audio = _createAudio(url);
       audio.volume = cfg.volume;
-      let settled = false;
+      let settled = false, playbackStarted = false;
       const done = (ok, reason) => {
         if (settled) return;
         settled = true;
@@ -216,20 +231,55 @@ export function createSpeechOut(config = {}, deps = {}) {
         } catch {
           /* already revoked */
         }
-        currentAudio = null;
+        // Teardown before releasing ownership: cancellation and timeout must
+        // silence the actual element, not merely settle its promise.
+        audio.onplaying = audio.onended = audio.onerror = null;
+        try { audio.pause?.(); } catch { /* already detached */ }
+        try { audio.src = ''; } catch { /* already detached */ }
+        if (currentAudio === audio) { currentAudio = null; cancelCurrent = null; }
         resolve({ ok, reason });
       };
       try {
-        audio.onended = () => done(true);
+        audio.onplaying = () => { if (!settled && gen === generation) { playbackStarted = true; onPlaying(Number.isFinite(audio.duration) ? audio.duration * 1000 : null); } };
+        audio.onended = () => done(playbackStarted, playbackStarted ? undefined : 'zero-audio');
         audio.onerror = () => done(false, 'playback');
         currentAudio = audio;
         if (gen !== generation) return done(false, 'stale');
+        cancelCurrent = () => done(false, 'stale');
         const p = audio.play?.();
         if (p && typeof p.catch === 'function') p.catch(() => done(false, 'blocked'));
       } catch {
         done(false, 'playback-setup');
       }
     });
+  }
+
+  async function speakLocalStream(text, gen, onPlaying) {
+    if (!_fetch) return { ok: false, reason: 'no-fetch' };
+    const requestId = globalThis.crypto?.randomUUID?.();
+    if (!requestId) return { ok: false, reason: 'no-request-identity' };
+    const abort = new AbortController(); requestAbort = abort;
+    let sink;
+    try {
+      const token = _getToken();
+      const res = await _fetch(`${cfg.apiBase}/speech/synthesize-stream`, {
+        method: 'POST', signal: abort.signal,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ text, voice: cfg.voice, requestId, engine: cfg.providerEngine }),
+      });
+      if (gen !== generation) { await res.body?.cancel?.(); return { ok: false, reason: 'stale' }; }
+      if (!res.ok) { await res.body?.cancel?.(); return { ok: false, reason: `http-${res.status}` }; }
+      if (!res.headers?.get?.('content-type')?.includes('application/x-ndjson')) {
+        await res.body?.cancel?.(); return { ok: false, reason: 'stream-content-type' };
+      }
+      sink = (deps.createPcmSink || createPcmPlaybackSink)({ volume: cfg.volume });
+      cancelCurrent = () => sink.stop();
+      return await consumePcmStream({ body: res.body, sink, requestId, signal: abort.signal, isAllowed: () => gen === generation, onPlaying });
+    } catch { return { ok: false, reason: gen === generation ? 'stream' : 'stale' }; }
+    finally {
+      sink?.stop();
+      if (requestAbort === abort) { requestAbort = null; cancelCurrent = null; }
+    }
   }
 
   // --- public API ---------------------------------------------------------
@@ -242,33 +292,50 @@ export function createSpeechOut(config = {}, deps = {}) {
     const clean = typeof text === 'string' ? text.trim() : '';
     if (!clean) return Promise.resolve({ ok: false, reason: 'empty' });
 
+    // Candidate synthesis queue: one active plus at most one pending text.
+    if (cfg.engine === 'local-stream' && queue.pending.length >= 2) return Promise.resolve({ ok: false, reason: 'queue-full' });
     const gen = generation;
     const id = queue.enqueue(clean, estimateDurationMs(clean));
 
     chain = chain.then(async () => {
-      if (gen !== generation) return;
-
-      setState(OutputState.SPEAKING);
-      startedAt = _now();
-      queue.markPlaying(id, startedAt);
-      emit('chunk', { text: clean, id });
-
+      if (gen !== generation) return { ok: false, reason: 'stale' };
+      let playing = false, timer, resolveCancelled;
+      const cancelled = new Promise(resolve => { resolveCancelled = resolve; });
+      cancelWait = resolveCancelled;
+      const onPlaying = durationMs => {
+        if (gen !== generation || playing) return;
+        playing = true;
+        startedAt = _now();
+        queue.markPlaying(id, startedAt, durationMs);
+        setState(OutputState.SPEAKING);
+        emit('chunk', { text: clean, id });
+      };
+      const deadline = new Promise(resolve => {
+        const bound = Number.isFinite(cfg.playbackTimeoutMs) ? Math.min(300000, Math.max(1, cfg.playbackTimeoutMs)) : 120000;
+        timer = setTimeout(() => { resolve({ ok: false, reason: 'timeout' }); cancel(); }, bound);
+      });
+      const operation = async () => {
+        let result;
+        if (cfg.engine === 'local-stream') {
+          // Explicit candidate selection: never change audio destination on error.
+          result = await speakLocalStream(clean, gen, onPlaying);
+        } else if (cfg.engine === 'provider') {
+          result = await speakProvider(clean, gen, onPlaying);
+          // Never retry after partial playback: replay would duplicate words.
+          if (!result.ok && !playing && gen === generation && result.reason !== 'stale') result = await speakWebSpeech(clean, gen, onPlaying);
+        } else result = await speakWebSpeech(clean, gen, onPlaying);
+        return result;
+      };
       let result;
-      if (cfg.engine === 'provider') {
-        result = await speakProvider(clean, gen);
-        // A provider failure must not mean silence. The one exception is a
-        // stale generation: the user interrupted, and falling back would speak
-        // the very text they just cancelled.
-        if (!result.ok && result.reason !== 'stale') {
-          result = await speakWebSpeech(clean, gen);
-        }
-      } else {
-        result = await speakWebSpeech(clean, gen);
-      }
-
-      if (gen !== generation) return;
-      queue.markDone(id, _now());
+      try { result = await Promise.race([operation(), deadline, cancelled]); }
+      catch { result = { ok: false, reason: 'synthesis' }; }
+      finally { clearTimeout(timer); if (cancelWait === resolveCancelled) cancelWait = null; }
+      if (gen !== generation) return result?.reason === 'timeout' ? result : { ok: false, reason: 'stale' };
+      if (result.ok) queue.markDone(id, _now());
+      else queue.markFailed(id, _now());
       if (!queue.pending.length) setState(OutputState.IDLE);
+      if (!result.ok) emit('error', result);
+      return result;
     });
 
     /**
@@ -281,9 +348,10 @@ export function createSpeechOut(config = {}, deps = {}) {
       // eslint-disable-next-line no-console
       console.warn('[voice] chunk failed, continuing:', err?.message || err);
       if (gen === generation) {
-        queue.markDone(id, _now());
+        queue.markFailed(id, _now());
         if (!queue.pending.length) setState(OutputState.IDLE);
       }
+      return { ok: false, reason: 'synthesis' };
     });
 
     return chain;
@@ -296,6 +364,9 @@ export function createSpeechOut(config = {}, deps = {}) {
   function cancel() {
     generation += 1;
     const at = _now();
+    cancelWait?.({ ok: false, reason: 'stale' }); cancelWait = null;
+    requestAbort?.abort(); requestAbort = null;
+    cancelCurrent?.(); cancelCurrent = null;
 
     try {
       _synth?.cancel?.();
@@ -326,7 +397,7 @@ export function createSpeechOut(config = {}, deps = {}) {
 
   /** Begin a new assistant turn: clears the heard-so-far record. */
   function reset() {
-    generation += 1;
+    cancel();
     try {
       _synth?.cancel?.();
     } catch {

@@ -13,10 +13,9 @@
  *      written to full_history, not the raw pre-sanitize one, or the stored
  *      transcript would contain orphaned tool calls the client's parser has to
  *      cope with;
- *   3. it is NOT awaited, so a slow or wedged write cannot delay the tail of a
- *      turn the user is waiting on. The conversation-log write immediately
- *      above it needed a 30s timeout race for exactly that reason; this one
- *      avoids the problem rather than mitigating it.
+ *   3. settlement is bounded, so a wedged write cannot indefinitely delay
+ *      the terminal receipt. Saved-row success must not be announced before
+ *      settlement; timeout is unknown, not a failed/cancelled database write.
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
@@ -43,12 +42,12 @@ describe('turn-end transcript persistence', () => {
       .toBeLessThan(CODE.indexOf('persistTurnTranscript({'));
   });
 
-  it('is fire-and-forget, never awaited', () => {
+  it('bounds mirror settlement and only reports its actual result before done', () => {
     const idx = CODE.indexOf('persistTurnTranscript({');
-    expect(CODE.slice(idx - 20, idx)).not.toMatch(/await\s*$/);
-    // A floating promise with no rejection handler surfaces as an
-    // unhandledRejection and can take the process down.
-    expect(CODE.slice(idx, idx + 700)).toMatch(/\.catch\(/);
+    expect(CODE.slice(idx - 80, idx)).toContain('await settleTranscriptMirror(');
+    expect(CODE.slice(idx, idx + 900)).toContain('savedRowPersisted: savedMirror.written === true');
+    expect(CODE.indexOf('savedRowPersisted: savedMirror.written === true')).toBeLessThan(CODE.indexOf("sendEvent('done', terminalReceipt)"));
+    expect(CODE).toContain('terminalReceipt = { ...terminalReceipt,');
   });
 
   it('runs after the conversation log, which owns the authoritative copy', () => {

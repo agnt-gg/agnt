@@ -1,8 +1,12 @@
-# Codex voice: live-qualified panel preview, not full release
+# Codex voice: historical live trials are NOT playback qualification
+
+> **Correction (batch 19, 2026-09-08):** The historical harness below is quarantined with an unconditional startup failure. It injected the expected answer into Annie context, pinned `gpt-5.4-mini`, proxied saves to live history, mounted a null-rendering host and recorded received audio before permission. Its old success condition did not establish restored answer/provenance equality or downstream fidelity. Do not use those trials as selected-model, rendered UI, playback or full-session qualification. Historical observations below remain for audit only; they do not describe current verified behavior.
+>
+> Current unattended acceptance is **PARTIAL**. Original audit repairs have offline evidence, but actual downstream post-gain audio/ASR, repeated <=150 ms interruption, authenticated selected-account/model integration, real rendered dogfood and owner-admitted faster-Qwen streaming remain unqualified. The active controller uses separate exact-final TTS; optional generative native playback is now fail-closed. Human microphone/speaker acceptance is **PENDING_USER**. Keep PR114 draft.
 
 2026-09-08 · Relates to agnt-gg/agnt#108. This supersedes the older preview-status and prototype-only claims. Issue #108 stays open.
 
-## What works and was actually exercised
+## Historical trials — invalid as current acceptance evidence
 The existing Codex provider, production voice setup router, browser WebRTC controller, shared useVoiceEngines composable, actual chatUnified Vuex store, production streamChat transport, and a real Annie backend participated in live synthetic-audio tests. The candidate voice route was served on an ephemeral loopback listener with a separate data directory. The running AGNT backend handled explicitly bounded, tools-disabled synthetic chat requests. No room microphone, production restart, provider-token exposure, or canonical TTS replacement.
 
 A synthetic question asks for a verification phrase. The phrase is supplied only to Annie's request, not to the voice session. Pass requires one accepted request with a server execution ID, the phrase in returned voice transcript after Annie's result, fresh received audio, saved/reloaded answer, and closed input tracks. It is stronger than a successful SDP or nonzero audio check, but still does not prove all speech faithful on arbitrary inputs.
@@ -46,7 +50,7 @@ Local evidence directories and private account/run identifiers are intentionally
 - Metadata saved on server but hydration follow-up needed; complete generated-vs-played transcript accounting pending.
 - Local faster-Qwen/Pocket work remains separate #109; no GPU benchmark or promotion claimed.
 
-## Reproduction
-Run normal unit/route tests without live flags. For real provider tests, explicitly set AGNT_LIVE_VOICE_TEST=1, provide an authenticated AGNT session via AGNT_AUTH_TOKEN, and a known synthetic WAV via AGNT_VOICE_FIXTURE. The probe uses the existing provider manager server-side and a real Chromium browser. It does not log secrets or raw SDP. AGNT_TEST_ARTIFACT_ROOT optionally chooses output location; AGNT_TEST_INTERRUPT=1 enables the interruption scenario. Never use raw user room audio for an unattended test.
+## Reproduction status
+Run normal isolated unit/route tests without live flags. `scripts/codex-voice-roundtrip.mjs` is intentionally disabled, including when `AGNT_LIVE_VOICE_TEST=1`; there is no bypass. A replacement must render production chat, retain the user's selected model/account, use transparent randomized prompts without injected answers, isolate authenticated history, prove exactly one durable completion and restored equality, capture downstream audio and independently transcribe it, and verify lifecycle cleanup. No validated live reproduction command is available yet. Never use room audio for unattended tests.
 
 PR must remain draft until the missing release gates are resolved. Keep #108 open; no merge, deployment or completion claim implied.

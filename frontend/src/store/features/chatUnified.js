@@ -4,11 +4,14 @@
 // the legacy `chat` module; this module powers all five per-page panels.
 
 import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
+import { canAdoptCompletedTranscript } from '@/services/transcriptAuthority.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
+import { nativeVoiceMetadata } from '@/voice/nativeVoiceSubmit.js';
+import { verifiedVoiceUser } from '@/voice/voiceRequestOrigin.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
-import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
+import { serverMessagesToUi, transcriptSubstance, applyStreamEvent } from '@/services/chatStreamReducer.js';
 import { dispatchGlobalFrontendEvent, dispatchGlobalFrontendEvents } from '@/services/globalFrontendEvents.js';
 import {
   saveTranscript,
@@ -409,19 +412,19 @@ export default {
         persistConversations(state.conversations);
       }
     },
+    FINAL_MESSAGE_CONTENT(state, { channelKey, messageId, content }) {
+      const message = state.conversations[channelKey]?.messages.find(m => m.id === messageId);
+      if (message) {
+        applyStreamEvent(message, 'final_content', { content });
+        persistConversations(state.conversations);
+      }
+    },
     APPEND_MESSAGE_CONTENT(state, { channelKey, messageId, delta }) {
       const conv = state.conversations[channelKey];
       if (!conv) return;
       const message = conv.messages.find((m) => m.id === messageId);
       if (!message) return;
-      message.content = (message.content || '') + delta;
-      if (!message.contentParts) message.contentParts = [];
-      const lastPart = message.contentParts[message.contentParts.length - 1];
-      if (lastPart && lastPart.type === 'text') {
-        lastPart.text += delta;
-      } else {
-        message.contentParts.push({ type: 'text', text: delta });
-      }
+      applyStreamEvent(message, 'content_delta', { delta });
       // This was the ONLY mutation that changed a message without marking the
       // store dirty — and it is the one that carries the assistant's actual
       // words. Streamed text therefore never reached localStorage until the
@@ -710,13 +713,15 @@ export default {
         }
         const localSubstance = transcriptSubstance(local.messages);
         const savedSubstance = transcriptSubstance(saved.messages);
-        if (localCount > 0 && savedSubstance <= localSubstance) {
+        const authoritative = canAdoptCompletedTranscript(saved, local.messages, conversationId, local.serverRevision || 0);
+        if (!authoritative && localCount > 0 && (saved.status || savedSubstance <= localSubstance)) {
           return { ok: true, reason: 'local_newer_or_equal', source: 'transcript', localSubstance, savedSubstance };
         }
         commit('SET_CONVERSATION', {
           channelKey,
           conversation: {
             messages: saved.messages,
+            serverRevision: authoritative ? saved.revision : local.serverRevision || 0,
             conversationId,
             savedOutputId: saved.outputId || null,
             lastUpdate: saved.updatedAt ? Date.parse(saved.updatedAt) || Date.now() : Date.now(),
@@ -730,14 +735,15 @@ export default {
       const remote = await fetchConversation(conversationId);
       if (!remote) return { ok: false, reason: 'not_found' };
 
-      const remoteMessages = serverMessagesToUi(remote.messages);
+      const remoteMessages = remote.messageFormat === 'ui' ? remote.messages : serverMessagesToUi(remote.messages);
       // Adopt the transcript that SAYS MORE, never the one with more ROWS. The
       // provider log carries two extra rows per tool round-trip, so row count
       // is not a fidelity signal — it is exactly how a transcript that had lost
       // its text used to win this race and overwrite good local history.
       const localSubstance = transcriptSubstance(local.messages);
       const remoteSubstance = transcriptSubstance(remoteMessages);
-      if (localCount > 0 && remoteSubstance <= localSubstance) {
+      const authoritative = canAdoptCompletedTranscript(remote, local.messages, conversationId, local.serverRevision || 0);
+      if (!authoritative && localCount > 0 && (remote.status || remoteSubstance <= localSubstance)) {
         return {
           ok: true,
           reason: 'local_newer_or_equal',
@@ -755,6 +761,7 @@ export default {
         channelKey,
         conversation: {
           messages: remoteMessages,
+          serverRevision: authoritative ? remote.revision || 0 : local.serverRevision || 0,
           conversationId: remote.conversationId || conversationId,
           savedOutputId: local.savedOutputId || null,
           lastUpdate: remote.updatedAt ? Date.parse(remote.updatedAt) || Date.now() : Date.now(),
@@ -899,6 +906,7 @@ export default {
         files,
         onVoiceStreamEvent,
         voiceMetadata,
+        bindVoiceRequest,
       } = payload;
 
       // A send needs *something* — text OR attached files. Files alone with no
@@ -923,7 +931,7 @@ export default {
         role: 'user',
         content: displayContent,
         timestamp: Date.now(),
-        ...(voiceMetadata ? { metadata: [{ type: 'voice-input', kind: voiceMetadata.commitKind === 'correlated-delegation' ? 'correlated-delegation' : 'native-final', utteranceId: String(voiceMetadata.utteranceId || '').slice(0,256), observedTranscript: voiceMetadata.transcript == null ? null : String(voiceMetadata.transcript).slice(0,16384), delegatedInterpretation: voiceMetadata.delegatedInterpretation == null ? null : String(voiceMetadata.delegatedInterpretation).slice(0,16384) }] } : {}),
+        ...(voiceMetadata ? { metadata: nativeVoiceMetadata(voiceMetadata) } : {}),
       };
       commit('ADD_MESSAGE', { channelKey, message: userMessage });
 
@@ -969,7 +977,7 @@ export default {
       // are choices a human made for this turn, and routing never overrides
       // those.
       const channelRouting = resolveChannelRouting(channelKey, rootState.aiProvider);
-      const hasExplicitChoice = !!(provider || wsAi?.provider);
+      const hasExplicitChoice = !!(provider || wsAi?.provider || bindVoiceRequest);
       const deferToServer = !hasExplicitChoice && channelRouting.mode !== 'pinned';
 
       const resolvedProvider = deferToServer
@@ -987,6 +995,9 @@ export default {
         await streamChat({
           chatType,
           messages: history,
+          voiceMetadata: voiceMetadata ? nativeVoiceMetadata(voiceMetadata) : undefined,
+          bindVoiceRequest,
+          voiceUserId: verifiedVoiceUser(rootState),
           provider: resolvedProvider,
           model: resolvedModel,
           routingMode: resolvedRoutingMode,
@@ -1426,6 +1437,7 @@ export function handleStreamEvent({ commit, channelKey, eventName, data, onFront
       break;
 
     case 'final_content':
+      commit('FINAL_MESSAGE_CONTENT', { channelKey, messageId: data.assistantMessageId, content: data.content });
       commit('PERSIST_CONVERSATIONS');
       commit('SET_MESSAGE_STATE', {
         channelKey,

@@ -1,4 +1,6 @@
 import db from './database/index.js';
+import { stripClientCompletion, PRESERVES_COMPLETED_PREFIX } from './transcriptWritePolicy.js';
+import { preserveSealedProjection } from './sealedTranscriptProjection.js';
 
 // The metadata column set every list/meta read shares. ONE definition: the
 // sidebar list, the save response, and the realtime broadcast must all carry
@@ -25,7 +27,13 @@ class ContentOutputModel {
    * client-side, where streaming conversations are excluded from the chime
    * until the run completes (notifiableUnreadIds).
    */
-  static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null, participants = null } = {}) {
+  static async createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null, { channelKey = null, participants = null } = {}) {
+    content = stripClientCompletion(content);
+    // Only use this owner's row as authority. A seal arriving/changing after this read is
+    // rejected by the atomic snapshot predicate below, never blindly retried.
+    const existing = await this.findOne(id);
+    const sealedSnapshot = existing?.user_id === userId && existing.server_revision > 0 ? existing.content : null;
+    if (sealedSnapshot !== null) content = preserveSealedProjection(sealedSnapshot, content);
     return new Promise((resolve, reject) => {
       // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
       // aren't wiped back to their defaults on every save.
@@ -70,7 +78,9 @@ class ContentOutputModel {
            user_id = excluded.user_id,
            workflow_id = excluded.workflow_id,
            tool_id = excluded.tool_id,
-           content = excluded.content,
+           content = CASE WHEN content_outputs.server_revision > 0
+             THEN json_set(excluded.content, '$.serverCompletion', json_extract(content_outputs.content, '$.serverCompletion'))
+             ELSE excluded.content END,
            is_shareable = excluded.is_shareable,
            content_type = excluded.content_type,
            conversation_id = excluded.conversation_id,
@@ -78,8 +88,15 @@ class ContentOutputModel {
            channel_key = COALESCE(excluded.channel_key, content_outputs.channel_key),
            participants = COALESCE(excluded.participants, content_outputs.participants),
            last_read_at = COALESCE(content_outputs.last_read_at, datetime(content_outputs.updated_at, '-1 second')),
-           updated_at = CURRENT_TIMESTAMP`,
-        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null, participants || null],
+           updated_at = CURRENT_TIMESTAMP
+         WHERE content_outputs.user_id = excluded.user_id
+           AND (content_outputs.server_revision = 0 OR (
+             excluded.content_type = 'conversation'
+             AND excluded.conversation_id = content_outputs.conversation_id
+             AND content_outputs.content = ?
+             AND ${PRESERVES_COMPLETED_PREFIX}
+           ))`,
+        [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title, channelKey || null, participants || null, sealedSnapshot],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes, lastID: this.lastID });
@@ -96,6 +113,28 @@ class ContentOutputModel {
    * user's entire history. That refetch-the-world-per-save pattern is what
    * starved conversation loads while agents were streaming.
    */
+  /** Atomic server mirror update. Comparing the full old payload avoids the
+   * second-resolution updated_at race and leaves unrelated row metadata alone.
+   * No retry: a changed row requires fresh authority, not a blind overwrite.
+   */
+  static compareAndSwapTranscript({ id, userId, conversationId, expectedContent, content, title = null }) {
+    content = preserveSealedProjection(expectedContent, content);
+    return new Promise((resolve, reject) => {
+      db.run(`UPDATE content_outputs SET content = ?, title = COALESCE(NULLIF(title, ''), ?),
+        last_read_at = COALESCE(last_read_at, datetime(updated_at, '-1 second')),
+        updated_at = CURRENT_TIMESTAMP,
+        server_revision = CASE WHEN json_valid(?) THEN
+          COALESCE(json_extract(?, '$.serverCompletion.revision'), server_revision)
+          ELSE server_revision END
+        WHERE id = ? AND user_id = ? AND conversation_id = ?
+          AND content_type = 'conversation' AND content = ?`,
+      [content, title, content, content, id, userId, conversationId, expectedContent], function (err) {
+        if (err) reject(err);
+        else resolve({ changes: this.changes });
+      });
+    });
+  }
+
   static findMetaById(id) {
     return new Promise((resolve, reject) => {
       db.get(`SELECT ${LIST_COLUMNS} FROM content_outputs WHERE id = ?`, [id], (err, row) => {
@@ -382,17 +421,16 @@ class ContentOutputModel {
    * row SQLite happens to visit first — which is how a client could open a
    * 1KB stub of a conversation whose full 74KB transcript sat in the next row.
    *
-   * Longest content wins. A transcript only grows during a conversation, so
-   * the longest row is the most complete one; `updated_at` would pick the most
-   * RECENTLY TOUCHED row, which can easily be a stub saved by a tab that
-   * joined at the end. Recency breaks ties.
+   * Server-owned completion revision wins before size. A shorter correction
+   * is more authoritative than any unsealed duplicate. Length/recency remain
+   * legacy tie-breakers only; client completion JSON never sets the column.
    */
   static findByConversationId(conversationId, userId) {
     return new Promise((resolve, reject) => {
       db.get(
         `SELECT * FROM content_outputs
          WHERE conversation_id = ? AND user_id = ?
-         ORDER BY LENGTH(COALESCE(content, '')) DESC, updated_at DESC, id ASC
+         ORDER BY server_revision DESC, LENGTH(COALESCE(content, '')) DESC, updated_at DESC, id ASC
          LIMIT 1`,
         [conversationId, userId],
         (err, output) => {
@@ -416,7 +454,7 @@ class ContentOutputModel {
       db.get(
         `SELECT ${LIST_COLUMNS} FROM content_outputs
          WHERE conversation_id = ? AND user_id = ?
-         ORDER BY LENGTH(COALESCE(content, '')) DESC, updated_at DESC, id ASC
+         ORDER BY server_revision DESC, LENGTH(COALESCE(content, '')) DESC, updated_at DESC, id ASC
          LIMIT 1`,
         [conversationId, userId],
         (err, row) => {

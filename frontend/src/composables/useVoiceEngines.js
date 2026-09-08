@@ -53,7 +53,8 @@ import { computed, watch, onUnmounted, onDeactivated } from 'vue';
 import { useVoiceSession } from './useVoiceSession.js';
 import { useRealtimeVoice } from './useRealtimeVoice.js';
 import { useCodexVoice } from './useCodexVoice.js';
-import { codexVoiceSettings } from '../voice/codexVoiceSettings.js';
+import { useLocalVoice } from './useLocalVoice.js';
+import { codexVoiceSettings, codexVoiceProfiles } from '../voice/codexVoiceSettings.js';
 import { createSentenceChunker } from '../voice/sentenceChunker.js';
 import { spokenRegister } from '../voice/voiceReplyPolicy.js';
 import { armVoiceTurn } from '../services/voiceTurn.js';
@@ -91,6 +92,7 @@ export function useVoiceEngines(options = {}) {
     submitVoiceTurn = null,
   } = options;
   const codex = useCodexVoice({ submitTurn: submitVoiceTurn });
+  const local = useLocalVoice({ submitTurn: submitVoiceTurn });
 
   if (typeof submit !== 'function' || typeof streamingAnswer !== 'function') {
     throw new Error('useVoiceEngines: submit and streamingAnswer are required');
@@ -237,6 +239,7 @@ export function useVoiceEngines(options = {}) {
     if (cascade.isActive.value) cascade.stop();
     if (realtime.isActive.value) realtime.stop();
     codex.stop();
+    local.stop();
     releaseFloor();
   };
 
@@ -249,7 +252,7 @@ export function useVoiceEngines(options = {}) {
     // Reads the engines directly rather than the `voiceActive` binding below:
     // that computed is declared later in this setup, and depending on hoisting
     // order for a control path is a trap the next edit would spring.
-    if (cascade.isActive.value || realtime.isActive.value || codex.isActive.value) {
+    if (cascade.isActive.value || realtime.isActive.value || codex.isActive.value || local.isActive.value) {
       stopVoice();
       return false;
     }
@@ -259,6 +262,11 @@ export function useVoiceEngines(options = {}) {
     // session another chat left running.
     floorTicket = claimVoiceFloor(stopVoice);
 
+    if (codexVoiceSettings.engine === 'local') {
+      const started = await local.start();
+      if (!started) releaseFloor();
+      return started; // Explicit local destination never falls through to a provider.
+    }
     if (codexVoiceSettings.engine === 'codex') {
       const started = await codex.start();
       if (!started) releaseFloor();
@@ -298,23 +306,26 @@ export function useVoiceEngines(options = {}) {
    * Both engines already stop themselves on unmount; this also releases the
    * floor, so a torn-down host cannot leave it held for ever.
    */
+  const releaseIdentityListener = codexVoiceProfiles.onScopeChange(stopVoice);
   onDeactivated(stopVoice);
+  onUnmounted(releaseIdentityListener);
   onUnmounted(stopVoice);
-  watch(() => [codexVoiceSettings.engine, codexVoiceSettings.provider, codexVoiceSettings.voice], stopVoice);
+  watch(() => [codexVoiceSettings.engine, codexVoiceSettings.provider, codexVoiceSettings.voice, codexVoiceSettings.output, codexVoiceSettings.providerEngine], stopVoice, { flush: 'sync' });
 
   // ---- one set of view bindings, whichever engine is running -------------
 
-  const voiceActive = computed(() => codex.isActive.value || realtime.isActive.value || cascade.isActive.value);
+  const voiceActive = computed(() => local.isActive.value || codex.isActive.value || realtime.isActive.value || cascade.isActive.value);
   const voiceState = computed(() => {
+    if (local.isActive.value) return REALTIME_STATE_AS_CASCADE[local.state.value] || local.state.value;
     if (codex.isActive.value) return REALTIME_STATE_AS_CASCADE[codex.state.value] || codex.state.value;
     if (!realtime.isActive.value) return cascade.state.value;
     return REALTIME_STATE_AS_CASCADE[realtime.state.value] || 'listening';
   });
   const voicePartial = computed(() =>
-    codexVoiceSettings.engine === 'codex' ? codex.partial.value : realtime.isActive.value ? realtime.assistantPartial.value : cascade.partialTranscript.value
+    codexVoiceSettings.engine === 'local' ? local.partial.value : codexVoiceSettings.engine === 'codex' ? codex.partial.value : realtime.isActive.value ? realtime.assistantPartial.value : cascade.partialTranscript.value
   );
   const voiceError = computed(() =>
-    codexVoiceSettings.engine === 'codex' ? codex.error.value : realtime.isActive.value ? realtime.error.value : cascade.error.value
+    codexVoiceSettings.engine === 'local' ? local.error.value : codexVoiceSettings.engine === 'codex' ? codex.error.value : realtime.isActive.value ? realtime.error.value : cascade.error.value
   );
   /** True when the speech-to-speech engine is the one running. */
   const voiceNatural = computed(() => codex.isActive.value || realtime.isActive.value);
@@ -328,6 +339,12 @@ export function useVoiceEngines(options = {}) {
     voiceLevel: cascade.level,
     toggleVoice,
     stopVoice,
+    voiceSeparateControls: computed(() => codex.isActive.value || local.isActive.value),
+    voiceManualCommit: computed(() => local.isActive.value),
+    commitVoiceInput: () => local.commit(),
+    voiceListening: computed(() => local.isActive.value ? local.listening.value : codex.listening.value),
+    stopVoicePlayback: () => local.isActive.value ? local.stopPlayback() : codex.stopPlayback(),
+    toggleVoiceListening: () => local.isActive.value ? local.toggleListening() : codex.toggleListening(),
     isSupported: cascade.isSupported || realtime.isSupported,
   };
 }

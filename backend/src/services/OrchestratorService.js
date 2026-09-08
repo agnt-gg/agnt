@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { attachCurrentVoiceMetadata, cloneLedgerMessage, withoutLedgerMetadata } from './voice/currentTurnMetadata.js';
+import { voiceDestinationPolicy, assertVoiceDestination } from './voice/voiceDestinationPolicy.js';
 import fs from 'fs';
 import path from 'path';
 import { executeTool } from './orchestrator/tools.js';
@@ -47,7 +49,9 @@ import { createOpenToolCallLedger, wrapSendEventWithLedger } from './orchestrato
 import { mapOrderedComputerCalls } from './computerUse/operationQueue.js';
 import { captureComputerImages } from './computerUse/observationImages.js';
 import { createEagerToolRuns } from './orchestrator/eagerToolRuns.js';
+import { createTurnReceipt, wrapSendEventWithReceipt } from './orchestrator/turnReceipt.js';
 import { persistTurnTranscript } from './orchestrator/persistTurnTranscript.js';
+import { settleTranscriptMirror } from './orchestrator/settleTranscriptMirror.js';
 import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
@@ -760,6 +764,15 @@ async function universalChatHandler(req, res, context = {}) {
     }
   }
 
+  // Reject an ambiguous voice destination before settings, routing, defaults,
+  // inference or tools. This pin is not an attestation of provider account ID.
+  let voiceDestination;
+  try { voiceDestination = voiceDestinationPolicy(req); }
+  catch (error) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(error.status || 409).json({ error: error.code, code: error.code, accepted: false, completed: false });
+  }
+
   // Per-user tunable runtime caps (Settings → AI Provider). One DB fetch
   // covers both knobs — toolOutputCap (hard cap on tool result size returned
   // to the LLM) and maxToolRounds (cap on tool-loop rounds per turn).
@@ -943,7 +956,7 @@ async function universalChatHandler(req, res, context = {}) {
   const requestHasPin = !!(provider && inputModel);
   let __routing = { mode: 'static', source: 'request', pinned: requestHasPin };
   let __routingSettings = null;
-  try {
+  if (!voiceDestination) try {
     const [convSettings, userSettingsForRouting, agentForRouting] = await Promise.all([
       inputConversationId
         ? ConversationSettingsModel.get(inputConversationId).catch(() => null)
@@ -977,7 +990,7 @@ async function universalChatHandler(req, res, context = {}) {
   const workspaceHasAiOverride = !!(workspaceState && workspaceState.ai && workspaceState.ai.provider);
   // FormData turns (file uploads) transmit persistDefault as the STRING
   // 'false', which is truthy — normalize both encodings before the guard.
-  const persistDefaultNormalized = !(persistDefault === false || persistDefault === 'false');
+  const persistDefaultNormalized = !voiceDestination && !(persistDefault === false || persistDefault === 'false');
   // A dynamically-routed turn is a turn-only choice by definition. Writing it
   // back would make one routed request silently redefine the account default
   // for every other surface — including the background jobs that read it.
@@ -1009,7 +1022,9 @@ async function universalChatHandler(req, res, context = {}) {
   // the sync above already recorded the PRIMARY, and we never call
   // updateUserSettings with a fallback tier.
   let providerChain = [{ provider: normalizedProvider, model, tier: 0, primary: true }];
-  try {
+  // Voice never consults automatic fallback/dynamic chains: no paid routing
+  // probe or destination change is permitted by the audio-session selection.
+  if (!voiceDestination) try {
     // Custom OpenAI-compatible providers are keyed by UUID and are absent from
     // ProviderRegistry, so buildProviderChain drops them unless we hand it the
     // user's active ids. createLlmAdapter already resolves such a provider at
@@ -1117,6 +1132,7 @@ async function universalChatHandler(req, res, context = {}) {
     return res.status(400).json({ error: 'Messages or message with history are required in the request body.' });
   }
 
+  messageInput = attachCurrentVoiceMetadata(messageInput, req.body.voiceMetadata);
   messageInput = sanitizeOrphanToolCalls(messageInput);
   messageInput = sanitizeUnexpectedToolResults(messageInput);
   messageInput = sanitizeEmptyAssistantMessages(messageInput);
@@ -1310,6 +1326,13 @@ async function universalChatHandler(req, res, context = {}) {
   // See openToolCalls.js for the #88 window this closes.
   const openToolCalls = createOpenToolCallLedger();
   sendEvent = wrapSendEventWithLedger(openToolCalls, sendEvent);
+  // Client nonce is correlation only. Authenticated userId above is never read
+  // from this header or the request body. Invalid nonces receive a fresh ID.
+  const voiceRequestId = req.headers?.['x-agnt-voice-request-id'];
+  const turnReceipt = createTurnReceipt({ userId, conversationId,
+    ...(typeof voiceRequestId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(voiceRequestId)
+      ? { requestId: voiceRequestId } : {}) });
+  sendEvent = wrapSendEventWithReceipt(turnReceipt, sendEvent);
 
   sendEvent('conversation_started', { conversationId });
 
@@ -1321,6 +1344,8 @@ async function universalChatHandler(req, res, context = {}) {
 
   // Agent execution tracking
   let agentExecutionId = null;
+  let agentExecutionPromise = Promise.resolve();
+  let executionPersisted = false;
   let toolCallsCount = 0;
   const executionStartTime = Date.now();
   const toolExecutionIds = new Map(); // Map toolCallId -> toolExecutionId
@@ -1525,7 +1550,7 @@ async function universalChatHandler(req, res, context = {}) {
     // Create agent execution record for tracking in Runs screen (non-blocking)
     // Track all chat types except suggestions (agent, orchestrator, workflow, goal, tool)
     // This DB write does NOT need to complete before streaming starts — fire and resolve in background
-    const agentExecutionPromise = (chatType !== 'suggestions' && userId)
+    agentExecutionPromise = (chatType !== 'suggestions' && userId)
       ? (async () => {
           try {
             const initialPromptText = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content) || '';
@@ -1593,6 +1618,7 @@ async function universalChatHandler(req, res, context = {}) {
     let adapter = null;
     let primaryTierInitError = null;
     try {
+      assertVoiceDestination(voiceDestination, normalizedProvider, model);
       client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
       adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
     } catch (initError) {
@@ -1739,13 +1765,7 @@ async function universalChatHandler(req, res, context = {}) {
     // Prepare messages - filter out any corrupted messages first, then clone
     messages = messageInput
       .filter((msg) => msg && msg.role && msg.content !== undefined)
-      .map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-        name: msg.name,
-        tool_calls: msg.tool_calls,
-        tool_call_id: msg.tool_call_id,
-      }));
+      .map(cloneLedgerMessage);
 
     // Broadcast user message to all connected tabs (real-time sync)
     if (userId && messages.length > 0) {
@@ -2953,6 +2973,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // rebuilds client+adapter; on failover we re-point the OUTER client/adapter/
     // normalizedProvider/model so later rounds stay on the tier that worked.
     const runTierStream = async (tier, messages, tools, onChunk) => {
+      assertVoiceDestination(voiceDestination, tier.provider, tier.model);
       if (tier.primary && !adapter) {
         // The primary client could not be built (see primaryTierInitError
         // above). Throwing HERE — inside runWithFallback — is what turns a
@@ -2983,7 +3004,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       }
       return adapter.callStream(
-        messages,
+        withoutLedgerMetadata(messages),
         tools,
         onChunk,
         conversationContext // Pass context for vision image handling
@@ -3740,12 +3761,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       } catch (followUpError) {
         console.error('[Tool Loop] Follow-up LLM call failed:', followUpError.message);
+        throw followUpError; // A missing final model result is not completed work.
       }
     }
 
     // Send final content event. Final scrub here covers any code path that
     // set finalContentForLogging without going through extractDisplayText —
     // the placeholder must never reach the chat UI.
+    // Bind the actual final provider row to the server's emitted identity.
+    // Do not stamp an arbitrary/different answer merely to satisfy persistence.
+    const finalLedgerRow = messages.at(-1);
+    if (finalLedgerRow?.role === 'assistant' && typeof finalLedgerRow.content === 'string'
+        && finalLedgerRow.content === scrubEmptyPlaceholder(finalContentForLogging)) {
+      finalLedgerRow.id = assistantMessageId;
+    }
     sendEvent('final_content', {
       assistantMessageId,
       content: scrubEmptyPlaceholder(finalContentForLogging),
@@ -3788,6 +3817,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
       recovered_from_error: true,
     });
   } finally {
+    // Early provider errors must not outrun the asynchronous acceptance write.
+    await agentExecutionPromise;
     // Ensure every tool_use / tool_call has a matching tool_result. When the client
     // disconnects mid-run (Stop button), the tool loop is skipped and the assistant's
     // tool_use block is saved without a result — the next turn then fails with
@@ -3820,7 +3851,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Finalize agent execution tracking
     if (agentExecutionId) {
       try {
-        const finalStatus = streamErrorForLogging ? 'failed' : 'completed';
+        const finalStatus = streamAbortController.signal.aborted ? 'cancelled' : streamErrorForLogging ? 'failed' : 'completed';
         const finalResponseText = typeof finalContentForLogging === 'string'
           ? finalContentForLogging
           : String(finalContentForLogging || '');
@@ -3897,6 +3928,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           tokenUsageForDb
         );
 
+        executionPersisted = true;
         sendEvent('agent_execution_completed', {
           executionId: agentExecutionId,
           status: finalStatus,
@@ -3980,16 +4012,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // receives from GET /orchestrator/conversations/:id — so this projects the
     // same input through the same conversion the client would have applied.
     //
-    // Fire-and-forget, and update-only: see persistTurnTranscript.js. The turn
-    // is already complete and already durable; mirroring it must never be able
-    // to delay or fail the response.
-    persistTurnTranscript({ conversationId, userId, providerMessages: messages })
-      .then((result) => {
-        if (result.written) console.log(`[TurnTranscript] Updated saved transcript for ${conversationId}`);
-      })
-      .catch((err) => {
-        console.warn('[TurnTranscript] Unexpected failure (turn unaffected):', err?.message || err);
-      });
+    // Update-only with bounded settlement: see persistTurnTranscript.js.
+    // Conversation-log durability is distinct from saved-row completion.
+    // A stalled mirror reports uncertainty without indefinitely delaying done.
+    // The actual mirror call follows receipt finalization below, so a short
+    // authoritative correction cannot be mistaken for an incomplete draft.
 
     // Store conversation context for autonomous messages
     // This allows async tools to trigger AI responses later
@@ -4026,11 +4053,28 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     clearInterval(heartbeatInterval);
-    sendEvent('done', { message: 'Stream ended' });
+    let terminalReceipt = turnReceipt.finish({
+      aborted: streamAbortController.signal.aborted,
+      error: Boolean(streamErrorForLogging),
+      executionPersisted,
+      transcriptPersisted: Boolean(logRaceResult?.conversationId === conversationId),
+      provider: normalizedProvider,
+      model,
+    });
+    // Only the server-created terminal receipt can authorize a shorter final.
+    // Failed/unknown turns retain the conservative legacy persistence policy.
+    const savedMirror = await settleTranscriptMirror(
+      persistTurnTranscript({ conversationId, userId, providerMessages: messages, completionReceipt: terminalReceipt })
+    );
+    // Conversation-log durability and the rendered saved row are distinct.
+    // Do not announce the latter before its write has settled.
+    terminalReceipt = { ...terminalReceipt, savedRowPersisted: savedMirror.written === true,
+      savedRowReason: savedMirror.reason || null };
+    sendEvent('done', terminalReceipt);
 
     // Release the run AFTER 'done' is emitted, so reattached clients receive the
     // terminator before their socket is closed.
-    endRun(conversationId, streamAbortController.signal.aborted ? 'cancelled' : 'completed');
+    endRun(conversationId, terminalReceipt.status);
 
     if (sseOpen) {
       try {

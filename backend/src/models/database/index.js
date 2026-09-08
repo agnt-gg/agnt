@@ -2059,6 +2059,14 @@ function runMigrations() {
         }
       });
 
+      // Server-owned completion authority. Never derived from client JSON and
+      // deliberately no backfill: legacy serverCompletion fields are untrusted.
+      db.run(`ALTER TABLE content_outputs ADD COLUMN server_revision INTEGER NOT NULL DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding server_revision to content_outputs:', err);
+        }
+      });
+
       // Migration: Add custom_instructions column to users for orchestrator system prompt additions (2026-04-20)
       db.run(`ALTER TABLE users ADD COLUMN custom_instructions TEXT`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

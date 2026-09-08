@@ -184,6 +184,10 @@ function completeToolCall(message, incoming) {
 export function applyStreamEvent(message, eventName, data = {}) {
   const out = { handled: true, changed: false, status: null, done: false, error: null };
   if (!message) return { ...out, handled: false };
+  // Final is a per-message authority boundary, not another draft. Persist this
+  // marker with the message so restored streams cannot append stale text.
+  if ((message.streamFinalized || message.streamTerminal) &&
+      ['content_delta', 'final_content'].includes(eventName)) return out;
 
   switch (eventName) {
     case 'content_delta':
@@ -216,12 +220,17 @@ export function applyStreamEvent(message, eventName, data = {}) {
       break;
 
     case 'final_content':
-      // The accumulated deltas ARE the answer; final_content is a duplicate of
-      // the same text for logging. Only adopt it when nothing streamed at all
-      // (non-streaming providers, or a run recovered from an error).
-      if (!message.content && typeof data?.content === 'string' && data.content) {
-        out.changed = appendText(message, data.content);
+      // Final content is authoritative, including non-prefix corrections and
+      // empty answers. Preserve tool parts, but never leave draft text rendered
+      // or persisted alongside a corrected final. Identical finals retain the
+      // original interleave; corrected finals follow the retained tool parts.
+      if (typeof data?.content === 'string' && data.content !== message.content) {
+        message.content = data.content;
+        message.contentParts = ensureParts(message).filter(part => part.type !== 'text');
+        if (data.content) message.contentParts.push({ type: 'text', text: data.content });
+        out.changed = true;
       }
+      if (typeof data?.content === 'string') message.streamFinalized = true;
       out.status = '';
       break;
 
@@ -231,6 +240,7 @@ export function applyStreamEvent(message, eventName, data = {}) {
       break;
 
     case 'done':
+      message.streamTerminal = true;
       out.done = true;
       out.status = '';
       break;
@@ -381,6 +391,8 @@ export function flattenProviderMessage(raw = {}) {
   return { text, reasoning, toolCalls, contentParts, toolResults };
 }
 
+import { normalizeVoiceMetadata } from '../voice/voiceMetadata.js';
+
 /**
  * Normalize a persisted/loaded message into the render shape. Conversations
  * saved before contentParts existed carry only `content`; without a text part
@@ -401,6 +413,9 @@ export function hydrateMessage(raw = {}) {
     contentParts: explicitParts,
     toolCalls: flat.toolCalls,
     reasoning: raw.reasoning || flat.reasoning || '',
+    ...(raw.streamFinalized === true ? { streamFinalized: true } : {}),
+    ...(raw.streamTerminal === true ? { streamTerminal: true } : {}),
+    metadata: normalizeVoiceMetadata(raw.metadata),
     timestamp: raw.timestamp || Date.now(),
   };
 }

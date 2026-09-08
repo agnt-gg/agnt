@@ -80,6 +80,12 @@ vi.mock('@/composables/useVoiceEngines', async () => {
         voicePartial: ref(''),
         voiceError: ref(''),
         voiceNatural: ref(true),
+        voiceManualCommit: ref(false),
+        voiceListening: ref(false),
+        voiceSeparateControls: ref(false),
+        commitVoiceInput: vi.fn(),
+        stopVoicePlayback: vi.fn(),
+        toggleVoiceListening: vi.fn(),
       };
       return {
         ...voice.bindings,
@@ -128,6 +134,20 @@ beforeEach(() => {
 });
 
 describe('the voice control is reachable', () => {
+  it('renders explicit local Send control and disables it while not recording', async () => {
+    const w = await mountChat();
+    voice.bindings.voiceActive.value = true;
+    voice.bindings.voiceManualCommit.value = true;
+    voice.bindings.voiceSeparateControls.value = true;
+    await flushPromises();
+    const send = () => w.findAll('button').find(b => b.text() === 'Send voice utterance');
+    expect(send().attributes('disabled')).toBeDefined();
+    await send().trigger('click'); expect(voice.bindings.commitVoiceInput).not.toHaveBeenCalled();
+    voice.bindings.voiceListening.value = true; await flushPromises();
+    await send().trigger('click'); expect(voice.bindings.commitVoiceInput).toHaveBeenCalledTimes(1);
+    expect(voice.options.submitVoiceTurn).toBeTypeOf('function');
+    w.unmount();
+  });
   it('renders a voice button in the composer', async () => {
     const w = await mountChat();
     expect(w.find('.ml-voice-btn').exists()).toBe(true);
@@ -303,4 +323,32 @@ describe('a spoken turn asks for the spoken register', () => {
     expect(streamChat.mock.calls[1][0].pageContext).toEqual({ voiceMode: true });
     w.unmount();
   });
+});
+
+// Batch 6: mounted production host + actual request receipt; synthetic stream only.
+describe('native mobile receipt',()=>{
+ it('preserves typed draft, selected model, qualifier and final-only speech',async()=>{
+  const w=await mountChat();await w.find('textarea').setValue('unsent typed draft');
+  const onSpeech=vi.fn();let release;
+  streamChat.mockImplementationOnce(async({onEvent,bindVoiceRequest,provider,model})=>{
+   bindVoiceRequest({userId:'user',requestId:'request',provider,model,conversationId:'conv-1'});
+   onEvent('conversation_started',{conversationId:'conv-1'});
+   onEvent('agent_execution_started',{executionId:'run-1'});
+   onEvent('assistant_message',{id:'answer-1'});
+   onEvent('content_delta',{assistantMessageId:'answer-1',delta:'Yes, do it.'});
+   onEvent('final_content',{assistantMessageId:'answer-1',content:'No, do not do it.'});
+   onEvent('done',{receiptVersion:1,binding:'authenticated-user-execution',requestId:'request',userId:'user',provider:'openai',model:'gpt-4o',conversationId:'conv-1',executionId:'run-1',assistantMessageId:'answer-1',accepted:true,completed:true,success:true,status:'completed',executionPersisted:true,transcriptPersisted:true});await new Promise(r=>release=r);
+  });
+  const pending=voice.options.submitVoiceTurn({text:'Move only after backup.',transcript:'Move',utteranceId:'u-1',commitKind:'correlated-delegation',onSpeech});
+  await flushPromises();expect(onSpeech).not.toHaveBeenCalled();
+  expect(streamChat.mock.calls[0][0]).toMatchObject({provider:'openai',model:'gpt-4o',pageContext:{voiceMode:true}});
+  expect(streamChat.mock.calls[0][0].messages.at(-1).content).toBe('Move only after backup.');
+  expect(w.find('textarea').element.value).toBe('unsent typed draft');
+  expect(w.vm.messages.find(m=>m.role==='user').metadata[0]).toMatchObject({kind:'correlated-delegation',observedTranscript:'Move'});
+  release();expect(await pending).toMatchObject({accepted:true,completed:true,executionId:'run-1'});expect(onSpeech).toHaveBeenCalledWith('No, do not do it.','answer-1');w.unmount();
+ });
+ it('records a transport failure without claiming completed speech',async()=>{
+  const w=await mountChat();const onSpeech=vi.fn();streamChat.mockImplementationOnce(async()=>{throw Error('fixture disconnect');});
+  expect(await voice.options.submitVoiceTurn({text:'Hello',onSpeech})).toMatchObject({completed:false,status:'failed'});expect(onSpeech).not.toHaveBeenCalled();w.unmount();
+ });
 });

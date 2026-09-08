@@ -75,7 +75,10 @@
           <template v-else>Voice ready</template>
           <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
         </span>
-        <button class="voice-end-btn" type="button" @click="toggleVoice">End</button>
+        <button v-if="voiceManualCommit" type="button" class="voice-end-btn" :disabled="!voiceListening" @click="commitVoiceInput">Send voice utterance</button>
+        <button v-if="voiceSeparateControls" type="button" class="voice-end-btn" @click="stopVoicePlayback" v-tooltip="'Stop audio only; accepted task keeps running'">Stop playback</button>
+        <button v-if="voiceSeparateControls" type="button" class="voice-end-btn" @click="toggleVoiceListening" :aria-pressed="!voiceListening">{{ voiceListening ? 'Pause mic' : 'Resume mic' }}</button>
+        <button class="voice-end-btn" type="button" @click="toggleVoice" v-tooltip="'End voice; does not cancel an accepted task'">End voice</button>
       </div>
       <ChatInputBar
         ref="inputBarRef"
@@ -199,7 +202,7 @@ import ChatToolSelector from '@/views/Terminal/CenterPanel/screens/Chat/componen
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
-import { createRequestVoiceBridge } from '@/voice/requestVoiceBridge.js';
+import { createNativeVoiceSubmit } from '@/voice/nativeVoiceSubmit.js';
 import { getDraft, setDraft } from '@/services/chatDrafts';
 import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
@@ -558,23 +561,21 @@ export default {
       voiceNatural,
       voiceLevel,
       toggleVoice,
+      voiceSeparateControls, voiceListening, stopVoicePlayback, toggleVoiceListening, voiceManualCommit, commitVoiceInput,
     } = useVoiceEngines({
       surface: props.chatType || 'chat',
-      submitVoiceTurn: async ({ text, transcript, utteranceId, commitKind, delegatedInterpretation, onAccepted, onSpeech }) => {
-        if (isProcessing.value) return { accepted: false, reason: 'voice_turn_busy' };
-        const bridge = createRequestVoiceBridge({ onAccepted, onSpeech });
-        await store.dispatch('chatUnified/sendMessage', {
+      submitVoiceTurn: createNativeVoiceSubmit({
+        isBusy: () => isProcessing.value,
+        send: (text, options) => store.dispatch('chatUnified/sendMessage', {
           channelKey: props.channelKey,
           chatType: props.chatType,
           content: text,
           pageContext: props.pageContext || {},
           pageState: props.pageState || {},
           onFrontendEvent: handleFrontendEvent,
-          voiceMetadata: { transcript, utteranceId, commitKind, delegatedInterpretation },
-          onVoiceStreamEvent: bridge.event,
-        });
-        return bridge.finish();
-      },
+          ...options,
+        }),
+      }),
       submit: (text) => {
         chatInput.value = text;
         onSend();
@@ -830,6 +831,7 @@ export default {
       voicePartial,
       voiceNatural,
       toggleVoice,
+      voiceSeparateControls, voiceListening, stopVoicePlayback, toggleVoiceListening, voiceManualCommit, commitVoiceInput,
       // Provider/Tool selectors
       isProviderSelectorOpen,
       isToolSelectorOpen,

@@ -27,7 +27,11 @@
  *    one being fixed. The reported case — a row saved early, then abandoned
  *    mid-answer — is entirely covered by updating.
  *
- * 2. NEVER SHRINK what a client saved.
+ * 2. NEVER SHRINK uncertain recovery; a completed server receipt may correct.
+ *    A shorter or empty authoritative final is not a truncated draft. Only
+ *    completed, identified, durably persisted turns bypass the substance guard,
+ *    and only when they preserve the saved user-turn sequence.
+ *    For legacy/unattested callers:
  *    Compared by SUBSTANCE, not length or row count, for the reason
  *    transcriptSubstance() documents: "[object Object]" repeated is longer
  *    than real prose. `>=` matches the client's own reconcile in
@@ -64,6 +68,7 @@
  */
 
 import ContentOutputModel from '../../models/ContentOutputModel.js';
+import { projectCompletedTranscript, completionSeal, textDigest } from './transcriptCompletion.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { deriveTitle, serializeTranscript, transcriptSubstance } from './transcriptProjection.js';
 import { serverMessagesToUi } from './chatStreamReducer.mirror.js';
@@ -189,7 +194,7 @@ export function mergeRecoveredTurn(stored, turn) {
  *                                 distinguishable from the normal path
  * @returns {Promise<{written: boolean, reason?: string, outputId?: string}>}
  */
-export async function writeTranscript({ conversationId, userId, messages, mode = 'whole', logTag = 'TurnTranscript' } = {}) {
+export async function writeTranscript({ conversationId, userId, messages, mode = 'whole', completionReceipt, logTag = 'TurnTranscript' } = {}) {
   if (!conversationId || !userId) return { written: false, reason: 'not_identified' };
   if (!Array.isArray(messages) || messages.length === 0) return { written: false, reason: 'empty_projection' };
 
@@ -203,6 +208,46 @@ export async function writeTranscript({ conversationId, userId, messages, mode =
     if (existing.content_type !== 'conversation') return { written: false, reason: 'not_a_transcript' };
 
     const stored = parseStoredMessages(existing.content);
+    // This is an internal server receipt, never a field accepted from HTTP
+    // callers. Provenance metadata is deliberately NOT used as authority.
+    const receipt = completionReceipt;
+    const validId = value => typeof value === 'string' && value.length > 0 && value.length <= 256;
+    const authoritative = mode === 'whole' && receipt?.receiptVersion === 1
+      && receipt.binding === 'authenticated-user-execution'
+      && receipt.userId === userId && receipt.conversationId === conversationId
+      && validId(receipt.requestId) && validId(receipt.executionId) && validId(receipt.assistantMessageId)
+      && receipt.status === 'completed' && receipt.accepted === true
+      && receipt.completed === true && receipt.success === true
+      && receipt.executionPersisted === true && receipt.transcriptPersisted === true;
+    if (authoritative && !preservesUserTurns(stored, messages)) {
+      return { written: false, reason: 'would_drop_user_turns' };
+    }
+
+    let previousSeal = null;
+    try { previousSeal = JSON.parse(existing.content)?.serverCompletion || null; } catch { /* legacy row */ }
+    let nextSeal = null;
+    if (authoritative) {
+      const final = messages.at(-1);
+      if (final?.role !== 'assistant' || final.id !== receipt.assistantMessageId
+          || typeof final.content !== 'string' || textDigest(final.content) !== receipt.finalContentSha256
+          || messages.filter(m => m?.id === final.id).length !== 1) {
+        return { written: false, reason: 'completion_payload_mismatch' };
+      }
+      nextSeal = completionSeal(receipt, messages, (previousSeal?.revision || 0) + 1);
+    }
+    if (previousSeal) {
+      // A sealed turn is immutable here. Same-turn replacement needs a future
+      // explicit revision/supersession contract; content length is not authority.
+      if (!nextSeal || nextSeal.userTurnCount <= previousSeal.userTurnCount) {
+        return { written: false, reason: 'sealed_turn_conflict' };
+      }
+      if (!preservesUserTurns(stored, messages)) return { written: false, reason: 'would_drop_user_turns' };
+      const sealedAt = stored.findIndex(m => m?.id === previousSeal.assistantMessageId);
+      if (sealedAt < 0 || stored.slice(0, sealedAt + 1).some((m, i) =>
+        m.role !== messages[i]?.role || m.id !== messages[i]?.id || m.content !== messages[i]?.content)) {
+        return { written: false, reason: 'would_change_completed_prefix' };
+      }
+    }
 
     // A fragment is merged onto what is already saved; a whole transcript
     // stands on its own.
@@ -233,22 +278,17 @@ export async function writeTranscript({ conversationId, userId, messages, mode =
     // conversation, not the first thing they said in the recovered turn.
     const title = existing.title || deriveTitle(incoming);
 
-    if (transcriptSubstance(incoming) < transcriptSubstance(stored)) {
+    if (!authoritative && transcriptSubstance(incoming) < transcriptSubstance(stored)) {
       return { written: false, reason: 'saved_copy_is_richer' };
     }
 
-    await ContentOutputModel.createOrUpdate(
-      existing.id,
-      userId,
-      existing.workflow_id,
-      existing.tool_id,
-      serializeTranscript({ conversationId, title, messages: incoming }),
-      !!existing.is_shareable,
-      'conversation',
-      conversationId,
-      title,
-      { channelKey: existing.channel_key || null },
-    );
+    const payload = JSON.parse(serializeTranscript({ conversationId, title, messages: incoming }));
+    if (nextSeal) payload.serverCompletion = nextSeal;
+    const write = await ContentOutputModel.compareAndSwapTranscript({
+      id: existing.id, userId, conversationId, expectedContent: existing.content,
+      content: JSON.stringify(payload), title,
+    });
+    if (write.changes !== 1) return { written: false, reason: 'concurrent_write' };
 
     // Same event-carried-state contract as the HTTP save: hand back the row's
     // metadata so open clients patch this one row instead of refetching the
@@ -290,16 +330,15 @@ export async function writeTranscript({ conversationId, userId, messages, mode =
  *          Always resolves. `reason` names the skip, so the common no-ops are
  *          distinguishable from failures in a log.
  */
-export async function persistTurnTranscript({ conversationId, userId, providerMessages } = {}) {
+export async function persistTurnTranscript({ conversationId, userId, providerMessages, completionReceipt } = {}) {
   if (!conversationId || !userId) return { written: false, reason: 'not_identified' };
   if (!Array.isArray(providerMessages) || providerMessages.length === 0) {
     return { written: false, reason: 'no_history' };
   }
-  return writeTranscript({
-    conversationId,
-    userId,
-    messages: serverMessagesToUi(providerMessages),
-  });
+  const isCompleted = completionReceipt?.status === 'completed' && completionReceipt?.completed === true;
+  const messages = isCompleted ? projectCompletedTranscript(providerMessages, completionReceipt) : serverMessagesToUi(providerMessages);
+  if (!messages) return { written: false, reason: 'completion_payload_mismatch' };
+  return writeTranscript({ conversationId, userId, messages, completionReceipt });
 }
 
 export default persistTurnTranscript;

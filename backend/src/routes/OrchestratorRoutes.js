@@ -9,6 +9,7 @@ import universalChatHandler, { getAvailableTools } from '../services/Orchestrato
 import { attachSubscriber, cancelRun, getRunStatus, listRunsForUser } from '../services/orchestrator/activeRuns.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import ContentOutputModel from '../models/ContentOutputModel.js';
+import { savedTranscriptAuthority } from '../services/orchestrator/savedTranscriptAuthority.js';
 
 const router = express.Router();
 
@@ -146,7 +147,17 @@ router.get('/conversations/:conversationId', authenticateToken, async (req, res)
   try {
     const log = await ConversationLogModel.getByConversationId(req.params.conversationId, req.user?.id);
     if (!log) return res.status(404).json({ success: false, error: 'Conversation not found' });
-    res.json({ success: true, conversation: log });
+    const row = await ContentOutputModel.findByConversationId(req.params.conversationId, req.user?.id);
+    const authority = savedTranscriptAuthority(row);
+    const running = getRunStatus(req.params.conversationId, req.user?.id);
+    // A prior completed row is not authority over a newer provider-log turn.
+    const users = messages => (messages || []).filter(m => m?.role === 'user').map(m => m.content);
+    const logFinal = log.messages?.at(-1);
+    const current = authority && !running.active
+      && logFinal?.role === 'assistant' && logFinal.id === authority.assistantMessageId
+      && logFinal.content === authority.messages.at(-1).content
+      && JSON.stringify(users(authority.messages)) === JSON.stringify(users(log.messages));
+    res.json({ success: true, conversation: current ? { ...log, ...authority } : { ...log, status: 'unknown', savedRowPersisted: false } });
   } catch (error) {
     console.error('[OrchestratorRoutes] Failed to read conversation log:', error);
     res.status(500).json({ success: false, error: 'Failed to read conversation' });

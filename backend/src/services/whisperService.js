@@ -2,11 +2,11 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import pathManager from '../utils/PathManager.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -178,41 +178,27 @@ class WhisperService {
    * @returns {Promise<Float32Array>} - Audio data as Float32Array
    */
   async decodeAudio(audioFilePath) {
-    const outputPath = audioFilePath.replace(/\.\w+$/, '.wav');
-
-    try {
-      // Get ffmpeg path from environment or use system ffmpeg
-      const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
-
-      // Convert to 16kHz mono WAV using ffmpeg
-      const command = `"${ffmpegPath}" -i "${audioFilePath}" -ar 16000 -ac 1 -f wav "${outputPath}" -y`;
-
-      console.log('Converting audio with ffmpeg...');
-      await execAsync(command);
-
-      // Read the WAV file
-      const wavBuffer = fs.readFileSync(outputPath);
-
-      // Parse WAV file (skip 44-byte header, read 16-bit PCM data)
-      const samples = new Int16Array(wavBuffer.buffer, wavBuffer.byteOffset + 44, (wavBuffer.length - 44) / 2);
-
-      // Convert to Float32Array normalized to [-1, 1]
-      const float32Data = new Float32Array(samples.length);
-      for (let i = 0; i < samples.length; i++) {
-        float32Data[i] = samples[i] / 32768.0;
-      }
-
-      // Clean up temporary WAV file
-      fs.unlinkSync(outputPath);
-
-      return float32Data;
-    } catch (error) {
-      // Clean up on error
-      if (fs.existsSync(outputPath)) {
-        fs.unlinkSync(outputPath);
-      }
-      throw error;
+    // Decode into a pipe, never beside/on top of the caller's upload. ffmpeg
+    // parses RIFF chunks (including LIST/JUNK/extensible headers); raw s16le
+    // output has no header to guess and explicit byte order on every host.
+    const { stdout } = await execFileAsync(process.env.FFMPEG_PATH || 'ffmpeg', [
+      '-nostdin', '-hide_banner', '-loglevel', 'error',
+      '-protocol_whitelist', 'file,pipe', '-threads', '1',
+      '-i', path.resolve(audioFilePath), '-map', '0:a:0', '-vn',
+      '-threads', '1', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le',
+      '-f', 's16le', 'pipe:1',
+    ], {
+      encoding: 'buffer', timeout: 30000, maxBuffer: 16 * 1024 * 1024,
+      killSignal: 'SIGKILL', windowsHide: true,
+    });
+    if (!stdout.length || stdout.length % 2 !== 0) {
+      throw new Error('Audio decoder returned empty or incomplete PCM');
     }
+    const float32Data = new Float32Array(stdout.length / 2);
+    for (let i = 0; i < float32Data.length; i++) {
+      float32Data[i] = stdout.readInt16LE(i * 2) / 32768;
+    }
+    return float32Data;
   }
 
   /**

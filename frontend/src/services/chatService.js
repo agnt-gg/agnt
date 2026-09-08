@@ -7,6 +7,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { getClientId } from './clientId.js';
+import { bindVoiceRequestOrigin } from '@/voice/voiceRequestOrigin.js';
 
 const ENDPOINTS = {
   orchestrator: '/orchestrator/chat',
@@ -43,6 +44,9 @@ const ENDPOINTS = {
 export async function streamChat({
   chatType,
   messages,
+  voiceMetadata,
+  bindVoiceRequest,
+  voiceUserId,
   provider,
   model,
   // 'pinned' | 'default' | 'dynamic'. Absent means the caller is expressing no
@@ -90,6 +94,8 @@ export async function streamChat({
     ...pageContext,
     ...pageState,
   };
+  // Request-local provenance is separate from history and prompt/page context.
+  if (voiceMetadata !== undefined) bodyFields.voiceMetadata = voiceMetadata;
   if (enabledTools !== undefined) {
     bodyFields.enabledTools = Array.isArray(enabledTools) ? enabledTools : [...enabledTools];
   }
@@ -117,6 +123,10 @@ export async function streamChat({
     requestBody = JSON.stringify(bodyFields);
   }
 
+  const voiceRequestId = bindVoiceRequestOrigin(bindVoiceRequest, {
+    userId: voiceUserId, provider: bodyFields.provider, model: bodyFields.model, conversationId: bodyFields.conversationId,
+  });
+  if (voiceRequestId) headers['X-AGNT-Voice-Request-Id'] = voiceRequestId;
   const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
     method: 'POST',
     headers,

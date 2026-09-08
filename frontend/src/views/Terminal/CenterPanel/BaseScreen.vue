@@ -95,7 +95,10 @@
               <template v-else>Voice ready</template>
               <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
             </span>
-            <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
+            <button v-if="voiceManualCommit" type="button" class="voice-end-btn" :disabled="!voiceListening" @click="commitVoiceInput">Send voice utterance</button>
+            <button v-if="voiceSeparateControls" type="button" class="voice-end-btn" @click="stopVoicePlayback" v-tooltip="'Stop audio only; accepted task keeps running'">Stop playback</button>
+            <button v-if="voiceSeparateControls" type="button" class="voice-end-btn" @click="toggleVoiceListening" :aria-pressed="!voiceListening">{{ voiceListening ? 'Pause mic' : 'Resume mic' }}</button>
+            <button type="button" class="voice-end-btn" @click="toggleVoice" v-tooltip="'End voice; does not cancel an accepted task'">End voice</button>
           </div>
 
           <!-- Scrollable content area for file chips -->
@@ -281,6 +284,7 @@ import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
+import { createNativeVoiceSubmit } from '@/voice/nativeVoiceSubmit.js';
 import { useVoiceEngines } from '@/composables/useVoiceEngines';
 import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
@@ -291,6 +295,8 @@ export default {
   name: 'BaseScreen',
   components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu },
   props: {
+    // Vue emits discard returned promises; native voice needs stream settlement.
+    nativeVoiceSend: { type: Function, default: null },
     // Layout defaults live in screenRegistry.js, keyed by screenId. An
     // explicitly passed prop always wins (screens with dynamic panels).
     // `undefined` = "not passed, use the registry"; `null` keeps its old
@@ -766,6 +772,14 @@ export default {
       return last && last.role === 'assistant' ? last.content || '' : '';
     };
 
+    const nativeSubmit = createNativeVoiceSubmit({
+      send: (text, options) => {
+        if (!props.nativeVoiceSend || isInputDisabled.value) throw new Error('voice_submit_unavailable');
+        return props.nativeVoiceSend(text, null, null, options);
+      },
+      isBusy: () => isStreaming.value,
+    });
+
     const {
       voiceActive,
       voiceState,
@@ -774,9 +788,11 @@ export default {
       voiceNatural,
       voiceLevel,
       toggleVoice,
+      voiceSeparateControls, voiceListening, stopVoicePlayback, toggleVoiceListening, voiceManualCommit, commitVoiceInput,
       stopVoice,
     } = useVoiceEngines({
       surface: 'chat',
+      submitVoiceTurn: (turn) => nativeSubmit(turn),
       submit: (text) => {
         currentUserInput.value = text;
         triggerSubmit();
@@ -1622,6 +1638,7 @@ export default {
       voicePartial,
       voiceNatural,
       toggleVoice,
+      voiceSeparateControls, voiceListening, stopVoicePlayback, toggleVoiceListening, voiceManualCommit, commitVoiceInput,
       // Streaming
       isStreaming,
       pendingSteer,
