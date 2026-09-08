@@ -15,6 +15,7 @@
             <label for="template-select">Start from template</label>
             <CustomSelect
               class="template-select"
+              :z-index="10001"
               v-model="selectedTemplate"
               :disabled="isTesting || isSaving"
               placeholder="Custom (blank)"
