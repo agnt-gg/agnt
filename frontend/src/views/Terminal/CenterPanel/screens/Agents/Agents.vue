@@ -365,6 +365,8 @@ export default {
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
     const agents = ref([]);
+    // A startup fetch may finish after this screen's deduplicated refresh returns.
+    watch(() => store.getters['agents/allAgents'], (loaded) => { agents.value = loaded; });
     const criticalDataReady = computed(() => store.getters.criticalDataReady);
     const selectedAgent = ref(null);
     const searchQuery = ref('');
