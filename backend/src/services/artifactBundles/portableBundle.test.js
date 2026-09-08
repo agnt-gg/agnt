@@ -106,6 +106,13 @@ describe('portable sharing', () => {
     await fs.writeFile(path.join(root, 'site/index.html'), '<img src="link.png">');
     await expect(prepare(root)).rejects.toThrow(/not a regular, non-symlink file/);
   });
+  it('rejects a symlink entryPath before ancestor canonicalization can resolve it', async () => {
+    // Regression for the Copilot finding on #106: realpath(entry) before lstat
+    // let a leaf symlink entry pass as its regular target.
+    const root = await fixture({ 'site/real.html': '<h1>real</h1>' });
+    await fs.symlink(path.join(root, 'site/real.html'), path.join(root, 'site/index.html'));
+    await expect(prepare(root)).rejects.toThrow(/not a regular, non-symlink file/);
+  });
   it('leaves remote URLs and data URIs alone, including data srcset and CSS', async () => {
     const source = '<img src="https://example.com/x.png"><img srcset="data:image/png;base64,abcd 1x"><style>x{background:url(data:image/svg+xml,%3Csvg%3E)}</style>';
     const root = await fixture({ 'site/index.html': source });
