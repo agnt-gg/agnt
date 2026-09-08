@@ -124,9 +124,21 @@ export async function preparePortableBundle({ workspaceRoot, entryPath, rootPath
   // Canonicalize BEFORE containment / identity checks. On macOS, os.tmpdir()
   // is under /var and /var realpaths to /private/var; comparing path.resolve
   // against fs.realpath then rejects every regular temp file as a "symlink".
-  // realpath the roots once so isInside/logicalFor/bySource stay coherent.
+  // realpath workspace/root directories (and a verified regular entry) once so
+  // isInside/logicalFor/bySource stay coherent. Entry must be lstat-checked
+  // BEFORE realpath — otherwise a leaf symlink entry is silently resolved and
+  // bypasses the non-symlink file rule that addFile enforces for dependencies.
   const absoluteWorkspace = await fs.realpath(path.resolve(workspaceRoot));
-  const absoluteEntry = inline ? null : await fs.realpath(resolveInputPath(entryPath, absoluteWorkspace));
+  let absoluteEntry = null;
+  if (!inline) {
+    absoluteEntry = resolveInputPath(entryPath, absoluteWorkspace);
+    assertPublicFile(absoluteEntry);
+    const entryStat = await fs.lstat(absoluteEntry);
+    if (!entryStat.isFile() || entryStat.isSymbolicLink()) {
+      throw new Error(`Referenced path is not a regular, non-symlink file: ${absoluteEntry}`);
+    }
+    absoluteEntry = await fs.realpath(absoluteEntry);
+  }
   const resolvedRoot = inline ? (baseDir ? resolveInputPath(baseDir, absoluteWorkspace) : null) : (rootPath === undefined || rootPath === null ? path.dirname(absoluteEntry) : resolveInputPath(rootPath || '.', absoluteWorkspace));
   const root = resolvedRoot ? await fs.realpath(resolvedRoot) : null;
   if (absoluteEntry && !isInside(root, absoluteEntry)) throw new Error('Entry escapes artifact root');
