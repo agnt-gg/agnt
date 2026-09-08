@@ -98,6 +98,14 @@ describe('portable sharing', () => {
     const root = await fixture({ 'site/index.html': '<iframe src="../.env"></iframe>', '.env': 'secret' });
     await expect(prepare(root)).rejects.toThrow(/excluded|secret/);
   });
+  it('rejects a leaf symlink even when ancestor directories are themselves symlinks (macOS /var)', async () => {
+    // os.tmpdir() is under /var → /private/var on macOS. Ancestor canonicalization
+    // must NOT let a leaf symlink through; only the leaf is rejected as "symlink".
+    const root = await fixture({ 'site/index.html': 'ok', 'site/real.png': 'pic' });
+    await fs.symlink(path.join(root, 'site/real.png'), path.join(root, 'site/link.png'));
+    await fs.writeFile(path.join(root, 'site/index.html'), '<img src="link.png">');
+    await expect(prepare(root)).rejects.toThrow(/not a regular, non-symlink file/);
+  });
   it('leaves remote URLs and data URIs alone, including data srcset and CSS', async () => {
     const source = '<img src="https://example.com/x.png"><img srcset="data:image/png;base64,abcd 1x"><style>x{background:url(data:image/svg+xml,%3Csvg%3E)}</style>';
     const root = await fixture({ 'site/index.html': source });
