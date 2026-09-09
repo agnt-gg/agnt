@@ -44,7 +44,13 @@ or invoke the repository Playwright configuration. The browser fixture blocks
 network requests and uses an ephemeral browser profile.
 
 ```bash
-# From the repository root. Parser helpers + a committed-baseline inventory check.
+# From the repository root. All research tests, with zero skips required.
+node scripts/research/run-theme-rgb-tests.mjs
+
+# Optional installed browser override for the isolated palette regression test.
+RGB_RESEARCH_BROWSER=/path/to/chromium node scripts/research/run-theme-rgb-tests.mjs
+
+# Parser helpers + historical baseline check only (may explicitly skip prerequisites).
 node --test tests/unit/research/theme-rgb-inventory.test.js
 
 # Fixed, auditable snapshot (fails if the ref is unavailable).
@@ -64,20 +70,32 @@ node scripts/research/theme-rgb-browser-probe.mjs --browser /path/to/chromium
 The inventory uses installed Vue/Babel parsers to distinguish comments from
 string contents. It counts literal source occurrences, not compiled CSS,
 JavaScript evaluation, validity, or runtime reachability. See its JSON `scope`
-for exclusions. Tests belong to the existing `tests/unit` node:test runner,
-not the root backend Vitest runner. Root-only CI does not install frontend
-parsers, so this research suite explicitly skips there; it must run with both
-dependency sets installed for meaningful coverage. Other module/parser failures
-remain errors. The historical count assertion also skips with an explicit
-message if a shallow clone lacks the baseline commit. These prerequisites are
-not a claim that CI exercised the research tests: verify test discovery and the
-reported pass/skip counts, not merely the status of a report-only job.
+for exclusions. Tests use node:test, not the root backend Vitest runner.
+The dedicated **RGB research (zero skips)** CI job installs root and frontend
+dependencies plus Chromium and checks out full history for the historical
+baseline. `run-theme-rgb-tests.mjs` discovers explicit `theme-rgb-*.test.js`
+paths, requires the inventory/palette/gate suites to exist, and rejects
+missing/ambiguous TAP totals, zero tests, skips, todos,
+cancellations, failures and nonzero process exits. No `continue-on-error` is
+used for this job. Repository branch-protection settings remain a maintainer
+responsibility; this PR does not change them.
+
+Direct invocation of the inventory test may explicitly skip when frontend
+parsers or the historical commit are absent. Such a skip is **fatal to the
+research gate**, never counted as coverage. Other module/parser failures remain
+errors. The unrelated general node:test job remains report-only; its historical
+quoted-glob discovery failure is not repaired or used as research evidence here.
 
 The browser probe reports observations as JSON, including browser version,
 source hashes, all comparisons and capture outcomes. **Exit 0 means collection
 completed, not that migration passed.** Capture errors are expected observations
 on the baseline. Unsupported capture expressions are explicitly skipped, never
-reported as successful captures of a preceding fallback. The probe tests eight
+reported as successful captures of a preceding fallback. Palette schema v2
+checks token presence, resolved-expression support, style acceptance and Canvas
+acceptance. Invalid or unsupported samples have `equalPixels: null` and status
+`inconclusive`, not `equal` or `different`; their reasons are retained. The
+browser regression test covers valid matches, actual differences, missing and
+malformed tokens, and a simulated unsupported-syntax boundary. The probe tests eight
 named theme configurations; it also adds
 both Everforest faces if that palette is imported. Add new configurations
 explicitly when extending it to other themes.
@@ -96,13 +114,11 @@ explicitly when extending it to other themes.
 - Full app E2E, minimum-browser rendering, production build, and full repository
   suites have **not** been verified by this research artifact.
 
-The 2026-09-09 documentation review updates the description of #98 from its
-merged source, not from new inventory or browser runs. All numerical results
-below and the recorded JSON remain observations of `535e136c`, not of current
-upstream. In particular, upstream's later Everforest and theme-face changes are
-not covered by the historical 128-comparison result. Preserve this snapshot;
-record any future current-source measurements separately with their revision
-and source hashes.
+The original JSON is preserved byte-for-byte. The historical inventory table
+below and findings originally recorded at `535e136c` are not rewritten as
+current-upstream results. A separate 2026-09-09 collection is described after
+the table; upstream's later Everforest and theme-face changes must not be
+attributed to the historical 128-comparison result.
 
 ### Inventory
 
@@ -118,6 +134,42 @@ The earlier 1,610-call estimate is not the scope reproduced here. These counts
 exclude backend prompts, persisted widget content and indirect aliases. File
 counts are not additive across tokens. The full per-token inventory is in the
 recorded JSON.
+
+### Current-upstream collection — 2026-09-09
+
+[Separate current-source evidence](theme-rgb-observations-5ede8e72.json) pins
+production source to `5ede8e72d87fdf1d14ebab4e13512f77707c46e1` and collector
+source to `45d8a698fe8371c8e2ff1784eae447a13d9e6874`. All 17 recorded source
+hashes were checked against those commits; no modified production files were
+used. The browser was Chromium `152.0.7977.64`.
+
+| Measurement | Historical `535e136c` | Current source `5ede8e72` |
+| --- | ---: | ---: |
+| RGB references / files | 1,657 / 184 | 1,657 / 184 |
+| Direct rgba calls / files | 1,641 / 181 | 1,641 / 181 |
+| RGB declarations / files | 73 / 10 | 89 / 11 |
+| Theme configurations / comparisons | 8 / 128 | 10 / 160 |
+| Pixel matches / differences | 118 / 10 | 146 / 14 |
+| Explicit inconclusive samples | not classified by v1 | 0 (v2) |
+
+The four additional differences are orange/violet for both Everforest faces.
+The custom-background mismatch and both relative-color/color-mix capture errors
+reproduce; the legacy capture succeeds. These remain research findings, not a
+claim that migration is safe or a demand to change existing appearance.
+The fixture loads current palette sources and both Everforest faces, but does
+not drive the theme store's face-pinning UI or runtime transitions.
+
+Reproduce the current inventory with `--ref 5ede8e72d87fdf1d14ebab4e13512f77707c46e1`.
+For the browser record, run the probe at the pinned collector commit; its palette
+and renderer bytes match the stated upstream revision. Matching comparisons are
+omitted from the compact JSON projection; the probe emits all samples.
+
+The research gate passed **15 tests, zero skips** at the collector commit.
+A separate mutation check removed invalid-sample protection and the palette
+regression failed on `true` versus `null`; the unchanged implementation passed.
+These checks validate research tooling, not the app's migration readiness.
+Full repository CI results and their exact head commit belong in the PR's
+validation section, not in the historical measurement record.
 
 ## Findings and confidence
 
@@ -197,9 +249,9 @@ historical orange/violet differences above are outside that particular guard
 invariant; the merged coverage is not proof of runtime equality, custom-background
 role equivalence, or migration safety throughout the app.
 
-This is a source-based coverage description, not a fresh execution of #98's
-tests. The merged test file was also confirmed unchanged at upstream `5ede8e72`
-on 2026-09-09. Any further guard expansion should target explicitly selected
+The merged test file was confirmed unchanged at upstream `5ede8e72` on
+2026-09-09. Its scope above is derived from source; executing its tests does
+not extend that scope to the complete browser cascade. Any further guard expansion should target explicitly selected
 inherited cases after deciding their intended appearance, without enforcing
 equality for intentionally distinct background roles.
 

@@ -6,6 +6,14 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
+export function discoverResearchTests(names) {
+  const mandatory = ['theme-rgb-gate.test.js', 'theme-rgb-inventory.test.js', 'theme-rgb-palette.test.js'];
+  const missing = mandatory.filter((name) => !names.includes(name));
+  if (missing.length) throw new Error(`Missing mandatory research suites: ${missing.join(', ')}`);
+  return names.filter((file) => /^theme-rgb-.*\.test\.js$/.test(file)).sort()
+    .map((file) => `tests/unit/research/${file}`);
+}
+
 export function assertCompleteRun(result, minimumTests = 1) {
   if (result.error || result.status !== 0) throw new Error('Research test process failed');
   const counts = {};
@@ -24,10 +32,7 @@ export function assertCompleteRun(result, minimumTests = 1) {
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
     const root = fileURLToPath(new URL('../../', import.meta.url));
-    const files = readdirSync(resolve(root, 'tests/unit/research'))
-      .filter((file) => /^theme-rgb-.*\.test\.js$/.test(file)).sort()
-      .map((file) => `tests/unit/research/${file}`);
-    if (!files.length) throw new Error('No RGB research test files discovered');
+    const files = discoverResearchTests(readdirSync(resolve(root, 'tests/unit/research')));
     const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...files], {
       cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 8 * 1024 * 1024,
     });

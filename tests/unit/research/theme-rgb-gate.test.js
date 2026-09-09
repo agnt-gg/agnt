@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertCompleteRun } from '../../../scripts/research/run-theme-rgb-tests.mjs';
+import { assertCompleteRun, discoverResearchTests } from '../../../scripts/research/run-theme-rgb-tests.mjs';
 
 const result = (overrides = {}) => ({ status: 0, stdout: Object.entries({
   tests: 9, pass: 9, fail: 0, cancelled: 0, skipped: 0, todo: 0, ...overrides,
 }).map(([key, value]) => `# ${key} ${value}`).join('\n') + '\n' });
+
+test('research discovery rejects missing mandatory suites and includes future matching suites', () => {
+  const names = ['theme-rgb-gate.test.js', 'theme-rgb-inventory.test.js', 'theme-rgb-palette.test.js'];
+  assert.throws(() => discoverResearchTests([]), /Missing mandatory/);
+  for (const missing of names) {
+    assert.throws(() => discoverResearchTests(names.filter((name) => name !== missing)), /Missing mandatory/);
+  }
+  assert.equal(discoverResearchTests([...names, 'theme-rgb-next.test.js', 'unrelated.test.js']).length, 4);
+});
 
 test('research gate accepts a complete passing TAP summary', () => {
   assert.equal(assertCompleteRun(result()).pass, 9);
