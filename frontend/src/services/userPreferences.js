@@ -64,7 +64,7 @@ const PUSH_DEBOUNCE_MS = 400;
  *            not a feature.
  *
  * DELIBERATELY ABSENT:
- *   SET_DARK_MODE / SET_CYBERPUNK_MODE — legacy mutations whose state is
+ *   SET_DARK_MODE — derived appearance state that is
  *     derived from currentTheme. Syncing them too would let a stale legacy
  *     write contradict the theme it is derived from.
  *   SET_HAS_CUSTOM_BACKGROUND / SET_BACKGROUND_FILE_NAME — the background

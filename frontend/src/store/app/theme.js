@@ -214,7 +214,6 @@ export default {
 
     // Legacy support - computed from currentTheme
     isDarkMode: localStorage.getItem('currentTheme') !== null ? !['light', 'rose'].includes(localStorage.getItem('currentTheme')) : true,
-    isCyberpunkMode: localStorage.getItem('currentTheme') !== null ? localStorage.getItem('currentTheme') === 'cyberpunk' : true,
   },
   mutations: {
     // New unified theme mutation
@@ -229,7 +228,6 @@ export default {
 
       // Update legacy state for backward compatibility
       state.isDarkMode = isDarkFace(theme, state.themeFace);
-      state.isCyberpunkMode = theme === 'cyberpunk';
 
       // Apply theme classes to body
       applyThemeClasses(theme, state.themeFace);
@@ -405,19 +403,6 @@ export default {
       });
     },
 
-    /* Both Settings toggles choose a THEME. They used to flip a body class on their own, which
-       the theme name then contradicted on the next re-apply or reload. */
-    toggleDarkMode({ commit, state }) {
-      // A theme that carries both faces switches face, not theme.
-      if (SYSTEM_FOLLOWING_THEMES.includes(state.currentTheme)) {
-        commit('SET_THEME_FACE', state.isDarkMode ? 'light' : 'dark');
-        return;
-      }
-      commit('SET_THEME', state.isDarkMode ? 'light' : 'dark');
-    },
-    toggleCyberpunkMode({ commit, state }) {
-      commit('SET_THEME', state.isCyberpunkMode ? 'dark' : 'cyberpunk');
-    },
     toggleGreyscaleMode({ commit, state }) {
       commit('SET_GREYSCALE_MODE', !state.isGreyscaleMode);
     },
@@ -708,7 +693,6 @@ export default {
     // Legacy getters for backward compatibility
     isDarkMode: (state) => state.isDarkMode,
     themeFace: (state) => state.themeFace,
-    isCyberpunkMode: (state) => state.isCyberpunkMode,
     isGreyscaleMode: (state) => state.isGreyscaleMode,
     isAssetPanelFullWidth: (state) => state.isAssetPanelFullWidth,
     panelPosition: (state) => state.panelPosition,
