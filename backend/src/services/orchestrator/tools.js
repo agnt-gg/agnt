@@ -4360,7 +4360,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'generate_image',
         description:
-          'Generate images using AI. Supports OpenAI DALL-E, Google Gemini, and Grok image generation. Use this tool when the user asks you to create, generate, or make images.',
+          'Generate images using AI. Supports OpenAI GPT Image, Google Gemini, and Grok. OpenAI defaults to latest compatible quality; latest-fast selects speed. Explicit model IDs stay pinned.',
         parameters: {
           type: 'object',
           properties: {
@@ -4377,7 +4377,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             model: {
               type: 'string',
               description:
-                "Specific image model. If omitted, the provider's current default is used. The handler validates this against the provider's live model list, so naming a model that no longer exists is reported rather than silently substituted.",
+                "For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
             },
             numberOfImages: {
               type: 'number',
@@ -4443,17 +4443,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
         }
 
-        // Get available models dynamically (with fallback to static)
-        const availableModels = await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
-
-        // Get provider capabilities
         const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
-
-        // Use default model if not specified
-        const selectedModel = model || capabilities.defaultModel;
-
-        // Validate model against dynamic list
-        if (!availableModels.includes(selectedModel)) {
+        const requestedModel = model || capabilities.defaultModel;
+        let selectedModel = requestedModel;
+        // OpenAI resolves once in the action with its authenticated client. An
+        // explicit ID stays pinned; the provider remains the entitlement check.
+        const availableModels = normalizedProvider === 'openai' ? []
+          : await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
+        if (normalizedProvider !== 'openai' && !availableModels.includes(selectedModel)) {
           return JSON.stringify({
             success: false,
             error: `Model '${selectedModel}' is not valid for ${provider}. Available models: ${availableModels.join(', ')}`,
@@ -4513,6 +4510,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           });
         }
 
+        selectedModel = result.imageMetadata?.resolvedModel || selectedModel;
+
         // Persist generated images to disk so we can return stable URLs/paths
         // to the LLM (instead of round-tripping full base64 through context).
         const generatedImages = Array.isArray(result.generatedImages) ? result.generatedImages : [];
@@ -4565,6 +4564,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           firstImageUrl,
           revisedPrompt: result.revisedPrompt || null,
           imageMetadata: result.imageMetadata || null,
+          requestedModel,
           message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
       } catch (error) {

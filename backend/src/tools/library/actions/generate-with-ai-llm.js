@@ -414,7 +414,7 @@ class GenerateWithAiLlm extends BaseAction {
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
         provider: normalizedProvider,
-        model: params.model || response?.model || 'unknown',
+        model: response?.imageMetadata?.resolvedModel || params.model || response?.model || 'unknown',
         usage: {
           inputTokens: response?.inputTokens || 0,
           outputTokens: response?.outputTokens || 0,
@@ -934,9 +934,12 @@ class GenerateWithAiLlm extends BaseAction {
   async generateImageWithOpenAI(params) {
     const openai = new OpenAI({ apiKey: params.apiKey });
     const operation = params.imageOperation || 'Generate';
-    // Registry default, not a literal. 'dall-e-3' no longer exists on the
-    // account — verified live 2026-08-11, it returns 400 "does not exist".
-    const model = params.model || imageDefaultModel('openai');
+    const selection = await ProviderRegistry.resolveOpenAiImageSelection({
+      model: params.model || imageDefaultModel('openai'),
+      operation,
+      listModels: (options) => openai.models.list(options),
+    });
+    const model = selection.resolvedModel;
 
     let response;
 
@@ -976,7 +979,7 @@ class GenerateWithAiLlm extends BaseAction {
         console.log('OpenAI Edit - Using prompt:', params.imagePrompt);
 
         response = await openai.images.edit({
-          model: model === 'dall-e-3' ? 'dall-e-2' : model, // DALL-E 3 doesn't support edits
+          model, // Unsupported model/operation combinations fail before dispatch
           image: imageFile,
           prompt: params.imagePrompt, // This is the edit instruction
           n: Number(params.numberOfImages) || 1,
@@ -993,7 +996,7 @@ class GenerateWithAiLlm extends BaseAction {
         const imageFile = await this.base64ToFile(params.referenceImage, 'image.png');
 
         response = await openai.images.createVariation({
-          model: 'dall-e-2', // Only DALL-E 2 supports variations
+          model, // Resolver requires an explicit DALL-E 2 pin for Variation
           image: imageFile,
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
@@ -1013,6 +1016,8 @@ class GenerateWithAiLlm extends BaseAction {
       return {
         generatedImages: images,
         imageMetadata: {
+          ...selection,
+          returnedModel: typeof response.model === 'string' ? response.model : null,
           model: model,
           operation: operation,
           size: params.imageSize || '1024x1024',
