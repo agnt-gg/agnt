@@ -211,6 +211,29 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  # Research-only gate: separate from the report-only general node:test suite.
+  # Full history supplies the pinned inventory baseline. The runner enumerates
+  # explicit paths (no shell glob), and rejects empty runs or ANY skipped test.
+  rgb-research:
+    name: RGB research (zero skips)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+      - name: Install frontend parser dependencies
+        run: npm --prefix frontend ci --ignore-scripts
+      - name: Install Chromium for isolated research fixtures
+        run: npx playwright install --with-deps chromium
+      - name: Run every RGB research test without skips
+        run: node scripts/research/run-theme-rgb-tests.mjs
+
   # NOT a gate yet — this job reports; it does not block.
   #
   # tests/unit/** uses the node:test runner rather than vitest, so it was never
