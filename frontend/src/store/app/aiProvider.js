@@ -1193,7 +1193,15 @@ export default {
 
           if (response.ok) {
             const settings = await response.json();
-            const provider = settings.selectedProvider;
+            // Settings can hold lowercase server keys while providers/model
+            // caches use canonical identifiers. Normalize before fetching or
+            // committing so boot order cannot clear an otherwise valid model.
+            // Custom-provider IDs remain opaque and must match exactly.
+            const savedProvider = settings.selectedProvider;
+            const isCustomProvider = state.customProviders.some((cp) => cp.id === savedProvider);
+            const provider = isCustomProvider
+              ? savedProvider
+              : canonicalizeProviderCase(state.providers, savedProvider) || savedProvider;
             const model = settings.selectedModel;
 
             if (settings.customInstructions !== undefined) {
@@ -1221,8 +1229,6 @@ export default {
             }
 
             if (provider) {
-              const isCustomProvider = state.customProviders.some((cp) => cp.id === provider);
-
               if (provider === 'Local') {
                 await dispatch('fetchLocalModels');
               } else if (isCustomProvider) {
