@@ -29,7 +29,7 @@
   </section>
 </template>
 <script setup>
-import {ref,computed,onMounted} from 'vue';
+import {ref,computed,onMounted,onBeforeUnmount} from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 const props=defineProps({compact:Boolean});
@@ -37,13 +37,29 @@ const open=ref(false),busy=ref(false),error=ref(''),saved=ref(false),connections
 const selected=computed(()=>connections.value.find(c=>c.id===draftConnection.value));
 const providerOptions=computed(()=>connections.value.map(c=>({label:c.label+(c.connected?'':' · not connected'),value:c.id})));
 const modelOptions=[{label:'Latest · Quality',value:'latest'},{label:'Latest · Fast',value:'latest-fast'},{label:'Specific model / snapshot',value:'pinned'}];
-async function request(method,body){const token=localStorage.getItem('token');const response=await fetch(API_CONFIG.BASE_URL+'/users/image-settings',{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},credentials:'include',...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok)throw Error(response.status===409?'Settings changed elsewhere. Reload before saving.':data.error||'Image settings unavailable');return data;}
+const controller = new AbortController();
+async function request(method,body){
+ const requestController=new AbortController();
+ const abort=()=>requestController.abort();
+ controller.signal.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(abort,15000);
+ try {
+  if(controller.signal.aborted)throw new Error('Image settings request cancelled.');
+  const token=localStorage.getItem('token');
+  const response=await fetch(API_CONFIG.BASE_URL+'/users/image-settings',{method,signal:requestController.signal,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},credentials:'include',...(body?{body:JSON.stringify(body)}:{})});
+  const data=await response.json();
+  if(!response.ok)throw Error(response.status===409?'Settings changed elsewhere. Reload before saving.':data.error||'Image settings unavailable');
+  return data;
+ } finally {clearTimeout(timer);controller.signal.removeEventListener('abort',abort);}
+}
 function choose(value){draftConnection.value=typeof value==='object'?value.value:value;saved.value=false;const c=selected.value;const m=settings.value?.options?.[draftConnection.value]?.model;mode.value=['latest','latest-fast'].includes(m)?m:'pinned';pin.value=m||c?.models?.[0]||'';if(c?.provider==='openai'&&!m)mode.value='latest';allow.value=settings.value?.authorizations?.[draftConnection.value]?.allowed===true;}
 function setMode(value){mode.value=typeof value==='object'?value.value:value;saved.value=false;}
 async function load(){busy.value=true;error.value='';saved.value=false;try{const data=await request('GET');settings.value=data.settings;connections.value=data.connections;choose(data.settings.selectedConnectionId||'');}catch(e){error.value=e.message;}finally{busy.value=false;}}
-async function revoke(){busy.value=true;error.value='';saved.value=false;try{const data=await request('PUT',{expectedRevision:settings.value.revision,consent:{connectionId:draftConnection.value,allow:false}});settings.value=data.settings;allow.value=false;saved.value=true;}catch(e){error.value=e.message;}finally{busy.value=false;}}
-async function save(){busy.value=true;error.value='';saved.value=false;try{const c=selected.value;const model=c.requiresConsent?'provider-default':c.provider==='openai'?(mode.value==='pinned'?pin.value.trim():mode.value):pin.value;const patch={expectedRevision:settings.value.revision,selectedConnectionId:c.id,options:{connectionId:c.id,value:model?{model}:{}}};if(c.requiresConsent)patch.consent={connectionId:c.id,allow:allow.value};const data=await request('PUT',patch);settings.value=data.settings;saved.value=true;}catch(e){error.value=e.message;}finally{busy.value=false;}}
-onMounted(load);
+async function revoke(){busy.value=true;error.value='';saved.value=false;try{const data=await request('PUT',{expectedRevision:settings.value.revision,consent:{connectionId:draftConnection.value,allow:false}});settings.value=data.settings;allow.value=false;saved.value=true;window.dispatchEvent(new Event('agnt:image-settings-changed'));}catch(e){error.value=e.message;}finally{busy.value=false;}}
+async function save(){busy.value=true;error.value='';saved.value=false;try{const c=selected.value;const model=c.requiresConsent?'provider-default':c.provider==='openai'?(mode.value==='pinned'?pin.value.trim():mode.value):pin.value;const patch={expectedRevision:settings.value.revision,selectedConnectionId:c.id,options:{connectionId:c.id,value:model?{model}:{}}};if(c.requiresConsent)patch.consent={connectionId:c.id,allow:allow.value};const data=await request('PUT',patch);settings.value=data.settings;saved.value=true;window.dispatchEvent(new Event('agnt:image-settings-changed'));}catch(e){error.value=e.message;}finally{busy.value=false;}}
+const refresh = () => { if (!busy.value && (!open.value || !props.compact)) load(); };
+onMounted(()=>{load();window.addEventListener('agnt:image-settings-changed',refresh);});
+onBeforeUnmount(()=>{controller.abort();window.removeEventListener('agnt:image-settings-changed',refresh);});
 </script>
 <style scoped>
 .image-settings{font-size:12px;color:var(--color-text);margin:8px 0}.image-settings-panel{padding:14px;border:1px solid var(--terminal-border-color);border-radius:8px;background:var(--color-background)}h3{margin:0 0 8px}p{line-height:1.5;opacity:.85}label{display:block;margin:10px 0 5px}.billing{font-weight:600}button,input{font:inherit;color:inherit;background:transparent;border:1px solid var(--terminal-border-color);border-radius:5px;padding:7px 10px;margin:6px 6px 0 0}button{cursor:pointer}button:disabled{opacity:.5}input[type=checkbox]{margin-right:6px}[role=alert]{color:var(--color-red)}

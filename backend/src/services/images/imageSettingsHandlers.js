@@ -8,7 +8,7 @@ export function createImageSettingsHandlers(service) {
     },
     async put(req,res) {
       const id=user(req);if(!id)return res.status(401).json({error:'Authentication required'});
-      try { const settings=await service.update(id,req.body,req.headers?.authorization);res.json({success:true,settings}); } catch(error) { fail(res,error); }
+      try { const settings=await service.update(id,req.body,req.headers?.authorization);res.json({success:true,settings:{...settings,authorizations:Object.fromEntries(Object.entries(settings.authorizations).map(([id,g])=>[id,{allowed:g.allowed,revision:g.revision}]))}}); } catch(error) { fail(res,error); }
     },
   };
 }

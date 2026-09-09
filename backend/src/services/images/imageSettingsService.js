@@ -13,7 +13,8 @@ export function createImageSettingsService({ store, listConnections }) {
     },
     async update(userId, patch, authToken) {
       const state = await store.read(userId);
-      const { resolveConnection } = await connections(userId, authToken);
+      const revocationOnly = patch && patch.consent?.allow === false && Object.keys(patch).every(k=>['expectedRevision','consent'].includes(k));
+      const { resolveConnection } = revocationOnly ? {resolveConnection:()=>null} : await connections(userId, authToken);
       const next = reviseSettings(state, patch, { userId, resolveConnection });
       return store.compareAndSwap(userId, patch.expectedRevision, next);
     },
@@ -30,8 +31,8 @@ export function createImageSettingsService({ store, listConnections }) {
         async beforeDispatch() {
           if (dispatched) throw new Error('Duplicate image dispatch prohibited.');
           if (signal?.aborted) throw new Error('Image request cancelled.');
-          const current = await store.read(userId);
           const { resolveConnection: fresh } = await connections(userId, authToken);
+          const current = await store.read(userId);
           revalidateImageRequest(request, current, {userId,resolveConnection:fresh});
           if (signal?.aborted) throw new Error('Image request cancelled.');
           if (dispatched) throw new Error('Duplicate image dispatch prohibited.');

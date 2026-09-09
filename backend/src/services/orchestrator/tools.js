@@ -4527,6 +4527,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           return JSON.stringify({
             success: false,
             error: result.error,
+            retryable: false,
             provider: provider,
             model: selectedModel,
           });
