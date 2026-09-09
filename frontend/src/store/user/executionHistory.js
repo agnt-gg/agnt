@@ -168,6 +168,13 @@ export default {
             outputTokens: exec.outputTokens || 0,
             totalTokens: exec.totalTokens || 0,
             estimatedCost: exec.estimatedCost || 0,
+            // Which thread started the run and where it sits in its run tree —
+            // what lets the chat inspector show THIS conversation's work and
+            // nothing else's. See utils/runDisplay.js.
+            conversationId: exec.conversationId ?? null,
+            parentExecutionId: exec.parentExecutionId ?? null,
+            rootExecutionId: exec.rootExecutionId ?? null,
+            origin: exec.origin ?? null,
           }));
           commit('SET_AGENT_EXECUTION_SUMMARIES', agentSummaries);
         } else {

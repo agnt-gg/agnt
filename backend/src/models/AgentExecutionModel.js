@@ -232,7 +232,8 @@ class AgentExecutionModel {
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.start_time, ae.end_time, ae.status,
                 ae.credits_used, ae.tool_calls_count, ae.provider, ae.model,
                 ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost,
-                ae.cache_read_tokens, ae.cache_creation_tokens
+                ae.cache_read_tokens, ae.cache_creation_tokens,
+                ae.conversation_id, ae.parent_execution_id, ae.root_execution_id, ae.origin
          FROM agent_executions ae
          WHERE ae.user_id = ? ${dateFilter}
          ORDER BY ae.start_time DESC
@@ -258,6 +259,14 @@ class AgentExecutionModel {
               estimatedCost: row.estimated_cost || 0,
               cacheReadTokens: row.cache_read_tokens || 0,
               cacheCreationTokens: row.cache_creation_tokens || 0,
+              // Which thread started this run, and where it sits in its run
+              // tree. Without these the client could not tell "this
+              // conversation's work" from every other thread's, and the
+              // chat inspector listed all of them under one heading.
+              conversationId: row.conversation_id || null,
+              parentExecutionId: row.parent_execution_id || null,
+              rootExecutionId: row.root_execution_id || null,
+              origin: row.origin || null,
               type: 'agent', // Mark as agent execution for frontend
             }));
             resolve(executions);

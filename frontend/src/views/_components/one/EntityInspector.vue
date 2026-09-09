@@ -38,8 +38,8 @@
         <div v-if="!agentRuns.length" class="muted">No runs yet.</div>
         <div v-for="r in agentRuns" :key="r.id" class="li" @click="inspectRun(r)">
           <span class="badge" :class="'b-' + statusTone(r.status)">{{ r.status }}</span>
-          <span class="nm">{{ r.title || r.name || r.id }}</span>
-          <span class="t">{{ when(r.created_at || r.started_at) }}</span>
+          <span class="nm">{{ runDisplayName(r) }}</span>
+          <span class="t">{{ when(runStartedAt(r)) }}</span>
         </div>
       </template>
     </template>
@@ -60,7 +60,7 @@
         <div v-if="!wfRuns.length" class="muted">No runs yet.</div>
         <div v-for="r in wfRuns" :key="r.id" class="li" @click="inspectRun(r)">
           <span class="badge" :class="'b-' + statusTone(r.status)">{{ r.status }}</span>
-          <span class="nm">{{ when(r.started_at || r.created_at) }}</span>
+          <span class="nm">{{ when(runStartedAt(r)) }}</span>
           <span class="t">{{ dur(r) }}</span>
         </div>
       </template>
@@ -107,7 +107,7 @@
         <dt>type</dt>
         <dd>{{ run.type || run.execution_type || 'workflow' }}</dd>
         <dt>started</dt>
-        <dd>{{ when(run.started_at || run.created_at) }}</dd>
+        <dd>{{ when(runStartedAt(run)) }}</dd>
         <dt>duration</dt>
         <dd>{{ dur(run) }}</dd>
       </dl>
@@ -128,8 +128,8 @@
       <div v-if="!running.length" class="muted">Nothing is running right now.</div>
       <div v-for="r in running" :key="r.id" class="li" @click="inspectRun(r)">
         <span class="pulse"></span>
-        <span class="nm">{{ r.title || r.name || r.workflow_name || r.id }}</span>
-        <span class="t">{{ when(r.started_at || r.created_at) }}</span>
+        <span class="nm">{{ runDisplayName(r) }}</span>
+        <span class="t">{{ when(runStartedAt(r)) }}</span>
       </div>
     </template>
 
@@ -183,8 +183,7 @@ import { useStore } from 'vuex';
 import InspectorShell from './InspectorShell.vue';
 import InspSection from './InspSection.vue';
 import { ENTITY_SCREENS } from '@/utils/entityRefs.js';
-
-const RUNNING = new Set(['running', 'executing', 'in_progress', 'active']);
+import { RUNNING_STATUSES as RUNNING, isRunning, runDisplayName, runStartedAt, runEndedAt } from '@/utils/runDisplay.js';
 
 export default {
   name: 'EntityInspector',
@@ -227,7 +226,7 @@ export default {
       { immediate: true },
     );
 
-    const running = computed(() => executions.value.filter((e) => RUNNING.has(String(e.status || '').toLowerCase())));
+    const running = computed(() => executions.value.filter((e) => isRunning(e.status)));
     const escalated = computed(() => store.getters['insights/escalatedInsights'] || []);
     const memories = computed(() => store.getters['insights/agentMemories'] || []);
     const agentRuns = computed(() => (agent.value ? (store.getters['executionHistory/getAgentExecutions'] || []).filter((e) => String(e.agent_id || e.agentId) === String(agent.value.id)).slice(0, 10) : []));
@@ -259,7 +258,7 @@ export default {
       }
       if (k === 'trace' || k === 'execution') {
         const r = run.value;
-        return { ...base, title: r?.title || r?.name || r?.workflow_name || `run ${String(props.id || '').slice(0, 8)}`, sub: `run · ${r?.status || ''}`, icon: 'fas fa-stream', tone: 'indigo', badge: r?.status || '', badgeTone: statusTone(r?.status), openLabel: 'Open in Runs' };
+        return { ...base, title: r ? runDisplayName(r) : `run ${String(props.id || '').slice(0, 8)}`, sub: `run · ${r?.status || ''}`, icon: 'fas fa-stream', tone: 'indigo', badge: r?.status || '', badgeTone: statusTone(r?.status), openLabel: 'Open in Runs' };
       }
       if (k === 'running') return { ...base, title: 'Running now', sub: `${running.value.length} running`, icon: 'fas fa-stream', tone: 'blue', badge: String(running.value.length), openScreen: 'TracesScreen', openLabel: 'Open Runs' };
       if (k === 'autonomy') return { ...base, title: 'Awaiting approval', sub: `${escalated.value.length} actions`, icon: 'fas fa-user-shield', tone: 'yellow', badge: String(escalated.value.length), openScreen: 'AutonomyScreen', openLabel: 'Open Autonomy' };
@@ -290,8 +289,8 @@ export default {
     }
     function dur(r) {
       if (!r) return '—';
-      const a = r.started_at || r.created_at;
-      const b = r.completed_at || r.ended_at || r.finished_at;
+      const a = runStartedAt(r);
+      const b = runEndedAt(r);
       if (!a) return '—';
       const ms = (b ? new Date(b) : Date.now()) - new Date(a);
       if (!Number.isFinite(ms) || ms < 0) return '—';
@@ -308,7 +307,7 @@ export default {
       window.dispatchEvent(new CustomEvent('agnt:navigate', { detail: { screen: view.value.openScreen, opts: props.id ? { select: { kind: props.kind, id: props.id } } : {} } }));
     }
 
-    return { tab, view, agent, workflow, goal, run, runLoading, running, escalated, memories, agentRuns, wfSteps, wfRuns, goalTasks, goalProgress, runSteps, entity, statusTone, when, dur, inspectRun, openScreen };
+    return { tab, view, agent, workflow, goal, run, runLoading, running, escalated, memories, agentRuns, wfSteps, wfRuns, goalTasks, goalProgress, runSteps, entity, statusTone, when, dur, inspectRun, openScreen, runDisplayName, runStartedAt };
   },
 };
 </script>

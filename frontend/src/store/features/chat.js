@@ -443,8 +443,18 @@ function createConversationState(conversationId) {
     // the last failure is kept so the panel can show why, not just that.
     isCompacting: false,
     compactionError: null,
+    // The agent runs THIS conversation started, as heard over its own stream
+    // (`agent_execution_started` / `_completed`). Real-time, unlike the
+    // execution-history snapshot, and scoped by construction — which is what
+    // lets the inspector say "working now" about this thread and be right.
+    // Bounded (LIVE_RUNS_KEPT); the history store is the record.
+    liveRuns: [],
   };
 }
+
+/** Live runs remembered per conversation. Only the running ones matter; the
+ *  rest are kept briefly so a late `_completed` still finds its row. */
+const LIVE_RUNS_KEPT = 20;
 
 /**
  * Sync a conversation's state to the flat "mirror" properties on root state.
@@ -1032,12 +1042,46 @@ export default {
       if (conv) conv.isReattaching = value;
     },
 
+    /** A run this conversation's stream just announced. Upserts by id. */
+    SCOPED_RUN_STARTED(state, { conversationId, executionId, agentName, startedAt }) {
+      const conv = state.conversations[conversationId];
+      if (!conv || !executionId) return;
+      const runs = Array.isArray(conv.liveRuns) ? conv.liveRuns : [];
+      const idx = runs.findIndex((r) => r.executionId === executionId);
+      const run = {
+        executionId,
+        agentName: agentName || (idx >= 0 ? runs[idx].agentName : null) || null,
+        status: 'running',
+        startedAt: idx >= 0 ? runs[idx].startedAt : (startedAt || Date.now()),
+        endedAt: null,
+      };
+      const next = idx >= 0 ? runs.map((r, i) => (i === idx ? run : r)) : [...runs, run];
+      conv.liveRuns = next.length > LIVE_RUNS_KEPT ? next.slice(next.length - LIVE_RUNS_KEPT) : next;
+    },
+
+    /** The stream reported the run's end, with the status the server wrote. */
+    SCOPED_RUN_ENDED(state, { conversationId, executionId, status, endedAt }) {
+      const conv = state.conversations[conversationId];
+      if (!conv || !executionId || !Array.isArray(conv.liveRuns)) return;
+      conv.liveRuns = conv.liveRuns.map((r) =>
+        r.executionId === executionId ? { ...r, status: status || 'completed', endedAt: endedAt || Date.now() } : r,
+      );
+    },
+
     SCOPED_SET_STREAMING(state, { conversationId, value }) {
       const conv = state.conversations[conversationId];
       if (conv) {
         conv.isStreaming = value;
         if (state.activeConversationId === conversationId) {
           state.isStreaming = value;
+        }
+        // Same reasoning as the tool-call settlement below: once the stream
+        // is over no `agent_execution_completed` can arrive, so a run still
+        // marked running here would be shown as "working" forever. The
+        // server's own finally block has already closed the row.
+        if (!value && Array.isArray(conv.liveRuns) && conv.liveRuns.some((r) => r.status === 'running')) {
+          const now = Date.now();
+          conv.liveRuns = conv.liveRuns.map((r) => (r.status === 'running' ? { ...r, status: 'completed', endedAt: now } : r));
         }
         // Stream ended (completion, Stop, or a dropped socket): no result can
         // arrive any more, so every open tool call is settled as interrupted
@@ -1558,6 +1602,52 @@ export default {
         }
       }
       return ids;
+    },
+
+    /**
+     * EVERY conversation with work in flight, for the chat inspector's
+     * "Other chats" section: [{ conversationId, outputId, title, speaker, since }].
+     *
+     * Uses the SAME definition of "active" as streamingOutputIds and
+     * speakingByOutputId, so this list, the sidebar's dots and its speaker
+     * labels can never disagree about which threads are busy. Includes the
+     * active conversation; the caller drops it, because the inspector shows
+     * that one as its own live card.
+     *
+     * `since` is when the oldest still-running run in that thread started,
+     * as heard over its stream; null when nothing has been announced yet.
+     */
+    busyConversations: (state, getters) => {
+      const out = [];
+      for (const [convId, conv] of Object.entries(state.conversations)) {
+        if (!conv) continue;
+        const active =
+          conv.isStreaming ||
+          conv.isRemoteStreaming ||
+          (conv.activeAsyncTools && conv.activeAsyncTools.size > 0) ||
+          getters.isConvBlockedByGoal(convId);
+        if (!active) continue;
+
+        let since = null;
+        for (const r of Array.isArray(conv.liveRuns) ? conv.liveRuns : []) {
+          if (r.status === 'running' && r.startedAt && (since == null || r.startedAt < since)) since = r.startedAt;
+        }
+
+        let title = conv.savedOutputTitle || null;
+        if (!title) {
+          const firstUser = (conv.messages || []).find((m) => m?.role === 'user' && typeof m.content === 'string' && m.content.trim());
+          if (firstUser) title = firstUser.content.trim().slice(0, 80);
+        }
+
+        out.push({
+          conversationId: convId,
+          outputId: conv.savedOutputId || null,
+          title,
+          speaker: currentSpeakerOfConversation(conv),
+          since,
+        });
+      }
+      return out;
     },
 
     /**
@@ -4047,6 +4137,29 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       break;
     case 'assistant_message':
       commit('SCOPED_ADD_MESSAGE', { conversationId, message: data });
+      break;
+    // The server minted this turn's execution row. Remembered on the
+    // conversation that owns the stream so "working now" is scoped to the
+    // thread by construction, and current without a history fetch.
+    case 'agent_execution_started':
+      if (data?.executionId) {
+        commit('SCOPED_RUN_STARTED', {
+          conversationId,
+          executionId: data.executionId,
+          agentName: data.agentName || null,
+          startedAt: Date.now(),
+        });
+      }
+      break;
+    case 'agent_execution_completed':
+      if (data?.executionId) {
+        commit('SCOPED_RUN_ENDED', {
+          conversationId,
+          executionId: data.executionId,
+          status: data.status || 'completed',
+          endedAt: Date.now(),
+        });
+      }
       break;
     case 'content_delta':
       commit('SCOPED_APPEND_MESSAGE_CONTENT', {

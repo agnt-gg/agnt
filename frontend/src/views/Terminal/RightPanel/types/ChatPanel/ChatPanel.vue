@@ -13,21 +13,44 @@
 
   <!-- Summary state: what THIS conversation is doing, mentioning, costing. -->
   <InspectorShell v-show="!target" caption="This conversation" :live="isStreaming" :closable="false">
+    <!-- Only THIS conversation's work. The live card is the turn in flight;
+         rows beneath it are other runs this thread owns (a sub-agent it
+         spawned, a turn another device is streaming). Never another thread's
+         — those are under "Other chats". Never an id — see runDisplay.js. -->
     <InspSection title="Working now">
-      <div v-if="isStreaming" class="card is-live" @click="inspectKind('running')">
+      <div v-if="isStreaming" class="card is-live" @click="inspectLiveTurn">
         <div class="row">
           <span class="pulse"></span>
           <span class="nm">{{ activeAgentName || 'Annie' }} is working…</span>
+          <span class="t" v-if="liveSince">{{ liveSince }}</span>
           <span class="spacer"></span>
           <button class="lnk danger" type="button" @click.stop="stopStreaming">stop</button>
         </div>
       </div>
-      <div v-for="r in running.slice(0, 3)" :key="r.id" class="li" @click="inspectKind('trace', r.id)">
+      <div v-for="r in hereRuns.slice(0, 5)" :key="r.id" class="li" @click="inspectKind('trace', r.id)" v-tooltip="r.parentExecutionId ? 'Started by this conversation' : 'Run in this conversation'">
         <span class="pulse"></span>
-        <span class="nm">{{ r.title || r.name || r.workflow_name || r.id }}</span>
-        <span class="t">{{ when(r.started_at || r.created_at) }}</span>
+        <span class="nm">{{ r.name }}</span>
+        <span class="t">{{ age(r.startTime) }}</span>
       </div>
-      <div v-if="!isStreaming && !running.length" class="muted">Nothing is running.</div>
+      <div v-if="!isStreaming && !hereRuns.length" class="muted">Nothing is running.</div>
+    </InspSection>
+
+    <!-- Work in flight in OTHER threads. Useful when you run many at once —
+         but under its own heading, so "this conversation" stays true. Click
+         to go there. -->
+    <InspSection v-if="elsewhere.length" :title="`Other chats · ${elsewhere.length}`">
+      <div
+        v-for="b in elsewhere"
+        :key="b.conversationId"
+        class="li"
+        :class="{ 'li-static': !b.outputId }"
+        @click="goToConversation(b)"
+        v-tooltip="b.outputId ? 'Open this chat' : 'Not saved yet'"
+      >
+        <span class="pulse dim"></span>
+        <span class="nm"><span class="who">{{ b.speaker?.name || 'Annie' }}</span> · {{ b.title || 'Untitled chat' }}</span>
+        <span class="t">{{ age(b.since) }}</span>
+      </div>
     </InspSection>
 
     <InspSection title="Referenced" v-if="mentioned.length">
@@ -102,7 +125,9 @@
  * the Jump palette.
  */
 import { computed } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
 import InspectorShell from '@/views/_components/one/InspectorShell.vue';
 import InspSection from '@/views/_components/one/InspSection.vue';
 import EntityInspector from '@/views/_components/one/EntityInspector.vue';
@@ -111,8 +136,9 @@ import { collectEntityRefs, compileEntityMatchers, entityRegistryFromStore } fro
 import { extractMessageArtifacts } from '@/utils/messageArtifacts.js';
 import ArtifactInspector from '@/views/_components/one/ArtifactInspector.vue';
 import { artifactKind } from '@/utils/chatArtifacts.js';
+import ArtifactPreview from '@/views/_components/one/ArtifactPreview.vue';
+import { runningRunsForConversation, shortAge } from '@/utils/runDisplay.js';
 
-const RUNNING = new Set(['running', 'executing', 'in_progress', 'active']);
 const ICONS = { agent: 'fas fa-robot', workflow: 'fas fa-project-diagram', goal: 'fas fa-bullseye', trace: 'fas fa-stream', memory: 'fas fa-brain' };
 
 export default {
@@ -139,11 +165,55 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const { target, clear, inspect } = useInspect(['artifact', 'agent', 'workflow', 'goal', 'trace', 'execution', 'memory', 'running', 'autonomy']);
+    const router = useRouter();
+    const { target, clear, inspect } = useInspect(['agent', 'workflow', 'goal', 'trace', 'execution', 'memory', 'running', 'autonomy']);
 
     const isStreaming = computed(() => !!store.state.chat?.isStreaming);
     const isSaving = computed(() => !!store.state.chat?.isSaving);
+    const activeConversationId = computed(() => store.state.chat?.activeConversationId || null);
+    const activeConversation = computed(() => (activeConversationId.value ? store.state.chat?.conversations?.[activeConversationId.value] : null) || null);
+    const liveRuns = computed(() => activeConversation.value?.liveRuns || []);
     const executions = computed(() => store.getters['executionHistory/getExecutions'] || []);
-    const running = computed(() => executions.value.filter((e) => RUNNING.has(String(e.status || '').toLowerCase())));
+
+    // The live card IS this tab's running turn(s); listing them again below
+    // it would show one piece of work twice.
+    const liveRootIds = computed(() => (isStreaming.value ? liveRuns.value.filter((r) => r.status === 'running').map((r) => r.executionId) : []));
+    const hereRuns = computed(() =>
+      runningRunsForConversation({
+        liveRuns: liveRuns.value,
+        history: executions.value,
+        conversationId: activeConversationId.value,
+        hideExecutionIds: liveRootIds.value,
+      }),
+    );
+    // Relative ages ("4m") are read off a clock that ticks, or a long turn
+    // reads "now" for its entire duration. 30s is the label's own resolution.
+    const clock = ref(Date.now());
+    let clockTimer = null;
+    onMounted(() => { clockTimer = setInterval(() => { clock.value = Date.now(); }, 30000); });
+    onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer); });
+
+    const liveSince = computed(() => {
+      const running = liveRuns.value.filter((r) => r.status === 'running');
+      if (!running.length) return '';
+      return shortAge(Math.min(...running.map((r) => r.startedAt || clock.value)), clock.value);
+    });
+    const elsewhere = computed(() => (store.getters['chat/busyConversations'] || []).filter((b) => b.conversationId !== activeConversationId.value));
+
+    // The history snapshot is fetched once at boot (Terminal.vue) and
+    // otherwise only when the Runs screen asks. Runs another device or a
+    // sub-agent started only reach this panel through it, so refresh when the
+    // conversation on screen changes and when its turn ends — bounded by user
+    // action, throttled by the store.
+    const refreshHistory = (force = false) => {
+      store.dispatch('executionHistory/fetchExecutions', force ? { forceRefresh: true } : undefined).catch(() => {});
+    };
+    onMounted(() => refreshHistory());
+    watch(activeConversationId, () => refreshHistory());
+    watch(isStreaming, (now, before) => {
+      if (before && !now) refreshHistory(true);
+    });
+
     const escalatedCount = computed(() => (store.getters['insights/escalatedInsights'] || []).length);
     const modelLabel = computed(() => store.state.aiProvider?.selectedModel || '');
     const toolsLabel = computed(() => {
@@ -174,17 +244,22 @@ export default {
     function inspectKind(kind, id) {
       inspect(kind, id ?? null);
     }
+    // The live card is THIS turn: open its trace once the stream has named
+    // it. Before that (the first moments of a turn) fall back to the
+    // cross-thread running list, which is at least never wrong.
+    function inspectLiveTurn() {
+      const id = liveRootIds.value[0];
+      inspect(id ? 'trace' : 'running', id ? `agent-${id}` : null);
+    }
     function kindIcon(kind) {
       return ICONS[kind] || 'fas fa-cube';
     }
-    function when(d) {
-      if (!d) return '';
-      const diff = (Date.now() - new Date(d).getTime()) / 1000;
-      if (!Number.isFinite(diff)) return '';
-      if (diff < 60) return 'now';
-      if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-      if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-      return `${Math.floor(diff / 86400)}d`;
+    function age(d) {
+      return shortAge(d, clock.value);
+    }
+    function goToConversation(b) {
+      if (!b?.outputId) return;
+      router.push(`/chat?content-id=${b.outputId}`).catch(() => {});
     }
     function saveNow() {
       store.dispatch('chat/autosaveConversation', { debounce: false });
@@ -207,6 +282,7 @@ export default {
     }
 
     return { target, clear, isStreaming, isSaving, running, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, kindIcon, when, saveNow, stopStreaming, previewArtifact, openArtifact, onEntityAction };
+    return { target, clear, isStreaming, isSaving, hereRuns, liveSince, elsewhere, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, inspectLiveTurn, kindIcon, age, goToConversation, saveNow, stopStreaming, preview, previewArtifact, openArtifact, onEntityAction };
   },
 };
 </script>
@@ -336,6 +412,20 @@ export default {
   background: var(--color-blue, #12e0ff);
   box-shadow: 0 0 6px var(--color-blue, #12e0ff);
   flex: 0 0 auto;
+}
+/* Other threads' activity is real but not this conversation's: quieter dot. */
+.pulse.dim {
+  opacity: 0.55;
+  box-shadow: none;
+}
+.who {
+  font-weight: 600;
+}
+.li-static {
+  cursor: default;
+}
+.li-static:hover .nm {
+  color: inherit;
 }
 .lnk {
   border: 0;
