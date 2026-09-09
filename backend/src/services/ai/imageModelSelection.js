@@ -13,7 +13,7 @@ function candidate(row, fast) {
   const match = /^gpt-image-(\d+(?:\.\d+)*)(?:-(sunburst|flare|mini))?$/.exec(id);
   if (!match) return null;
   const variant = match[2] || '';
-  if ((!fast && ['flare', 'mini'].includes(variant)) || (fast && variant === 'sunburst')) return null;
+  if ((!fast && ['flare', 'mini'].includes(variant)) || (fast && !['flare', 'mini'].includes(variant))) return null;
   const version = match[1].split('.').map(Number);
   if (version.some(n => !Number.isSafeInteger(n))) return null;
   return { id, version, tier: fast ? (variant === 'flare' ? 2 : variant === 'mini' ? 1 : 0) : (variant === 'sunburst' ? 1 : 0) };
@@ -36,7 +36,8 @@ function validateOperation(model, operation) {
  * No process-global cache, credential reads, static fallback, or billable probes.
  * A catalog establishes discoverability, NOT image entitlement or engine identity.
  */
-export async function resolveOpenAiImageSelection({ model, operation = 'Generate', listModels, timeoutMs = 10000 }) {
+export async function resolveOpenAiImageSelection({ model, operation = 'Generate', listModels, timeoutMs = 10000, signal }) {
+  if (signal?.aborted) throw new Error('Image model selection cancelled.');
   const requestedModel = model == null || model === '' ? 'latest' : model;
   if (typeof requestedModel !== 'string' || !requestedModel.trim()) throw new Error('Image model must be a nonempty string.');
   validateOperation(requestedModel, operation);
@@ -50,6 +51,10 @@ export async function resolveOpenAiImageSelection({ model, operation = 'Generate
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid catalog timeout.');
   const controller = new AbortController();
   let timer;
+  let rejectCancelled;
+  const cancelled = new Promise((_, reject) => { rejectCancelled = reject; });
+  const onAbort = () => { controller.abort(); rejectCancelled(new Error('Image model selection cancelled.')); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
     const expiry = new Promise((_, reject) => {
       timer = setTimeout(() => {
@@ -58,8 +63,9 @@ export async function resolveOpenAiImageSelection({ model, operation = 'Generate
       }, timeoutMs);
     });
     const page = await Promise.race([
-      Promise.resolve().then(() => listModels({ signal: controller.signal, timeout: timeoutMs, maxRetries: 0 })), expiry,
+      Promise.resolve().then(() => listModels({ signal: controller.signal, timeout: timeoutMs, maxRetries: 0 })), expiry, cancelled,
     ]);
+    if (signal?.aborted) throw new Error('Image model selection cancelled.');
     if (!Array.isArray(page?.data) || page.has_more === true || page.hasMore === true || page.data.length > 10000) {
       throw new Error('Invalid or incomplete image model catalog; cannot resolve latest.');
     }
@@ -72,5 +78,6 @@ export async function resolveOpenAiImageSelection({ model, operation = 'Generate
     return Object.freeze({ ...selection, resolvedModel: ranked[0].id, catalogSource: 'openai.models.list', catalogFetchedAt: new Date().toISOString() });
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }

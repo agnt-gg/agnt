@@ -6,7 +6,7 @@ A fresh `models.list` is read on every automatic request, with a 10-second deadl
 
 ## Ranking and limits
 
-The resolver recognizes stable numeric `gpt-image-*` releases and known sibling names in one module, `imageModelSelection.js`. It compares version components numerically (2.10 is newer than 2.9). Quality prefers Sunburst or unsuffixed full models; speed prefers Flare/mini or unsuffixed models. Version is ranked before sibling preference. Automatic mode excludes dated snapshots, previews, unknown sibling names, and entries marked deprecated. Missing provider deprecation metadata cannot establish that a model is current. New numeric releases within the known contract do not require a new default literal; new variant names or incompatible endpoint/parameter contracts still require review.
+The resolver recognizes stable numeric `gpt-image-*` releases and known sibling names in one module, `imageModelSelection.js`. It compares version components numerically (2.10 is newer than 2.9). Quality prefers Sunburst or unsuffixed full models; speed admits only the known Flare/mini variants. If none are listed, Fast fails rather than silently using a full model. Version is ranked before sibling preference. Automatic mode excludes dated snapshots, previews, unknown sibling names, and entries marked deprecated. Missing provider deprecation metadata cannot establish that a model is current. New numeric releases within the known contract do not require a new default literal; new variant names or incompatible endpoint/parameter contracts still require review.
 
 Explicit IDs, including dated snapshots, remain pins and are sent unchanged without catalog discovery. The endpoint validates availability. Unsupported Edit/Variation choices are rejected rather than silently replacing the pin with another model. Existing saved workflows are not rewritten. A workflow designer that has already saved an explicit ID remains pinned; choose/enter `latest` explicitly where the UI permits it. This change does not redesign the model dropdown or change the text-mode schema default.
 
@@ -14,7 +14,7 @@ Rendering size/count/quality are independent of model selection. This patch pres
 
 ## Receipts
 
-`imageMetadata` records `requestedModel`, `selectionMode`, `resolvedModel`, `returnedModel`, `catalogSource` and `catalogFetchedAt`. Requested and resolved models are request provenance; only a provider-returned model is engine identity. Missing returned identity stays null. The model used for the workflow usage record is the resolved request model, not the policy label. This is not an image accounting overhaul: existing generic usage handling remains, and zero text tokens must not be interpreted as free image generation.
+`imageMetadata` records `requestedModel`, `selectionMode`, `resolvedModel`, `returnedModel`, `catalogSource` and `catalogFetchedAt`. Requested and resolved models are request provenance; a provider-returned model is a provider assertion, not independent engine verification. Missing returned identity stays null. The model used for the workflow usage record is the resolved request model, not the policy label. This is not an image accounting overhaul: existing generic usage handling remains, and zero text tokens must not be interpreted as free image generation.
 
 ## Codex is separate
 
@@ -23,3 +23,7 @@ This PR changes the OpenAI API-key image path, not subscription image transport.
 ## Verification
 
 Deterministic tests cover numeric ranking, policy/pin separation, unknown variants, deprecation flags, empty/error/timeout catalogs, concurrent account isolation, future compatible releases, and native chat/workflow forwarding. Live OpenAI API-key dogfooding remains unavailable when no key is configured; do not substitute the Codex route or claim mocked tests establish it.
+
+## Review hardening
+
+Cancellation now propagates through chat/action to discovery and image requests, including explicit pins and late discovery results. SDK image retries are disabled: an uncertain image request must not be automatically duplicated. Unsupported style/quality settings fail rather than being dropped; supported rendering quality is sent and recorded as requested separately from returned settings. This is not full workflow-recovery deduplication.

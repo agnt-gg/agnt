@@ -4444,7 +4444,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         }
 
         const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
-        const requestedModel = model || capabilities.defaultModel;
+        const requestedModel = model == null || model === '' ? capabilities.defaultModel : model;
         let selectedModel = requestedModel;
         // OpenAI resolves once in the action with its authenticated client. An
         // explicit ID stays pinned; the provider remains the entitlement check.
@@ -4495,6 +4495,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Create a mock workflow engine context
         const mockWorkflowEngine = {
           userId: userId,
+          signal: context?.signal || context?.abortSignal,
         };
 
         // Execute the tool
