@@ -1640,10 +1640,19 @@ export default {
       // it executes.
       let convId = conversationId || state.activeConversationId || state.currentConversationId || `temp-${Date.now()}`;
 
-      // Per-conversation guard: only block if THIS conversation is already streaming
-      // Allow concurrent streams for multi-agent @ mentions
+      // Per-conversation guard: one stream owns a conversation at a time.
+      //
+      // Mentions used to be exempt so the old Promise.all fan-out could run
+      // several agents at once. Every caller is sequential now (Chat.vue sends
+      // mentioned agents one after another, floor passes and steers only
+      // dispatch into an idle slot, and a submit during a live turn becomes a
+      // steer). The exemption's only remaining effect was to let a tagged
+      // send skip the temp-id -> server-id migration below, which left the
+      // browser on an id the server never knew: every later turn arrived
+      // without a conversationId and was minted as a NEW conversation, and
+      // every other signed-in client dutifully saved each one as a chat.
       const existingConv = state.conversations[convId];
-      if (existingConv && existingConv.isStreaming && !mentionedAgent) {
+      if (existingConv && existingConv.isStreaming) {
         console.warn('[Chat] This conversation is already streaming, ignoring new request');
         return convId;
       }
@@ -1666,9 +1675,6 @@ export default {
       conv0._activeStreams = (conv0._activeStreams || 0) + 1;
 
       commit('SCOPED_SET_STREAMING', { conversationId: convId, value: true });
-
-      // For concurrent agent streams, skip conversation_started migration after the first
-      const skipMigration = !!(mentionedAgent && existingConv && existingConv.isStreaming);
 
       const token = localStorage.getItem('token');
       // Read messages from the conversation slot — includes tool call context
@@ -1971,25 +1977,21 @@ export default {
                   try {
                     const data = JSON.parse(dataLine);
 
-                    // Handle conversation_started: migrate temp ID to server-assigned ID
-                    // Skip migration for concurrent agent streams (first stream handles it)
+                    // Handle conversation_started: migrate temp ID to server-assigned ID.
+                    // Unconditional — this stream is the only one in the slot, so it is
+                    // the one that must adopt the id the server minted for it.
                     if (eventName === 'conversation_started' && data.conversationId) {
-                      if (!skipMigration) {
-                        const oldId = activeConvId;
-                        if (oldId !== data.conversationId) {
-                          commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
-                          commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
-                          // An AI override picked before the first message was
-                          // keyed on the temp id and couldn't be persisted —
-                          // persist it now under the server-assigned id.
-                          if (state.aiByConv[data.conversationId]) {
-                            dispatch('persistConversationAi', { conversationId: data.conversationId });
-                          }
-                          activeConvId = data.conversationId;
+                      const oldId = activeConvId;
+                      if (oldId !== data.conversationId) {
+                        commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
+                        commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
+                        // An AI override picked before the first message was
+                        // keyed on the temp id and couldn't be persisted —
+                        // persist it now under the server-assigned id.
+                        if (state.aiByConv[data.conversationId]) {
+                          dispatch('persistConversationAi', { conversationId: data.conversationId });
                         }
-                      } else {
-                        // Use the current conversation ID (already migrated by first stream)
-                        activeConvId = state.activeConversationId || activeConvId;
+                        activeConvId = data.conversationId;
                       }
                       // Note the in-flight turn under its SERVER id (the temp id
                       // is unknown to the backend and cannot be reattached to).

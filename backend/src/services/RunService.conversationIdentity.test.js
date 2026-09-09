@@ -110,6 +110,32 @@ afterAll(async () => {
   await fsp.rm(TMP, { recursive: true, force: true }).catch(() => {});
 });
 
+describe('simultaneous browser saves', () => {
+  it('returns one row identity for eight concurrent first saves', async () => {
+    const conversationId = 'conv-concurrent-first';
+    const results = await Promise.all(Array.from({ length: 8 }, () => save({
+      content: transcript(4), contentType: 'conversation', conversationId, title: 'same chat',
+    })));
+    expect(new Set(results.map(result => result.id)).size).toBe(1);
+    expect(await countRows(conversationId)).toBe(1);
+    expect(results.filter(result => /created/i.test(result.message))).toHaveLength(1);
+  });
+
+  it('preserves the full transcript when a simultaneous blind save is shorter', async () => {
+    const conversationId = 'conv-concurrent-short';
+    const results = await Promise.allSettled([
+      save({ content: transcript(20), contentType: 'conversation', conversationId }),
+      save({ content: transcript(2), contentType: 'conversation', conversationId }),
+    ]);
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1].status).toBe('rejected');
+    expect(await countRows(conversationId)).toBe(1);
+    expect(JSON.parse((await getRow(results[0].value.id)).content).messages).toHaveLength(20);
+    const later = await save({ content: transcript(22), contentType: 'conversation', conversationId });
+    expect(later.id).toBe(results[0].value.id);
+  });
+});
+
 describe('a second client saving the same conversation', () => {
   it('reuses the row instead of creating a duplicate — the reported bug', async () => {
     const conversationId = 'conv-three-clients';

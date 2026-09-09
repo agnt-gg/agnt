@@ -583,7 +583,7 @@ Begin working on this task now.`;
       // and save_agent_memory, neither of which was in its schema list.
       // Resolved after provider/model so the prompt's block gates see the
       // provider that will actually serve the turn.
-      const { systemPrompt, toolSchemas: availableTools } = await buildAgentRuntime({
+      const { systemPrompt, toolSchemas: availableTools, context: runtimeContext } = await buildAgentRuntime({
         agentId: agent.id,
         userId,
         latestUserMessage: taskMessage,
@@ -600,6 +600,10 @@ Begin working on this task now.`;
         toolSchemas: availableTools,
         systemPrompt,
         context: {
+          // Preserve the resolved tool ceiling and discovery/prompt state from
+          // the same runtime that built availableTools. Identity below is
+          // supplied by this trusted caller, not by the task message.
+          ...runtimeContext,
           userId, // CRITICAL: Add userId to context for tool authentication
           agentId: agent.id,
           agentName: agent.name,

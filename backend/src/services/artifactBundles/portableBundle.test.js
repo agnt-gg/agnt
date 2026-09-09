@@ -98,6 +98,21 @@ describe('portable sharing', () => {
     const root = await fixture({ 'site/index.html': '<iframe src="../.env"></iframe>', '.env': 'secret' });
     await expect(prepare(root)).rejects.toThrow(/excluded|secret/);
   });
+  it('rejects a leaf symlink even when ancestor directories are themselves symlinks (macOS /var)', async () => {
+    // os.tmpdir() is under /var → /private/var on macOS. Ancestor canonicalization
+    // must NOT let a leaf symlink through; only the leaf is rejected as "symlink".
+    const root = await fixture({ 'site/index.html': 'ok', 'site/real.png': 'pic' });
+    await fs.symlink(path.join(root, 'site/real.png'), path.join(root, 'site/link.png'));
+    await fs.writeFile(path.join(root, 'site/index.html'), '<img src="link.png">');
+    await expect(prepare(root)).rejects.toThrow(/not a regular, non-symlink file/);
+  });
+  it('rejects a symlink entryPath before ancestor canonicalization can resolve it', async () => {
+    // Regression for the Copilot finding on #106: realpath(entry) before lstat
+    // let a leaf symlink entry pass as its regular target.
+    const root = await fixture({ 'site/real.html': '<h1>real</h1>' });
+    await fs.symlink(path.join(root, 'site/real.html'), path.join(root, 'site/index.html'));
+    await expect(prepare(root)).rejects.toThrow(/not a regular, non-symlink file/);
+  });
   it('leaves remote URLs and data URIs alone, including data srcset and CSS', async () => {
     const source = '<img src="https://example.com/x.png"><img srcset="data:image/png;base64,abcd 1x"><style>x{background:url(data:image/svg+xml,%3Csvg%3E)}</style>';
     const root = await fixture({ 'site/index.html': source });
@@ -130,5 +145,34 @@ describe('portable sharing', () => {
   it('keeps the configured file and byte limits for added dependencies', async () => {
     const root = await fixture({ 'site/index.html': '<img src="../image.png">', 'image.png': 'picture' });
     await expect(prepare(root, { limits:{maxFiles:1,maxFileBytes:1000,maxTotalBytes:1000,maxEntryBytes:1000} })).rejects.toThrow(/limit/);
+  });
+});
+
+// Real directory aliases: junctions on Windows, directory symlinks on POSIX.
+const linkDirectory = (target, alias) => fs.symlink(target, alias, process.platform === 'win32' ? 'junction' : 'dir');
+describe('portable directory aliases', () => {
+  it('accepts a benign aliased workspace and deduplicates dependencies', async () => {
+    const root = await fixture({ 'actual/site/index.html': '<img src="../shared/pic.png"><img src="../../alias/shared/pic.png">', 'actual/shared/pic.png': 'image' });
+    await linkDirectory(path.join(root, 'actual'), path.join(root, 'alias'));
+    const manifest = await prepare(path.join(root, 'alias'));
+    expect(manifest.files.filter(file => file.path.endsWith('/pic.png'))).toHaveLength(1);
+  });
+  it('rejects an ordinary dependency reached through an excluded directory alias', async () => {
+    const root = await fixture({ 'site/index.html': '<img src="public/picture.png">', '.private/picture.png': 'synthetic private fixture' });
+    await linkDirectory(path.join(root, '.private'), path.join(root, 'site/public'));
+    await expect(prepare(root)).rejects.toThrow(/excluded|hidden/);
+  });
+  it('rejects an excluded spelling even when its destination is public', async () => {
+    const root = await fixture({ 'site/index.html': '<iframe src="../.alias/report.html"></iframe>', 'public/report.html': 'fixture' });
+    await linkDirectory(path.join(root, 'public'), path.join(root, '.alias'));
+    await expect(prepare(root)).rejects.toThrow(/excluded|hidden/);
+  });
+  it.runIf(process.platform === 'darwin')('accepts real macOS /var and /private/var spellings', async () => {
+    const root = await fs.mkdtemp('/var/tmp/agnt-portable-mac-'); roots.push(root);
+    await fs.mkdir(path.join(root, 'site'));
+    await fs.writeFile(path.join(root, 'site/index.html'), '<h1>Mac fixture</h1>');
+    expect(await fs.realpath(root)).toBe(root.replace(/^\/var\//, '/private/var/'));
+    const manifest = await prepare(root);
+    expect(await text(manifest, 'index.html')).toContain('Mac fixture');
   });
 });

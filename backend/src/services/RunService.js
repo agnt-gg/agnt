@@ -29,6 +29,24 @@ function countTranscriptMessages(content) {
   }
 }
 
+// All browser saves reach this singleton server. Hold the conversation's
+// address through lookup, truncation validation, write and notification;
+// locking just the INSERT leaves the first-save check/write race intact.
+const conversationSaves = new Map();
+
+async function acquireConversationSave(userId, conversationId) {
+  const key = JSON.stringify([userId, conversationId]);
+  const previous = conversationSaves.get(key);
+  let release;
+  const current = new Promise(resolve => { release = resolve; });
+  conversationSaves.set(key, current);
+  if (previous) await previous;
+  return () => {
+    if (conversationSaves.get(key) === current) conversationSaves.delete(key);
+    release();
+  };
+}
+
 class RunService {
   // Health check method
   healthCheck(req, res) {
@@ -80,7 +98,11 @@ class RunService {
     }
   }
   async saveOrUpdateContentOutput(req, res) {
+    let releaseSave;
     try {
+      if (req.body.conversationId) {
+        releaseSave = await acquireConversationSave(req.user.userId, req.body.conversationId);
+      }
       // Saves never mark read — the read watermark moves only via the
       // explicit read PATCH (the email model). See ContentOutputModel.
       const { id, content, workflowId, toolId, isShareable, contentType, conversationId, title, channelKey, allowTruncate } = req.body;
@@ -222,6 +244,8 @@ class RunService {
     } catch (error) {
       console.error('Error saving/updating content output:', error);
       res.status(500).json({ error: 'Error saving/updating content output' });
+    } finally {
+      releaseSave?.();
     }
   }
   async getContentOutputsByWorkflow(req, res) {
