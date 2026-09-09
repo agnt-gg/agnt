@@ -1,3 +1,5 @@
+import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
+import { assertCodexClientBinding } from '../../../services/images/codexImageConnection.js';
 import BaseAction from '../BaseAction.js';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai/index.mjs';
@@ -330,13 +332,18 @@ class GenerateWithAiLlm extends BaseAction {
 
     try {
       const userId = workflowEngine.userId;
+      if (params.mode === 'Image Generation' && params.provider.toLowerCase() === 'openai-codex' && !workflowEngine.imageRequest) {
+        const { imageSettingsService } = await import('../../../services/images/imageSettingsRuntime.js');
+        const execution = await imageSettingsService.prepare(userId, {operation:(params.imageOperation||'Generate').toLowerCase(),provider:'openai-codex',model:params.model,explicitWorkflow:true},null,workflowEngine.signal);
+        workflowEngine = {...workflowEngine,imageRequest:execution.request,beforeImageDispatch:execution.beforeDispatch};
+      }
       let accessTokenOrApiKey = null;
 
       // Normalize provider name to lowercase for auth lookups
       const normalizedProvider = params.provider.toLowerCase();
 
       // Get API key/token for non-local providers
-      if (normalizedProvider !== 'local') {
+      if (normalizedProvider !== 'local' && !(params.mode === 'Image Generation' && normalizedProvider === 'openai-codex')) {
         try {
           // Special providers use local auth managers instead of remote service
           if (normalizedProvider === 'claude-code') {
@@ -379,7 +386,7 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
-      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal || workflowEngine?.abortSignal, beforeImageDispatch: workflowEngine?.beforeImageDispatch };
+      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal || workflowEngine?.abortSignal, beforeImageDispatch: workflowEngine?.beforeImageDispatch, imageRequest: workflowEngine?.imageRequest };
 
       // Route based on mode
       const mode = params.mode || 'Text Generation';
@@ -409,7 +416,7 @@ class GenerateWithAiLlm extends BaseAction {
       // pricing at the funnel cannot be forgotten when a ninth provider is
       // added — which is precisely how the workflow path came to capture
       // tokens for years without ever pricing them.
-      await recordLlmCall({
+      if (!(params.mode === 'Image Generation' && normalizedProvider === 'openai-codex')) await recordLlmCall({
         userId,
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
@@ -542,7 +549,13 @@ class GenerateWithAiLlm extends BaseAction {
     openai: 'generateImageWithOpenAI',
     gemini: 'generateImageWithGemini',
     grokai: 'generateImageWithGrok',
+    ...(ProviderRegistry.supportsImageGeneration('openai-codex') ? {'openai-codex':'generateImageWithCodex'} : {}),
   };
+
+  async generateImageWithCodex(params) {
+    if (!params.imageRequest || !params.beforeImageDispatch) throw new Error('Stored subscription consent required.');
+    return generateCodexImage(params, {userId:params.userId,signal:params.signal,createClient:createLlmClient,beforeDispatch:async client=>{assertCodexClientBinding(client,params.imageRequest.binding);await params.beforeImageDispatch();}});
+  }
 
   async handleImageGeneration(params) {
     const provider = params.provider.toLowerCase();

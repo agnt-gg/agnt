@@ -13,15 +13,16 @@ export function createImageSettingsService({ store, listConnections }) {
     },
     async update(userId, patch, authToken) {
       const state = await store.read(userId);
-      const { resolveConnection } = await connections(userId, authToken);
+      const revocationOnly = patch && patch.consent?.allow === false && Object.keys(patch).every(k=>['expectedRevision','consent'].includes(k));
+      const { resolveConnection } = revocationOnly ? {resolveConnection:()=>null} : await connections(userId, authToken);
       const next = reviseSettings(state, patch, { userId, resolveConnection });
       return store.compareAndSwap(userId, patch.expectedRevision, next);
     },
-    async prepare(userId, { operation, provider, model }, authToken, signal) {
+    async prepare(userId, { operation, provider, model, explicitWorkflow = false }, authToken, signal) {
       if (signal?.aborted) throw new Error('Image request cancelled.');
       const state = await store.read(userId);
       const { resolveConnection } = await connections(userId, authToken);
-      const request = bindImageRequest(state, {userId,source:'interactive',operation,resolveConnection});
+      const request = bindImageRequest(state, {userId,source:explicitWorkflow?'explicit-workflow':'interactive',connectionId:explicitWorkflow?provider:undefined,model,operation,resolveConnection});
       if (provider != null && provider.toLowerCase() !== request.provider) throw new Error('Configured image provider cannot be overridden by a tool call. Change image settings explicitly.');
       if (model != null && model !== request.model) throw new Error('Configured image model cannot be overridden by a tool call. Change image settings explicitly.');
       let dispatched = false;
@@ -30,8 +31,8 @@ export function createImageSettingsService({ store, listConnections }) {
         async beforeDispatch() {
           if (dispatched) throw new Error('Duplicate image dispatch prohibited.');
           if (signal?.aborted) throw new Error('Image request cancelled.');
-          const current = await store.read(userId);
           const { resolveConnection: fresh } = await connections(userId, authToken);
+          const current = await store.read(userId);
           revalidateImageRequest(request, current, {userId,resolveConnection:fresh});
           if (signal?.aborted) throw new Error('Image request cancelled.');
           if (dispatched) throw new Error('Duplicate image dispatch prohibited.');

@@ -4412,10 +4412,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
     },
     execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceHandles }, authToken, context) => {
       let imageExecution;
-      if (context?.useImageSettings) {
+      if (context?.useImageSettings || provider === 'openai-codex') {
         try {
           const { imageSettingsService } = await import('../images/imageSettingsRuntime.js');
-          imageExecution = await imageSettingsService.prepare(context.userId, { operation, provider, model }, authToken, context.signal || context.abortSignal);
+          imageExecution = await imageSettingsService.prepare(context.userId, { operation, provider, model, explicitWorkflow: !context?.useImageSettings }, authToken, context.signal || context.abortSignal);
           provider = imageExecution.request.provider; model = imageExecution.request.model;
         } catch (error) { return JSON.stringify({ success:false,error:error.message,retryable:false }); }
       }
@@ -4501,7 +4501,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           } catch(error) { return JSON.stringify({success:false,error:error.message,retryable:false}); }
         }
         // Add provider-specific parameters
-        if (normalizedProvider === 'openai') {
+        if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex') {
           if (size) params.imageSize = size;
           if (quality) params.imageQuality = quality;
           if (style) params.imageStyle = style;
@@ -4517,6 +4517,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           userId: userId,
           signal: context?.signal || context?.abortSignal,
           beforeImageDispatch: imageExecution?.beforeDispatch,
+          imageRequest: imageExecution?.request,
         };
 
         // Execute the tool
@@ -4527,12 +4528,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           return JSON.stringify({
             success: false,
             error: result.error,
+            retryable: false,
             provider: provider,
             model: selectedModel,
           });
         }
 
-        selectedModel = result.imageMetadata?.resolvedModel || selectedModel;
+        selectedModel = normalizedProvider === 'openai-codex' ? result.imageMetadata?.returnedModel ?? null : result.imageMetadata?.resolvedModel || selectedModel;
 
         // Persist generated images to disk so we can return stable URLs/paths
         // to the LLM (instead of round-tripping full base64 through context).
