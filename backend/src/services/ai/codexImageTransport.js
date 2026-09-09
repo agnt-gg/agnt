@@ -49,7 +49,7 @@ function validatePng(bytes) {
   for (let y = 0; y < height; y++) if (decoded[y * rowBytes] > 4) throw new Error('Invalid PNG filter.');
   return { width, height };
 }
-function referenceDataUri(value) {
+export function referenceDataUri(value) {
   const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(value || '');
   if (!match) throw new Error('Codex Edit requires explicit PNG data URIs, not paths or remote URLs.');
   validatePng(decodeBase64(match[1]));

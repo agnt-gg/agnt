@@ -83,7 +83,7 @@
         </div>
       </div>
 
-      <CodexSpeedControl :provider="selectedProvider" />
+      <CodexSpeedControl :provider="selectedProvider" :model="selectedModel" />
 
       <div class="provider-selector-actions">
         <Tooltip text="Add Custom Provider" width="auto">

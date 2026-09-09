@@ -4375,7 +4375,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
                 `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
             },
             operation: { type: 'string', enum: ['generate', 'edit'], description: 'Default generate. Edit is initially supported for enabled native Codex with explicit PNG references.' },
-            referenceImages: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'Explicit PNG data URIs for native Codex Edit; no paths, remote URLs or implicit screenshots.' },
+            referenceImages: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'Legacy explicit PNG data URIs. Prefer referenceHandles for host-owned uploads.' },
+            referenceHandles: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'Explicit current-turn PNG uploads: upload:0, upload:1, etc. Use only references the user selected. No paths or remote URLs.' },
             model: {
               type: 'string',
               description:
@@ -4410,7 +4411,23 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceImages }, authToken, context) => {
+    execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceImages, referenceHandles }, authToken, context) => {
+      if (context?.codexImageIntent) {
+        try {
+          const { authorizeCodexImageCall } = await import('../ai/codexImageIntent.js');
+          authorizeCodexImageCall({ provider, model }, context);
+        } catch (error) {
+          return JSON.stringify({ success: false, code: error.code, error: error.message, retryable: false, subscriptionOnly: true });
+        }
+      }
+      provider ||= 'openai';
+      if (referenceHandles !== undefined) {
+        try {
+          if (!['openai-codex', 'openai-codex-2'].includes(provider.toLowerCase()) || operation !== 'edit' || referenceImages !== undefined) throw new Error('Explicit handles require Codex Edit and cannot be combined with raw references.');
+          const { resolveImageReferences } = await import('../ai/codexImageReferences.js');
+          referenceImages = resolveImageReferences(referenceHandles, context?.codexImageReferences, context?.codexImageScope);
+        } catch (error) { return JSON.stringify({ success: false, code: 'CODEX_IMAGE_REFERENCE_INVALID', error: error.message, retryable: false }); }
+      }
       console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
       if (!prompt) {
@@ -4505,7 +4522,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Create a mock workflow engine context
         const mockWorkflowEngine = {
           userId: userId,
-          signal: context?.signal,
+          signal: context?.signal || context?.abortSignal,
         };
 
         // Execute the tool

@@ -5,6 +5,7 @@
 
 import { streamChat, toChatHistory, reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
+import { imageIntentFor } from '@/services/codexImagePreferences.js';
 import { consumeVoiceTurn } from '@/services/voiceTurn.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools, resolveChannelRouting } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
@@ -1000,6 +1001,7 @@ export default {
           reasoningValue: resolvedReasoningValue,
           reasoningEnabled: resolvedReasoningEnabled,
           codexPriority: rootState.aiProvider?.codexPriority === true || undefined,
+          codexImages: imageIntentFor(rootState.aiProvider, resolvedProvider || channelPM.provider),
           files,
           signal: controller.signal,
           onEvent: (eventName, data) => {

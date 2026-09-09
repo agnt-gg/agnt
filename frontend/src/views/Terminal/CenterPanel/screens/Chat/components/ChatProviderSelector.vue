@@ -89,7 +89,7 @@
         </div>
 
         <!-- Connection Status -->
-        <CodexSpeedControl :provider="selectedProvider" />
+        <CodexSpeedControl :provider="selectedProvider" :model="selectedModel" />
 
         <div v-if="selectedProvider" class="connection-status">
           <span class="status-indicator" :class="{ connected: isProviderConnected }"></span>

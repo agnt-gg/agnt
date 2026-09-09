@@ -1,5 +1,6 @@
 import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
+import { imageIntentFor } from '@/services/codexImagePreferences.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
@@ -1766,6 +1767,7 @@ export default {
         // Carry the Codex-only preference even when the server selects the provider.
         // Only the Codex adapter consumes it; off preserves the existing payload.
         const codexPriority = rootState.aiProvider?.codexPriority === true;
+        const codexImages = imageIntentFor(rootState.aiProvider, effectiveProvider || rootState.aiProvider?.selectedProvider);
 
         // (resolvedAgentId computed above, before history rendering)
 
@@ -1824,6 +1826,7 @@ export default {
             formData.append('reasoningEnabled', 'true');
           }
           if (codexPriority) formData.append('codexPriority', 'true');
+          if (codexImages) formData.append('codexImages', JSON.stringify(codexImages));
           if (resolvedAgentId) {
             formData.append('agentId', resolvedAgentId);
           }
@@ -1885,6 +1888,7 @@ export default {
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
             codexPriority: codexPriority || undefined,
+            codexImages,
             agentId: resolvedAgentId || undefined,
             skillId: resolvedSkillId || undefined,
             skillInstructions: resolvedSkillInstructions || undefined,

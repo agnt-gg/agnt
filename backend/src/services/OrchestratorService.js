@@ -5,6 +5,8 @@ import { executeTool } from './orchestrator/tools.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
+import { bindCodexImageIntent } from './ai/codexImageIntent.js';
+import { bindUploadReferences } from './ai/codexImageReferences.js';
 
 // Per-conversation failover memory for the recovery banner (Option 2).
 // When a turn fails over, we record { conversationId -> { provider, model } }.
@@ -846,6 +848,7 @@ async function universalChatHandler(req, res, context = {}) {
     reasoningValue: rawReasoningValue,
     reasoningEnabled: rawReasoningEnabled,
     codexPriority: rawCodexPriority,
+    codexImages: rawCodexImages,
     enabledTools: rawEnabledTools,
     // Dynamic routing. 'pinned' | 'default' | 'dynamic', or absent.
     //
@@ -929,6 +932,9 @@ async function universalChatHandler(req, res, context = {}) {
   // to a fallback tier for the remainder of the turn if the primary provider
   // exhausts its retries on any streaming call (round 0, retry, tool loop,
   // follow-up).
+  let codexImageIntent;
+  try { codexImageIntent = bindCodexImageIntent(rawCodexImages, resolvedProvider); }
+  catch (error) { return res.status(400).json({ error: error.message, code: error.code, retryable: false }); }
   let normalizedProvider = resolvedProvider.toLowerCase();
   let model = resolvedModel;
 
@@ -1343,6 +1349,8 @@ async function universalChatHandler(req, res, context = {}) {
 
   // Initialize conversation context
   const conversationContext = {
+    codexImageScope: randomUUID(),
+    codexImageIntent,
     preservedContent: {},
     dataRefSummaries: {},
     llmClient: null,
@@ -1615,6 +1623,7 @@ async function universalChatHandler(req, res, context = {}) {
     // Store image data in context for vision models
     if (imageData.length > 0) {
       conversationContext.imageData = imageData;
+      if (codexImageIntent) conversationContext.codexImageReferences = bindUploadReferences(imageData, conversationContext.codexImageScope);
     }
 
     // Get tool schemas for this chat type

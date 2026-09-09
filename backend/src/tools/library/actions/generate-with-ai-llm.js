@@ -14,6 +14,7 @@ import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
 import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
 import { isCodexImageProvider } from '../../../services/ai/codexImageCapability.js';
+import { authorizeCodexImageCall } from '../../../services/ai/codexImageIntent.js';
 
 /**
  * Provider facts come from the registry. This file used to carry its own copy.
@@ -328,6 +329,10 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async execute(params, inputData, workflowEngine) {
+    if (params.mode === 'Image Generation' && workflowEngine?.codexImageIntent) {
+      try { authorizeCodexImageCall(params, workflowEngine); }
+      catch (error) { return { error: error.message, code: error.code, retryable: false, generatedImages: [] }; }
+    }
     this.validateParams(params);
 
     try {

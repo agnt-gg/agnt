@@ -62,6 +62,7 @@ export async function streamChat({
   reasoningValue,
   reasoningEnabled,
   codexPriority,
+  codexImages,
   files,
   signal,
   onEvent,
@@ -97,6 +98,7 @@ export async function streamChat({
   if (reasoningValue !== undefined) bodyFields.reasoningValue = reasoningValue;
   if (reasoningEnabled !== undefined) bodyFields.reasoningEnabled = reasoningEnabled;
   if (codexPriority !== undefined) bodyFields.codexPriority = codexPriority === true;
+  if (codexImages !== undefined) bodyFields.codexImages = codexImages;
   if (routingMode !== undefined) bodyFields.routingMode = routingMode;
   if (persistDefault !== undefined) bodyFields.persistDefault = persistDefault;
 
