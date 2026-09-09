@@ -16,6 +16,10 @@ describe('Feature: compact independent Codex generation controls',()=>{
     expect(wrapper.find('[data-test="image-policy-latest"]').exists()).toBe(true);
     expect(wrapper.find('[data-test="image-policy-latest-fast"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('unverified');
+    expect(wrapper.text()).toContain('Quality requests Sunburst');
+    expect(wrapper.text()).toContain('Fast requests Flare');
+    expect(wrapper.text()).not.toContain('neither choice can generate');
+    expect(wrapper.text()).toContain('Experimental');
   });
   it('Given image consent, When choosing latest-fast, Then persist it without changing text speed or dispatching',async()=>{
     vi.stubGlobal('fetch',vi.fn());const store=render();

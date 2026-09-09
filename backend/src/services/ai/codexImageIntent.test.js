@@ -29,18 +29,17 @@ describe('Feature: subscription image choices without silent fallback', () => {
   it('Given off, When the model requests generation, Then deny',()=>{
     expect(()=>intent.authorizeCodexImageCall({}, {codexImageIntent:{provider:'openai-codex',enabled:false,policy:'latest'}})).toThrow(/disabled/);
   });
-  it.each(['latest','latest-fast'])('Given unverified subscription selector %s, When authorizing, Then block without a default',policy=>{
-    try {intent.authorizeCodexImageCall({}, {codexImageIntent:{provider:'openai-codex',enabled:true,policy}});throw new Error('unexpected success');}
-    catch(e){expect(e.code).toBe('CODEX_IMAGE_SELECTION_UNVERIFIED');expect(e.retryable).toBe(false);}
+  it.each(['latest','latest-fast'])('Given experimental selector %s, When authorized, Then bind that request without inferring engine identity',policy=>{
+    expect(intent.authorizeCodexImageCall({}, {codexImageIntent:{provider:'openai-codex',enabled:true,policy}})).toEqual({provider:'openai-codex',model:policy});
   });
   it('Given a non-Codex caller without subscription intent, Then ordinary providers are unchanged',()=>{
     expect(intent.bindCodexImageIntent(undefined,'gemini')).toBeNull();
     expect(intent.authorizeCodexImageCall({provider:'gemini'},{})).toBeNull();
   });
-  it('Given runtime status, Then both choices are explicitly blocked rather than available',()=>{
+  it('Given runtime status, Then choices are experimental rather than verified',()=>{
     const status=intent.codexImageChoiceStatus();
     expect(status.choices.map(c=>c.policy)).toEqual(['latest','latest-fast']);
-    expect(status.choices.every(c=>c.available===false && c.reason)).toBe(true);
+    expect(status.choices.every(c=>c.available===true && c.experimental===true && c.reason)).toBe(true);
     expect(status.subscriptionSelectionVerified).toBe(false);
   });
   it('Given account1 selected, When payload names account2, Then reject mismatched consent',()=>{

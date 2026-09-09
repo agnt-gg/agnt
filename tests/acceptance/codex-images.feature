@@ -37,7 +37,7 @@ Feature: Two distinct subscription image choices in AGNT
     And the image preference survives storage reload
     And switching to another account does not copy consent
     And no generation request is sent just by changing controls
-    And the UI says both choices remain blocked
+    And the UI says selectors are experimental, with unverified engine and trade-off
 
   @implemented @references
   Scenario: Resolve only explicit current-turn PNG uploads
@@ -88,3 +88,30 @@ Feature: Two distinct subscription image choices in AGNT
     When the picker closes, unmounts, or its conversation scope changes
     Then the request is aborted and late results cannot attach
     And mismatched message collections offer no image choice
+
+  @implemented @experimental @native
+  Scenario Outline: Request different subscription candidates without claiming engine identity
+    Given the user enables subscription images and selects <policy>
+    When the native tool generates or edits an explicit reference
+    Then it sends model <candidate> through the same selected Codex account
+    And missing returned identity stays unknown without blocking the image
+    And no other model, account, or API-key fallback is attempted
+    Examples:
+      | policy      | candidate              |
+      | latest      | gpt-image-2.5-sunburst  |
+      | latest-fast | gpt-image-2.5-flare     |
+
+  @implemented @browser
+  Scenario: Image control clicks reach the real chat request
+    Given the real built provider panel
+    When I select each image policy and dispatch the chat store action
+    Then the outgoing chat JSON carries that selected policy
+    And the fixture does not call an external LLM or image provider
+
+  @empirical @exploratory
+  Scenario: Compare requested selector usefulness without an engine identity oracle
+    Given matched generation prompts and a common-source edit pair
+    When six native requests run in alternating pair order
+    Then retain timing, usage, automatic dimensions, outputs and errors
+    And score outputs with selector labels withheld
+    And do not turn a small descriptive result into a performance guarantee

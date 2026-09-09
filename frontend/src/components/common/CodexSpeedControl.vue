@@ -17,12 +17,12 @@
       <span class="speed-label">Image generation</span>
       <label><input data-test="images-enabled" type="checkbox" :checked="images.enabled" @change="setImages({ enabled: $event.target.checked })" /> Use subscription</label>
     </div>
-    <div class="speed-options" role="group" aria-label="Preferred image policy (currently blocked)">
+    <div class="speed-options" role="group" aria-label="Experimental subscription image request">
       <button v-for="choice in imageChoices" :key="choice.policy" type="button" :data-test="'image-policy-' + choice.policy"
         :aria-pressed="images.policy === choice.policy" :class="{ active: images.policy === choice.policy }"
         @click="setImages({ policy: choice.policy })">{{ choice.label }}</button>
     </div>
-    <span class="speed-hint image-blocked" role="status">Blocked · subscription model selection unverified. Preference only; neither choice can generate yet. No API-key fallback.</span>
+    <span class="speed-hint image-blocked" role="status">Experimental · Quality requests Sunburst; Fast requests Flare. Effective engine and speed/quality advantage unverified. Shares subscription allowance; no API-key fallback.</span>
   </div>
 </template>
 

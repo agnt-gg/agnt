@@ -1,7 +1,7 @@
 import { isCodexImageProvider } from './codexImageCapability.js';
 
 const POLICIES = Object.freeze(['latest', 'latest-fast']);
-const REASON = 'Codex subscription image selection is unverified: the endpoint accepted an invalid model. No default, other account or API-key fallback will be used.';
+const REASON = 'Experimental subscription request. Requested candidate is recorded; effective engine and relative speed/quality remain unverified. No AGNT account, model or API-key fallback.';
 function denied(message, code) {
   return Object.assign(new Error(message), { code, retryable: false });
 }
@@ -10,7 +10,7 @@ function denied(message, code) {
 export function codexImageChoiceStatus() {
   return {
     subscriptionSelectionVerified: false,
-    choices: POLICIES.map(policy => ({ policy, available: false, reason: REASON })),
+    choices: POLICIES.map(policy => ({ policy, available: true, experimental: true, reason: REASON })),
     evidence: 'https://github.com/agnt-gg/agnt/issues/105#issuecomment-5595344143',
   };
 }
@@ -36,8 +36,8 @@ export function bindCodexImageIntent(raw, selectedProvider) {
 
 /**
  * Runs before capability lookup, credential acquisition or provider dispatch.
- * Returning null leaves a non-subscription invocation unchanged. No fabricated
- * mapping to Sunburst/Flare is installed until the subscription contract is known.
+ * Returning null leaves a non-subscription invocation unchanged. Authorized
+ * policies are experimental requests, not verified provider-selection claims.
  */
 export function authorizeCodexImageCall(args, context = {}) {
   const bound = context.codexImageIntent;
@@ -45,10 +45,11 @@ export function authorizeCodexImageCall(args, context = {}) {
     if (isCodexImageProvider(args.provider)) throw denied('Subscription images require explicit user intent.', 'CODEX_IMAGE_CONSENT_REQUIRED');
     return null;
   }
-  if (!bound.enabled) throw denied('Subscription image generation is disabled for this turn.', 'CODEX_IMAGE_DISABLED');
+  if (bound.enabled !== true) throw denied('Subscription image generation is disabled for this turn.', 'CODEX_IMAGE_DISABLED');
   if (args.provider && String(args.provider).toLowerCase() !== bound.provider) {
     throw denied('Image provider/account substitution is prohibited.', 'CODEX_IMAGE_ACCOUNT_MISMATCH');
   }
   if (args.model && args.model !== bound.policy) throw denied('Image selection substitution is prohibited.', 'CODEX_IMAGE_SELECTION_MISMATCH');
-  throw denied(REASON, 'CODEX_IMAGE_SELECTION_UNVERIFIED');
+  if (!POLICIES.includes(bound.policy) || !isCodexImageProvider(bound.provider)) throw denied('Invalid image intent.', 'CODEX_IMAGE_INVALID_INTENT');
+  return Object.freeze({ provider: bound.provider, model: bound.policy });
 }

@@ -1,3 +1,5 @@
+> **2026-09-09 empirical-mode update:** the earlier blanket-block descriptions below are historical. User-authorized experimental `latest` / `latest-fast` now send distinct Sunburst/Flare candidate requests through native Codex generation/editing; unknown engine identity is disclosed, not blocked. See [current implementation, six-call pilot, and limits](CODEX_IMAGE_EMPIRICAL_PILOT.md). No proven speed/quality advantage or automatic subscription catalog discovery is claimed.
+
 # Codex two-choice delivery status — 2026-09-09
 
 **Partial implementation, not a restart-ready two-choice image release.** Do not equate passing safety tests with supported upstream image selection. See `scripts/check-codex-image-release.mjs`: currently exits 2 with both policies BLOCKED.

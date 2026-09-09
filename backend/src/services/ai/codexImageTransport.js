@@ -1,6 +1,7 @@
 import { inflateSync } from 'node:zlib';
 
 import { isCodexImageProvider } from './codexImageCapability.js';
+import { codexImageRequestSelection, CODEX_IMAGE_CANDIDATE_PROFILE } from './codexImageCandidates.js';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const MAX_PIXELS = 16 * 1024 * 1024;
@@ -59,7 +60,7 @@ function requestFor(params) {
   const operation = params.imageOperation || 'Generate';
   if (!['Generate', 'Edit'].includes(operation)) throw new Error('Codex supports Generate/Edit, not Variation.');
   const requestedModel = params.model || 'provider-default';
-  if (requestedModel !== 'provider-default') throw new Error('Codex does not establish that model pins or latest are honored. Use provider-default (engine identity unknown); no model substitution was made.');
+  const selection = codexImageRequestSelection(requestedModel);
   if (params.numberOfImages != null && Number(params.numberOfImages) !== 1) throw new Error('Codex supports one image per request.');
   if (params.imageSize && params.imageSize !== 'auto') throw new Error('Codex v1 supports auto image size only.');
   if (params.imageQuality && params.imageQuality !== 'auto') throw new Error('Codex v1 supports auto quality only.');
@@ -73,9 +74,9 @@ function requestFor(params) {
   if (operation === 'Generate' && refs.length) throw new Error('Generate cannot silently discard references; use Edit.');
   if (operation === 'Edit' && !refs.length) throw new Error('Edit requires explicit PNG references.');
   if (refs.reduce((sum, ref) => sum + (typeof ref === 'string' ? ref.length : MAX_RESPONSE_BYTES), 0) > MAX_RESPONSE_BYTES) throw new Error('Total reference bytes exceed limit.');
-  const body = { prompt, background: 'auto', quality: 'auto', size: 'auto' };
+  const body = { prompt, background: 'auto', quality: 'auto', size: 'auto', ...(selection.resolvedModel ? { model: selection.resolvedModel } : {}) };
   if (refs.length) body.images = refs.map(ref => ({ image_url: referenceDataUri(ref) }));
-  return { body, operation, requestedModel, referenceCount: refs.length };
+  return { body, operation, requestedModel, selection, referenceCount: refs.length };
 }
 
 /** Client construction is supplied by AGNT's existing account-aware boundary. */
@@ -99,7 +100,7 @@ export async function generateCodexImage(params, { createClient, userId, signal,
   const rejectOnAbort = () => rejectAbort(new Error('Codex image cancelled or deadline exceeded.'));
   controller.signal.addEventListener('abort', rejectOnAbort, { once: true });
   const bounded = (promise) => Promise.race([promise, aborted]);
-  let dispatched = false, response;
+  let dispatched = false, response, succeeded = false;
   try {
     const client = await bounded(Promise.resolve().then(() => createClient(provider, userId)));
     if (controller.signal.aborted) throw new Error('Codex image request cancelled before dispatch.');
@@ -127,10 +128,14 @@ export async function generateCodexImage(params, { createClient, userId, signal,
     const dimensions = validatePng(bytes);
     checkDeadline();
     const returnedModel = typeof data.model === 'string' && data.model.trim() ? data.model : null;
+    succeeded = true;
     return {
       generatedImages: ['data:image/png;base64,' + bytes.toString('base64')],
-      imageMetadata: { provider, requestedModel: request.requestedModel, selectionMode: 'provider-selected',
-        resolvedModel: null, returnedModel, model: returnedModel, modelIdentityVerified: false,
+      imageMetadata: { provider, ...request.selection,
+        returnedModel, model: returnedModel, modelIdentityVerified: false,
+        candidateProfile: request.selection.resolvedModel ? CODEX_IMAGE_CANDIDATE_PROFILE : null,
+        providerReported: { quality: data.quality ?? null, size: data.size ?? null, outputFormat: data.output_format ?? null },
+        billingRoute: 'codex-subscription', providerBillingVerified: false,
         modelSelectionVerified: false, latestVerified: false, operation: request.operation, referenceCount: request.referenceCount,
         ...dimensions, count: 1, format: 'png', durationMs: Date.now() - startedAt,
         requestId: response.headers.get('x-codex-imagegen-request-id') || response.headers.get('x-request-id') || null,
@@ -142,10 +147,14 @@ export async function generateCodexImage(params, { createClient, userId, signal,
     const outcome = dispatched && (!status || status >= 500) ? 'remote outcome unknown; not retried' : 'not retried';
     // SDK error bodies can contain headers or private inputs. Never echo them.
     const category = status === 401 ? 'authentication rejected' : status === 403 ? 'account not entitled' : status === 429 ? 'rate limited' : status ? `HTTP ${status}` : controller.signal.aborted ? 'cancelled or deadline exceeded' : 'transport/response validation failed';
-    throw Object.assign(new Error(`Codex image ${category} (${outcome}).`), { status, remoteOutcomeUnknown: outcome.startsWith('remote') });
+    throw Object.assign(new Error(`Codex image ${category} (${outcome}).`), { status, retryable: false, remoteOutcomeUnknown: outcome.startsWith('remote') });
   } finally {
     clearTimeout(timer);
     controller.signal.removeEventListener('abort', rejectOnAbort);
     signal?.removeEventListener('abort', onAbort);
+    if (!succeeded) {
+      controller.abort();
+      try { Promise.resolve(response?.body?.cancel?.()).catch(() => {}); } catch { /* Already locked/closed; fetch signal is aborted. */ }
+    }
   }
 }

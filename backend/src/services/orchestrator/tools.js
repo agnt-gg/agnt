@@ -4380,7 +4380,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             model: {
               type: 'string',
               description:
-                "For enabled native Codex, omit or use provider-default: no model ID is sent and engine identity/latest are unverified; pins are rejected. For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
+                "For Codex, omit model/provider to honor the user's image controls. latest and latest-fast send different experimental candidate IDs; engine identity/latest/speed remain unverified. Explicit provider-default omits the model only when it does not override user intent. For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
             },
             numberOfImages: {
               type: 'number',
@@ -4415,7 +4415,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       if (context?.codexImageIntent) {
         try {
           const { authorizeCodexImageCall } = await import('../ai/codexImageIntent.js');
-          authorizeCodexImageCall({ provider, model }, context);
+          const bound = authorizeCodexImageCall({ provider, model }, context);
+          if (bound) { provider = bound.provider; model = bound.model; }
         } catch (error) {
           return JSON.stringify({ success: false, code: error.code, error: error.message, retryable: false, subscriptionOnly: true });
         }
@@ -4523,6 +4524,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         const mockWorkflowEngine = {
           userId: userId,
           signal: context?.signal || context?.abortSignal,
+          codexImageIntent: context?.codexImageIntent,
         };
 
         // Execute the tool
@@ -4533,6 +4535,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           return JSON.stringify({
             success: false,
             error: result.error,
+            ...(codexImage ? { retryable: false, remoteOutcomeUnknown: result.remoteOutcomeUnknown ?? false } : {}),
             provider: provider,
             model: selectedModel,
           });

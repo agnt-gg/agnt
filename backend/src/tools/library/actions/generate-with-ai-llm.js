@@ -330,7 +330,7 @@ class GenerateWithAiLlm extends BaseAction {
 
   async execute(params, inputData, workflowEngine) {
     if (params.mode === 'Image Generation' && workflowEngine?.codexImageIntent) {
-      try { authorizeCodexImageCall(params, workflowEngine); }
+      try { params = { ...params, ...authorizeCodexImageCall(params, workflowEngine) }; }
       catch (error) { return { error: error.message, code: error.code, retryable: false, generatedImages: [] }; }
     }
     this.validateParams(params);
@@ -441,6 +441,7 @@ class GenerateWithAiLlm extends BaseAction {
         tokenCount: 0,
         generatedImages: [],
         error: error.message || 'Unknown error occurred',
+        ...(isCodexImageProvider(params.provider) && params.mode === 'Image Generation' ? { retryable: false, remoteOutcomeUnknown: error.remoteOutcomeUnknown ?? false } : {}),
       });
     }
   }
