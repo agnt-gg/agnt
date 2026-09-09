@@ -1,0 +1,61 @@
+name: Justfile contract
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: justfile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  justfile:
+    name: Justfile routing (no skips)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install pinned Just with verified checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/just-1.58.0"
+          mkdir -p "$dir/bin"
+          curl --fail --location --retry 3 \
+            https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz \
+            --output "$dir/just.tar.gz"
+          echo "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d  $dir/just.tar.gz" | sha256sum --check --strict
+          tar -xzf "$dir/just.tar.gz" -C "$dir/bin" just
+          "$dir/bin/just" --version
+          echo "$dir/bin" >> "$GITHUB_PATH"
+      - name: Check Justfile formatting
+        run: just --fmt --check
+      - name: Run the exact routing suite and require zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/justfile-tests.tap"
+          status=0
+          node --test --test-reporter=tap tests/unit/justfile.test.js > "$log" 2>&1 || status=$?
+          cat "$log"
+          test "$status" -eq 0
+          node --input-type=module - "$log" <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const tap = fs.readFileSync(process.argv[2], 'utf8');
+          const total = Number(tap.match(/^# tests (\d+)$/m)?.[1]);
+          const passed = Number(tap.match(/^# pass (\d+)$/m)?.[1]);
+          assert.ok(total >= 24, 'Expected all mandatory routing tests');
+          assert.equal(passed, total, 'Every routing test must pass');
+          for (const field of ['fail', 'cancelled', 'skipped', 'todo']) {
+            assert.match(tap, new RegExp(`^# ${field} 0$`, 'm'));
+          }
+          NODE
