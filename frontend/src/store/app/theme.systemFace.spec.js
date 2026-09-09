@@ -87,8 +87,8 @@ describe('a theme with two faces', () => {
     store.commit('theme/SET_THEME', 'everforest');
     expect(faceOf()).toBe('light');
 
-    // The one control such a user has. It must stick, not flip a class back.
-    store.dispatch('theme/toggleDarkMode');
+    // Preserve the stored face contract independently of removed legacy controls.
+    store.commit('theme/SET_THEME_FACE', 'dark');
     expect(faceOf()).toBe('dark');
     expect(store.state.theme.themeFace).toBe('dark');
     expect(store.state.theme.isDarkMode).toBe(true);
@@ -160,10 +160,10 @@ describe('the single-face themes are untouched by any of it', () => {
     expect(faceOf()).toBe('light');
   });
 
-  it('still toggle dark mode the legacy way', () => {
+  it('selects the dark palette through the current picker action', async () => {
     const store = makeStore();
     store.commit('theme/SET_THEME', 'light');
-    store.dispatch('theme/toggleDarkMode');
+    await store.dispatch('theme/setTheme', 'dark');
     expect(store.state.theme.isDarkMode).toBe(true);
     expect(store.state.theme.themeFace).toBe('auto');
   });

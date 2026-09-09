@@ -1,24 +1,6 @@
-// There was one theme, and there were two systems deciding what it looked like.
-//
-//   A. `currentTheme` -> SET_THEME -> applyThemeClasses -> body classes.
-//      Persisted as `currentTheme`, and re-derived from it on every load.
-//
-//   B. `isDarkMode` / `isCyberpunkMode` -> SET_DARK_MODE / SET_CYBERPUNK_MODE,
-//      which toggled body classes THEMSELVES and wrote `darkMode` /
-//      `cyberpunkMode` to localStorage. Nothing ever read those two keys back,
-//      and B never touched `currentTheme`.
-//
-// So the two Settings toggles wrote into a system that the next re-apply or
-// reload overwrote from the other one. Two concrete consequences, both covered
-// below:
-//
-//   - Every dark variant is `body.dark.<name>` in CSS. The cyberpunk toggle
-//     added `.cyberpunk` alone, so from a light theme it matched no rule at
-//     all and the click did nothing visible.
-//   - Whatever either toggle did was reverted on reload, because
-//     `currentTheme` still said something else.
-//
-// Both toggles now choose a theme. If these go red, system B has grown back.
+// The picker owns styling; retained dark-mode state is a derived mirror only.
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createStore } from 'vuex';
 
@@ -66,71 +48,38 @@ beforeEach(() => {
   document.body.className = '';
 });
 
-describe('the Settings toggles drive the theme, not a class of their own', () => {
-  it('cyberpunk is reachable from a light theme, which needs BOTH classes', () => {
-    const store = makeStore();
-    store.commit('theme/SET_THEME', 'light');
-    expect(classes()).toBe('');
-
-    store.dispatch('theme/toggleCyberpunkMode');
-
-    // _cyberpunk.css is `body.dark.cyberpunk`. `.cyberpunk` alone paints nothing.
-    expect(document.body.classList.contains('cyberpunk')).toBe(true);
-    expect(document.body.classList.contains('dark')).toBe(true);
-    expect(store.state.theme.currentTheme).toBe('cyberpunk');
-    expect(store.state.theme.isCyberpunkMode).toBe(true);
-  });
-
-  it('and survives the reload that used to revert it', () => {
-    const store = makeStore();
-    store.commit('theme/SET_THEME', 'light');
-    store.dispatch('theme/toggleCyberpunkMode');
-    const painted = classes();
-
-    expect(localStorage.getItem('currentTheme')).toBe('cyberpunk');
-    expect(afterReload()).toBe(painted);
-  });
-
-  it('the dark toggle moves the theme, so the name never contradicts the class', () => {
-    const store = makeStore();
-    store.commit('theme/SET_THEME', 'nord');
-    expect(classes()).toBe('dark nord');
-
-    store.dispatch('theme/toggleDarkMode');
-    expect(store.state.theme.currentTheme).toBe('light');
-    expect(classes()).toBe('');
-    expect(afterReload()).toBe('');
-
-    store.dispatch('theme/toggleDarkMode');
-    expect(store.state.theme.currentTheme).toBe('dark');
-    expect(classes()).toBe('dark');
-    expect(afterReload()).toBe('dark');
-  });
-
-  it('writes no key that nothing reads back', () => {
-    const store = makeStore();
-    store.commit('theme/SET_THEME', 'light');
-    store.dispatch('theme/toggleDarkMode');
-    store.dispatch('theme/toggleCyberpunkMode');
-
-    expect(localStorage.getItem('darkMode')).toBeNull();
-    expect(localStorage.getItem('cyberpunkMode')).toBeNull();
-    expect(localStorage.getItem('currentTheme')).toBe('cyberpunk');
-  });
-
-  it('leaves the two-faced theme switching face, not theme', () => {
-    const store = makeStore();
-    store.commit('theme/SET_THEME', 'everforest');
-    store.dispatch('theme/toggleDarkMode');
-
-    expect(store.state.theme.currentTheme).toBe('everforest');
-    expect(store.state.theme.themeFace).toBe('dark');
-    expect(document.body.classList.contains('dark')).toBe(true);
-  });
-
-  it('has no second system left to call', () => {
+describe('one theme application path', () => {
+  it('has no obsolete component, actions or Cyberpunk mirror', () => {
+    expect(fs.existsSync(path.resolve(process.cwd(), 'src/views/Terminal/CenterPanel/screens/Settings/components/DarkMode/DarkModeToggle.vue'))).toBe(false);
+    for (const name of ['toggleDarkMode', 'toggleCyberpunkMode', 'initDarkMode', 'initCyberpunkMode']) expect(themeModule.actions[name]).toBeUndefined();
     expect(themeModule.mutations.SET_CYBERPUNK_MODE).toBeUndefined();
-    expect(themeModule.actions.initDarkMode).toBeUndefined();
-    expect(themeModule.actions.initCyberpunkMode).toBeUndefined();
+    expect(themeModule.state).not.toHaveProperty('isCyberpunkMode');
+    expect(themeModule.getters).not.toHaveProperty('isCyberpunkMode');
+  });
+  it('the dark-mode mirror does not repaint or write independent preferences', () => {
+    const store = makeStore();
+    store.commit('theme/SET_THEME', 'light');
+    store.commit('theme/SET_DARK_MODE', true);
+    expect(classes()).toBe('');
+    expect(store.state.theme.currentTheme).toBe('light');
+    expect(stored.has('darkMode')).toBe(false);
+    expect(stored.has('cyberpunkMode')).toBe(false);
+  });
+  it.each(['dark', 'light', 'cyberpunk', 'nord', 'rose', 'everforest'])('picker action persists %s and loads its background', async (name) => {
+    const load = vi.spyOn(themeModule.actions, 'loadCurrentThemeBackground');
+    const apply = vi.spyOn(themeModule.actions, 'applyCurrentThemeBackground');
+    // Register spies before constructing the store used by this assertion.
+    const observed = makeStore();
+    try {
+      await observed.dispatch('theme/setTheme', name);
+      expect(observed.state.theme.currentTheme).toBe(name);
+      expect(stored.get('currentTheme')).toBe(name);
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(apply).toHaveBeenCalledTimes(1);
+      const painted = classes();
+      expect(afterReload()).toBe(painted);
+      expect(stored.has('darkMode')).toBe(false);
+      expect(stored.has('cyberpunkMode')).toBe(false);
+    } finally { load.mockRestore(); apply.mockRestore(); }
   });
 });
