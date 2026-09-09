@@ -138,6 +138,7 @@ export async function preparePortableBundle({ workspaceRoot, entryPath, rootPath
       throw new Error(`Referenced path is not a regular, non-symlink file: ${absoluteEntry}`);
     }
     absoluteEntry = await fs.realpath(absoluteEntry);
+    assertPublicFile(absoluteEntry);
   }
   const resolvedRoot = inline ? (baseDir ? resolveInputPath(baseDir, absoluteWorkspace) : null) : (rootPath === undefined || rootPath === null ? path.dirname(absoluteEntry) : resolveInputPath(rootPath || '.', absoluteWorkspace));
   const root = resolvedRoot ? await fs.realpath(resolvedRoot) : null;
@@ -160,6 +161,8 @@ export async function preparePortableBundle({ workspaceRoot, entryPath, rootPath
     // symlinks (macOS /var → /private/var) so identity keys match realpath.
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Referenced path is not a regular, non-symlink file: ${absolutePath}`);
     absolutePath = await fs.realpath(absolutePath);
+    // Both spellings must satisfy exclusions before the canonical identity is reused.
+    assertPublicFile(absolutePath);
     const key = keyFor(absolutePath);
     if (bySource.has(key)) return bySource.get(key);
     const logicalPath = logicalFor(absolutePath);
