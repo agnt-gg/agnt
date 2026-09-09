@@ -4372,7 +4372,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               type: 'string',
               enum: IMAGE_GEN_PROVIDER_KEYS,
               description:
-                `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
+                `Image provider override for explicitly configured programmatic calls. In interactive chat OMIT provider and model to use Settings > General > Images, independently of the text provider. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. A conflicting override is rejected; never retry with another provider after failure.`,
             },
             operation: {type:'string',enum:['generate','edit'],description:'Generate a new image or edit an explicitly selected upload.'},
             referenceHandles: {type:'array',items:{type:'string'},maxItems:1,description:'For Edit, explicit current-turn image upload handle, e.g. upload:0. Never paths or URLs.'},
