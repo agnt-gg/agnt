@@ -1,3 +1,4 @@
+import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
  * The OpenAI Responses transport — openai (gpt-5.x / o-series) and openai-codex.
  *
@@ -168,7 +169,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     };
   }
 
-  _transformMessagesToInput(messages, imageData = null) {
+  _transformMessagesToInput(messages, imageData = null, computerImages = null) {
     // Extract system message as instructions
     const systemMessage = messages.find((m) => m.role === 'system');
     const instructions = systemMessage?.content || '';
@@ -267,6 +268,10 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       }
     }
 
+    const visualMessages = appendComputerImages([], computerImages, 'openai', ProviderRegistry.supportsVision('openai', this.model));
+    for (const message of visualMessages) {
+      flattenedInput.push({ type:'message', role:'user', content: typeof message.content === 'string' ? [{type:'input_text',text:message.content}] : message.content.map(part => part.type === 'text' ? {type:'input_text',text:part.text} : {type:'input_image',image_url:part.image_url.url}) });
+    }
     return { instructions, input: flattenedInput };
   }
 
@@ -603,7 +608,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         // context.imageData -> input_image blocks. Non-streaming call() previously
         // dropped images while callStream() injected them, so the analyze_image
         // tool (which uses call()) silently sent a prompt with no picture attached.
-        const { instructions, input } = this._transformMessagesToInput(messages, context.imageData);
+        const { instructions, input } = this._transformMessagesToInput(messages, context.imageData, context.computerImages);
         const responsesTools = this._transformToolsToResponses(tools);
 
         const requestParams = {
@@ -753,7 +758,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         if (Array.isArray(context.imageData) && context.imageData.length > 0 && !visionOk) {
           console.warn(`[Vision Check] OpenAI model '${this.model}' does not support vision; ignoring ${context.imageData.length} image(s).`);
         }
-        const { instructions, input } = this._transformMessagesToInput(messages, imageDataForInput);
+        const { instructions, input } = this._transformMessagesToInput(messages, imageDataForInput, context.computerImages);
         const responsesTools = this._transformToolsToResponses(tools);
 
         const requestParams = {
@@ -1088,7 +1093,18 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     for (const item of input) {
       let serialized;
       try {
-        serialized = JSON.stringify(item);
+        // Base64 transport bytes are not text tokens. Reserve a conservative
+        // image allowance instead of evicting history in proportion to PNG
+        // compression entropy. This is budgeting, not billed-token telemetry.
+        let imageAllowance = 0;
+        serialized = JSON.stringify(item, (key, value) => {
+          if (key === 'image_url' && typeof value === 'string' && value.startsWith('data:image/')) {
+            imageAllowance += 16384;
+            return '[image content]';
+          }
+          return value;
+        });
+        total += imageAllowance;
       } catch {
         serialized = String(item);
       }
@@ -1103,9 +1119,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     return total;
   }
 
-  _buildCodexParamsWithinBudget(messages, tools, imageData = null, logPrefix = 'Codex Responses') {
+  _buildCodexParamsWithinBudget(messages, tools, imageData = null, logPrefix = 'Codex Responses', computerImages = null) {
     let workingMessages = messages;
-    let params = this._buildCodexParams(workingMessages, tools, imageData);
+    let params = this._buildCodexParams(workingMessages, tools, imageData, computerImages);
     const budget = this._getCodexPreflightInputBudget();
     let estimatedTokens = this._estimateCodexRequestTokens(params);
     let shrinkAttempts = 0;
@@ -1143,7 +1159,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       );
 
       workingMessages = shrunk;
-      params = this._buildCodexParams(workingMessages, tools, imageData);
+      params = this._buildCodexParams(workingMessages, tools, imageData, computerImages);
       estimatedTokens = this._estimateCodexRequestTokens(params);
       shrinkAttempts++;
     }
@@ -1293,7 +1309,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    * imageData (when provided) is forwarded into the parent transform so vision
    * models like gpt-5.2-codex see uploaded images via input_image blocks.
    */
-  _buildCodexParams(messages, tools, imageData = null) {
+  _buildCodexParams(messages, tools, imageData = null, computerImages = null) {
     // Codex models (gpt-5.x-codex, gpt-5.5, etc.) inherit OpenAI's vision
     // capability via getModelMetadata's variant fallback chain. Use
     // supportsVision() so we don't have to manually enumerate every Codex
@@ -1305,7 +1321,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     if (Array.isArray(imageData) && imageData.length > 0 && !visionOk) {
       console.warn(`[Vision Check] Codex model '${this.model}' is not vision-capable per metadata; ignoring ${imageData.length} image(s).`);
     }
-    const { instructions, input } = this._transformMessagesToInput(messages, imageDataForInput);
+    const { instructions, input } = this._transformMessagesToInput(messages, imageDataForInput, computerImages);
     const responsesTools = this._transformToolsToResponses(tools);
 
     const params = {
@@ -1441,7 +1457,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         // Forward context.imageData exactly as callStream() does. This argument
         // was hardcoded to null, so the streaming path could see uploaded images
         // but the non-streaming path (used by the analyze_image tool) could not.
-        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData || null, 'Codex Responses');
+        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData || null, 'Codex Responses', context.computerImages);
         const params = preflight.params;
         workingMessages = preflight.workingMessages;
 
@@ -1562,7 +1578,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData, 'Codex Responses Stream');
+        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData, 'Codex Responses Stream', context.computerImages);
         const params = preflight.params;
         workingMessages = preflight.workingMessages;
 

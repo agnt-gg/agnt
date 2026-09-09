@@ -121,9 +121,27 @@ function assertPublicFile(absolutePath) {
 export async function preparePortableBundle({ workspaceRoot, entryPath, rootPath, html, baseDir, overrides = [], ownerId, limits = BUNDLE_LIMITS }) {
   if (!ownerId) throw new Error('Preparation owner is required');
   const inline = typeof html === 'string';
-  const absoluteWorkspace = path.resolve(workspaceRoot);
-  const absoluteEntry = inline ? null : resolveInputPath(entryPath, absoluteWorkspace);
-  const root = inline ? (baseDir ? resolveInputPath(baseDir, absoluteWorkspace) : null) : (rootPath === undefined || rootPath === null ? path.dirname(absoluteEntry) : resolveInputPath(rootPath || '.', absoluteWorkspace));
+  // Canonicalize BEFORE containment / identity checks. On macOS, os.tmpdir()
+  // is under /var and /var realpaths to /private/var; comparing path.resolve
+  // against fs.realpath then rejects every regular temp file as a "symlink".
+  // realpath workspace/root directories (and a verified regular entry) once so
+  // isInside/logicalFor/bySource stay coherent. Entry must be lstat-checked
+  // BEFORE realpath — otherwise a leaf symlink entry is silently resolved and
+  // bypasses the non-symlink file rule that addFile enforces for dependencies.
+  const absoluteWorkspace = await fs.realpath(path.resolve(workspaceRoot));
+  let absoluteEntry = null;
+  if (!inline) {
+    absoluteEntry = resolveInputPath(entryPath, absoluteWorkspace);
+    assertPublicFile(absoluteEntry);
+    const entryStat = await fs.lstat(absoluteEntry);
+    if (!entryStat.isFile() || entryStat.isSymbolicLink()) {
+      throw new Error(`Referenced path is not a regular, non-symlink file: ${absoluteEntry}`);
+    }
+    absoluteEntry = await fs.realpath(absoluteEntry);
+    assertPublicFile(absoluteEntry);
+  }
+  const resolvedRoot = inline ? (baseDir ? resolveInputPath(baseDir, absoluteWorkspace) : null) : (rootPath === undefined || rootPath === null ? path.dirname(absoluteEntry) : resolveInputPath(rootPath || '.', absoluteWorkspace));
+  const root = resolvedRoot ? await fs.realpath(resolvedRoot) : null;
   if (absoluteEntry && !isInside(root, absoluteEntry)) throw new Error('Entry escapes artifact root');
   const entries = new Map(), bySource = new Map(), walked = new Set(), excluded = [];
   let totalBytes = 0;
@@ -137,11 +155,16 @@ export async function preparePortableBundle({ workspaceRoot, entryPath, rootPath
   }
   async function addFile(absolutePath, required = true) {
     absolutePath = path.resolve(absolutePath);
-    const key = keyFor(absolutePath);
-    if (bySource.has(key)) return bySource.get(key);
     assertPublicFile(absolutePath);
     const stat = await fs.lstat(absolutePath);
-    if (!stat.isFile() || stat.isSymbolicLink() || keyFor(await fs.realpath(absolutePath)) !== key) throw new Error(`Referenced path is not a regular, non-symlink file: ${absolutePath}`);
+    // Reject the LEAF symlink first. Only then canonicalize ancestor directory
+    // symlinks (macOS /var → /private/var) so identity keys match realpath.
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Referenced path is not a regular, non-symlink file: ${absolutePath}`);
+    absolutePath = await fs.realpath(absolutePath);
+    // Both spellings must satisfy exclusions before the canonical identity is reused.
+    assertPublicFile(absolutePath);
+    const key = keyFor(absolutePath);
+    if (bySource.has(key)) return bySource.get(key);
     const logicalPath = logicalFor(absolutePath);
     if (entries.has(logicalPath)) throw new Error(`Bundle path collision: ${logicalPath}`);
     if (stat.size > limits.maxFileBytes) throw new Error(`${logicalPath} exceeds the per-file byte limit`);
@@ -211,7 +234,9 @@ export async function preparePortableBundle({ workspaceRoot, entryPath, rootPath
         }
         const target = await addFile(resolved, required);
         // A linked HTML page may load siblings through tabs or runtime strings.
-        if (/\.html?$/i.test(resolved)) await walk(path.dirname(resolved));
+        // Walk the canonical directory addFile stored so macOS /var vs /private/var
+        // does not enqueue the same tree twice under two spellings.
+        if (/\.html?$/i.test(target.sourcePath)) await walk(path.dirname(target.sourcePath));
         const relative = path.posix.relative(path.posix.dirname(current.path), target.path);
         return `${relative.startsWith('.') ? '' : './'}${encodePath(relative)}${suffix}`;
       } catch (error) {

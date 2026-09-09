@@ -44,6 +44,8 @@ import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/uti
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import { startRun, publish as publishToRun, endRun } from './orchestrator/activeRuns.js';
 import { createOpenToolCallLedger, wrapSendEventWithLedger } from './orchestrator/openToolCalls.js';
+import { mapOrderedComputerCalls } from './computerUse/operationQueue.js';
+import { captureComputerImages } from './computerUse/observationImages.js';
 import { createEagerToolRuns } from './orchestrator/eagerToolRuns.js';
 import { persistTurnTranscript } from './orchestrator/persistTurnTranscript.js';
 import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
@@ -2424,7 +2426,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // Preserved before offloading to avoid DATA_REF placeholders in frontend events
         let preservedFrontendEvents = null;
 
-        if (isDuplicateAsyncOfRunningSync) {
+        if (shouldExecuteAsync && /^computer[-_](observe|input|session|windows|setup)$/.test(functionName)) {
+          const error = 'Computer operations must run synchronously inside the ordered observe/input/verify loop. Retry without async or periodic controls; no desktop action was dispatched.';
+          toolCallResult = {success:false,dispatched:false,error,code:'computer_async_not_supported'};
+          toolCallError = error;
+          functionResponseContent = JSON.stringify(toolCallResult);
+        } else if (isDuplicateAsyncOfRunningSync) {
           console.warn(`[AsyncTool] Rejecting async duplicate of a sync call already running: ${functionName}`);
           const dupError = {
             success: false,
@@ -2567,6 +2574,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
               functionResponseContent = JSON.stringify(rawParsed);
             }
           } catch { /* ignore parse errors — will be handled later */ }
+
+          if (/^computer[-_]input$/.test(functionName)) conversationContext.computerImages = [];
+
+          // Keep model images out of the string/offload path. UI HTML remains unchanged.
+          functionResponseContent = captureComputerImages(functionResponseContent, functionName, toolCall.id, conversationContext, saveBase64Image);
 
           // Extract and replace images to prevent context window overflow
           const { modifiedResult, images } = extractAndReplaceImages(functionResponseContent, toolCall.id);
@@ -3300,7 +3312,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       }
 
-      const toolPromises = toolCalls.map((toolCall) => claimToolRun(toolCall));
+      // Preserve emission order through async gates/recording as well as the
+      // native operation lane. Non-computer tools retain normal parallelism.
+      const toolPromises = mapOrderedComputerCalls(toolCalls, claimToolRun);
       const toolResponses = await Promise.all(toolPromises);
       await settleUnclaimedEagerRuns();
       asyncQueuedFingerprints.clear();

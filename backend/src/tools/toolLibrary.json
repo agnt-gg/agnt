@@ -1897,6 +1897,15 @@
       "icon": "connect",
       "description": "Primitive input on a real window with background delivery — no cursor warp, no focus steal, no window raise. Element actions target elements via elementToken from the LATEST computer-observe snapshot (preferred) or elementIndex+snapshotId, or window-local x/y pixels for canvas surfaces. Highlights: invoke_menu resolves a native menu path through the accessibility API and fails closed instead of clicking blind; paste_text writes the clipboard and sends Ctrl+V, which reaches editors exposing no ValuePattern (Windows 11 Notepad); set_window_frame moves/resizes with verified read-back. Every response reports the driver's closed action facts (effect/route/escalation) — note that effect=unverifiable means the driver will not overclaim, NOT that the action failed. Requires confirm=true.",
       "parameters": {
+        "expect": {
+          "type": "array",
+          "inputType": "textarea",
+          "required": false,
+          "items": {
+            "type": "object"
+          },
+          "description": "Optional 1..8 verify_state predicates. Measures the postcondition after dispatch, in the same serialized operation. Requires exact pid/windowId. taskVerified=false on unknown or unsatisfied; never repeat an irreversible action merely because verification is unknown."
+        },
         "action": {
           "type": "string",
           "inputType": "select",
@@ -2101,6 +2110,14 @@
         }
       },
       "outputs": {
+        "taskVerified": {
+          "type": "boolean",
+          "description": "Only true when supplied postconditions were measured satisfied. Dispatch alone is not task success."
+        },
+        "verification": {
+          "type": "object",
+          "description": "Postcondition measurement from verify_state, distinct from input delivery."
+        },
         "success": {
           "type": "boolean",
           "description": "True when the action was dispatched and not refused."
@@ -3013,6 +3030,10 @@
         }
       },
       "outputs": {
+        "modelImages": {
+          "type": "array",
+          "description": "Typed screenshot input for the model, separate from display HTML; native dimensions and coordinate space are preserved."
+        },
         "success": {
           "type": "boolean",
           "description": "True when the observation succeeded — for mode=verify, true only when the predicates are SATISFIED."

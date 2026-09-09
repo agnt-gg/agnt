@@ -162,4 +162,18 @@ describe('PROVIDER_TEMPLATES', () => {
       expect(builtInKeys.has(template.key)).toBe(false);
     }
   });
+
+  test('Atlas Cloud template uses its OpenAI-compatible endpoint', () => {
+    const atlasCloud = templates.find(
+      (template) => template.key === 'atlascloud'
+    );
+    expect(atlasCloud).toMatchObject({
+      name: 'Atlas Cloud',
+      baseURL: 'https://api.atlascloud.ai/v1',
+      defaultModel: 'qwen/qwen3.5-397b-a17b',
+      supportsTools: true,
+      supportsVision: true,
+      supportsStreaming: true,
+    });
+  });
 });

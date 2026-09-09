@@ -1,3 +1,4 @@
+import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
  * The OpenAI-compatible Chat Completions transport.
  *
@@ -225,9 +226,9 @@ class OpenAiLikeAdapter extends BaseAdapter {
     return false;
   }
 
-  async call(messages, tools) {
+  async call(messages, tools, context = {}) {
     let lastError;
-    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'openai-like');
+    let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutbound(messages, 'openai-like'), context.computerImages, 'openai', ProviderRegistry.supportsVision(context.provider || this.provider || 'openai', this.model));
     const preparedTools = this._prepareTools(tools);
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
@@ -435,6 +436,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
+
+    currentMessages = appendComputerImages(currentMessages, context.computerImages, 'openai', ProviderRegistry.supportsVision(context.provider || this.provider || 'openai', this.model));
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';

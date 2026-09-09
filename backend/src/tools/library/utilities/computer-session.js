@@ -21,6 +21,7 @@
 // only way back is end + start with a NEW id. That is the driver's design, not
 // a limitation we added, and it is why `escalate` is gated behind confirm.
 import BaseAction from '../BaseAction.js';
+import { enqueueComputerOperation } from '../../../services/computerUse/operationQueue.js';
 import { asBool, resolveDriverPath, notInstalledResult, ensureReady, startSession, endSession, getSessionState, escalateSession, callTool } from '../../../services/computerUse/driver.js';
 
 const CURSOR_ACTIONS = new Set(['cursor_on', 'cursor_off', 'cursor_theme']);
@@ -163,7 +164,11 @@ class ComputerSession extends BaseAction {
 
   constructor() { super('computer-session'); }
 
-  async execute(params) {
+  async execute(params, inputData, workflowEngine) {
+    return enqueueComputerOperation(() => this.executeOperation(params), workflowEngine?.abortSignal || workflowEngine?.signal);
+  }
+
+  async executeOperation(params) {
     const action = String(params?.action || 'start').toLowerCase();
     const session = String(params?.session || '').trim();
     const captureScope = ['auto', 'window', 'desktop'].includes(String(params?.captureScope)) ? String(params.captureScope) : 'auto';

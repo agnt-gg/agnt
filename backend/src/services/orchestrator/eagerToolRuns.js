@@ -55,6 +55,9 @@ export function createEagerToolRuns(run) {
      */
     start(toolCall) {
       const id = toolCall?.id;
+      // Desktop work depends on the completed round's ordering and must not
+      // act on a speculative/retried stream before its call is committed.
+      if (/^computer[-_](observe|input|session|windows|setup)$/.test(toolCall?.function?.name || '')) return false;
       if (!id || byId.has(id)) return false;
       const fingerprint = toolCallFingerprint(toolCall);
       const original = byFingerprint.get(fingerprint);
