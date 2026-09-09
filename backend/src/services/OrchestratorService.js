@@ -845,6 +845,7 @@ async function universalChatHandler(req, res, context = {}) {
     skillAllowedTools,
     reasoningValue: rawReasoningValue,
     reasoningEnabled: rawReasoningEnabled,
+    codexPriority: rawCodexPriority,
     enabledTools: rawEnabledTools,
     // Dynamic routing. 'pinned' | 'default' | 'dynamic', or absent.
     //
@@ -857,6 +858,7 @@ async function universalChatHandler(req, res, context = {}) {
 
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
   const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
+  const codexPriority = rawCodexPriority === true || rawCodexPriority === 'true';
   const reasoningValue = typeof rawReasoningValue === 'string' && rawReasoningValue.trim()
     ? rawReasoningValue.trim().toLowerCase()
     : (reasoningEnabled ? 'on' : 'default');
@@ -1594,7 +1596,7 @@ async function universalChatHandler(req, res, context = {}) {
     let primaryTierInitError = null;
     try {
       client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-      adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
+      adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, codexPriority, conversationId });
     } catch (initError) {
       primaryTierInitError = initError;
       console.warn(
@@ -2970,7 +2972,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // across to a different provider (it would be an invalid model id).
         model = tier.model || (await import('./ai/ProviderRegistry.js')).getTextModels(normalizedProvider)?.[0] || tier.model;
         client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, conversationId });
+        adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue, codexPriority, conversationId });
         conversationContext.llmClient = client;
         // Keep the shared conversation context in sync so tools that resolve
         // provider/model from context (analyze_image, custom tool execution,
