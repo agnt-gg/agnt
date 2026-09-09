@@ -8,6 +8,7 @@
  */
 
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from './reasoningModels.js';
+import { CODEX_IMAGE_CAPABILITY, codexImagesEnabled, isCodexImageProvider } from './codexImageCapability.js';
 // The GPT-5.6 family boundary. Defined once in promptCacheTtl, which uses it
 // to pick the retention control; reused here because the same boundary decides
 // whether cache writes bill at 1.25x.
@@ -1290,6 +1291,13 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 ];
+
+// Do not add accounts or authentication semantics: only existing configured seats.
+if (codexImagesEnabled()) {
+  for (const config of PROVIDER_CONFIGS) {
+    if (isCodexImageProvider(config.key)) config.capabilities.imageGen = CODEX_IMAGE_CAPABILITY;
+  }
+}
 
 // ─────────────────────────── PROVIDER TEMPLATES ───────────────────────────
 // Pre-configured templates for the generic OpenAI-compatible provider system.

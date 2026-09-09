@@ -12,6 +12,8 @@ import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js'
 import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
+import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
+import { isCodexImageProvider } from '../../../services/ai/codexImageCapability.js';
 
 /**
  * Provider facts come from the registry. This file used to carry its own copy.
@@ -335,8 +337,10 @@ class GenerateWithAiLlm extends BaseAction {
       // Normalize provider name to lowercase for auth lookups
       const normalizedProvider = params.provider.toLowerCase();
 
-      // Get API key/token for non-local providers
-      if (normalizedProvider !== 'local') {
+      // Codex images use the existing account-aware client factory below;
+      // do not pre-read a first-account token or introduce another auth path.
+      const codexImage = (params.mode === 'Image Generation') && isCodexImageProvider(normalizedProvider);
+      if (normalizedProvider !== 'local' && !codexImage) {
         try {
           // Special providers use local auth managers instead of remote service
           if (normalizedProvider === 'claude-code') {
@@ -379,7 +383,7 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
-      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
+      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal };
 
       // Route based on mode
       const mode = params.mode || 'Text Generation';
@@ -409,7 +413,9 @@ class GenerateWithAiLlm extends BaseAction {
       // pricing at the funnel cannot be forgotten when a ninth provider is
       // added — which is precisely how the workflow path came to capture
       // tokens for years without ever pricing them.
-      await recordLlmCall({
+      // This route reports image usage in metadata but no verifiable model
+      // rate. Never record a fabricated zero-text-token priced LLM call.
+      if (!codexImage) await recordLlmCall({
         userId,
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
@@ -542,7 +548,14 @@ class GenerateWithAiLlm extends BaseAction {
     openai: 'generateImageWithOpenAI',
     gemini: 'generateImageWithGemini',
     grokai: 'generateImageWithGrok',
+    ...Object.fromEntries(ProviderRegistry.getImageGenProviders()
+      .filter(({ provider }) => isCodexImageProvider(provider))
+      .map(({ provider }) => [provider, 'generateImageWithCodex'])),
   };
+
+  async generateImageWithCodex(params) {
+    return generateCodexImage(params, { createClient: createLlmClient, userId: params.userId, signal: params.signal });
+  }
 
   async handleImageGeneration(params) {
     const provider = params.provider.toLowerCase();

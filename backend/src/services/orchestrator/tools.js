@@ -4374,10 +4374,12 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               description:
                 `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
             },
+            operation: { type: 'string', enum: ['generate', 'edit'], description: 'Default generate. Edit is initially supported for enabled native Codex with explicit PNG references.' },
+            referenceImages: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'Explicit PNG data URIs for native Codex Edit; no paths, remote URLs or implicit screenshots.' },
             model: {
               type: 'string',
               description:
-                "For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
+                "For enabled native Codex, omit or use provider-default: no model ID is sent and engine identity/latest are unverified; pins are rejected. For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
             },
             numberOfImages: {
               type: 'number',
@@ -4408,7 +4410,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style }, authToken, context) => {
+    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceImages }, authToken, context) => {
       console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
       if (!prompt) {
@@ -4444,11 +4446,18 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         }
 
         const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
+        const codexImage = capabilities.modelSelection === 'provider-selected';
+        if (codexImage && aspectRatio) {
+          return JSON.stringify({ success: false, error: 'Codex auto rendering does not accept aspectRatio; it was not silently discarded.' });
+        }
+        if (!['generate', 'edit'].includes(operation) || (!codexImage && (operation !== 'generate' || referenceImages?.length))) {
+          return JSON.stringify({ success: false, error: 'This chat Edit/reference path requires enabled native Codex. No references were discarded.' });
+        }
         const requestedModel = model || capabilities.defaultModel;
         let selectedModel = requestedModel;
         // OpenAI resolves once in the action with its authenticated client. An
         // explicit ID stays pinned; the provider remains the entitlement check.
-        const availableModels = normalizedProvider === 'openai' ? []
+        const availableModels = codexImage ? capabilities.models : normalizedProvider === 'openai' ? []
           : await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
         if (normalizedProvider !== 'openai' && !availableModels.includes(selectedModel)) {
           return JSON.stringify({
@@ -4476,12 +4485,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           provider: provider,
           model: selectedModel,
           imagePrompt: prompt,
-          imageOperation: 'Generate',
+          imageOperation: operation === 'edit' ? 'Edit' : 'Generate',
+          referenceImages,
           numberOfImages: numberOfImages,
         };
 
         // Add provider-specific parameters
-        if (normalizedProvider === 'openai') {
+        if (normalizedProvider === 'openai' || codexImage) {
           if (size) params.imageSize = size;
           if (quality) params.imageQuality = quality;
           if (style) params.imageStyle = style;
@@ -4495,6 +4505,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Create a mock workflow engine context
         const mockWorkflowEngine = {
           userId: userId,
+          signal: context?.signal,
         };
 
         // Execute the tool
@@ -4510,7 +4521,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           });
         }
 
-        selectedModel = result.imageMetadata?.resolvedModel || selectedModel;
+        selectedModel = codexImage ? result.imageMetadata?.returnedModel ?? null
+          : result.imageMetadata?.resolvedModel || selectedModel;
 
         // Persist generated images to disk so we can return stable URLs/paths
         // to the LLM (instead of round-tripping full base64 through context).
@@ -4529,6 +4541,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             }
           }
         });
+
+        if (codexImage && (generatedImages.length !== 1 || !savedImagePaths[0])) {
+          return JSON.stringify({ success: false, error: 'Codex returned an image but local persistence failed. Do not regenerate automatically.', imageMetadata: result.imageMetadata || null });
+        }
 
         let firstImageId = null;
         let firstImagePath = null;
@@ -4565,7 +4581,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           revisedPrompt: result.revisedPrompt || null,
           imageMetadata: result.imageMetadata || null,
           requestedModel,
-          message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
+          message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel || '(provider-selected engine, identity unknown)'}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
       } catch (error) {
         console.error('Error in generate_image tool:', error);
