@@ -379,7 +379,7 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
-      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal || workflowEngine?.abortSignal };
+      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal || workflowEngine?.abortSignal, beforeImageDispatch: workflowEngine?.beforeImageDispatch };
 
       // Route based on mode
       const mode = params.mode || 'Text Generation';
@@ -977,6 +977,7 @@ class GenerateWithAiLlm extends BaseAction {
         }
 
         checkCancelled();
+        await params.beforeImageDispatch?.();
         response = await openai.images.generate(requestParams, requestOptions);
       } else if (operation === 'Edit') {
         // Image editing (requires reference image)
@@ -993,6 +994,7 @@ class GenerateWithAiLlm extends BaseAction {
 
         checkCancelled();
 
+        await params.beforeImageDispatch?.();
         response = await openai.images.edit({
           model, // Unsupported model/operation combinations fail before dispatch
           image: imageFile,
@@ -1093,6 +1095,7 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       // Generate content
+      await params.beforeImageDispatch?.();
       const result = await model.generateContent({
         contents: [{ role: 'user', parts }],
         tools: tools.length > 0 ? tools : undefined,
@@ -1168,6 +1171,7 @@ class GenerateWithAiLlm extends BaseAction {
     const model = params.model || imageDefaultModel('grokai');
 
     try {
+      await params.beforeImageDispatch?.();
       const response = await openai.images.generate({
         model,
         prompt: params.imagePrompt,

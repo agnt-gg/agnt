@@ -1341,6 +1341,7 @@ async function universalChatHandler(req, res, context = {}) {
 
   // Initialize conversation context
   const conversationContext = {
+    useImageSettings: true,
     preservedContent: {},
     dataRefSummaries: {},
     llmClient: null,

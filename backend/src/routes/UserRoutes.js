@@ -1,6 +1,9 @@
 import express from 'express';
 import { authenticateToken, sessionMiddleware, getUserTokenFromSession } from './Middleware.js';
 import UserService from '../services/UserService.js';
+import { imageSettingsService } from '../services/images/imageSettingsRuntime.js';
+import { createImageSettingsHandlers } from '../services/images/imageSettingsHandlers.js';
+const imageSettingsHandlers = createImageSettingsHandlers(imageSettingsService);
 import { requireAuth } from '../utils/authGuard.js';
 
 // Set up new route
@@ -21,6 +24,9 @@ const authenticateSSEToken = requireAuth({ allowQuery: true });
 // Define routes
 UserRoutes.get('/health', UserService.healthCheck);
 UserRoutes.get('/user-stats', authenticateToken, UserService.getUserStats);
+
+UserRoutes.get('/image-settings', authenticateToken, imageSettingsHandlers.get);
+UserRoutes.put('/image-settings', authenticateToken, imageSettingsHandlers.put);
 
 // User settings routes
 UserRoutes.get('/settings', authenticateToken, UserService.getUserSettings);

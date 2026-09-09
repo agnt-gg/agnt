@@ -98,6 +98,7 @@
             <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
           </div>
 
+          <ImageSettings compact />
           <ImageReferencePicker :collection="imageReferenceCollection" :scope-key="conversationId" :disabled="isStreaming || isInputDisabled" @attach-files="attachImageReference" />
           <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
@@ -288,10 +289,11 @@ import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 import { resolvePanel, resolveInput } from './screenRegistry.js';
 import ImageReferencePicker from '@/views/_components/chat/ImageReferencePicker.vue';
+import ImageSettings from '@/components/common/ImageSettings.vue';
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu, ImageReferencePicker },
+  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu, ImageReferencePicker, ImageSettings },
   props: {
     // Layout defaults live in screenRegistry.js, keyed by screenId. An
     // explicitly passed prop always wins (screens with dynamic panels).

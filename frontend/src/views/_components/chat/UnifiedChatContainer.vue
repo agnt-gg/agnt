@@ -77,6 +77,7 @@
         </span>
         <button class="voice-end-btn" type="button" @click="toggleVoice">End</button>
       </div>
+      <ImageSettings compact />
       <ImageReferencePicker v-if="showAttachments" :collection="imageReferenceCollection" :scope-key="imageReferenceCollection.scopeKey" :disabled="isProcessing" @attach-files="onAttachImageReference" />
       <ChatInputBar
         ref="inputBarRef"
@@ -194,6 +195,7 @@ import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/component
 import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/QuickActions.vue';
 import ChatInputBar from '@/views/_components/chat/ChatInputBar.vue';
 import ImageReferencePicker from '@/views/_components/chat/ImageReferencePicker.vue';
+import ImageSettings from '@/components/common/ImageSettings.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
 import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatProviderSelector.vue';
 import { useCornerAnchor } from '@/utils/cornerAnchor.js';
@@ -206,7 +208,7 @@ import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
 export default {
   name: 'UnifiedChatContainer',
-  components: { MessageItem, ProcessingState, QuickActions, ChatInputBar, ImageReferencePicker, ChatScrollControls, ChatProviderSelector, ChatToolSelector, Tooltip, SimpleModal },
+  components: { MessageItem, ProcessingState, QuickActions, ChatInputBar, ImageReferencePicker, ImageSettings, ChatScrollControls, ChatProviderSelector, ChatToolSelector, Tooltip, SimpleModal },
   props: {
     channelKey: { type: String, required: true },
     chatType: { type: String, required: true },

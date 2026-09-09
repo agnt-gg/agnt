@@ -4374,6 +4374,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               description:
                 `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
             },
+            operation: {type:'string',enum:['generate','edit'],description:'Generate a new image or edit an explicitly selected upload.'},
+            referenceHandles: {type:'array',items:{type:'string'},maxItems:1,description:'For Edit, explicit current-turn image upload handle, e.g. upload:0. Never paths or URLs.'},
             model: {
               type: 'string',
               description:
@@ -4408,7 +4410,16 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style }, authToken, context) => {
+    execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceHandles }, authToken, context) => {
+      let imageExecution;
+      if (context?.useImageSettings) {
+        try {
+          const { imageSettingsService } = await import('../images/imageSettingsRuntime.js');
+          imageExecution = await imageSettingsService.prepare(context.userId, { operation, provider, model }, authToken, context.signal || context.abortSignal);
+          provider = imageExecution.request.provider; model = imageExecution.request.model;
+        } catch (error) { return JSON.stringify({ success:false,error:error.message,retryable:false }); }
+      }
+      provider ||= 'openai';
       console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
       if (!prompt) {
@@ -4444,6 +4455,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         }
 
         const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
+        if (!capabilities.operations.includes(operation)) return JSON.stringify({success:false,error:'This image provider does not support the requested operation.',retryable:false});
         const requestedModel = model == null || model === '' ? capabilities.defaultModel : model;
         let selectedModel = requestedModel;
         // OpenAI resolves once in the action with its authenticated client. An
@@ -4476,10 +4488,18 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           provider: provider,
           model: selectedModel,
           imagePrompt: prompt,
-          imageOperation: 'Generate',
+          imageOperation: operation === 'edit' ? 'Edit' : 'Generate',
           numberOfImages: numberOfImages,
         };
 
+        if (operation === 'edit') {
+          try {
+            const { resolveUploadReferences } = await import('../images/imageUploadReferences.js');
+            const refs = resolveUploadReferences(referenceHandles, context?.imageData);
+            if (refs.length !== 1) throw new Error('Select exactly one reference for this image provider.');
+            params.referenceImage = refs[0];
+          } catch(error) { return JSON.stringify({success:false,error:error.message,retryable:false}); }
+        }
         // Add provider-specific parameters
         if (normalizedProvider === 'openai') {
           if (size) params.imageSize = size;
@@ -4496,6 +4516,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         const mockWorkflowEngine = {
           userId: userId,
           signal: context?.signal || context?.abortSignal,
+          beforeImageDispatch: imageExecution?.beforeDispatch,
         };
 
         // Execute the tool
@@ -4531,6 +4552,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
         });
 
+        if (imageExecution && (!generatedImages.length || savedImagePaths.filter(Boolean).length !== generatedImages.length)) {
+          return JSON.stringify({success:false,error:'Image returned but local persistence incomplete. Do not regenerate automatically.',retryable:false,imageMetadata:result.imageMetadata||null});
+        }
         let firstImageId = null;
         let firstImagePath = null;
         let firstImageUrl = null;
@@ -4564,7 +4588,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           firstImagePath,
           firstImageUrl,
           revisedPrompt: result.revisedPrompt || null,
-          imageMetadata: result.imageMetadata || null,
+          imageMetadata: { ...result.imageMetadata, imageConnectionId: imageExecution?.request.connectionId ?? null },
           requestedModel,
           message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
