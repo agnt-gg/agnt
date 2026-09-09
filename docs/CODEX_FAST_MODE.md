@@ -67,14 +67,17 @@ The two initial backend failures were environmental: hidden TMPDIR ancestors
 triggered portable-bundle exclusions, while a long TMPDIR exceeded Chromium's
 Unix-socket path limit. Use a **short, non-hidden** temporary path. On Node 26,
 `NODE_OPTIONS=--no-experimental-webstorage` avoids the host's experimental
-localStorage conflicting with jsdom. Keep credentials out of regression runs:
+localStorage conflicting with jsdom. This is a **Node runtime option**, not an
+AGNT configuration setting. The equivalent explicit flag below runs the same
+Vitest entry points without relying on an inherited environment variable:
 
 ```sh
-# Set these to dedicated test directories; keep TEST_TMP short and non-hidden.
-env -i PATH="$PATH" HOME="$TEST_HOME" TMPDIR="$TEST_TMP" \
-  NODE_OPTIONS=--no-experimental-webstorage CI=1 npm test
-env -i PATH="$PATH" HOME="$TEST_HOME" TMPDIR="$TEST_TMP" \
-  NODE_OPTIONS=--no-experimental-webstorage CI=1 npm --prefix frontend test
+# Run from the repository root with dedicated test directories and no credentials.
+# Keep TEST_TMP short and non-hidden; install dependencies in root and frontend.
+env -i PATH="$PATH" HOME="$TEST_HOME" TMPDIR="$TEST_TMP" CI=1 \
+  node --no-experimental-webstorage node_modules/vitest/vitest.mjs run
+(cd frontend && env -i PATH="$PATH" HOME="$TEST_HOME" TMPDIR="$TEST_TMP" CI=1 \
+  node --no-experimental-webstorage node_modules/vitest/vitest.mjs run)
 # Build before the browser gate; provision the matching Playwright browser.
 ```
 
