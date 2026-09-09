@@ -1,18 +1,25 @@
 ---
-summary: "Draft investigation of RGB token migration: reproducible inventory, browser/capture failures, compatibility boundaries, and next decisions."
+summary: "RGB token migration research: reproducible inventory, browser/capture failures, merged guard coverage, compatibility boundaries, and next decisions."
 read_when:
   - "Considering relative colors or removal of AGNT's RGB triplet tokens."
-  - "Extending the theme drift guard or resuming this research draft."
+  - "Extending the theme drift guard or continuing this research."
 ---
 
-# RGB token migration — research draft
+# RGB token migration — research findings
 
-**Status: investigation only; no production CSS changes or migration approval.**
-This fork-owned draft preserves evidence for discussion, not a request to merge a
-large refactor upstream. The architectural question originated in
-[upstream #98](https://github.com/agnt-gg/agnt/pull/98). It is independent of
-[#97](https://github.com/agnt-gg/agnt/pull/97) and
-[#99](https://github.com/agnt-gg/agnt/pull/99); their changes are not included.
+**Status: research deliverable for upstream review; no production CSS changes
+or migration approval.** [Upstream #118](https://github.com/agnt-gg/agnt/pull/118)
+proposes preserving this document, evidence, probes and research tests as a
+reviewable investigation. Accepting the research is a separate decision from
+approving or implementing a production migration; unresolved migration hazards
+do not require the research record to remain a draft indefinitely.
+
+The architectural question originated in
+[#98](https://github.com/agnt-gg/agnt/pull/98), merged on 2026-09-08. Its shipped
+guard coverage and remaining limits are described below. This research does not
+bundle the implementation changes from
+[#97](https://github.com/agnt-gg/agnt/pull/97) or
+[#99](https://github.com/agnt-gg/agnt/pull/99).
 
 ## Decision so far
 
@@ -24,7 +31,7 @@ colors in an isolated browser fixture. These are separate from syntax support.
 Keep the compatibility surface while discussing whether narrower test coverage
 or a future staged migration is useful. Follow [CONTRIBUTING.md](../../CONTRIBUTING.md):
 agree the shape of architectural work first. Do not fold auth, renderer
-replacement, theme redesign, or unrelated chart fixes into this draft.
+replacement, theme redesign, or unrelated chart fixes into this research PR.
 [DESIGN.md](../../DESIGN.md) remains unchanged; no design-token export or design
 contract change is proposed here.
 
@@ -62,7 +69,9 @@ not the root backend Vitest runner. Root-only CI does not install frontend
 parsers, so this research suite explicitly skips there; it must run with both
 dependency sets installed for meaningful coverage. Other module/parser failures
 remain errors. The historical count assertion also skips with an explicit
-message if a shallow clone lacks the baseline commit.
+message if a shallow clone lacks the baseline commit. These prerequisites are
+not a claim that CI exercised the research tests: verify test discovery and the
+reported pass/skip counts, not merely the status of a report-only job.
 
 The browser probe reports observations as JSON, including browser version,
 source hashes, all comparisons and capture outcomes. **Exit 0 means collection
@@ -86,6 +95,14 @@ explicitly when extending it to other themes.
   comparisons, 10 differences**. Do not conflate those source configurations.
 - Full app E2E, minimum-browser rendering, production build, and full repository
   suites have **not** been verified by this research artifact.
+
+The 2026-09-09 documentation review updates the description of #98 from its
+merged source, not from new inventory or browser runs. All numerical results
+below and the recorded JSON remain observations of `535e136c`, not of current
+upstream. In particular, upstream's later Everforest and theme-face changes are
+not covered by the historical 128-comparison result. Preserve this snapshot;
+record any future current-source measurements separately with their revision
+and source hashes.
 
 ### Inventory
 
@@ -155,11 +172,36 @@ These are behavior differences, not automatically approved bug fixes. Decide
 whether to preserve appearance or make translucency follow the themed hue.
 Test any approved appearance change separately from a syntax migration.
 
-The guard proposed in #98 compares literal pairs declared together in a block.
-It does not establish inherited or runtime equality, and matching co-declared
-pairs must not be described as proof that all pairs agree throughout the app.
-A useful narrower follow-up could document that limit and test selected
-inherited cases without enforcing equality for intentionally distinct roles.
+#### Merged #98 guard: coverage and limits
+
+[#98](https://github.com/agnt-gg/agnt/pull/98) merged on 2026-09-08 as
+`a05de2107ac8c7db3108c3c3577ab6f5fc81e2bc`. Its
+[merged `themeRgbPairs.spec.js`](https://github.com/agnt-gg/agnt/blob/a05de2107ac8c7db3108c3c3577ab6f5fc81e2bc/frontend/src/styles/themeRgbPairs.spec.js)
+is broader than the original proposed co-declared-literal-pair guard:
+
+- It checks root brand colors and the complete resolved default light/dark
+  palette maps for RGB pairs, including primary aliases.
+- It resolves plain `var(--token)` alias chains against bounded palette maps.
+  For custom themes it checks their own RGB declarations, using root and
+  applicable default light/dark values for resolution.
+- It processes palette-bearing selector blocks separately, rather than only
+  the first or last block in a file.
+- Its regression cases exercise actual collector drift in root, dark and
+  custom-theme declarations, a wrong light-primary alias, malformed channels,
+  unresolved/cyclic aliases, malformed hex colors, and a second selector block.
+
+The source explicitly does **not** model arbitrary CSS expressions or the full
+browser cascade. In custom themes it does not require overrides for inherited
+RGB channels when only the corresponding full-color token changes. Thus the
+historical orange/violet differences above are outside that particular guard
+invariant; the merged coverage is not proof of runtime equality, custom-background
+role equivalence, or migration safety throughout the app.
+
+This is a source-based coverage description, not a fresh execution of #98's
+tests. The merged test file was also confirmed unchanged at upstream `5ede8e72`
+on 2026-09-09. Any further guard expansion should target explicitly selected
+inherited cases after deciding their intended appearance, without enforcing
+equality for intentionally distinct background roles.
 
 ### 4. Saved widgets consume the token surface — source evidence
 
@@ -214,7 +256,7 @@ initial support at Chromium 119, Firefox 128, Safari/iOS 16.4. Early Chromium
 and Safari implementations have partial-support caveats, especially channel
 arithmetic; do not generalize this to arbitrary relative-color expressions.
 A conservative full-support policy would start at Chromium 122, Firefox 128,
-and Safari/iOS 18. **Neither policy is adopted by this draft.** Sources checked
+and Safari/iOS 18. **Neither policy is adopted by this research.** Sources checked
 2026-09-07:
 [MDN compatibility data](https://github.com/mdn/browser-compat-data/blob/main/css/types/color.json),
 [Chrome announcement](https://developer.chrome.com/blog/css-relative-color-syntax),
@@ -227,7 +269,8 @@ that every supported client or downstream parser accepts relative colors.
 
 ## Extension plan — proposed, not authorized migration work
 
-1. Ask whether upstream wants expanded coverage or a migration at all.
+1. Ask whether upstream wants further coverage beyond merged #98 or a migration
+   at all.
 2. If expanding the guard, name its invariant precisely; preserve intentionally
    different background roles and separate inherited-color intent decisions.
 3. If migration is wanted, agree browser floors and widget compatibility first.
@@ -246,7 +289,7 @@ coverage, or later generate pairs from an agreed palette source. Generation
 also needs ownership of selector/alias/runtime distinctions; it is not assumed
 necessary or implemented here.
 
-## Continuing this draft
+## Continuing this research
 
 Start with the decision and recorded evidence above, then rerun both tools at
 the new source revision. Record exact source hashes, engine version, which
@@ -256,4 +299,4 @@ separate, agreed commits or follow-up PRs.
 
 This document and executable probes are the portable record. Private session
 lineage is retained separately by the contributor; transcripts and machine-local
-session paths are deliberately not published in this public fork.
+session paths are deliberately not published in the public repository.
