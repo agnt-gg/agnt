@@ -66,9 +66,25 @@ Feature: Two distinct subscription image choices in AGNT
     Then the two-choice release gate fails
     And no image or returned label is claimed as verified selection
 
-  @not_implemented @release
+  @blocked @release
   Scenario: Iteratively edit an explicitly selected prior result
     Given a persisted generated image selected in the real chat UI
     When I request an edit with either supported image policy
     Then the backend resolves an authorized prior-image handle
     And the requested policy is acknowledged and the edited result is displayed
+
+  @implemented @ui @browser
+  Scenario: Explicitly reuse a prior result without automatically sending
+    Given a persisted native image receipt in the current conversation
+    When I open Use a previous image and select its entry
+    Then one bounded PNG media request loads the selected file
+    And the file appears in the composer attachment chips
+    And no chat or generation request is sent
+    And switching conversation removes that reference but preserves ordinary attachments
+
+  @implemented @safety
+  Scenario: Cancel a pending reference load without leaking into another conversation
+    Given a reference download is pending
+    When the picker closes, unmounts, or its conversation scope changes
+    Then the request is aborted and late results cannot attach
+    And mismatched message collections offer no image choice

@@ -5,6 +5,7 @@
     screenId="ChatScreen"
     channel-key="orchestrator:default"
     :conversation-id="activeConversationIdForSelector"
+    :image-reference-collection="imageReferenceCollection"
     :useTutorialHook="useTutorial"
     :terminalLines="terminalLines"
     :disableInputInitially="!hasConnectedAIProvider"
@@ -559,6 +560,11 @@ export default {
       }
     };
 
+    const imageReferenceCollection = computed(() => {
+      const scopeKey = store.state.chat.activeConversationId || '';
+      const slot = store.state.chat.conversations?.[scopeKey];
+      return { scopeKey, messages: slot?.agentId ? [] : (slot?.messages || []) };
+    });
     // Active conversation id for the provider popover — scoped mode needs a
     // key even before the first message, so fall back to the local temp id.
     const activeConversationIdForSelector = computed(
@@ -2839,6 +2845,7 @@ export default {
       toggleMonitoringPanel,
       hasConnectedAIProvider,
       activeConversationIdForSelector,
+      imageReferenceCollection,
       imageCache,
       dataCache,
       bulkLoading,
