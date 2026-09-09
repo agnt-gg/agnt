@@ -1112,6 +1112,7 @@ export {
   truncateContent,
   manageContext,
   manageToolOutput,
+  groupMessageUnits,
   extractRealPromptTokens,
   updateEstimateCalibration,
   computeResidualDrift,

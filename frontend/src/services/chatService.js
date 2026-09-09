@@ -7,6 +7,7 @@
 
 import { API_CONFIG } from '@/tt.config.js';
 import { getClientId } from './clientId.js';
+import { foldHistorySource } from './conversationCompaction.js';
 
 const ENDPOINTS = {
   orchestrator: '/orchestrator/chat',
@@ -335,7 +336,9 @@ function parseSseBlock(block) {
  * that every backend chat handler expects.
  */
 export function toChatHistory(messages) {
-  return (messages || [])
+  // A compressed conversation sends its summary in place of the folded
+  // history. Same fold as the main chat's buildChatHistory.
+  return foldHistorySource(messages || [])
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .map((m) => ({ role: m.role, content: m.content }));
 }

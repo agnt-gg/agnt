@@ -54,6 +54,70 @@
         </button>
       </div>
 
+      <!-- COMPRESS — the one action this panel offers. Models get sloppy well
+           before the window is full; this folds the history into a summary the
+           model reads instead. The row states the price before it is paid and
+           the result after, and never hides the messages it folded. -->
+      <div v-if="compaction" class="compress-row" :class="{ armed: compressArmed, done: !!compaction.active && !compressArmed }">
+        <template v-if="compaction.inFlight">
+          <span class="compress-copy">
+            <span class="compress-spinner"></span>
+            Distilling {{ formatNumber(compaction.messagesTokens) }} tokens of history&hellip;
+          </span>
+        </template>
+
+        <template v-else-if="compressArmed">
+          <span class="compress-copy">
+            <b>Fold {{ compaction.foldableCount }} messages</b> into a summary &middot;
+            {{ formatNumber(compaction.messagesTokens) }} &rarr; ~{{ formatNumber(compaction.estimatedAfterTokens) }} tokens.
+            <template v-if="compressCost != null">
+              Costs about <b class="warn">{{ formatUsd(compressCost) }}</b> once
+              <template v-if="compressTurnSaving > 0">, then every turn is ~<b class="good">{{ formatUsd(compressTurnSaving) }}</b> cheaper</template>.
+            </template>
+            The messages stay on screen, folded. Undo any time.
+          </span>
+          <span class="compress-actions">
+            <button type="button" class="cbtn ghost" @click="compressArmed = false">Cancel</button>
+            <button type="button" class="cbtn primary" @click="confirmCompress">
+              <i class="fas fa-compress-alt"></i> Compress
+            </button>
+          </span>
+        </template>
+
+        <template v-else>
+          <span class="compress-copy">
+            <template v-if="compaction.active">
+              <b class="good">Compressed</b> {{ compactedAgo }} &middot;
+              {{ formatNumber(compaction.active.tokensBefore) }} &rarr; {{ formatNumber(compaction.active.tokensAfter) }} tokens
+              <template v-if="compaction.active.estimatedCost != null"> &middot; {{ formatUsd(compaction.active.estimatedCost) }}</template>.
+              The model now reads the summary above the fold.
+            </template>
+            <template v-else-if="compaction.error">
+              <b class="danger">Compression failed.</b> {{ compaction.error }}
+            </template>
+            <template v-else-if="utilization >= 50">
+              <b class="warn">Past half the window.</b> Models get sloppy up here &mdash; fold the history into a summary?
+            </template>
+            <template v-else>
+              Fold older messages into a summary the model reads instead of the full history.
+            </template>
+          </span>
+          <span class="compress-actions">
+            <button v-if="compaction.active" type="button" class="cbtn ghost" @click="$emit('undo-compaction')">Undo</button>
+            <button
+              type="button"
+              class="cbtn primary"
+              :class="{ nudge: utilization >= 50 && !compaction.active }"
+              :disabled="!compaction.canCompress"
+              v-tooltip="compaction.canCompress ? null : compaction.disabledReason"
+              @click="compressArmed = true"
+            >
+              <i class="fas fa-compress-alt"></i> {{ compaction.active ? 'Compress again' : 'Compress' }}
+            </button>
+          </span>
+        </template>
+      </div>
+
       <!-- L2 — the drawer. Wrapping flex so blocks grow into the row instead of
            leaving a gutter at any panel width. -->
       <div v-if="openTile" class="tiles-drawer">
@@ -300,11 +364,56 @@ export default {
     lastCacheActivityAt: { type: String, default: null },
     /** The provider's cache window, supplied by the backend. Null = no claim. */
     cacheTtlMs: { type: Number, default: null },
+    /**
+     * Compress state, owned by Chat.vue:
+     * { canCompress, disabledReason, foldableCount, messagesTokens,
+     *   estimatedAfterTokens, inFlight, error,
+     *   active: { tokensBefore, tokensAfter, estimatedCost, timestamp } | null }
+     * Null hides the row entirely (surfaces without a conversation).
+     */
+    compaction: { type: Object, default: null },
   },
-  emits: ['toggle'],
-  setup(props) {
+  emits: ['toggle', 'compress', 'undo-compaction'],
+  setup(props, { emit }) {
     const openTile = ref(null);
     const selectedRound = ref(0);
+
+    /* ── compress ── */
+    // Two clicks on purpose: the first shows the price, the second pays it.
+    const compressArmed = ref(false);
+    const confirmCompress = () => { compressArmed.value = false; emit('compress'); };
+    // A turn starting, a result landing or a failure all disarm the confirm.
+    watch(() => [props.compaction?.inFlight, props.compaction?.active, props.compaction?.canCompress], () => {
+      if (!props.compaction?.canCompress) compressArmed.value = false;
+    });
+
+    // Priced from the same rate the Every-turn tile uses. Output is a guess:
+    // ~2.5k summary tokens at the usual ~5× input rate — small next to the
+    // history read, and the label says "about".
+    const COMPRESS_OUTPUT_TOKENS = 2500;
+    const COMPRESS_OUTPUT_RATE_MULTIPLIER = 5;
+    const compressCost = computed(() => {
+      const rate = props.manifest?.economics?.rate;
+      const before = props.compaction?.messagesTokens || 0;
+      if (rate == null || before <= 0) return null;
+      return before * rate + COMPRESS_OUTPUT_TOKENS * rate * COMPRESS_OUTPUT_RATE_MULTIPLIER;
+    });
+    const compressTurnSaving = computed(() => {
+      const rate = props.manifest?.economics?.rate;
+      const before = props.compaction?.messagesTokens || 0;
+      const after = props.compaction?.estimatedAfterTokens || 0;
+      if (rate == null || before <= after) return 0;
+      return (before - after) * rate;
+    });
+    const compactedAgo = computed(() => {
+      const ts = props.compaction?.active?.timestamp;
+      if (!ts) return '';
+      const ms = Math.max(0, now.value - ts);
+      if (ms < 60_000) return 'just now';
+      if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
+      if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
+      return `${Math.round(ms / 86_400_000)}d ago`;
+    });
 
     // A cache deadline that only updates on the next turn is useless — the
     // whole point is to see it running out while deciding whether to send.
@@ -708,6 +817,7 @@ export default {
 
     return {
       openTile, selectTile, selectedRound, pinRound,
+      compressArmed, confirmCompress, compressCost, compressTurnSaving, compactedAgo,
       breakdown, hasBreakdown, currentTokens, tokenLimit,
       utilization, utilizationClass,
       systemPct, toolsPct, messagesPct, outputPct,
@@ -921,6 +1031,120 @@ export default {
   font-size: 9.5px;
   color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
   margin-top: auto;
+}
+
+/* ── compress row ── */
+.compress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--color-darker-1);
+  border-bottom: 1px solid var(--terminal-border-color);
+  transition: background 0.15s ease;
+}
+
+.compress-row.armed {
+  background: rgba(var(--blue-rgb), 0.07);
+  box-shadow: inset 2px 0 0 var(--color-blue);
+}
+
+.compress-row.done {
+  box-shadow: inset 2px 0 0 var(--color-green);
+}
+
+.compress-copy {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+
+.compress-copy b { color: var(--color-text); font-weight: 600; }
+.compress-copy b.good { color: var(--color-green); }
+.compress-copy b.warn { color: var(--color-orange, #ff9500); }
+.compress-copy b.danger { color: var(--pink, #e53d8f); }
+
+.compress-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex: none;
+}
+
+.cbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.cbtn i { font-size: 9.5px; }
+
+.cbtn.primary {
+  background: rgba(var(--blue-rgb), 0.16);
+  border-color: rgba(var(--blue-rgb), 0.45);
+  color: var(--color-blue);
+}
+
+.cbtn.primary:hover:not(:disabled) {
+  background: rgba(var(--blue-rgb), 0.28);
+  border-color: var(--color-blue);
+}
+
+/* Past half the window the button asks for attention without shouting. */
+.cbtn.primary.nudge {
+  background: rgba(255, 149, 0, 0.14);
+  border-color: rgba(255, 149, 0, 0.5);
+  color: var(--color-orange, #ff9500);
+}
+
+.cbtn.primary.nudge:hover:not(:disabled) {
+  background: rgba(255, 149, 0, 0.26);
+  border-color: var(--color-orange, #ff9500);
+}
+
+.cbtn.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
+}
+
+.cbtn.ghost:hover { border-color: rgba(255, 255, 255, 0.3); color: var(--color-text); }
+
+.cbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.cbtn:focus-visible { outline: 1px solid var(--color-blue); outline-offset: 1px; }
+
+.compress-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(var(--blue-rgb), 0.25);
+  border-top-color: var(--color-blue);
+  animation: compress-spin 0.8s linear infinite;
+  margin-right: 4px;
+  flex: none;
+}
+
+@keyframes compress-spin { to { transform: rotate(360deg); } }
+
+@container (max-width: 420px) {
+  .compress-row { flex-direction: column; align-items: stretch; }
+  .compress-actions { justify-content: flex-end; }
 }
 
 /* ── L2 drawer ── */

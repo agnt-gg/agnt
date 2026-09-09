@@ -70,6 +70,7 @@ export const ORIGIN_LABELS = Object.freeze({
   workflow_node: 'Workflow runs',
   insight: 'Insights',
   system: 'System',
+  compaction: 'Chat compression',
 });
 
 /**

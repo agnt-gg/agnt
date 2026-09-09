@@ -14,6 +14,15 @@ import { healStaleToolCalls, settleOpenToolCalls } from '@/utils/toolCallSettlem
 import { dispatchGlobalFrontendEvent } from '@/services/globalFrontendEvents.js';
 import { getClientId, isOwnAnnouncement } from '@/services/clientId.js';
 import { ANNIE_ID, ANNIE_NAME } from '@/utils/agentAvatar.js';
+import {
+  foldHistorySource,
+  chooseFoldIndex,
+  activeCompactionIndex,
+  createCompactionMessage,
+  estimateTokens as estimateCompactionTokens,
+  estimateMessagesTokens as estimateUiMessagesTokens,
+  requestCompaction,
+} from '@/services/conversationCompaction.js';
 
 /**
  * Throttle for mid-stream autosaves, keyed by conversation id.
@@ -215,7 +224,10 @@ export function buildChatHistory(messages, provider = null, viewer = null, optio
   const assumeOwnAssistant = options.assumeOwnAssistant === true;
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const preserveReasoningContent = new Set(['deepseek', 'kimi', 'kimi-code', 'zai']).has(normalizedProvider);
-  const validMessages = messages.filter(
+  // A compressed conversation sends its summary in place of everything above
+  // the fold marker (conversationCompaction.js). The screen keeps every
+  // message; the wire gets the summary plus the live tail.
+  const validMessages = foldHistorySource(messages).filter(
     (msg) => msg && msg.role && (msg.role === 'user' || msg.role === 'assistant')
   );
 
@@ -426,6 +438,10 @@ function createConversationState(conversationId) {
     floorQueue: [],
     floorTurnsUsed: 0,
     lastFloorAgentId: null,
+    // Context & Cost → Compress. One distillation in flight per conversation;
+    // the last failure is kept so the panel can show why, not just that.
+    isCompacting: false,
+    compactionError: null,
   };
 }
 
@@ -1203,6 +1219,30 @@ export default {
       if (!conv) return;
       const idx = conv.messages.findIndex(m => m.id === messageId);
       if (idx !== -1) conv.messages.splice(idx, 1);
+    },
+
+    /** Insert a message at an index (the compaction fold marker). */
+    SCOPED_INSERT_MESSAGE_AT(state, { conversationId, index, message }) {
+      const conv = state.conversations[conversationId];
+      if (!conv || !message) return;
+      const at = Math.max(0, Math.min(conv.messages.length, Number(index) || 0));
+      conv.messages.splice(at, 0, message);
+      if (state.activeConversationId === conversationId) state.messages = conv.messages;
+    },
+
+    /** Replace a message's text in place (editing a compaction summary). */
+    SCOPED_SET_MESSAGE_CONTENT(state, { conversationId, messageId, content }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      const message = conv.messages.find((m) => m.id === messageId);
+      if (message) message.content = typeof content === 'string' ? content : '';
+    },
+
+    SCOPED_SET_COMPACTING(state, { conversationId, value, error = null }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      conv.isCompacting = !!value;
+      conv.compactionError = error;
     },
 
     SCOPED_SET_ABORT_CONTROLLER(state, { conversationId, controller }) {
@@ -2541,6 +2581,108 @@ export default {
         `[Chat] Restored ${stored.messages.length} stored messages for ${conversationId}`
         + `${unsaved.length ? ` and kept ${unsaved.length} unsaved` : ''}.`
       );
+    },
+
+    /**
+     * Context & Cost → Compress: distil everything above the fold into one
+     * summary and insert the fold marker. Nothing is deleted; the screen keeps
+     * every message and the next turn sends summary + tail.
+     *
+     * `provider`/`model` are the caller's (global) selection; the per-
+     * conversation override wins, exactly as it does for a send, so the
+     * distiller is the model the conversation is actually running on.
+     *
+     * @returns {Promise<{ok:boolean, reason?:string, error?:string, marker?:object}>}
+     */
+    async compressConversation({ commit, state, dispatch }, { conversationId, provider, model, tokensBefore = null, keepTail } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      const conv = convId ? state.conversations[convId] : null;
+      if (!conv) return { ok: false, reason: 'no_conversation' };
+      if (conv.isStreaming) return { ok: false, reason: 'streaming' };
+      if (conv.isCompacting) return { ok: false, reason: 'in_flight' };
+
+      const foldIndex = chooseFoldIndex(conv.messages, keepTail ? { keepTail } : undefined);
+      if (foldIndex === -1) return { ok: false, reason: 'too_short' };
+
+      const convAi = state.aiByConv[convId] || null;
+      const useProvider = convAi?.provider && convAi?.model ? convAi.provider : provider;
+      const useModel = convAi?.provider && convAi?.model ? convAi.model : model;
+      if (!useProvider || !useModel) return { ok: false, reason: 'no_model' };
+
+      // The distiller reads what the model would have read: the wire history
+      // of the folded slice, which already honours any earlier fold.
+      const foldable = conv.messages.slice(0, foldIndex);
+      const tail = conv.messages.slice(foldIndex);
+      const wire = buildChatHistory(foldable, useProvider, null);
+      if (wire.length === 0) return { ok: false, reason: 'too_short' };
+      const foldedCount = foldable.filter((m) => m.role === 'user' || m.role === 'assistant').length;
+
+      commit('SCOPED_SET_COMPACTING', { conversationId: convId, value: true, error: null });
+      try {
+        const serverConvId = conv.conversationId && !String(conv.conversationId).startsWith('temp-') ? conv.conversationId : null;
+        const result = await requestCompaction({
+          conversationId: serverConvId,
+          messages: wire,
+          provider: useProvider,
+          model: useModel,
+        });
+
+        const before = Number(tokensBefore) > 0 ? Number(tokensBefore) : estimateUiMessagesTokens(foldable) + estimateUiMessagesTokens(tail);
+        const after = estimateCompactionTokens(result.summary) + estimateUiMessagesTokens(tail);
+        const marker = createCompactionMessage({
+          summary: result.summary,
+          foldedCount,
+          tokensBefore: before,
+          tokensAfter: after,
+          estimatedCost: result.estimatedCost,
+          provider: result.provider || useProvider,
+          model: result.model || useModel,
+          executionId: result.executionId || null,
+          tokenUsage: result.tokenUsage || null,
+        });
+
+        // The slot may have moved on while the request was out (a floor pass,
+        // a reattach). Re-derive the index against the CURRENT list so the
+        // marker lands on the same boundary it was computed for.
+        const liveConv = state.conversations[convId];
+        const anchor = tail[0];
+        const insertAt = anchor ? liveConv.messages.findIndex((m) => m.id === anchor.id) : liveConv.messages.length;
+        commit('SCOPED_INSERT_MESSAGE_AT', {
+          conversationId: convId,
+          index: insertAt === -1 ? liveConv.messages.length : insertAt,
+          message: marker,
+        });
+        commit('SCOPED_SET_COMPACTING', { conversationId: convId, value: false, error: null });
+        dispatch('autosaveConversation', { debounce: false, conversationId: convId });
+        return { ok: true, marker, result };
+      } catch (e) {
+        const error = e?.message || 'Compression failed';
+        console.error('[Chat] Compression failed:', error);
+        commit('SCOPED_SET_COMPACTING', { conversationId: convId, value: false, error });
+        return { ok: false, reason: 'failed', error };
+      }
+    },
+
+    /** Remove the fold marker in force; the full history is sent again. */
+    async undoCompaction({ commit, state, dispatch }, { conversationId } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      const conv = convId ? state.conversations[convId] : null;
+      if (!conv) return false;
+      const idx = activeCompactionIndex(conv.messages);
+      if (idx === -1) return false;
+      commit('SCOPED_REMOVE_MESSAGE', { conversationId: convId, messageId: conv.messages[idx].id });
+      commit('SCOPED_SET_COMPACTING', { conversationId: convId, value: false, error: null });
+      dispatch('autosaveConversation', { debounce: false, conversationId: convId });
+      return true;
+    },
+
+    /** The summary is the model's memory; the user may correct it in place. */
+    async updateCompactionSummary({ commit, state, dispatch }, { conversationId, messageId, content } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId || !messageId) return false;
+      commit('SCOPED_SET_MESSAGE_CONTENT', { conversationId: convId, messageId, content });
+      dispatch('autosaveConversation', { debounce: true, conversationId: convId });
+      return true;
     },
 
     /**

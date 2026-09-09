@@ -62,6 +62,10 @@ export const ORIGINS = Object.freeze([
   'workflow_node',
   'insight',
   'system',
+  // User-triggered history distillation (POST /orchestrator/compress). One
+  // full-price read of the transcript, deliberately spent so every later turn
+  // re-sends a summary instead of the whole history.
+  'compaction',
 ]);
 
 class LlmCallModel {

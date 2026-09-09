@@ -46,7 +46,10 @@
             :lastTurnCost="lastEstimatedCost"
             :lastCacheActivityAt="lastCacheActivityAt"
             :cacheTtlMs="cacheTtlMs"
+            :compaction="compactionState"
             @toggle="toggleMonitoringPanel"
+            @compress="handleCompress"
+            @undo-compaction="handleUndoCompaction"
           >
             <template #cost>
               <ContextMonitor
@@ -180,9 +183,22 @@
                     </div>
                   </div>
 
+                  <!-- The fold line of a compressed conversation. Above it the
+                       originals (hidden unless expanded); the card itself is
+                       what the model reads in their place. -->
+                  <CompactionCard
+                    v-else-if="message.role === 'compaction'"
+                    :message="message"
+                    :show-folded="showFoldedMessages"
+                    @toggle-folded="toggleFoldedMessages"
+                    @undo="handleUndoCompaction"
+                    @update-summary="(content) => handleUpdateCompactionSummary(message, content)"
+                  />
+
                   <MessageItem
                     v-else
                     :message="message"
+                    :class="{ 'folded-original': isFoldedOriginal(message) }"
                     :status="getMessageStatus(message)"
                     :runningTools="getRunningToolsForMessage(message)"
                     :imageCache="imageCache"
@@ -250,6 +266,13 @@ import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ContextManifest from './components/ContextManifest.vue';
 import ContextTiles from './components/ContextTiles.vue';
+import CompactionCard from './components/CompactionCard.vue';
+import {
+  activeCompactionIndex,
+  chooseFoldIndex,
+  estimateTokens as estimateCompactionTokens,
+  estimateMessagesTokens as estimateUiMessagesTokens,
+} from '@/services/conversationCompaction.js';
 import { loadContextStatus, saveContextStatus } from '@/services/contextStatusCache.js';
 import { hasContextActivity } from '@/services/contextActivity.js';
 // The ONE place raw estimates become displayed tokens. Applied on ingest so no
@@ -277,6 +300,7 @@ export default {
     QuickActions,
     ChatActions,
     ContextMonitor,
+    CompactionCard,
     ContextManifest,
     ContextTiles,
     SystemHealthPanel,
@@ -328,11 +352,30 @@ export default {
     // Data cache from Vuex store (for DATA_REF resolution)
     const dataCache = computed(() => store.state.chat.dataCache);
 
+    // ---- Compression fold --------------------------------------------------
+    // Messages above the compaction marker are summarised, not sent. They stay
+    // in the store and are shown on demand, dimmed, so what is on screen never
+    // silently differs from what the model reads.
+    const showFoldedMessages = ref(false);
+    const toggleFoldedMessages = () => { showFoldedMessages.value = !showFoldedMessages.value; };
+    const foldIndex = computed(() => activeCompactionIndex(messagesFromStore.value || []));
+    const isFoldedOriginal = (message) => {
+      if (foldIndex.value === -1) return false;
+      const idx = (messagesFromStore.value || []).indexOf(message);
+      return idx !== -1 && idx < foldIndex.value;
+    };
+    watch(() => store.state.chat.activeConversationId, () => { showFoldedMessages.value = false; });
+
     // Computed property to ensure all messages have a valid key
     const displayMessages = computed(() => {
       const allMsgs = messagesFromStore.value || [];
-      const validMsgs = allMsgs.filter((msg) => msg && typeof msg.id !== 'undefined' && msg.id !== null);
-      if (validMsgs.length < allMsgs.length) {
+      const fold = foldIndex.value;
+      const validMsgs = allMsgs.filter((msg, idx) => {
+        if (!msg || typeof msg.id === 'undefined' || msg.id === null) return false;
+        if (fold !== -1 && idx < fold && !showFoldedMessages.value) return false;
+        return true;
+      });
+      if (allMsgs.some((msg) => !msg || typeof msg.id === 'undefined' || msg.id === null)) {
         console.warn('[ChatScreen] Some messages were filtered out due to missing or invalid IDs.');
       }
       // Return the store objects with STABLE identity — no per-recompute
@@ -704,6 +747,100 @@ export default {
     const lastManifest = computed(() => activeMonitoring.value.lastManifest);
     const lastCacheActivityAt = computed(() => activeMonitoring.value.lastCacheActivityAt);
     const cacheTtlMs = computed(() => activeMonitoring.value.cacheTtlMs);
+
+    // ---- Compress (Context & Cost) ------------------------------------------
+    // Everything the panel's Compress row needs to state the price before it is
+    // paid and the result after. `messagesTokens` is the backend's calibrated
+    // count from the last turn; the after-estimate is a chars/4 guess that the
+    // next turn's context_status replaces.
+    const activeConversationSlot = computed(() => {
+      const id = store.state.chat.activeConversationId;
+      return id ? store.state.chat.conversations[id] || null : null;
+    });
+    const compactionState = computed(() => {
+      const conv = activeConversationSlot.value;
+      const msgs = messagesFromStore.value || [];
+      if (!conv || conv.agentId) return null;
+      const fold = chooseFoldIndex(msgs);
+      const foldable = fold === -1 ? [] : msgs.slice(0, fold);
+      const tail = fold === -1 ? msgs : msgs.slice(fold);
+      const foldableCount = foldable.filter((m) => m.role === 'user' || m.role === 'assistant').length;
+      const reportedMessages = contextStatus.value?.breakdown?.messagesTokens || 0;
+      const messagesTokens = reportedMessages > 0 ? reportedMessages : estimateUiMessagesTokens(msgs);
+      const estimatedAfterTokens = 2500 + estimateUiMessagesTokens(tail);
+      const streaming = !!conv.isStreaming || isProcessing.value;
+      const marker = foldIndex.value === -1 ? null : msgs[foldIndex.value];
+
+      let disabledReason = null;
+      if (streaming) disabledReason = 'Wait for the current turn to finish';
+      else if (fold === -1) disabledReason = 'Not enough history to fold yet';
+      else if (!store.state.aiProvider?.selectedProvider || !store.state.aiProvider?.selectedModel) disabledReason = 'Choose a model first';
+
+      return {
+        canCompress: !disabledReason && !conv.isCompacting,
+        disabledReason,
+        foldableCount,
+        messagesTokens,
+        estimatedAfterTokens,
+        inFlight: !!conv.isCompacting,
+        error: conv.compactionError || null,
+        active: marker ? {
+          tokensBefore: marker.compaction?.tokensBefore || 0,
+          tokensAfter: marker.compaction?.tokensAfter || estimateCompactionTokens(marker.content),
+          estimatedCost: marker.compaction?.estimatedCost ?? null,
+          timestamp: marker.timestamp || null,
+          foldedCount: marker.compaction?.foldedCount || 0,
+          model: marker.compaction?.model || null,
+        } : null,
+      };
+    });
+
+    const handleCompress = async () => {
+      const convId = store.state.chat.activeConversationId;
+      if (!convId) return;
+      const result = await store.dispatch('chat/compressConversation', {
+        conversationId: convId,
+        provider: store.state.aiProvider?.selectedProvider,
+        model: store.state.aiProvider?.selectedModel,
+        tokensBefore: contextStatus.value?.breakdown?.messagesTokens || null,
+      });
+      if (result?.ok) {
+        showFoldedMessages.value = false;
+        const ms = monitoringStates[convId];
+        if (ms) {
+          const c = result.marker.compaction;
+          addActivityTo(ms, {
+            type: 'system',
+            text: `Compressed ${c.foldedCount} messages: ${c.tokensBefore.toLocaleString()} → ~${c.tokensAfter.toLocaleString()} tokens`
+              + (c.estimatedCost != null ? ` · $${c.estimatedCost < 0.01 ? c.estimatedCost.toFixed(6) : c.estimatedCost.toFixed(4)}` : ''),
+          });
+          // The distill call is real spend on this conversation; count it where
+          // every other call is counted so the totals stay honest.
+          if (c.tokenUsage?.totalTokens > 0) {
+            ms.totalTokenUsage.inputTokens += c.tokenUsage.inputTokens || 0;
+            ms.totalTokenUsage.outputTokens += c.tokenUsage.outputTokens || 0;
+            ms.totalTokenUsage.totalTokens += c.tokenUsage.totalTokens || 0;
+            ms.executionsCount += 1;
+          }
+          if (c.estimatedCost != null) ms.totalCost += Number(c.estimatedCost) || 0;
+        }
+        await nextTick();
+        scrollToBottom();
+      }
+    };
+
+    const handleUndoCompaction = () => {
+      const convId = store.state.chat.activeConversationId;
+      if (!convId) return;
+      store.dispatch('chat/undoCompaction', { conversationId: convId });
+      showFoldedMessages.value = false;
+    };
+
+    const handleUpdateCompactionSummary = (message, content) => {
+      const convId = store.state.chat.activeConversationId;
+      if (!convId || !message?.id) return;
+      store.dispatch('chat/updateCompactionSummary', { conversationId: convId, messageId: message.id, content });
+    };
     const modelMix = computed(() => Object.values(activeMonitoring.value.modelMix || {}).sort((a, b) => b.cost - a.cost));
     const subscriptionBased = computed(() => activeMonitoring.value.subscriptionBased);
     const executionsCount = computed(() => activeMonitoring.value.executionsCount);
@@ -2807,6 +2944,13 @@ export default {
       lastManifest,
       lastCacheActivityAt,
       cacheTtlMs,
+      compactionState,
+      handleCompress,
+      handleUndoCompaction,
+      handleUpdateCompactionSummary,
+      showFoldedMessages,
+      toggleFoldedMessages,
+      isFoldedOriginal,
       modelMix,
       subscriptionBased,
       executionsCount,
@@ -2861,6 +3005,18 @@ export default {
 </script>
 
 <style scoped>
+/* Originals above a compression fold: still here, no longer sent. Dimmed so
+   the eye reads them as archive, not as live context. */
+.message-flow :deep(.message-wrapper.folded-original) {
+  opacity: 0.55;
+  filter: saturate(0.6);
+  transition: opacity 0.15s ease;
+}
+
+.message-flow :deep(.message-wrapper.folded-original:hover) {
+  opacity: 0.85;
+}
+
 .show-earlier-row {
   display: flex;
   justify-content: center;

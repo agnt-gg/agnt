@@ -70,6 +70,9 @@ const ORIGIN_STAKE = Object.freeze({
   goal: 'normal',
   artifact: 'normal',
   chat: 'normal',
+  // The distilled summary becomes the model's only memory of the folded
+  // history; a cheap-model hallucination here corrupts every later turn.
+  compaction: 'high',
 });
 
 /**
@@ -95,6 +98,7 @@ const ORIGIN_VERIFIABILITY = Object.freeze({
   goal: 'subjective',
   artifact: 'subjective',
   chat: 'subjective',
+  compaction: 'subjective',
 });
 
 /**
