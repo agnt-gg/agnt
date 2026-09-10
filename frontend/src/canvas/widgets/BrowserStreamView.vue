@@ -127,7 +127,7 @@ const authHeaders = () => ({
  */
 function ackFrame(payload) {
   if (socket?.connected && authenticated && payload.frameId != null) {
-    socket.emit('browser:ack', { instanceId: payload.instanceId, frameId: payload.frameId, streamId: payload.streamId });
+    socket.emit('browser:ack', { instanceId: payload.instanceId, viewerId, frameId: payload.frameId, streamId: payload.streamId });
   }
 }
 
@@ -161,7 +161,7 @@ function paint(payload) {
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Canvas rendering is unavailable.');
       if (payload.source === 'snapshot' && seenLiveFrame) { complete(); return; }
-      if (image.width > 1280 || image.height > 800) throw new Error('Browser frame exceeds the size limit.');
+      if (!Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0 || image.width > 1280 || image.height > 800) throw new Error('Browser frame exceeds the size limit.');
       viewportSize = payload.metadata;
       canvas.width = image.width; canvas.height = image.height;
       context.drawImage(image, 0, 0);

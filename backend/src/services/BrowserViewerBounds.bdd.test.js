@@ -29,6 +29,18 @@ function socket(userId='u', id='sock') {
   attachBrowserViewerSocket(s);return s;
 }
 describe('Given bounded backend observation',()=>{
+ it('Given no owned viewer lease, When a same-user socket ACKs, Then capture is not advanced',async()=>{
+  const lease=await acquire();const s=socket();
+  [...server.clients][0].send(JSON.stringify({method:'Page.screencastFrame',params:{data:'IMG',sessionId:77}}));
+  await new Promise(r=>setTimeout(r,20));
+  s.receive('browser:ack',{instanceId:'i',streamId:lease.streamId,frameId:77});
+  await new Promise(r=>setTimeout(r,30));expect(methods).not.toContain('Page.screencastFrameAck');
+ });
+ it('Given untrusted socket payloads, When null is sent, Then handlers do not throw or reject',async()=>{
+  const s=socket();
+  for(const event of ['browser:painted','browser:unwatching','browser:renew','browser:ack'])expect(()=>s.receive(event,null,()=>{})).not.toThrow();
+  await expect(s.receive('browser:watching',null,()=>{})).resolves.toBeUndefined();
+ });
  it('When five different streams capture concurrently, Then at most four captures execute',async()=>{
   holdCapture=true; const leases=await Promise.all(Array.from({length:5},(_,n)=>acquireViewer({userId:'u',instanceId:'i'+n,cdpUrl:url})));
   const work=leases.slice(0,4).map((_,n)=>captureViewerFrame({userId:'u',instanceId:'i'+n}).catch(e=>e));
@@ -37,13 +49,13 @@ describe('Given bounded backend observation',()=>{
   for(const c of server.clients)c.terminate();await Promise.all(work);
  });
  it('When an old frame ID is reused by a replacement stream, Then the old ACK cannot advance it',async()=>{
-  const old=await acquire();_stopAll();const fresh=await acquire();const s=socket();
+  const old=await acquire();_stopAll();const fresh=await acquire();const s=socket();await s.receive('browser:watching',{instanceId:'i',viewerId:fresh.viewerId});
   const c=[...server.clients].find(c=>c.readyState===1);
   c.send(JSON.stringify({method:'Page.screencastFrame',params:{data:'IMG',sessionId:99}}));
   await new Promise(r=>setTimeout(r,20));
-  s.receive('browser:ack',{instanceId:'i',streamId:old.streamId,frameId:99});
+  s.receive('browser:ack',{instanceId:'i',streamId:old.streamId,viewerId:fresh.viewerId,frameId:99});
   await new Promise(r=>setTimeout(r,20));expect(methods).not.toContain('Page.screencastFrameAck');
-  s.receive('browser:ack',{instanceId:'i',streamId:fresh.streamId,frameId:99});
+  s.receive('browser:ack',{instanceId:'i',streamId:fresh.streamId,viewerId:fresh.viewerId,frameId:99});
   await vi.waitFor(()=>expect(methods).toContain('Page.screencastFrameAck'));
  });
  it('When a frame is broadcast, Then it uses volatile delivery rather than a reliable image queue',async()=>{

@@ -5,23 +5,30 @@ import { acknowledgeFrame, captureViewerFrame, ownsStream } from './BrowserScree
 
 export function attachBrowserViewerSocket(socket) {
   const deliveries = new Map();
-  socket.on('browser:painted', ({instanceId, viewerId, streamId, bootstrapId} = {}) => {
+  // Socket payloads and optional callbacks are untrusted. Normalize before
+  // destructuring so malformed events cannot throw from the server listener.
+  const on = (event, handler) => socket.on(event, (payload, ack) => handler(
+    payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {},
+    typeof ack === 'function' ? ack : undefined,
+  ));
+  on('browser:painted', ({instanceId, viewerId, streamId, bootstrapId} = {}) => {
     const state = deliveries.get(viewerId);
     const request = {userId:socket.userId, socketId:socket.id, instanceId, viewerId};
     if (state && state.streamId === streamId && (!bootstrapId || bootstrapId === state.bootstrapId) && ownsSocketViewer(request)) state.cancel();
   });
-  socket.on('browser:unwatching', ({instanceId, viewerId} = {}) => {
+  on('browser:unwatching', ({instanceId, viewerId} = {}) => {
     const request = {userId:socket.userId, socketId:socket.id, instanceId, viewerId};
     if (ownsSocketViewer(request)) releaseViewer(request);
   });
-  socket.on('browser:renew', ({ instanceId, viewerId } = {}, ack) => {
+  on('browser:renew', ({ instanceId, viewerId } = {}, ack) => {
     if (!socket.userId || !socket.connected) return ack?.({ ok: false });
     ack?.(renewViewer({ userId: socket.userId, instanceId, viewerId, socketId: socket.id }));
   });
-  socket.on('browser:ack', ({ instanceId, frameId, streamId } = {}) => {
-    if (socket.userId && streamId && ownsStream(socket.userId, instanceId, streamId)) acknowledgeFrame(instanceId, frameId, streamId);
+  on('browser:ack', ({ instanceId, viewerId, frameId, streamId } = {}) => {
+    const request = {userId:socket.userId, socketId:socket.id, instanceId, viewerId};
+    if (socket.connected && streamId && ownsSocketViewer(request) && ownsStream(socket.userId, instanceId, streamId)) acknowledgeFrame(instanceId, frameId, streamId);
   });
-  socket.on('browser:watching', async ({ instanceId, viewerId } = {}, ack) => {
+  on('browser:watching', async ({ instanceId, viewerId } = {}, ack) => {
     const request = { userId: socket.userId, instanceId, viewerId, socketId: socket.id };
     if (!socket.userId || !socket.connected) return ack?.({ ok: false, error: 'unauthenticated' });
     const result = registerViewer(request);
