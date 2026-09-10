@@ -35,6 +35,8 @@ class NodeExecutor {
       ExecutionModel.createNodeExecution(this.workflowEngine.currentExecutionId, node.id, inputData)
     );
     let output;
+    let policyLoaded = false;
+    let failureOutput = null;
     let outputScanning = 'report';
     let credentialDecision = 'audit';
     let scanNodeOutput = (value) => value;
@@ -53,6 +55,7 @@ class NodeExecutor {
       credentialDecision = security.resolvePolicyCredentialDecision(effective.policy);
       scanNodeOutput = security.scanOutput;
       sanitizeNodeArguments = security.sanitizeArguments;
+      policyLoaded = true;
     } catch {
       // Security subsystem failures remain fail-open for workflow availability.
     }
@@ -257,8 +260,20 @@ class NodeExecutor {
 
       output = scanNodeOutput(output, node.type, outputScanning, credentialDecision);
 
-      if (output?.error) {
-        throw new Error(output.error);
+      if (output?.error || output?.success === false) {
+        const failureMessage = String(output.error || 'Action reported failure');
+        // Retain only a successfully policy-processed returned envelope. Never
+        // recover payloads attached to thrown exceptions or raw pre-scan values.
+        // Detached snapshot prevents a late child from rewriting the evidence.
+        if (policyLoaded && output && typeof output === 'object' && !Array.isArray(output)) {
+          try {
+            failureOutput = structuredClone({ ...output, success: false, error: failureMessage });
+          } catch {
+            // Non-cloneable diagnostics are unavailable, not permission to save
+            // the original mutable/unscanned object.
+          }
+        }
+        throw new Error(failureMessage);
       }
 
       const endTime = new Date();
@@ -293,17 +308,19 @@ class NodeExecutor {
       const endTime = new Date();
       const executionDuration = endTime - startTime;
 
-      if (executionDuration > 0 && !error.message.includes('Insufficient credits')) {
+      if (!error.message.includes('Insufficient credits')) {
         await dbRunWithRetry(() =>
-          ExecutionModel.updateNodeExecution(this.workflowEngine.currentExecutionId, node.id, 'error', null, error.message, executionDuration)
+          ExecutionModel.updateNodeExecution(this.workflowEngine.currentExecutionId, node.id, 'error', failureOutput, error.message, executionDuration)
         );
       }
 
-      this.workflowEngine.outputs[node.id] = {
+      const errorOutput = failureOutput || {
+        success: false,
         generatedText: null,
         tokenCount: null,
         error: error.message,
       };
+      this.workflowEngine.outputs[node.id] = errorOutput;
       this.workflowEngine.errors[node.id] = error.message;
       // await ExecutionModel.updateNodeExecution(this.workflowEngine.currentExecutionId, node.id, 'error', null, error.message);
 
@@ -312,11 +329,7 @@ class NodeExecutor {
         error: error.message,
       });
 
-      return {
-        generatedText: null,
-        tokenCount: null,
-        error: error.message,
-      };
+      return errorOutput;
     }
   }
   getTriggerConfig(triggerType) {
