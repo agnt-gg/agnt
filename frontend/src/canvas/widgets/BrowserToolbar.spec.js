@@ -70,6 +70,16 @@ describe('Given honest address handling', () => {
 });
 
 describe('BrowserToolbar', () => {
+  it('Given focused address text, When the page changes then focus leaves, Then the actual current URL is shown',async()=>{
+    const w=mount(BrowserToolbar,{props:{url:'https://old.example'}});
+    await w.get('input').trigger('focus');await w.setProps({url:'https://new.example'});
+    await w.get('input').trigger('blur');expect(w.get('input').element.value).toBe('https://new.example');w.unmount();
+  });
+  it('Given busy navigation, When form submit is triggered, Then no duplicate navigation is emitted',async()=>{
+    const w=mount(BrowserToolbar,{props:{url:'https://example.com',busy:true}});
+    await w.get('form').trigger('submit');expect(w.emitted('navigate')).toBeUndefined();w.unmount();
+  });
+
   it('turns a hostname into an HTTPS navigation', async () => {
     const wrapper = mount(BrowserToolbar, { props: { url: 'about:blank' } });
     const input = wrapper.get('input[aria-label="Address"]');
