@@ -1069,7 +1069,7 @@ class GenerateWithAiLlm extends BaseAction {
       };
     } catch (error) {
       console.error('OpenAI image generation error:', error);
-      throw new Error(`OpenAI image generation failed: ${error.message}`);
+      throw Object.assign(new Error(`OpenAI image generation failed: ${error.message}`), {retryable:false,remoteOutcomeUnknown:error.remoteOutcomeUnknown??null,requestId:error.requestId??null,receiptDirectory:error.receiptDirectory??null});
     }
   }
 
@@ -1159,7 +1159,7 @@ class GenerateWithAiLlm extends BaseAction {
       };
     } catch (error) {
       console.error('Gemini image generation error:', error);
-      throw new Error(`Gemini image generation failed: ${error.message}`);
+      throw Object.assign(new Error(`Gemini image generation failed: ${error.message}`), {retryable:false,remoteOutcomeUnknown:error.remoteOutcomeUnknown??null,requestId:error.requestId??null,receiptDirectory:error.receiptDirectory??null});
     }
   }
 
@@ -1219,7 +1219,7 @@ class GenerateWithAiLlm extends BaseAction {
       };
     } catch (error) {
       console.error('Grok image generation error:', error);
-      throw new Error(`Grok image generation failed: ${error.message}`);
+      throw Object.assign(new Error(`Grok image generation failed: ${error.message}`), {retryable:false,remoteOutcomeUnknown:error.remoteOutcomeUnknown??null,requestId:error.requestId??null,receiptDirectory:error.receiptDirectory??null});
     }
   }
 
