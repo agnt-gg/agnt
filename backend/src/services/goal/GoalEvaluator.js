@@ -1,4 +1,4 @@
-import { taskFailureReason, goalEvaluationPasses } from './taskOutcome.js';
+import { taskFailureReason, assessGoalCompletion } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
@@ -64,7 +64,8 @@ class GoalEvaluator {
       const feedback = await this.generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider, model, accumulateUsage);
 
       // Step 5: Determine if goal passed
-      const passed = goalEvaluationPasses({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
+      const completionDecision = assessGoalCompletion({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
+      const passed = completionDecision.passed;
 
       // Calculate estimated cost from token usage
       let resolvedProvider = provider;
@@ -106,6 +107,7 @@ class GoalEvaluator {
       // Step 6: Store evaluation in database
       const evaluationData = {
         scores,
+        completionDecision,
         taskEvaluations: taskEvaluations.map((te) => ({
           taskId: te.taskId,
           taskTitle: te.taskTitle,
@@ -160,6 +162,7 @@ class GoalEvaluator {
 
       return {
         evaluationId,
+        completionDecision,
         goalId,
         passed,
         scores,
@@ -242,7 +245,7 @@ EVALUATION INSTRUCTIONS:
 1. Analyze if the task output contains or demonstrates the expected deliverables
 2. Check if the output meets the quality standards specified
 3. Provide a score from 0-100 based on how well criteria are met
-4. List which specific criteria were met or not met
+4. List applicable required deliverable and quality criteria as Boolean values (true/false). Do not invent requirements. Explain optional suggestions in feedback, not as failed required criteria. Mixed tool failures/successes require explaining whether the failed operation was actually recovered; an unrelated successful call is not recovery.
 5. Provide constructive feedback
 
 Respond with ONLY a valid JSON object (no markdown, no extra text):
@@ -311,7 +314,7 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
       const evaluation = JSON.parse(cleanedResult);
 
       // Validate evaluation structure
-      if (typeof evaluation.score !== 'number' || !evaluation.criteriaMet || !evaluation.feedback) {
+      if (!Number.isFinite(evaluation.score) || evaluation.score < 0 || evaluation.score > 100 || !evaluation.criteriaMet || typeof evaluation.criteriaMet !== 'object' || Array.isArray(evaluation.criteriaMet) || !Object.keys(evaluation.criteriaMet).length || Object.values(evaluation.criteriaMet).some(v=>typeof v !== 'boolean') || typeof evaluation.feedback !== 'string' || !evaluation.feedback.trim()) {
         throw new Error('Invalid evaluation structure');
       }
 
