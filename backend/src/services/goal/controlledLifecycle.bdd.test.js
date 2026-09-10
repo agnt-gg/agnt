@@ -1,4 +1,4 @@
-/** Contract regressions, deliberately RED until lifecycle fencing is repaired.
+/** Contract regressions: original six baseline failures now pass with lifecycle fencing.
  * Actual evaluator/completion/update services and SQLite models are exercised.
  * Model responses and unrelated side services are mocked; no provider traffic.
  * Every race waits at a named barrier, commits its competing SQL write, then
@@ -230,6 +230,73 @@ describe('controlled goal lifecycle boundaries', () => {
     expect.soft(stale.ok && stale.value.success).not.toBe(true);
     expect.soft(current.status).toBe('failed');
     expect.soft(current.output).toBe(JSON.stringify('B correction'));
+  });
+
+  it('L09 task evidence changing away and back still invalidates grading', async () => {
+    const row = await seed(), bar = barrier('grade'); grader(bar);
+    const old = await Task.findOne(row.taskId);
+    const work = tracked(Evaluator.evaluateGoal(row.goalId,row.userId,'automatic','openai','test-model')); await reached(bar,work);
+    await run(other,'UPDATE tasks SET output=? WHERE id=?',['temporary',row.taskId]);
+    await run(other,'UPDATE tasks SET output=? WHERE id=?',[old.output,row.taskId]);
+    bar.release(); const result = await work;
+    expect(result.ok).toBe(false);
+    expect(result.error.code).toBe('STALE_GOAL_EVALUATION');
+    expect((await snapshot(row)).evaluations).toHaveLength(0);
+  });
+
+  it('L10 partial evaluation persistence rolls back parent and status together', async () => {
+    const row = await seed();
+    await run(other,"CREATE TRIGGER reject_eval BEFORE INSERT ON task_evaluations BEGIN SELECT RAISE(ABORT,'injected task evaluation failure'); END");
+    try {
+      const result = await tracked(Evaluator.evaluateGoal(row.goalId,row.userId,'automatic','openai','test-model'));
+      expect(result.ok).toBe(false);
+      const current=await snapshot(row);
+      expect(current.evaluations).toHaveLength(0);expect(current.taskEvaluations).toHaveLength(0);
+      expect(current.goal.status).toBe('executing');
+    } finally {await run(other,'DROP TRIGGER reject_eval');}
+  });
+
+  it('L11 notification failure cannot downgrade committed validation or suppress chat delivery', async () => {
+    const row = await seed(); row.entry.conversationId='fixture-chat';
+    const delivery=vi.spyOn(Orchestrator,'_sendGoalResultsToChat').mockResolvedValue();
+    probe.broadcast.mockImplementation(()=>{throw new Error('notification offline');});
+    await tracked(Orchestrator.completeGoal(row.goalId));
+    expect((await Goal.findOne(row.goalId)).status).toBe('validated');
+    expect(delivery).toHaveBeenCalledOnce();expect(probe.insights).toEqual([row.goalId]);
+  });
+
+  it('L12 pause before the initial completion status write cannot be overwritten', async () => {
+    const row=await seed(),bar=barrier('initial-status');
+    const update=Goal.updateStatus.bind(Goal);
+    vi.spyOn(Goal,'updateStatus').mockImplementationOnce(async(...args)=>{await bar.hold();return update(...args);});
+    const work=tracked(Orchestrator.completeGoal(row.goalId));await reached(bar,work);
+    await Orchestrator.pauseGoal(row.goalId);
+    bar.release();await work;
+    expect((await Goal.findOne(row.goalId)).status).toBe('paused');expect(probe.call).not.toHaveBeenCalled();
+  });
+
+  it('L13 autonomous grading cancelled by pause cannot persist a late result or replan', async () => {
+    const row=await seed(),bar=barrier('grade');grader(bar);
+    vi.spyOn(Orchestrator,'executeGoalTasks').mockResolvedValue();
+    const replan=vi.spyOn(Orchestrator,'_replanFailedTasks').mockImplementation(()=>{throw new Error('Replan forbidden');});
+    const grading=Evaluator.evaluateGoal.bind(Evaluator);let gradingWork;
+    vi.spyOn(Evaluator,'evaluateGoal').mockImplementation((...args)=>{gradingWork=tracked(grading(...args));return gradingWork.then(out=>{if(!out.ok)throw Object.assign(new Error(out.error.message),out.error);return out.value;});});
+    const work=tracked(Orchestrator.executeGoalAutonomous(row.goalId,row.userId,{maxIterations:1,provider:'openai',model:'test-model'}));
+    await reached(bar,work);await Orchestrator.pauseGoal(row.goalId);bar.release();await work;await gradingWork;
+    expect((await Goal.findOne(row.goalId)).status).toBe('paused');expect((await snapshot(row)).evaluations).toHaveLength(0);expect(replan).not.toHaveBeenCalled();
+  });
+
+  it('L14 autonomous run A cannot remove replacement B when its grader is cancelled', async () => {
+    const row=await seed(),bar=barrier('grade');grader(bar);
+    vi.spyOn(Orchestrator,'executeGoalTasks').mockResolvedValue();
+    const grading=Evaluator.evaluateGoal.bind(Evaluator);let gradingWork;
+    vi.spyOn(Evaluator,'evaluateGoal').mockImplementation((...args)=>{gradingWork=tracked(grading(...args));return gradingWork.then(out=>{if(!out.ok)throw Object.assign(new Error(out.error.message),out.error);return out.value;});});
+    const work=tracked(Orchestrator.executeGoalAutonomous(row.goalId,row.userId,{maxIterations:1,provider:'openai',model:'test-model'}));
+    await reached(bar,work);await Orchestrator.pauseGoal(row.goalId);
+    const replacement={...row.entry,abortController:new AbortController(),testGeneration:'B'};
+    Orchestrator.runningGoals.set(row.goalId,replacement);await Goal.updateStatus(row.goalId,'executing');
+    bar.release();await work;await gradingWork;
+    expect((await Goal.findOne(row.goalId)).status).toBe('executing');expect(Orchestrator.runningGoals.get(row.goalId)).toBe(replacement);expect((await snapshot(row)).evaluations).toHaveLength(0);
   });
 
   it('L08 sequential intentional updates still persist and verify (positive control)', async () => {

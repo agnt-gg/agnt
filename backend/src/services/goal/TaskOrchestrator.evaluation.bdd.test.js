@@ -55,7 +55,7 @@ describe('autonomous validation cannot be inferred from task counts',()=>{
   try {
    await TaskOrchestrator.executeGoalAutonomous('g','u',{maxIterations:1,provider:'openai',model:'test'});
    const validated=GoalModel.updateStatus.mock.calls.some(c=>c[1]==='validated');
-   expect(validated).toBe(kind==='positive');
+   expect(validated).toBe(false); // evaluator owns the atomic validation write
    if(kind==='error')expect(replan).not.toHaveBeenCalled();
   } finally {execute.mockRestore();replan.mockRestore();state.mockRestore();TaskOrchestrator.runningGoals.clear();}
  });
@@ -64,10 +64,12 @@ describe('autonomous validation cannot be inferred from task counts',()=>{
 describe('non-autonomous completion never announces success before evaluation',()=>{
  it('Given evaluator unavailable, Then needs_review and never completed/validated',async()=>{
   TaskOrchestrator.runningGoals.set('g',{userId:'u',provider:'openai',model:'test'});
+  GoalModel.findOne.mockResolvedValue({id:'g',user_id:'u',status:'executing',lifecycle_revision:1});
+  GoalModel.updateStatus.mockResolvedValue(1);
   Evaluator.evaluateGoal.mockRejectedValue(Error('evaluator unavailable'));
   await TaskOrchestrator.completeGoal('g');
   expect(GoalModel.updateStatus.mock.calls.some(c=>['completed','validated'].includes(c[1]))).toBe(false);
-  expect(GoalModel.updateStatus).toHaveBeenCalledWith('g','needs_review');
+  expect(GoalModel.updateStatus).toHaveBeenCalledWith('g','needs_review',null,{userId:'u',revision:1});
   expect(TaskOrchestrator.runningGoals.has('g')).toBe(false);
  });
 });

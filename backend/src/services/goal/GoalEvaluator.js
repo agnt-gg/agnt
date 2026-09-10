@@ -1,8 +1,7 @@
+import { commitGoalEvaluation, staleEvaluation } from '../../models/GoalEvaluationCommit.js';
 import { taskFailureReason, assessGoalCompletion } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
-import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
-import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
@@ -26,8 +25,9 @@ class GoalEvaluator {
    * @param {string} model - AI model to use (optional, defaults to user's default)
    * @returns {Promise<Object>} Evaluation results with scores and feedback
    */
-  static async evaluateGoal(goalId, userId, evaluationType = 'automatic', provider = null, model = null) {
+  static async evaluateGoal(goalId, userId, evaluationType = 'automatic', provider = null, model = null, { assertCurrent } = {}) {
     try {
+      assertCurrent?.();
       console.log(`[GoalEvaluator] Starting evaluation for goal ${goalId}`);
 
       // Step 1: Fetch goal and tasks
@@ -36,6 +36,7 @@ class GoalEvaluator {
         throw new Error('Goal not found');
       }
 
+      if (goal.user_id !== userId || goal.deleted_at || ['paused','stopped'].includes(goal.status)) throw staleEvaluation();
       const tasks = await TaskModel.findByGoalId(goalId);
       console.log(`[GoalEvaluator] Evaluating goal "${goal.title}" with ${tasks.length} tasks`);
 
@@ -117,16 +118,7 @@ class GoalEvaluator {
         timestamp: new Date().toISOString(),
       };
 
-      const evaluationId = await GoalEvaluationModel.create(goalId, evaluationType, scores.overall, passed, evaluationData, feedback, 'system', tokenUsage);
-
-      // Step 7: Store individual task evaluations
-      for (const taskEval of taskEvaluations) {
-        await TaskEvaluationModel.create(taskEval.taskId, evaluationId, taskEval.criteriaMet, taskEval.score, taskEval.feedback);
-      }
-
-      // Step 8: Update goal status based on evaluation
-      const newStatus = passed ? 'validated' : 'needs_review';
-      await GoalModel.updateStatus(goalId, newStatus);
+      const {evaluationId,status:newStatus} = await commitGoalEvaluation({goal,userId,evaluationType,scores,passed,evaluationData,feedback,tokenUsage,taskEvaluations,assertCurrent});
 
       console.log(`[GoalEvaluator] Evaluation complete: ${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)`);
 

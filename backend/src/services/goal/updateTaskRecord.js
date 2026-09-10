@@ -15,8 +15,8 @@ export async function updateTaskRecord(args, userId) {
   if (args.progress !== undefined && (!Number.isFinite(args.progress) || args.progress < 0 || args.progress > 100)) throw new Error('Invalid task progress');
   let committed = false;
   try {
-  const changed = await TaskModel.updateStatus(task.id,args.status ?? task.status,args.progress ?? null,null,null,null,args.output ?? null,args.error ?? null);
-  if (changed !== 1) throw Object.assign(new Error('Task update did not persist'), {code:'TASK_NOT_UPDATED'});
+  const changed = await TaskModel.updateStatus(task.id,args.status ?? task.status,args.progress ?? null,null,null,null,args.output ?? null,args.error ?? null,{goalId:goal.id,userId,revision:task.lifecycle_revision});
+  if (changed !== 1) throw Object.assign(new Error('Task update did not persist'), {code:'TASK_NOT_UPDATED',writeState:'not_applied',retryable:false});
   committed = true;
   const after = await TaskModel.findOne(task.id);
   if (!after || after.goal_id !== goal.id || (args.status !== undefined && after.status !== args.status) || (args.progress !== undefined && after.progress !== args.progress)) throw new Error('Task update readback mismatch');

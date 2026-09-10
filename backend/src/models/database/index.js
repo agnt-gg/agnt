@@ -1,3 +1,4 @@
+import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -2256,7 +2257,8 @@ const dbReady = skipSchemaInit
     // with `no such column: channel_key` on every upgrading install.
     return createIndexes();
   })
-  .then(() => {
+  .then(async () => {
+    await initializeGoalLifecycleVersions(db);
     console.log('All indexes ready');
   })
   .then(async () => {
