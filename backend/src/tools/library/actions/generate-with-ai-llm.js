@@ -12,6 +12,9 @@ import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js'
 import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels, buildBaseURLs } from '../../../services/ai/providerConfigs.js';
 import * as ProviderRegistry from '../../../services/ai/ProviderRegistry.js';
 import { recordLlmCall } from '../../../services/execution/LedgerRecorder.js';
+import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
+import { isCodexImageProvider } from '../../../services/ai/codexImageCapability.js';
+import { authorizeCodexImageCall } from '../../../services/ai/codexImageIntent.js';
 
 /**
  * Provider facts come from the registry. This file used to carry its own copy.
@@ -326,6 +329,10 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async execute(params, inputData, workflowEngine) {
+    if (params.mode === 'Image Generation' && workflowEngine?.codexImageIntent) {
+      try { params = { ...params, ...authorizeCodexImageCall(params, workflowEngine) }; }
+      catch (error) { return { error: error.message, code: error.code, retryable: false, generatedImages: [] }; }
+    }
     this.validateParams(params);
 
     try {
@@ -335,8 +342,10 @@ class GenerateWithAiLlm extends BaseAction {
       // Normalize provider name to lowercase for auth lookups
       const normalizedProvider = params.provider.toLowerCase();
 
-      // Get API key/token for non-local providers
-      if (normalizedProvider !== 'local') {
+      // Codex images use the existing account-aware client factory below;
+      // do not pre-read a first-account token or introduce another auth path.
+      const codexImage = (params.mode === 'Image Generation') && isCodexImageProvider(normalizedProvider);
+      if (normalizedProvider !== 'local' && !codexImage) {
         try {
           // Special providers use local auth managers instead of remote service
           if (normalizedProvider === 'claude-code') {
@@ -379,7 +388,7 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
-      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
+      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal };
 
       // Route based on mode
       const mode = params.mode || 'Text Generation';
@@ -409,12 +418,14 @@ class GenerateWithAiLlm extends BaseAction {
       // pricing at the funnel cannot be forgotten when a ninth provider is
       // added — which is precisely how the workflow path came to capture
       // tokens for years without ever pricing them.
-      await recordLlmCall({
+      // This route reports image usage in metadata but no verifiable model
+      // rate. Never record a fabricated zero-text-token priced LLM call.
+      if (!codexImage) await recordLlmCall({
         userId,
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
         provider: normalizedProvider,
-        model: params.model || response?.model || 'unknown',
+        model: response?.imageMetadata?.resolvedModel || params.model || response?.model || 'unknown',
         usage: {
           inputTokens: response?.inputTokens || 0,
           outputTokens: response?.outputTokens || 0,
@@ -430,6 +441,7 @@ class GenerateWithAiLlm extends BaseAction {
         tokenCount: 0,
         generatedImages: [],
         error: error.message || 'Unknown error occurred',
+        ...(isCodexImageProvider(params.provider) && params.mode === 'Image Generation' ? { retryable: false, remoteOutcomeUnknown: error.remoteOutcomeUnknown ?? false } : {}),
       });
     }
   }
@@ -542,7 +554,14 @@ class GenerateWithAiLlm extends BaseAction {
     openai: 'generateImageWithOpenAI',
     gemini: 'generateImageWithGemini',
     grokai: 'generateImageWithGrok',
+    ...Object.fromEntries(ProviderRegistry.getImageGenProviders()
+      .filter(({ provider }) => isCodexImageProvider(provider))
+      .map(({ provider }) => [provider, 'generateImageWithCodex'])),
   };
+
+  async generateImageWithCodex(params) {
+    return generateCodexImage(params, { createClient: createLlmClient, userId: params.userId, signal: params.signal });
+  }
 
   async handleImageGeneration(params) {
     const provider = params.provider.toLowerCase();
@@ -934,9 +953,12 @@ class GenerateWithAiLlm extends BaseAction {
   async generateImageWithOpenAI(params) {
     const openai = new OpenAI({ apiKey: params.apiKey });
     const operation = params.imageOperation || 'Generate';
-    // Registry default, not a literal. 'dall-e-3' no longer exists on the
-    // account — verified live 2026-08-11, it returns 400 "does not exist".
-    const model = params.model || imageDefaultModel('openai');
+    const selection = await ProviderRegistry.resolveOpenAiImageSelection({
+      model: params.model || imageDefaultModel('openai'),
+      operation,
+      listModels: (options) => openai.models.list(options),
+    });
+    const model = selection.resolvedModel;
 
     let response;
 
@@ -976,7 +998,7 @@ class GenerateWithAiLlm extends BaseAction {
         console.log('OpenAI Edit - Using prompt:', params.imagePrompt);
 
         response = await openai.images.edit({
-          model: model === 'dall-e-3' ? 'dall-e-2' : model, // DALL-E 3 doesn't support edits
+          model, // Unsupported model/operation combinations fail before dispatch
           image: imageFile,
           prompt: params.imagePrompt, // This is the edit instruction
           n: Number(params.numberOfImages) || 1,
@@ -993,7 +1015,7 @@ class GenerateWithAiLlm extends BaseAction {
         const imageFile = await this.base64ToFile(params.referenceImage, 'image.png');
 
         response = await openai.images.createVariation({
-          model: 'dall-e-2', // Only DALL-E 2 supports variations
+          model, // Resolver requires an explicit DALL-E 2 pin for Variation
           image: imageFile,
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
@@ -1013,6 +1035,8 @@ class GenerateWithAiLlm extends BaseAction {
       return {
         generatedImages: images,
         imageMetadata: {
+          ...selection,
+          returnedModel: typeof response.model === 'string' ? response.model : null,
           model: model,
           operation: operation,
           size: params.imageSize || '1024x1024',

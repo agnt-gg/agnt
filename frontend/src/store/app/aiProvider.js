@@ -2,6 +2,7 @@ import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject } from '../auth/licenseIdentity.js';
+import { readImagePreferences, cleanImagePreference } from '@/services/codexImagePreferences.js';
 
 // SHARED PROVIDER DESCRIPTOR — the same module the backend imports.
 //
@@ -721,6 +722,9 @@ export default {
     selectedModel: localStorage.getItem('selectedModel') || null,
     reasoningValue: INITIAL_REASONING_VALUE,
     reasoningEnabled: isReasoningEnabledValue(INITIAL_REASONING_VALUE),
+    // Codex-only, browser-local preference. Priority is independent of effort.
+    codexPriority: localStorage.getItem('codexPriority') === 'true',
+    codexImages: readImagePreferences(),
     customInstructions: localStorage.getItem('customInstructions') || '',
     // Per-user "Async tool execution" toggle. Default FALSE — async tool
     // execution is currently an experimental opt-in feature. Users enable
@@ -759,6 +763,16 @@ export default {
     modelCache: {},
   },
   mutations: {
+    SET_CODEX_IMAGES(state, { provider, ...value }) {
+      if (!['openai-codex', 'openai-codex-2'].includes(provider)) return;
+      state.codexImages = { ...state.codexImages, [provider]: cleanImagePreference(value) };
+      localStorage.setItem('codexImages', JSON.stringify(state.codexImages));
+    },
+    SET_CODEX_PRIORITY(state, enabled) {
+      state.codexPriority = enabled === true;
+      if (state.codexPriority) localStorage.setItem('codexPriority', 'true');
+      else localStorage.removeItem('codexPriority');
+    },
     SET_ROUTING_MODE(state, mode) {
       // Anything unrecognised means OFF. A typo must never enable routing.
       state.routingMode = mode === 'dynamic' ? 'dynamic' : 'static';

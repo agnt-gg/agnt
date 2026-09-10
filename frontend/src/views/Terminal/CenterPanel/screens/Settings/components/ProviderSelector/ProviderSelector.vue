@@ -83,6 +83,8 @@
         </div>
       </div>
 
+      <CodexSpeedControl :provider="selectedProvider" :model="selectedModel" />
+
       <div class="provider-selector-actions">
         <Tooltip text="Add Custom Provider" width="auto">
           <button @click="openCustomProviderDialog" class="btn-add-provider">
@@ -172,6 +174,8 @@
       </div>
     </div>
 
+    <CodexSpeedControl v-if="isDynamic" provider="openai-codex" />
+
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
     <SimpleModal ref="simpleModal" />
   </div>
@@ -188,6 +192,7 @@ import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
+import CodexSpeedControl from '@/components/common/CodexSpeedControl.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { DEPLOYMENT_CONFIG, API_CONFIG } from '@/tt.config.js';
 
@@ -199,6 +204,7 @@ export default {
     Tooltip,
     RefreshModelsButton,
     ReasoningControl,
+    CodexSpeedControl,
     SimpleModal,
   },
   setup() {

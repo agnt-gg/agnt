@@ -4360,7 +4360,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'generate_image',
         description:
-          'Generate images using AI. Supports OpenAI DALL-E, Google Gemini, and Grok image generation. Use this tool when the user asks you to create, generate, or make images.',
+          'Generate images using AI. Supports OpenAI GPT Image, Google Gemini, and Grok. OpenAI defaults to latest compatible quality; latest-fast selects speed. Explicit model IDs stay pinned.',
         parameters: {
           type: 'object',
           properties: {
@@ -4374,10 +4374,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               description:
                 `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
             },
+            operation: { type: 'string', enum: ['generate', 'edit'], description: 'Default generate. Edit is initially supported for enabled native Codex with explicit PNG references.' },
+            referenceImages: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'Legacy explicit PNG data URIs. Prefer referenceHandles for host-owned uploads.' },
+            referenceHandles: { type: 'array', items: { type: 'string' }, maxItems: 3, description: 'Explicit current-turn PNG uploads: upload:0, upload:1, etc. Use only references the user selected. No paths or remote URLs.' },
             model: {
               type: 'string',
               description:
-                "Specific image model. If omitted, the provider's current default is used. The handler validates this against the provider's live model list, so naming a model that no longer exists is reported rather than silently substituted.",
+                "For Codex, omit model/provider to honor the user's image controls. latest and latest-fast send different experimental candidate IDs; engine identity/latest/speed remain unverified. Explicit provider-default omits the model only when it does not override user intent. For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
             },
             numberOfImages: {
               type: 'number',
@@ -4408,7 +4411,24 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style }, authToken, context) => {
+    execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceImages, referenceHandles }, authToken, context) => {
+      if (context?.codexImageIntent) {
+        try {
+          const { authorizeCodexImageCall } = await import('../ai/codexImageIntent.js');
+          const bound = authorizeCodexImageCall({ provider, model }, context);
+          if (bound) { provider = bound.provider; model = bound.model; }
+        } catch (error) {
+          return JSON.stringify({ success: false, code: error.code, error: error.message, retryable: false, subscriptionOnly: true });
+        }
+      }
+      provider ||= 'openai';
+      if (referenceHandles !== undefined) {
+        try {
+          if (!['openai-codex', 'openai-codex-2'].includes(provider.toLowerCase()) || operation !== 'edit' || referenceImages !== undefined) throw new Error('Explicit handles require Codex Edit and cannot be combined with raw references.');
+          const { resolveImageReferences } = await import('../ai/codexImageReferences.js');
+          referenceImages = resolveImageReferences(referenceHandles, context?.codexImageReferences, context?.codexImageScope);
+        } catch (error) { return JSON.stringify({ success: false, code: 'CODEX_IMAGE_REFERENCE_INVALID', error: error.message, retryable: false }); }
+      }
       console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
       if (!prompt) {
@@ -4443,17 +4463,21 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
         }
 
-        // Get available models dynamically (with fallback to static)
-        const availableModels = await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
-
-        // Get provider capabilities
         const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
-
-        // Use default model if not specified
-        const selectedModel = model || capabilities.defaultModel;
-
-        // Validate model against dynamic list
-        if (!availableModels.includes(selectedModel)) {
+        const codexImage = capabilities.modelSelection === 'provider-selected';
+        if (codexImage && aspectRatio) {
+          return JSON.stringify({ success: false, error: 'Codex auto rendering does not accept aspectRatio; it was not silently discarded.' });
+        }
+        if (!['generate', 'edit'].includes(operation) || (!codexImage && (operation !== 'generate' || referenceImages?.length))) {
+          return JSON.stringify({ success: false, error: 'This chat Edit/reference path requires enabled native Codex. No references were discarded.' });
+        }
+        const requestedModel = model || capabilities.defaultModel;
+        let selectedModel = requestedModel;
+        // OpenAI resolves once in the action with its authenticated client. An
+        // explicit ID stays pinned; the provider remains the entitlement check.
+        const availableModels = codexImage ? capabilities.models : normalizedProvider === 'openai' ? []
+          : await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
+        if (normalizedProvider !== 'openai' && !availableModels.includes(selectedModel)) {
           return JSON.stringify({
             success: false,
             error: `Model '${selectedModel}' is not valid for ${provider}. Available models: ${availableModels.join(', ')}`,
@@ -4479,12 +4503,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           provider: provider,
           model: selectedModel,
           imagePrompt: prompt,
-          imageOperation: 'Generate',
+          imageOperation: operation === 'edit' ? 'Edit' : 'Generate',
+          referenceImages,
           numberOfImages: numberOfImages,
         };
 
         // Add provider-specific parameters
-        if (normalizedProvider === 'openai') {
+        if (normalizedProvider === 'openai' || codexImage) {
           if (size) params.imageSize = size;
           if (quality) params.imageQuality = quality;
           if (style) params.imageStyle = style;
@@ -4498,6 +4523,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Create a mock workflow engine context
         const mockWorkflowEngine = {
           userId: userId,
+          signal: context?.signal || context?.abortSignal,
+          codexImageIntent: context?.codexImageIntent,
         };
 
         // Execute the tool
@@ -4508,10 +4535,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           return JSON.stringify({
             success: false,
             error: result.error,
+            ...(codexImage ? { retryable: false, remoteOutcomeUnknown: result.remoteOutcomeUnknown ?? false } : {}),
             provider: provider,
             model: selectedModel,
           });
         }
+
+        selectedModel = codexImage ? result.imageMetadata?.returnedModel ?? null
+          : result.imageMetadata?.resolvedModel || selectedModel;
 
         // Persist generated images to disk so we can return stable URLs/paths
         // to the LLM (instead of round-tripping full base64 through context).
@@ -4530,6 +4561,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             }
           }
         });
+
+        if (codexImage && (generatedImages.length !== 1 || !savedImagePaths[0])) {
+          return JSON.stringify({ success: false, error: 'Codex returned an image but local persistence failed. Do not regenerate automatically.', imageMetadata: result.imageMetadata || null });
+        }
 
         let firstImageId = null;
         let firstImagePath = null;
@@ -4565,7 +4600,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           firstImageUrl,
           revisedPrompt: result.revisedPrompt || null,
           imageMetadata: result.imageMetadata || null,
-          message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
+          requestedModel,
+          message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel || '(provider-selected engine, identity unknown)'}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
       } catch (error) {
         console.error('Error in generate_image tool:', error);
