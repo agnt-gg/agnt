@@ -197,6 +197,7 @@ function filterImageGenModels(models, provider) {
 export async function getImageGenModels(provider, userId = null, authToken = null) {
   const normalizedProvider = provider.toLowerCase();
 
+  if (normalizedProvider === 'workstation-image') return PROVIDER_CAPABILITIES[normalizedProvider]?.imageGen?.models || [];
   // Try dynamic fetching if credentials provided
   if (userId && authToken) {
     try {

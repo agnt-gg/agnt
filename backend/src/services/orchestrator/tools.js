@@ -4412,7 +4412,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
     },
     execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceHandles }, authToken, context) => {
       let imageExecution;
-      if (context?.useImageSettings || provider === 'openai-codex') {
+      if (context?.useImageSettings || ['openai-codex','workstation-image'].includes(provider)) {
         try {
           const { imageSettingsService } = await import('../images/imageSettingsRuntime.js');
           imageExecution = await imageSettingsService.prepare(context.userId, { operation, provider, model, explicitWorkflow: !context?.useImageSettings }, authToken, context.signal || context.abortSignal);
@@ -4506,6 +4506,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           if (quality) params.imageQuality = quality;
           if (style) params.imageStyle = style;
           params.responseFormat = 'b64_json'; // Always use base64 for orchestrator
+        } else if (normalizedProvider === 'workstation-image') {
+          if(size || quality || style || aspectRatio) return JSON.stringify({success:false,error:'Local image controls are operator-selected; unsupported override.',retryable:false});
         } else if (normalizedProvider === 'gemini') {
           if (aspectRatio) params.aspectRatio = aspectRatio;
         } else if (normalizedProvider === 'grokai') {
@@ -4529,6 +4531,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             success: false,
             error: result.error,
             retryable: false,
+            remoteOutcomeUnknown: result.remoteOutcomeUnknown ?? null,
+            requestId: result.requestId ?? null,
+            receiptDirectory: result.receiptDirectory ?? null,
             provider: provider,
             model: selectedModel,
           });

@@ -1,3 +1,4 @@
+import { workstationImageConnection } from './workstationImage.js';
 import { codexConnection } from './codexImageConnection.js';
 import db, { dbReady } from '../../models/database/index.js';
 import AuthManager from '../auth/AuthManager.js';
@@ -7,7 +8,7 @@ import { createImageSettingsService } from './imageSettingsService.js';
 
 export const imageSettingsStore = createImageSettingsStore(db);
 // Adapter extensions register nonsecret connection descriptors, never credentials.
-const extensions = new Map([['openai-codex', codexConnection]]);
+const extensions = new Map([['openai-codex', codexConnection],['workstation-image',workstationImageConnection]]);
 export function registerImageConnection(provider, resolve) { extensions.set(provider, resolve); }
 export async function listImageConnections(userId, authToken) {
   const apps = await AuthManager.getConnectedApps(userId, authToken?.replace(/^Bearer /,''));

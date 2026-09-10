@@ -13,6 +13,7 @@
         <input v-if="mode === 'pinned'" v-model="pin" :disabled="busy" aria-label="Exact image model ID" placeholder="Exact model or snapshot ID" />
         <p>Automatic choices refresh at execution. Availability and costs can change; exact pins stay unchanged.</p>
       </template>
+      <template v-else-if="selected?.provider === 'workstation-image'"><p>Model and rendering selected by the workstation operator. Generation only; editing requires an explicitly selected provider.</p></template>
       <template v-else-if="selected && !selected.requiresConsent">
         <label>Image model</label><CustomSelect :disabled="busy" :options="(selected.models || []).map(model => ({ label: model, value: model }))" :model-value="pin" @update:model-value="pin = $event" />
       </template>

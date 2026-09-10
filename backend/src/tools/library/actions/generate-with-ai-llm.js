@@ -1,3 +1,4 @@
+import { generateWorkstationImage } from '../../../services/images/workstationImage.js';
 import { generateCodexImage } from '../../../services/ai/codexImageTransport.js';
 import { assertCodexClientBinding } from '../../../services/images/codexImageConnection.js';
 import BaseAction from '../BaseAction.js';
@@ -332,9 +333,9 @@ class GenerateWithAiLlm extends BaseAction {
 
     try {
       const userId = workflowEngine.userId;
-      if (params.mode === 'Image Generation' && params.provider.toLowerCase() === 'openai-codex' && !workflowEngine.imageRequest) {
+      if (params.mode === 'Image Generation' && ['openai-codex','workstation-image'].includes(params.provider.toLowerCase()) && !workflowEngine.imageRequest) {
         const { imageSettingsService } = await import('../../../services/images/imageSettingsRuntime.js');
-        const execution = await imageSettingsService.prepare(userId, {operation:(params.imageOperation||'Generate').toLowerCase(),provider:'openai-codex',model:params.model,explicitWorkflow:true},null,workflowEngine.signal);
+        const execution = await imageSettingsService.prepare(userId, {operation:(params.imageOperation||'Generate').toLowerCase(),provider:params.provider.toLowerCase(),model:params.model,explicitWorkflow:true},null,workflowEngine.signal);
         workflowEngine = {...workflowEngine,imageRequest:execution.request,beforeImageDispatch:execution.beforeDispatch};
       }
       let accessTokenOrApiKey = null;
@@ -343,7 +344,7 @@ class GenerateWithAiLlm extends BaseAction {
       const normalizedProvider = params.provider.toLowerCase();
 
       // Get API key/token for non-local providers
-      if (normalizedProvider !== 'local' && !(params.mode === 'Image Generation' && normalizedProvider === 'openai-codex')) {
+      if (normalizedProvider !== 'local' && !(params.mode === 'Image Generation' && ['openai-codex','workstation-image'].includes(normalizedProvider))) {
         try {
           // Special providers use local auth managers instead of remote service
           if (normalizedProvider === 'claude-code') {
@@ -351,7 +352,7 @@ class GenerateWithAiLlm extends BaseAction {
             if (!accessTokenOrApiKey) {
               throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
             }
-          } else if (normalizedProvider === 'openai-codex') {
+          } else if (['openai-codex','workstation-image'].includes(normalizedProvider)) {
             const codexStatus = await CodexAuthManager.checkApiUsable();
             if (!codexStatus.available) {
               throw new Error('OpenAI Codex is not connected. Use device login to connect.');
@@ -416,7 +417,7 @@ class GenerateWithAiLlm extends BaseAction {
       // pricing at the funnel cannot be forgotten when a ninth provider is
       // added — which is precisely how the workflow path came to capture
       // tokens for years without ever pricing them.
-      if (!(params.mode === 'Image Generation' && normalizedProvider === 'openai-codex')) await recordLlmCall({
+      if (!(params.mode === 'Image Generation' && ['openai-codex','workstation-image'].includes(normalizedProvider))) await recordLlmCall({
         userId,
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
@@ -437,6 +438,7 @@ class GenerateWithAiLlm extends BaseAction {
         tokenCount: 0,
         generatedImages: [],
         error: error.message || 'Unknown error occurred',
+        ...(params.mode === 'Image Generation' ? {retryable:false,remoteOutcomeUnknown:error.remoteOutcomeUnknown??null,requestId:error.requestId??null,receiptDirectory:error.receiptDirectory??null} : {}),
       });
     }
   }
@@ -546,11 +548,14 @@ class GenerateWithAiLlm extends BaseAction {
    * throwing "not implemented" at whoever picked it in the UI.
    */
   static IMAGE_ROUTES = {
+    ...(ProviderRegistry.supportsImageGeneration('workstation-image')?{'workstation-image':'generateImageWithWorkstation'}:{}),
     openai: 'generateImageWithOpenAI',
     gemini: 'generateImageWithGemini',
     grokai: 'generateImageWithGrok',
     ...(ProviderRegistry.supportsImageGeneration('openai-codex') ? {'openai-codex':'generateImageWithCodex'} : {}),
   };
+
+  async generateImageWithWorkstation(params) { return generateWorkstationImage(params); }
 
   async generateImageWithCodex(params) {
     if (!params.imageRequest || !params.beforeImageDispatch) throw new Error('Stored subscription consent required.');

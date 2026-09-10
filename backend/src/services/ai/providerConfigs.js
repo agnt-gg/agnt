@@ -1,3 +1,4 @@
+import { workstationImageUrl, WORKSTATION_IMAGE_CAPABILITY } from '../images/workstationImage.js';
 import { CODEX_IMAGE_CAPABILITY, codexImagesEnabled, isCodexImageProvider } from './codexImageCapability.js';
 /**
  * SINGLE SOURCE OF TRUTH for all AI provider configurations.
@@ -1291,6 +1292,8 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 ];
+
+if (workstationImageUrl()) PROVIDER_CONFIGS.push({key:'workstation-image',name:'Workstation image lane',sdkType:'local-image',capabilities:{imageGen:WORKSTATION_IMAGE_CAPABILITY},recommendedModels:[],fallbackModels:[]});
 
 if (codexImagesEnabled()) for (const config of PROVIDER_CONFIGS) { if (isCodexImageProvider(config.key)) config.capabilities.imageGen = CODEX_IMAGE_CAPABILITY; }
 
