@@ -1,3 +1,5 @@
+> **Repair update, 2026-09-10:** The six baseline failures described below are now fixed in production code. All original eight tests pass without weakened assertions; six added cases cover evidence ABA, transaction rollback, notification failure, initial-write pause and autonomous grading pause/replacement. Historical RED receipts remain unchanged. See GOAL_LIFECYCLE_FENCING.md for the current boundary.
+
 # Controlled goal lifecycle regressions
 
 Baseline: #131 at `53f9e686f3cddf7b7e8a426ac241144cba9d7a77`.
