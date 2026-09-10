@@ -435,16 +435,16 @@ button.button-ready {
 }
 
 /* Override Stripe's default styles */
-::v-deep .StripeElement {
+:deep(.StripeElement) {
   background-color: transparent !important;
   padding: 0 !important;
 }
 
-::v-deep .StripeElement--focus {
+:deep(.StripeElement--focus) {
   box-shadow: none !important;
 }
 
-::v-deep .StripeElement--invalid {
+:deep(.StripeElement--invalid) {
   border-color: var(--color-primary) !important;
 }
 
