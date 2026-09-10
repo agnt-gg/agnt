@@ -27,12 +27,13 @@
       ><i class="fas fa-redo-alt"></i></button>
     </div>
 
-    <i class="fas fa-lock address-security" aria-hidden="true"></i>
+    <i class="fas address-security" :class="isHttps ? 'fa-lock is-https' : 'fa-globe'" aria-hidden="true"></i>
     <input
       ref="addressRef"
       v-model="draftUrl"
       class="address-input"
       aria-label="Address"
+      :placeholder="isWelcomePage ? 'AGNT Browser — ready' : 'Enter a website address'"
       autocomplete="off"
       autocapitalize="off"
       spellcheck="false"
@@ -40,12 +41,12 @@
       @blur="finishEditing"
       @keydown.esc="cancelEditing"
     />
-    <button type="submit" class="go-button" :disabled="busy || !draftUrl.trim()">Go</button>
+    <button type="submit" class="go-button" :disabled="busy || !normalizeBrowserAddress(draftUrl)">Go</button>
   </form>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
   url: { type: String, default: '' },
@@ -56,18 +57,37 @@ const props = defineProps({
 
 const emit = defineEmits(['back', 'forward', 'reload', 'navigate']);
 const addressRef = ref(null);
-const draftUrl = ref(props.url || 'about:blank');
+// Exact match only: do not disguise arbitrary data pages by title or prefix.
+// Kept in sync with browserFallbackSurface.js START_PAGE by the toolbar tests.
+const welcomeUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(
+  '<!doctype html><title>AGNT Browser</title>'
+  + '<body style="margin:0;height:100vh;display:grid;place-items:center;'
+  + 'background:#0d0d16;color:#8b8ba3;font:15px system-ui">'
+  + '<div style="text-align:center"><div style="font-size:34px;margin-bottom:12px">🌐</div>'
+  + 'AGNT Browser — ready.<br>Ask Annie to browse something.</div>',
+);
+const isWelcomePage = computed(() => props.url === welcomeUrl);
+const isHttps = computed(() => {
+  try { return new URL(props.url).protocol === 'https:'; } catch { return false; }
+});
+const displayAddress = url => url === welcomeUrl ? '' : (url || 'about:blank');
+const draftUrl = ref(displayAddress(props.url));
 const editing = ref(false);
 
 watch(() => props.url, (url) => {
-  if (!editing.value) draftUrl.value = url || 'about:blank';
+  if (!editing.value) draftUrl.value = displayAddress(url);
 });
 
 function normalizeBrowserAddress(value) {
   const address = String(value || '').trim();
   if (!address) return '';
-  if (/^https?:\/\//i.test(address)) return address;
-  return `https://${address}`;
+  if (/^https?:\/\//i.test(address)) {
+    try { return new URL(address).hostname ? address : ''; } catch { return ''; }
+  }
+  // A numeric host port is not a URL scheme (e.g. localhost:3000).
+  const hostWithPort = /^(?:localhost|[a-z0-9.-]+|\[[0-9a-f:]+\]):\d+(?:[/?#]|$)/i.test(address);
+  if (/^[a-z][a-z0-9+.-]*:/i.test(address) && !hostWithPort) return '';
+  try { return new URL(`https://${address}`).hostname ? `https://${address}` : ''; } catch { return ''; }
 }
 
 function submitAddress() {
@@ -81,11 +101,11 @@ function submitAddress() {
 
 function finishEditing() {
   editing.value = false;
-  if (!draftUrl.value.trim()) draftUrl.value = props.url || 'about:blank';
+  if (!draftUrl.value.trim()) draftUrl.value = displayAddress(props.url);
 }
 
 function cancelEditing() {
-  draftUrl.value = props.url || 'about:blank';
+  draftUrl.value = displayAddress(props.url);
   editing.value = false;
   addressRef.value?.blur();
 }
@@ -141,8 +161,12 @@ function cancelEditing() {
 
 .address-security {
   margin-left: 2px;
-  color: var(--color-green);
+  color: var(--color-text-muted);
   font-size: 10px;
+}
+
+.address-security.is-https {
+  color: var(--color-green);
 }
 
 .address-input {
