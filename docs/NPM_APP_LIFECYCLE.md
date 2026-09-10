@@ -1,106 +1,105 @@
 # Local app lifecycle with npm
 
-Tracking: [issue #121](https://github.com/agnt-gg/agnt/issues/121).
+Tracks #121 and [design issue #134](https://github.com/agnt-gg/agnt/issues/134).
+**Review gate:** the OS-user control channel introduces a local authorization
+mechanism. This patch is submitted for explicit maintainer architecture review;
+issue #134 is not evidence of approval under CONTRIBUTING.md.
 
-## Usage
+## Commands
 
-From the source checkout that launched Electron:
+| Command | Meaning |
+| --- | --- |
+| `npm run app:status` | Read backend health, PID, checkout and Electron ownership |
+| `npm run restart:backend` | Select API/local transport, restart once, verify recovery |
+| `npm run build:frontend` | Existing frontend production build |
+| `npm run dev:frontend` | Existing foreground Vite dev server |
+
+`npm start`, root `npm run dev`, desktop packaging and Docker commands retain
+their meaning. Do not start another instance on port 3333. Building frontend
+assets, reloading Electron's renderer and restarting a Vite server are distinct.
+
+## Two caller paths
+
+- **AGNT/API caller:** a supplied `AGNT_AUTH_TOKEN` or AGNT context
+  (`AGNT_CONVERSATION_ID` / `AGNT_TOOL_RUNNER`) selects the authenticated HTTP API.
+  Missing/malformed API credentials refuse. HTTP 401/403 never falls back to
+  local control. Tokens are inherited, not read from storage or printed.
+- **Ordinary terminal, e.g. Ghostty:** with no supplied token or AGNT context,
+  use the private Electron supervisor socket, authorized by OS directory/socket
+  permissions. No application-token copying or export is needed.
+
+`--transport auto|api|local` makes selection explicit. `local` refuses supplied
+credentials or AGNT context rather than downgrading an API caller. An empty
+but present token counts as supplied and is rejected.
+
+**Activation:** quit and relaunch the desktop app once after installing the new
+Electron code. A backend-only restart cannot reload Electron's main process.
+Until then local commands fail with relaunch guidance before sending a request.
 
 ```sh
-npm run app:status
 npm run app:status -- --json
-# With an existing AGNT_AUTH_TOKEN securely supplied in your environment:
 npm run restart:backend
+npm run restart:backend -- --transport local --preflight --json
 npm run restart:backend -- --timeout-ms 90000
-npm run build:frontend
-npm run dev:frontend -- --host 127.0.0.1 --port 5173
 ```
 
-Use `--url http://127.0.0.1:PORT` on either lifecycle command if this instance
-uses a non-default port. The helper does not load `.env` or infer `PORT` from
-your shell: the printed target is the exact target it probes. `--timeout-ms`
-(100-300000) bounds the whole operation, including preflight; each HTTP request
-is additionally capped at 3000 ms. `--json` produces structured output (use
-`npm --silent run app:status -- --json` to suppress npm's own banner).
+The helper uses its own source checkout, not the shell working directory.
+Only explicit IPv4 loopback origins such as `http://127.0.0.1:3333` are accepted;
+use `--url http://127.0.0.1:PORT` for another port. No URL credentials, redirects,
+remote requests, .env loading or inferred shell PORT. JSON can be obtained without
+npm's banner using `npm --silent run ...`.
 
-Status exits 0 for a running, healthy backend even when ownership is unknown;
-inspect `ownership.verified` separately. Draining, errors and unverified
-restart attempts exit nonzero. Help performs no network requests.
+## Ownership and recovery
 
-## Design packet
+Both restart routes require **Linux source-checkout Electron** ownership:
+backend cwd/argv/start identity/listening socket and direct Electron parent
+cwd/executable/start identity are checked through /proc. Standalone, packaged,
+container, remote, ambiguous or inaccessible ownership refuses. Status remains
+read-only and can report healthy but unknown ownership; it does not grant
+permission to restart. Unsupported local-control platforms fail explicitly.
 
-Keep npm as the existing task runner; do not add just, concurrently, a daemon,
-or a second supervisor. Electron already owns its backend and interprets exit
-code 42 as an intentional restart. The existing authenticated
-`POST /api/system/restart` initiates drain; `GET /api/system/status` and
-`GET /api/health` observe recovery. A 202 response is not proof of recovery.
+The API route sends one authenticated POST to the existing endpoint. HTTP 202
+means accepted, not recovered. Success requires a new PID with running status
+and matching health, under the same source checkout and supervisor identity.
+Electron's existing supervisor initiates renderer reload, but API success does
+not certify renderer load completion.
 
-Root entry points:
+The local route uses a checkout-hash/supervisor-PID directory beneath
+`/run/user/UID` (private 0700 directory, 0600 socket). It validates OS ownership,
+path type and permissions; an existing socket is never replaced. Requests bind
+checkout, supervisor and owned backend PID. The supervisor signals only its
+owned ChildProcess with SIGTERM, using the existing graceful shutdown handler;
+no PID-search kill or backend SIGKILL fallback. The intentional successful exit
+uses existing exit-42 respawn behavior. Local success additionally waits for the
+renderer `did-finish-load` event; failed/destroyed renderer is not success.
 
-| Command | Operation |
-| --- | --- |
-| `npm run app:status` | Read backend state, health, PID, local checkout and supervision |
-| `npm run restart:backend` | Request one verified Electron-supervised backend restart and wait |
-| `npm run build:frontend` | Run the existing frontend production build |
-| `npm run dev:frontend` | Run the existing Vite development server in this terminal |
+Requests are bounded and single-flight. A lost response or timeout is uncertain:
+inspect status before retrying; there is no automatic retry or rollback. The CLI
+operation deadline is 100–300000 ms, HTTP requests at most 3000 ms, local
+supervisor recovery at most 60000 ms. A longer CLI timeout does not extend the
+supervisor deadline. A disconnected caller does not cancel an accepted restart.
 
-Existing `npm start`, `npm run dev`, and Docker Make targets retain their
-semantics. There is deliberately no npm `restart` lifecycle override and no
-ambiguous "restart both" command. Building frontend files is not a backend
-restart or a renderer reload. After building, reload the app window yourself.
-The Vite command stays in the foreground; Ctrl+C stops your development server.
-Do not start a second backend on port 3333.
+`--preflight` checks readiness without mutation. For local control it verifies a
+live matching control server. API preflight checks token shape and ownership,
+**not remote authentication**: there is no auth-only restart probe. It must not
+report that an expired token was validated. Rebuild wrappers can preflight before
+spending time on the build and must stop if either preflight or build fails.
 
-## Ownership and safety contract
+## Security and evidence limits
 
-The helper acts on its own source checkout (resolved from the script, not the
-caller's working directory). All requests use explicit IPv4 loopback
-`http://127.0.0.1:3333` unless a different loopback port is supplied. Remote
-origins, URL credentials, paths, queries, fragments, and HTTP redirects are
-rejected. It never searches credential files, shells out to process-kill
-commands, guesses a systemd unit, or invokes Docker.
+OS permissions are the local authorization boundary, not AGNT HTTP auth.
+No HTTP authentication or credential-store implementation is changed. This is
+not protection against malicious code running as the same OS user. No explicit
+peer-credential attestation is performed. Identity checks cannot atomically
+close every filesystem/process race; same-UID interference, PID reuse/stale
+runtime directories and startup/shutdown races warrant maintainer review.
+Socket collisions fail rather than attempt broad stale cleanup. There is no
+bound on the number of same-user client connections. The code is not presented
+as independently security-audited.
 
-Restart verification supports **Linux source-checkout Electron only** initially.
-It verifies the backend command, cwd, process start time, listening socket,
-and its direct parent's cwd, command, executable, and start time via `/proc`.
-The parent must be this checkout's installed Electron executable. A plain
-`npm run dev`, other checkout, packaged Electron, container, inaccessible
-`/proc`, or unsupported OS is not restartable through this helper. Status
-still reports health and explicitly distinguishes unknown ownership. Use the
-existing app UI / installation supervisor for unsupported restart modes.
-This is a local accident-prevention guard, not a security boundary against a
-malicious process running as your own OS user. A process can exit between
-preflight and POST; no client-only check can make those atomic.
-
-The only credential input is the caller's existing `AGNT_AUTH_TOKEN`
-environment variable (an AGNT application bearer token, not a provider key).
-No token CLI argument, .env loading, login changes, token minting, or credential
-storage is introduced. Do not paste tokens into shell history or PRs. Use your
-existing secure environment injection. Auth errors are returned without
-printing tokens or server response bodies.
-
-## Failure and recovery
-
-Restart requires valid running status and health, the token, and verified local
-ownership **before** any POST. It sends at most one POST; network uncertainty
-never causes a retry that might restart twice. A conflict, rejection, timeout,
-malformed status or unavailable service exits nonzero with an actionable error.
-After acceptance it polls across the expected connection gap. Success requires
-a new backend PID, the same Electron supervisor identity and source checkout,
-valid running status, and a healthy response. Same-PID health is insufficient.
-Timeout does not imply rollback: inspect status before deciding to try again.
-
-Requests and the overall recovery wait have finite deadlines. Status does not
-send credentials or mutate the running instance. Frontend aliases simply
-forward npm arguments and retain upstream behavior; they do not supervise or
-restart an existing Vite process.
-
-## Verification plan
-
-Tests belong to the existing blocking root Vitest suite (`scripts/*.test.js`),
-not the report-only node:test job. Cover parsing, invalid states, ownership
-refusals, socket ownership, auth rejection, redirects, request deadlines,
-transient recovery gaps, same-PID timeout, and CLI exit/output behavior.
-Use ephemeral loopback HTTP fixtures and fake process records for deterministic
-coverage. Read-only live status is separate from fixture restart evidence.
-Never target the contributor's live port in a restart test.
+Tests use Given/When/Then cases, ephemeral HTTP/socket fixtures and owned-child
+controller events. The operator reports a successful real Ghostty `just restart`
+after desktop relaunch; a separate status check verified health and ownership.
+That is not the same as CI proving real AGNT shell-tool token injection or every
+production subsystem. See the PR description for exact test commands/results
+and the distinction between disposable Electron tests and live observations.

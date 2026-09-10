@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { selectTransport, localRequest } from '../electron/localLifecycle.mjs';
 
 const filename = fileURLToPath(import.meta.url);
 const CHECKOUT = path.resolve(path.dirname(filename), '..');
@@ -13,8 +14,10 @@ const HELP = `Local AGNT lifecycle (Node 20+)
   npm run build:frontend -- [Vite build arguments]
   npm run dev:frontend -- [Vite dev arguments]
 
-Restart requires AGNT_AUTH_TOKEN in the environment and verified Linux source
-Electron ownership. No token lookup, standalone restart, or remote requests.
+Restart auto-selects API for supplied AGNT_AUTH_TOKEN / AGNT context, otherwise
+private OS-user local control. --transport auto|api|local; --preflight checks
+readiness without restarting. API rejection never falls back. Local control
+requires one desktop relaunch after installation. Linux source Electron only.
 Timeout range: 100-300000 ms. Status is read-only and sends no credentials.
 See docs/NPM_APP_LIFECYCLE.md. Building is not restarting or reloading.
 `;
@@ -43,6 +46,8 @@ export function parseOptions(args) {
     seen.add(flag);
     if (flag === '--help' || flag === '-h') options.help = true;
     else if (flag === '--json') options.json = true;
+    else if (flag === '--preflight') options.preflight = true;
+    else if (flag === '--transport') { options.transport = rest.shift(); if (!['auto','api','local'].includes(options.transport)) throw new Error('Invalid transport'); }
     else if (flag === '--url') options.url = localOrigin(rest.shift() ?? '');
     else if (flag === '--timeout-ms') {
       const value = rest.shift() ?? '';
@@ -160,7 +165,7 @@ async function boundedInspection(inspect, pid, checkout, port, milliseconds) {
   } finally { clearTimeout(timer); }
 }
 
-export async function executeLifecycle(options, { token, checkout = CHECKOUT, inspect = inspectOwnership } = {}) {
+export async function executeLifecycle(options, { token, checkout = CHECKOUT, inspect = inspectOwnership, managed = false, localControl = localRequest } = {}) {
   const origin = localOrigin(options.url);
   if (!['status', 'restart'].includes(options.command)) throw new Error('Expected status or restart');
   const started = Date.now(), deadline = started + options.timeoutMs;
@@ -175,7 +180,7 @@ export async function executeLifecycle(options, { token, checkout = CHECKOUT, in
     const body = await request('/api/health');
     if (body?.status !== 'OK' || body.pid !== pid) throw new Error('Health response is unhealthy or disagrees with status PID');
   };
-  if (options.command === 'restart' && (typeof token !== 'string' || !token.trim() || /\s/.test(token))) throw new Error('Supply your existing AGNT_AUTH_TOKEN in the environment; no credentials are loaded automatically');
+  const transport = options.command === 'restart' ? selectTransport({ mode: options.transport || 'auto', token, managed }) : null;
   const before = validStatus(await request('/api/system/status'));
   await health(before.pid);
   const owner = await ownership(before.pid);
@@ -184,8 +189,19 @@ export async function executeLifecycle(options, { token, checkout = CHECKOUT, in
   }
   if (before.state !== 'running') throw new Error('Backend is already draining; inspect app:status before retrying');
   if (!owner.verified) throw new Error('Restart refused: ownership / Electron supervision unverified. Use app:status and your existing installation supervisor');
+  if (options.preflight) {
+    if (transport === 'local') await localControl({ checkout, supervisorPid: owner.supervisorPid, pid: before.pid, operation: 'preflight', timeoutMs: remaining() });
+    return { success: true, preflight: true, transport, url: origin, checkout, ...before, healthy: true, ownership: owner, authenticationValidated: false };
+  }
   let accepted;
-  try { accepted = await request('/api/system/restart', 'POST'); }
+  let localResult;
+  try {
+    if (transport === 'local') {
+      localResult = await localControl({ checkout, supervisorPid: owner.supervisorPid, pid: before.pid, operation: 'restart', timeoutMs: remaining() });
+      if (localResult.previousPid !== before.pid || localResult.pid === before.pid || localResult.frontendReloaded !== true) throw new Error('Local recovery receipt invalid');
+      accepted = localResult;
+    } else accepted = await request('/api/system/restart', 'POST');
+  }
   catch (error) {
     throw new Error(`${error.message}; restart outcome may be uncertain: inspect app:status before retrying (no automatic retry)`);
   }
@@ -205,7 +221,8 @@ export async function executeLifecycle(options, { token, checkout = CHECKOUT, in
     if (!nextOwner.verified || nextOwner.checkout !== owner.checkout || nextOwner.supervisorPid !== owner.supervisorPid || nextOwner.supervisorStart !== owner.supervisorStart) {
       throw new Error('Recovery ownership / Electron supervisor changed; inspect app:status');
     }
-    return { success: true, url: origin, checkout, previousPid: before.pid, ...current, healthy: true, ownership: nextOwner, elapsedMs: Date.now() - started };
+    if (localResult && current.pid !== localResult.pid) throw new Error('Local recovery PID changed after receipt');
+    return { success: true, transport, ...(localResult ? { frontendReloaded: true } : {}), url: origin, checkout, previousPid: before.pid, ...current, healthy: true, ownership: nextOwner, elapsedMs: Date.now() - started };
   }
   throw new Error('Restart accepted but recovery timed out; inspect app:status before retrying (no rollback or automatic retry)');
 }
@@ -215,10 +232,10 @@ async function main() {
   try {
     options = parseOptions(process.argv.slice(2));
     if (options.help) { console.log(HELP); return; }
-    const result = await executeLifecycle(options, { token: process.env.AGNT_AUTH_TOKEN });
+    const result = await executeLifecycle(options, { token: process.env.AGNT_AUTH_TOKEN, managed: Boolean(process.env.AGNT_CONVERSATION_ID || process.env.AGNT_TOOL_RUNNER) });
     if (options.json) console.log(JSON.stringify(result, null, 2));
     else {
-      console.log(`${result.previousPid ? 'Restart verified' : 'Backend status'}: ${result.state}, PID ${result.pid}${result.previousPid ? ` (was ${result.previousPid})` : ''}`);
+      console.log(`${result.preflight ? 'Restart preflight (no restart sent)' : result.previousPid ? 'Restart verified' : 'Backend status'}: ${result.state}, PID ${result.pid}${result.previousPid ? ` (was ${result.previousPid})` : ''}`);
       console.log(`Target: ${result.url}\nHelper checkout: ${result.checkout}\nHealth: ${result.healthy ? 'OK' : 'not healthy'}`);
       console.log(result.ownership.verified ? `Verified source Electron supervisor: PID ${result.ownership.supervisorPid}` : `Restart unavailable: ${result.ownership.reason}${result.ownership.observedCheckout ? `\nObserved checkout: ${result.ownership.observedCheckout}` : ''}`);
     }
