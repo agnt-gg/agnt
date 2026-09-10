@@ -91,6 +91,7 @@ function normalizeBrowserAddress(value) {
 }
 
 function submitAddress() {
+  if (props.busy) return;
   const url = normalizeBrowserAddress(draftUrl.value);
   if (!url) return;
   draftUrl.value = url;
@@ -101,7 +102,8 @@ function submitAddress() {
 
 function finishEditing() {
   editing.value = false;
-  if (!draftUrl.value.trim()) draftUrl.value = displayAddress(props.url);
+  // On blur show the actual page, never stale draft text from before a redirect.
+  draftUrl.value = displayAddress(props.url);
 }
 
 function cancelEditing() {
