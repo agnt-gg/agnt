@@ -322,7 +322,7 @@ describe('a browser that goes away', () => {
     expect(streamsForUser('u1')).toHaveLength(1);
 
     await browser.close();
-    await settle();
+    await vi.waitFor(() => expect(isStreaming('host:u1')).toBe(false));
 
     // A session left behind would report itself as streaming forever, and the
     // widget would sit on a frozen last frame with no way to recover.
@@ -333,7 +333,7 @@ describe('a browser that goes away', () => {
   it('TELLS its viewers, so they recover instead of freezing on the last frame', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
     await browser.close();
-    await settle();
+    await vi.waitFor(() => expect(isStreaming('host:u1')).toBe(false));
 
     // A canvas still showing the last frame is indistinguishable from a page
     // that stopped changing — everything LOOKS fine, which is the most

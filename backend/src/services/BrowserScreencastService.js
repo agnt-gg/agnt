@@ -33,14 +33,12 @@
  * and nothing new is listening on the network.
  *
  * ---------------------------------------------------------------------------
- * WHY THE CLIENT ACKS EVERY FRAME
+ * SHARED FLOW CONTROL
  * ---------------------------------------------------------------------------
- * Page.startScreencast will not send frame N+1 until frame N is acknowledged.
- * That is usually described as a formality; it is actually the entire flow
- * control. Acking on ARRIVAL (here) streams as fast as the encoder can go and
- * buries a phone on hotel wifi under frames it cannot paint. Acking on RENDER
- * (the client, after drawing) makes a slow viewer throttle ITSELF, because the
- * pipeline simply stops until it catches up.
+ * CDP acknowledgements govern one shared capture, not independent viewers.
+ * The fastest viewer or watchdog advances capture. Frame delivery is volatile:
+ * a congested transport drops images rather than building a durable queue.
+ * The client retains at most one decoding image and one newest pending image.
  *
  * The cost is that a client which never acks stalls its own stream forever, so
  * a watchdog re-acks after ACK_TIMEOUT_MS. A stalled stream is indistinguishable
@@ -48,6 +46,8 @@
  * least debuggable bug report there is.
  */
 
+import { frameViewerSockets } from './browserViewerDeliveryRegistry.js';
+import { randomUUID } from 'node:crypto';
 import { broadcastToUser } from '../utils/realtimeSync.js';
 import { CdpConnection, attachToPage } from './cdpConnection.js';
 
@@ -66,6 +66,8 @@ const FRAME_FORMAT = { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 8
 
 /** instanceId -> session */
 const sessions = new Map();
+let capturesInFlight = 0;
+const MAX_FRAME_CHARS = 2 * 1024 * 1024;
 
 // CdpConnection and attachToPage live in ./cdpConnection.js — extracted when
 // browserActDriver became their second consumer, because two hand-rolled CDP
@@ -90,7 +92,7 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
     // A second viewer of a stream that is already correct.
     if (existing.userId !== userId) throw new Error('that browser belongs to someone else');
     existing.viewers += 1;
-    return { ok: true, joined: true, viewers: existing.viewers };
+    return { ok: true, joined: true, viewers: existing.viewers, streamId: existing.streamId };
   }
 
   const connection = await new CdpConnection(cdpUrl).connect();
@@ -99,7 +101,7 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
   try {
     const { sessionId, targetId } = await attachToPage(connection);
     session = {
-      userId, instanceId, cdpUrl, connection, sessionId, targetId, viewers: 1, ackTimer: null, lastFrame: null,
+      userId, instanceId, cdpUrl, connection, sessionId, targetId, streamId: randomUUID(), viewers: 1, ackTimer: null, lastFrame: null,
     };
     sessions.set(instanceId, session);
 
@@ -114,10 +116,11 @@ export async function startViewing({ userId, instanceId, cdpUrl }) {
   }
 
   console.log(`[Screencast] streaming ${instanceId} to user ${userId}`);
-  return { ok: true, joined: false, viewers: 1 };
+  return { ok: true, joined: false, viewers: 1, streamId: session.streamId };
 }
 
 function handleEvent(session, message) {
+  if (sessions.get(session.instanceId) !== session) return;
   if (message.method === '__closed') {
     stopSession(session.instanceId, message.params?.reason || 'the browser went away', { notify: true });
     return;
@@ -127,18 +130,25 @@ function handleEvent(session, message) {
     const { data, sessionId: frameId, metadata } = message.params || {};
     session.lastFrame = frameId;
 
-    broadcastToUser(session.userId, 'browser:frame', {
+    if (typeof data !== 'string' || data.length > MAX_FRAME_CHARS) {
+      acknowledgeFrame(session.instanceId, frameId, session.streamId); return;
+    }
+    const recipients = frameViewerSockets(session.userId, session.instanceId, session.streamId);
+    const deliver = global.io
+      ? (_user, event, payload) => { if (recipients.length) global.io.to(recipients).volatile.emit(event, payload); }
+      : broadcastToUser;
+    deliver(session.userId, 'browser:frame', {
       instanceId: session.instanceId,
+      streamId: session.streamId,
       data,
       metadata,
       frameId,
     });
 
-    // See the header: the client acks after it PAINTS, so a slow viewer
-    // throttles itself. This watchdog only fires when no ack arrives at all.
+    // Shared capture advances on the first render/drop ACK or this watchdog.
     clearTimeout(session.ackTimer);
     session.ackTimer = setTimeout(() => {
-      if (session.lastFrame === frameId) acknowledgeFrame(session.instanceId, frameId);
+      if (sessions.get(session.instanceId) === session && session.lastFrame === frameId) acknowledgeFrame(session.instanceId, frameId, session.streamId);
     }, ACK_TIMEOUT_MS);
     return;
   }
@@ -148,18 +158,56 @@ function handleEvent(session, message) {
   if (message.method === 'Page.frameNavigated' && !message.params?.frame?.parentId) {
     broadcastToUser(session.userId, 'browser:navigated', {
       instanceId: session.instanceId,
+      streamId: session.streamId,
       url: message.params?.frame?.url || null,
     });
   }
 }
 
 /** The client has painted a frame and is ready for the next one. */
-export function acknowledgeFrame(instanceId, frameId) {
+export function acknowledgeFrame(instanceId, frameId, streamId = undefined) {
   const session = sessions.get(instanceId);
-  if (!session || frameId === undefined || frameId === null) return false;
+  if (!session || (streamId !== undefined && streamId !== session.streamId) || frameId === undefined || frameId === null || session.lastFrame !== frameId) return false;
+  session.lastFrame = null;
   clearTimeout(session.ackTimer);
   session.connection.post('Page.screencastFrameAck', { sessionId: frameId }, session.sessionId);
   return true;
+}
+
+/** Fresh bootstrap image, requested only AFTER the viewer registered its ID.
+ * Not a replay: static/hidden pages need not emit another screencast frame.
+ * Concurrent requests share capture work, not viewer ownership or delivery.
+ */
+export async function captureViewerFrame({ userId, instanceId }) {
+  const ownership = ownedSession(userId, instanceId);
+  if (ownership.error) throw new Error(ownership.error);
+  const { session } = ownership;
+  if (!session.capture) {
+    if (capturesInFlight >= 4 || Date.now() < (session.nextCaptureAt || 0)) throw new Error('capture busy or rate limited');
+    session.nextCaptureAt = Date.now() + 1000;
+    capturesInFlight += 1;
+    session.capture = (async () => {
+      const layout = await session.connection.send('Page.getLayoutMetrics', {}, session.sessionId);
+      const viewport = layout.cssVisualViewport;
+      const width = viewport?.clientWidth; const height = viewport?.clientHeight;
+      if (![width, height].every(v => Number.isFinite(v) && v > 0 && v <= 32768)) throw new Error('invalid viewport dimensions');
+      const scale = Math.min(1, 1280 / width, 800 / height);
+      const result = await session.connection.send('Page.captureScreenshot', {
+      format: 'jpeg', quality: 60, fromSurface: true, captureBeyondViewport: false,
+      clip: { x: viewport.pageX || 0, y: viewport.pageY || 0, width, height, scale },
+    }, session.sessionId);
+      return { ...result, width, height };
+    })().then(({ data, width, height }) => {
+      if (typeof data !== 'string' || !data || data.length > MAX_FRAME_CHARS || sessions.get(instanceId) !== session) throw new Error('no fresh browser frame available');
+      return { instanceId, streamId: session.streamId, data, metadata: { deviceWidth: width, deviceHeight: height }, source: 'snapshot', capturedAt: Date.now() };
+    }).finally(() => { capturesInFlight -= 1; session.capture = null; });
+  }
+  return session.capture;
+}
+
+export function ownsStream(userId, instanceId, streamId = undefined) {
+  const session = sessions.get(instanceId);
+  return Boolean(session && session.userId === userId && (streamId === undefined || session.streamId === streamId));
 }
 
 /**
@@ -257,9 +305,9 @@ export async function controlBrowser({ userId, instanceId, action, url }) {
 }
 
 /** Drop one viewer; stop the stream when the last one leaves. */
-export function stopViewing(instanceId) {
+export function stopViewing(instanceId, streamId = undefined) {
   const session = sessions.get(instanceId);
-  if (!session) return { ok: true, viewers: 0 };
+  if (!session || (streamId !== undefined && session.streamId !== streamId)) return { ok: true, viewers: 0 };
 
   session.viewers -= 1;
   if (session.viewers > 0) return { ok: true, viewers: session.viewers };
@@ -280,7 +328,7 @@ function stopSession(instanceId, reason, { notify = false } = {}) {
   // ended on its OWN — a viewer that deliberately left does not need to hear
   // that leaving worked.
   if (notify) {
-    broadcastToUser(session.userId, 'browser:stopped', { instanceId, reason });
+    broadcastToUser(session.userId, 'browser:stopped', { instanceId, streamId: session.streamId, reason });
   }
 
   // Best effort: if the browser is already gone this throws, and that is fine —
