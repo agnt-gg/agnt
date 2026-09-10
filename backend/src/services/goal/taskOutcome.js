@@ -13,6 +13,9 @@ export function taskFailureReason(response) {
   return null;
 }
 export function goalEvaluationPasses(evaluation, tasks, evaluationFailed = false) {
+  const entries = evaluation?.taskEvaluations;
+  if (!Array.isArray(entries) || entries.length !== tasks.length || new Set(entries.map(e=>e.taskId)).size !== tasks.length) return false;
+  if (!tasks.every(t => entries.some(e => e.taskId === t.id && Number.isFinite(e.score) && e.criteriaMet && typeof e.criteriaMet === 'object' && !Array.isArray(e.criteriaMet) && Object.keys(e.criteriaMet).length))) return false;
   return !evaluationFailed && !(evaluation?.taskEvaluations || []).some(t => t.criteriaMet?.error === true || t.criteriaMet?.evaluated === false) && evaluation?.passed === true && Number.isFinite(evaluation.scores?.overall)
     && evaluation.scores.overall >= 70 && tasks.length > 0
     && tasks.every(task => task.status === 'completed' && !task.error && (() => {

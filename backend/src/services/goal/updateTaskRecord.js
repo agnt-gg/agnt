@@ -14,6 +14,8 @@ export async function updateTaskRecord(args, userId) {
   if (changed !== 1) throw new Error('Task update did not persist');
   const after = await TaskModel.findOne(task.id);
   if (!after || after.goal_id !== goal.id || (args.status !== undefined && after.status !== args.status) || (args.progress !== undefined && after.progress !== args.progress)) throw new Error('Task update readback mismatch');
+  if (args.output !== undefined && args.output !== null && after.output !== JSON.stringify(args.output)) throw new Error('Task output readback mismatch');
+  if (args.error !== undefined && args.error !== null && after.error !== args.error) throw new Error('Task error readback mismatch');
   broadcastToUser(userId,RealtimeEvents.GOAL_TASK_UPDATED,{goalId:goal.id,taskId:task.id,status:after.status,progress:after.progress});
   return {success:true,goal_id:goal.id,task_id:task.id,status:after.status,progress:after.progress,message:'Task status persisted and verified'};
 }
