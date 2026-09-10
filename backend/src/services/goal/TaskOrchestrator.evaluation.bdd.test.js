@@ -128,7 +128,7 @@ describe('autonomous validation cannot be inferred from task counts',()=>{
   const replan=vi.spyOn(TaskOrchestrator,'_replanFailedTasks').mockResolvedValue([]);
   const state=vi.spyOn(TaskOrchestrator,'_updateWorldState').mockResolvedValue({});
   if(kind==='error')Evaluator.evaluateGoal.mockRejectedValue(Error('evaluator unavailable'));
-  else Evaluator.evaluateGoal.mockResolvedValue({passed:kind==='positive',scores:{overall:kind==='positive'?80:44.9},taskEvaluations:[]});
+  else Evaluator.evaluateGoal.mockResolvedValue({passed:kind==='positive',scores:{overall:kind==='positive'?80:44.9},taskEvaluations:[{taskId:'t',score:kind==='positive'?80:44.9,criteriaMet:{deliverable:true}}]});
   try {
    await TaskOrchestrator.executeGoalAutonomous('g','u',{maxIterations:1,provider:'openai',model:'test'});
    const validated=GoalModel.updateStatus.mock.calls.some(c=>c[1]==='validated');
