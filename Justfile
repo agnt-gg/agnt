@@ -10,6 +10,8 @@ help:
 
 alias dev := dev-frontend
 alias build := build-frontend
+# Desktop frontend reload is part of Electron-supervised backend recovery.
+alias restart := restart-backend
 
 # Report local tool versions; not an application health or validation gate.
 doctor:
@@ -22,8 +24,15 @@ doctor:
 status *args:
     @npm --silent run app:status -- "$@"
 
-# Restart the verified Electron-owned backend; requires existing AGNT_AUTH_TOKEN.
+# Auto: AGNT/token callers use API; ordinary terminals use private OS-user control.
 restart-backend *args:
+    @npm --silent run restart:backend -- "$@"
+
+# Verify restart readiness before building; failure prevents downstream work.
+# Arguments apply to restart/preflight only, not the asset build.
+rebuild-restart *args:
+    @npm --silent run restart:backend -- --preflight "$@"
+    npm run build:frontend
     @npm --silent run restart:backend -- "$@"
 
 # Launch Electron and its backend; do not start a second running instance.

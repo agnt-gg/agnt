@@ -27,17 +27,32 @@ Do not run `just start` or `just dev-backend` while another instance owns port
 3333. `dev-backend` is a standalone start, not a supervised restart. `dev` means
 Vite only, unlike root `npm run dev`, which starts a backend.
 
-There is deliberately no `restart-both`. Frontend build, Vite lifecycle,
-renderer reload, backend restart and whole-app restart are separate operations.
-After `just build`, reload the app window if you want to load the new frontend.
-`just dev` does not automatically redirect Electron to the Vite origin.
+## Restart from AGNT or an ordinary terminal
 
-`restart-backend` uses the existing `npm run restart:backend` contract: an
-already supplied `AGNT_AUTH_TOKEN`, IPv4 loopback, verified Linux source-checkout
-Electron ownership, one POST with no automatic retry, and changed-PID/health
-verification under the same supervisor. Use your existing secure environment
-injection; do not paste a token into shell history or chat. A 202 is not recovery.
-See [NPM_APP_LIFECYCLE.md](NPM_APP_LIFECYCLE.md) for limits and error handling.
+See [design issue #134](https://github.com/agnt-gg/agnt/issues/134) and
+[NPM_APP_LIFECYCLE.md](NPM_APP_LIFECYCLE.md). The implementation is included in
+updated #122; both PRs remain draft pending explicit maintainer review of the
+new local OS-user authorization mechanism. No maintainer approval is implied.
+
+- `just restart` aliases backend restart plus Electron's desktop frontend reload.
+- `just rebuild-restart` preflights readiness, builds assets, then restarts.
+  A failed preflight or build prevents downstream actions. Arguments apply to
+  restart/preflight, not to the build. API preflight cannot validate an expired
+  token remotely; actual restart still authenticates.
+- Supplied token or AGNT context selects the authenticated API; an ordinary
+  token-free terminal selects the private OS-user supervisor channel.
+- Invalid/missing credentials in API mode never fall back to local control.
+  `--transport auto|api|local` makes intent explicit. No stored tokens are read.
+- Quit/relaunch the desktop once after installing the new main-process code.
+  Backend-only restart cannot activate Electron's control server.
+- Local Linux source-desktop control verifies a new healthy backend and completed
+  renderer load. API mode verifies backend health; Electron initiates reload.
+  Neither path restarts a separate Vite server. Build and reload remain distinct.
+
+The operator confirmed successful Ghostty `just restart` after desktop relaunch;
+follow-up status independently verified health/ownership. Disposable integration
+tests and this operator report are distinct from CI routing tests and do not
+constitute an independent security audit or full AGNT tool-injection test.
 
 The Justfile itself never loads a `.env` file or acquires credentials. Delegated
 applications retain their own existing configuration behavior. Positional

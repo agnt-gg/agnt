@@ -37,6 +37,7 @@ async function fixture() {
   return { root, run };
 }
 const commandMap = {
+  restart: ['--silent','run','restart:backend','--'],
   status: ['--silent','run','app:status','--'],
   'restart-backend': ['--silent','run','restart:backend','--'],
   start: ['start','--'],
@@ -151,6 +152,20 @@ test('failed frontend build prevents packaging', async () => {
   assert.notEqual(r.status, 0);
   assert.deepEqual(r.calls.map(x => x.args), [['run','build:frontend','--']]);
 });
+for (const fail of ['preflight', 'build', 'none']) {
+  test(`Given ${fail} outcome When rebuild-restart Then preflight and build gate the restart`, async () => {
+    const { run } = await fixture();
+    const stages = [
+      ['--silent','run','restart:backend','--','--preflight','--json'],
+      ['run','build:frontend'],
+      ['--silent','run','restart:backend','--','--json'],
+    ];
+    const failure = fail === 'preflight' ? stages[0] : fail === 'build' ? stages[1] : [];
+    const r = await run(['rebuild-restart','--json'], { FAIL_ARGS: JSON.stringify(failure) });
+    assert.equal(r.status === 0, fail === 'none', r.stderr);
+    assert.deepEqual(r.calls.map(c => c.args), stages.slice(0, fail === 'preflight' ? 1 : fail === 'build' ? 2 : 3));
+  });
+}
 test('unsupported lint/fmt/restart-both are not fake-green recipes', async () => {
   const { run } = await fixture();
   for (const target of ['lint','fmt','restart-both']) {

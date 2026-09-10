@@ -53,7 +53,7 @@ jobs:
           const tap = fs.readFileSync(process.argv[2], 'utf8');
           const total = Number(tap.match(/^# tests (\d+)$/m)?.[1]);
           const passed = Number(tap.match(/^# pass (\d+)$/m)?.[1]);
-          assert.ok(total >= 24, 'Expected all mandatory routing tests');
+          assert.ok(total >= 28, 'Expected all mandatory routing tests');
           assert.equal(passed, total, 'Every routing test must pass');
           for (const field of ['fail', 'cancelled', 'skipped', 'todo']) {
             assert.match(tap, new RegExp(`^# ${field} 0$`, 'm'));
