@@ -4528,6 +4528,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             success: false,
             error: result.error,
             retryable: false,
+            remoteOutcomeUnknown: result.remoteOutcomeUnknown ?? null,
+            requestId: result.requestId ?? null,
+            receiptDirectory: result.receiptDirectory ?? null,
             provider: provider,
             model: selectedModel,
           });
