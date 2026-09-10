@@ -747,6 +747,7 @@ async function handleUpdateTaskStatus(args, authToken, context) {
     return JSON.stringify({
       success: false,
       error: `Failed to update task status: ${err.message}`,
+      ...(err.code ? {code:err.code,writeState:err.writeState,retryable:err.retryable ?? false} : {}),
     });
   }
 }

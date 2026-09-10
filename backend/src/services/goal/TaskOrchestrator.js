@@ -360,6 +360,10 @@ class TaskOrchestrator {
         const isComplete = await this.checkGoalCompletion(goalId);
         if (isComplete) {
           await this.completeGoal(goalId);
+        } else if (this.runningGoals.has(goalId)) {
+          await GoalModel.updateStatus(goalId, 'needs_review');
+          broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {id:goalId,status:'needs_review'});
+          this.runningGoals.delete(goalId);
         }
       }
     } catch (error) {
@@ -748,14 +752,14 @@ Begin working on this task now.`;
     const model = goalData?.model || null;
     const conversationId = goalData?.conversationId || null;
 
-    await GoalModel.updateStatus(goalId, 'completed', new Date().toISOString());
-    console.log(`Goal ${goalId} completed successfully`);
+    await GoalModel.updateStatus(goalId, 'needs_review');
+    console.log(`Goal ${goalId} execution finished; evaluation required`);
 
-    // Broadcast completion to frontend immediately
+    // Announce execution finished, never validation before evaluation.
     if (userId) {
       broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
         id: goalId,
-        status: 'completed',
+        status: 'needs_review',
       });
     }
 
@@ -785,7 +789,7 @@ Begin working on this task now.`;
         }
 
         // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
-        InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
+        if (evaluation.passed) InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
           console.error('[TaskOrchestrator] Insight/SkillForge analysis failed (non-critical):', err.message);
         });
 
@@ -799,7 +803,8 @@ Begin working on this task now.`;
         }
       } catch (error) {
         console.error(`[TaskOrchestrator] Evaluation failed for goal ${goalId}:`, error);
-        // Don't fail the goal completion if evaluation fails
+        await GoalModel.updateStatus(goalId, 'needs_review');
+        broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {id:goalId,status:'needs_review'});
       }
     }
 
@@ -834,7 +839,7 @@ Begin working on this task now.`;
       role: 'user',
       content: `[System: Goal completed — synthesize results for user]
 
-✅ GOAL COMPLETED: "${goal.title}"
+${evaluation.passed ? '✅ GOAL VALIDATED' : '⚠️ GOAL NEEDS REVIEW'}: "${goal.title}"
 
 Score: ${evaluation.scores?.overall || 0}% | Status: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'}
 ${evaluation.feedback ? `Evaluation: ${evaluation.feedback}` : ''}
