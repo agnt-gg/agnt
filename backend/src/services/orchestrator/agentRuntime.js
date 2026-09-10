@@ -1,3 +1,6 @@
+const virtualAgents = new WeakMap();
+export const getVirtualAgent = context => virtualAgents.get(context) || null;
+
 import { getChatConfig } from './chatConfigs.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
 
@@ -59,6 +62,7 @@ export async function buildAgentRuntime({
   provider = null,
   enabledTools = null,
   contextOverrides = {},
+  builtInAgent = null,
 }) {
   if (!agentId || agentId === 'agent-chat') {
     throw new Error('buildAgentRuntime requires a saved agent id');
@@ -84,6 +88,11 @@ export async function buildAgentRuntime({
     ...contextOverrides,
   };
 
+  if (builtInAgent) {
+    if (agentId !== 'built-in-task-executor' || builtInAgent.id !== agentId || builtInAgent.isBuiltIn !== true) throw new Error('Invalid virtual worker configuration');
+    virtualAgents.set(context, structuredClone(builtInAgent));
+  }
+
   if (provider) {
     const cfg = getProviderConfig(provider);
     context.provider = provider;
@@ -96,6 +105,11 @@ export async function buildAgentRuntime({
   // RESOLVED tool surface — build the prompt first and the image, async and
   // memory-recall blocks all gate off a surface that is still undefined.
   const toolSchemas = await config.getToolSchemas(context);
+  if (builtInAgent) {
+    const names = new Set(toolSchemas.map(s => s.function?.name));
+    const missing = (builtInAgent.assignedTools || []).filter(name => !names.has(name));
+    if (missing.length) throw new Error(`Task executor tools unavailable: ${missing.join(', ')}`);
+  }
   context.toolSchemas = toolSchemas;
   const systemPrompt = await config.buildSystemPrompt(context);
 
