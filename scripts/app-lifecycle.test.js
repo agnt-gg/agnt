@@ -129,7 +129,7 @@ describe('HTTP lifecycle behavior', () => {
   });
   it.each(['', undefined])('refuses missing token before POST (%s)', async credential => {
     await fixture(normal, async (url, calls) => {
-      await expect(executeLifecycle(options(url), { ...deps, token: credential })).rejects.toThrow(/AGNT_AUTH_TOKEN/);
+      await expect(executeLifecycle({ ...options(url), transport: 'api' }, { ...deps, token: credential })).rejects.toThrow(/AGNT_AUTH_TOKEN/);
       expect(calls.filter(c => c.method === 'POST')).toHaveLength(0);
     });
   });
@@ -278,7 +278,7 @@ describe('CLI and npm wiring', () => {
   });
   it('refuses CLI restart without credentials without issuing POST', async () => {
     await fixture(normal, async (url, calls) => {
-      const result = await cli(['restart', '--url', url]);
+      const result = await cli(['restart', '--transport', 'api', '--url', url]);
       expect(result.code).toBe(1); expect(result.stderr).toContain('AGNT_AUTH_TOKEN');
       expect(calls.some(c => c.method === 'POST')).toBe(false);
     });
