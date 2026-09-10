@@ -1,3 +1,4 @@
+import { taskFailureReason, goalEvaluationPasses } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
@@ -63,7 +64,7 @@ class GoalEvaluator {
       const feedback = await this.generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider, model, accumulateUsage);
 
       // Step 5: Determine if goal passed
-      const passed = scores.overall >= 70; // 70% threshold for passing
+      const passed = goalEvaluationPasses({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
 
       // Calculate estimated cost from token usage
       let resolvedProvider = provider;
@@ -189,13 +190,14 @@ class GoalEvaluator {
     // Parse task output
     const taskOutput = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
 
-    if (!taskOutput) {
+    const invalidOutput = !taskOutput || task.status !== 'completed' || task.error || taskFailureReason({...taskOutput,tool_executions:taskOutput?.toolExecutions});
+    if (invalidOutput) {
       return {
         taskId: task.id,
         taskTitle: task.title,
         score: 0,
-        criteriaMet: { hasOutput: false },
-        feedback: 'Task has no output to evaluate',
+        criteriaMet: { hasOutput: !!taskOutput, completed:false },
+        feedback: 'Task is incomplete, failed, or has no usable output',
       };
     }
 

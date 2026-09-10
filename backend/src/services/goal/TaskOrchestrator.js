@@ -1,3 +1,4 @@
+import { taskFailureReason, goalEvaluationPasses } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
@@ -585,6 +586,7 @@ Begin working on this task now.`;
       // provider that will actually serve the turn.
       const { systemPrompt, toolSchemas: availableTools, context: runtimeContext } = await buildAgentRuntime({
         agentId: agent.id,
+        ...(agent.isBuiltIn === true ? {builtInAgent:agent} : {}),
         userId,
         latestUserMessage: taskMessage,
         provider,
@@ -623,6 +625,7 @@ Begin working on this task now.`;
       // Format response to match expected structure
       return {
         content: result.content,
+        ...(result.error || result.success === false ? {success:false,error:result.error || 'Execution failed'} : {}),
         tool_executions: result.toolExecutions.map((execution) => ({
           name: execution.name,
           arguments: execution.arguments,
@@ -646,6 +649,13 @@ Begin working on this task now.`;
       timestamp: new Date().toISOString(),
       usage: agentResponse.usage || null,
     };
+
+    const failure = taskFailureReason(agentResponse);
+    if (failure) {
+      outputs.outcome = 'blocked';
+      await TaskModel.updateStatus(taskId, 'failed', 0, null, outputs.timestamp, null, outputs);
+      throw Object.assign(new Error(failure), {code:'TASK_BLOCKED'});
+    }
 
     // Mark task as completed with output data
     await TaskModel.updateStatus(taskId, 'completed', 100, null, outputs.timestamp, null, outputs);
@@ -1154,18 +1164,15 @@ The goal you delegated did not fully pass. Let the user know:
           evaluation = { passed: false, scores: { overall: 0 }, feedback: error.message };
         }
 
-        // If all tasks completed but evaluation itself failed (LLM error, no provider, etc.),
-        // treat the goal as passed — the work is done, don't fail because the evaluator broke
-        const allTasksComplete = await this.checkGoalCompletion(goalId);
-        if (allTasksComplete && (evaluationFailed || !evaluation.passed)) {
-          const failedTasks = (await TaskModel.findByGoalId(goalId)).filter(t => t.status === 'failed');
-          if (failedTasks.length === 0) {
-            console.log(`[AGI Loop] All tasks completed for goal ${goalId} — treating as passed${evaluationFailed ? ' (evaluator failed)' : ' (all work done)'}`);
-            evaluation.passed = true;
-            if (evaluation.scores.overall === 0) {
-              evaluation.scores.overall = 100;
-            }
-          }
+        // Counters never overrule negative/unknown evaluation or failed evidence.
+        const evaluatedTasks = await TaskModel.findByGoalId(goalId);
+        evaluation.passed = goalEvaluationPasses(evaluation, evaluatedTasks, evaluationFailed);
+        if (evaluationFailed || (evaluation.taskEvaluations || []).some(t => t.criteriaMet?.error === true || t.criteriaMet?.evaluated === false)) {
+          await GoalModel.updateLoopStatus(goalId, 'stopped');
+          await GoalModel.updateStatus(goalId, 'needs_review');
+          broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {id:goalId,status:'needs_review'});
+          this.runningGoals.delete(goalId);
+          return {goalId,status:'needs_review',reason:'evaluation_failed',iteration};
         }
 
         const iterationDuration = Date.now() - iterationStart;
