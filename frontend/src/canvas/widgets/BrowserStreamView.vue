@@ -17,6 +17,7 @@
       @navigate="navigate"
     />
 
+    <p v-if="hasFrame" class="stream-freshness" role="status">{{ frameDescription }}</p>
     <div class="stream-page">
       <canvas
       ref="canvasRef"
@@ -30,9 +31,10 @@
       @keyup.prevent="onKey"
     ></canvas>
 
-      <div v-if="!hasFrame" class="stream-status">
+      <div v-if="!hasFrame || error" class="stream-status">
         <i :class="waiting ? 'fas fa-circle-notch fa-spin' : 'fas fa-globe'"></i>
-        <p>{{ statusText }}</p>
+        <p role="status">{{ statusText }}</p>
+        <button v-if="error" type="button" @click="retryView">Retry live view</button>
       </div>
     </div>
   </div>
@@ -75,6 +77,27 @@ let socket = null;
 let retryTimer = null;
 let socketTimer = null;
 let painting = false;
+let pendingFrame = null;
+let decodeTimer = null;
+let decodeSerial = 0;
+let seenLiveFrame = false;
+let viewportSize = null;
+let observationOnly = false;
+let viewerId = null;
+let streamId = null;
+const frameDescription = ref('');
+let disposed = false;
+let authenticated = false;
+let authenticatedUserId = null;
+let generation = 0;
+let subscribing = false;
+let frameTimer = null;
+let authTimer = null;
+let registrationTimer = null;
+let renewalTimer = null;
+let renewalDeadline = null;
+let channelDeadline = null;
+const phase = ref('Connecting to the live-view channel…');
 
 /**
  * How often to re-ask for a surface while none exists.
@@ -88,7 +111,7 @@ const RETRY_MS = 1500;
 
 const statusText = computed(() => {
   if (error.value) return error.value;
-  return waiting.value ? 'Waiting for the browser to open…' : 'No browser is open yet.';
+  return phase.value;
 });
 
 const authHeaders = () => ({
@@ -99,97 +122,208 @@ const authHeaders = () => ({
 /**
  * Paint one frame.
  *
- * The ack goes out AFTER the image has decoded and drawn, never on arrival.
- * That is the flow control: Chromium will not send frame N+1 until N is acked,
- * so acking on render makes a slow client throttle itself instead of queueing
- * frames it cannot keep up with. See BrowserScreencastService.
+ * Shared capture advances on a render/drop ACK from any viewer. Locally keep
+ * one decoder plus the newest pending frame; superseded frames are dropped.
  */
+function ackFrame(payload) {
+  if (socket?.connected && authenticated && payload.frameId != null) {
+    socket.emit('browser:ack', { instanceId: payload.instanceId, frameId: payload.frameId, streamId: payload.streamId });
+  }
+}
+
 function paint(payload) {
   const canvas = canvasRef.value;
-  if (!canvas) return;
-
-  // Frames arrive faster than a slow machine can decode. Dropping one while
-  // another is in flight is correct — the next frame is a better picture than
-  // the one being skipped, and the ack still fires so the stream never stalls.
+  if (!canvas || disposed) return;
   if (painting) {
-    socket?.emit('browser:ack', { instanceId, frameId: payload.frameId });
+    if (pendingFrame) ackFrame(pendingFrame);
+    pendingFrame = payload;
     return;
   }
+  const epoch = generation;
   painting = true;
-
+  const serial = ++decodeSerial;
   const image = new Image();
+  const complete = () => {
+    clearTimeout(decodeTimer); painting = false; ackFrame(payload);
+    const next = pendingFrame; pendingFrame = null;
+    if (next) paint(next);
+  };
+  decodeTimer = setTimeout(() => {
+    if (disposed || epoch !== generation || serial !== decodeSerial) return;
+    decodeSerial += 1;
+    error.value = 'Browser frame decoding timed out. Retry the live view.';
+    waiting.value = false; complete();
+  }, 5000);
   image.onload = () => {
-    // Sized from the FRAME, not from the element: the canvas backing store must
-    // match the source or every input coordinate is scaled by a factor nobody
-    // computed. CSS stretches it to fit the widget.
-    if (canvas.width !== image.width || canvas.height !== image.height) {
-      canvas.width = image.width;
-      canvas.height = image.height;
-    }
-    canvas.getContext('2d')?.drawImage(image, 0, 0);
-    hasFrame.value = true;
-    waiting.value = false;
+    if (disposed || epoch !== generation || serial !== decodeSerial) return;
     painting = false;
-    socket?.emit('browser:ack', { instanceId, frameId: payload.frameId });
+    try {
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas rendering is unavailable.');
+      if (payload.source === 'snapshot' && seenLiveFrame) { complete(); return; }
+      if (image.width > 1280 || image.height > 800) throw new Error('Browser frame exceeds the size limit.');
+      viewportSize = payload.metadata;
+      canvas.width = image.width; canvas.height = image.height;
+      context.drawImage(image, 0, 0);
+      // Receipt/decoding alone is not success: only painted live pixels can
+      // supersede a fallback snapshot for this subscription generation.
+      if (payload.source !== 'snapshot') seenLiveFrame = true;
+      socket?.emit('browser:painted', {instanceId, viewerId, streamId, ...(payload.bootstrapId ? {bootstrapId:payload.bootstrapId} : {})});
+      hasFrame.value = true; waiting.value = false; error.value = '';
+      frameDescription.value = payload.source === 'snapshot'
+        ? 'Snapshot received — continuous live updates not yet confirmed.'
+        : 'Last received browser frame — unchanged pixels alone do not prove stream health.';
+      clearTimeout(frameTimer);
+    } catch (err) { error.value = err.message; }
+    complete();
   };
   image.onerror = () => {
+    if (disposed || epoch !== generation || serial !== decodeSerial) return;
     painting = false;
-    // Still ack: a frame we could not decode must not stop the stream forever.
-    socket?.emit('browser:ack', { instanceId, frameId: payload.frameId });
+    error.value = 'Connected, but the browser frame could not be decoded.';
+    complete();
   };
   image.src = `data:image/jpeg;base64,${payload.data}`;
 }
 
-/** Ask the backend to stream whichever surface belongs to this workspace. */
+function releaseLease(id, lease) {
+  if (!id || !lease) return;
+  fetch(`${API_CONFIG.BASE_URL}/browser-agent/view/${encodeURIComponent(id)}?viewerId=${encodeURIComponent(lease)}`, {
+    method: 'DELETE', credentials: 'include', headers: authHeaders(), keepalive: true,
+  }).catch(() => {});
+}
+
+function clearSubscription() {
+  generation += 1;
+  // Erase the backing bitmap, not just its overlay. Identity changes must not
+  // retain old-user pixels or navigation metadata while new work is pending.
+  if (canvasRef.value) { canvasRef.value.width = 0; canvasRef.value.height = 0; }
+  currentUrl.value = ''; canGoBack.value = false; canGoForward.value = false;
+  emit('page', { url: '', title: '' });
+  emit('history', { canGoBack: false, canGoForward: false });
+  decodeSerial += 1; clearTimeout(decodeTimer); pendingFrame = null; seenLiveFrame = false; viewportSize = null;
+  if (instanceId && viewerId && socket?.connected) socket.emit('browser:unwatching', {instanceId, viewerId});
+  clearTimeout(renewalTimer); clearTimeout(renewalDeadline);
+  clearTimeout(retryTimer); clearTimeout(frameTimer); clearTimeout(registrationTimer);
+  releaseLease(instanceId, viewerId);
+  instanceId = null; viewerId = null; streamId = null; frameDescription.value = ''; navigating.value = false; subscribing = false; painting = false;
+  hasFrame.value = false; waiting.value = true;
+}
+
+function scheduleRenewal() {
+  clearTimeout(renewalTimer);
+  const epoch = generation;
+  renewalTimer = setTimeout(() => {
+    if (disposed || epoch !== generation || !instanceId) return;
+    const failed = () => {
+      if (disposed || epoch !== generation) return;
+      clearSubscription(); error.value = 'Live-view lease renewal failed. Retry the live view.'; waiting.value = false;
+    };
+    renewalDeadline = setTimeout(failed, 5000);
+    if (!socket?.connected || !authenticated) { failed(); return; }
+    socket.emit('browser:renew', { instanceId, viewerId }, result => {
+      if (disposed || epoch !== generation) return;
+      clearTimeout(renewalDeadline);
+      if (!result?.ok) failed(); else scheduleRenewal();
+    });
+  }, 15000);
+}
+
+function armChannelDeadline() {
+  clearTimeout(channelDeadline);
+  channelDeadline = setTimeout(() => {
+    if (!disposed && (!socket?.connected || !authenticated)) {
+      error.value = 'Live-view channel unavailable or connection timed out. Retry the live view.';
+      waiting.value = false;
+    }
+  }, 8000);
+}
+
+function armFrameDeadline() {
+  clearTimeout(frameTimer);
+  frameTimer = setTimeout(() => {
+    if (!hasFrame.value && instanceId && !disposed) {
+      waiting.value = false;
+      error.value = 'Browser connected, but no frame was received. Retry the live view.';
+    }
+  }, 8000);
+}
+
 async function startWatching() {
+  const epoch = generation;
+  subscribing = true;
+  phase.value = 'Connecting to the browser stream…';
+  // A lost HTTP response can leave a pending server lease. The server expires
+  // it; this client bounds the request so its UI cannot spin forever.
+  const controller = new AbortController();
+  const requestTimer = setTimeout(() => controller.abort(), 12000);
   try {
+    const capabilities = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/view-capabilities`, { headers: authHeaders(), credentials: 'include', signal: controller.signal });
+    const protocol = await capabilities.json().catch(() => ({}));
+    if (disposed || epoch !== generation) return 'stop';
+    if (!capabilities.ok || protocol.protocolVersion !== 2) {
+      error.value = 'Live-view protocol mismatch. Update or refresh the backend and client.'; waiting.value = false; return 'stop';
+    }
     const response = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/view`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: authHeaders(),
-      body: JSON.stringify({ workspaceId: props.workspaceId, launch: props.launch }),
+      method: 'POST', credentials: 'include', headers: authHeaders(), signal: controller.signal,
+      body: JSON.stringify({ workspaceId: props.workspaceId, launch: props.launch && !observationOnly, protocolVersion: 2 }),
     });
     const body = await response.json().catch(() => ({}));
-
+    if (disposed || epoch !== generation || !authenticated || !socket?.connected) {
+      if (response.ok) releaseLease(body.instanceId, body.viewerId);
+      return 'stop';
+    }
     if (!response.ok) {
-      // 404 means "not yet", which is the normal cold-start case and not worth
-      // showing as a failure — keep polling quietly.
-      if (response.status === 404) {
-        error.value = '';
-        return false;
-      }
-
-      // 503 means no browser can be opened on that machine at all (none
-      // installed, or it will not start). Polling cannot fix that, and a widget
-      // that retries forever never tells the user what is wrong.
+      if (response.status === 404) { error.value = ''; phase.value = 'No browser is open yet. Waiting for one…'; return false; }
       error.value = body.error || 'Could not watch that browser.';
-      if (response.status === 503) {
-        waiting.value = false;
-        return 'stop';
-      }
-      return false;
+      waiting.value = false;
+      return [401,403,426,503].includes(response.status) ? 'stop' : false;
     }
-
-    instanceId = body.instanceId;
-    error.value = '';
-    socket?.emit('browser:watching', { instanceId });
-    if (body.url) {
-      currentUrl.value = body.url;
-      emit('page', { url: body.url, title: '' });
+    if (!body.instanceId || !body.viewerId || !body.streamId) {
+      error.value = 'Live-view protocol mismatch. Update the backend and client together.';
+      waiting.value = false; return 'stop';
     }
-    await refreshHistory();
+    observationOnly = true;
+    instanceId = body.instanceId; viewerId = body.viewerId; streamId = body.streamId;
+    error.value = ''; phase.value = 'Browser connected. Waiting for its first frame…';
+    armFrameDeadline();
+    const registrationFailed = () => {
+      if (disposed || epoch !== generation) return;
+      clearSubscription(); error.value = 'Live-view registration failed. Retry the live view.'; waiting.value = false;
+    };
+    registrationTimer = setTimeout(registrationFailed, 5000);
+    socket.emit('browser:watching', { instanceId, viewerId }, (result) => {
+      if (disposed || epoch !== generation) return;
+      clearTimeout(registrationTimer);
+      if (!result?.ok) registrationFailed(); else scheduleRenewal();
+    });
+    if (body.url) { currentUrl.value = body.url; emit('page', { url: body.url, title: '' }); }
+    refreshHistory();
     return true;
   } catch (err) {
-    error.value = `Could not reach the server: ${err.message}`;
+    if (epoch !== generation || disposed) return 'stop';
+    error.value = `Could not reach the live-view server: ${err.message}`;
+    waiting.value = false;
     return false;
+  } finally {
+    clearTimeout(requestTimer);
+    if (epoch === generation) subscribing = false;
   }
 }
 
 async function pollForSurface() {
-  if (instanceId) return;
+  if (disposed || document.visibilityState === 'hidden' || !authenticated || !socket?.connected || instanceId || subscribing) return;
+  const epoch = generation;
   const started = await startWatching();
-  if (started === true || started === 'stop') return;
+  if (disposed || epoch !== generation || started === true || started === 'stop') return;
   retryTimer = setTimeout(pollForSurface, RETRY_MS);
+}
+
+function retryView() {
+  clearSubscription(); error.value = '';
+  armChannelDeadline();
+  if (authenticated && socket?.connected) pollForSurface();
+  else requestAuthentication();
 }
 
 // ── input ──────────────────────────────────────────────────────────────────
@@ -205,19 +339,21 @@ async function pollForSurface() {
 function pagePoint(event) {
   const canvas = canvasRef.value;
   if (!canvas) return null;
-  return viewportToPage({
+  const point = viewportToPage({
     clientX: event.clientX,
     clientY: event.clientY,
     rect: canvas.getBoundingClientRect(),
     frameWidth: canvas.width,
     frameHeight: canvas.height,
   });
+  if (!point) return null;
+  return { x: point.x * (viewportSize?.deviceWidth || canvas.width) / canvas.width, y: point.y * (viewportSize?.deviceHeight || canvas.height) / canvas.height };
 }
 
 const MOUSE_TYPES = { mousedown: 'mousePressed', mouseup: 'mouseReleased', mousemove: 'mouseMoved' };
 
 function sendInput(method, params) {
-  if (!instanceId) return;
+  if (!instanceId || !authenticated || !socket?.connected || !hasFrame.value) return;
   socket?.emit('browser:input', { instanceId, method, params });
 }
 
@@ -290,19 +426,23 @@ function onKey(event) {
 // ── lifecycle ──────────────────────────────────────────────────────────────
 
 function onFrame(payload) {
-  if (!instanceId || payload.instanceId !== instanceId) return;
+  if (!authenticated || !socket?.connected || !instanceId || payload.instanceId !== instanceId) return;
+  if (payload.streamId !== streamId || (payload.viewerId && payload.viewerId !== viewerId)) return;
+  if (typeof payload.data !== 'string' || payload.data.length > 2 * 1024 * 1024) { ackFrame(payload); return; }
+  if (payload.source === 'snapshot') { if (seenLiveFrame) return; }
   paint(payload);
 }
 
 function onNavigated(payload) {
-  if (!instanceId || payload.instanceId !== instanceId) return;
+  if (!instanceId || payload.instanceId !== instanceId || payload.streamId !== streamId) return;
   currentUrl.value = payload.url || '';
   emit('page', { url: currentUrl.value, title: '' });
   refreshHistory();
 }
 
 async function command(action, url = undefined) {
-  if (!instanceId || navigating.value) return false;
+  if (!instanceId || navigating.value || !authenticated || !socket?.connected) return false;
+  const epoch = generation;
   navigating.value = true;
   try {
     const response = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/control`, {
@@ -312,6 +452,7 @@ async function command(action, url = undefined) {
       body: JSON.stringify({ instanceId, action, ...(url ? { url } : {}) }),
     });
     const body = await response.json().catch(() => ({}));
+    if (disposed || epoch !== generation) return false;
     if (!response.ok) {
       error.value = body.error || 'The browser command failed.';
       return false;
@@ -319,22 +460,25 @@ async function command(action, url = undefined) {
     applyBrowserState(body);
     return true;
   } catch (err) {
+    if (disposed || epoch !== generation) return false;
     error.value = `Could not control the browser: ${err.message}`;
     return false;
   } finally {
-    navigating.value = false;
+    if (epoch === generation) navigating.value = false;
   }
 }
 
 async function refreshHistory() {
   if (!instanceId) return;
+  const epoch = generation;
   try {
     const response = await fetch(`${API_CONFIG.BASE_URL}/browser-agent/control/${encodeURIComponent(instanceId)}`, {
       credentials: 'include',
       headers: authHeaders(),
     });
     if (!response.ok) return;
-    applyBrowserState(await response.json());
+    const body = await response.json();
+    if (!disposed && epoch === generation) applyBrowserState(body);
   } catch { /* page events still keep the URL current */ }
 }
 
@@ -363,17 +507,23 @@ const navigate = (url) => command('navigate', url);
  * about to launch for its next step.
  */
 function onStopped(payload) {
-  if (!instanceId || payload.instanceId !== instanceId) return;
-  instanceId = null;
-  hasFrame.value = false;
-  waiting.value = true;
+  if (!instanceId || payload.instanceId !== instanceId || payload.streamId !== streamId) return;
+  clearSubscription();
+  error.value = '';
   canGoBack.value = false;
   canGoForward.value = false;
   emit('history', { canGoBack: false, canGoForward: false });
   pollForSurface();
 }
 
-onMounted(attachWhenReady);
+function onVisibility() {
+  observationOnly = true;
+  clearSubscription(); error.value = '';
+  if (document.visibilityState === 'hidden') {
+    phase.value = 'Live view paused while this tab is hidden.'; waiting.value = false;
+  } else { armChannelDeadline(); pollForSurface(); }
+}
+onMounted(() => { document.addEventListener('visibilitychange', onVisibility); armChannelDeadline(); attachWhenReady(); });
 
 /**
  * Nothing starts until the socket exists, and then EVERYTHING starts.
@@ -390,16 +540,70 @@ onMounted(attachWhenReady);
  * One entry point that either does ALL the setup or reschedules ALL of it
  * makes that split impossible by construction.
  */
-function attachWhenReady() {
-  socket = getRealtimeSocket();
-  if (!socket) {
-    socketTimer = setTimeout(attachWhenReady, 500);
-    return;
+function onAuthenticated(data) {
+  if (disposed) return;
+  clearTimeout(authTimer);
+  if (!data?.success || typeof data.userId !== 'string' || !data.userId.trim()) {
+    authenticated = false; authenticatedUserId = null; clearSubscription();
+    error.value = 'Live-view authentication failed.'; waiting.value = false; return;
   }
-  socket.on('browser:frame', onFrame);
-  socket.on('browser:navigated', onNavigated);
-  socket.on('browser:stopped', onStopped);
+  if (authenticatedUserId !== null && authenticatedUserId !== data.userId) {
+    authenticated = false;
+    observationOnly = true;
+    clearSubscription();
+    error.value = '';
+  }
+  authenticatedUserId = data.userId;
+  authenticated = true;
+  clearTimeout(channelDeadline);
   pollForSurface();
+}
+function onDisconnect() {
+  authenticated = false; clearTimeout(authTimer); clearSubscription();
+  error.value = ''; phase.value = 'Live view disconnected. Waiting to reconnect…';
+  armChannelDeadline();
+}
+function requestAuthentication() {
+  if (disposed || !socket?.connected) return;
+  phase.value = 'Authenticating the live-view channel…';
+  clearTimeout(authTimer);
+  authTimer = setTimeout(() => {
+    if (!authenticated && !disposed) { error.value = 'Live-view authentication timed out. Retry the live view.'; waiting.value = false; }
+  }, 8000);
+  // Authentication is idempotent. An explicit token round trip also handles
+  // mounting after the shared socket already emitted its authenticated event.
+  socket.emit('authenticate', { token: localStorage.getItem('token') });
+}
+function onFrameUnavailable(payload) {
+  if (payload.instanceId === instanceId && payload.viewerId === viewerId && !hasFrame.value) {
+    error.value = 'Browser connected, but it is not delivering frames. Retry the live view.';
+    waiting.value = false;
+  }
+}
+function attachWhenReady() {
+  if (disposed) return;
+  const next = getRealtimeSocket();
+  if (next !== socket) {
+    detachSocket(); onDisconnect(); socket = next;
+    socket?.on('browser:frame', onFrame);
+    socket?.on('browser:navigated', onNavigated);
+    socket?.on('browser:stopped', onStopped);
+    socket?.on('browser:frame-unavailable', onFrameUnavailable);
+    socket?.on('authenticated', onAuthenticated);
+    socket?.on('connect', requestAuthentication);
+    socket?.on('disconnect', onDisconnect);
+    requestAuthentication();
+  }
+  socketTimer = setTimeout(attachWhenReady, 500);
+}
+function detachSocket() {
+  socket?.off('browser:frame', onFrame);
+  socket?.off('browser:navigated', onNavigated);
+  socket?.off('browser:stopped', onStopped);
+  socket?.off('browser:frame-unavailable', onFrameUnavailable);
+  socket?.off('authenticated', onAuthenticated);
+  socket?.off('connect', requestAuthentication);
+  socket?.off('disconnect', onDisconnect);
 }
 
 defineExpose({
@@ -414,23 +618,11 @@ defineExpose({
 });
 
 onBeforeUnmount(() => {
-  clearTimeout(retryTimer);
-  clearTimeout(socketTimer);
-  socket?.off('browser:frame', onFrame);
-  socket?.off('browser:navigated', onNavigated);
-  socket?.off('browser:stopped', onStopped);
-  if (instanceId) {
-    socket?.emit('browser:unwatching', { instanceId });
-    // Drop this viewer's ref-count. The browser itself keeps running — the
-    // agent may still be mid-task, and closing a window because somebody looked
-    // away would be its own bug.
-    fetch(`${API_CONFIG.BASE_URL}/browser-agent/view/${encodeURIComponent(instanceId)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: authHeaders(),
-    }).catch(() => {});
-  }
-  instanceId = null;
+  disposed = true;
+  document.removeEventListener('visibilitychange', onVisibility);
+  clearSubscription(); clearTimeout(socketTimer); clearTimeout(authTimer);
+  clearTimeout(channelDeadline);
+  detachSocket(); socket = null;
 });
 </script>
 

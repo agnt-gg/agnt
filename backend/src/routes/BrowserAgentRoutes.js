@@ -20,7 +20,8 @@ import {
   registerSurface, unregisterSurface, getActiveSurface,
   getLiveSurface, forgetSurfaceByUrl, announceHostSurface, hostInstanceId,
 } from '../services/browserSurfaces.js';
-import { startViewing, stopViewing, isStreaming } from '../services/BrowserScreencastService.js';
+import { isStreaming, ownsStream } from '../services/BrowserScreencastService.js';
+import { acquireViewer, releaseViewer } from '../services/BrowserViewerLeaseService.js';
 import { ensureFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
 
 const router = express.Router();
@@ -103,7 +104,10 @@ router.get('/surface', authenticateToken, (req, res) => {
  * and the backend looks the endpoint up, so a viewer can only ever watch a
  * browser this backend already knows about and already owns.
  */
+router.get('/view-capabilities', authenticateToken, (req, res) => res.json({ protocolVersion: 2 }));
+
 router.post('/view', authenticateToken, async (req, res) => {
+  if (req.body?.protocolVersion !== 2) return res.status(426).json({ error: 'Live-view protocol changed. Refresh the client.', protocolVersion: 2 });
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
 
   const userId = req.user.id;
@@ -156,7 +160,7 @@ router.post('/view', authenticateToken, async (req, res) => {
   if (!surface) return res.status(404).json({ success: false, error: 'There is no browser to watch yet.' });
 
   try {
-    const result = await startViewing({ userId, instanceId: surface.instanceId, cdpUrl: surface.cdpUrl });
+    const result = await acquireViewer({ userId, instanceId: surface.instanceId, cdpUrl: surface.cdpUrl });
     return res.json({
       success: true,
       instanceId: surface.instanceId,
@@ -221,13 +225,14 @@ router.post('/control', authenticateToken, async (req, res) => {
 /** DELETE /api/browser-agent/view/:instanceId — one viewer leaves. */
 router.delete('/view/:instanceId', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
-  return res.json({ success: true, ...stopViewing(req.params.instanceId) });
+  const result = releaseViewer({ userId: req.user.id, instanceId: req.params.instanceId, viewerId: req.query.viewerId });
+  return res.status(result.ok ? 200 : 404).json({ success: result.ok, ...result });
 });
 
 /** GET /api/browser-agent/view/:instanceId — is anything streaming there? */
 router.get('/view/:instanceId', authenticateToken, (req, res) => {
   if (!req.user?.isAuthenticated) return res.status(401).json({ success: false, error: 'Authentication required' });
-  return res.json({ success: true, streaming: isStreaming(req.params.instanceId) });
+  return res.json({ success: true, streaming: ownsStream(req.user.id, req.params.instanceId) && isStreaming(req.params.instanceId) });
 });
 
 export default router;
