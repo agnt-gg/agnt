@@ -51,3 +51,18 @@ Observed second-viewer first paint was approximately 1.53 seconds, consistent wi
 - Joining-viewer latency merits a separate measured optimization campaign. Do not lower deadlines or remove resource limits merely to improve a timing score.
 - Publish matching frontend/backend, preserve prior assets for rollback, inspect concurrent work before any restart. Reverse only the scoped change with drift checks; do not reset a dirty checkout.
 - This patch has been installed and tested locally. The upstream PR remains draft for review, not merge authorization.
+
+
+## Merge-readiness hardening (2026-09-10)
+Six additional RED failures across the two browser PRs were reproduced before fixes. This recovery PR now requires viewerId + owned socket lease on frame ACK, normalizes malformed socket payloads/callbacks, and rejects zero/nonfinite decoded dimensions. Its focused suites now pass 106 backend / 48 frontend tests. The companion toolbar PR fixes stale address after blur and suppresses submits while busy (30 focused tests).
+
+### Explicit risk register
+- **Protocol rollout:** old clients cannot use v2; even earlier local v2 clients lack the newly required viewerId ACK. Refresh all viewers when updating; watchdog fallback is not acceptable proof of full client compatibility.
+- **Cold Chromium startup:** initial CI failed one pre-existing browserActDriver live test with a 4s WebSocket handshake timeout (5940 other tests passed). The nine-test live-driver suite passed locally unchanged; no timeout was widened and no action was retried. Fresh CI is required; a retry pass does not prove the underlying cold-start sensitivity fixed.
+- **Manual acceptance:** real OS sleep/resume and two real accounts remain unverified. Controlled account-transition tests and real rejection/reauthentication are not substitutes. Obtain those checks or explicit maintainer acceptance of the bounded-release scope before claiming full acceptance.
+- **Current installation:** PR hardening is not automatically deployed to the dirty running checkout. Previously recorded production-backend acceptance applies to the earlier local revision; new changes have focused tests/build/CI evidence, not a fresh production UI claim.
+- **Resource limits:** application image queue, leases and capture concurrency are bounded; Chromium decode/GPU allocations, socket/kernel buffers and total concurrent screencasts are not hard memory guarantees. Per-stream screenshot rate limits reset on stream recreation. Load/soak campaign remains open.
+- **Scope of identity:** frame delivery is viewer-scoped; navigation/status metadata still travels to the same user's room. Legacy tokenless-local identity behavior remains owned by socketIdentity policy. This PR does not strengthen that broader policy.
+- **Recovery behavior:** 60s lease expiry may evict suspended tabs; explicit retry is allowed. Last image is not continuous-capture health. Freshness/quality and failures must remain in campaign denominators.
+- **Performance:** staggered second viewer may wait ~1.5s; capabilities and acquire are serial. No p95/p99 claim or speed win. Optimize only with correct-pixel timestamps and failure accounting.
+- **CI interpretation:** report-only node:test has known failures; its green job is not a clean test suite. No maintainer review/approval is implied by automated checks.

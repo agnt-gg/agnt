@@ -23,6 +23,15 @@ const frame = () => receive('browser:frame',{ instanceId:'i', streamId:'s1', fra
 
 const snapshot=()=>receive('browser:frame',{instanceId:'i',streamId:'s1',source:'snapshot',data:'VALID'});
 describe('Given receipt is not proof of valid pixels',()=>{
+ it('When decoded image has zero dimensions, Then it is not acknowledged as painted and fallback remains eligible',async()=>{
+  await boot();await authenticate();frame();images[0].width=0;images[0].onload();
+  expect(draw).not.toHaveBeenCalled();expect(env.socket.emit.mock.calls.some(c=>c[0]==='browser:painted')).toBe(false);
+  snapshot();expect(images).toHaveLength(2);images[1].onload();expect(draw).toHaveBeenCalledTimes(1);
+ });
+ it('When a live frame is ACKed, Then the viewer lease is included',async()=>{
+  await boot();await authenticate();frame();images[0].onload();
+  expect(env.socket.emit).toHaveBeenCalledWith('browser:ack',expect.objectContaining({viewerId:'v'}));
+ });
  it('When the first live image is malformed and a valid snapshot follows, Then the snapshot paints',async()=>{
   await boot();await authenticate();frame();images[0].onerror();snapshot();
   expect(images).toHaveLength(2);images[1].onload();await flushPromises();
