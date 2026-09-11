@@ -23,6 +23,10 @@ export async function commitGoalEvaluation({goal,userId,evaluationType,scores,pa
     assertCurrent?.();
     const current=await get("SELECT g.*,COALESCE(v.revision,0) AS lifecycle_revision FROM goals g LEFT JOIN goal_lifecycle_versions v ON v.kind='goal' AND v.entity_id=g.id WHERE g.id=? AND g.user_id=?",[goal.id,userId]);
     if (!current || current.deleted_at || ['paused','stopped'].includes(current.status) || current.lifecycle_revision!==goal.lifecycle_revision) throw staleEvaluation();
+    if(goal.recoveryOwner) {
+      const owner=await get("SELECT run_id,generation,state,lease_until FROM goal_run_ownership WHERE goal_id=?",[goal.id]);
+      if(!owner||owner.run_id!==goal.recoveryOwner.run_id||owner.generation!==goal.recoveryOwner.generation||owner.state!=='running'||owner.lease_until<=Date.now())throw staleEvaluation();
+    }
     const evaluationId=generateUUID();
     await run(`INSERT INTO goal_evaluations(id,goal_id,evaluation_type,overall_score,passed,evaluation_data,feedback,evaluated_by,input_tokens,output_tokens,total_tokens,estimated_cost) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
       [evaluationId,goal.id,evaluationType,scores.overall,passed?1:0,JSON.stringify(evaluationData),feedback,'system',tokenUsage?.inputTokens||0,tokenUsage?.outputTokens||0,tokenUsage?.totalTokens||0,tokenUsage?.estimatedCost||0]);
