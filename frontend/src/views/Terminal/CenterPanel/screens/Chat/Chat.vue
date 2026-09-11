@@ -3059,6 +3059,15 @@ export default {
   display: none;
 }
 
+/* Align the fold with message bodies: 36px avatar + 10px border/padding + 16px gap. */
+.message-flow :deep(.compaction-card) {
+  margin-left: 62px;
+}
+
+.mobile-view :deep(.compaction-card) {
+  margin-left: 0;
+}
+
 /* Force right-alignment regardless of whether the parent is flex-column.
    .message-flow's align-self approach was unreliable, so wrap each pill
    in a row-flex container with justify-content: flex-end. */
