@@ -629,6 +629,7 @@ Begin working on this task now.`;
           response: execution.response,
         })),
         usage: result.usage || null,
+        ...(result.executionTelemetry ? {executionTelemetry:result.executionTelemetry,requestMetrics:result.executionTelemetry.requestMetrics} : {}),
       };
     } catch (error) {
       console.error(`[TaskOrchestrator] Error executing task via agent chat:`, error);

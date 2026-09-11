@@ -1,3 +1,4 @@
+import { normalizeExecutionTelemetry, readExecutionTelemetry } from '../services/ai/executionTelemetry.js';
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { uncachedCostForRow } from '../utils/cacheSavings.js';
@@ -84,7 +85,10 @@ class AgentExecutionModel {
    * Update an agent execution record
    * @param {object} [tokenUsage] - Optional token usage { inputTokens, outputTokens, totalTokens, estimatedCost, cacheReadTokens, cacheCreationTokens }
    */
-  static update(id, status, finalResponse, creditsUsed, toolCallsCount, error = null, tokenUsage = null) {
+  static update(id, status, finalResponse, creditsUsed, toolCallsCount, error = null, tokenUsage = null, executionTelemetry = null) {
+    let telemetryJson;
+    try { telemetryJson = executionTelemetry == null ? null : JSON.stringify(normalizeExecutionTelemetry(executionTelemetry)); }
+    catch(error) { return Promise.reject(error); }
     return new Promise((resolve, reject) => {
       const safeStatus = status || 'stopped';
       const endTime = ['completed', 'failed', 'stopped', 'error'].includes(safeStatus)
@@ -96,11 +100,11 @@ class AgentExecutionModel {
           `UPDATE agent_executions
            SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?,
                input_tokens = ?, output_tokens = ?, total_tokens = ?, estimated_cost = ?,
-               cache_read_tokens = ?, cache_creation_tokens = ?
+               cache_read_tokens = ?, cache_creation_tokens = ?, execution_telemetry = COALESCE(?, execution_telemetry)
            WHERE id = ?`,
           [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error,
            tokenUsage.inputTokens || 0, tokenUsage.outputTokens || 0, tokenUsage.totalTokens || 0, tokenUsage.estimatedCost || 0,
-           tokenUsage.cacheReadTokens || 0, tokenUsage.cacheCreationTokens || 0, id],
+           tokenUsage.cacheReadTokens || 0, tokenUsage.cacheCreationTokens || 0, telemetryJson, id],
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -109,9 +113,9 @@ class AgentExecutionModel {
       } else {
         db.run(
           `UPDATE agent_executions
-           SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?
+           SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?, execution_telemetry = COALESCE(?, execution_telemetry)
            WHERE id = ?`,
-          [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error, id],
+          [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error, telemetryJson, id],
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -261,7 +265,7 @@ class AgentExecutionModel {
       db.get(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.user_id, ae.conversation_id,
                 ae.start_time, ae.end_time, ae.status, ae.credits_used, ae.tool_calls_count,
-                ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model,
+                ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model, ae.execution_telemetry,
                 ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost,
                 ae.cache_read_tokens, ae.cache_creation_tokens
          FROM agent_executions ae
@@ -320,6 +324,8 @@ class AgentExecutionModel {
       toolCallsCount: execution.tool_calls_count,
       initialPrompt: execution.initial_prompt,
       finalResponse: execution.final_response,
+      executionTelemetry: readExecutionTelemetry(execution.execution_telemetry).value,
+      telemetryAvailability: readExecutionTelemetry(execution.execution_telemetry).availability,
       error: execution.error,
       provider: execution.provider,
       model: execution.model,
