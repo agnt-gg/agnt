@@ -172,6 +172,34 @@ describe('sweep', () => {
     expect(onDisk()).toEqual(['ghost']);
   });
 
+  it('--dry preserves expired registration metadata and the index byte-for-byte', () => {
+    const gone = createWorktree(root, 'gone');
+    fs.rmSync(gone.path, { recursive: true, force: true });
+    git(['config', 'gc.worktreePruneExpire', 'now']);
+    const admin = path.join(root, '.git', 'worktrees', 'gone');
+    const old = new Date('2000-01-01');
+    fs.utimesSync(path.join(admin, 'gitdir'), old, old);
+    const metadata = new Map(fs.readdirSync(admin).filter((name) => fs.statSync(path.join(admin, name)).isFile()).map((name) => [name, fs.readFileSync(path.join(admin, name))]));
+    const index = fs.readFileSync(path.join(root, '.git', 'index'));
+    const refs = git(['show-ref']);
+
+    sweepOrphans(root, { dry: true });
+    expect(fs.existsSync(admin), 'dry-run must not prune an expired registration').toBe(true);
+    for (const [name, bytes] of metadata) expect(fs.readFileSync(path.join(admin, name))).toEqual(bytes);
+    expect(fs.readFileSync(path.join(root, '.git', 'index'))).toEqual(index);
+    expect(git(['show-ref'])).toBe(refs);
+
+    sweepOrphans(root);
+    expect(fs.existsSync(admin), 'non-dry sweep retains its existing prune behavior').toBe(false);
+  });
+
+  it('dispatches doctor before trying to resolve a primary checkout', () => {
+    const script = fileURLToPath(new URL('./worktree.mjs', import.meta.url));
+    const output = execFileSync(process.execPath, [script, 'doctor', '--help'], { cwd: os.tmpdir(), encoding: 'utf8' });
+    expect(output).toContain('Read-only');
+    expect(output).toContain('--github');
+  });
+
   it('deletes the leak, and the real node_modules survives its junctions', () => {
     const p = leak('ghost');
     expect(fs.lstatSync(path.join(p, 'node_modules')).isSymbolicLink()).toBe(true);

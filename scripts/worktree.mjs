@@ -6,6 +6,9 @@
  *   npm run wt -- remove <slug> [--force]
  *   npm run wt -- sweep [--dry]
  *   npm run wt -- list
+ *   npm run wt -- doctor --github owner/repo --author user
+ *   npm run wt -- sync --dry-run --github owner/repo --author user
+ *   npm run wt -- retire --dry-run --pr N --worktree PATH --github owner/repo --author user
  *
  * WHY A SCRIPT AND NOT FOUR GIT COMMANDS
  * ──────────────────────────────────────
@@ -284,8 +287,8 @@ export function removeWorktree(repoRoot, slug, { force = false } = {}) {
  * prune` has dropped stale admin entries, anything left on disk that is not
  * registered is a leak by definition.
  */
-export function findOrphans(repoRoot) {
-  git(repoRoot, ['worktree', 'prune']);
+export function findOrphans(repoRoot, { prune = true } = {}) {
+  if (prune) git(repoRoot, ['worktree', 'prune']);
   const base = path.join(repoRoot, WORKTREES_DIR);
   if (!fs.existsSync(base)) return [];
   const registered = listWorktrees(repoRoot).map((w) => w.path);
@@ -299,7 +302,7 @@ export function findOrphans(repoRoot) {
 }
 
 export function sweepOrphans(repoRoot, { dry = false } = {}) {
-  const orphans = findOrphans(repoRoot);
+  const orphans = findOrphans(repoRoot, { prune: !dry });
   const removed = [];
   for (const p of orphans) {
     if (dry) continue;
@@ -317,8 +320,15 @@ function flag(args, name) {
   return i === -1 ? undefined : args[i + 1];
 }
 
-function main(argv) {
+async function main(argv) {
   const [cmd, ...rest] = argv;
+  // Dispatch before primaryRoot: help works outside Git, and the planner
+  // owns its explicit read-only target instead of the legacy primary root.
+  if (['doctor', 'sync', 'retire'].includes(cmd)) {
+    const { runPlanner } = await import('./worktree-lifecycle/cli.mjs');
+    process.exitCode = await runPlanner(argv);
+    return;
+  }
   const root = primaryRoot();
   const rel = (p) => path.relative(root, p) || '.';
 
@@ -352,14 +362,14 @@ function main(argv) {
       return;
     }
     default:
-      console.error('usage: worktree.mjs <create|remove|sweep|list> ...');
+      console.error('usage: worktree.mjs <create|remove|sweep|list|doctor|sync|retire> ...');
       process.exitCode = 2;
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
-    main(process.argv.slice(2));
+    await main(process.argv.slice(2));
   } catch (err) {
     console.error(`worktree: ${err.message}`);
     process.exitCode = 1;
