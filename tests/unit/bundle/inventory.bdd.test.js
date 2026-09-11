@@ -1,0 +1,13 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
+const api=()=>import('../../../scripts/bundle/inventory.mjs');
+function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'bundle-inventory-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const put=(p,s)=>{fs.mkdirSync(path.dirname(root+'/'+p),{recursive:true});fs.writeFileSync(root+'/'+p,s)};return {root,put}}
+test('Given HTML and recursive CSS references; When inventory is read; Then ancillary resources are deduplicated and historical files excluded',async t=>{
+ const {root,put}=fixture(t);put('index.html','<script src="/public.js"></script><link rel="stylesheet" href="/style.css"><script src="https://external.test/lib.js"></script>');put('app.js','app');put('public.js','script');put('style.css','@import "nested.css"; .x{background:url(img.png)}');put('nested.css','@font-face{src:url(font.woff2)}');put('img.png','image');put('font.woff2','font');put('old.js','retained');
+ const r=(await api()).inventory(root,{graph:{app:{file:'app.js',imports:[],dynamicImports:[],isEntry:true,sourceId:'index.html'}},emitted:['app.js','index.html'],publicFiles:['public.js','style.css','nested.css','img.png','font.woff2']});
+ assert.deepEqual(r.initialFiles,['app.js','font.woff2','img.png','index.html','nested.css','public.js','style.css']);assert.deepEqual(r.retainedFiles,['old.js']);assert.ok(r.external.includes('https://external.test/lib.js'));assert.equal(r.metrics.initialRawBytes,r.initialFiles.reduce((n,p)=>n+fs.statSync(root+'/'+p).size,0));
+});
+test('Given missing referenced bytes; When measuring; Then fail instead of reporting a zero cost',async t=>{const{root,put}=fixture(t);put('index.html','');const m=await api();assert.throws(()=>m.inventory(root,{graph:{app:{file:'missing.js',imports:[],isEntry:true}},emitted:['index.html','missing.js'],publicFiles:[]}));});
+test('Given a symlink to files outside dist; When measuring; Then refuse the read',async t=>{const{root,put}=fixture(t);put('index.html','<script src="escape.js"></script>');fs.symlinkSync(import.meta.filename,root+'/escape.js');const m=await api();assert.throws(()=>m.inventory(root,{graph:{a:{file:'escape.js',isEntry:true}},emitted:['index.html','escape.js'],publicFiles:[]}),/symlink/i);});
+test('Given an unknown generated import; When measuring; Then graph closure fails closed',async t=>{const{root,put}=fixture(t);put('index.html','');put('a.js','a');const m=await api();assert.throws(()=>m.inventory(root,{graph:{a:{file:'a.js',isEntry:true,imports:['absent']}},emitted:['index.html','a.js'],publicFiles:[]}),/Missing import/);});
