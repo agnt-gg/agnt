@@ -65,7 +65,7 @@ describe('handleCompaction', () => {
 
   it('distils, prices, records the run in both ledgers, and resets the eviction watermark', async () => {
     const conversationId = `conv-compaction-${Date.now()}`;
-    conversationManager.store(conversationId, { messages: [], _evictedUnits: 7 });
+    conversationManager.store(conversationId, { userId: USER, messages: [], _evictedUnits: 7 });
 
     adapterCall.mockResolvedValueOnce({
       responseMessage: { content: [{ type: 'text', text: '## Goal\nPort is 3333 (config.json).' }] },
@@ -111,6 +111,30 @@ describe('handleCompaction', () => {
     // The chunked-eviction watermark is forgotten for the compressed history.
     expect(conversationManager.get(conversationId)._evictedUnits).toBe(0);
     conversationManager.delete(conversationId);
+  });
+
+  it('resets only the caller-owned watermark and preserves other state', async () => {
+    const conversationId = 'owned-reset';
+    await dbRun('INSERT INTO conversation_prompt_state(conversation_id,user_id,state,state_hash,updated_at) VALUES(?,?,?,?,?)', [conversationId, USER, JSON.stringify({_evictedUnits:7,_frozenCustomInstructions:'KEEP'}),'old',new Date().toISOString()]);
+    adapterCall.mockResolvedValue({responseMessage:{content:'Summary'},usage:{}});
+    await handleCompaction({user:{id:USER},body:{conversationId,messages:history,provider:'anthropic',model:'m'}},mockRes());
+    const row = await dbGet('SELECT * FROM conversation_prompt_state WHERE conversation_id=?',[conversationId]);
+    expect(JSON.parse(row.state)).toEqual({_evictedUnits:0,_frozenCustomInstructions:'KEEP'});
+    expect(row.user_id).toBe(USER);
+  });
+
+  it('never changes a different owner\'s cached conversation', async () => {
+    const conversationId = 'foreign-reset';
+    conversationManager.store(conversationId,{userId:'other',messages:[],_evictedUnits:7});
+    await dbRun('INSERT INTO conversation_prompt_state(conversation_id,user_id,state,state_hash,updated_at) VALUES(?,?,?,?,?)',[conversationId,'other',JSON.stringify({_evictedUnits:7}),'old',new Date().toISOString()]);
+    adapterCall.mockResolvedValue({responseMessage:{content:'Summary'},usage:{}});
+    try {
+      await handleCompaction({user:{id:USER},body:{conversationId,messages:history,provider:'anthropic',model:'m'}},mockRes());
+      const row=await dbGet('SELECT * FROM conversation_prompt_state WHERE conversation_id=?',[conversationId]);
+      expect(row.user_id).toBe('other');
+      expect(JSON.parse(row.state)._evictedUnits).toBe(7);
+      expect(conversationManager.get(conversationId)._evictedUnits).toBe(7);
+    } finally { conversationManager.delete(conversationId); }
   });
 
   it('a provider failure is a 502 with the reason, and the run is recorded as failed', async () => {

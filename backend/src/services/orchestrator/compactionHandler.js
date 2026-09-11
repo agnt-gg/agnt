@@ -21,7 +21,7 @@ import { computeCacheSavings } from '../../utils/cacheSavings.js';
 import { getContextBudget } from '../../utils/contextManager.js';
 import { isSubscriptionProvider } from '../ai/providerConfigs.js';
 import conversationManager from '../ConversationManager.js';
-import { loadConversationState, saveConversationState } from './conversationStateStore.js';
+import db from '../../models/database/index.js';
 import {
   distillConversation,
   extractResponseText,
@@ -40,15 +40,17 @@ const MIN_TARGET_TOKENS = 500;
  * then drop nearly the whole (already short) history on the next turn.
  */
 async function resetEvictionWatermark(conversationId, userId) {
-  if (!conversationId) return;
+  if (typeof conversationId !== 'string' || !conversationId) return;
   const live = conversationManager.get(conversationId);
-  if (live) live._evictedUnits = 0;
+  if (live?.userId === userId) live._evictedUnits = 0;
   try {
-    const stored = await loadConversationState(conversationId);
-    if (stored) {
-      stored._evictedUnits = 0;
-      await saveConversationState(conversationId, userId, stored);
-    }
+    // Update only this field on an already-owned row; never re-save another
+    // conversation's snapshot or overwrite concurrently frozen prompt sections.
+    await new Promise((resolve, reject) => db.run(
+      `UPDATE conversation_prompt_state SET state = json_set(state, '$._evictedUnits', 0), state_hash = NULL
+       WHERE conversation_id = ? AND user_id = ? AND json_valid(state)`,
+      [conversationId, userId], error => error ? reject(error) : resolve(),
+    ));
   } catch (e) {
     // Non-critical: the next turn re-derives and manageContext self-heals.
     console.warn('[Compaction] Could not reset the eviction watermark:', e?.message || e);

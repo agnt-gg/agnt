@@ -4,8 +4,8 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * Models degrade well before the window is full. Past roughly half, they lose
- * the thread, repeat themselves and skip instructions. The context manager's
+ * Long histories can make it harder to retain the relevant working context.
+ * The threshold for useful compression depends on the model and task. The context manager's
  * chunked eviction only fires at the wall, and what it leaves behind is a
  * one-line "Tools used / User topics" note. This is the deliberate,
  * user-triggered version: the history goes through the model ONCE, comes back
@@ -14,11 +14,10 @@
  *
  * CACHE COST, STATED HONESTLY
  * ---------------------------
- * The cached prefix is the system prompt and the tool list; the message
- * history sits after the last breakpoint and was never cached on Anthropic.
- * Compressing therefore does not "clear the cache" — it costs one full-price
- * read of the history (the distill call itself), after which the prefix is
- * unchanged and the per-turn floor is dramatically lower.
+ * Prompt caching depends on the provider and adapter. Compression leaves the
+ * system/tool definitions unchanged but replaces the history prefix, which
+ * can invalidate cached history. Distillation has its own measured cost;
+ * subsequent savings depend on the summary size and provider cache behavior.
  *
  * PURE MODULE. No HTTP, no DB, no provider client — the caller injects
  * `callModel`, which is what makes the chunking and merge logic testable

@@ -2615,6 +2615,8 @@ export default {
       const tail = conv.messages.slice(foldIndex);
       const wire = buildChatHistory(foldable, useProvider, null);
       if (wire.length === 0) return { ok: false, reason: 'too_short' };
+      const sourceFingerprint = JSON.stringify(wire);
+      const boundaryId = tail[0]?.id;
       const foldedCount = foldable.filter((m) => m.role === 'user' || m.role === 'assistant').length;
 
       commit('SCOPED_SET_COMPACTING', { conversationId: convId, value: true, error: null });
@@ -2645,11 +2647,14 @@ export default {
         // a reattach). Re-derive the index against the CURRENT list so the
         // marker lands on the same boundary it was computed for.
         const liveConv = state.conversations[convId];
-        const anchor = tail[0];
-        const insertAt = anchor ? liveConv.messages.findIndex((m) => m.id === anchor.id) : liveConv.messages.length;
+        const insertAt = liveConv?.messages.findIndex((m) => m.id === boundaryId) ?? -1;
+        if (!boundaryId || insertAt < 0 || liveConv.isStreaming ||
+            JSON.stringify(buildChatHistory(liveConv.messages.slice(0, insertAt), useProvider, null)) !== sourceFingerprint) {
+          throw new Error('Conversation changed during compression. No summary was applied; try again.');
+        }
         commit('SCOPED_INSERT_MESSAGE_AT', {
           conversationId: convId,
-          index: insertAt === -1 ? liveConv.messages.length : insertAt,
+          index: insertAt,
           message: marker,
         });
         commit('SCOPED_SET_COMPACTING', { conversationId: convId, value: false, error: null });

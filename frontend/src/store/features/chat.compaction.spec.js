@@ -149,6 +149,29 @@ describe('chat/compressConversation and chat/undoCompaction', () => {
     expect(messages().length).toBe(HISTORY.length);
   });
 
+  it('does not apply a stale summary after the folded history changes', async () => {
+    let release;
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = store.dispatch('chat/compressConversation', { conversationId: CONV, provider: 'p', model: 'm' });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    store.commit('chat/SCOPED_SET_MESSAGE_CONTENT', { conversationId: CONV, messageId: 'm1', content: 'Corrected request' });
+    release({ ok: true, json: async () => ({ success: true, summary: 'STALE' }) });
+    expect((await pending).ok).toBe(false);
+    expect(messages().some(m => m.role === 'compaction')).toBe(false);
+    expect(messages()[0].content).toBe('Corrected request');
+  });
+
+  it('does not append a stale marker when its retained boundary disappears', async () => {
+    let release;
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = store.dispatch('chat/compressConversation', { conversationId: CONV, provider: 'p', model: 'm' });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    store.commit('chat/SCOPED_REMOVE_MESSAGE', { conversationId: CONV, messageId: 'm5' });
+    release({ ok: true, json: async () => ({ success: true, summary: 'STALE' }) });
+    expect((await pending).ok).toBe(false);
+    expect(messages().some(m => m.role === 'compaction')).toBe(false);
+  });
+
   it('the per-conversation model override wins over the global selection', async () => {
     store.commit('chat/SET_CONV_AI', { conversationId: CONV, ai: { provider: 'openai', model: 'gpt-5' } });
     await store.dispatch('chat/compressConversation', { conversationId: CONV, provider: 'anthropic', model: 'claude' });

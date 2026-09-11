@@ -8,7 +8,13 @@ const service = read('./OrchestratorService.js');
 const frontend = read('../../../frontend/src/services/chatService.js');
 const mainFrontend = read('../../../frontend/src/store/features/chat.js');
 const historySource = frontend.slice(frontend.indexOf('export function toChatHistory(messages) {'));
-const toHistory = vm.runInNewContext(`(${historySource.slice(0, historySource.indexOf('\n}') + 2).replace('export ', '')})`);
+// Execute the real folding helper too: compression adds this dependency to both builders.
+const compactionSource = read('../../../frontend/src/services/conversationCompaction.js')
+  .replace(/^import .*;$/gm, '')
+  .replace(/export default \{[\s\S]*$/, '')
+  .replace(/export /g, '');
+const foldHistorySource = vm.runInNewContext(compactionSource + '\nfoldHistorySource;');
+const toHistory = vm.runInNewContext(`(${historySource.slice(0, historySource.indexOf('\n}') + 2).replace('export ', '')})`, { foldHistorySource });
 const injectorAnchor = 'function injectDateIntoLastUserMessage(messages) {';
 const injectorStart = service.indexOf(injectorAnchor);
 const injectorSource = injectorStart < 0 ? null : service.slice(injectorStart, service.indexOf('\n}', injectorStart) + 2);
@@ -86,13 +92,22 @@ describe('clock-independent human-turn history', () => {
     };
     const mainBuilder = vm.runInNewContext(
       `${extractFunction('speakerOfMessage')}\n${extractFunction('isOwnAssistantMessage')}\n(${extractFunction('buildChatHistory')})`,
-      { MAX_TOOL_RESULT_CHARS: 2000 },
+      { MAX_TOOL_RESULT_CHARS: 2000, foldHistorySource },
     );
     const messages = [user('one'), assistant('OK1'), user('two')];
     for (const provider of ['claude-code', 'openai-codex']) {
       expect(JSON.parse(JSON.stringify(mainBuilder(messages, provider)))).toEqual(JSON.parse(JSON.stringify(toHistory(messages))));
     }
   });
+  it('keeps the compressed summary prefix stable across turns and midnight', () => {
+    const marker = {id:'fold-1',role:'compaction',content:'Summary',timestamp:1};
+    const first = prepare([user('original'),assistant('old'),marker,user('next')]);
+    const second = prepare([user('original'),assistant('old'),marker,user('next'),assistant('OK'),user('later')], '2026-09-09T00:00:01Z');
+    expect(second.slice(0,first.length)).toEqual(first);
+    expect(first[0].content).toContain('Summary');
+    expect(first.some(m=>m.content==='original')).toBe(false);
+  });
+
   it('negative control: restoring the old injector breaks the protected prefix', () => {
     const first = prepare([user('one')], undefined, true);
     const second = prepare([user('one'), assistant('OK1'), user('two')], undefined, true);
