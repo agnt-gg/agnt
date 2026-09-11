@@ -5,6 +5,8 @@ import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js'
 import { executeTool } from '../../../services/orchestrator/tools.js';
 import { buildAgentRuntime } from '../../../services/orchestrator/agentRuntime.js';
 import { randomUUID } from 'crypto';
+import { workflowCancellation, runAgentConversation, refreshAgentSchemas } from './agentConversationLoop.js';
+import { getSessionToken, getSessionUserId } from '../../../services/auth/sessionTokenCache.js';
 
 /**
  * Normalize a conversationHistory parameter into a message array.
@@ -96,6 +98,8 @@ class AgentTool extends BaseAction {
         type: 'array',
         description: 'Updated conversation history',
       },
+      outcome: { type: 'string', description: 'completed, needs_review, incomplete, cancelled or failed; not proof the task was verified.' },
+      execution: { type: 'object', description: 'Round limits, cancellation request and unresolved child-call evidence.' },
       error: {
         type: 'string',
         description: 'Error message if the chat failed',
@@ -108,6 +112,7 @@ class AgentTool extends BaseAction {
   }
 
   async execute(params, inputData, workflowEngine) {
+    const cancellation = workflowCancellation(workflowEngine);
     try {
       // Validate required parameters
       if (!params.agentId) {
@@ -164,7 +169,7 @@ class AgentTool extends BaseAction {
       // and (before the userId fix in AgentService) no custom tools. The
       // agent chat surface assembles all of that; a workflow-run agent is
       // the SAME agent and must get the same thing. See agentRuntime.js.
-      const { systemPrompt, toolSchemas: agentToolSchemas } = await buildAgentRuntime({
+      const { systemPrompt, toolSchemas: agentToolSchemas, context: runtimeContext } = await buildAgentRuntime({
         agentId: params.agentId,
         userId,
         latestUserMessage: params.message,
@@ -187,127 +192,19 @@ class AgentTool extends BaseAction {
       const client = await createLlmClient(provider, userId);
       const adapter = await createLlmAdapter(provider, client, model);
 
-      // Call LLM with agent's tools
-      let { responseMessage, toolCalls } = await adapter.call(messages, agentToolSchemas);
+      const outcome = await runAgentConversation({
+        adapter, messages, schemas: agentToolSchemas,
+        context: { ...runtimeContext, userId, workflowEngine }, cancellation,
+        refreshSchemas: (context, schemas) => refreshAgentSchemas(context, schemas, userId, provider),
+        dispatch: (name, args, context) => executeTool(name, args,
+          getSessionUserId() === userId ? getSessionToken() : null, context),
+      });
+      const finalResponse = outcome.response;
+      const toolExecutions = outcome.toolExecutions;
 
-      messages.push(responseMessage);
-
-      // Handle tool calls and track executions
-      let maxToolCallRounds = 10;
-      let currentRound = 0;
-      const toolExecutions = [];
-
-      while (toolCalls && toolCalls.length > 0 && currentRound < maxToolCallRounds) {
-        currentRound++;
-
-        const toolPromises = toolCalls.map(async (toolCall) => {
-          const functionName = toolCall.function.name;
-          let functionArgs;
-
-          try {
-            functionArgs = JSON.parse(toolCall.function.arguments);
-          } catch (parseError) {
-            const errorResult = {
-              tool_call_id: toolCall.id,
-              role: 'tool',
-              name: functionName,
-              content: JSON.stringify({
-                success: false,
-                error: `Failed to parse tool arguments: ${parseError.message}`,
-              }),
-            };
-
-            // Track failed tool execution
-            toolExecutions.push({
-              name: functionName,
-              arguments: toolCall.function.arguments,
-              result: null,
-              error: `Failed to parse tool arguments: ${parseError.message}`,
-            });
-
-            return errorResult;
-          }
-
-          try {
-            const toolContext = {
-              userId,
-              workflowEngine,
-            };
-
-            // Don't pass workflowEngine.token - tools use AuthManager.getValidAccessToken(userId, provider) instead
-            // Pass null for authToken since tools will get tokens via AuthManager using userId
-            const functionResponse = await executeTool(functionName, functionArgs, null, toolContext);
-
-            // Store both raw and parsed response
-            let parsedResult = null;
-            try {
-              parsedResult = JSON.parse(functionResponse);
-            } catch (e) {
-              console.warn(`Failed to parse tool response for ${functionName}:`, e);
-              parsedResult = {};
-            }
-
-            // Track tool execution with complete data
-            toolExecutions.push({
-              name: functionName,
-              arguments: functionArgs,
-              rawResponse: functionResponse, // Keep raw response
-              ...parsedResult, // Spread all parsed fields (success, result, error, outputs, etc.)
-            });
-
-            return {
-              tool_call_id: toolCall.id,
-              role: 'tool',
-              name: functionName,
-              content: functionResponse,
-            };
-          } catch (executionError) {
-            const errorContent = JSON.stringify({
-              success: false,
-              error: `Tool execution failed: ${executionError.message}`,
-            });
-
-            // Track failed tool execution
-            toolExecutions.push({
-              name: functionName,
-              arguments: functionArgs,
-              result: null,
-              error: `Tool execution failed: ${executionError.message}`,
-            });
-
-            return {
-              tool_call_id: toolCall.id,
-              role: 'tool',
-              name: functionName,
-              content: errorContent,
-            };
-          }
-        });
-
-        const toolResponses = await Promise.all(toolPromises);
-        const formattedToolResponses = adapter.formatToolResults(toolResponses);
-        messages.push(...formattedToolResponses);
-
-        const nextResponse = await adapter.call(messages, agentToolSchemas);
-        responseMessage = nextResponse.responseMessage;
-        toolCalls = nextResponse.toolCalls;
-
-        messages.push(responseMessage);
-      }
-
-      // Extract final content
-      let finalResponse;
-      if (Array.isArray(responseMessage.content)) {
-        // Anthropic-style responses (anthropic, claude-code) return content blocks
-        const textBlock = responseMessage.content.find((c) => c.type === 'text');
-        finalResponse = textBlock ? textBlock.text : '';
-      } else {
-        finalResponse = responseMessage.content;
-      }
-
-      // Return the agent's response with tool execution details
+      // Preserve legacy fields, with an explicit protocol/effect outcome.
       return {
-        success: true,
+        ...outcome,
         response: finalResponse,
         agentId: params.agentId,
         conversationId: randomUUID(),
@@ -330,7 +227,10 @@ class AgentTool extends BaseAction {
       return {
         success: false,
         error: error.message || 'Failed to communicate with agent',
+        outcome: cancellation.signal.aborted ? 'cancelled' : 'failed',
       };
+    } finally {
+      cancellation.dispose();
     }
   }
 }

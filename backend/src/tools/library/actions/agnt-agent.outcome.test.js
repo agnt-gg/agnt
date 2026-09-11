@@ -1,0 +1,23 @@
+import {it,expect,vi,beforeEach} from 'vitest';
+vi.mock('../../../services/AgentService.js',()=>({default:{_getAgentContext:vi.fn(async()=>({provider:'openai',model:'fixture'}))}}));
+vi.mock('../../../services/ai/LlmService.js',()=>({createLlmClient:vi.fn(async()=>({}))}));
+vi.mock('../../../services/orchestrator/llmAdapters.js',()=>({createLlmAdapter:vi.fn()}));
+vi.mock('../../../services/orchestrator/tools.js',()=>({executeTool:vi.fn(),getAvailableToolSchemas:vi.fn(async()=>[])}));
+vi.mock('../../../services/orchestrator/agentRuntime.js',()=>({buildAgentRuntime:vi.fn()}));
+vi.mock('../../../services/auth/sessionTokenCache.js',()=>({getSessionToken:()=>null,getSessionUserId:()=>null}));
+import node from './agnt-agent.js';
+import {createLlmAdapter} from '../../../services/orchestrator/llmAdapters.js';
+import {executeTool,getAvailableToolSchemas} from '../../../services/orchestrator/tools.js';
+import {buildAgentRuntime} from '../../../services/orchestrator/agentRuntime.js';
+const toolCall=(name='fixture',args='{}')=>({id:'one',function:{name,arguments:args}});
+const reply=(content,calls=[])=>({responseMessage:{role:'assistant',content},toolCalls:calls});
+let adapter,engine;
+beforeEach(()=>{vi.clearAllMocks();engine={userId:'u',stopRequested:false};adapter={call:vi.fn(),formatToolResults:r=>r};createLlmAdapter.mockResolvedValue(adapter);buildAgentRuntime.mockResolvedValue({systemPrompt:'fixture',toolSchemas:[{type:'function',function:{name:'fixture'}}],context:{userId:'u',_toolCeiling:new Set(['fixture'])}});executeTool.mockResolvedValue('{"success":true}');});
+const run=()=>node.execute({agentId:'agent',message:'Bounded task'},null,engine);
+it('Given child failure When model says done Then success is not manufactured',async()=>{adapter.call.mockResolvedValueOnce(reply(null,[toolCall()])).mockResolvedValue(reply('Done'));executeTool.mockResolvedValue('{"success":false,"error":"write failed"}');const r=await run();expect(r.success).toBe(false);expect(r.outcome).toBe('needs_review');expect(r.toolExecutions).toHaveLength(1);});
+it('Given unhandled tool calls at round ceiling Then incomplete not success',async()=>{adapter.call.mockResolvedValue(reply('Still working',[toolCall()]));const r=await run();expect(r.success).toBe(false);expect(r.outcome).toBe('incomplete');expect(executeTool).toHaveBeenCalledTimes(10);});
+it('Given workflow already stopped Then no model call begins',async()=>{engine.stopRequested=true;adapter.call.mockResolvedValue(reply('Done'));const r=await run();expect(r.success).toBe(false);expect(r.outcome).toBe('cancelled');expect(adapter.call).not.toHaveBeenCalled();});
+it('Given healthy conversation Then preserve existing success/history contract',async()=>{adapter.call.mockResolvedValue(reply('Done'));const r=await run();expect(r.success).toBe(true);expect(r.response).toBe('Done');expect(r.conversationHistory).toHaveLength(2);expect(r.agentId).toBe('agent');});
+it('Given model requests an unassigned tool Then do not dispatch it',async()=>{adapter.call.mockResolvedValueOnce(reply(null,[toolCall('forbidden')])).mockResolvedValue(reply('Done'));const r=await run();expect(executeTool).not.toHaveBeenCalled();expect(r.success).toBe(false);});
+
+it('Given discovery request Then only live tools inside original ceiling are admitted',async()=>{const context={userId:'u',_toolCeiling:new Set(['discover_tools','vault_vocabulary'])};buildAgentRuntime.mockResolvedValue({systemPrompt:'fixture',toolSchemas:[{type:'function',function:{name:'discover_tools'}}],context});getAvailableToolSchemas.mockResolvedValue(['vault_vocabulary','vault_insert'].map(name=>({type:'function',function:{name}})));let round=0;adapter.call.mockImplementation(async(m,schemas)=>{round++;if(round===1)return reply(null,[toolCall('discover_tools')]);if(round===2){expect(schemas.map(s=>s.function.name)).toEqual(['discover_tools','vault_vocabulary']);return reply(null,[toolCall('vault_vocabulary')]);}return reply('Done');});executeTool.mockImplementation(async(name,args,auth,ctx)=>{if(name==='discover_tools')ctx._requestedToolCategories=new Set(['installed']);return '{"success":true}';});const r=await run();expect(r.success).toBe(true);expect(executeTool.mock.calls.map(c=>c[0])).toEqual(['discover_tools','vault_vocabulary']);});
