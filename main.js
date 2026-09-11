@@ -30,6 +30,8 @@ import {
 } from './electron/connectionConfig.js';
 import { waitForBackend as pollBackendHealth, probeBackendOnce } from './electron/backendHealth.js';
 import { localFilePathFromUrl } from './electron/localFileLink.js';
+import { startLocalControl } from './electron/localLifecycle.mjs';
+import { createLocalRestartController } from './electron/localRestartController.mjs';
 import { SCHEME, parseDeepLink, deepLinkFromArgv, intentToUrl } from './electron/deepLink.js';
 
 const BOOT_ID = randomUUID();
@@ -628,6 +630,25 @@ const supervisor = {
   FLAP_MAX: 3, // >3 restarts inside 60s = something is broken, stop the loop
 };
 
+let localControl = null;
+let localControlStarting = false;
+const localRestarts = createLocalRestartController({
+  getChild: () => backendProcess,
+  canRestart: () => !app.isPackaged && !isRemoteMode() && !localBackendAttached && supervisor.state === 'running' &&
+    supervisor.restartTimestamps.filter(t => Date.now() - t < supervisor.FLAP_WINDOW_MS).length < supervisor.FLAP_MAX,
+});
+function ensureLocalControl() {
+  if (process.platform !== 'linux' || app.isPackaged || localControl || localControlStarting) return;
+  localControlStarting = true;
+  startLocalControl({
+    checkout: __dirname,
+    getPid: () => localRestarts.available() ? backendProcess?.pid : null,
+    restart: pid => localRestarts.restart(pid),
+  }).then(control => { localControl = control; })
+    .catch(error => console.warn('[local-control] unavailable:', error.message))
+    .finally(() => { localControlStarting = false; });
+}
+
 function notifyRenderer(channel, payload = {}) {
   try {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -643,6 +664,7 @@ function notifyRenderer(channel, payload = {}) {
  * utilityProcess). Replaces the two previous inline 'exit' listeners.
  */
 function handleBackendExit(code, signal, lastStderr, lastStdout) {
+  code = localRestarts.exit(code, signal);
   console.log(`Backend process exited with code ${code}, signal ${signal ?? 'n/a'}`);
 
   // Terminal state wins: if the app is quitting, never respawn. Prevents
@@ -719,9 +741,11 @@ function handleBackendExit(code, signal, lastStderr, lastStdout) {
           try {
             if (mainWindow && !mainWindow.isDestroyed()) {
               console.log('Reloading renderer against fresh backend...');
+              localRestarts.beforeRendererReload(mainWindow.webContents, backendProcess?.pid);
               mainWindow.webContents.reload();
             }
           } catch (err) {
+            localRestarts.abort();
             console.warn('Renderer reload after restart failed:', err.message);
           }
         },
@@ -1300,6 +1324,7 @@ function startBackend() {
       env: env,
     });
 
+    ensureLocalControl();
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString();
       backendStdout += output;
@@ -1344,6 +1369,7 @@ function startBackend() {
       execPath: devNodeExecPath,
     });
 
+    ensureLocalControl();
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString();
       backendStdout += output;
@@ -2033,6 +2059,8 @@ function reapBackend({ graceMs = 2500 } = {}) {
 
 app.on('will-quit', (event) => {
   supervisor.state = 'quitting';
+  localRestarts.abort();
+  localControl?.close().catch(() => {});
   globalShortcut.unregisterAll();
   if (!backendProcess || backendReaped) return;
   // Hold the quit open. Without this Electron exits first and the reaping
