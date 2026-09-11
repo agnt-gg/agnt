@@ -158,7 +158,7 @@ ClusterRoutes.post('/claim', authenticateClusterNode, async (req, res) => {
         const {task,lease}=assignment;const goal=await GoalModel.findOne(task.goal_id);
         touchNode(req.clusterNode,'claim');
         return res.json({success:true,recoveryProtocol:2,runLease:lease,leaseMs:30000,
-          task:{id:task.id,goalId:task.goal_id,title:task.title,description:task.description,requiredTools:JSON.parse(task.required_tools||'[]'),input:task.input?JSON.parse(task.input):null,orderIndex:task.order_index},
+          task:{id:task.id,goalId:task.goal_id,title:task.title,description:task.description,requiredTools:JSON.parse(task.required_tools||'[]'),input:task.input?JSON.parse(task.input):null,output:task.output?JSON.parse(task.output):null,orderIndex:task.order_index},
           goal:{id:goal.id,title:goal.title,description:goal.description}});
       }
     }

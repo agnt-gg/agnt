@@ -70,10 +70,13 @@ export default {
     await s.reconcile();const o=await s.inspect(goalId);
     if(!o)return {state:'not_started'};
     const uncertainTasks=await s.all("SELECT task_id AS taskId,attempt_id AS attemptId,state FROM goal_run_attempts WHERE goal_id=? AND state='admitted'",[goalId]);
+    const failures=await s.all('SELECT task_id AS taskId,attempt_id AS attemptId,recorded_at AS recordedAt,diagnostic FROM goal_run_failures WHERE goal_id=? AND run_id=? ORDER BY recorded_at',[goalId,o.run_id]);
+    const failureEvidence=failures.map(f=>({...f,diagnostic:JSON.parse(f.diagnostic)}));
     let checkpoint;try{checkpoint=JSON.parse(o.checkpoint)}catch{checkpoint={phase:'invalid_checkpoint'}}
-    return {state:o.state,runId:o.run_id,generation:o.generation,leaseUntil:o.lease_until,reason:o.reason,checkpoint,uncertainTasks,automaticReplay:false,nextAction:uncertainTasks.length?'Reconcile every uncertain task using external evidence; do not retry blindly.':'Safe authorized checkpoints are considered by the recovery coordinator; otherwise inspect and explicitly resolve.'};
+    return {state:o.state,runId:o.run_id,generation:o.generation,leaseUntil:o.lease_until,reason:o.reason,checkpoint,uncertainTasks,failureEvidence,automaticReplay:false,nextAction:uncertainTasks.length?'Reconcile every uncertain task using external evidence; do not retry blindly.':'Safe authorized checkpoints are considered by the recovery coordinator; otherwise inspect and explicitly resolve.'};
   },
   async resolve(goalId,userId,runId,body) {return (await store()).resolve(goalId,userId,runId,body);},
+  async recordFailure(lease,taskId,error) {return (await store()).recordFailure(lease,taskId,error);},
   async beginAttempt(lease,taskId) {return (await store()).beginAttempt(lease,taskId);},
   async commitAttempt(lease,taskId,output) {return (await store()).commitAttempt(lease,taskId,output);},
   async checkpoint(lease,value) {return (await store()).checkpoint(lease,value);},

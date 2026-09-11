@@ -226,6 +226,7 @@ export async function runTask(assignment, userId) {
       title: task.title,
       description: task.description,
       required_tools: task.requiredTools || [],
+      output: task.output || null,
     };
 
     const agent = await AgentTaskMatcher.selectAgentForTask(shaped, userId);

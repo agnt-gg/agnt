@@ -7,7 +7,7 @@
 // scheduled goal must not judge today's iterations against yesterday's best.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const recovery = vi.hoisted(() => ({ acquire:vi.fn(), inspect:vi.fn(), watch:vi.fn(), checkpoint:vi.fn() }));
+const recovery = vi.hoisted(() => ({ acquire:vi.fn(), inspect:vi.fn(), watch:vi.fn(), checkpoint:vi.fn(),recordFailure:vi.fn(async()=>true),beginAttempt:vi.fn(async()=> 'attempt') }));
 vi.mock('./GoalRunRecovery.js',()=>({default:recovery}));
 vi.mock('../../models/database/index.js', () => ({ default: { run: vi.fn(), get: vi.fn(), all: vi.fn() } }));
 vi.mock('../../models/GoalModel.js', () => ({
@@ -74,5 +74,22 @@ describe('Given the actual runner after a process restart',()=>{
   try{await expect(TaskOrchestrator.resumeGoal('g')).rejects.toThrow(/outcome/);
    expect(TaskModel.updateStatus).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
   }finally{dispatch.mockRestore();TaskOrchestrator.runningGoals.clear()}
+ });
+});
+
+describe('Given an owned task throws after partial execution',()=>{
+ it('When the executor throws, Then record failure for that attempt before preserving the original rejection',async()=>{
+  const {default:Matcher}=await import('./AgentTaskMatcher.js');Matcher.selectAgentForTask=vi.fn(async()=>({id:'fixture',isBuiltIn:true,name:'fixture'}));
+  const {withGoalRun}=await import('./goalRunContext.js');const lease={goalId:'g',userId:'u',runId:'r',generation:1};
+  TaskOrchestrator.runningGoals.set('g',{runLease:lease});const stop=vi.spyOn(TaskOrchestrator,'_holdClaim').mockReturnValue(()=>{});
+  const error=Object.assign(Error('provider unavailable after write'),{code:'PROVIDER_FAILED'});
+  const execute=vi.spyOn(TaskOrchestrator,'executeTaskViaAgentChat').mockRejectedValue(error);
+  try{await expect(withGoalRun(lease,()=>TaskOrchestrator.executeTask({id:'t',goal_id:'g',title:'fixture',description:'fixture',required_tools:[]},'u'))).rejects.toBe(error);
+   expect(recovery.recordFailure).toHaveBeenCalledWith({...lease,attemptId:'attempt'},'t',error);
+  }finally{stop.mockRestore();execute.mockRestore();TaskOrchestrator.runningGoals.clear()}
+ });
+ it('When a task carries verified partial output, Then the worker receives remaining work and no-repeat instructions',()=>{
+  const message=TaskOrchestrator.prepareTaskMessage({id:'t',title:'fixture',description:'Continue task',required_tools:[],output:JSON.stringify({outcome:'partial',continuation:{remainingWork:'Finish adapter',doNotRepeat:['Do not recreate file'],artifacts:[{path:'saved.mjs',sha256:'a'.repeat(64)}]}})});
+  expect(message).toContain('Finish adapter');expect(message).toContain('Do not recreate file');expect(message).toContain('saved.mjs');
  });
 });

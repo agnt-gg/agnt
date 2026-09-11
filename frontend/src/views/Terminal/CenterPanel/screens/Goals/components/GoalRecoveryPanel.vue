@@ -14,11 +14,13 @@
       <ul v-if="recovery.uncertainTasks?.length" class="recovery-tasks"><li v-for="task in recovery.uncertainTasks" :key="task.attemptId"><code>{{ task.taskId }}</code><span>Outcome unconfirmed</span></li></ul>
       <details v-if="recovery.reason || recovery.runId" class="recovery-technical">
         <summary>Technical details</summary>
+        <ul v-if="recovery.failureEvidence?.length"><li v-for="failure in recovery.failureEvidence" :key="failure.attemptId">{{ failure.diagnostic.code || 'Execution error' }}: {{ failure.diagnostic.message }}</li></ul>
         <dl><dt>State</dt><dd>{{ recovery.state }}</dd><template v-if="recovery.reason"><dt>Reason</dt><dd>{{ recovery.reason }}</dd></template><template v-if="recovery.runId"><dt>Run</dt><dd>{{ recovery.runId }}</dd></template></dl>
       </details>
       <details v-if="recovery.state === 'interrupted'" class="recovery-evidence">
         <summary>Record verified recovery evidence</summary>
         <p>Verify each external action before retrying. Saving evidence does not start this goal.</p>
+        <p>For verified partial work, use <code>continue_partial</code>: include attemptId, workerStopped, effectsReconciled, remainingWork, doNotRepeat, and artifact paths with SHA-256 hashes. This does not mark the task complete.</p>
         <label class="recovery-field">Resolution JSON<textarea v-model="draft" rows="8" spellcheck="false" /></label>
         <p v-if="validation" role="status">{{ validation }}</p>
         <label class="recovery-confirm"><input v-model="confirmed" type="checkbox" /><span>I verified the evidence for every uncertain task.</span></label>
@@ -49,7 +51,10 @@ const validation=computed(()=>{
   const p=JSON.parse(draft.value);const ids=(recovery.value?.uncertainTasks||[]).map(t=>t.taskId);
   if(p.runId!==recovery.value?.runId||typeof p.evidence!=='string'||p.evidence.trim().length<3||!Array.isArray(p.decisions))return 'Use the current run ID and describe the evidence.';
   if(p.decisions.length!==ids.length||new Set(p.decisions.map(d=>d?.taskId)).size!==ids.length)return 'Account for every uncertain task exactly once.';
-  if(p.decisions.some(d=>!ids.includes(d?.taskId)||!['completed','not_executed'].includes(d.outcome)||typeof d.evidence!=='string'||d.evidence.trim().length<3||(d.outcome==='completed'&&(!d.output||typeof d.output!=='object'))))return 'Each decision needs a supported outcome and evidence; completed decisions also need verified output.';
+  if(p.decisions.some(d=>!ids.includes(d?.taskId)||!['completed','not_executed','continue_partial'].includes(d.outcome)||typeof d.evidence!=='string'||d.evidence.trim().length<3||(d.outcome==='completed'&&(!d.output||typeof d.output!=='object'))))return 'Each decision needs a supported outcome and evidence; completed decisions also need verified output.';
+  for(const d of p.decisions.filter(d=>d.outcome==='continue_partial')){
+    if(d.attemptId!==recovery.value.uncertainTasks.find(t=>t.taskId===d.taskId)?.attemptId||d.workerStopped!==true||d.effectsReconciled!==true||typeof d.remainingWork!=='string'||d.remainingWork.trim().length<3||d.remainingWork.length>12000||!Array.isArray(d.doNotRepeat)||!d.doNotRepeat.length||d.doNotRepeat.length>100||d.doNotRepeat.some(v=>typeof v!=='string'||!v.trim()||v.length>2000)||!Array.isArray(d.artifacts)||!d.artifacts.length||d.artifacts.length>100||d.artifacts.some(a=>!a||typeof a.path!=='string'||!a.path.trim()||a.path.length>4096||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(a.sha256)))return 'Partial continuation needs the exact attempt, stopped worker, reconciled effects, remaining work, no-repeat instructions and artifact hashes.';
+  }
   return '';
  }catch{return 'Enter valid JSON.';}
 });
