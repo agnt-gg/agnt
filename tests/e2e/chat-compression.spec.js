@@ -8,6 +8,8 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
     calls++;
     const body=route.request().postDataJSON();
     expect(body.messages[0].content).toBe('Original request 0');
+    expect(body.provider).toBe('OpenAI');
+    expect(body.model).toBe('gpt-4o');
     await route.fulfill({json:{success:true,summary:'## Goal\nKnown summary',provider:'openai',model:'gpt-4o',estimatedCost:0.01,tokenUsage:{inputTokens:1000,outputTokens:30,totalTokens:1030}}});
   });
   await page.route('**/api/content-outputs/save', async route => {
@@ -20,7 +22,7 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   });
   const seed=async messages=>page.evaluate(messages=>{
     const store=document.querySelector('#app').__vue_app__.config.globalProperties.$store;
-    store.state.aiProvider.selectedProvider='OpenAI';store.state.aiProvider.selectedModel='gpt-4o';
+    store.state.aiProvider.selectedProvider=null;store.state.aiProvider.selectedModel=null;
     store.commit('chat/ENSURE_CONVERSATION','compression-fixture');
     store.commit('chat/SCOPED_SET_MESSAGES',{conversationId:'compression-fixture',messages});
     store.state.chat.conversations['compression-fixture'].conversationId='compression-fixture';

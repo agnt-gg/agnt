@@ -771,10 +771,13 @@ export default {
       const streaming = !!conv.isStreaming || isProcessing.value;
       const marker = foldIndex.value === -1 ? null : msgs[foldIndex.value];
 
+      const override = store.state.chat.aiByConv[store.state.chat.activeConversationId];
+      const hasModel = (override?.provider && override?.model) ||
+        (store.state.aiProvider?.selectedProvider && store.state.aiProvider?.selectedModel);
       let disabledReason = null;
       if (streaming) disabledReason = 'Wait for the current turn to finish';
       else if (fold === -1) disabledReason = 'Not enough history to fold yet';
-      else if (!store.state.aiProvider?.selectedProvider || !store.state.aiProvider?.selectedModel) disabledReason = 'Choose a model first';
+      else if (!hasModel) disabledReason = 'Choose a model first';
 
       return {
         canCompress: !disabledReason && !conv.isCompacting,
