@@ -37,6 +37,8 @@ class GoalEvaluator {
       }
 
       if (goal.user_id !== userId || goal.deleted_at || ['paused','stopped'].includes(goal.status)) throw staleEvaluation();
+      const recoveryDb=(await import('../../models/database/index.js')).default;
+      goal.recoveryOwner=await new Promise((resolve,reject)=>recoveryDb.get('SELECT run_id,generation FROM goal_run_ownership WHERE goal_id=?',[goalId],(e,row)=>e?reject(e):resolve(row||null)));
       const tasks = await TaskModel.findByGoalId(goalId);
       console.log(`[GoalEvaluator] Evaluating goal "${goal.title}" with ${tasks.length} tasks`);
 

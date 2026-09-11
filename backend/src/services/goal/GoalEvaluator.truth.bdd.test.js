@@ -1,3 +1,4 @@
+vi.mock('../../models/database/index.js',()=>({default:{get:vi.fn((_sql,_params,cb)=>cb(null,null))}}));
 vi.mock('../../models/GoalEvaluationCommit.js',()=>({staleEvaluation:()=>new Error('stale'),commitGoalEvaluation:vi.fn(async input=>({evaluationId:'ev',status:input.passed?'validated':'needs_review'}))}));
 import {commitGoalEvaluation} from '../../models/GoalEvaluationCommit.js';
 import {describe,it,expect,vi,beforeEach} from 'vitest';

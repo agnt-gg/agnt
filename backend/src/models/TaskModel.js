@@ -310,6 +310,8 @@ class TaskModel {
                 attempt_count = COALESCE(attempt_count, 0) + 1
           WHERE id = ?
             AND status IN (${placeholders})
+            AND NOT EXISTS(SELECT 1 FROM goal_run_attempts a WHERE a.task_id=tasks.id AND a.state='admitted')
+            AND NOT EXISTS(SELECT 1 FROM goal_run_ownership o WHERE o.goal_id=tasks.goal_id AND (o.state!='running' OR o.lease_until <= CAST(strftime('%s','now') AS INTEGER)*1000))
             AND (claimed_by IS NULL
                  ${ownClaim}
                  OR claim_expires_at IS NULL
@@ -378,6 +380,7 @@ class TaskModel {
            JOIN goals g ON t.goal_id = g.id
           WHERE t.status = 'pending'
             AND g.status = 'executing'
+            AND NOT EXISTS(SELECT 1 FROM goal_run_ownership o WHERE o.goal_id=g.id)
             AND COALESCE(t.attempt_count, 0) < ?
             AND (t.claimed_by IS NULL OR t.claim_expires_at IS NULL OR t.claim_expires_at < ?)
             ${scope}
@@ -472,7 +475,8 @@ class TaskModel {
           WHERE claimed_by IS NOT NULL
             AND claim_expires_at IS NOT NULL
             AND claim_expires_at < ?
-            AND status IN ('running', 'assigned')`,
+            AND status IN ('running', 'assigned')
+            AND NOT EXISTS(SELECT 1 FROM goal_run_attempts a WHERE a.task_id=tasks.id AND a.state='admitted')`,
         [new Date().toISOString(), now],
         function (err) {
           if (err) reject(err);

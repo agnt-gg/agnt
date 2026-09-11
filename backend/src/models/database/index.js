@@ -1,4 +1,5 @@
 import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
+import { GoalRunOwnership } from './goalRunOwnership.js';
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -2311,6 +2312,22 @@ const dbReady = skipSchemaInit
     }
   })
   .then(async () => {
+    // Main-process initialization only; workflow children skip this chain.
+    // Run ownership has its own connection to keep transactions isolated from
+    // ordinary task writes. Reconciliation never queues uncertain work.
+    const recoveryDb=await new Promise((resolve,reject)=>{
+      const c=new sqlite3.Database(dbPath,e=>e?reject(e):resolve(c));
+    });
+    recoveryDb.configure('busyTimeout',5000);
+    const recovery=new GoalRunOwnership(recoveryDb);
+    await recovery.initialize();
+    await recovery.reconcile();
+    let reconciling=false;
+    const recoveryTimer=setInterval(async()=>{
+      if(reconciling)return;reconciling=true;
+      try{await recovery.reconcile()}catch(e){console.error('Goal ownership reconciliation failed:',e.message)}finally{reconciling=false}
+    },5000);
+    recoveryTimer.unref?.();
     console.log('Database initialization complete');
 
     // Sync webhooks from existing workflows

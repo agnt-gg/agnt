@@ -277,6 +277,7 @@ describe('controlled goal lifecycle boundaries', () => {
 
   it('L13 autonomous grading cancelled by pause cannot persist a late result or replan', async () => {
     const row=await seed(),bar=barrier('grade');grader(bar);
+    await Goal.updateStatus(row.goalId,'planning');
     vi.spyOn(Orchestrator,'executeGoalTasks').mockResolvedValue();
     const replan=vi.spyOn(Orchestrator,'_replanFailedTasks').mockImplementation(()=>{throw new Error('Replan forbidden');});
     const grading=Evaluator.evaluateGoal.bind(Evaluator);let gradingWork;
@@ -288,6 +289,7 @@ describe('controlled goal lifecycle boundaries', () => {
 
   it('L14 autonomous run A cannot remove replacement B when its grader is cancelled', async () => {
     const row=await seed(),bar=barrier('grade');grader(bar);
+    await Goal.updateStatus(row.goalId,'planning');
     vi.spyOn(Orchestrator,'executeGoalTasks').mockResolvedValue();
     const grading=Evaluator.evaluateGoal.bind(Evaluator);let gradingWork;
     vi.spyOn(Evaluator,'evaluateGoal').mockImplementation((...args)=>{gradingWork=tracked(grading(...args));return gradingWork.then(out=>{if(!out.ok)throw Object.assign(new Error(out.error.message),out.error);return out.value;});});
@@ -307,4 +309,18 @@ describe('controlled goal lifecycle boundaries', () => {
     const current = await Task.findOne(row.taskId);
     expect(current.status).toBe('failed'); expect(current.progress).toBe(10); expect(current.error).toBe('required input missing');
   });
+});
+
+describe('Given evaluation survives past its durable run lease',()=>{
+ it('R1 When ownership expires during grading, Then no evaluation or validated status is committed',async()=>{
+  const row=await seed();
+  await run(db,"INSERT INTO goal_run_ownership(goal_id,user_id,run_id,boot_id,generation,lease_until,state) VALUES(?,?,?,'fixture',1,?,'running')",[row.goalId,row.userId,'old-run',Date.now()+30000]);
+  const bar=barrier('grading');grader(bar);
+  const work=tracked(Evaluator.evaluateGoal(row.goalId,row.userId,'automatic','openai','test-model'));
+  await reached(bar,work);
+  await run(other,'UPDATE goal_run_ownership SET lease_until=0 WHERE goal_id=?',[row.goalId]);bar.release();
+  const result=await work;expect(result.ok).toBe(false);
+  expect((await snapshot(row)).evaluations).toEqual([]);
+  expect((await Goal.findOne(row.goalId)).status).toBe('executing');
+ });
 });
