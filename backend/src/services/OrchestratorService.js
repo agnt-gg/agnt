@@ -192,27 +192,7 @@ export function openSteerContinuation(sendEvent, { round, agentMeta = {} } = {})
 }
 
 
-/**
- * Inject the current date into the latest user message.
- *
- * Cache-safe: only mutates the trailing user turn (already below Anthropic's
- * cache breakpoint), system prompt stays frozen.
- *
- * Format intent: tiny + unobtrusive. The previous verbose `Date.toString()`
- * prefix at the top of every user message biased the LLM toward
- * time/date-themed responses. Now we use a compact ISO date footer so the
- * model still has the info if asked, but the user's actual prompt sits at
- * the very top of the message where it belongs.
- */
-function injectDateIntoLastUserMessage(messages) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user' && typeof messages[i].content === 'string') {
-      const isoDate = new Date().toISOString().slice(0, 10); // "2024-11-09"
-      messages[i].content = `${messages[i].content}\n\n<context date="${isoDate}" />`;
-      return;
-    }
-  }
-}
+
 
 /**
  * Extract images from tool results and replace with references
@@ -1966,9 +1946,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
         });
       });
     }
-
-    // Inject current date into the latest user message (keeps system prompt stable for caching)
-    injectDateIntoLastUserMessage(messages);
 
     // Retroactively compact any bloated tool messages in the history before
     // counting tokens. Catches bloat from per-tool paths that skipped

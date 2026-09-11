@@ -17,7 +17,7 @@
 // tool surface GROWS and require the prompt bytes not to move — and pairs it
 // with an anti-vacuity control proving the same fixture DOES move when the
 // freeze is removed.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -68,6 +68,24 @@ function freezeFromTurnOne() {
 }
 
 describe('the system prompt is byte-stable while the tool surface grows', () => {
+  it('keeps clock guidance static across midnight without enabling tools', async () => {
+    vi.useFakeTimers();
+    try {
+      const context = ctxFor([]);
+      vi.setSystemTime(new Date('2026-09-08T23:59:59Z'));
+      const before = await buildUnifiedSystemPrompt(context, OPTS);
+      vi.setSystemTime(new Date('2026-09-09T00:00:01Z'));
+      const after = await buildUnifiedSystemPrompt(context, OPTS);
+      expect(after).toBe(before);
+      expect(after).toContain('verify it using an available clock-capable tool');
+      expect(after).toContain('Respect tool restrictions');
+      expect(after).not.toContain('2026-09-08');
+      expect(after).not.toContain('2026-09-09');
+      expect(context.toolSchemas).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('is IDENTICAL on every turn when the gate decisions are frozen', async () => {
     const residentElementIds = freezeFromTurnOne();
     const prompts = [];
