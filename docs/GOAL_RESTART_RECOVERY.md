@@ -42,7 +42,7 @@ Resolution body:
 
 Alternatively a decision can use `outcome: completed` with a verified `output` object. Every uncertain task must be covered exactly once. Missing/moved task, wrong user/run, malformed evidence or partial coverage refuses/rolls back the decision. Resolution does not start execution or override Pause. It records the operator's evidence assertion, not independent verification by AGNT. Never write a not_executed decision merely to make Resume work.
 
-The command/API is the operator interface in this change; no graphical resolution wizard was implemented. Current goal cards receive persisted corrected status through existing reads. A dedicated realtime recovery notification is not wired; clients relying only on cached socket state may need refresh/poll.
+The Goals card now offers **Inspect recovery** for needs_review/paused goals. It lazily mounts a recovery panel showing the reason, uncertain task identities and next action. Evidence JSON is validated before explicit operator confirmation; resolution never starts execution. Refresh is available. The CLI remains available. A dedicated realtime recovery notification is not wired; existing cached lists may need refresh/poll.
 
 ## Tests and evidence
 Fresh final full backend suite: **6033 passed, 1 skipped across 387 files**, exit 0 (`goal-restart-recovery-evidence/final-verified.log`). Normal test isolation and explicit non-hidden TMPDIR; no live DB imports or provider calls. Syntax and diff whitespace checks pass.
@@ -66,8 +66,8 @@ Some tests were added as verification after implementation rather than RED-first
 ## Gap disposition and remaining boundaries
 1. **Safe automatic continuation:** implemented for the specified safe phases. Bootstrap/replanning or unknown side-effect stages intentionally stop for review rather than replay.
 2. **Iteration continuation:** recorded phase and iteration used, no crash-only increment. Best-score snapshot restoration still uses existing loop records; no proof of exactly-once accounting of model cost or iteration notifications.
-3. **Operator flow:** authenticated API + CLI supplied; graphical UI/realtime recovery event remain optional follow-ups, not silently claimed implemented.
-4. **Cluster compatibility:** owned goals are excluded from cluster pull until remote workers carry equivalent run/attempt context. This changes throughput and is an explicit local-executor-only release constraint. Healthy current-version remote leases are not taken over; mixed old/new workers must not share an active DB during rollout.
+3. **Operator flow:** authenticated API, CLI and graphical recovery panel supplied. A dedicated realtime push event remains absent; panel has explicit refresh.
+4. **Cluster compatibility:** upgraded workers advertise recoveryProtocol:2. The primary atomically claims an attempt, returns run/generation/attempt identity, and fences renew/result at commit. Old workers remain excluded from recovery-owned goals. Remote failure retains the uncertain-effect barrier; worker aborts on renewal rejection and does not count rejected completion as success. Primary waits for admitted remote tasks before later dependency groups and grading. Tested with real HTTP/grants/SQLite and controlled worker calls, not a multi-machine network-partition campaign.
 5. **External effects:** no exactly-once guarantee. Generic shell/third-party tools and other processes writing SQL do not acquire fences simply because this code exists. Supported application model paths have fencing; out-of-band DB writes are outside the contract.
 6. **Schema/rollout:** additive tables/triggers and one legacy column. Main-process migration must finish before workers; do not roll back to old executors against active recovery records. Earlier prototype schema was never deployed; no automatic upgrade path from an unversioned prototype database is promised.
 7. **Budgets/history:** append-only attempts/resolutions and task-revision tombstones grow. No retention deletion is introduced. Recovery capped at three; blocked goals require evidence or revised explicit authorization, not endless retry.
@@ -76,3 +76,14 @@ Some tests were added as verification after implementation rather than RED-first
 
 ## Before deployment
 Review the supported-path boundaries, validate additive migration on a disposable copy, drain all old goal executors, deploy main and workers together, then exercise whole-server restart with a harmless goal and inspect recovery reason/attempt receipts. Do not restart active real work merely to test recovery. Verify source hashes and preserve unrelated dirty work.
+
+
+## 2026-09-11 server/UI/cluster gap closure
+
+Latest full backend: **6042 passed, 1 skipped**, 388 files, exit 0 (complete-final.log). Recovery UI + GoalCard truth: **6 passed**; production frontend build passed in 14.39 seconds with preexisting bundle warnings. New UI tests initially failed because the component did not exist (missing-module contract, not behavioral RED). Paused-owner and dependency-group tests reproduced behavioral failures before fixes. Remote APIs initially had missing-method failures; real cluster HTTP coverage then caught and fixed an incorrectly shaped task-outcome check. Worker tests initially required an exported boundary; do not claim that as reproduction of the former worker behavior.
+
+Actual server acceptance: launched backend/server.js with an allow-listed environment, fresh user-data/home, no provider credentials, random port; seeded safe/uncertain/paused fixtures; SIGKILLed its process group; waited past lease expiry; rebooted the actual server. Safe owner generation advanced once, uncertain task was not replayed, paused intent remained paused and dead ownership became interrupted. Latest receipt: /home/tryinget/agnt/projects/goal-server-restart-lyA83w/receipt.json. Neither the live process nor its database was used. Safe fixture uses an unavailable provider: admission is proven, productive completion is not. Previous controlled evaluator/process tests separately verify completion.
+
+UI tests cover inspection without dispatch, incomplete/malformed evidence refusal, explicit confirmation, no automatic execution after resolution, and ignoring a delayed previous-goal response. This is a JSON evidence editor, not a per-field guided wizard. Real browser visual acceptance has not been performed for the new panel.
+
+Remaining release boundaries: not deployed; no productive provider execution through whole-server restart, no multi-machine fleet/partition test, no GUI visual acceptance. Existing evidence-resolution assertions still require operator verification of external facts. Unsupported phases and unknown effects intentionally stop rather than replay. These are disclosed limits, not new user obligations silently invented after passing tests.

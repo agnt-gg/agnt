@@ -286,3 +286,38 @@ describe('Given failure can follow a successful external side effect',()=>{
   await store.release(l);await expect(store.acquire('g','u','b',3000)).rejects.toThrow(/outcome|interrupted/i);
  });
 });
+
+describe('Given paused goals retain intent after server death',()=>{
+ it('When the paused owner lease expires, Then ownership is no longer reported running',async()=>{
+  await store.acquire('g','u','a',1000);await run("UPDATE goals SET status='paused'");await store.reconcile(32000);
+  expect((await store.inspect('g')).state).toBe('interrupted');expect((await get('SELECT status FROM goals')).status).toBe('paused');
+ });
+});
+
+describe('Given a remote worker opts into fenced recovery',()=>{
+ it('When two workers claim, Then only one receives the task with run and attempt identity',async()=>{
+  await run('ALTER TABLE tasks ADD COLUMN claimed_by TEXT');await run('ALTER TABLE tasks ADD COLUMN claim_expires_at INTEGER');await run('ALTER TABLE tasks ADD COLUMN attempt_count INTEGER');await run('ALTER TABLE tasks ADD COLUMN dependencies TEXT');
+  const l=await store.acquire('g','u','primary',1000);
+  const claims=await Promise.all([store.claimRemote('u','node-a',1500),store.claimRemote('u','node-b',1500)]);
+  expect(claims.filter(Boolean)).toHaveLength(1);expect(claims.find(Boolean).lease.runId).toBe(l.runId);expect(claims.find(Boolean).lease.attemptId).toBeTruthy();
+ });
+ it('When a different node or expired parent submits, Then its remote result cannot commit',async()=>{
+  await run('ALTER TABLE tasks ADD COLUMN claimed_by TEXT');await run('ALTER TABLE tasks ADD COLUMN claim_expires_at INTEGER');await run('ALTER TABLE tasks ADD COLUMN attempt_count INTEGER');await run('ALTER TABLE tasks ADD COLUMN dependencies TEXT');
+  await store.acquire('g','u','primary',1000);const a=await store.claimRemote('u','node-a',1500);
+  expect(await store.remoteResult('u','node-b',a.lease,'pending',{content:'wrong'},2000)).toBe(false);
+  expect(await store.remoteResult('u','node-a',a.lease,'pending',{content:'late'},32000)).toBe(false);
+  expect((await get("SELECT output FROM tasks WHERE id='pending'")).output).toBeNull();
+ });
+ it('When pause occurs, Then remote renewal refuses ownership rather than extending stale work',async()=>{
+  await run('ALTER TABLE tasks ADD COLUMN claimed_by TEXT');await run('ALTER TABLE tasks ADD COLUMN claim_expires_at INTEGER');await run('ALTER TABLE tasks ADD COLUMN attempt_count INTEGER');await run('ALTER TABLE tasks ADD COLUMN dependencies TEXT');
+  await store.acquire('g','u','primary',1000);const a=await store.claimRemote('u','node-a',1500);await run("UPDATE goals SET status='paused'");
+  expect(await store.renewRemote('u','node-a',a.lease,'pending',2000)).toBe(false);
+ });
+ it('When a valid remote result commits, Then duplicate submission is refused and task/attempt commit together',async()=>{
+  await run('ALTER TABLE tasks ADD COLUMN claimed_by TEXT');await run('ALTER TABLE tasks ADD COLUMN claim_expires_at INTEGER');await run('ALTER TABLE tasks ADD COLUMN attempt_count INTEGER');await run('ALTER TABLE tasks ADD COLUMN dependencies TEXT');
+  await store.acquire('g','u','primary',1000);const a=await store.claimRemote('u','node-a',1500);
+  expect(await store.remoteResult('u','node-a',a.lease,'pending',{content:'verified'},2000)).toBe(true);
+  expect(await store.remoteResult('u','node-a',a.lease,'pending',{content:'duplicate'},2100)).toBe(false);
+  expect((await get("SELECT status FROM tasks WHERE id='pending'")).status).toBe('completed');
+ });
+});
