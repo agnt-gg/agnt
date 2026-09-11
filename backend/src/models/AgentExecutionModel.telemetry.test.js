@@ -15,3 +15,5 @@ it('Given invalid counts Then refuse contradictory measurement',()=>{expect(()=>
 
 it('Given partial usage Then absent fields remain null while measured zero remains zero',()=>{const m=createExecutionTelemetry();m.request([{role:'user',content:'x'}],[]);m.usage({input_tokens:0});expect(m.snapshot('failed')).toMatchObject({usage:{inputTokens:0,outputTokens:null,totalTokens:null},usageCoverage:'partial'});});
 it('Given measurement expansion Then oversized request history is refused',()=>{expect(()=>normalizeExecutionTelemetry({version:1,outcome:'failed',requestMetrics:{boundary:'adapter_input_json_utf8',requests:Array(1001).fill({})}})).toThrow();});
+
+it('Corrupt persisted receipt content is withheld, not returned raw',async()=>{const id=await Model.create(user,null,'corrupt receipts',null,'x',null,null);await run('UPDATE agent_executions SET returned_tool_receipts=? WHERE id=?',['SECRET_CORRUPT_RECEIPT',id]);const d=await Model.getExecutionDetails(id);expect(d.returnedToolReceipts).toBeNull();expect(d.receiptAvailability).toBe('invalid');});

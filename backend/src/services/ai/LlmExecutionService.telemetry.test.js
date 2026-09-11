@@ -18,3 +18,10 @@ for(const stream of [false,true]){
  it(`Given ${stream?'stream':'plain'} tool throws Then count dispatch without claiming effect success`,async()=>{executeTool.mockRejectedValue(Error('uncertain effect'));expect((await run(stream)).executionTelemetry).toMatchObject({toolCalls:{started:1,finished:1,inFlight:0},effectDisposition:'tool_calls_observed_effects_not_verified'});});
 }
 it('Given cancellation while tool in flight Then preserve uncertainty without awaiting/replaying the tool',async()=>{const controller=new AbortController();executeTool.mockImplementation(()=>new Promise(()=>{}));const promise=service.executeWithTools({provider:'openai',model:'fixture',userId:'u',messages:[{role:'user',content:'x'}],toolSchemas:[],signal:controller.signal});await vi.waitFor(()=>expect(executeTool).toHaveBeenCalledTimes(1));controller.abort();await expect(promise).rejects.toMatchObject({executionTelemetry:{outcome:'cancelled',toolCalls:{started:1,finished:0,inFlight:1},effectDisposition:'in_flight_or_unknown'}});});
+
+it('Accessor on thrown exception cannot forge host measurements',async()=>{
+ const {takeFailureTelemetry}=await import('./executionTelemetry.js');
+ const fake=Object.assign(Error('accessor'),{});Object.defineProperty(fake,'executionTelemetry',{get:()=>({version:1,outcome:'completed',usage:null,usageCoverage:'unknown',toolCalls:{started:0,finished:0,inFlight:0}}),set:()=>{}});
+ send.mockRejectedValue(fake);
+ try {await run(false);throw Error('must fail');}catch(error){const t=takeFailureTelemetry(error);expect(t.outcome).toBe('failed');expect(t.requestMetrics.requests).toHaveLength(1);}
+});

@@ -2,7 +2,7 @@
 const roles = ['system', 'user', 'assistant', 'tool'];
 const number = x => Number.isSafeInteger(x) && x >= 0;
 const metricKeys = ['requestIndex','messageBytes','schemaBytes','totalBytes','systemBytes','userBytes','toolBytes','assistantBytes'];
-const outcomes = ['completed','failed','blocked','cancelled'];
+const outcomes = ['completed','failed','blocked','cancelled','pending'];
 export function normalizeExecutionTelemetry(value) {
   if (!value || value.version !== 1 || !outcomes.includes(value.outcome)) throw new Error('Invalid execution telemetry version/outcome');
   const metric = value.requestMetrics;
@@ -66,3 +66,8 @@ export function createExecutionTelemetry() {
       toolCalls:{started,finished,inFlight:started-finished}});}
   };
 }
+
+// Host provenance for failure measurements; arbitrary exception properties are not trusted.
+const failureTelemetry = new WeakMap();
+export function retainFailureTelemetry(error, measured) { failureTelemetry.set(error,normalizeExecutionTelemetry(measured)); }
+export function takeFailureTelemetry(error) { const measured=failureTelemetry.get(error)??null;failureTelemetry.delete(error);return measured; }

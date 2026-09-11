@@ -1,4 +1,5 @@
-import { createExecutionTelemetry } from './executionTelemetry.js';
+import { createExecutionTelemetry, retainFailureTelemetry } from './executionTelemetry.js';
+import { retainFailureReceipts } from '../orchestrator/runAgentResult.js';
 import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { stripProviderIncompatibleTools } from '../orchestrator/providerToolCompat.js';
@@ -200,12 +201,17 @@ class LlmExecutionService {
    */
   async executeWithTools(config) {
     const telemetry = createExecutionTelemetry();
+    const observedReceipts = [];
     try {
-      const result = await this._executeWithToolsMeasured({...config, _executionTelemetry:telemetry});
+      const result = await this._executeWithToolsMeasured({...config, _executionTelemetry:telemetry, _observedReceipts:observedReceipts});
       return {...result,executionTelemetry:telemetry.snapshot('completed'),requestMetrics:telemetry.snapshot('completed').requestMetrics};
     } catch (caught) {
       const error = caught instanceof Error ? caught : new Error('Execution failed');
-      error.executionTelemetry = telemetry.snapshot(error.name === 'AbortError' ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      const measured = telemetry.snapshot(['AbortError','GoalCancelledError'].includes(error.name) ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      retainFailureTelemetry(error,measured);
+      retainFailureReceipts(error, observedReceipts, measured);
+      // Compatibility projection only: it is never read back as host evidence.
+      try { error.executionTelemetry = measured; } catch { /* frozen/accessor error */ }
       throw error;
     }
   }
@@ -314,7 +320,7 @@ class LlmExecutionService {
 
     // Tool execution loop
     let currentRound = 0;
-    const allToolExecutions = [];
+    const allToolExecutions = config._observedReceipts;
 
     while (toolCalls && toolCalls.length > 0 && currentRound < maxToolRounds) {
       currentRound++;
@@ -338,7 +344,7 @@ class LlmExecutionService {
           };
         }
 
-        console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
+        console.log('[LlmExecutionService] Executing tool');
 
         try {
           telemetry.toolStarted();
@@ -350,6 +356,7 @@ class LlmExecutionService {
           // Store execution details
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: functionResponse,
           });
@@ -361,18 +368,19 @@ class LlmExecutionService {
             content: functionResponse,
           };
         } catch (error) {
-          console.error(`Tool execution error for ${functionName}:`, error);
+          console.error('[LlmExecutionService] Tool execution failed');
 
           const errorResponse = JSON.stringify({
             success: false,
-            error: `Tool execution failed: ${error.message}`,
+            error: 'Tool execution failed',
           });
 
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: errorResponse,
-            error: error.message,
+            error: 'Tool execution failed',
           });
 
           return {
@@ -480,12 +488,17 @@ class LlmExecutionService {
    */
   async executeWithToolsStreaming(config, onChunk) {
     const telemetry = createExecutionTelemetry();
+    const observedReceipts = [];
     try {
-      const result = await this._executeWithToolsStreamingMeasured({...config, _executionTelemetry:telemetry}, onChunk);
+      const result = await this._executeWithToolsStreamingMeasured({...config, _executionTelemetry:telemetry, _observedReceipts:observedReceipts}, onChunk);
       return {...result,executionTelemetry:telemetry.snapshot('completed'),requestMetrics:telemetry.snapshot('completed').requestMetrics};
     } catch (caught) {
       const error = caught instanceof Error ? caught : new Error('Execution failed');
-      error.executionTelemetry = telemetry.snapshot(error.name === 'AbortError' ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      const measured = telemetry.snapshot(['AbortError','GoalCancelledError'].includes(error.name) ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      retainFailureTelemetry(error,measured);
+      retainFailureReceipts(error, observedReceipts, measured);
+      // Compatibility projection only: it is never read back as host evidence.
+      try { error.executionTelemetry = measured; } catch { /* frozen/accessor error */ }
       throw error;
     }
   }
@@ -568,7 +581,7 @@ class LlmExecutionService {
 
     // Tool execution loop
     let currentRound = 0;
-    const allToolExecutions = [];
+    const allToolExecutions = config._observedReceipts;
 
     while (toolCalls && toolCalls.length > 0 && currentRound < maxToolRounds) {
       currentRound++;
@@ -592,7 +605,7 @@ class LlmExecutionService {
           };
         }
 
-        console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
+        console.log('[LlmExecutionService] Executing tool');
 
         try {
           telemetry.toolStarted();
@@ -604,6 +617,7 @@ class LlmExecutionService {
           // Store execution details
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: functionResponse,
           });
@@ -615,18 +629,19 @@ class LlmExecutionService {
             content: functionResponse,
           };
         } catch (error) {
-          console.error(`Tool execution error for ${functionName}:`, error);
+          console.error('[LlmExecutionService] Tool execution failed');
 
           const errorResponse = JSON.stringify({
             success: false,
-            error: `Tool execution failed: ${error.message}`,
+            error: 'Tool execution failed',
           });
 
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: errorResponse,
-            error: error.message,
+            error: 'Tool execution failed',
           });
 
           return {
