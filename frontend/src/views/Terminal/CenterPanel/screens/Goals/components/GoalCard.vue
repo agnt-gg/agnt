@@ -29,7 +29,7 @@
         <span v-if="runningTaskCount > 1" class="running-task-more"> +{{ runningTaskCount - 1 }} </span>
       </div>
 
-      <details v-if="['needs_review','paused'].includes(goal.status)" @click.stop @toggle="recoveryOpen = $event.target.open">
+      <details class="goal-recovery" v-if="['needs_review','paused'].includes(goal.status)" @click.stop @toggle="recoveryOpen = $event.target.open">
         <summary>Inspect recovery</summary>
         <GoalRecoveryPanel v-if="recoveryOpen" :goal-id="goal.id" />
       </details>
@@ -216,6 +216,11 @@ export default {
 </script>
 
 <style scoped>
+.goal-recovery { min-width: 0; width: 100%; margin: 2px 0 8px; text-align: left; }
+.goal-recovery > summary { color: var(--color-text-muted); font-size: 11px; line-height: 1.5; cursor: pointer; }
+.goal-recovery > summary:hover { color: var(--color-text); }
+.goal-recovery > summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+
 .goal-card {
   position: relative;
   background: var(--color-darker-0);
