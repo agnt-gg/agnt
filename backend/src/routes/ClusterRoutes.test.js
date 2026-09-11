@@ -592,3 +592,17 @@ describe('nodes', () => {
     expect(body.self.role).toBe('primary');
   });
 });
+
+describe('Given recovery protocol 2 across real HTTP and grants',()=>{
+ it('When an opted-in worker claims and completes, Then the primary fences duplicate and legacy results',async()=>{
+  const goalId=await seedGoal(OWNER,'planning');const taskId=await TaskModel.create(goalId,'v2 task','complete harmless fixture');
+  const {default:recovery}=await import('../services/goal/GoalRunRecovery.js');await recovery.acquire(goalId,OWNER);
+  const node=await enrol(OWNER);const old=await req('POST','/api/cluster/claim',{token:node.token,body:{goalId}});expect(old.status).toBe(204);
+  const claim=await req('POST','/api/cluster/claim',{token:node.token,body:{goalId,recoveryProtocol:2}});expect(claim.status).toBe(200);expect(claim.body.runLease.attemptId).toBeTruthy();
+  const complete={taskId,recoveryProtocol:2,runLease:claim.body.runLease,result:{content:'Harmless fixture completed'}};
+  expect((await req('POST','/api/cluster/complete',{token:node.token,body:{taskId,result:complete.result}})).status).toBe(409);
+  expect((await req('POST','/api/cluster/complete',{token:node.token,body:complete})).status).toBe(200);
+  expect((await req('POST','/api/cluster/complete',{token:node.token,body:complete})).status).toBe(409);
+  expect((await TaskModel.findOne(taskId)).status).toBe('completed');
+ });
+});

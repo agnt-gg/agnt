@@ -171,6 +171,7 @@ async function callPrimary(path, { method = 'POST', body = null } = {}) {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    signal:AbortSignal.timeout(10000),
   });
   return response;
 }
@@ -190,21 +191,26 @@ function idleDelay(consecutiveEmptyPolls) {
  * local one. The alternative, a second execution path for remote work, is how
  * the two silently diverge.
  */
-async function runTask(assignment, userId) {
+export async function runTask(assignment, userId) {
   const { default: TaskOrchestrator } = await import('../goal/TaskOrchestrator.js');
   const { default: AgentTaskMatcher } = await import('../goal/AgentTaskMatcher.js');
 
   const { task, goal } = assignment;
+  const recovery=assignment.recoveryProtocol===2;
+  const identity=recovery?{recoveryProtocol:2,runLease:assignment.runLease}:{};
+  const controller=new AbortController();let renewalInFlight=false;
+  const leaseMs=recovery?30000:LEASE_MS;
 
   // Keep the lease alive for as long as the work takes. Same reasoning as
   // TaskOrchestrator._holdClaim: an agent turn can sit in one provider call
   // for minutes and report nothing, and a lease that lapses mid-call would let
   // the primary hand this task to somebody else while we are still doing it.
   const renewal = setInterval(() => {
-    callPrimary('/renew', { body: { taskId: task.id, leaseMs: LEASE_MS } }).catch((error) => {
-      console.warn(`[cluster/worker] lease renewal failed for ${task.id}: ${error.message}`);
-    });
-  }, Math.floor(LEASE_MS / 3));
+    if(renewalInFlight)return;renewalInFlight=true;
+    callPrimary('/renew', { body: {taskId:task.id,leaseMs,...identity} }).then(response=>{
+      if(recovery&&!response.ok)controller.abort(new Error('Primary rejected attempt renewal'));
+    }).catch(error=>{if(recovery)controller.abort(error);}).finally(()=>{renewalInFlight=false});
+  }, Math.floor(leaseMs / 3));
   if (typeof renewal.unref === 'function') renewal.unref();
 
   // Marks the start of this task's spend window. sqlite's CURRENT_TIMESTAMP is
@@ -220,6 +226,7 @@ async function runTask(assignment, userId) {
       title: task.title,
       description: task.description,
       required_tools: task.requiredTools || [],
+      output: task.output || null,
     };
 
     const agent = await AgentTaskMatcher.selectAgentForTask(shaped, userId);
@@ -228,19 +235,22 @@ async function runTask(assignment, userId) {
       ...(task.input || {}),
     });
 
-    const result = await TaskOrchestrator.executeTaskViaAgentChat(agent, message, userId, null, null, null, {
+    const result = await TaskOrchestrator.executeTaskViaAgentChat(agent, message, userId, null, null, controller.signal, {
       origin: 'goal_task',
       originId: task.goalId,
     });
 
-    await callPrimary('/complete', {
+    if(controller.signal.aborted)throw controller.signal.reason;
+    const completion=await callPrimary('/complete', {
       body: {
         taskId: task.id,
+        ...identity,
         status: 'completed',
         result,
         spend: await collectSpend(userId, task.goalId, spendSince),
       },
     });
+    if(!completion.ok)throw Error('Primary rejected completion: HTTP '+completion.status);
     state.completed += 1;
     console.log(`[cluster/worker] completed ${task.id} (${task.title})`);
   } catch (error) {
@@ -253,6 +263,7 @@ async function runTask(assignment, userId) {
     await callPrimary('/complete', {
       body: {
         taskId: task.id,
+        ...identity,
         status: 'failed',
         error: error.message,
         // A failed task still SPENT. Reporting cost only on success is how a
@@ -287,7 +298,7 @@ async function collectSpend(userId, goalId, sinceIso) {
 async function pollOnce(userId, consecutiveEmptyPolls) {
   state.polls += 1;
 
-  const response = await callPrimary('/claim', { body: { leaseMs: LEASE_MS } });
+  const response = await callPrimary('/claim', { body: { leaseMs: LEASE_MS, recoveryProtocol:2 } });
 
   if (response.status === 204) return { worked: false, empty: consecutiveEmptyPolls + 1 };
 

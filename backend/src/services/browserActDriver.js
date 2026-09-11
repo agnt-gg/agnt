@@ -95,6 +95,11 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
  * failure reads as "timed out", drops the session, and looks like a broken
  * browser instead of a slow one.
  */
+// DevToolsActivePort can appear before a cold browser services WebSocket
+// upgrades promptly. CI reproduced a four-second first-connect timeout while
+// later connections succeeded. Budget connection startup separately: no action
+// has been sent, and no failed navigation or click is retried.
+const CONNECT_TIMEOUT_MS = 15000;
 const NAVIGATE_TIMEOUT_MS = 30000;
 const TREE_TIMEOUT_MS = 20000;
 const TAB_TIMEOUT_MS = 15000;
@@ -189,7 +194,7 @@ async function driverFor(userId, cdpUrl) {
   if (existing && existing.cdpUrl === cdpUrl && !existing.connection.closed) return existing;
   dropDriver(userId);
 
-  const connection = await new CdpConnection(cdpUrl).connect();
+  const connection = await new CdpConnection(cdpUrl).connect({ timeoutMs: CONNECT_TIMEOUT_MS });
   const { sessionId, targetId } = await attachToPage(connection);
   const driver = {
     userId,

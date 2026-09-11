@@ -1,3 +1,4 @@
+import { getVirtualAgent } from './agentRuntime.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
@@ -294,7 +295,7 @@ async function loadAgentOverride(context) {
   // preferring the DB row keeps the persona clean regardless of caller.
   try {
     const AgentModel = (await import('../../models/AgentModel.js')).default;
-    const agent = await AgentModel.findOne(context.agentId);
+    const agent = getVirtualAgent(context) || await AgentModel.findOne(context.agentId);
     if (agent) {
       context.agentContext = {
         ...context.agentContext,
@@ -610,7 +611,7 @@ function detectSidebarSpecialty(context) {
 
 async function getSavedAgentToolSchemas(context, allSchemas) {
   const AgentModel = (await import('../../models/AgentModel.js')).default;
-  const agent = await AgentModel.findOne(context.agentId);
+  const agent = getVirtualAgent(context) || await AgentModel.findOne(context.agentId);
   const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
 
   // RESTRICTED mode (the DEFAULT): assignedTools are the ceiling — the agent

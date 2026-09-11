@@ -1,7 +1,7 @@
+import { commitGoalEvaluation, staleEvaluation } from '../../models/GoalEvaluationCommit.js';
+import { taskFailureReason, assessGoalCompletion } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
-import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
-import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
@@ -25,8 +25,9 @@ class GoalEvaluator {
    * @param {string} model - AI model to use (optional, defaults to user's default)
    * @returns {Promise<Object>} Evaluation results with scores and feedback
    */
-  static async evaluateGoal(goalId, userId, evaluationType = 'automatic', provider = null, model = null) {
+  static async evaluateGoal(goalId, userId, evaluationType = 'automatic', provider = null, model = null, { assertCurrent } = {}) {
     try {
+      assertCurrent?.();
       console.log(`[GoalEvaluator] Starting evaluation for goal ${goalId}`);
 
       // Step 1: Fetch goal and tasks
@@ -35,6 +36,12 @@ class GoalEvaluator {
         throw new Error('Goal not found');
       }
 
+      if (goal.user_id !== userId || goal.deleted_at || ['paused','stopped'].includes(goal.status)) throw staleEvaluation();
+      const recoveryDb=(await import('../../models/database/index.js')).default;
+      goal.recoveryOwner=await new Promise((resolve,reject)=>recoveryDb.get('SELECT run_id,generation FROM goal_run_ownership WHERE goal_id=?',[goalId],(e,row)=>e?reject(e):resolve(row||null)));
+      const {currentGoalRun}=await import('./goalRunContext.js');
+      const run=currentGoalRun();
+      if(run && (run.goalId!==goalId || run.userId!==userId || !goal.recoveryOwner || run.runId!==goal.recoveryOwner.run_id || run.generation!==goal.recoveryOwner.generation))throw staleEvaluation();
       const tasks = await TaskModel.findByGoalId(goalId);
       console.log(`[GoalEvaluator] Evaluating goal "${goal.title}" with ${tasks.length} tasks`);
 
@@ -63,7 +70,8 @@ class GoalEvaluator {
       const feedback = await this.generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider, model, accumulateUsage);
 
       // Step 5: Determine if goal passed
-      const passed = scores.overall >= 70; // 70% threshold for passing
+      const completionDecision = assessGoalCompletion({passed:scores.overall >= 70,scores,taskEvaluations},tasks);
+      const passed = completionDecision.passed;
 
       // Calculate estimated cost from token usage
       let resolvedProvider = provider;
@@ -105,6 +113,7 @@ class GoalEvaluator {
       // Step 6: Store evaluation in database
       const evaluationData = {
         scores,
+        completionDecision,
         taskEvaluations: taskEvaluations.map((te) => ({
           taskId: te.taskId,
           taskTitle: te.taskTitle,
@@ -114,16 +123,7 @@ class GoalEvaluator {
         timestamp: new Date().toISOString(),
       };
 
-      const evaluationId = await GoalEvaluationModel.create(goalId, evaluationType, scores.overall, passed, evaluationData, feedback, 'system', tokenUsage);
-
-      // Step 7: Store individual task evaluations
-      for (const taskEval of taskEvaluations) {
-        await TaskEvaluationModel.create(taskEval.taskId, evaluationId, taskEval.criteriaMet, taskEval.score, taskEval.feedback);
-      }
-
-      // Step 8: Update goal status based on evaluation
-      const newStatus = passed ? 'validated' : 'needs_review';
-      await GoalModel.updateStatus(goalId, newStatus);
+      const {evaluationId,status:newStatus} = await commitGoalEvaluation({goal,userId,evaluationType,scores,passed,evaluationData,feedback,tokenUsage,taskEvaluations,assertCurrent});
 
       console.log(`[GoalEvaluator] Evaluation complete: ${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)`);
 
@@ -159,6 +159,7 @@ class GoalEvaluator {
 
       return {
         evaluationId,
+        completionDecision,
         goalId,
         passed,
         scores,
@@ -189,13 +190,14 @@ class GoalEvaluator {
     // Parse task output
     const taskOutput = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
 
-    if (!taskOutput) {
+    const invalidOutput = !taskOutput || task.status !== 'completed' || task.error || taskFailureReason({...taskOutput,tool_executions:taskOutput?.toolExecutions});
+    if (invalidOutput) {
       return {
         taskId: task.id,
         taskTitle: task.title,
         score: 0,
-        criteriaMet: { hasOutput: false },
-        feedback: 'Task has no output to evaluate',
+        criteriaMet: { hasOutput: !!taskOutput, completed:false },
+        feedback: 'Task is incomplete, failed, or has no usable output',
       };
     }
 
@@ -240,7 +242,7 @@ EVALUATION INSTRUCTIONS:
 1. Analyze if the task output contains or demonstrates the expected deliverables
 2. Check if the output meets the quality standards specified
 3. Provide a score from 0-100 based on how well criteria are met
-4. List which specific criteria were met or not met
+4. List applicable required deliverable and quality criteria as Boolean values (true/false). Do not invent requirements. Explain optional suggestions in feedback, not as failed required criteria. Mixed tool failures/successes require explaining whether the failed operation was actually recovered; an unrelated successful call is not recovery.
 5. Provide constructive feedback
 
 Respond with ONLY a valid JSON object (no markdown, no extra text):
@@ -309,7 +311,7 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
       const evaluation = JSON.parse(cleanedResult);
 
       // Validate evaluation structure
-      if (typeof evaluation.score !== 'number' || !evaluation.criteriaMet || !evaluation.feedback) {
+      if (!Number.isFinite(evaluation.score) || evaluation.score < 0 || evaluation.score > 100 || !evaluation.criteriaMet || typeof evaluation.criteriaMet !== 'object' || Array.isArray(evaluation.criteriaMet) || !Object.keys(evaluation.criteriaMet).length || Object.values(evaluation.criteriaMet).some(v=>typeof v !== 'boolean') || typeof evaluation.feedback !== 'string' || !evaluation.feedback.trim()) {
         throw new Error('Invalid evaluation structure');
       }
 

@@ -1,3 +1,4 @@
+import {goalRunGuard} from '../services/goal/goalRunContext.js';
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 
@@ -44,7 +45,7 @@ class GoalModel {
 
   static findOne(id) {
     return new Promise((resolve, reject) => {
-      db.get(`SELECT * FROM goals WHERE id = ?`, [id], (err, goal) => {
+      db.get(`SELECT *, COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='goal' AND entity_id=goals.id),0) AS lifecycle_revision FROM goals WHERE id = ?`, [id], (err, goal) => {
         if (err) reject(err);
         else if (goal) {
           goal.success_criteria = JSON.parse(goal.success_criteria || '{}');
@@ -128,11 +129,19 @@ class GoalModel {
       );
     });
   }
-  static updateStatus(id, status, completedAt = null) {
+  static updateStatus(id, status, completedAt = null, expected = null) {
     const updatedAt = new Date().toISOString();
     const finalCompletedAt = completedAt || (status === 'completed' || status === 'validated' ? updatedAt : null);
     return new Promise((resolve, reject) => {
-      db.run(`UPDATE goals SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?`, [status, finalCompletedAt, updatedAt, id], function (err) {
+      let sql = 'UPDATE goals SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?';
+      const params = [status, finalCompletedAt, updatedAt, id];
+      if (expected) {
+        if (!Number.isSafeInteger(expected.revision)) return reject(new Error('Goal revision required'));
+        sql += " AND user_id=? AND deleted_at IS NULL AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='goal' AND entity_id=goals.id),0)=?";
+        params.push(expected.userId,expected.revision);
+      }
+      sql += goalRunGuard('goals.id',params);
+      db.run(sql, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
       });
@@ -149,9 +158,11 @@ class GoalModel {
   static updateWorldState(id, worldState) {
     const updatedAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const params=[JSON.stringify(worldState), updatedAt, id];
+      const guard=goalRunGuard('goals.id',params);
       db.run(
-        `UPDATE goals SET world_state = ?, updated_at = ? WHERE id = ?`,
-        [JSON.stringify(worldState), updatedAt, id],
+        `UPDATE goals SET world_state = ?, updated_at = ? WHERE id = ?`+guard,
+        params,
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
@@ -163,9 +174,11 @@ class GoalModel {
   static updateIteration(id, iteration) {
     const updatedAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const params=[iteration, updatedAt, id];
+      const guard=goalRunGuard('goals.id',params);
       db.run(
-        `UPDATE goals SET current_iteration = ?, updated_at = ? WHERE id = ?`,
-        [iteration, updatedAt, id],
+        `UPDATE goals SET current_iteration = ?, updated_at = ? WHERE id = ?`+guard,
+        params,
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
@@ -177,9 +190,11 @@ class GoalModel {
   static updateLoopStatus(id, loopStatus) {
     const updatedAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const params=[loopStatus, updatedAt, id];
+      const guard=goalRunGuard('goals.id',params);
       db.run(
-        `UPDATE goals SET loop_status = ?, updated_at = ? WHERE id = ?`,
-        [loopStatus, updatedAt, id],
+        `UPDATE goals SET loop_status = ?, updated_at = ? WHERE id = ?`+guard,
+        params,
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
@@ -199,9 +214,11 @@ class GoalModel {
 
   static updateMaxIterations(id, maxIterations) {
     return new Promise((resolve, reject) => {
+      const params=[maxIterations, id];
+      const guard=goalRunGuard('goals.id',params);
       db.run(
-        `UPDATE goals SET max_iterations = ? WHERE id = ?`,
-        [maxIterations, id],
+        `UPDATE goals SET max_iterations = ? WHERE id = ?`+guard,
+        params,
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);
@@ -213,9 +230,10 @@ class GoalModel {
   static delete(id, userId) {
     const deletedAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const params=[deletedAt,deletedAt,id,userId];const guard=goalRunGuard('goals.id',params);
       db.run(
-        'UPDATE goals SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
-        [deletedAt, deletedAt, id, userId],
+        'UPDATE goals SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL'+guard,
+        params,
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);

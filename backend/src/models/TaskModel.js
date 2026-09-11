@@ -1,3 +1,4 @@
+import {goalRunGuard} from '../services/goal/goalRunContext.js';
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 
@@ -6,12 +7,14 @@ class TaskModel {
     const id = generateUUID();
     const createdAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const guardParams=[];const guard=goalRunGuard('g.id',guardParams);
       db.run(
         `INSERT INTO tasks (id, goal_id, parent_task_id, title, description, required_tools, dependencies, order_index, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, goalId, parentTaskId, title, description, JSON.stringify(requiredTools), JSON.stringify(dependencies), orderIndex, createdAt],
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM goals g WHERE g.id=?${guard}`,
+        [id, goalId, parentTaskId, title, description, JSON.stringify(requiredTools), JSON.stringify(dependencies), orderIndex, createdAt,goalId,...guardParams],
         function (err) {
           if (err) reject(err);
+          else if(this.changes!==1)reject(new Error('Task creation refused: stale owner or missing goal'));
           else resolve(id);
         }
       );
@@ -21,7 +24,7 @@ class TaskModel {
   static findByGoalId(goalId) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT t.*, a.name as agent_name 
+        `SELECT t.*, COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=t.id),0) AS lifecycle_revision, a.name as agent_name
          FROM tasks t
          LEFT JOIN agents a ON t.agent_id = a.id
          WHERE t.goal_id = ?
@@ -44,7 +47,7 @@ class TaskModel {
   static findOne(id) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT t.*, a.name as agent_name, w.workflow_data
+        `SELECT t.*, COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=t.id),0) AS lifecycle_revision, a.name as agent_name, w.workflow_data
          FROM tasks t
          LEFT JOIN agents a ON t.agent_id = a.id
          LEFT JOIN workflows w ON t.workflow_id = w.id
@@ -69,7 +72,8 @@ class TaskModel {
 
   static assignAgent(taskId, agentId) {
     return new Promise((resolve, reject) => {
-      db.run(`UPDATE tasks SET agent_id = ?, status = 'assigned' WHERE id = ?`, [agentId, taskId], function (err) {
+      const params=[agentId,taskId];const guard=goalRunGuard('tasks.goal_id',params);
+      db.run(`UPDATE tasks SET agent_id = ?, status = 'assigned' WHERE id = ?`+guard, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
       });
@@ -78,14 +82,15 @@ class TaskModel {
 
   static assignWorkflow(taskId, workflowId) {
     return new Promise((resolve, reject) => {
-      db.run(`UPDATE tasks SET workflow_id = ? WHERE id = ?`, [workflowId, taskId], function (err) {
+      const params=[workflowId,taskId];const guard=goalRunGuard('tasks.goal_id',params);
+      db.run(`UPDATE tasks SET workflow_id = ? WHERE id = ?`+guard, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
       });
     });
   }
 
-  static updateStatus(taskId, status, progress = null, startedAt = null, completedAt = null, input = null, output = null, error = null) {
+  static updateStatus(taskId, status, progress = null, startedAt = null, completedAt = null, input = null, output = null, error = null, expected = null) {
     return new Promise((resolve, reject) => {
       const updatedAt = new Date().toISOString();
       let query = `UPDATE tasks SET status = ?, updated_at = ?`;
@@ -127,6 +132,12 @@ class TaskModel {
       query += ` WHERE id = ?`;
       params.push(taskId);
 
+      if (expected) {
+        if (!Number.isSafeInteger(expected.revision) || expected.revision < 0) return reject(new Error('Task revision required'));
+        query += " AND goal_id = ? AND EXISTS (SELECT 1 FROM goals WHERE goals.id=tasks.goal_id AND user_id=? AND deleted_at IS NULL) AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=tasks.id),0)=?";
+        params.push(expected.goalId,expected.userId,expected.revision);
+      }
+      query += goalRunGuard('tasks.goal_id',params);
       db.run(query, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
@@ -146,9 +157,10 @@ class TaskModel {
     let restored = 0;
     for (const t of tasks) {
       restored += await new Promise((resolve, reject) => {
+        const params=[t.title,t.description,t.status,t.progress||0,t.output??null,t.error??null,updatedAt,t.id,goalId];const guard=goalRunGuard('tasks.goal_id',params);
         db.run(
-          `UPDATE tasks SET title = ?, description = ?, status = ?, progress = ?, output = ?, error = ?, updated_at = ? WHERE id = ? AND goal_id = ?`,
-          [t.title, t.description, t.status, t.progress || 0, t.output ?? null, t.error ?? null, updatedAt, t.id, goalId],
+          `UPDATE tasks SET title = ?, description = ?, status = ?, progress = ?, output = ?, error = ?, updated_at = ? WHERE id = ? AND goal_id = ?`+guard,
+          params,
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -305,6 +317,8 @@ class TaskModel {
                 attempt_count = COALESCE(attempt_count, 0) + 1
           WHERE id = ?
             AND status IN (${placeholders})
+            AND NOT EXISTS(SELECT 1 FROM goal_run_attempts a WHERE a.task_id=tasks.id AND a.state='admitted')
+            AND NOT EXISTS(SELECT 1 FROM goal_run_ownership o WHERE o.goal_id=tasks.goal_id AND (o.state!='running' OR o.lease_until <= CAST(strftime('%s','now') AS INTEGER)*1000))
             AND (claimed_by IS NULL
                  ${ownClaim}
                  OR claim_expires_at IS NULL
@@ -373,6 +387,7 @@ class TaskModel {
            JOIN goals g ON t.goal_id = g.id
           WHERE t.status = 'pending'
             AND g.status = 'executing'
+            AND NOT EXISTS(SELECT 1 FROM goal_run_ownership o WHERE o.goal_id=g.id)
             AND COALESCE(t.attempt_count, 0) < ?
             AND (t.claimed_by IS NULL OR t.claim_expires_at IS NULL OR t.claim_expires_at < ?)
             ${scope}
@@ -467,7 +482,8 @@ class TaskModel {
           WHERE claimed_by IS NOT NULL
             AND claim_expires_at IS NOT NULL
             AND claim_expires_at < ?
-            AND status IN ('running', 'assigned')`,
+            AND status IN ('running', 'assigned')
+            AND NOT EXISTS(SELECT 1 FROM goal_run_attempts a WHERE a.task_id=tasks.id AND a.state='admitted')`,
         [new Date().toISOString(), now],
         function (err) {
           if (err) reject(err);

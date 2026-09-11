@@ -1,3 +1,5 @@
+import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
+import { GoalRunOwnership } from './goalRunOwnership.js';
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -1919,6 +1921,7 @@ function runMigrations() {
 
       // Migration: Add evaluation_score column to goal_iterations for AGI loop tracking (2026-03-12)
       const goalIterationColumns = [
+        { name: 'state', type: "TEXT NOT NULL DEFAULT '{}'" },
         { name: 'evaluation_score', type: 'REAL' },
         { name: 'evaluation_passed', type: 'INTEGER DEFAULT 0' },
         { name: 'world_state_snapshot', type: 'JSON' },
@@ -2256,7 +2259,8 @@ const dbReady = skipSchemaInit
     // with `no such column: channel_key` on every upgrading install.
     return createIndexes();
   })
-  .then(() => {
+  .then(async () => {
+    await initializeGoalLifecycleVersions(db);
     console.log('All indexes ready');
   })
   .then(async () => {
@@ -2309,6 +2313,22 @@ const dbReady = skipSchemaInit
     }
   })
   .then(async () => {
+    // Main-process initialization only; workflow children skip this chain.
+    // Run ownership has its own connection to keep transactions isolated from
+    // ordinary task writes. Reconciliation never queues uncertain work.
+    const recoveryDb=await new Promise((resolve,reject)=>{
+      const c=new sqlite3.Database(dbPath,e=>e?reject(e):resolve(c));
+    });
+    recoveryDb.configure('busyTimeout',5000);
+    const recovery=new GoalRunOwnership(recoveryDb);
+    await recovery.initialize();
+    await recovery.reconcile();
+    let reconciling=false;
+    const recoveryTimer=setInterval(async()=>{
+      if(reconciling)return;reconciling=true;
+      try{await recovery.reconcile()}catch(e){console.error('Goal ownership reconciliation failed:',e.message)}finally{reconciling=false}
+    },5000);
+    recoveryTimer.unref?.();
     console.log('Database initialization complete');
 
     // Sync webhooks from existing workflows
