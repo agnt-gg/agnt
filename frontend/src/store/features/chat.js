@@ -1804,6 +1804,9 @@ export default {
           normalizedReasoningValue !== 'off' &&
           normalizedReasoningValue !== 'none';
         const effectiveReasoningEnabled = reasoningEnabled || derivedReasoningEnabled;
+        // Carry the Codex-only preference even when the server selects the provider.
+        // Only the Codex adapter consumes it; off preserves the existing payload.
+        const codexPriority = rootState.aiProvider?.codexPriority === true;
 
         // (resolvedAgentId computed above, before history rendering)
 
@@ -1861,6 +1864,7 @@ export default {
           if (effectiveReasoningEnabled) {
             formData.append('reasoningEnabled', 'true');
           }
+          if (codexPriority) formData.append('codexPriority', 'true');
           if (resolvedAgentId) {
             formData.append('agentId', resolvedAgentId);
           }
@@ -1921,6 +1925,7 @@ export default {
             persistDefault: hasConvAiOverride ? false : undefined,
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
+            codexPriority: codexPriority || undefined,
             agentId: resolvedAgentId || undefined,
             skillId: resolvedSkillId || undefined,
             skillInstructions: resolvedSkillInstructions || undefined,
