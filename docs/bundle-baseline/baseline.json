@@ -1,0 +1,264 @@
+{
+  "passed": true,
+  "metadata": {
+    "schemaVersion": 1,
+    "graphSemantics": "static-closure-v1",
+    "assetPolicy": "emitted-plus-public-css-v1",
+    "gzip": "per-file-level9",
+    "node": "v26.8.1",
+    "zlib": "1.3.2",
+    "vite": "5.4.21",
+    "mode": "production",
+    "configHash": "9ba3f62315ea61d976e2eecf06238cd2ee8b93ab3bf8f609bdba80c626a33072",
+    "lockHash": "67eb3243dfce80d7c5f15e85f13a7c5be27bbeb230b5d59db49d5d1dac43659e",
+    "scenario": "static-app-initial-v1",
+    "browserCache": "not-measured",
+    "buildCache": "fresh-process-os-cache-uncontrolled"
+  },
+  "sourceRevision": "be18eaf37444341b47476492344ce38fc40d94bf",
+  "sourcePatchHash": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+  "metrics": {
+    "initialRawBytes": 11197433,
+    "initialGzipBytes": 4693130,
+    "currentRawBytes": 29784049,
+    "currentGzipBytes": 16033826
+  },
+  "provenance": {
+    "started": "2026-09-11T13:24:18.487Z",
+    "finished": "2026-09-11T13:24:39.642Z",
+    "buildWallMs": 15612.367745,
+    "npm": "12.0.2",
+    "rollup": "4.57.0",
+    "platform": "linux",
+    "arch": "x64",
+    "command": "npm --prefix frontend run build",
+    "exitStatus": 0
+  },
+  "repeatability": [
+    {
+      "metrics": {
+        "initialRawBytes": 11197433,
+        "initialGzipBytes": 4693130,
+        "currentRawBytes": 29784049,
+        "currentGzipBytes": 16033826
+      },
+      "buildWallMs": 15612.367745
+    },
+    {
+      "metrics": {
+        "initialRawBytes": 11197433,
+        "initialGzipBytes": 4693130,
+        "currentRawBytes": 29784049,
+        "currentGzipBytes": 16033826
+      },
+      "buildWallMs": 15799.48006
+    },
+    {
+      "metrics": {
+        "initialRawBytes": 11197433,
+        "initialGzipBytes": 4693130,
+        "currentRawBytes": 29784049,
+        "currentGzipBytes": 16033826
+      },
+      "buildWallMs": 15337.957599
+    }
+  ],
+  "largestFiles": [
+    {
+      "file": "vendor/fonts/NotoColorEmoji.ttf",
+      "rawBytes": 4991984,
+      "gzipBytes": 2817658,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/welcome-to-agnt.gif",
+      "rawBytes": 4236634,
+      "gzipBytes": 4190691,
+      "fileCount": 1
+    },
+    {
+      "file": "js/libs/mathjax.js",
+      "rawBytes": 2140384,
+      "gzipBytes": 322611,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/open-editor.gif",
+      "rawBytes": 1431957,
+      "gzipBytes": 1353838,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/index.Bfwcchgr.js",
+      "rawBytes": 1245552,
+      "gzipBytes": 369648,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/app-integration.gif",
+      "rawBytes": 829865,
+      "gzipBytes": 773551,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/vendor-3d.DbmfBPKn.js",
+      "rawBytes": 704884,
+      "gzipBytes": 179615,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/cynefin-VYW2F7L2.qMSeS2Rw.js",
+      "rawBytes": 690627,
+      "gzipBytes": 153756,
+      "fileCount": 1
+    },
+    {
+      "file": "js/libs/jspdf.js",
+      "rawBytes": 637018,
+      "gzipBytes": 138760,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/vendor-editor.BQkhAX7r.js",
+      "rawBytes": 556130,
+      "gzipBytes": 189797,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/mermaid.core.diVrrqRw.js",
+      "rawBytes": 550116,
+      "gzipBytes": 123489,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/vendor-charts.BuqOiFye.js",
+      "rawBytes": 489867,
+      "gzipBytes": 166318,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/cytoscape.esm.CUqq0XTU.js",
+      "rawBytes": 443693,
+      "gzipBytes": 141372,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/index.DtnLamS_.js",
+      "rawBytes": 349130,
+      "gzipBytes": 106390,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/css/index.CO2hT4up.css",
+      "rawBytes": 295403,
+      "gzipBytes": 48224,
+      "fileCount": 1
+    },
+    {
+      "file": "js/libs/html2canvas.js",
+      "rawBytes": 278936,
+      "gzipBytes": 53239,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/katex.C5jXJg4s.js",
+      "rawBytes": 261329,
+      "gzipBytes": 76749,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/jpg/bg.Gz4lfrUL.jpg",
+      "rawBytes": 248926,
+      "gzipBytes": 245383,
+      "fileCount": 1
+    },
+    {
+      "file": "images/backgrounds/bg7.jpg",
+      "rawBytes": 248926,
+      "gzipBytes": 245383,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/Settings.DicFXgPj.js",
+      "rawBytes": 213188,
+      "gzipBytes": 62049,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/vendor-vue.BbkmGHJx.js",
+      "rawBytes": 208491,
+      "gzipBytes": 79240,
+      "fileCount": 1
+    },
+    {
+      "file": "js/libs/highlight.js",
+      "rawBytes": 206445,
+      "gzipBytes": 47149,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/WorkflowForge.jhH2m6iB.js",
+      "rawBytes": 191877,
+      "gzipBytes": 49999,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/app-integration.mp3",
+      "rawBytes": 170990,
+      "gzipBytes": 169184,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/default-ai-provider.mp3",
+      "rawBytes": 163049,
+      "gzipBytes": 161512,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/common.CoVTtB31.js",
+      "rawBytes": 162187,
+      "gzipBytes": 53423,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/architectureDiagram-ZJ3FMSHR.BSpJNSBO.js",
+      "rawBytes": 151750,
+      "gzipBytes": 42728,
+      "fileCount": 1
+    },
+    {
+      "file": "assets/js/Artifacts.BXwsHZAQ.js",
+      "rawBytes": 151461,
+      "gzipBytes": 52407,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/drag-node.gif",
+      "rawBytes": 146121,
+      "gzipBytes": 106636,
+      "fileCount": 1
+    },
+    {
+      "file": "tutorial-assets/editor-panel.mp3",
+      "rawBytes": 133791,
+      "gzipBytes": 132492,
+      "fileCount": 1
+    }
+  ],
+  "unresolvedCss": [
+    "vendor/fontawesome/webfonts/fa-brands-400.eot",
+    "vendor/fontawesome/webfonts/fa-brands-400.svg",
+    "vendor/fontawesome/webfonts/fa-brands-400.ttf",
+    "vendor/fontawesome/webfonts/fa-regular-400.eot",
+    "vendor/fontawesome/webfonts/fa-regular-400.svg",
+    "vendor/fontawesome/webfonts/fa-regular-400.ttf",
+    "vendor/fontawesome/webfonts/fa-solid-900.eot",
+    "vendor/fontawesome/webfonts/fa-solid-900.svg",
+    "vendor/fontawesome/webfonts/fa-solid-900.ttf"
+  ],
+  "unknowns": [
+    "Runtime-computed URLs and conditional resource requests are not derived from the static graph.",
+    "Associated CSS assets are conservative potential costs, not observed transfer.",
+    "Runtime-loaded MathJax extensions, external URLs and browser timing require separate runtime scenarios."
+  ]
+}

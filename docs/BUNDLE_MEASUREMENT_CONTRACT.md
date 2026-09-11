@@ -1,3 +1,5 @@
+> Historical RED-phase contract. Implemented scope, accounting exceptions, baseline and reproduction: [BUNDLE_MEASUREMENTS.md](BUNDLE_MEASUREMENTS.md). Planned runtime scenarios below are not claimed completed.
+
 # Frontend bundle measurement contract v1 (RED phase)
 
 ## Scope and observed pipeline
