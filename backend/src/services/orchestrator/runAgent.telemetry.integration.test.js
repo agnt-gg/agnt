@@ -1,0 +1,27 @@
+import {beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {randomUUID} from 'node:crypto';
+vi.mock('../../models/AgentModel.js',()=>({default:{findOne:vi.fn()}}));
+vi.mock('./agentRuntime.js',()=>({buildAgentRuntime:vi.fn(async()=>({systemPrompt:'Fixture',toolSchemas:[{type:'function',function:{name:'fixture',parameters:{type:'object',properties:{}}}}],context:{}}))}));
+vi.mock('../ai/LlmService.js',()=>({createLlmClient:vi.fn(async()=>({}))}));
+vi.mock('./llmAdapters.js',()=>({createLlmAdapter:vi.fn()}));
+vi.mock('./tools.js',()=>({executeTool:vi.fn(async()=>'{"ok":true}'),getAvailableToolSchemas:vi.fn(async()=>[])}));
+vi.mock('../execution/LedgerRecorder.js',()=>({recordLlmCall:vi.fn(async()=>{})}));
+import db,{dbReady} from '../../models/database/index.js';
+import Model from '../../models/AgentExecutionModel.js';
+import Agent from '../../models/AgentModel.js';
+import {AGENT_TOOLS} from './agentTools.js';
+import {createLlmAdapter} from './llmAdapters.js';
+import service from '../ai/LlmExecutionService.js';
+const run=(q,p=[])=>new Promise((r,j)=>db.run(q,p,function(e){e?j(e):r(this.changes)}));
+let user;
+beforeAll(async()=>{await dbReady;user=randomUUID();await run('INSERT INTO users(id,email,name) VALUES(?,?,?)',[user,user+'@test.local','fixture']);await run('INSERT INTO agents(id,name,status,created_by) VALUES(?,?,?,?)',['fixture-agent','Fixture','active',user]);});
+beforeEach(()=>{vi.clearAllMocks();service.cacheEnabled=false;Agent.findOne.mockResolvedValue({id:'fixture-agent',created_by:user,name:'Fixture',provider:'openai',model:'fixture'});});
+for(const fail of [false,true])it(`Given real run_agent/task adapter/execution service/SQLite When second response ${fail?'fails':'succeeds'} Then returned and retrieved evidence agree`,async()=>{
+ let n=0;const tc={id:'tc',type:'function',function:{name:'fixture',arguments:'{}'}};
+ createLlmAdapter.mockResolvedValue({formatToolResults:x=>x,call:async()=>{if(n++===0)return{responseMessage:{role:'assistant',content:null,tool_calls:[tc]},toolCalls:[tc],usage:{input_tokens:10,output_tokens:2}};if(fail)throw Error('fixture outage');return{responseMessage:{role:'assistant',content:'Done'},toolCalls:[],usage:{input_tokens:20,output_tokens:3}};}});
+ const r=JSON.parse(await AGENT_TOOLS.run_agent.execute({agentId:'fixture-agent',parameters:{task:'Read fixture'}},null,{userId:user}));
+ const d=await Model.getExecutionDetails(r.executionId);
+ expect(r.success).toBe(!fail);expect(d.status).toBe(fail?'failed':'completed');expect(d.executionTelemetry).toEqual(r.executionTelemetry);
+ expect(d.executionTelemetry.requestMetrics.requests).toHaveLength(2);expect(d.executionTelemetry.toolCalls.started).toBe(1);
+ expect(d.executionTelemetry.usageCoverage).toBe(fail?'partial':'complete');expect(d.telemetryAvailability).toBe('available');
+});

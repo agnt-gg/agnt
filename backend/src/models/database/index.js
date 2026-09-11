@@ -740,6 +740,11 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
+      // Additive and nullable: old runs have unknown telemetry, never invented zeros.
+      db.run('ALTER TABLE agent_executions ADD COLUMN execution_telemetry TEXT', (err) => {
+        if (err && !err.message.includes('duplicate column name')) console.error('Execution telemetry migration failed:', err.message);
+      });
+
       // Index for faster agent execution lookups
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);

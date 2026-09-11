@@ -1,3 +1,4 @@
+import { createExecutionTelemetry } from './executionTelemetry.js';
 import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { stripProviderIncompatibleTools } from '../orchestrator/providerToolCompat.js';
@@ -198,6 +199,18 @@ class LlmExecutionService {
    * @returns {Promise<Object>} { responseMessage, toolExecutions, messages }
    */
   async executeWithTools(config) {
+    const telemetry = createExecutionTelemetry();
+    try {
+      const result = await this._executeWithToolsMeasured({...config, _executionTelemetry:telemetry});
+      return {...result,executionTelemetry:telemetry.snapshot('completed'),requestMetrics:telemetry.snapshot('completed').requestMetrics};
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error('Execution failed');
+      error.executionTelemetry = telemetry.snapshot(error.name === 'AbortError' ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      throw error;
+    }
+  }
+
+  async _executeWithToolsMeasured(config) {
     const startTime = Date.now();
     const {
       provider, model, userId, messages: inputMessages, toolSchemas = [],
@@ -218,7 +231,18 @@ class LlmExecutionService {
 
     // Create LLM client and adapter
     const client = await createLlmClient(provider, userId);
-    const adapter = await createLlmAdapter(provider, client, model);
+    const originalAdapter = await createLlmAdapter(provider, client, model);
+    // Instrument actual adapter requests without changing the shared adapter.
+    const telemetry = config._executionTelemetry;
+    const adapter = new Proxy(originalAdapter, { get(target,key) {
+      if (key === 'call' || key === 'callStream') return async (...args) => {
+        telemetry.request(args[0],args[1]);
+        const response = await target[key](...args);
+        telemetry.usage(response?.usage);
+        return response;
+      };
+      const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
 
     // Prepare messages
     let messages = JSON.parse(JSON.stringify(inputMessages));
@@ -317,7 +341,9 @@ class LlmExecutionService {
         console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
 
         try {
-          let functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          telemetry.toolStarted();
+          let functionResponse;
+          try { functionResponse = await executeTool(functionName, functionArgs, null, executionContext); } finally { telemetry.toolFinished(); }
           if (/^computer[-_]input$/.test(functionName)) executionContext.computerImages = [];
           functionResponse = captureComputerImages(functionResponse, functionName, toolCall.id, executionContext);
 
@@ -453,11 +479,34 @@ class LlmExecutionService {
    * @returns {Promise<Object>} { responseMessage, toolExecutions, messages }
    */
   async executeWithToolsStreaming(config, onChunk) {
+    const telemetry = createExecutionTelemetry();
+    try {
+      const result = await this._executeWithToolsStreamingMeasured({...config, _executionTelemetry:telemetry}, onChunk);
+      return {...result,executionTelemetry:telemetry.snapshot('completed'),requestMetrics:telemetry.snapshot('completed').requestMetrics};
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error('Execution failed');
+      error.executionTelemetry = telemetry.snapshot(error.name === 'AbortError' ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      throw error;
+    }
+  }
+
+  async _executeWithToolsStreamingMeasured(config, onChunk) {
     const { provider, model, userId, messages: inputMessages, toolSchemas = [], systemPrompt = null, context = {}, maxToolRounds = 10 } = config;
 
     // Create LLM client and adapter
     const client = await createLlmClient(provider, userId);
-    const adapter = await createLlmAdapter(provider, client, model);
+    const originalAdapter = await createLlmAdapter(provider, client, model);
+    // Instrument actual adapter requests without changing the shared adapter.
+    const telemetry = config._executionTelemetry;
+    const adapter = new Proxy(originalAdapter, { get(target,key) {
+      if (key === 'call' || key === 'callStream') return async (...args) => {
+        telemetry.request(args[0],args[1]);
+        const response = await target[key](...args);
+        telemetry.usage(response?.usage);
+        return response;
+      };
+      const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
 
     // Prepare messages
     let messages = JSON.parse(JSON.stringify(inputMessages));
@@ -546,7 +595,9 @@ class LlmExecutionService {
         console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
 
         try {
-          let functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          telemetry.toolStarted();
+          let functionResponse;
+          try { functionResponse = await executeTool(functionName, functionArgs, null, executionContext); } finally { telemetry.toolFinished(); }
           if (/^computer[-_]input$/.test(functionName)) executionContext.computerImages = [];
           functionResponse = captureComputerImages(functionResponse, functionName, toolCall.id, executionContext);
 

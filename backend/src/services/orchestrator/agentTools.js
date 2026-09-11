@@ -1,3 +1,4 @@
+import { normalizeExecutionTelemetry, unavailableTelemetry } from '../ai/executionTelemetry.js';
 import log from '../../utils/logger.js';
 import db from '../../models/database/index.js';
 
@@ -556,6 +557,9 @@ export const AGENT_TOOLS = {
     // returned executionId resolves and the run appears in Traces.
     execute: async ({ agentId, parameters }, authToken, context) => {
       let executionId = null;
+      let startedAt = Date.now();
+      let measured = null;
+      let persistenceAttempted = false;
       try {
         const { userId } = context || {};
         if (!userId) {
@@ -603,7 +607,7 @@ export const AGENT_TOOLS = {
           { parentExecutionId, rootExecutionId, origin: 'agent' }
         );
 
-        const startedAt = Date.now();
+        startedAt = Date.now();
         // Attribute the spend to THIS run and this agent, and hang it on the
         // same tree as the run that spawned it, so the cost shows up on the
         // execution row above rather than as orphaned goal spend.
@@ -618,43 +622,42 @@ export const AGENT_TOOLS = {
           }
         );
 
-        const usage = result?.usage || null;
-        await AgentExecutionModel.update(
-          executionId,
-          'completed',
+        const negative = result?.success === false || result?.error || /^(blocked|failed|pending|incomplete|error)$/i.test(result?.status || result?.outcome || '');
+        measured = result?.executionTelemetry ? normalizeExecutionTelemetry(result.executionTelemetry) : unavailableTelemetry(negative ? 'failed' : 'completed');
+        const outcome = negative && measured.outcome === 'completed' ? 'failed' : measured.outcome;
+        measured = normalizeExecutionTelemetry({...measured,outcome});
+        const completed = outcome === 'completed';
+        persistenceAttempted = true;
+        await AgentExecutionModel.update(executionId, completed ? 'completed' : outcome === 'cancelled' ? 'stopped' : 'failed',
           typeof result?.content === 'string' ? result.content : JSON.stringify(result?.content ?? ''),
-          (Date.now() - startedAt) / 1000,
-          Array.isArray(result?.tool_executions) ? result.tool_executions.length : 0,
-          null,
-          usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens } : null
-        );
-
-        return JSON.stringify({
-          success: true,
-          agentId,
-          executionId,
-          content: result?.content ?? '',
-          toolCallsCount: Array.isArray(result?.tool_executions) ? result.tool_executions.length : 0,
-          usage: usage || undefined,
-          message: 'Agent run completed',
-        });
+          (Date.now()-startedAt)/1000, measured.toolCalls?.started ?? null,
+          completed ? null : 'Saved agent did not complete', result?.usage || null, measured);
+        return JSON.stringify({success:completed,agentId,executionId,content:result?.content ?? '',
+          toolCallsCount:measured.toolCalls?.started ?? null,usage:measured.usage,
+          requestMetrics:measured.requestMetrics,executionTelemetry:measured,persistence:'recorded',
+          ...(completed?{}:{error:'Saved agent did not complete'}),message:completed?'Agent run completed':'Agent run did not complete'});
       } catch (error) {
-        // A failed run is reported as failed. The execution row is closed out
-        // so it does not sit in Traces as "running" forever.
-        if (executionId) {
-          try {
-            const { default: AgentExecutionModel } = await import('../../models/AgentExecutionModel.js');
-            await AgentExecutionModel.update(executionId, 'failed', '', 0, 0, error.message, null);
-          } catch { /* the original error is what matters */ }
+        const outcome = error?.name === 'AbortError' ? 'cancelled' : error?.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed';
+        if (!measured) {
+          try { measured = error.executionTelemetry ? normalizeExecutionTelemetry(error.executionTelemetry) : unavailableTelemetry(outcome); }
+          catch { measured = unavailableTelemetry(outcome); }
         }
-        log.error('[run_agent] execution failed', { agentId, error: error.message });
-        return JSON.stringify({
-          success: false,
-          agentId,
-          executionId,
-          error: error.message,
-          message: 'Failed to run agent',
-        });
+        let persistence='not_created';
+        if (executionId && !persistenceAttempted) {
+          persistenceAttempted=true;
+          try {
+            const {default:AgentExecutionModel}=await import('../../models/AgentExecutionModel.js');
+            await AgentExecutionModel.update(executionId,outcome==='cancelled'?'stopped':'failed','',
+              (Date.now()-startedAt)/1000,measured.toolCalls?.started ?? null,'Saved agent execution failed',null,measured);
+            persistence='recorded';
+          } catch { persistence='unknown'; }
+        } else if(executionId) persistence='unknown';
+        // Never overwrite a successful effect with a fabricated zero after a
+        // persistence error; no retry, no raw exception payload in telemetry.
+        log('[run_agent] execution failed; persistence=' + persistence, null, null, 'ERROR');
+        return JSON.stringify({success:false,agentId,executionId,error:'Saved agent execution failed; inspect execution evidence',
+          toolCallsCount:measured.toolCalls?.started ?? null,usage:measured.usage,requestMetrics:measured.requestMetrics,
+          executionTelemetry:measured,persistence,message:'Failed to run agent'});
       }
     },
   },
