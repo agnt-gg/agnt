@@ -24,6 +24,8 @@
           </div>
         </div>
 
+        <div v-else-if="activeSection === 'images'" class="settings-content" data-section="images"><div class="content-header"><h2 class="content-title">Image Generation</h2><p class="content-subtitle">Choose how images are created, independently of text generation.</p></div><ImageSettings /></div>
+
         <!-- API Keys Section -->
         <div v-else-if="activeSection === 'api-keys'" class="settings-content" data-section="api-keys">
           <div class="content-header">
@@ -278,6 +280,7 @@ import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import LoginSection from './components/LoginSection/LoginSection.vue';
+import ImageSettings from '@/components/common/ImageSettings.vue';
 import ProviderSelector from './components/ProviderSelector/ProviderSelector.vue';
 // Owned by the Connectors screen directory, which is where this page lived
 // before it moved under SYSTEM. Imported rather than copied so there is still
@@ -307,6 +310,7 @@ export default {
     BaseScreen,
     TerminalHeader,
     LoginSection,
+    ImageSettings,
     ProviderSelector,
     FallbackProviders,
     ChatBehaviorSettings,

@@ -4360,7 +4360,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'generate_image',
         description:
-          'Generate images using AI. Supports OpenAI DALL-E, Google Gemini, and Grok image generation. Use this tool when the user asks you to create, generate, or make images.',
+          'Generate images using AI. Supports OpenAI GPT Image, Google Gemini, and Grok. OpenAI defaults to latest compatible quality; latest-fast selects speed. Explicit model IDs stay pinned.',
         parameters: {
           type: 'object',
           properties: {
@@ -4372,12 +4372,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               type: 'string',
               enum: IMAGE_GEN_PROVIDER_KEYS,
               description:
-                `AI provider to use for image generation. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. If not specified, defaults to 'openai'.`,
+                `Image provider override for explicitly configured programmatic calls. In interactive chat OMIT provider and model to use Settings > General > Images, independently of the text provider. Supported: ${IMAGE_GEN_PROVIDER_KEYS.join(', ')}. A conflicting override is rejected; never retry with another provider after failure.`,
             },
+            operation: {type:'string',enum:['generate','edit'],description:'Generate a new image or edit an explicitly selected upload.'},
+            referenceHandles: {type:'array',items:{type:'string'},maxItems:1,description:'For Edit, explicit current-turn image upload handle, e.g. upload:0. Never paths or URLs.'},
             model: {
               type: 'string',
               description:
-                "Specific image model. If omitted, the provider's current default is used. The handler validates this against the provider's live model list, so naming a model that no longer exists is reported rather than silently substituted.",
+                "For OpenAI, omit or use 'latest' for the newest compatible quality model, or 'latest-fast' for speed, resolved from a fresh catalog. An explicit model ID is pinned and sent unchanged; unsupported pins return the provider error. Other providers use their registry default.",
             },
             numberOfImages: {
               type: 'number',
@@ -4408,7 +4410,16 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ prompt, provider = 'openai', model, numberOfImages = 1, size, aspectRatio, quality, style }, authToken, context) => {
+    execute: async ({ prompt, provider, model, numberOfImages = 1, size, aspectRatio, quality, style, operation = 'generate', referenceHandles }, authToken, context) => {
+      let imageExecution;
+      if (context?.useImageSettings) {
+        try {
+          const { imageSettingsService } = await import('../images/imageSettingsRuntime.js');
+          imageExecution = await imageSettingsService.prepare(context.userId, { operation, provider, model }, authToken, context.signal || context.abortSignal);
+          provider = imageExecution.request.provider; model = imageExecution.request.model;
+        } catch (error) { return JSON.stringify({ success:false,error:error.message,retryable:false }); }
+      }
+      provider ||= 'openai';
       console.log(`Tool call: generate_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
 
       if (!prompt) {
@@ -4443,17 +4454,15 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
         }
 
-        // Get available models dynamically (with fallback to static)
-        const availableModels = await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
-
-        // Get provider capabilities
         const capabilities = ProviderRegistry.getImageGenCapabilities(normalizedProvider);
-
-        // Use default model if not specified
-        const selectedModel = model || capabilities.defaultModel;
-
-        // Validate model against dynamic list
-        if (!availableModels.includes(selectedModel)) {
+        if (!capabilities.operations.includes(operation)) return JSON.stringify({success:false,error:'This image provider does not support the requested operation.',retryable:false});
+        const requestedModel = model == null || model === '' ? capabilities.defaultModel : model;
+        let selectedModel = requestedModel;
+        // OpenAI resolves once in the action with its authenticated client. An
+        // explicit ID stays pinned; the provider remains the entitlement check.
+        const availableModels = normalizedProvider === 'openai' ? []
+          : await ProviderRegistry.getImageGenModels(normalizedProvider, userId, authToken);
+        if (normalizedProvider !== 'openai' && !availableModels.includes(selectedModel)) {
           return JSON.stringify({
             success: false,
             error: `Model '${selectedModel}' is not valid for ${provider}. Available models: ${availableModels.join(', ')}`,
@@ -4479,10 +4488,18 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           provider: provider,
           model: selectedModel,
           imagePrompt: prompt,
-          imageOperation: 'Generate',
+          imageOperation: operation === 'edit' ? 'Edit' : 'Generate',
           numberOfImages: numberOfImages,
         };
 
+        if (operation === 'edit') {
+          try {
+            const { resolveUploadReferences } = await import('../images/imageUploadReferences.js');
+            const refs = resolveUploadReferences(referenceHandles, context?.imageData);
+            if (refs.length !== 1) throw new Error('Select exactly one reference for this image provider.');
+            params.referenceImage = refs[0];
+          } catch(error) { return JSON.stringify({success:false,error:error.message,retryable:false}); }
+        }
         // Add provider-specific parameters
         if (normalizedProvider === 'openai') {
           if (size) params.imageSize = size;
@@ -4498,6 +4515,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Create a mock workflow engine context
         const mockWorkflowEngine = {
           userId: userId,
+          signal: context?.signal || context?.abortSignal,
+          beforeImageDispatch: imageExecution?.beforeDispatch,
         };
 
         // Execute the tool
@@ -4508,10 +4527,16 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           return JSON.stringify({
             success: false,
             error: result.error,
+            retryable: false,
+            remoteOutcomeUnknown: result.remoteOutcomeUnknown ?? null,
+            requestId: result.requestId ?? null,
+            receiptDirectory: result.receiptDirectory ?? null,
             provider: provider,
             model: selectedModel,
           });
         }
+
+        selectedModel = result.imageMetadata?.resolvedModel || selectedModel;
 
         // Persist generated images to disk so we can return stable URLs/paths
         // to the LLM (instead of round-tripping full base64 through context).
@@ -4531,6 +4556,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           }
         });
 
+        if (imageExecution && (!generatedImages.length || savedImagePaths.filter(Boolean).length !== generatedImages.length)) {
+          return JSON.stringify({success:false,error:'Image returned but local persistence incomplete. Do not regenerate automatically.',retryable:false,imageMetadata:result.imageMetadata||null});
+        }
         let firstImageId = null;
         let firstImagePath = null;
         let firstImageUrl = null;
@@ -4564,7 +4592,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           firstImagePath,
           firstImageUrl,
           revisedPrompt: result.revisedPrompt || null,
-          imageMetadata: result.imageMetadata || null,
+          imageMetadata: { ...result.imageMetadata, imageConnectionId: imageExecution?.request.connectionId ?? null },
+          requestedModel,
           message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
       } catch (error) {
