@@ -440,7 +440,7 @@ class TaskOrchestrator {
     // The caller already claimed this task; this keeps that claim from lapsing
     // while the agent works. Stopped in the finally below, on every path.
     const releaseLeaseTimer = this._holdClaim(task.id);
-
+    let attemptLease=null;
     try {
       // Step 1: Select and assign appropriate agent
       console.log(`[TaskOrchestrator] Step 1: Selecting agent for task ${task.id}`);
@@ -484,6 +484,7 @@ class TaskOrchestrator {
       const attemptId=owner?await GoalRunRecovery.beginAttempt(owner,task.id):null;
       if(owner&&!attemptId)throw new GoalCancelledError(task.goal_id,'interrupted');
       const lease=owner?{...owner,attemptId}:null;
+      attemptLease=lease;
       const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal, {
         origin: 'goal_task',
         originId: task.goal_id,
@@ -508,7 +509,13 @@ class TaskOrchestrator {
       return taskOutputs; // Return outputs for next task
     } catch (error) {
       const {currentGoalRun}=await import('./goalRunContext.js');
-      if(currentGoalRun())throw error; // Retain admitted unknown attempt for reconciliation.
+      if(currentGoalRun()){
+        if(attemptLease){
+          try{await GoalRunRecovery.recordFailure(attemptLease,task.id,error)}
+          catch{console.error('[Goal recovery] Could not persist attempt diagnostic; original error and unknown barrier retained.');}
+        }
+        throw error; // Do not convert unknown effects to retryable work.
+      }
       if (this._isCancellation(error)) {
         // Pause/stop/delete: leave the task resumable, never mark it failed.
         console.log(`[TaskOrchestrator] Task ${task.id} cancelled (${error.message}) — resetting to pending`);
@@ -568,6 +575,11 @@ DELIVERABLES:
 
 Begin working on this task now.`;
 
+    let prior=task.output;try{if(typeof prior==='string')prior=JSON.parse(prior)}catch{prior=null}
+    if(prior?.outcome==='partial' && prior.continuation){
+      message+='\n\nVERIFIED PARTIAL-WORK CONTINUATION (not a completion claim):\n'+JSON.stringify(prior.continuation)+
+        '\nPreserve the listed artifacts. Check their hashes before editing. Complete only the remaining work; do not repeat reconciled actions. Stop on artifact drift or an unresolved effect.';
+    }
     return message;
   }
   static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null, signal = null, ledgerCtx = null) {

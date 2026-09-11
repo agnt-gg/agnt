@@ -1,6 +1,7 @@
 // Dependency-injected SQLite store: importing this module never opens production data.
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID,createHash} from 'node:crypto';
+import {failureDiagnostic,validatePartialContinuation} from './goalRecoveryEvidence.js';
 export class GoalRunOwnership {
   constructor(db) { this.db=db; this.queue=Promise.resolve(); this.context=new AsyncLocalStorage(); }
   serialize(fn) {
@@ -42,8 +43,20 @@ export class GoalRunOwnership {
     for(const event of ['INSERT','UPDATE'])await this.run(`CREATE TRIGGER IF NOT EXISTS goal_attempt_history_${event.toLowerCase()} AFTER ${event} ON goal_run_attempts BEGIN
       INSERT INTO goal_run_attempt_history VALUES(NEW.goal_id,NEW.run_id,NEW.generation,NEW.task_id,NEW.state,NEW.attempt_id,NEW.task_revision,CAST(strftime('%s','now') AS INTEGER)*1000);
     END`);
+    await this.run(`CREATE TABLE IF NOT EXISTS goal_run_failures(attempt_id TEXT PRIMARY KEY,goal_id TEXT NOT NULL,run_id TEXT NOT NULL,generation INTEGER NOT NULL,task_id TEXT NOT NULL,user_id TEXT NOT NULL,recorded_at INTEGER NOT NULL,diagnostic TEXT NOT NULL)`);
     await this.run(`CREATE TABLE IF NOT EXISTS goal_run_authorizations(run_id TEXT PRIMARY KEY,goal_id TEXT NOT NULL,user_id TEXT NOT NULL,scope_hash TEXT NOT NULL,config TEXT NOT NULL,recoveries INTEGER NOT NULL DEFAULT 0)`);
     await this.run(`CREATE TABLE IF NOT EXISTS goal_run_resolutions(id TEXT PRIMARY KEY,goal_id TEXT NOT NULL,run_id TEXT NOT NULL,user_id TEXT NOT NULL,recorded_at INTEGER NOT NULL,evidence TEXT NOT NULL,decisions TEXT NOT NULL)`);
+  }
+  async recordFailure(l,taskId,error,now=Date.now()) {
+    // Append diagnostics even after lease expiry, but only for the exact
+    // admitted attempt owned by this user. Never mutate task state or release
+    // the uncertainty barrier from this diagnostic path.
+    const diagnostic=failureDiagnostic(error);
+    return (await this.run(`INSERT OR IGNORE INTO goal_run_failures(attempt_id,goal_id,run_id,generation,task_id,user_id,recorded_at,diagnostic)
+      SELECT a.attempt_id,a.goal_id,a.run_id,a.generation,a.task_id,?, ?, ? FROM goal_run_attempts a
+      JOIN goal_run_ownership o ON o.goal_id=a.goal_id JOIN goals g ON g.id=a.goal_id
+      WHERE a.attempt_id=? AND a.goal_id=? AND a.run_id=? AND a.generation=? AND a.task_id=?
+      AND o.user_id=? AND g.user_id=?`,[l.userId,now,JSON.stringify(diagnostic),l.attemptId,l.goalId,l.runId,l.generation,taskId,l.userId,l.userId]))===1;
   }
   async beginAttempt(l,taskId,now=Date.now()) {
     const attemptId=randomUUID();
@@ -76,20 +89,33 @@ export class GoalRunOwnership {
       const o=await this.inspect(goalId);
       if(!g||g.deleted_at||g.user_id!==userId||!o||o.run_id!==runId||o.state!=='interrupted')throw Error('Interrupted run owner or generation mismatch');
       if(typeof evidence!=='string'||evidence.trim().length<3||!Array.isArray(decisions)||decisions.length>1000)throw Error('Resolution evidence and decisions required');
-      const unresolved=await this.all("SELECT task_id FROM goal_run_attempts WHERE goal_id=? AND state='admitted'",[goalId]);
+      const unresolved=await this.all("SELECT task_id,attempt_id,run_id FROM goal_run_attempts WHERE goal_id=? AND state='admitted'",[goalId]);
       const legacy=await this.all("SELECT id FROM tasks WHERE goal_id=? AND status IN ('running','assigned')",[goalId]);
       const required=new Set([...unresolved.map(a=>a.task_id),...legacy.map(t=>t.id)]);
       if(decisions.length!==required.size||new Set(decisions.map(d=>d?.taskId)).size!==required.size)throw Error('Resolution must cover each uncertain task exactly once');
+      if(Buffer.byteLength(JSON.stringify({decisions,evidence}))>1000000)throw Error('Resolution evidence exceeds 1 MB');
+      const recordedDecisions=[];
       for(const d of decisions){
-        if(!required.has(d.taskId)||typeof d.evidence!=='string'||d.evidence.trim().length<3||!['not_executed','completed'].includes(d.outcome))throw Error('Invalid task resolution evidence');
+        if(!required.has(d.taskId)||typeof d.evidence!=='string'||d.evidence.trim().length<3||!['not_executed','completed','continue_partial'].includes(d.outcome))throw Error('Invalid task resolution evidence');
         if(d.outcome==='completed'&&(!d.output||typeof d.output!=='object'))throw Error('Verified output required');
         let changed;
-        if(d.outcome==='not_executed')changed=await this.run("UPDATE tasks SET status='pending',error=NULL WHERE id=? AND goal_id=?",[d.taskId,goalId]);
+        const priorTask=await this.get('SELECT * FROM tasks WHERE id=? AND goal_id=?',[d.taskId,goalId]);
+        if(!priorTask)throw Error('Resolution task missing or moved; barrier retained');
+        if(d.outcome==='continue_partial'){
+          const attempt=unresolved.find(a=>a.task_id===d.taskId);
+          validatePartialContinuation(d);
+          if(!attempt || attempt.run_id!==runId || attempt.attempt_id!==d.attemptId)throw Error('Partial continuation requires the exact interrupted attempt');
+          const continuation={remainingWork:d.remainingWork,doNotRepeat:d.doNotRepeat,artifacts:d.artifacts,evidence:d.evidence,previousRunId:runId,previousAttemptId:d.attemptId};
+          const partial={outcome:'partial',content:'Verified partial work retained; remaining work must be completed.',continuation};
+          changed=await this.run("UPDATE tasks SET status='pending',output=?,error=NULL,progress=0,completed_at=NULL,updated_at=? WHERE id=? AND goal_id=?",[JSON.stringify(partial),new Date(now).toISOString(),d.taskId,goalId]);
+        }
+        else if(d.outcome==='not_executed')changed=await this.run("UPDATE tasks SET status='pending',error=NULL WHERE id=? AND goal_id=?",[d.taskId,goalId]);
         else changed=await this.run("UPDATE tasks SET status='completed',output=?,progress=100,completed_at=?,updated_at=? WHERE id=? AND goal_id=?",[JSON.stringify(d.output),new Date(now).toISOString(),new Date(now).toISOString(),d.taskId,goalId]);
         if(changed!==1)throw Error('Resolution task missing or moved; barrier retained');
+        recordedDecisions.push({...d,priorTask:{status:priorTask.status,output:priorTask.output,error:priorTask.error,progress:priorTask.progress}});
         await this.run("UPDATE goal_run_attempts SET state=? WHERE goal_id=? AND task_id=? AND state='admitted'",['resolved_'+d.outcome,goalId,d.taskId]);
       }
-      await this.run('INSERT INTO goal_run_resolutions VALUES(?,?,?,?,?,?,?)',[randomUUID(),goalId,runId,userId,now,evidence,JSON.stringify(decisions)]);
+      await this.run('INSERT INTO goal_run_resolutions VALUES(?,?,?,?,?,?,?)',[randomUUID(),goalId,runId,userId,now,evidence,JSON.stringify(recordedDecisions)]);
       await this.run("UPDATE goal_run_ownership SET state='released',reason='outcome_reconciled' WHERE goal_id=? AND run_id=?",[goalId,runId]);
       // Resolving evidence does not start execution or override a pause/stop.
       return {resolved:true,started:false};

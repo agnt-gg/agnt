@@ -321,3 +321,34 @@ describe('Given a remote worker opts into fenced recovery',()=>{
   expect((await get("SELECT status FROM tasks WHERE id='pending'")).status).toBe('completed');
  });
 });
+
+describe('Given partial work is neither absent nor completed',()=>{
+ const decision=l=>({taskId:'pending',attemptId:l.attemptId,outcome:'continue_partial',evidence:'Reviewed files and external operation receipts',workerStopped:true,effectsReconciled:true,remainingWork:'Integrate the build adapter and validate the baseline',doNotRepeat:['Do not recreate the existing measurement module'],artifacts:[{path:'scripts/bundle/measurement.mjs',sha256:'a'.repeat(64)}]});
+ async function interrupted(){await run('ALTER TABLE tasks ADD COLUMN description TEXT');const l=await store.acquire('g','u','a',1000);l.attemptId=await store.beginAttempt(l,'pending',1500);await store.reconcile(32000);return l;}
+ it('When reviewed partial work is authorized for continuation, Then output is partial, old attempt history survives and execution does not start',async()=>{
+  const l=await interrupted();await run("UPDATE tasks SET output='old partial text' WHERE id='pending'");
+  expect(await store.resolve('g','u',l.runId,{evidence:'Reviewed isolated artifact effects',decisions:[decision(l)]},33000)).toEqual({resolved:true,started:false});
+  const task=await get("SELECT * FROM tasks WHERE id='pending'");expect(task.status).toBe('pending');expect(JSON.parse(task.output).outcome).toBe('partial');
+  expect(JSON.parse(task.output).continuation.remainingWork).toContain('build adapter');
+  expect((await store.inspect('g')).state).toBe('released');
+  const history=await store.all("SELECT state FROM goal_run_attempt_history WHERE attempt_id=?",[l.attemptId]);expect(history.some(h=>h.state==='resolved_continue_partial')).toBe(true);
+  const record=await store.get('SELECT decisions FROM goal_run_resolutions WHERE run_id=?',[l.runId]);expect(JSON.parse(record.decisions)[0].priorTask.output).toBe('old partial text');
+ });
+ it('When evidence omits worker termination, unresolved effects or exact attempt, Then the uncertainty barrier remains',async()=>{
+  const l=await interrupted();for(const patch of [{workerStopped:false},{effectsReconciled:false},{attemptId:'wrong'},{remainingWork:''},{artifacts:[{path:'file',sha256:'bad'}]}]){
+   await expect(store.resolve('g','u',l.runId,{evidence:'checked',decisions:[{...decision(l),...patch}]},33000)).rejects.toThrow();
+  }expect((await store.inspect('g')).state).toBe('interrupted');
+ });
+ it('When partial continuation is recorded while paused, Then pause is retained and repeated resolution is refused',async()=>{
+  const l=await interrupted();await run("UPDATE goals SET status='paused'");await store.resolve('g','u',l.runId,{evidence:'reviewed',decisions:[decision(l)]},33000);
+  expect((await get('SELECT status FROM goals')).status).toBe('paused');await expect(store.resolve('g','u',l.runId,{evidence:'reviewed',decisions:[decision(l)]},34000)).rejects.toThrow();
+ });
+ it('When failure arrives after lease expiry, Then diagnostics persist without changing tasks or granting a retry',async()=>{
+  const l=await interrupted();const before=await get("SELECT * FROM tasks WHERE id='pending'");
+  expect(await store.recordFailure(l,'pending',{message:'fixture provider timeout',code:'TIMEOUT',toolNames:['write_file']},33000)).toBe(true);
+  expect(await store.recordFailure(l,'pending',{message:'duplicate'},34000)).toBe(false);
+  const diagnostic=await store.get('SELECT diagnostic FROM goal_run_failures WHERE attempt_id=?',[l.attemptId]);expect(JSON.parse(diagnostic.diagnostic).code).toBe('TIMEOUT');
+  expect(await get("SELECT * FROM tasks WHERE id='pending'")).toEqual(before);expect((await store.inspect('g')).state).toBe('interrupted');
+  expect(await store.recordFailure({...l,userId:'stranger',attemptId:'forged'},'pending',{message:'forged'},34000)).toBe(false);
+ });
+});
