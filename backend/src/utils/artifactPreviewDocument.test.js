@@ -1,6 +1,6 @@
 import { describe,it,expect } from 'vitest';
 import { fileURLToPreviewURL, rewritePreviewCSS } from './artifactPreviewUrls.js';
-import { preparePreviewHTML, previewResourceURL, previewReporterSource } from './artifactPreviewDocument.js';
+import { preparePreviewHTML, previewResourceURL, previewReporterSource, previewDocumentBase } from './artifactPreviewDocument.js';
 const resolve=value=>previewResourceURL(value);
 describe('preview URL boundaries',()=>{
   it.each([
@@ -29,6 +29,21 @@ describe('CSS token handling',()=>{
     expect(rewritePreviewCSS('div{background:url("file:///unterminated',resolve)).toBe('div{background:url("file:///unterminated');
   });
 });
+describe('request URL and preview base parity on every host',()=>{
+  it.each([
+    '/api/local-preview//tmp/example/wrapper.html',
+    '/api/local-preview//home/user/My%20Files/wrapper.html',
+    '/api/local-preview/C:/Users/Studio/wrapper.html',
+  ])('does not add a base for the original canonical request %s', documentURL=>{
+    expect(previewDocumentBase(documentURL, documentURL)).toBeUndefined();
+    expect(previewDocumentBase(documentURL+'?__agnt_preview=0123456789abcdef', documentURL)).toBeUndefined();
+  });
+  it('uses the file URL as the base for query-form requests',()=>{
+    expect(previewDocumentBase('/api/local-preview?path=%2Ftmp%2Fexample%2Fwrapper.html', '/api/local-preview//tmp/example/wrapper.html'))
+      .toBe('/api/local-preview//tmp/example/wrapper.html');
+  });
+});
+
 describe('HTML source preservation',()=>{
   it('preserves CSP, JavaScript, event handlers and injects the reporter after CSP',()=>{
     const html=`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="script-src 'none'"></head><body onclick="run()"><script>const x='file:///C:/code';</script><img src="file:///C:/x/a.svg"></body></html>`;

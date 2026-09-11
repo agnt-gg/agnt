@@ -3,7 +3,7 @@ import { test, expect, gotoApp } from './fixtures/appFixture.js';
 for (const width of [1920, 1780, 1280, 1024, 900, 768, 390, 320]) {
   test(`compression visible borders match full-width user and assistant cards at ${width}px @ci`, async ({ appPage: page }, testInfo) => {
     await page.setViewportSize({ width, height: 1100 });
-    await page.addInitScript(() => localStorage.setItem('tutorial-ChatScreen-completed', 'true'));
+    await page.addInitScript(() => localStorage.setItem('tours_auto_start', 'false'));
     await gotoApp(page, '/chat');
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
     await page.evaluate(() => {

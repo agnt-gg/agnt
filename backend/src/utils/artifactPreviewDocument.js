@@ -3,6 +3,11 @@ import { fileURLToPreviewURL, rewritePreviewCSS, PREVIEW_MESSAGE, PREVIEW_CHANNE
 
 export const MAX_PREVIEW_TEXT_BYTES = 8 * 1024 * 1024;
 
+/** Compare the browser's original path, before Express normalizes mount slashes. */
+export function previewDocumentBase(originalURL, documentURL) {
+  return originalURL.split('?')[0] === documentURL ? undefined : documentURL;
+}
+
 export function previewResourceURL(value, prefix = '/api/local-preview/') {
   if (/^file:\/\//i.test(value || '')) return fileURLToPreviewURL(value,prefix);
   // Only known local API forms. Never rewrite an unrelated remote service.

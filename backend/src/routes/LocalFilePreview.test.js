@@ -6,6 +6,7 @@ import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import jwt from 'jsonwebtoken';
 import LocalFileRoutes, * as routes from './LocalFileRoutes.js';
+import { previewDocumentBase } from '../utils/artifactPreviewDocument.js';
 
 let server, base, root, previousSecret;
 const secret = 'isolated-preview-test';
@@ -30,6 +31,21 @@ beforeAll(async () => {
 afterAll(async()=>{await new Promise(resolve=>server.close(resolve));await fs.rm(root,{recursive:true,force:true});if(previousSecret===undefined)delete process.env.JWT_SECRET;else process.env.JWT_SECRET=previousSecret;});
 
 describe('saved artifact preview representation',()=>{
+  it('uses the original browser URL rather than Express-normalized mount paths',async()=>{
+    const source=await fs.readFile(new URL('./LocalFileRoutes.js',import.meta.url),'utf8');
+    expect(source).toContain('previewDocumentBase(req.originalUrl, documentURL)');
+    const router=express.Router();
+    router.get(/.*/,(req,res)=>res.json({
+      original:req.originalUrl, normalized:req.baseUrl+req.path,
+      needsBase:previewDocumentBase(req.originalUrl,'/api/local-preview//tmp/example/wrapper.html')!==undefined,
+    }));
+    const app=express();app.use('/api/local-preview',router);
+    const instance=await new Promise(resolve=>{const running=app.listen(0,'127.0.0.1',()=>resolve(running));});
+    try {
+      const response=await fetch(`http://127.0.0.1:${instance.address().port}/api/local-preview//tmp/example/wrapper.html?x=1`);
+      expect(await response.json()).toEqual({original:'/api/local-preview//tmp/example/wrapper.html?x=1',normalized:'/api/local-preview/tmp/example/wrapper.html',needsBase:false});
+    } finally { await new Promise(resolve=>instance.close(resolve)); }
+  });
   it('rewrites the nested iframe and font without changing the source or script',async()=>{
     const response=await fetch(url('wrapper.html'),{headers:auth()});
     expect(response.status).toBe(200);
@@ -40,6 +56,21 @@ describe('saved artifact preview representation',()=>{
     expect(rendered).toContain('const untouched="file:///example/in/code";');
     expect(rendered).not.toContain('<base href=');
     expect(response.headers.get('content-length')).toBe(String(Buffer.byteLength(rendered)));
+    expect(await fs.readFile(path.join(root,'wrapper.html'),'utf8')).toBe(wrapper);
+  });
+  it('keeps canonical path previews unchanged when a diagnostic query is present',async()=>{
+    const response=await fetch(url('wrapper.html')+'?__agnt_preview=0123456789abcdef',{headers:auth()});
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain('<base href=');
+  });
+  it('provides the file base for query-form previews and resolves relative children',async()=>{
+    const response=await fetch(`${base}/api/local-preview?path=${encodeURIComponent(path.join(root,'wrapper.html'))}`,{headers:auth()});
+    expect(response.status).toBe(200);
+    const rendered=await response.text();
+    const baseHref=rendered.match(/<base href="([^"]+)"/)[1];
+    const child=await fetch(new URL('child.html',new URL(baseHref,base)),{headers:auth()});
+    expect(child.status).toBe(200);
+    expect(await child.text()).toContain('<h1>Child</h1>');
     expect(await fs.readFile(path.join(root,'wrapper.html'),'utf8')).toBe(wrapper);
   });
   it('preserves raw downloads byte for byte',async()=>{

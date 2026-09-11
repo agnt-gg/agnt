@@ -4,7 +4,7 @@ import path from 'path';
 import { requireAuthMedia } from '../utils/authGuard.js';
 import { isSecretPath, assertWithinRoots, describeRoots } from '../utils/localFileScope.js';
 
-import { MAX_PREVIEW_TEXT_BYTES, preparePreviewHTML, previewResourceURL, previewChannel } from '../utils/artifactPreviewDocument.js';
+import { MAX_PREVIEW_TEXT_BYTES, preparePreviewHTML, previewResourceURL, previewChannel, previewDocumentBase } from '../utils/artifactPreviewDocument.js';
 import { rewritePreviewCSS } from '../utils/artifactPreviewUrls.js';
 
 const LocalFileRoutes = express.Router();
@@ -132,7 +132,7 @@ const serveLocalFile = async (req, res, { preview = false } = {}) => {
       const rendered = ext === '.css'
         ? rewritePreviewCSS(source, value => previewResourceURL(value, prefix))
         : preparePreviewHTML(source, {
-          documentURL: req.baseUrl + req.path === documentURL ? undefined : documentURL,
+          documentURL: previewDocumentBase(req.originalUrl, documentURL),
           prefix,
           channel: previewChannel(req.query),
         });

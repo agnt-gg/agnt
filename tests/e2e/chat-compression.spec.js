@@ -18,7 +18,8 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   });
   await page.addInitScript(()=>{
     localStorage.setItem('agnt_last_context_status',JSON.stringify({'compression-fixture':{currentTokens:10000,tokenLimit:128000,messagesCount:8,breakdown:{messagesTokens:8000},cachedAt:Date.now()}}));
-    localStorage.setItem('tutorial-ChatScreen-completed','true');
+    // Use the persisted auto-start preference honored by PopupTutorial.
+    localStorage.setItem('tours_auto_start','false');
   });
   const seed=async messages=>page.evaluate(messages=>{
     const store=document.querySelector('#app').__vue_app__.config.globalProperties.$store;
@@ -32,6 +33,10 @@ test('chat compression keeps originals, edits the summary, reloads and undoes @c
   },messages);
   const originals=Array.from({length:8},(_,i)=>({id:'original-'+i,role:i%2?'assistant':'user',content:i%2?'Original answer '+i:'Original request '+i,timestamp:i+1,toolCalls:[]}));
   await gotoApp(page,'/chat');await seed(originals);
+  // Let BaseScreen's 1500ms auto-start elapse: a fast local run used to
+  // outrun the unwanted welcome overlay that intercepted clicks on CI.
+  await page.waitForTimeout(2000);
+  await expect(page.locator('.popup-tutorial')).not.toBeVisible();
   await page.locator('.tiles-strip').click();
   const compress=page.locator('.compress-row button').filter({hasText:'Compress'});
   await compress.first().click();

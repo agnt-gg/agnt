@@ -19,7 +19,7 @@ test('saved chat artifacts authenticate parent, nested HTML and CSS with browser
   page.on('response', response => {
     if (response.url().includes('/api/local-preview/')) requests.push(response);
   });
-  await page.addInitScript(() => localStorage.setItem('tutorial-ChatScreen-completed', 'true'));
+  await page.addInitScript(() => localStorage.setItem('tours_auto_start', 'false'));
   await gotoApp(page, '/chat');
   const seed = async () => page.evaluate(filePath => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$store;
