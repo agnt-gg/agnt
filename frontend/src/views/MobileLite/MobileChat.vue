@@ -89,7 +89,7 @@
         cannot tell whether it is hearing them, thinking, or broken — and a
         hands-free mode you cannot read is one you cannot trust.
       -->
-      <div v-if="voiceActive" class="ml-voice" :class="'voice-' + voiceState">
+      <div v-if="voiceActive || voiceError" class="ml-voice" :class="'voice-' + voiceState">
         <span class="ml-voice-dot"></span>
         <span class="ml-voice-text">
           <template v-if="voiceError">{{ voiceError }}</template>
@@ -99,9 +99,9 @@
           <template v-else-if="voiceState === 'thinking'">Thinking…</template>
           <template v-else-if="voiceState === 'speaking'">Speaking — talk to interrupt</template>
           <template v-else>Voice ready</template>
-          <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
+          <span v-if="voiceNatural" class="voice-engine-badge">{{ voiceMetered ? 'natural · API key' : 'natural' }}</span>
         </span>
-        <button type="button" class="ml-voice-end" @click="toggleVoice">End</button>
+        <button type="button" class="ml-voice-end" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
       </div>
       <div class="ml-row">
         <textarea
@@ -219,7 +219,7 @@ const canSend = computed(
  * supplies only the four things that genuinely differ between surfaces. A
  * "mobile version" of any of the rest is how voice drifted four times before.
  */
-const { voiceActive, voiceState, voicePartial, voiceError, voiceNatural, toggleVoice } =
+const { voiceActive, voiceState, voicePartial, voiceError, voiceNatural, voiceMetered, toggleVoice } =
   useVoiceEngines({
     surface: 'chat',
     submit: (text) => {
