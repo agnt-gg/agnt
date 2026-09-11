@@ -324,3 +324,110 @@ describe('Given evaluation survives past its durable run lease',()=>{
   expect((await Goal.findOne(row.goalId)).status).toBe('executing');
  });
 });
+
+describe('Given a recovered checkpoint entering the actual autonomous runner',()=>{
+ it('R2 When recovered at evaluation iteration 3, Then completed task outputs are not replayed and ownership closes atomically with validation',async()=>{
+  const row=await seed();await Goal.updateStatus(row.goalId,'planning');
+  const {GoalRunOwnership}=await import('../../models/database/goalRunOwnership.js');
+  const store=new GoalRunOwnership(other);await store.initialize();const l=await store.acquire(row.goalId,row.userId,'old',1000);
+  await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:4,provider:'openai',model:'test-model'},1100);
+  await store.checkpoint(l,{phase:'evaluate',iteration:3},1200);await Goal.updateStatus(row.goalId,'executing');
+  await store.reconcile(32000);const recovered=await store.recover(row.goalId,'new',Date.now());expect(recovered).toBeTruthy();
+  const execute=vi.spyOn(Orchestrator,'executeGoalTasks').mockImplementation(()=>{throw Error('Completed work must not replay')});
+  grader();await Orchestrator.executeGoalAutonomous(row.goalId,row.userId,recovered.config,recovered);
+  expect(execute).not.toHaveBeenCalled();expect((await Goal.findOne(row.goalId)).current_iteration).toBe(3);
+  expect((await Goal.findOne(row.goalId)).status).toBe('validated');
+  expect((await store.inspect(row.goalId)).state).toBe('released');
+  expect(await store.reconcile(Date.now()+60000)).toBe(0);
+ });
+});
+
+describe('Given process death can occur immediately after grading commits',()=>{
+ it('R3 When successful evaluation returns before runner cleanup, Then durable ownership is already released in the same transaction',async()=>{
+  const row=await seed();await run(db,"INSERT INTO goal_run_ownership(goal_id,user_id,run_id,boot_id,generation,lease_until,state) VALUES(?,?,?,'fixture',1,?,'running')",[row.goalId,row.userId,'run',Date.now()+30000]);
+  grader();await Evaluator.evaluateGoal(row.goalId,row.userId,'automatic','openai','test-model');
+  const owner=await new Promise((r,j)=>db.get('SELECT state FROM goal_run_ownership WHERE goal_id=?',[row.goalId],(e,row)=>e?j(e):r(row)));
+  expect(owner.state).toBe('released');
+ });
+});
+
+describe('Given an expired async run context reaches model writers',()=>{
+ it('R4 When failure and phase updates arrive late, Then none can overwrite current state',async()=>{
+  const row=await seed();await run(db,"INSERT INTO goal_run_ownership(goal_id,user_id,run_id,boot_id,generation,lease_until,state) VALUES(?,?,?,'fixture',1,0,'running')",[row.goalId,row.userId,'run']);
+  const {withGoalRun}=await import('./goalRunContext.js');
+  await withGoalRun({goalId:row.goalId,userId:row.userId,runId:'run',generation:1},async()=>{
+    expect(await Task.updateStatus(row.taskId,'failed')).toBe(0);
+    expect(await Goal.updateStatus(row.goalId,'failed')).toBe(0);
+    expect(await Goal.updateLoopStatus(row.goalId,'error')).toBe(0);
+    expect(await Task.assignWorkflow(row.taskId,'unexpected')).toBe(0);
+  });
+  expect((await Task.findOne(row.taskId)).status).toBe('completed');
+ });
+});
+
+describe('Given a real process crashes at a safe checkpoint',()=>{
+ it('R5 When another process recovers the durable checkpoint, Then actual grading completes without task replay',async()=>{
+  const row=await seed();await Goal.updateStatus(row.goalId,'planning');
+  const {spawn}=await import('node:child_process');const {pathToFileURL}=await import('node:url');
+  const {GoalRunOwnership}=await import('../../models/database/goalRunOwnership.js');
+  const directory=path.join(process.env.__AGNT_TEST_DATA_DIR,'crash-runner');await fs.mkdir(directory,{recursive:true});
+  const script=path.join(directory,'worker.mjs');
+  await fs.writeFile(script,`import {createRequire} from 'node:module';const require=createRequire(${JSON.stringify(import.meta.url)});const sqlite3=require('sqlite3');const {GoalRunOwnership}=await import(${JSON.stringify(new URL('../../models/database/goalRunOwnership.js',import.meta.url).href)});const db=new sqlite3.Database(${JSON.stringify(db.filename)});const store=new GoalRunOwnership(db);const l=await store.acquire(${JSON.stringify(row.goalId)},${JSON.stringify(row.userId)},'child',1000);await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:4,provider:'openai',model:'test-model'},1100);await store.checkpoint(l,{phase:'evaluate',iteration:3},1200);await store.run("UPDATE goals SET status='executing' WHERE id=?",[l.goalId]);console.log('CHECKPOINT');setInterval(()=>{},1000);`);
+  const child=spawn(process.execPath,[script],{stdio:['ignore','pipe','pipe']});
+  try {
+    await new Promise((resolve,reject)=>{let text='';const timer=setTimeout(()=>reject(Error('child checkpoint timeout')),5000);child.stdout.on('data',d=>{text+=d;if(text.includes('CHECKPOINT')){clearTimeout(timer);resolve()}});child.once('exit',()=>{clearTimeout(timer);reject(Error('child exited early'))})});
+    const exit=new Promise(r=>child.once('exit',r));child.kill('SIGKILL');await exit;
+    const store=new GoalRunOwnership(other);await store.reconcile(32000);
+    const recovered=await store.recover(row.goalId,'replacement',Date.now());expect(recovered).toBeTruthy();
+    const execute=vi.spyOn(Orchestrator,'executeGoalTasks').mockImplementation(()=>{throw Error('No replay')});grader();
+    await Orchestrator.executeGoalAutonomous(row.goalId,row.userId,recovered.config,recovered);
+    expect(execute).not.toHaveBeenCalled();expect((await Goal.findOne(row.goalId)).status).toBe('validated');
+    expect((await Goal.findOne(row.goalId)).current_iteration).toBe(3);
+    expect((await store.inspect(row.goalId)).state).toBe('released');
+  }finally{child.kill('SIGKILL')}
+ });
+});
+
+describe('Given operator-authorized explicit resume',()=>{
+ it('R6 When a paused goal has no uncertain attempts, Then execution leaves pause with a live ownership context',async()=>{
+  const row=await seed();await Goal.updateStatus(row.goalId,'paused');
+  vi.spyOn(Orchestrator,'executeGoalTasks').mockResolvedValue();
+  await Orchestrator.resumeGoal(row.goalId,'openai','test-model');
+  expect((await Goal.findOne(row.goalId)).status).toBe('executing');
+ });
+});
+
+describe('Given fresh databases must support durable iteration records',()=>{
+ it('R7 When a phase record is stored, Then it is readable on a newly initialized schema',async()=>{
+  const row=await seed();const {default:Iterations}=await import('../../models/GoalIterationModel.js');
+  const id=await Iterations.create(row.goalId,3,95,true,{phase:'evaluated'},[],10);
+  expect(id).toBeTruthy();expect((await Iterations.findOne(row.goalId,3)).world_state_snapshot).toEqual({phase:'evaluated'});
+ });
+});
+
+describe('Given an old task calls the evaluator after replacement',()=>{
+ it('R8 When its async identity differs from the persisted owner, Then it cannot grade for the new owner',async()=>{
+  const row=await seed();await run(db,"INSERT INTO goal_run_ownership(goal_id,user_id,run_id,boot_id,generation,lease_until,state) VALUES(?,?,?,'new',2,?,'running')",[row.goalId,row.userId,'new',Date.now()+30000]);
+  const {withGoalRun}=await import('./goalRunContext.js');grader();
+  await expect(withGoalRun({goalId:row.goalId,userId:row.userId,runId:'old',generation:1},()=>Evaluator.evaluateGoal(row.goalId,row.userId,'automatic','openai','test-model'))).rejects.toMatchObject({code:'STALE_GOAL_EVALUATION'});
+  expect((await snapshot(row)).evaluations).toEqual([]);
+ });
+});
+
+describe('Given the real recovery coordinator finds safe abandoned work',()=>{
+ it('R9 When its scan runs, Then it dispatches one safe checkpoint into the actual runner',async()=>{
+  // This suite retains earlier fixture goals for audit; only this scenario is
+  // authorized for automatic continuation in the coordinator scan.
+  await run(db,'DELETE FROM goal_run_authorizations');
+  const row=await seed();await Goal.updateStatus(row.goalId,'planning');
+  const {GoalRunOwnership}=await import('../../models/database/goalRunOwnership.js');const store=new GoalRunOwnership(other);
+  const l=await store.acquire(row.goalId,row.userId,'old',1000);await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:4,provider:'openai',model:'test-model'},1100);
+  await store.checkpoint(l,{phase:'evaluate',iteration:3},1200);
+  const {default:recovery}=await import('./GoalRunRecovery.js');grader();let finish;const done=new Promise(r=>finish=r);
+  const dispatch=vi.fn(async lease=>{try{return await Orchestrator.executeGoalAutonomous(lease.goalId,lease.userId,lease.config,lease)}finally{finish()}});
+  const stop=recovery.startCoordinator(dispatch);
+  try{await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(Error('coordinator timeout')),3000))]);
+   expect(dispatch).toHaveBeenCalledTimes(1);expect((await Goal.findOne(row.goalId)).status).toBe('validated');
+  }finally{stop();}
+ });
+});

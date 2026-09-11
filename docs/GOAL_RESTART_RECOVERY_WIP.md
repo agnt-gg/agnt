@@ -1,3 +1,5 @@
+> Historical checkpoint at 5d936852. Current implementation and gap disposition: [GOAL_RESTART_RECOVERY.md](GOAL_RESTART_RECOVERY.md). Statements below describe the earlier prototype, not current capability.
+
 # Goal restart recovery — isolated implementation checkpoint (2026-09-11)
 
 ## State: WORK IN PROGRESS, NOT DEPLOYABLE

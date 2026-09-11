@@ -1,4 +1,4 @@
-vi.mock('./GoalRunRecovery.js',()=>({default:{acquire:vi.fn(async()=>({goalId:'g',runId:'fixture',generation:1})),watch:vi.fn(),checkpoint:vi.fn(async()=>true)}}));
+vi.mock('./GoalRunRecovery.js',()=>({default:{acquire:vi.fn(async()=>({goalId:'g',runId:'fixture',generation:1})),run:(_lease,fn)=>fn(),authorize:vi.fn(async()=>true),release:vi.fn(async()=>true),watch:vi.fn(),checkpoint:vi.fn(async()=>true)}}));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../models/database/index.js', () => ({ default: { run: vi.fn(), get: vi.fn(), all: vi.fn() } }));

@@ -1,3 +1,4 @@
+import {goalRunGuard} from '../services/goal/goalRunContext.js';
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 
@@ -6,12 +7,14 @@ class TaskModel {
     const id = generateUUID();
     const createdAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const guardParams=[];const guard=goalRunGuard('g.id',guardParams);
       db.run(
         `INSERT INTO tasks (id, goal_id, parent_task_id, title, description, required_tools, dependencies, order_index, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, goalId, parentTaskId, title, description, JSON.stringify(requiredTools), JSON.stringify(dependencies), orderIndex, createdAt],
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM goals g WHERE g.id=?${guard}`,
+        [id, goalId, parentTaskId, title, description, JSON.stringify(requiredTools), JSON.stringify(dependencies), orderIndex, createdAt,goalId,...guardParams],
         function (err) {
           if (err) reject(err);
+          else if(this.changes!==1)reject(new Error('Task creation refused: stale owner or missing goal'));
           else resolve(id);
         }
       );
@@ -69,7 +72,8 @@ class TaskModel {
 
   static assignAgent(taskId, agentId) {
     return new Promise((resolve, reject) => {
-      db.run(`UPDATE tasks SET agent_id = ?, status = 'assigned' WHERE id = ?`, [agentId, taskId], function (err) {
+      const params=[agentId,taskId];const guard=goalRunGuard('tasks.goal_id',params);
+      db.run(`UPDATE tasks SET agent_id = ?, status = 'assigned' WHERE id = ?`+guard, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
       });
@@ -78,7 +82,8 @@ class TaskModel {
 
   static assignWorkflow(taskId, workflowId) {
     return new Promise((resolve, reject) => {
-      db.run(`UPDATE tasks SET workflow_id = ? WHERE id = ?`, [workflowId, taskId], function (err) {
+      const params=[workflowId,taskId];const guard=goalRunGuard('tasks.goal_id',params);
+      db.run(`UPDATE tasks SET workflow_id = ? WHERE id = ?`+guard, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
       });
@@ -132,6 +137,7 @@ class TaskModel {
         query += " AND goal_id = ? AND EXISTS (SELECT 1 FROM goals WHERE goals.id=tasks.goal_id AND user_id=? AND deleted_at IS NULL) AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=tasks.id),0)=?";
         params.push(expected.goalId,expected.userId,expected.revision);
       }
+      query += goalRunGuard('tasks.goal_id',params);
       db.run(query, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
@@ -151,9 +157,10 @@ class TaskModel {
     let restored = 0;
     for (const t of tasks) {
       restored += await new Promise((resolve, reject) => {
+        const params=[t.title,t.description,t.status,t.progress||0,t.output??null,t.error??null,updatedAt,t.id,goalId];const guard=goalRunGuard('tasks.goal_id',params);
         db.run(
-          `UPDATE tasks SET title = ?, description = ?, status = ?, progress = ?, output = ?, error = ?, updated_at = ? WHERE id = ? AND goal_id = ?`,
-          [t.title, t.description, t.status, t.progress || 0, t.output ?? null, t.error ?? null, updatedAt, t.id, goalId],
+          `UPDATE tasks SET title = ?, description = ?, status = ?, progress = ?, output = ?, error = ?, updated_at = ? WHERE id = ? AND goal_id = ?`+guard,
+          params,
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);

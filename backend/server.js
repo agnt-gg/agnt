@@ -318,6 +318,16 @@ dbReady.then(async () => {
   }
 });
 
+// Durable goal reconciliation/continuation; main supervisor process only.
+if (process.env.AGNT_SKIP_DB_INIT !== '1') dbReady.then(async()=>{
+  const {default:recovery}=await import('./src/services/goal/GoalRunRecovery.js');
+  const {default:runner}=await import('./src/services/goal/TaskOrchestrator.js');
+  recovery.startCoordinator(async lease=>{
+    if(lease.config.mode==='autonomous')return runner.executeGoalAutonomous(lease.goalId,lease.userId,lease.config,lease);
+    return runner.executeGoal(lease.goalId,lease.userId,null,lease.config.provider,lease.config.model,lease.config.conversationId,lease);
+  });
+}).catch(error=>console.error('Goal recovery initialization:',error.message));
+
 // PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
 dbReady.then(() => {
   SchedulerService.start().catch((err) => {

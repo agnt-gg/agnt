@@ -17,7 +17,8 @@ GoalRoutes.get('/:id/recovery', authenticateToken, async (req,res) => {
 });
 GoalRoutes.post('/:id/recovery/resolve', authenticateToken, async (req,res) => {
   try {
-    const body=req.body || {};
+    const body=req.body;
+    if(!body || Array.isArray(body) || typeof body.runId!=='string' || !body.runId || typeof body.evidence!=='string' || body.evidence.trim().length<3 || !Array.isArray(body.decisions) || body.decisions.length>1000) return res.status(400).json({error:'runId, evidence and per-task decisions are required'});
     res.json(await GoalRunRecovery.resolve(req.params.id,req.user.userId || req.user.id,body.runId,body));
   } catch { res.status(409).json({error:'Recovery resolution refused: verify ownership, run generation and evidence for every uncertain task'}); }
 });

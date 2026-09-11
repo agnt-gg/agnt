@@ -1,3 +1,4 @@
+import {goalRunGuard} from './goalRunContext.js';
 import { taskFailureReason, goalEvaluationPasses } from './taskOutcome.js';
 import GoalRunRecovery from './GoalRunRecovery.js';
 import GoalModel from '../../models/GoalModel.js';
@@ -106,8 +107,9 @@ class TaskOrchestrator {
     return isCancellationError(error);
   }
 
-  static async executeGoal(goalId, userId, experimentContext = null, provider = null, model = null, conversationId = null) {
-    const lease = await GoalRunRecovery.acquire(goalId,userId);
+  static async executeGoal(goalId, userId, experimentContext = null, provider = null, model = null, conversationId = null, recoveredLease = null) {
+    const lease = recoveredLease || await GoalRunRecovery.acquire(goalId,userId);
+    return GoalRunRecovery.run(lease,async()=>{
     try {
       // Mark goal as executing
       await GoalModel.updateStatus(goalId, 'executing');
@@ -133,6 +135,8 @@ class TaskOrchestrator {
       });
 
       this._watchRun(goalId,lease);
+      if(!recoveredLease)await GoalRunRecovery.authorize(lease,{mode:'normal',maxIterations:1,provider,model,conversationId});
+      await GoalRunRecovery.checkpoint(lease,{phase:'tasks',iteration:1});
 
       // Broadcast status change to frontend
       broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
@@ -150,8 +154,9 @@ class TaskOrchestrator {
       };
     } catch (error) {
       console.error('Error starting goal execution:', error);
-      throw error;
+      await GoalRunRecovery.release(lease);throw error;
     }
+    });
   }
   static async executeGoalTasks(goalId, userId, provider = null, model = null) {
     console.log(`Starting workflow-based execution for goal ${goalId}`);
@@ -481,7 +486,7 @@ class TaskOrchestrator {
       // Step 5: Process and store results
       console.log(`[TaskOrchestrator] Step 5: Processing task results`);
       const taskOutputs = await this.processTaskResult(task.id, result, lease);
-      if(lease) await GoalRunRecovery.checkpoint(lease,{phase:'task_result_saved',taskId:task.id});
+      // Preserve the parent phase checkpoint; each task has its own attempt record.
       console.log(`[TaskOrchestrator] Step 5 Complete: Task ${task.id} completed successfully`);
 
       // Broadcast task completed
@@ -495,6 +500,8 @@ class TaskOrchestrator {
 
       return taskOutputs; // Return outputs for next task
     } catch (error) {
+      const {currentGoalRun}=await import('./goalRunContext.js');
+      if(currentGoalRun())throw error; // Retain admitted unknown attempt for reconciliation.
       if (this._isCancellation(error)) {
         // Pause/stop/delete: leave the task resumable, never mark it failed.
         console.log(`[TaskOrchestrator] Task ${task.id} cancelled (${error.message}) — resetting to pending`);
@@ -674,7 +681,8 @@ Begin working on this task now.`;
     const failure = taskFailureReason(agentResponse);
     if (failure) {
       outputs.outcome = 'blocked';
-      await TaskModel.updateStatus(taskId, 'failed', 0, null, outputs.timestamp, null, outputs);
+      if(lease){if(!await GoalRunRecovery.commitAttempt(lease,taskId,{...outputs,recoveryTaskFailed:true}))throw new GoalCancelledError(lease.goalId,'interrupted');}
+      else await TaskModel.updateStatus(taskId, 'failed', 0, null, outputs.timestamp, null, outputs);
       throw Object.assign(new Error(failure), {code:'TASK_BLOCKED'});
     }
 
@@ -986,35 +994,11 @@ The goal you delegated did not fully pass. Let the user know:
     this._cancelGoal(goalId, 'paused');
   }
   static async resumeGoal(goalId, provider = null, model = null) {
-    const goal = await GoalModel.findOne(goalId);
-    if (goal) {
-      const lease=await GoalRunRecovery.acquire(goalId,goal.user_id);
-      // Reset any failed/stuck tasks to pending so they can be re-executed
-      const tasks = await TaskModel.findByGoalId(goalId);
-      for (const task of tasks) {
-        if (task.status === 'failed' || task.status === 'running') {
-          await TaskModel.updateStatus(task.id, 'pending', 0);
-        }
-      }
-
-      await GoalModel.updateStatus(goalId, 'executing');
-      this.runningGoals.set(goalId, {
-        userId: goal.user_id,
-        startTime: Date.now(),
-        status: 'executing',
-        abortController: new AbortController(),
-        provider,
-        model,
-      });
-
-      broadcastToUser(goal.user_id, RealtimeEvents.GOAL_UPDATED, {
-        id: goalId,
-        status: 'executing',
-      });
-
-      this._watchRun(goalId,lease);
-      this.executeGoalTasks(goalId, goal.user_id, provider, model);
-    }
+    const goal=await GoalModel.findOne(goalId);
+    if(!goal)return;
+    // Normal admission establishes the same async ownership context and refuses
+    // unresolved attempts. Resume is never an independent task reset path.
+    return this.executeGoal(goalId,goal.user_id,null,provider,model);
   }
   static async stopGoal(goalId) {
     await GoalModel.updateStatus(goalId, 'stopped');
@@ -1031,14 +1015,16 @@ The goal you delegated did not fully pass. Let the user know:
    * Execute a goal autonomously with iterative feedback loop.
    * Evaluate → Re-plan failed tasks → Re-execute → Repeat until pass or max iterations.
    */
-  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null, conversationId = null } = {}) {
-    const lease=await GoalRunRecovery.acquire(goalId,userId);
+  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null, conversationId = null } = {}, recoveredLease = null) {
+    const lease=recoveredLease||await GoalRunRecovery.acquire(goalId,userId);
+    return GoalRunRecovery.run(lease,async()=>{
     try {
       console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
 
       // Must run before updateLoopStatus below overwrites the previous run's
       // loop state — that state is what tells us whether to resume or start fresh.
       const resume = await this._resolveResumeState(goalId, maxIterations);
+      if(lease.resume)resume.startIteration=lease.resume.iteration;
 
       await GoalModel.updateMaxIterations(goalId, maxIterations);
       await GoalModel.updateLoopStatus(goalId, 'starting');
@@ -1056,6 +1042,7 @@ The goal you delegated did not fully pass. Let the user know:
       });
 
       this._watchRun(goalId,lease);
+      if(!recoveredLease)await GoalRunRecovery.authorize(lease,{mode:'autonomous',maxIterations,provider,model,conversationId});
 
       // Bootstrap: goals created without tasks (e.g. proposals inserted
       // directly into the goals table by an agent) can never pass evaluation —
@@ -1111,7 +1098,7 @@ The goal you delegated did not fully pass. Let the user know:
         }
 
         console.log(`[AGI Loop] === Iteration ${iteration}/${maxIterations} for goal ${goalId} ===`);
-        if(!await GoalRunRecovery.checkpoint(lease,{phase:'iteration_entered',iteration})) throw new GoalCancelledError(goalId,'interrupted');
+        if(!await GoalRunRecovery.checkpoint(lease,{phase:'tasks',iteration})) throw new GoalCancelledError(goalId,'interrupted');
         await GoalModel.updateIteration(goalId, iteration);
         await GoalModel.updateLoopStatus(goalId, 'executing');
 
@@ -1126,7 +1113,7 @@ The goal you delegated did not fully pass. Let the user know:
 
         // Phase 1: Execute tasks
         try {
-          await this.executeGoalTasks(goalId, userId, provider, model);
+          if(!(lease.resume?.phase==='evaluate'&&iteration===resume.startIteration))await this.executeGoalTasks(goalId, userId, provider, model);
         } catch (error) {
           console.error(`[AGI Loop] Task execution error at iteration ${iteration}:`, error);
           // Don't break — evaluate what we have
@@ -1139,6 +1126,7 @@ The goal you delegated did not fully pass. Let the user know:
           return { goalId, status: 'stopped', iteration };
         }
 
+        if(!await GoalRunRecovery.checkpoint(lease,{phase:'evaluate',iteration}))throw new GoalCancelledError(goalId,'interrupted');
         // Phase 2: Evaluate
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_EVALUATE, {
           goalId,
@@ -1259,6 +1247,7 @@ The goal you delegated did not fully pass. Let the user know:
 
         // Phase 4: Re-plan failed tasks
         console.log(`[AGI Loop] Goal ${goalId} needs improvement (${evaluation.scores.overall}%) — re-planning`);
+        if(!await GoalRunRecovery.checkpoint(lease,{phase:'replanning',iteration}))throw new GoalCancelledError(goalId,'interrupted');
         await GoalModel.updateLoopStatus(goalId, 'replanning');
 
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_REPLAN, {
@@ -1360,7 +1349,8 @@ The goal you delegated did not fully pass. Let the user know:
         error: error.message,
       });
       return { goalId, status: 'error', error: error.message };
-    }
+    } finally {await GoalRunRecovery.release(lease);}
+    });
   }
 
   /**
@@ -1509,9 +1499,10 @@ Rules:
           // Update description if the model suggested one
           if (update.description) {
             await new Promise((resolve, reject) => {
+              const params=[update.title||existingTask.title,update.description,new Date().toISOString(),update.taskId];const guard=goalRunGuard('tasks.goal_id',params);
               db.run(
-                'UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ?',
-                [update.title || existingTask.title, update.description, new Date().toISOString(), update.taskId],
+                'UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ?'+guard,
+                params,
                 (err) => (err ? reject(err) : resolve())
               );
             });

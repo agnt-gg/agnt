@@ -1921,6 +1921,7 @@ function runMigrations() {
 
       // Migration: Add evaluation_score column to goal_iterations for AGI loop tracking (2026-03-12)
       const goalIterationColumns = [
+        { name: 'state', type: "TEXT NOT NULL DEFAULT '{}'" },
         { name: 'evaluation_score', type: 'REAL' },
         { name: 'evaluation_passed', type: 'INTEGER DEFAULT 0' },
         { name: 'world_state_snapshot', type: 'JSON' },
