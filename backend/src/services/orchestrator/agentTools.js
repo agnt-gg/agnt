@@ -1,4 +1,5 @@
-import { normalizeExecutionTelemetry, unavailableTelemetry } from '../ai/executionTelemetry.js';
+import { normalizeExecutionTelemetry, unavailableTelemetry, takeFailureTelemetry } from '../ai/executionTelemetry.js';
+import { returnedOutcome, processReturnedReceipts, takeFailureReceipts } from './runAgentResult.js';
 import log from '../../utils/logger.js';
 import db from '../../models/database/index.js';
 
@@ -560,6 +561,8 @@ export const AGENT_TOOLS = {
       let startedAt = Date.now();
       let measured = null;
       let persistenceAttempted = false;
+      let receiptPersistence = 'unavailable';
+      let receiptCompleteness = 'partial_or_unknown';
       try {
         const { userId } = context || {};
         if (!userId) {
@@ -622,24 +625,30 @@ export const AGENT_TOOLS = {
           }
         );
 
-        const negative = result?.success === false || result?.error || /^(blocked|failed|pending|incomplete|error)$/i.test(result?.status || result?.outcome || '');
-        measured = result?.executionTelemetry ? normalizeExecutionTelemetry(result.executionTelemetry) : unavailableTelemetry(negative ? 'failed' : 'completed');
-        const outcome = negative && measured.outcome === 'completed' ? 'failed' : measured.outcome;
+        const outcome = returnedOutcome(result);
+        measured = result?.executionTelemetry ? normalizeExecutionTelemetry(result.executionTelemetry) : unavailableTelemetry(outcome);
         measured = normalizeExecutionTelemetry({...measured,outcome});
         const completed = outcome === 'completed';
         persistenceAttempted = true;
-        await AgentExecutionModel.update(executionId, completed ? 'completed' : outcome === 'cancelled' ? 'stopped' : 'failed',
+        const receipts = processReturnedReceipts(result?.tool_executions, measured);
+        receiptCompleteness = receipts.completeness;
+        receiptPersistence = 'unknown';
+        if (await AgentExecutionModel.recordReturnedReceipts(executionId, receipts) !== 1) throw new Error('Receipt row not recorded');
+        receiptPersistence = 'recorded';
+        const changed = await AgentExecutionModel.update(executionId, outcome === 'cancelled' ? 'stopped' : outcome,
           typeof result?.content === 'string' ? result.content : JSON.stringify(result?.content ?? ''),
           (Date.now()-startedAt)/1000, measured.toolCalls?.started ?? null,
-          completed ? null : 'Saved agent did not complete', result?.usage || null, measured);
+          completed ? null : 'Saved agent did not complete', measured.usage, measured);
+        if (changed !== 1) throw new Error('Execution row not recorded');
         return JSON.stringify({success:completed,agentId,executionId,content:result?.content ?? '',
           toolCallsCount:measured.toolCalls?.started ?? null,usage:measured.usage,
-          requestMetrics:measured.requestMetrics,executionTelemetry:measured,persistence:'recorded',
+          requestMetrics:measured.requestMetrics,executionTelemetry:measured,outcome,receiptPersistence,receiptCompleteness,persistence:'recorded',
           ...(completed?{}:{error:'Saved agent did not complete'}),message:completed?'Agent run completed':'Agent run did not complete'});
       } catch (error) {
-        const outcome = error?.name === 'AbortError' ? 'cancelled' : error?.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed';
+        const outcome = ['AbortError','GoalCancelledError'].includes(error?.name) ? 'cancelled' : error?.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed';
         if (!measured) {
-          try { measured = error.executionTelemetry ? normalizeExecutionTelemetry(error.executionTelemetry) : unavailableTelemetry(outcome); }
+          try { measured = takeFailureTelemetry(error) || unavailableTelemetry(outcome);
+            measured = normalizeExecutionTelemetry({...measured,outcome}); }
           catch { measured = unavailableTelemetry(outcome); }
         }
         let persistence='not_created';
@@ -647,9 +656,16 @@ export const AGENT_TOOLS = {
           persistenceAttempted=true;
           try {
             const {default:AgentExecutionModel}=await import('../../models/AgentExecutionModel.js');
-            await AgentExecutionModel.update(executionId,outcome==='cancelled'?'stopped':'failed','',
-              (Date.now()-startedAt)/1000,measured.toolCalls?.started ?? null,'Saved agent execution failed',null,measured);
-            persistence='recorded';
+            const receipts = takeFailureReceipts(error);
+            if (receipts) {
+              receiptCompleteness = receipts.completeness;
+              receiptPersistence = 'unknown';
+              if (await AgentExecutionModel.recordReturnedReceipts(executionId, receipts) !== 1) throw new Error('Receipt row not recorded');
+              receiptPersistence = 'recorded';
+            }
+            const changed = await AgentExecutionModel.update(executionId,outcome==='cancelled'?'stopped':outcome,'',
+              (Date.now()-startedAt)/1000,measured.toolCalls?.started ?? null,'Saved agent execution failed',measured.usage,measured);
+            persistence=changed===1?'recorded':'unknown';
           } catch { persistence='unknown'; }
         } else if(executionId) persistence='unknown';
         // Never overwrite a successful effect with a fabricated zero after a
@@ -657,7 +673,7 @@ export const AGENT_TOOLS = {
         log('[run_agent] execution failed; persistence=' + persistence, null, null, 'ERROR');
         return JSON.stringify({success:false,agentId,executionId,error:'Saved agent execution failed; inspect execution evidence',
           toolCallsCount:measured.toolCalls?.started ?? null,usage:measured.usage,requestMetrics:measured.requestMetrics,
-          executionTelemetry:measured,persistence,message:'Failed to run agent'});
+          executionTelemetry:measured,outcome:measured.outcome,receiptPersistence,receiptCompleteness,persistence,message:'Failed to run agent'});
       }
     },
   },

@@ -744,6 +744,11 @@ function createTables() {
         if (err && !err.message.includes('duplicate column name')) console.error('Execution telemetry migration failed:', err.message);
       });
 
+      // Returned policy-processed evidence is separate from content-free telemetry.
+      db.run('ALTER TABLE agent_executions ADD COLUMN returned_tool_receipts TEXT', (err) => {
+        if (err && !err.message.includes('duplicate column name')) console.error('Receipt migration failed');
+      });
+
       // Index for faster agent execution lookups
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);

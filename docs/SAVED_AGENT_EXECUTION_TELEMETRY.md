@@ -54,3 +54,14 @@ Base: upstream main ca0c61f9. Self-contained producer and consumer instrumentati
 5. Only then resume an operational goal. This PR is not live-deployed by publication.
 
 Rollback code without dropping the additive column. Retain historical telemetry and traces. Rolling back future code does not reverse past tool effects. Back up per normal deployment policy; no destructive data migration or automatic rollback execution is included.
+
+
+## Combined receipt review update — 2026-09-11
+
+Now includes bounded policy-processed returned tool receipts on the same native execution, separate row coverage/content disposition/completeness, host-owned failure telemetry and receipt associations, zero-row persistence checks, explicit blocked/pending/cancellation and malformed-result handling. Independent source reviewer found and challenged forged exception telemetry, accessor spoofing and false completeness; those counterexamples now have regression coverage. Review traces: aab6a5ee-91d4-4532-ae5d-093b20796f41, 1b341466-9512-475e-bcce-75f36eb3827c, 892a0f45-09f2-4248-a6c8-bffb3623c833. Final small metadata/test adjustments were author-verified, not separately re-reviewed.
+
+Current affected suite:216/216 in24 suites. Native scanner and isolated SQLite success/failure/cancellation readback tested; model/tool responses fixtures, not live plugin acceptance. No hardcoded128KiB worker request ceiling: new regression covers larger requests with real model-aware context handling while telemetry survives. The128KiB policy was local-only, not in this PR's prior commit.
+
+Additive returned_tool_receipts column accompanies execution_telemetry. Receipt write and terminal write are separate; partial persistence stays unknown and never redispatches. Rollback retains additive columns/evidence. Scanner is best-effort and may fail open; not guaranteed secret redaction. Host WeakMaps are in-process provenance, not cryptographic trust against imported malicious modules. No invented original call timestamps; absent call IDs stay null. Same-execution receipt readback is distinct from user acceptance.
+
+Publication is not runtime deployment: current daily checkout has divergent auth/context/goal changes and needs reviewed integration before this combined receipt patch is applied. No live schema activation, restart, goal resume, or independent business-outcome acceptance is included in PR publication.

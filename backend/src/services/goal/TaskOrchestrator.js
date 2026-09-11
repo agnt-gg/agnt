@@ -625,6 +625,7 @@ Begin working on this task now.`;
         content: result.content,
         tool_executions: result.toolExecutions.map((execution) => ({
           name: execution.name,
+          callId: execution.callId ?? null,
           arguments: execution.arguments,
           response: execution.response,
         })),
@@ -632,7 +633,7 @@ Begin working on this task now.`;
         ...(result.executionTelemetry ? {executionTelemetry:result.executionTelemetry,requestMetrics:result.executionTelemetry.requestMetrics} : {}),
       };
     } catch (error) {
-      console.error(`[TaskOrchestrator] Error executing task via agent chat:`, error);
+      console.error('[TaskOrchestrator] Error executing task via agent chat');
       throw error;
     }
   }

@@ -1,3 +1,4 @@
+import { readReturnedReceipts } from '../services/orchestrator/runAgentResult.js';
 import { normalizeExecutionTelemetry, readExecutionTelemetry } from '../services/ai/executionTelemetry.js';
 import db from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
@@ -91,7 +92,7 @@ class AgentExecutionModel {
     catch(error) { return Promise.reject(error); }
     return new Promise((resolve, reject) => {
       const safeStatus = status || 'stopped';
-      const endTime = ['completed', 'failed', 'stopped', 'error'].includes(safeStatus)
+      const endTime = ['completed', 'failed', 'stopped', 'error', 'blocked', 'pending'].includes(safeStatus)
         ? new Date().toISOString()
         : null;
 
@@ -103,7 +104,7 @@ class AgentExecutionModel {
                cache_read_tokens = ?, cache_creation_tokens = ?, execution_telemetry = COALESCE(?, execution_telemetry)
            WHERE id = ?`,
           [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error,
-           tokenUsage.inputTokens || 0, tokenUsage.outputTokens || 0, tokenUsage.totalTokens || 0, tokenUsage.estimatedCost || 0,
+           tokenUsage.inputTokens ?? null, tokenUsage.outputTokens ?? null, tokenUsage.totalTokens ?? null, tokenUsage.estimatedCost ?? null,
            tokenUsage.cacheReadTokens || 0, tokenUsage.cacheCreationTokens || 0, telemetryJson, id],
           function (err) {
             if (err) reject(err);
@@ -128,6 +129,15 @@ class AgentExecutionModel {
   /**
    * Update just the status of an execution
    */
+  static recordReturnedReceipts(id, receipts) {
+    const json = JSON.stringify(receipts);
+    if (receipts?.version !== 1 || Buffer.byteLength(json) > 65536) return Promise.reject(new Error('Invalid receipt envelope'));
+    // One attempt only: caller treats a rejected/zero-row write as uncertain.
+    return new Promise((resolve,reject) => db.run(
+      'UPDATE agent_executions SET returned_tool_receipts = ? WHERE id = ?', [json,id],
+      function(error) { error ? reject(new Error('Receipt persistence failed')) : resolve(this.changes); }));
+  }
+
   static updateStatus(id, status) {
     return new Promise((resolve, reject) => {
       const updateFields = { status };
@@ -265,7 +275,7 @@ class AgentExecutionModel {
       db.get(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.user_id, ae.conversation_id,
                 ae.start_time, ae.end_time, ae.status, ae.credits_used, ae.tool_calls_count,
-                ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model, ae.execution_telemetry,
+                ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model, ae.execution_telemetry, ae.returned_tool_receipts,
                 ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost,
                 ae.cache_read_tokens, ae.cache_creation_tokens
          FROM agent_executions ae
@@ -326,6 +336,8 @@ class AgentExecutionModel {
       finalResponse: execution.final_response,
       executionTelemetry: readExecutionTelemetry(execution.execution_telemetry).value,
       telemetryAvailability: readExecutionTelemetry(execution.execution_telemetry).availability,
+      returnedToolReceipts: readReturnedReceipts(execution.returned_tool_receipts).value,
+      receiptAvailability: readReturnedReceipts(execution.returned_tool_receipts).availability,
       error: execution.error,
       provider: execution.provider,
       model: execution.model,
