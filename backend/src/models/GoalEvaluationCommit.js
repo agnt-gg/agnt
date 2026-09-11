@@ -36,6 +36,11 @@ export async function commitGoalEvaluation({goal,userId,evaluationType,scores,pa
     const changed=await run(`UPDATE goals SET status=?,updated_at=?,completed_at=? WHERE id=? AND user_id=? AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='goal' AND entity_id=goals.id),0)=?`,
       [status,new Date().toISOString(),passed?new Date().toISOString():null,goal.id,userId,goal.lifecycle_revision]);
     if(changed!==1)throw staleEvaluation();
+    if(passed && goal.recoveryOwner) {
+      const released=await run("UPDATE goal_run_ownership SET state='released',reason='evaluation_committed',lease_until=0 WHERE goal_id=? AND run_id=? AND generation=? AND state='running' AND lease_until>?",[goal.id,goal.recoveryOwner.run_id,goal.recoveryOwner.generation,Date.now()]);
+      if(released!==1)throw staleEvaluation();
+      await run("UPDATE goals SET loop_status='completed' WHERE id=?",[goal.id]);
+    }
     assertCurrent?.();
     commitAttempted=true;
     await run('COMMIT');transaction=false;

@@ -176,3 +176,113 @@ describe('Given persisted operator intent and task changes',()=>{
   await expect(store.release(l)).rejects.toThrow();expect((await store.inspect('g')).state).toBe('running');
  });
 });
+
+describe('Given one ownership connection services concurrent operations',()=>{
+ it('When renewal arrives inside an unrelated transaction that rolls back, Then renewal runs afterward and survives',async()=>{
+  const l=await store.acquire('g','u','a',1000);
+  let entered,release;const ready=new Promise(r=>entered=r),barrier=new Promise(r=>release=r);
+  const tx=store.transaction(async()=>{entered();await barrier;throw Error('rollback fixture')}).catch(e=>e);
+  await ready;let settled=false;
+  const renewal=store.renew(l,2000).then(v=>{settled=true;return v});
+  await new Promise(r=>setTimeout(r,25));const settledBeforeRelease=settled;
+  release();await tx;expect(await renewal).toBe(true);
+  expect(settledBeforeRelease).toBe(false);
+  expect((await store.inspect('g')).lease_until).toBe(32000);
+ });
+ it('When a task has a new attempt, Then the prior attempt remains in append-only history',async()=>{
+  const l=await store.acquire('g','u','a',1000);l.attemptId=await store.beginAttempt(l,'pending',1500);
+  await store.commitAttempt(l,'pending',{content:'first'},2000);
+  await run("UPDATE tasks SET status='pending' WHERE id='pending'");
+  const second=await store.beginAttempt(l,'pending',2200);
+  const rows=await store.all('SELECT attempt_id,state FROM goal_run_attempt_history ORDER BY recorded_at, rowid');
+  expect(rows.some(a=>a.attempt_id===l.attemptId&&a.state==='committed')).toBe(true);
+  expect(second).not.toBe(l.attemptId);
+ });
+ it('When external outcome is unknown at release, Then reason is explicit and malformed checkpoints fail closed',async()=>{
+  const l=await store.acquire('g','u','a',1000);await store.beginAttempt(l,'pending',1500);await store.release(l);
+  expect((await store.inspect('g')).reason).toBe('external_outcome_unknown');
+ });
+ it('When task description changes during execution, Then its stale result is refused',async()=>{
+  await run('ALTER TABLE tasks ADD COLUMN description TEXT');
+  const l=await store.acquire('g','u','a',1000);l.attemptId=await store.beginAttempt(l,'pending',1500);
+  await run("UPDATE tasks SET description='new scope' WHERE id='pending'");
+  expect(await store.commitAttempt(l,'pending',{content:'old scope'},2000)).toBe(false);
+ });
+});
+
+describe('Given authorized safe checkpoints',()=>{
+ it('When a tasks checkpoint has no admitted work, Then one replacement inherits the same iteration',async()=>{
+  const l=await store.acquire('g','u','a',1000);
+  await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:8,provider:'openai',model:'test'},1100);
+  await store.checkpoint(l,{phase:'tasks',iteration:3},1200);await run("UPDATE goals SET status='executing'");
+  await store.reconcile(32000);
+  const results=await Promise.allSettled([store.recover('g','b',33000),store.recover('g','c',33000)]);
+  const winners=results.filter(r=>r.status==='fulfilled'&&r.value);
+  expect(winners).toHaveLength(1);expect(winners[0].value.resume).toEqual({phase:'tasks',iteration:3});
+  expect((await get("SELECT output FROM tasks WHERE id='done'")).output).toBe('saved evidence');
+ });
+ it('When external work was admitted, Then automatic recovery never replays it',async()=>{
+  const l=await store.acquire('g','u','a',1000);await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:8},1100);
+  await store.checkpoint(l,{phase:'tasks',iteration:3},1200);await store.beginAttempt(l,'pending',1500);
+  await run("UPDATE goals SET status='executing'");await store.reconcile(32000);
+  expect(await store.recover('g','b',33000)).toBeNull();
+ });
+ it('When the user paused or scope changed, Then no unattended continuation is admitted',async()=>{
+  const l=await store.acquire('g','u','a',1000);await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:8},1100);
+  await store.checkpoint(l,{phase:'tasks',iteration:3},1200);await run("UPDATE goals SET status='paused'");
+  await store.reconcile(32000);expect(await store.recover('g','b',33000)).toBeNull();
+ });
+ it('When no authorization or an unsupported phase is recorded, Then recovery stays blocked',async()=>{
+  const l=await store.acquire('g','u','a',1000);await store.checkpoint(l,{phase:'replanning',iteration:3},1200);
+  await run("UPDATE goals SET status='executing'");await store.reconcile(32000);
+  expect(await store.recover('g','b',33000)).toBeNull();
+ });
+});
+
+describe('Given failed external task responses',()=>{
+ it('When a fenced response reports failure, Then it remains failed while the attempt is accounted for',async()=>{
+  const l=await store.acquire('g','u','a',1000);l.attemptId=await store.beginAttempt(l,'pending',1500);
+  expect(await store.commitAttempt(l,'pending',{content:'failed',recoveryTaskFailed:true},2000)).toBe(true);
+  expect((await get("SELECT status FROM tasks WHERE id='pending'")).status).toBe('failed');
+ });
+});
+
+describe('Given recovery admission must remain bounded',()=>{
+ it('When task scope changes after authorization, Then recovery does not start',async()=>{
+  await run('ALTER TABLE tasks ADD COLUMN description TEXT');const l=await store.acquire('g','u','a',1000);
+  await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:8},1100);await store.checkpoint(l,{phase:'tasks',iteration:3},1200);
+  await run("UPDATE tasks SET description='changed instructions' WHERE id='pending'");await store.reconcile(32000);
+  expect(await store.recover('g','b',33000)).toBeNull();
+ });
+ it('When repeated crashes reach the recovery budget, Then no fourth replacement starts',async()=>{
+  const l=await store.acquire('g','u','a',1000);await store.authorizeContinuation(l,{mode:'autonomous',maxIterations:8},1100);await store.checkpoint(l,{phase:'tasks',iteration:3},1200);
+  for(let n=1;n<=3;n++){const now=1000+n*40000;await store.reconcile(now);expect(await store.recover('g','b'+n,now+1)).toBeTruthy()}
+  await store.reconcile(170000);expect(await store.recover('g','b4',170001)).toBeNull();
+ });
+});
+
+describe('Given pause can arrive from another process',()=>{
+ it('When persistent state is paused, Then heartbeat cannot prolong ownership',async()=>{
+  const l=await store.acquire('g','u','a',1000);await run("UPDATE goals SET status='paused'");
+  expect(await store.renew(l,2000)).toBe(false);
+ });
+});
+
+describe('Given evidence resolution must affect the intended task',()=>{
+ it('When an uncertain task is missing, Then resolution rolls back instead of clearing its barrier',async()=>{
+  const l=await store.acquire('g','u','a',1000);await store.beginAttempt(l,'pending',1500);await store.reconcile(32000);
+  await run("DELETE FROM tasks WHERE id='pending'");
+  await expect(store.resolve('g','u',l.runId,{evidence:'checked absent',decisions:[{taskId:'pending',outcome:'not_executed',evidence:'confirmed'}]},33000)).rejects.toThrow();
+  expect((await store.inspect('g')).state).toBe('interrupted');
+ });
+});
+
+describe('Given failure can follow a successful external side effect',()=>{
+ it('When failed output is saved, Then its effect remains uncertain and a new attempt is refused',async()=>{
+  const l=await store.acquire('g','u','a',1000);l.attemptId=await store.beginAttempt(l,'pending',1500);
+  await store.commitAttempt(l,'pending',{content:'network failed after send',recoveryTaskFailed:true},2000);
+  await run("UPDATE tasks SET status='pending' WHERE id='pending'");
+  expect(await store.beginAttempt(l,'pending',2500)).toBe(false);
+  await store.release(l);await expect(store.acquire('g','u','b',3000)).rejects.toThrow(/outcome|interrupted/i);
+ });
+});

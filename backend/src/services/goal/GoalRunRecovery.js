@@ -1,4 +1,5 @@
 import sqlite3 from 'sqlite3';
+import {withGoalRun} from './goalRunContext.js';
 import {randomUUID} from 'node:crypto';
 import db, {dbReady} from '../../models/database/index.js';
 import {GoalRunOwnership} from '../../models/database/goalRunOwnership.js';
@@ -7,18 +8,46 @@ import {GoalRunOwnership} from '../../models/database/goalRunOwnership.js';
 // queued on the application's shared connection. No token/config secrets saved.
 const bootId=randomUUID();
 let storePromise;
+let coordinatorTimer=null;let recovering=false;let cursor='';let stopCoordinator=null;
 async function store() {
   await dbReady;
   if(!storePromise)storePromise=new Promise((resolve,reject)=>{
     const connection=new sqlite3.Database(db.filename,sqlite3.OPEN_READWRITE,async error=>{
       if(error){reject(error);return;}
       connection.configure('busyTimeout',5000);
-      try{const result=new GoalRunOwnership(connection);await result.initialize();resolve(result)}catch(e){reject(e)}
+      try{const result=new GoalRunOwnership(connection);await result.get('SELECT goal_id FROM goal_run_ownership LIMIT 1');resolve(result)}catch(e){connection.close(()=>{});storePromise=null;reject(e)}
     });
   });
   return storePromise;
 }
 export default {
+  run:withGoalRun,
+  async authorize(lease,config) {return (await store()).authorizeContinuation(lease,config);},
+  async release(lease) {return (await store()).release(lease);},
+  async valid(lease) {return (await store()).valid(lease);},
+  startCoordinator(dispatch) {
+    if(coordinatorTimer)return stopCoordinator;
+    const tick=async()=>{
+      if(recovering)return;recovering=true;
+      try {
+        const s=await store();await s.reconcile();
+        const candidates=await s.all("SELECT goal_id FROM goal_run_ownership WHERE state='interrupted' AND goal_id>? ORDER BY goal_id LIMIT 16",[cursor]);
+        if(!candidates.length)cursor='';
+        for(const row of candidates){
+          cursor=row.goal_id;
+          const lease=await s.recover(row.goal_id,bootId);
+          if(!lease)continue;
+          // One recovery at a time. Existing task-wave spend admission remains
+          // authoritative; this loop never replays admitted external work.
+          try{await dispatch(lease)}catch(error){await s.release(lease);console.error('Goal recovery stopped:',error.message)}
+          break;
+        }
+      }catch(error){console.error('Goal recovery coordinator:',error.message)}finally{recovering=false;}
+    };
+    coordinatorTimer=setInterval(tick,5000);coordinatorTimer.unref?.();void tick();
+    stopCoordinator=()=>{clearInterval(coordinatorTimer);coordinatorTimer=null;};
+    return stopCoordinator;
+  },
   async acquire(goalId,userId) {const s=await store();await s.reconcile();return s.acquire(goalId,userId,bootId);},
   async inspect(goalId,userId) {
     const s=await store();
@@ -26,7 +55,9 @@ export default {
     if(!g||g.user_id!==userId)throw Error('Goal owner access denied');
     await s.reconcile();const o=await s.inspect(goalId);
     if(!o)return {state:'not_started'};
-    return {state:o.state,runId:o.run_id,generation:o.generation,leaseUntil:o.lease_until,reason:o.reason,checkpoint:JSON.parse(o.checkpoint),automaticReplay:false};
+    const uncertainTasks=await s.all("SELECT task_id AS taskId,attempt_id AS attemptId,state FROM goal_run_attempts WHERE goal_id=? AND state='admitted'",[goalId]);
+    let checkpoint;try{checkpoint=JSON.parse(o.checkpoint)}catch{checkpoint={phase:'invalid_checkpoint'}}
+    return {state:o.state,runId:o.run_id,generation:o.generation,leaseUntil:o.lease_until,reason:o.reason,checkpoint,uncertainTasks,automaticReplay:false,nextAction:uncertainTasks.length?'Reconcile every uncertain task using external evidence; do not retry blindly.':'Safe authorized checkpoints are considered by the recovery coordinator; otherwise inspect and explicitly resolve.'};
   },
   async resolve(goalId,userId,runId,body) {return (await store()).resolve(goalId,userId,runId,body);},
   async beginAttempt(lease,taskId) {return (await store()).beginAttempt(lease,taskId);},
