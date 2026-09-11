@@ -1,7 +1,7 @@
 # Frontend bundle measurement and regression baseline (PR 2)
 
 ## Run locally
-From an isolated checkout with the installed lockfile dependencies:
+From an isolated checkout with the installed lockfile dependencies. The committed baseline is checkout-specific: `check` deliberately rejects a report built at a different canonical checkout root. For another checkout, use the paired-build procedure below rather than relabeling the baseline.
 
     node --test tests/unit/bundle/*.test.js
     node scripts/bundle/report.mjs build /absolute/path/to/NEW-report.json
@@ -16,7 +16,7 @@ Optional browser smoke, with an explicitly installed executable:
 This starts a temporary static server and three fresh Chromium contexts, blocks external/API requests and records content appearance, page errors and resource timing. It does not contact the live backend. It is anonymous-content smoke, not authenticated readiness or lazy-feature acceptance. Blocked requests and failed samples remain recorded. Timing is not budget-enforced.
 
 ## Pinned baseline
-Source `be18eaf37444341b47476492344ce38fc40d94bf`, upstream `ca0c61f9`; metadata and dirty-source hash are in baseline.json. Three successive builds produced identical metrics:
+Original schema-1 source `be18eaf37444341b47476492344ce38fc40d94bf`, upstream `ca0c61f9`. Schema 2 requires a fresh, explicitly reviewed provenance refresh at the original canonical checkout root `/home/tryinget/agnt/projects/bundle-measurement-forward`; see baseline.json for the refreshed source, patch hash, build identity and repeatability receipts. The original three builds produced these metrics, which the identity-only refresh must preserve:
 
 | Metric | Bytes |
 |---|---:|
@@ -29,6 +29,19 @@ Whole build command times: 15.612s, 15.799s, 15.338s. Fresh process, populated i
 
 Budget policy: zero unexplained growth in these deterministic byte metrics. Three runs showed zero byte variance, so timing noise is not a reason to permit byte growth. This is a regression gate, not an assertion that current sizes are desirable. Intentional growth requires an explicitly reviewed baseline update with rationale. Config, lockfile, measurement semantics and environment must match; changes require a reviewed refresh, not silent comparison. Do not replace the baseline during `check`.
 
+## Build identity and paired comparisons (schema 2)
+Production Vue chunks currently embed absolute `__file` paths. Two clean builds of `a8dd222030b7612904c78bd68ffa551899fd7af1` with identical schema-1 metadata differed across checkout roots: initial raw 11,197,433 versus 11,197,115 bytes. Both contained 274 occurrences of their checkout path; the latter path was six characters shorter. A passing growth budget was therefore not exact baseline reproduction, nor an optimization win.
+
+Schema 2 records the canonical real checkout root and npm, Rollup, platform and architecture alongside the existing config/lockfile, Node/zlib/Vite and scenario identity. Missing, blank, malformed or mismatched identity is refused before budget evaluation. Legacy reports must be rebuilt; do not add an invented identity, compare path lengths, normalize emitted bytes, or silently overwrite the pinned baseline. Reports now disclose the absolute build path; review it before sharing. This gate addresses known recorded confounds, not hermetic reproducibility: dependency installation integrity, ambient environment and OS caches are not fully controlled.
+
+For work in a different isolated checkout:
+1. Preserve existing work and interrupted-worker artifacts. Build the unchanged control twice at the **same canonical path** that will host the candidate. Save create-only reports outside the checkout and confirm exact metrics/current-file inventory equality, not merely a passing growth budget.
+2. Only then apply the authorized candidate in that isolated checkout, keeping lockfile, build configuration, measurement tooling and environment unchanged. Save the candidate report and compare it with that local control using the budget CLI. Different source revisions are expected and remain provenance, not a compatibility rejection.
+3. Record the two source revisions/patch hashes and all report paths. A local paired control is not permission to refresh the committed baseline. Build-config/tooling changes require a separately reviewed control/refresh; do not bypass config identity to obtain a green check.
+4. Validate feature-specific runtime scenarios before claiming latency or user-experience gains. Equal recorded identity and static budget acceptance alone do not establish those gains.
+
+This correction changes measurement tooling only, not Vite configuration, emitted paths, runtime loading or dependencies. Automatic CI budget enforcement remains undelivered.
+
 ## Accounting
 - Graph traversal follows static and dynamic edges, terminates cycles, deduplicates URLs, and retains independent nested lazy boundaries. Lazy groups are not additive.
 - HTML's directly linked local scripts/styles/preloads and recursively referenced CSS resources are included separately from the JS graph. Associated fonts/images are potential costs, not evidence every variant is requested.
@@ -40,7 +53,7 @@ Budget policy: zero unexplained growth in these deterministic byte metrics. Thre
 - Symlink file reads and unsafe relative paths are refused. Reports contain source/build metadata, not credentials or page contents.
 
 ## Validation and evidence boundaries
-45 node:test cases pass, preserving the original 38 contract cases. Four inventory cases initially failed on absent module (capability RED). Two additional review cases reproduced inherited-property graph confusion and failed-report budget acceptance; fixed GREEN. Missing conditional-CSS reporting test is post-fix verification. Original contract/RED document is retained as history, not current implementation status.
+64 node:test cases pass, preserving the original 45 cases. The identity correction added 19 failing-before/passing-after cases covering checkout/toolchain mismatch, absent or malformed identity, equal-length different paths and legacy schema rejection. The prior 45 included the original 38 contract cases. Four inventory cases initially failed on absent module (capability RED). Two additional review cases reproduced inherited-property graph confusion and failed-report budget acceptance; fixed GREEN. Missing conditional-CSS reporting test is post-fix verification. Original contract/RED document is retained as history, not current implementation status.
 
 Three real builds agree. Browser smoke: three successful anonymous samples (approximately 256–322ms to nonempty app content), variable resource counts, no percentile/performance-win claim. This sample preceded normalization-only graph source-ID changes; no runtime bundle behavior changed. Authenticated shell and lazy feature scenarios remain to be validated before claiming PR 3 user-experience improvements.
 

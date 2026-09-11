@@ -74,8 +74,28 @@ scenario('an unsafe relative path', 'accounting', 'path escape is rejected', asy
 scenario('two sequential feature uses with shared code', 'subtracting already loaded URLs', 'second use charges only new files', async () => {
   assert.deepEqual((await api()).incremental(['helper.js', 'second.js'], ['app.js', 'helper.js']), ['second.js']);
 });
-const metadata = () => ({ schemaVersion: 1, graphSemantics: 'entry-static-v1', assetPolicy: 'explicit-associated-v1', gzip: 'per-file-level9', node: process.version, zlib: process.versions.zlib, vite: '5.4.21', mode: 'production', configHash: 'config', lockHash: 'lock', scenario: 'app-initial', browserCache: 'not-applicable', buildCache: 'fresh-process' });
+const metadata = () => ({ schemaVersion: 2, checkoutRoot: '/isolated/checkout', npm: '12.0.2', rollup: '4.57.0', platform: 'linux', arch: 'x64', graphSemantics: 'entry-static-v1', assetPolicy: 'explicit-associated-v1', gzip: 'per-file-level9', node: process.version, zlib: process.versions.zlib, vite: '5.4.21', mode: 'production', configHash: 'config', lockHash: 'lock', scenario: 'app-initial', browserCache: 'not-applicable', buildCache: 'fresh-process' });
 const report = (value = 1000) => ({ metadata: metadata(), sourceRevision: 'base', metrics: { rawBytes: value, gzipBytes: value } });
+for (const value of [undefined, null, '', '   ', 123, {}, '/different/root']) {
+  scenario(`checkout identity ${JSON.stringify(value)}`, 'comparing a smaller candidate', 'unknown or different build identity is refused before budgets', async () => {
+    const m = await api(); const candidate = report(900); candidate.metadata.checkoutRoot = value;
+    assert.throws(() => m.enforce(candidate, report(), budget), /metadata|identity|incompatible/i);
+  });
+}
+for (const key of ['checkoutRoot', 'npm', 'rollup', 'platform', 'arch']) {
+  scenario(`both reports lack ${key}`, 'comparing equal bytes', 'matching omissions do not establish build identity', async () => {
+    const m = await api(); const a = report(), b = report(); delete a.metadata[key]; delete b.metadata[key];
+    assert.throws(() => m.enforce(a, b, budget), /metadata|identity|incompatible/i);
+  });
+}
+scenario('two legacy schema reports', 'comparing equal metadata and bytes', 'legacy reports require an explicit rebuild not a fabricated identity', async () => {
+  const m = await api(); const a = report(), b = report(); a.metadata.schemaVersion = b.metadata.schemaVersion = 1;
+  assert.throws(() => m.enforce(a, b, budget), /schema|metadata|incompatible/i);
+});
+scenario('different checkout paths of equal length', 'comparing lower byte counts', 'path length is not treated as build identity', async () => {
+  const m = await api(); const a = report(900), b = report(); a.metadata.checkoutRoot = '/isolated/checkout-a'; b.metadata.checkoutRoot = '/isolated/checkout-b';
+  assert.throws(() => m.enforce(a, b, budget), /metadata|identity|incompatible/i);
+});
 const budget = { rawBytes: { absolute: 10, relative: 0.05 }, gzipBytes: { absolute: 10, relative: 0.05 } };
 for (const [value, pass] of [[999, true], [1060, true], [1061, false]]) {
   scenario(`baseline 1000 and allowance 10 plus 5 percent`, `measuring ${value}`, `budget pass is ${pass}`, async () => {

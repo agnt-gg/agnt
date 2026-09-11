@@ -35,11 +35,15 @@ export function account(paths, files) {
   }
   return { rawBytes, gzipBytes, fileCount: names.length };
 }
-const requiredMetadata = 'schemaVersion graphSemantics assetPolicy gzip node zlib vite mode configHash lockHash scenario browserCache buildCache'.split(' ');
+const requiredMetadata = 'checkoutRoot npm rollup platform arch graphSemantics assetPolicy gzip node zlib vite mode configHash lockHash scenario browserCache buildCache'.split(' ');
 export function enforce(candidate, baseline, budgets) {
   if (!baseline) throw Error('Missing baseline');
   if (candidate.passed === false || baseline.passed === false) throw Error('Cannot compare failed reports');
-  for (const k of requiredMetadata) if (candidate.metadata?.[k] == null || baseline.metadata?.[k] == null || candidate.metadata[k] !== baseline.metadata[k]) throw Error(`Incompatible metadata: ${k}`);
+  if (candidate.metadata?.schemaVersion !== 2 || baseline.metadata?.schemaVersion !== 2) throw Error('Incompatible metadata: schemaVersion (rebuild legacy reports with schema 2)');
+  for (const k of requiredMetadata) {
+    const c = candidate.metadata?.[k], b = baseline.metadata?.[k];
+    if (typeof c !== 'string' || !c.trim() || typeof b !== 'string' || !b.trim() || c !== b) throw Error(`Incompatible metadata: ${k} (use fresh paired builds with matching identity; do not relabel reports)`);
+  }
   if (!budgets || !Object.keys(budgets).length) throw Error('Missing budgets');
   const diagnostics = {};
   for (const [k, b] of Object.entries(budgets)) {
