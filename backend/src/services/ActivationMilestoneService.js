@@ -8,7 +8,8 @@ const get = (db, sql, parameters = []) => new Promise((resolve, reject) => db.ge
 /** Only persisted, completed root executions establish activation; no prompts or outputs leave the device. */
 export async function collectActivationMilestones(db, userId) {
   const agent = await get(db, `SELECT id, end_time FROM agent_executions WHERE user_id=? AND status='completed'
-    AND (error IS NULL OR error='') AND parent_execution_id IS NULL AND origin NOT IN ('test','fixture')
+    AND (error IS NULL OR error='') AND parent_execution_id IS NULL
+    AND origin IN ('chat','orchestrator','agent','workflow','tool','widget','goal','artifact','goal_task')
     AND julianday(end_time) IS NOT NULL AND julianday(end_time)>=julianday(start_time)
     ORDER BY julianday(end_time),id LIMIT 1`, [userId]);
   const workflow = await get(db, `SELECT id, end_time FROM workflow_executions WHERE user_id=? AND status='completed'
