@@ -77,6 +77,8 @@
         </span>
         <button class="voice-end-btn" type="button" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
       </div>
+      <ImageSettings compact />
+      <ImageReferencePicker v-if="showAttachments" :collection="imageReferenceCollection" :scope-key="imageReferenceCollection.scopeKey" :disabled="isProcessing" @attach-files="onAttachImageReference" />
       <ChatInputBar
         ref="inputBarRef"
         v-model="chatInput"
@@ -192,6 +194,8 @@ import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/Me
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
 import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/QuickActions.vue';
 import ChatInputBar from '@/views/_components/chat/ChatInputBar.vue';
+import ImageReferencePicker from '@/views/_components/chat/ImageReferencePicker.vue';
+import ImageSettings from '@/components/common/ImageSettings.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
 import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatProviderSelector.vue';
 import { useCornerAnchor } from '@/utils/cornerAnchor.js';
@@ -204,7 +208,7 @@ import { getChannelConfig } from '@/services/chatChannelConfig.js';
 
 export default {
   name: 'UnifiedChatContainer',
-  components: { MessageItem, ProcessingState, QuickActions, ChatInputBar, ChatScrollControls, ChatProviderSelector, ChatToolSelector, Tooltip, SimpleModal },
+  components: { MessageItem, ProcessingState, QuickActions, ChatInputBar, ImageReferencePicker, ImageSettings, ChatScrollControls, ChatProviderSelector, ChatToolSelector, Tooltip, SimpleModal },
   props: {
     channelKey: { type: String, required: true },
     chatType: { type: String, required: true },
@@ -346,6 +350,19 @@ export default {
       if (files.length > 0) onAttachFiles(files);
     };
 
+    const imageReferenceCollection = computed(() => {
+      const slot = store.state.chatUnified?.conversations?.[props.channelKey];
+      return { scopeKey: `${props.channelKey}:${slot?.conversationId || 'new'}`, messages: slot?.messages || [] };
+    });
+    const referenceAttachments = new WeakSet();
+    watch(() => imageReferenceCollection.value.scopeKey, () => {
+      selectedFiles.value = selectedFiles.value.filter(file => !referenceAttachments.has(file));
+    }, { flush: 'sync' });
+    const onAttachImageReference = (files, scope) => {
+      if (scope !== imageReferenceCollection.value.scopeKey || isProcessing.value || !Array.isArray(files)) return;
+      for (const file of files) referenceAttachments.add(file);
+      onAttachFiles(files);
+    };
     const formattedMessages = computed(() => store.getters['chatUnified/getFormattedMessages'](props.channelKey));
     const isProcessing = computed(() => store.getters['chatUnified/isStreaming'](props.channelKey));
     const isLoadingSuggestions = computed(() => store.getters['chatUnified/isLoadingSuggestions'](props.channelKey));
@@ -786,6 +803,8 @@ export default {
       chatInput,
       selectedFiles,
       formattedMessages,
+      imageReferenceCollection,
+      onAttachImageReference,
       imageCache,
       dataCache,
       isProcessing,

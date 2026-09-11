@@ -93,6 +93,7 @@ import { toRefs } from 'vue';
 // the Settings body. Everything else is a Settings section id, matching the
 // `activeSection === '…'` branches in Settings.vue.
 const GENERAL_ITEMS = Object.freeze([
+  { id: 'images', icon: 'far fa-images', label: 'Images' },
   { id: 'providers', icon: 'fas fa-robot', label: 'AI Provider' },
   { id: 'billing', icon: 'fas fa-wallet', label: 'Billing' },
   { id: 'profile', icon: 'fas fa-user', label: 'Profile' },

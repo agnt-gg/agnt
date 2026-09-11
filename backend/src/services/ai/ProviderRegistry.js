@@ -7,6 +7,7 @@
  */
 
 import fetch from 'node-fetch';
+export { resolveOpenAiImageSelection, isImageModelPolicy } from './imageModelSelection.js';
 import { buildProviderCapabilities, getProviderConfig, getAllProviderConfigs, getModelMetadata } from './providerConfigs.js';
 
 // Cache for dynamically fetched models
@@ -196,6 +197,7 @@ function filterImageGenModels(models, provider) {
 export async function getImageGenModels(provider, userId = null, authToken = null) {
   const normalizedProvider = provider.toLowerCase();
 
+  if (normalizedProvider === 'workstation-image') return PROVIDER_CAPABILITIES[normalizedProvider]?.imageGen?.models || [];
   // Try dynamic fetching if credentials provided
   if (userId && authToken) {
     try {
