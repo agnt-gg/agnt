@@ -112,3 +112,22 @@ describe('framesToBase64 — byte-exact little-endian PCM16', () => {
     expect([...decoded]).toEqual([0x02, 0x01, 0x04, 0x03]);
   });
 });
+
+
+describe('speech after handover', () => {
+  it('remembers resumed speech even after a subsequent pause', () => {
+    const ring = ringWith([...repeat(20, silence), ...repeat(12, speech), ...repeat(12, silence)]);
+    ring.harvest();
+    expect(ring.hasSpeechSinceHarvest()).toBe(false);
+    repeat(12, speech).forEach(frame => ring.push(frame));
+    repeat(500, silence).forEach(frame => ring.push(frame));
+    expect(ring.hasSpeechSinceHarvest()).toBe(true);
+    expect(ring.size).toBeLessThanOrEqual(CFG.maxMs / 10);
+  });
+  it('silence alone does not cancel recovery', () => {
+    const ring = ringWith(repeat(20, silence));
+    ring.harvest();
+    repeat(500, silence).forEach(frame => ring.push(frame));
+    expect(ring.hasSpeechSinceHarvest()).toBe(false);
+  });
+});

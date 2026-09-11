@@ -223,7 +223,7 @@ describe('buildSessionConfig', () => {
 
     it('still listens — output modality says nothing about input', () => {
       const c = buildSessionConfig();
-      expect(c.audio.input.turn_detection).toEqual({ type: 'semantic_vad' });
+      expect(c.audio.input.turn_detection).toEqual({ type: 'semantic_vad', eagerness: 'low' });
       expect(c.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
     });
 
@@ -258,7 +258,7 @@ describe('buildSessionConfig', () => {
 
   it('uses SEMANTIC turn detection, not a silence timer', () => {
     // The whole reason the cascade needed a hand-built endpointer.
-    expect(buildSessionConfig().audio.input.turn_detection).toEqual({ type: 'semantic_vad' });
+    expect(buildSessionConfig().audio.input.turn_detection).toEqual({ type: 'semantic_vad', eagerness: 'low' });
   });
 
   it('honours a valid voice and falls back on an invalid one', () => {
@@ -439,12 +439,22 @@ describe('one dead credential does not end the session', () => {
     );
 
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
-    expect(r).toEqual({ ok: true, sdp: 'answer' });
+    // `source` says the METERED key paid for this one — the fact a user with
+    // both credentials needs, and the one that used to be invisible.
+    expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai' });
     expect(route()).toEqual([
       'chatgpt.com eyJ.oauth.token',
       'api.openai.com eyJ.oauth.token',
       'api.openai.com sk-no-credit',
     ]);
+  });
+
+  it('a session opened on the subscription says so', async () => {
+    ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+    answers({ status: 200, body: 'answer' });
+
+    const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+    expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
   });
 
   it.each([401, 403, 429])(
@@ -484,6 +494,73 @@ describe('one dead credential does not end the session', () => {
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
     expect(r.reason).toBe('network');
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  describe('a provider that never answers is abandoned, not waited on', () => {
+    /**
+     * THE HANG THIS SUITE EXISTS FOR
+     * ------------------------------
+     * The SDP exchange had no deadline. A provider host that accepted the
+     * connection and then said nothing held this request open for as long as
+     * Node's fetch was willing to wait — minutes — and the browser sat on
+     * "Connecting…" for exactly that long, with no line in any log.
+     */
+    const timeoutError = () => {
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'TimeoutError';
+      return err;
+    };
+
+    it('every attempt carries an abort signal', async () => {
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      answers({ status: 200, body: 'answer' });
+
+      await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+      expect(globalThis.fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('a stalled route yields to the next route on the SAME credential', async () => {
+      // A host that does not answer says nothing about the token, so the
+      // walk must not skip to the metered key — it tries the other URL.
+      getValidAccessToken.mockResolvedValue('sk-test');
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      globalThis.fetch.mockReset();
+      globalThis.fetch
+        .mockRejectedValueOnce(timeoutError())
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'answer' });
+
+      const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+      expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
+      expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
+    });
+
+    it('when every route stalls the caller learns it was a TIMEOUT, not a missing credential', async () => {
+      // "no-credentials" would send the client to the cascade pipeline for
+      // good; a timeout is transient and worth one more try.
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      globalThis.fetch.mockReset();
+      globalThis.fetch.mockRejectedValue(timeoutError());
+
+      const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
+      expect(r).toEqual({ ok: false, status: 504, reason: 'timeout' });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('the real deadline fires: a fetch that never settles is abandoned', async () => {
+      // Not a mocked error — the signal itself, against a fetch that honours
+      // it the way undici does, so the constant is proven to do something.
+      ensureValidToken.mockResolvedValue('eyJ.oauth.token');
+      globalThis.fetch.mockReset();
+      globalThis.fetch.mockImplementation(
+        (_url, { signal }) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason));
+          }),
+      );
+
+      const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1', timeoutMs: 20 });
+      expect(r.reason).toBe('timeout');
+    });
   });
 
   it('when every credential refuses, the one the user can FIX is the one reported', async () => {
@@ -678,7 +755,7 @@ describe('a vanished route does not end the walk', () => {
 
     const r = await createRealtimeCall({ sdp: 'offer', userId: 'u1' });
 
-    expect(r).toEqual({ ok: true, sdp: 'answer' });
+    expect(r).toEqual({ ok: true, sdp: 'answer', source: 'openai-codex' });
     expect(route()).toEqual(['chatgpt.com eyJ.oauth.token', 'api.openai.com eyJ.oauth.token']);
   });
 

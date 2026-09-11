@@ -81,11 +81,30 @@ const MAX_TRACKED_CALLS = 200;
  * How long after going live we wait for the server VAD before concluding the
  * whole utterance happened inside the handshake window (see goLive). The VAD
  * reacts to live speech well inside a second, so silence for this long after
- * the pre-roll was injected means no live audio is coming and the turn must
- * be closed by us. Short enough that a recovered first sentence still feels
- * answered, long enough that the VAD is never raced on a user mid-breath.
+ * the pre-roll was injected is only a recovery candidate. The local detector
+ * must also confirm no resumed speech before we request an answer.
  */
-const STRANDED_TURN_MS = 1200;
+const STRANDED_TURN_MS = 4000;
+
+/**
+ * A session that is not live this long after the button was pressed has
+ * failed, and is told so — it is never left on "Connecting…" for the user to
+ * diagnose. Generous next to a healthy connect (well under two seconds
+ * measured end to end) and long enough to outlast the server's own
+ * per-route provider deadline with a route to spare.
+ */
+export const CONNECT_DEADLINE_MS = 20000;
+
+/**
+ * Exchanges per start(): the first, plus one retry when the failure was the
+ * provider's (stalled, 5xx, unreachable) rather than the account's. One,
+ * because a second identical failure a moment later is an outage, and an
+ * outage is something to tell the user, not to keep hammering.
+ */
+export const CONNECT_ATTEMPTS = 2;
+
+/** Pause before the retry, jittered up to double so retries do not align. */
+export const RETRY_DELAY_MS = 1000;
 
 export function useRealtimeVoice(options = {}) {
   const {
@@ -120,6 +139,14 @@ export function useRealtimeVoice(options = {}) {
   const assistantPartial = ref('');
   /** True when the account has no OpenAI credit/credentials — caller falls back. */
   const unavailable = ref(false);
+  /**
+   * Which credential opened the live session, from the server's
+   * X-Voice-Credential header: 'openai-codex' (the ChatGPT subscription) or
+   * 'openai' (the metered platform key). The server prefers the subscription,
+   * so 'openai' means it was refused or missing — a fact worth showing, since
+   * the two are billed completely differently and look identical otherwise.
+   */
+  const credentialSource = ref(null);
 
   let pc = null;
   let dc = null;
@@ -135,10 +162,16 @@ export function useRealtimeVoice(options = {}) {
   let wentLive = false;
   /** Closes a turn whose whole utterance predates the wire. See goLive(). */
   let strandedTimer = null;
-  /** Handshake stopwatch — one structured timing line per connect. */
+  /** Handshake stopwatch — one structured timing line per connect attempt. */
   let timeline = null;
-  /** Bumped on stop(); async continuations check it before touching anything. */
+  /** Bumped on start() and stop(); async continuations check it before touching anything. */
   let generation = 0;
+  /** Aborts the in-flight SDP exchange when the attempt is stopped. */
+  let handshakeAbort = null;
+  /** Fires if the session is not live CONNECT_DEADLINE_MS after start(). */
+  let connectDeadline = null;
+  /** 1-based attempt within the current start(), for the timing line. */
+  let connectAttempt = 0;
 
   /**
    * THE SAFETY NET FOR TURNS THAT NEVER REACHED THE ORCHESTRATOR.
@@ -256,6 +289,8 @@ export function useRealtimeVoice(options = {}) {
     if (strandedTimer) {
       clearTimeout(strandedTimer);
       strandedTimer = null;
+      preroll?.close();
+      preroll = null;
     }
   }
 
@@ -595,8 +630,7 @@ export function useRealtimeVoice(options = {}) {
   async function goLive(gen) {
     if (gen !== generation) return;
     if (wentLive) {
-      // session.updated re-fires READY; going live is a once-per-session act.
-      if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+      // A duplicate READY must not declare success while the mic is still opening.
       return;
     }
     wentLive = true;
@@ -604,16 +638,14 @@ export function useRealtimeVoice(options = {}) {
     // Driven through the test seam (or a future transport) with no peer
     // connection: nothing to attach, the old behaviour stands.
     if (!micReady || !micTx) {
-      if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+      becomeListening();
       return;
     }
 
     const mic = await micReady;
     if (gen !== generation) return;
     if (!mic.ok) {
-      error.value =
-        mic.err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
-      stop();
+      failSession(gen, 'mic', micErrorMessage(mic.err));
       return;
     }
     timeline?.mark('session_ready');
@@ -639,6 +671,15 @@ export function useRealtimeVoice(options = {}) {
         strandedTimer = setTimeout(() => {
           strandedTimer = null;
           if (gen !== generation) return;
+          // Local speech after handover cancels recovery even if the remote
+          // speech_started event is delayed. Never answer from an old silence snapshot.
+          if (preroll?.hasSpeechSinceHarvest?.()) {
+            preroll.close();
+            preroll = null;
+            return;
+          }
+          preroll?.close();
+          preroll = null;
           // The user really did speak — our own VAD confirmed it in the ring
           // — so this funds one run, on exactly the grounds speech_started
           // grants credit for a live utterance.
@@ -656,30 +697,46 @@ export function useRealtimeVoice(options = {}) {
     if (gen !== generation) return;
     timeline?.mark('track_live');
 
-    try {
+    // Keep the bounded local detector alive through startup recovery only.
+    if (!strandedTimer) {
       preroll?.close();
-    } catch {
-      /* already closed */
+      preroll = null;
     }
-    preroll = null;
 
-    if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
-    reportTimeline();
+    becomeListening();
+    reportTimeline('connected');
   }
 
-  /** One line per connect: console for this machine, POST for error.log. */
-  function reportTimeline() {
+  /** The session is live: the connect deadline has been met and is disarmed. */
+  function becomeListening() {
+    clearConnectDeadline();
+    if (state.value === RealtimeState.CONNECTING) state.value = RealtimeState.LISTENING;
+  }
+
+  /**
+   * One line per connect ATTEMPT: console for this machine, POST for
+   * error.log. A failed or abandoned attempt is reported with the last stage
+   * it reached — those used to be the only connects that left no line at all,
+   * which is why a stuck "Connecting…" could only be diagnosed from source.
+   *
+   * @param {'connected'|'failed'|'cancelled'} outcome
+   */
+  function reportTimeline(outcome) {
     if (!timeline) return;
     const total = timeline.totalMs();
     const line = timeline.summary();
     const marks = timeline.durations();
+    const stage = marks.length ? marks[marks.length - 1].name : 'start';
+    const attempt = connectAttempt;
     timeline = null;
-    console.info(`[voice] realtime connect ${total}ms: ${line}`);
+    const text = `[voice] realtime connect ${outcome} (attempt ${attempt}, at ${stage}) ${total}ms: ${line}`;
+    if (outcome === 'connected') console.info(text);
+    else console.warn(text);
     try {
       fetch(`${API_CONFIG.BASE_URL}/speech/realtime/timing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ surface, totalMs: total, marks }),
+        body: JSON.stringify({ surface, totalMs: total, marks, outcome, stage, attempt }),
       }).catch(() => {});
     } catch {
       /* diagnostics must never break the session */
@@ -688,13 +745,246 @@ export function useRealtimeVoice(options = {}) {
 
   // ---- lifecycle ---------------------------------------------------------
 
+  /**
+   * End the CURRENT session with a message, from wherever the failure was
+   * noticed — a transport that failed, a channel that closed, the deadline.
+   *
+   * Generation-guarded, so an attempt the user already stopped can never end
+   * its replacement. That was the retry bug: stop() closed the old peer but
+   * left its request in flight, and when that request failed a moment later
+   * it called stop() on the NEW session. "Two or three tries before it goes
+   * through" was this, not the network.
+   */
+  function failSession(gen, stage, message) {
+    if (gen !== generation) return;
+    error.value = message;
+    timeline?.mark(stage);
+    reportTimeline('failed');
+    stop();
+  }
+
+  function armConnectDeadline(gen) {
+    clearConnectDeadline();
+    connectDeadline = setTimeout(() => {
+      connectDeadline = null;
+      if (gen !== generation || state.value !== RealtimeState.CONNECTING) return;
+      failSession(gen, 'deadline', 'Voice took too long to connect — try again');
+    }, CONNECT_DEADLINE_MS);
+  }
+
+  function clearConnectDeadline() {
+    if (connectDeadline) clearTimeout(connectDeadline);
+    connectDeadline = null;
+  }
+
+  const micErrorMessage = (err) =>
+    err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
+
+  /**
+   * Tear down the peer connection of the current attempt — and nothing else.
+   * The microphone and its pre-roll ring outlive a failed attempt on purpose:
+   * a retry reuses them, so the words spoken during the first attempt are
+   * still recovered by goLive() on the second.
+   *
+   * Each handle is detached BEFORE it is closed, so a listener firing
+   * synchronously from close() finds it is no longer the live one and stands
+   * down (see the identity checks in exchange()).
+   */
+  function closeTransport() {
+    const abort = handshakeAbort;
+    handshakeAbort = null;
+    try {
+      abort?.abort();
+    } catch {
+      /* already settled */
+    }
+    const channel = dc;
+    dc = null;
+    try {
+      channel?.close();
+    } catch {
+      /* already closed */
+    }
+    const peer = pc;
+    pc = null;
+    micTx = null;
+    try {
+      peer?.close();
+    } catch {
+      /* already closed */
+    }
+    const el = audioEl;
+    audioEl = null;
+    if (el) {
+      try {
+        el.pause();
+        el.srcObject = null;
+      } catch {
+        /* already torn down */
+      }
+    }
+  }
+
+  /**
+   * One SDP exchange: a fresh peer connection, offer, POST, answer. Resolves
+   * to `{ ok: true }` once the remote description is set, or to a failure
+   * that says whether it is worth ONE more try. Never touches `state`, never
+   * calls stop() — start() owns that decision, because only it knows whether
+   * there is a retry left.
+   *
+   * Every await is followed by a generation check, and every listener checks
+   * that its handle is still the live one, so a stopped or superseded attempt
+   * cannot act on anything.
+   */
+  async function exchange(gen) {
+    const abort = new AbortController();
+    handshakeAbort = abort;
+
+    const peer = new RTCPeerConnection();
+    pc = peer;
+    peer.addEventListener('connectionstatechange', () => {
+      if (peer !== pc || gen !== generation) return;
+      const cs = peer.connectionState;
+      if (cs === 'connected') timeline?.mark('ice_connected');
+      // 'failed' is terminal; 'disconnected' can recover on its own and is
+      // left alone; 'closed' is only ever ours, and ours is detached first.
+      else if (cs === 'failed') failSession(gen, 'transport_failed', 'Voice connection failed');
+    });
+
+    // Model audio arrives as a remote track; an <audio> element plays it.
+    const el = document.createElement('audio');
+    el.autoplay = true;
+    audioEl = el;
+    peer.ontrack = (e) => {
+      if (peer === pc) el.srcObject = e.streams[0];
+    };
+
+    /**
+     * An m-line with NO track: the offer/answer completes without the
+     * microphone, and — the actual first-word fix — audio starts flowing at
+     * a moment WE choose (goLive's replaceTrack), after the pre-roll has
+     * been handed over, not whenever DTLS happens to finish.
+     */
+    micTx = peer.addTransceiver('audio', { direction: 'sendrecv' });
+    const channel = peer.createDataChannel('oai-events');
+    dc = channel;
+    channel.addEventListener('message', (e) => {
+      if (channel === dc) handleMessage(e.data, gen);
+    });
+    // A channel that closes under a live session is a dead line; without
+    // this it stayed "Listening…" with nobody on the other end.
+    channel.addEventListener('close', () => {
+      if (channel !== dc || gen !== generation) return;
+      failSession(gen, 'channel_closed', 'Voice connection closed');
+    });
+    channel.addEventListener('error', () => {
+      if (channel !== dc || gen !== generation) return;
+      failSession(gen, 'channel_error', 'Voice connection failed');
+    });
+
+    try {
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      if (gen !== generation) return { ok: false, stopped: true };
+      timeline?.mark('offer_ready');
+
+      let res;
+      try {
+        res = await fetch(
+          `${API_CONFIG.BASE_URL}/speech/realtime/call?voice=${encodeURIComponent(voice)}&surface=${encodeURIComponent(surface)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${getToken()}` },
+            body: offer.sdp,
+            signal: abort.signal,
+          }
+        );
+      } catch {
+        if (gen !== generation) return { ok: false, stopped: true };
+        return { ok: false, retryable: true, reason: 'network', message: 'Could not reach the voice service' };
+      }
+      if (gen !== generation) return { ok: false, stopped: true };
+      timeline?.mark('sdp_answered');
+
+      // The route answers with JSON (not SDP) when the account has no usable
+      // OpenAI credential — a normal state, and the caller falls back to the
+      // cascade pipeline rather than showing an error.
+      const contentType = res.headers?.get?.('content-type') || '';
+      if (!res.ok || contentType.includes('application/json')) {
+        let reason = `http-${res.status}`;
+        try {
+          const body = await res.json();
+          reason = body.reason || reason;
+        } catch {
+          /* not JSON after all */
+        }
+        if (reason === 'no-credentials') {
+          return {
+            ok: false,
+            retryable: false,
+            reason,
+            message: 'Natural voice needs OpenAI credit on this account.',
+          };
+        }
+        // A provider that stalled or fell over is transient and worth one
+        // more try; a refused offer or a rejected account is not.
+        const transient = res.status >= 500 || reason === 'network' || reason === 'timeout';
+        return {
+          ok: false,
+          retryable: transient,
+          reason,
+          message: transient
+            ? 'The voice service did not answer'
+            : 'Could not start the natural voice session.',
+        };
+      }
+
+      credentialSource.value = res.headers?.get?.('x-voice-credential') || null;
+      if (credentialSource.value === 'openai') {
+        console.warn('[voice] this session is billed to the OpenAI API key, not the ChatGPT subscription');
+      }
+
+      const answer = { type: 'answer', sdp: await res.text() };
+      if (gen !== generation) return { ok: false, stopped: true };
+      await peer.setRemoteDescription(answer);
+      if (gen !== generation) return { ok: false, stopped: true };
+      timeline?.mark('remote_set');
+      return { ok: true };
+    } catch {
+      // createOffer / setLocalDescription / setRemoteDescription threw. These
+      // sat OUTSIDE any handler before, so a rejected answer left the state
+      // on CONNECTING forever with no message.
+      if (gen !== generation) return { ok: false, stopped: true };
+      return {
+        ok: false,
+        retryable: false,
+        reason: 'handshake',
+        message: 'Could not start the natural voice session.',
+      };
+    } finally {
+      if (handshakeAbort === abort) handshakeAbort = null;
+    }
+  }
+
+  /** A pause the user can cut short: stop() bumps the generation, the caller checks it. */
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   async function start() {
     if (isActive.value) return true;
     error.value = null;
     unavailable.value = false;
+    credentialSource.value = null;
     state.value = RealtimeState.CONNECTING;
     const gen = ++generation;
+    connectAttempt = 1;
     timeline = createConnectTimeline();
+    /**
+     * From here the session is either live or gone by CONNECT_DEADLINE_MS.
+     * Before this existed nothing bounded "Connecting…": a handshake that
+     * completed but never produced session.created — ICE that never joined, a
+     * channel that never opened — sat in that state until the user gave up.
+     */
+    armConnectDeadline(gen);
 
     /**
      * THE MIC OPENS IN PARALLEL WITH THE HANDSHAKE, NOT BEFORE IT.
@@ -721,10 +1011,9 @@ export function useRealtimeVoice(options = {}) {
       micPromise = openMic();
     } else {
       const mic = await openMic();
+      if (gen !== generation) return false;
       if (!mic.ok) {
-        error.value =
-          mic.err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not open the microphone';
-        state.value = RealtimeState.IDLE;
+        failSession(gen, 'mic', micErrorMessage(mic.err));
         return false;
       }
       micPromise = Promise.resolve(mic);
@@ -756,101 +1045,48 @@ export function useRealtimeVoice(options = {}) {
       return mic;
     });
 
-    pc = new RTCPeerConnection();
-    pc.addEventListener('connectionstatechange', () => {
-      if (pc?.connectionState === 'connected') timeline?.mark('ice_connected');
-    });
-
-    // Model audio arrives as a remote track; an <audio> element plays it.
-    audioEl = document.createElement('audio');
-    audioEl.autoplay = true;
-    pc.ontrack = (e) => {
-      audioEl.srcObject = e.streams[0];
-    };
-
     /**
-     * An m-line with NO track: the offer/answer completes without the
-     * microphone, and — the actual first-word fix — audio starts flowing at
-     * a moment WE choose (goLive's replaceTrack), after the pre-roll has
-     * been handed over, not whenever DTLS happens to finish.
+     * The exchange, with ONE retry for a failure that is the provider's and
+     * not the account's. The retry reuses the open microphone and its
+     * pre-roll; only the peer connection is rebuilt. Anything that is not
+     * transient — no credential, a refused offer, a denied mic — ends here on
+     * the first answer, because trying again would only reach it more slowly.
      */
-    micTx = pc.addTransceiver('audio', { direction: 'sendrecv' });
-    dc = pc.createDataChannel('oai-events');
-    dc.addEventListener('message', (e) => handleMessage(e.data, gen));
+    let outcome;
+    for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
+      connectAttempt = attempt;
+      outcome = await exchange(gen);
+      if (outcome.stopped || gen !== generation) return false; // stop() already cleaned up
+      if (outcome.ok) return true;
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    timeline.mark('offer_ready');
+      timeline?.mark(outcome.reason);
+      reportTimeline('failed');
+      closeTransport();
+      if (!outcome.retryable || attempt === CONNECT_ATTEMPTS) break;
 
-    let res;
-    try {
-      res = await fetch(
-        `${API_CONFIG.BASE_URL}/speech/realtime/call?voice=${encodeURIComponent(voice)}&surface=${encodeURIComponent(surface)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${getToken()}` },
-          body: offer.sdp,
-        }
-      );
-    } catch (err) {
-      error.value = 'Could not reach the voice service';
-      stop();
-      return false;
-    }
-    timeline?.mark('sdp_answered');
-
-    // The route answers with JSON (not SDP) when the account has no usable
-    // OpenAI credential — a normal state, and the caller falls back to the
-    // cascade pipeline rather than showing an error.
-    const contentType = res.headers?.get?.('content-type') || '';
-    if (!res.ok || contentType.includes('application/json')) {
-      let reason = `http-${res.status}`;
-      try {
-        const body = await res.json();
-        reason = body.reason || reason;
-      } catch {
-        /* not JSON after all */
-      }
-      unavailable.value = reason === 'no-credentials';
-      error.value = unavailable.value
-        ? 'Natural voice needs OpenAI credit on this account.'
-        : 'Could not start the natural voice session.';
-      stop();
-      return false;
+      await pause(RETRY_DELAY_MS * (1 + Math.random()));
+      if (gen !== generation) return false;
+      timeline = createConnectTimeline();
     }
 
-    const answer = { type: 'answer', sdp: await res.text() };
-    if (gen !== generation) return false; // stopped mid-handshake
-    await pc.setRemoteDescription(answer);
-    timeline?.mark('remote_set');
-
-    return true;
+    unavailable.value = outcome.reason === 'no-credentials';
+    error.value = outcome.message;
+    stop();
+    return false;
   }
 
   function stop() {
     generation += 1;
-    try {
-      dc?.close();
-    } catch {
-      /* already closed */
-    }
-    try {
-      pc?.close();
-    } catch {
-      /* already closed */
-    }
+    // An attempt the user gave up on is reported as such — with the stage it
+    // was stuck at, which is the one fact "it hung on Connecting" needs.
+    if (timeline && state.value === RealtimeState.CONNECTING) reportTimeline('cancelled');
+    timeline = null;
+    clearConnectDeadline();
+    closeTransport();
     try {
       micStream?.getTracks?.().forEach((t) => t.stop());
     } catch {
       /* already stopped */
-    }
-    if (audioEl) {
-      try {
-        audioEl.pause();
-        audioEl.srcObject = null;
-      } catch {
-        /* already torn down */
-      }
     }
     clearStrandedTimer();
     try {
@@ -860,13 +1096,8 @@ export function useRealtimeVoice(options = {}) {
     }
     preroll = null;
     micReady = null;
-    micTx = null;
     wentLive = false;
-    timeline = null;
-    dc = null;
-    pc = null;
     micStream = null;
-    audioEl = null;
     assistantPartial.value = '';
     clearTurnBuffers();
     speakQueue.length = 0;
@@ -897,6 +1128,7 @@ export function useRealtimeVoice(options = {}) {
     isActive,
     error,
     unavailable,
+    credentialSource,
     assistantPartial,
     isSupported: typeof RTCPeerConnection !== 'undefined',
     start,

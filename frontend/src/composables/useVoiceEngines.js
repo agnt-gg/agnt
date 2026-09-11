@@ -49,7 +49,7 @@
  * fooled by a rename.
  */
 
-import { computed, watch, onUnmounted, onDeactivated } from 'vue';
+import { computed, ref, watch, onUnmounted, onDeactivated } from 'vue';
 import { useVoiceSession } from './useVoiceSession.js';
 import { useRealtimeVoice } from './useRealtimeVoice.js';
 import { createSentenceChunker } from '../voice/sentenceChunker.js';
@@ -289,10 +289,51 @@ export function useVoiceEngines(options = {}) {
    */
   onDeactivated(stopVoice);
   onUnmounted(stopVoice);
+  onUnmounted(clearLingeringError);
+
+  /**
+   * A SESSION THAT FAILED MUST SAY WHY — AFTER IT IS GONE.
+   *
+   * The status strip is rendered only while an engine is active, and a
+   * session that failed to connect (or died mid-call) is not active any more.
+   * So its message went nowhere: the strip read "Connecting…" and then simply
+   * vanished, which reads as a hang, not a failure — and a failure with a
+   * reason is something the user can act on, where a vanished strip is not.
+   *
+   * The realtime engine's error is therefore held here for a few seconds
+   * after the engine goes idle, and the hosts keep the strip open while
+   * there is something to show (`voiceActive || voiceError`). The next
+   * toggle clears it, so it never sits under a new session.
+   */
+  const LINGER_MS = 8000;
+  const lingeringError = ref('');
+  let lingerTimer = null;
+  function clearLingeringError() {
+    lingeringError.value = '';
+    if (lingerTimer) clearTimeout(lingerTimer);
+    lingerTimer = null;
+  }
+  watch(
+    () => realtime.error.value,
+    (message) => {
+      if (!message || realtime.isActive.value) return;
+      // `unavailable` is not a failure: the cascade takes over silently.
+      if (realtime.unavailable.value) return;
+      clearLingeringError();
+      lingeringError.value = message;
+      lingerTimer = setTimeout(clearLingeringError, LINGER_MS);
+    }
+  );
+  watch(voiceActiveRaw, (active) => {
+    if (active) clearLingeringError();
+  });
 
   // ---- one set of view bindings, whichever engine is running -------------
 
-  const voiceActive = computed(() => realtime.isActive.value || cascade.isActive.value);
+  function voiceActiveRaw() {
+    return realtime.isActive.value || cascade.isActive.value;
+  }
+  const voiceActive = computed(voiceActiveRaw);
   const voiceState = computed(() => {
     if (!realtime.isActive.value) return cascade.state.value;
     return REALTIME_STATE_AS_CASCADE[realtime.state.value] || 'listening';
@@ -300,11 +341,22 @@ export function useVoiceEngines(options = {}) {
   const voicePartial = computed(() =>
     realtime.isActive.value ? realtime.assistantPartial.value : cascade.partialTranscript.value
   );
-  const voiceError = computed(() =>
-    realtime.isActive.value ? realtime.error.value : cascade.error.value
-  );
+  const voiceError = computed(() => {
+    if (realtime.isActive.value) return realtime.error.value;
+    if (cascade.isActive.value) return cascade.error.value;
+    return lingeringError.value;
+  });
   /** True when the speech-to-speech engine is the one running. */
   const voiceNatural = computed(() => realtime.isActive.value);
+  /**
+   * True when the live session is billed to the metered OpenAI API key rather
+   * than the ChatGPT subscription. The server prefers the subscription, so
+   * this means it was refused or missing — worth a badge, because the two
+   * cost completely different money and sound exactly the same.
+   */
+  const voiceMetered = computed(
+    () => realtime.isActive.value && realtime.credentialSource.value === 'openai'
+  );
 
   return {
     voiceActive,
@@ -312,6 +364,7 @@ export function useVoiceEngines(options = {}) {
     voicePartial,
     voiceError,
     voiceNatural,
+    voiceMetered,
     voiceLevel: cascade.level,
     toggleVoice,
     stopVoice,

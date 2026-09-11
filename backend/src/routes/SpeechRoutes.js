@@ -227,6 +227,11 @@ router.post(
 
       if (result.ok) {
         res.setHeader('Content-Type', 'application/sdp');
+        // Which credential opened the session, so the client can say so. The
+        // body is SDP and cannot carry it; a header can, and is exposed for
+        // the remote-connection case where the app is not same-origin.
+        res.setHeader('X-Voice-Credential', result.source);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Voice-Credential');
         return res.send(result.sdp);
       }
 
@@ -285,9 +290,16 @@ router.get('/realtime/status', requireAuthHeader, async (req, res) => {
  * console dies with its window and error.log is where this install's history
  * lives.
  *
+ * A connect that FAILED or was given up on is reported too, with the last
+ * step it reached. Those used to be the only connects nobody could see: the
+ * stopwatch reported on success alone, and a stuck "Connecting…" left no
+ * line anywhere — which is why the hang was diagnosable only from source.
+ *
  * Diagnostics only: it never fails the caller, accepts nothing but short
  * names and numbers, and writes exactly one line.
  */
+const CONNECT_OUTCOMES = new Set(['connected', 'failed', 'cancelled']);
+
 router.post('/realtime/timing', requireAuthHeader, express.json({ limit: '8kb' }), (req, res) => {
   const marks = Array.isArray(req.body?.marks) ? req.body.marks : [];
   const line = marks
@@ -296,7 +308,15 @@ router.post('/realtime/timing', requireAuthHeader, express.json({ limit: '8kb' }
     .join(' ');
   const total = Number.isFinite(req.body?.totalMs) ? Math.round(req.body.totalMs) : '?';
   const surface = typeof req.body?.surface === 'string' ? req.body.surface.slice(0, 32) : 'chat';
-  console.info(`[speech] realtime connect (${surface}) total=${total}ms ${line}`);
+  const outcome = CONNECT_OUTCOMES.has(req.body?.outcome) ? req.body.outcome : 'connected';
+  const stage = typeof req.body?.stage === 'string' ? req.body.stage.slice(0, 32) : '';
+  const attempt = Number.isInteger(req.body?.attempt) ? req.body.attempt : 1;
+  const text = `[speech] realtime connect (${surface}) outcome=${outcome} attempt=${attempt}` +
+    `${stage ? ` stage=${stage}` : ''} total=${total}ms ${line}`;
+  // A failure is worth a warning so it stands out in error.log; a success is
+  // routine.
+  if (outcome === 'connected') console.info(text);
+  else console.warn(text);
   res.json({ success: true });
 });
 

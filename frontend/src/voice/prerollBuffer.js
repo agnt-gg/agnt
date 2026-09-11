@@ -16,8 +16,9 @@
  * one-mic-one-graph rule) records into a bounded ring while the handshake
  * runs. The moment the session is live, useRealtimeVoice harvests the ring,
  * hands it to the model as an input_audio conversation item, and only THEN
- * attaches the live track — one continuous audio timeline with a single
- * boundary, no gap and no overlap.
+ * attaches the live track. The detector may briefly continue observing that
+ * same stream to cancel recovery if speech resumes; its later frames are not
+ * injected again.
  *
  * FORMAT IS NOT A CHOICE
  * ----------------------
@@ -104,10 +105,13 @@ export function createPrerollRing(config = {}) {
   const frames = [];
   /** Speech flag per stored frame, index-aligned with `frames`. */
   const speech = [];
+  let harvested = false;
+  let speechSinceHarvest = false;
 
   /** @param {Float32Array|number[]} floatFrame PCM in [-1, 1] */
   function push(floatFrame) {
     const snap = vad.push(floatFrame);
+    if (harvested && (snap.speaking || snap.onset)) speechSinceHarvest = true;
     // Converted NOW, not at harvest: the source buffer is reused by the audio
     // graph after this call returns, so keeping a reference would keep noise.
     frames.push(toInt16(floatFrame));
@@ -129,6 +133,8 @@ export function createPrerollRing(config = {}) {
    *                   stranded-utterance timer in useRealtimeVoice).
    */
   function harvest() {
+    harvested = true;
+    speechSinceHarvest = false;
     const firstSpeech = speech.indexOf(true);
     if (firstSpeech === -1) {
       return { base64: '', ms: 0, hadSpeech: false, endedInSilence: true };
@@ -148,6 +154,7 @@ export function createPrerollRing(config = {}) {
   return {
     push,
     harvest,
+    hasSpeechSinceHarvest: () => speechSinceHarvest,
     get frameMs() {
       return frameMs;
     },
@@ -158,9 +165,9 @@ export function createPrerollRing(config = {}) {
 }
 
 /**
- * The Web Audio wiring around the ring. Lives for the length of a handshake
- * (seconds); closed by useRealtimeVoice the moment the live track attaches,
- * so it has zero steady-state cost.
+ * The Web Audio wiring around the ring. Lives through the handshake and, when
+ * needed, the bounded startup-recovery window. It closes once live VAD owns
+ * the turn, recovery settles, or the session stops; no steady-state detector.
  *
  * @param {MediaStream} stream  the SAME stream the sender will use
  * @param {Partial<typeof DEFAULT_PREROLL_CONFIG>} [config]
@@ -182,6 +189,7 @@ export function createPrerollBuffer(stream, config = {}) {
   let closed = false;
   return {
     harvest: () => ring.harvest(),
+    hasSpeechSinceHarvest: () => ring.hasSpeechSinceHarvest(),
     close() {
       if (closed) return;
       closed = true;
