@@ -431,3 +431,15 @@ describe('Given the real recovery coordinator finds safe abandoned work',()=>{
   }finally{stop();}
  });
 });
+
+describe('Given a remote prerequisite is still executing',()=>{
+ it('R10 When local execution visits the next group, Then it waits for remote results before deciding dependency readiness',async()=>{
+  const row=await seed();await Goal.updateStatus(row.goalId,'planning');
+  const {default:recovery}=await import('./GoalRunRecovery.js');const lease=await recovery.acquire(row.goalId,row.userId);
+  const entry={userId:row.userId,runLease:lease,autonomous:true,abortController:new AbortController()};Orchestrator.runningGoals.set(row.goalId,entry);
+  await Task.updateStatus(row.taskId,'pending');
+  let waited=false;const wait=vi.spyOn(recovery,'waitRemote').mockImplementation(async()=>{waited=true});
+  const ready=vi.spyOn(Task,'canExecuteTask').mockImplementation(async()=>{expect(waited).toBe(true);return false});
+  try{await Orchestrator.executeGoalTasks(row.goalId,row.userId);expect(ready).toHaveBeenCalled();expect(wait).toHaveBeenCalled();}finally{await recovery.release(lease)}
+ });
+});

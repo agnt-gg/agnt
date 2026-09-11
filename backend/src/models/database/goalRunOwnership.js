@@ -57,8 +57,8 @@ export class GoalRunOwnership {
       WHERE goal_run_attempts.state!='admitted'`,[l.goalId,l.runId,l.generation,taskId,attemptId,taskId,l.goalId,l.runId,l.generation,now,taskId,l.goalId]);
     return changed===1?attemptId:false;
   }
-  commitAttempt(l,taskId,output,now=Date.now()) {
-    return this.transaction(async()=>{
+  commitAttempt(l,taskId,output,now=Date.now()) { return this.transaction(()=>this._commitAttempt(l,taskId,output,now)); }
+  async _commitAttempt(l,taskId,output,now) {
       const permitted=await this.get(`SELECT 1 FROM goal_run_ownership o JOIN goals g ON g.id=o.goal_id
         JOIN goal_run_attempts a ON a.goal_id=o.goal_id AND a.run_id=o.run_id AND a.generation=o.generation
         WHERE o.goal_id=? AND o.run_id=? AND o.generation=? AND o.state='running' AND o.lease_until>?
@@ -69,7 +69,6 @@ export class GoalRunOwnership {
       if(changed!==1)throw Error('Task disappeared during result commit');
       if(!output.recoveryTaskFailed)await this.run("UPDATE goal_run_attempts SET state='committed' WHERE goal_id=? AND run_id=? AND task_id=?",[l.goalId,l.runId,taskId]);
       return true;
-    });
   }
   resolve(goalId,userId,runId,{decisions,evidence}={},now=Date.now()) {
     return this.transaction(async()=>{
@@ -131,6 +130,42 @@ export class GoalRunOwnership {
       return l;
     });
   }
+  claimRemote(userId,nodeId,now=Date.now(),goalId=null) {
+    return this.transaction(async()=>{
+      const rows=await this.all(`SELECT t.*,o.run_id,o.generation,o.boot_id FROM tasks t JOIN goals g ON g.id=t.goal_id JOIN goal_run_ownership o ON o.goal_id=g.id
+        WHERE g.user_id=? AND g.status='executing' AND g.deleted_at IS NULL AND o.state='running' AND o.lease_until>?
+        AND t.status='pending' AND (t.claimed_by IS NULL OR t.claim_expires_at<=?) AND COALESCE(t.attempt_count,0)<5
+        AND (? IS NULL OR g.id=?) AND NOT EXISTS(SELECT 1 FROM goal_run_attempts a WHERE a.task_id=t.id AND a.state='admitted') ORDER BY t.id LIMIT 16`,[userId,now,now,goalId,goalId]);
+      for(const t of rows){
+        let deps;try{deps=JSON.parse(t.dependencies||'[]')}catch{continue}
+        if(!Array.isArray(deps))continue;
+        let ready=true;for(const id of deps){const d=await this.get("SELECT 1 FROM tasks WHERE id=? AND goal_id=? AND status='completed'",[id,t.goal_id]);if(!d){ready=false;break}}if(!ready)continue;
+        await this.run("UPDATE tasks SET claimed_by=?,claim_expires_at=?,attempt_count=COALESCE(attempt_count,0)+1,status='running' WHERE id=?",[nodeId,now+30000,t.id]);
+        const lease={goalId:t.goal_id,userId,runId:t.run_id,generation:t.generation,bootId:t.boot_id};
+        lease.attemptId=await this.beginAttempt(lease,t.id,now);if(!lease.attemptId)throw Error('Remote admission lost');
+        return {task:t,lease};
+      }return null;
+    });
+  }
+  remotePermit(userId,nodeId,l,taskId,now) {
+    if(!l||l.userId!==userId)return Promise.resolve(false);
+    return this.get(`SELECT 1 FROM tasks t JOIN goal_run_ownership o ON o.goal_id=t.goal_id JOIN goals g ON g.id=o.goal_id JOIN goal_run_attempts a ON a.task_id=t.id AND a.run_id=o.run_id
+      WHERE t.id=? AND t.goal_id=? AND t.claimed_by=? AND t.claim_expires_at>? AND o.user_id=? AND o.run_id=? AND o.generation=? AND o.state='running' AND o.lease_until>?
+      AND g.status='executing' AND g.deleted_at IS NULL AND a.attempt_id=? AND a.state='admitted'`,[taskId,l.goalId,nodeId,now,userId,l.runId,l.generation,now,l.attemptId]).then(Boolean);
+  }
+  renewRemote(userId,nodeId,l,taskId,now=Date.now()) {
+    return this.transaction(async()=>{
+      if(!await this.remotePermit(userId,nodeId,l,taskId,now))return false;
+      await this.run('UPDATE tasks SET claim_expires_at=? WHERE id=?',[now+30000,taskId]);return true;
+    });
+  }
+  remoteResult(userId,nodeId,l,taskId,output,now=Date.now()) {
+    return this.transaction(async()=>{
+      if(!await this.remotePermit(userId,nodeId,l,taskId,now))return false;
+      if(!await this._commitAttempt(l,taskId,output,now))return false;
+      await this.run('UPDATE tasks SET claimed_by=NULL,claim_expires_at=NULL WHERE id=?',[taskId]);return true;
+    });
+  }
   inspect(goalId) { return this.get('SELECT * FROM goal_run_ownership WHERE goal_id=?',[goalId]); }
   acquire(goalId,userId,bootId,now=Date.now()) {
     return this.transaction(async()=>{
@@ -171,7 +206,12 @@ export class GoalRunOwnership {
         await this.run("UPDATE goals SET status='needs_review',loop_status='interrupted' WHERE id=? AND status NOT IN ('paused','stopped')",[g.id]);
         if(g.owned)await this.run("UPDATE goal_run_ownership SET state='interrupted',reason='owner_expired_outcome_unknown' WHERE goal_id=?",[g.id]);
         else await this.run("INSERT INTO goal_run_ownership VALUES(?,?,?,'unknown',0,0,'interrupted','missing_owner_outcome_unknown','{}')",[g.id,g.user_id,randomUUID()]);
-      }return stale.length;
+      }
+      // Pause/stop/deletion preserve operator intent but do not make a dead
+      // process live. Retain evidence and expire only its ownership record.
+      await this.run(`UPDATE goal_run_ownership SET state='interrupted',reason='halted_owner_expired'
+        WHERE state='running' AND lease_until<=? AND EXISTS(SELECT 1 FROM goals g WHERE g.id=goal_run_ownership.goal_id AND (g.status IN ('paused','stopped') OR g.deleted_at IS NOT NULL))`,[now]);
+      return stale.length;
     });
   }
 }

@@ -188,7 +188,12 @@ class TaskOrchestrator {
       let previousGroupOutputs = null;
 
       for (const orderIndex of sortedGroupKeys) {
-        const group = taskGroups.get(orderIndex);
+        const owner=this.runningGoals.get(goalId)?.runLease;
+        if(owner)await GoalRunRecovery.waitRemote(owner,signal);
+        // Remote results may have committed since the initial task snapshot.
+        const group = owner
+          ? (await TaskModel.findByGoalId(goalId)).filter(t=>(t.order_index||0)===orderIndex)
+          : taskGroups.get(orderIndex);
 
         if (!this.runningGoals.has(goalId)) {
           console.log(`Goal ${goalId} was stopped, ending execution`);
@@ -370,6 +375,8 @@ class TaskOrchestrator {
         if (stopGoal) break;
       }
 
+      const owner=this.runningGoals.get(goalId)?.runLease;
+      if(owner)await GoalRunRecovery.waitRemote(owner,signal);
       // Check if all tasks are complete
       // Skip completeGoal if running inside the autonomous loop — the loop handles its own completion
       const goalData = this.runningGoals.get(goalId);

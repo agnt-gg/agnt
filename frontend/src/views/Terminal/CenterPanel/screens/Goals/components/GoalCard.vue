@@ -29,6 +29,11 @@
         <span v-if="runningTaskCount > 1" class="running-task-more"> +{{ runningTaskCount - 1 }} </span>
       </div>
 
+      <details v-if="['needs_review','paused'].includes(goal.status)" @click.stop @toggle="recoveryOpen = $event.target.open">
+        <summary>Inspect recovery</summary>
+        <GoalRecoveryPanel v-if="recoveryOpen" :goal-id="goal.id" />
+      </details>
+
       <div class="progress-section">
         <div class="progress-meta">
           <span class="progress-label">Progress</span>
@@ -77,7 +82,8 @@
 </template>
 
 <script>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import GoalRecoveryPanel from './GoalRecoveryPanel.vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { serverAge } from '@/utils/serverTime.js';
@@ -92,7 +98,7 @@ const TERMINAL_STATUSES = ['completed', 'validated', 'failed', 'error', 'stopped
 
 export default {
   name: 'GoalCard',
-  components: { Tooltip },
+  components: { Tooltip, GoalRecoveryPanel },
   props: {
     goal: { type: Object, required: true },
     isSelected: { type: Boolean, default: false },
@@ -101,6 +107,7 @@ export default {
   },
   emits: ['click', 'pause', 'resume', 'delete', 'schedule'],
   setup(props) {
+    const recoveryOpen = ref(false);
     const store = useStore();
     const priority = computed(() => (props.goal.priority || 'medium').toLowerCase());
     const scheduleCount = computed(() => {
@@ -189,6 +196,7 @@ export default {
     };
 
     return {
+      recoveryOpen,
       priority,
       scheduleCount,
       agingClass,

@@ -22,6 +22,20 @@ async function store() {
 }
 export default {
   run:withGoalRun,
+  async claimRemote(userId,nodeId,goalId) {return (await store()).claimRemote(userId,nodeId,Date.now(),goalId);},
+  async renewRemote(userId,nodeId,lease,taskId) {return (await store()).renewRemote(userId,nodeId,lease,taskId);},
+  async remoteResult(userId,nodeId,lease,taskId,output) {return (await store()).remoteResult(userId,nodeId,lease,taskId,output);},
+  async waitRemote(lease,signal) {
+    const s=await store();
+    while(true){
+      if(signal?.aborted||!await s.valid(lease))throw Object.assign(new Error('Goal ownership lost while waiting for remote work'),{name:'GoalCancelledError'});
+      const rows=await s.all("SELECT t.status,t.claim_expires_at FROM goal_run_attempts a JOIN tasks t ON t.id=a.task_id WHERE a.goal_id=? AND a.run_id=? AND a.state='admitted' AND t.claimed_by IS NOT NULL",[lease.goalId,lease.runId]);
+      if(!rows.length)return;
+      if(rows.some(t=>t.status!=='running'||t.claim_expires_at<=Date.now()))throw Error('Remote task outcome unknown; reconciliation required');
+      await new Promise(r=>setTimeout(r,250));
+    }
+  },
+  async hasOwner(goalId) {return !!await (await store()).inspect(goalId);},
   async authorize(lease,config) {return (await store()).authorizeContinuation(lease,config);},
   async release(lease) {return (await store()).release(lease);},
   async valid(lease) {return (await store()).valid(lease);},

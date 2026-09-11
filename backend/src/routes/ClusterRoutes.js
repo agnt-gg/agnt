@@ -1,4 +1,6 @@
 import express from 'express';
+import GoalRunRecovery from '../services/goal/GoalRunRecovery.js';
+import {taskFailureReason} from '../services/goal/taskOutcome.js';
 
 import TaskModel from '../models/TaskModel.js';
 import GoalModel from '../models/GoalModel.js';
@@ -150,6 +152,16 @@ ClusterRoutes.post('/claim', authenticateClusterNode, async (req, res) => {
       });
     }
 
+    if(req.body?.recoveryProtocol===2) {
+      const assignment=await GoalRunRecovery.claimRemote(userId,nodeId,goalId);
+      if(assignment){
+        const {task,lease}=assignment;const goal=await GoalModel.findOne(task.goal_id);
+        touchNode(req.clusterNode,'claim');
+        return res.json({success:true,recoveryProtocol:2,runLease:lease,leaseMs:30000,
+          task:{id:task.id,goalId:task.goal_id,title:task.title,description:task.description,requiredTools:JSON.parse(task.required_tools||'[]'),input:task.input?JSON.parse(task.input):null,orderIndex:task.order_index},
+          goal:{id:goal.id,title:goal.title,description:goal.description}});
+      }
+    }
     const task = await TaskModel.claimNext(nodeId, {
       userId, // scoping lives in SQL — see TaskModel.claimNext
       goalId,
@@ -190,6 +202,11 @@ ClusterRoutes.post('/renew', authenticateClusterNode, async (req, res) => {
     const { taskId, leaseMs } = req.body || {};
     if (!taskId) return res.status(400).json({ error: 'taskId is required' });
 
+    const task=await TaskModel.findOne(taskId);
+    if(task && await GoalRunRecovery.hasOwner(task.goal_id)) {
+      const ok=req.body?.recoveryProtocol===2 && await GoalRunRecovery.renewRemote(req.clusterNode.userId,req.clusterNode.nodeId,req.body.runLease,taskId);
+      return res.status(ok?200:409).json(ok?{success:true}:{error:'Run or attempt lease lost',code:'claim_lost'});
+    }
     const renewed = await TaskModel.renewClaim(taskId, req.clusterNode.nodeId, leaseMs || undefined);
     touchNode(req.clusterNode, 'ping');
 
@@ -209,6 +226,8 @@ ClusterRoutes.post('/release', authenticateClusterNode, async (req, res) => {
     const { taskId } = req.body || {};
     if (!taskId) return res.status(400).json({ error: 'taskId is required' });
 
+    const task=await TaskModel.findOne(taskId);
+    if(task && await GoalRunRecovery.hasOwner(task.goal_id))return res.status(409).json({error:'Admitted recovery attempt requires outcome reconciliation',code:'outcome_unknown'});
     await TaskModel.releaseClaim(taskId, req.clusterNode.nodeId);
     res.json({ success: true });
   } catch (error) {
@@ -234,6 +253,15 @@ ClusterRoutes.post('/complete', authenticateClusterNode, async (req, res) => {
     // below has it regardless of what happens to the claim.
     const taskRow = await TaskModel.findOne(taskId).catch(() => null);
 
+    if(taskRow && await GoalRunRecovery.hasOwner(taskRow.goal_id)) {
+      const failed=status!=='completed'||!!taskFailureReason(result);
+      const output={content:result?.content||error||'',toolExecutions:result?.tool_executions||[],timestamp:new Date().toISOString(),recoveryTaskFailed:failed};
+      const ok=req.body?.recoveryProtocol===2 && await GoalRunRecovery.remoteResult(req.clusterNode.userId,req.clusterNode.nodeId,req.body.runLease,taskId,output);
+      if(!ok)return res.status(409).json({error:'Stale run or attempt; result rejected',code:'claim_lost'});
+      await recordWorkerSpend(req.clusterNode,taskId,spend);
+      touchNode(req.clusterNode,failed?'fail':'complete');res.json({success:true});
+      completeGoalIfFinished(taskRow.goal_id);return;
+    }
     // Ownership is re-checked at the write, not assumed from the claim: a
     // lease can lapse WHILE the work runs, and another node may already have
     // taken over. Accepting this write anyway would let a slow node overwrite
