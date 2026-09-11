@@ -3059,12 +3059,37 @@ export default {
   display: none;
 }
 
-/* Align the fold with message bodies: 36px avatar + 10px border/padding + 16px gap. */
-.message-flow :deep(.compaction-card) {
-  margin-left: 62px;
+/* One bordered-message column for both roles and the fold. Short messages
+   still shrink-wrap; the avatar lives outside this column. */
+.message-flow {
+  --chat-avatar-gutter: 62px;
+  --chat-body-width: min(784px, calc(100% - var(--chat-avatar-gutter)));
 }
 
-.mobile-view :deep(.compaction-card) {
+.mobile-view .message-flow {
+  --chat-avatar-gutter: 0px;
+}
+
+.message-flow :deep(.message-wrapper.user) {
+  max-width: var(--chat-body-width);
+}
+
+.message-flow :deep(.message-wrapper.assistant) {
+  width: calc(var(--chat-body-width) + var(--chat-avatar-gutter));
+  align-self: flex-end;
+}
+
+.message-flow :deep(.message-avatar) {
+  box-sizing: border-box;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+}
+
+.message-flow :deep(.compaction-card) {
+  width: var(--chat-body-width);
+  box-sizing: border-box;
+  align-self: flex-end;
   margin-left: 0;
 }
 
