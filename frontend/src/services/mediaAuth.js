@@ -39,6 +39,7 @@ export const MEDIA_COOKIE_NAME = 'agnt_media_token';
  */
 export const MEDIA_COOKIE_PATHS = Object.freeze([
   '/api/local-file', // arbitrary absolute path, Range-enabled (chat, widgets, artifact HTML)
+  '/api/local-preview', // prepared saved HTML, nested documents and stylesheets
   '/api/filesystem/raw', // workspace-relative bytes (Artifacts image/video/audio/PDF preview)
   '/api/images', // generated images by id, once the in-memory base64 cache is gone
 ]);
