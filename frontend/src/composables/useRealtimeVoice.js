@@ -81,11 +81,10 @@ const MAX_TRACKED_CALLS = 200;
  * How long after going live we wait for the server VAD before concluding the
  * whole utterance happened inside the handshake window (see goLive). The VAD
  * reacts to live speech well inside a second, so silence for this long after
- * the pre-roll was injected means no live audio is coming and the turn must
- * be closed by us. Short enough that a recovered first sentence still feels
- * answered, long enough that the VAD is never raced on a user mid-breath.
+ * the pre-roll was injected is only a recovery candidate. The local detector
+ * must also confirm no resumed speech before we request an answer.
  */
-const STRANDED_TURN_MS = 1200;
+const STRANDED_TURN_MS = 4000;
 
 /**
  * A session that is not live this long after the button was pressed has
@@ -290,6 +289,8 @@ export function useRealtimeVoice(options = {}) {
     if (strandedTimer) {
       clearTimeout(strandedTimer);
       strandedTimer = null;
+      preroll?.close();
+      preroll = null;
     }
   }
 
@@ -629,8 +630,7 @@ export function useRealtimeVoice(options = {}) {
   async function goLive(gen) {
     if (gen !== generation) return;
     if (wentLive) {
-      // session.updated re-fires READY; going live is a once-per-session act.
-      becomeListening();
+      // A duplicate READY must not declare success while the mic is still opening.
       return;
     }
     wentLive = true;
@@ -671,6 +671,15 @@ export function useRealtimeVoice(options = {}) {
         strandedTimer = setTimeout(() => {
           strandedTimer = null;
           if (gen !== generation) return;
+          // Local speech after handover cancels recovery even if the remote
+          // speech_started event is delayed. Never answer from an old silence snapshot.
+          if (preroll?.hasSpeechSinceHarvest?.()) {
+            preroll.close();
+            preroll = null;
+            return;
+          }
+          preroll?.close();
+          preroll = null;
           // The user really did speak — our own VAD confirmed it in the ring
           // — so this funds one run, on exactly the grounds speech_started
           // grants credit for a live utterance.
@@ -688,12 +697,11 @@ export function useRealtimeVoice(options = {}) {
     if (gen !== generation) return;
     timeline?.mark('track_live');
 
-    try {
+    // Keep the bounded local detector alive through startup recovery only.
+    if (!strandedTimer) {
       preroll?.close();
-    } catch {
-      /* already closed */
+      preroll = null;
     }
-    preroll = null;
 
     becomeListening();
     reportTimeline('connected');

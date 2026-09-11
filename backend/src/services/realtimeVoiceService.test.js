@@ -223,7 +223,7 @@ describe('buildSessionConfig', () => {
 
     it('still listens — output modality says nothing about input', () => {
       const c = buildSessionConfig();
-      expect(c.audio.input.turn_detection).toEqual({ type: 'semantic_vad' });
+      expect(c.audio.input.turn_detection).toEqual({ type: 'semantic_vad', eagerness: 'low' });
       expect(c.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
     });
 
@@ -258,7 +258,7 @@ describe('buildSessionConfig', () => {
 
   it('uses SEMANTIC turn detection, not a silence timer', () => {
     // The whole reason the cascade needed a hand-built endpointer.
-    expect(buildSessionConfig().audio.input.turn_detection).toEqual({ type: 'semantic_vad' });
+    expect(buildSessionConfig().audio.input.turn_detection).toEqual({ type: 'semantic_vad', eagerness: 'low' });
   });
 
   it('honours a valid voice and falls back on an invalid one', () => {

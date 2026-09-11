@@ -146,7 +146,7 @@ describe('the pre-roll handover', () => {
     expect(injectedItems()[0].item.content).toEqual([
       { type: 'input_audio', audio: 'UFJFUk9MTA==' },
     ]);
-    expect(preroll.close).toHaveBeenCalled();
+    expect(preroll.close).not.toHaveBeenCalled(); // detector stays alive until recovery settles
     expect(session.state.value).toBe(RealtimeState.LISTENING);
   });
 
@@ -161,13 +161,29 @@ describe('the pre-roll handover', () => {
 });
 
 describe('the stranded turn', () => {
+  it('does not answer during a short pause after connecting', async () => {
+    const { session } = harness(clip({ endedInSilence: true }));
+    await connect(session);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(bareResponses()).toHaveLength(0);
+    session.stop();
+  });
+  it('local continued speech prevents an answer even without a remote VAD event', async () => {
+    const { session, preroll } = harness(clip({ endedInSilence: true }));
+    preroll.hasSpeechSinceHarvest = () => true;
+    await connect(session);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(bareResponses()).toHaveLength(0);
+    expect(preroll.close).toHaveBeenCalled();
+    session.stop();
+  });
   it('closes itself exactly once, and the recovered words fund a run', async () => {
     const onRunAgnt = vi.fn(async () => 'sunny');
     const { session } = harness(clip({ endedInSilence: true }), { onRunAgnt });
     await connect(session);
     expect(bareResponses()).toHaveLength(0); // not before the timer
 
-    await vi.advanceTimersByTimeAsync(1300);
+    await vi.advanceTimersByTimeAsync(4100);
     expect(bareResponses()).toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(5000);
@@ -204,6 +220,62 @@ describe('the stranded turn', () => {
     session.stop();
     await vi.advanceTimersByTimeAsync(5000);
     expect(bareResponses()).toHaveLength(0);
+  });
+});
+
+describe('recovery lifetime and duplicate readiness', () => {
+  it('keeps CONNECTING on duplicate readiness until the microphone resolves', async () => {
+    let openMic;
+    navigator.mediaDevices.getUserMedia = vi.fn(() => new Promise((resolve) => { openMic = resolve; }));
+    const { session, preroll } = harness(clip());
+    try {
+      expect(await session.start()).toBe(true);
+      session._handleMessage(JSON.stringify({ type: 'session.created' }));
+      session._handleMessage(JSON.stringify({ type: 'session.updated' }));
+      await vi.advanceTimersByTimeAsync(1);
+      expect(session.state.value).toBe(RealtimeState.CONNECTING);
+      expect(injectedItems()).toHaveLength(0);
+      openMic(fakeStream);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(session.state.value).toBe(RealtimeState.LISTENING);
+      expect(injectedItems()).toHaveLength(1);
+      expect(preroll.harvest).toHaveBeenCalledTimes(1);
+      expect(log.filter(([kind]) => kind === 'replaceTrack')).toHaveLength(1);
+    } finally { session.stop(); }
+  });
+
+  it('closes the local detector exactly once when live VAD takes ownership', async () => {
+    const { session, preroll } = harness(clip());
+    await connect(session);
+    expect(preroll.close).not.toHaveBeenCalled();
+    speechStarted(session);
+    expect(preroll.close).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(bareResponses()).toHaveLength(0);
+    session.stop();
+    expect(preroll.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('stopping before recovery cannot answer or close a replacement detector', async () => {
+    const detectors = [
+      { harvest: vi.fn(() => clip()), close: vi.fn(), hasSpeechSinceHarvest: () => false },
+      { harvest: vi.fn(() => clip()), close: vi.fn(), hasSpeechSinceHarvest: () => false },
+    ];
+    let index = 0;
+    const session = useRealtimeVoice({ sendFrame: (frame) => sent.push(frame), createPreroll: () => detectors[index++] });
+    try {
+      await connect(session);
+      await vi.advanceTimersByTimeAsync(2500);
+      session.stop();
+      expect(detectors[0].close).toHaveBeenCalledTimes(1);
+      await connect(session);
+      await vi.advanceTimersByTimeAsync(1800);
+      expect(bareResponses()).toHaveLength(0);
+      expect(detectors[1].close).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2300);
+      expect(bareResponses()).toHaveLength(1);
+      expect(detectors[1].close).toHaveBeenCalledTimes(1);
+    } finally { session.stop(); }
   });
 });
 

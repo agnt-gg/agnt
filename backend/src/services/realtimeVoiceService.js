@@ -379,7 +379,7 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
          */
         // Semantic turn detection: the model decides when the user is done
         // from what they said, not from how long they have been quiet.
-        turn_detection: { type: 'semantic_vad' },
+        turn_detection: { type: 'semantic_vad', eagerness: 'low' },
       },
       // Still configured even though the session default is text: the voice
       // applies to the responses the CLIENT creates, which are the ones that
