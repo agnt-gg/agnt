@@ -67,6 +67,7 @@ import ContentOutputModel from '../../models/ContentOutputModel.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { deriveTitle, serializeTranscript, transcriptSubstance } from './transcriptProjection.js';
 import { serverMessagesToUi } from './chatStreamReducer.mirror.js';
+import { reconcileCompactedTranscript } from '../../utils/compactedTranscript.js';
 
 /**
  * The messages the client has already saved, or [] when the column will not
@@ -206,7 +207,8 @@ export async function writeTranscript({ conversationId, userId, messages, mode =
 
     // A fragment is merged onto what is already saved; a whole transcript
     // stands on its own.
-    let incoming = messages;
+    let incoming = mode === 'whole' ? reconcileCompactedTranscript(stored, messages) : messages;
+    if (!incoming) return { written: false, reason: 'compaction_projection_mismatch' };
     if (mode === 'appendTurn') {
       incoming = mergeRecoveredTurn(stored, messages);
       if (!incoming) return { written: false, reason: 'saved_copy_is_richer' };

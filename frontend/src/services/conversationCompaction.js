@@ -17,6 +17,8 @@
  */
 
 import { API_CONFIG } from '@/tt.config.js';
+import { WIRE_PREAMBLE, WIRE_ACK } from '../../../backend/src/utils/compactedTranscript.js';
+export { WIRE_PREAMBLE, WIRE_ACK };
 
 export const COMPACTION_ROLE = 'compaction';
 
@@ -30,8 +32,7 @@ const MIN_FOLDED_MESSAGES = 2;
  * What the model reads in place of the folded history. Stable text: it is the
  * start of the message prefix on every later turn, so it must not vary.
  */
-export const WIRE_PREAMBLE = '[Conversation compressed. The messages before this point were distilled into the summary below. Treat it as the authoritative record of what happened so far and continue from it.]';
-export const WIRE_ACK = 'Understood. Continuing from that summary.';
+// Wire framing is shared with the server/client recovery path.
 
 export function isCompactionMessage(msg) {
   return !!msg && msg.role === COMPACTION_ROLE;

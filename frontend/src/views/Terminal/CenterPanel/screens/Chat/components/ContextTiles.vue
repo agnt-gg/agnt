@@ -96,7 +96,7 @@
               <b class="danger">Compression failed.</b> {{ compaction.error }}
             </template>
             <template v-else-if="utilization >= 50">
-              <b class="warn">Past half the window.</b> Models get sloppy up here &mdash; fold the history into a summary?
+              <b class="warn">Past half the window.</b> Consider folding older messages into a summary. Originals stay available.
             </template>
             <template v-else>
               Fold older messages into a summary the model reads instead of the full history.

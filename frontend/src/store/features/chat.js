@@ -1,5 +1,6 @@
 import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
+import { reconcileCompactedTranscript } from '../../../../backend/src/utils/compactedTranscript.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
@@ -2376,10 +2377,9 @@ export default {
       // had more rows and less content.
       try {
         const remote = await fetchConversation(conversationId);
-        const remoteMessages = serverMessagesToUi(remote?.messages);
-        const localMessages = (state.conversations[conversationId]?.messages || [])
-          .filter((m) => m.role === 'user' || m.role === 'assistant');
-        if (remoteMessages.length > 0
+        const localMessages = state.conversations[conversationId]?.messages || [];
+        const remoteMessages = reconcileCompactedTranscript(localMessages, serverMessagesToUi(remote?.messages));
+        if (remoteMessages?.length > 0
           && transcriptSubstance(remoteMessages) >= transcriptSubstance(localMessages)) {
           commit('SCOPED_SET_MESSAGES', { conversationId, messages: remoteMessages });
           markRunEnded(conversationId);

@@ -24,6 +24,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import fsp from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { WIRE_PREAMBLE, WIRE_ACK } from '../../utils/compactedTranscript.js';
 
 const broadcasts = [];
 vi.mock('../../utils/realtimeSync.js', () => ({
@@ -105,6 +106,19 @@ afterAll(async () => {
 beforeEach(() => { broadcasts.length = 0; });
 
 describe('finishing the row a departed client left behind', () => {
+  it('retains originals and the undo marker when the compressed answer becomes longer than the original', async () => {
+    const cid='compressed-late-answer', id='compressed-output';
+    const originals=[{id:'u0',role:'user',content:'original question'},{id:'a0',role:'assistant',content:'original answer'}];
+    const marker={id:'fold',role:'compaction',content:'Summary',compaction:{foldedCount:2}};
+    const tail=[{id:'u1',role:'user',content:'continue'}];
+    await ContentOutputModel.createOrUpdate(id,USER,null,null,storedTranscript([...originals,marker,...tail]),false,'conversation',cid,'My title');
+    const result=await persistTurnTranscript({conversationId:cid,userId:USER,providerMessages:[{role:'user',content:`${WIRE_PREAMBLE}\n\nSummary`},{role:'assistant',content:WIRE_ACK},...tail,{role:'assistant',content:'completed '.repeat(100)}]});
+    expect(result.written).toBe(true);
+    const saved=JSON.parse((await getRow(id)).content).messages;
+    expect(saved.slice(0,2).map(m=>m.content)).toEqual(originals.map(m=>m.content));
+    expect(saved[2]).toMatchObject(marker);
+    expect(saved.at(-1).content).toBe('completed '.repeat(100));
+  });
   it('replaces a transcript truncated mid-answer — the reported bug', async () => {
     const conversationId = 'conv-abandoned';
     // What the browser managed to save before it went away: the question, and

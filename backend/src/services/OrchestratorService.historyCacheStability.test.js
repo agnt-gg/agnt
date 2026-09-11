@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { AnthropicAdapter } from './orchestrator/llmAdapters.js';
+import { WIRE_PREAMBLE, WIRE_ACK } from '../utils/compactedTranscript.js';
 
 const read = (relative) => fs.readFileSync(new URL(relative, import.meta.url), 'utf8');
 const service = read('./OrchestratorService.js');
@@ -11,9 +12,10 @@ const historySource = frontend.slice(frontend.indexOf('export function toChatHis
 // Execute the real folding helper too: compression adds this dependency to both builders.
 const compactionSource = read('../../../frontend/src/services/conversationCompaction.js')
   .replace(/^import .*;$/gm, '')
+  .replace(/^export \{[^}]+\};$/gm, '')
   .replace(/export default \{[\s\S]*$/, '')
   .replace(/export /g, '');
-const foldHistorySource = vm.runInNewContext(compactionSource + '\nfoldHistorySource;');
+const foldHistorySource = vm.runInNewContext(compactionSource + '\nfoldHistorySource;', { WIRE_PREAMBLE, WIRE_ACK });
 const toHistory = vm.runInNewContext(`(${historySource.slice(0, historySource.indexOf('\n}') + 2).replace('export ', '')})`, { foldHistorySource });
 const injectorAnchor = 'function injectDateIntoLastUserMessage(messages) {';
 const injectorStart = service.indexOf(injectorAnchor);
