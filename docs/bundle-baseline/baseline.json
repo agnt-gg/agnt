@@ -1,7 +1,12 @@
 {
   "passed": true,
   "metadata": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
+    "checkoutRoot": "/home/tryinget/agnt/projects/bundle-measurement-forward",
+    "npm": "12.0.2",
+    "rollup": "4.57.0",
+    "platform": "linux",
+    "arch": "x64",
     "graphSemantics": "static-closure-v1",
     "assetPolicy": "emitted-plus-public-css-v1",
     "gzip": "per-file-level9",
@@ -9,13 +14,13 @@
     "zlib": "1.3.2",
     "vite": "5.4.21",
     "mode": "production",
-    "configHash": "9ba3f62315ea61d976e2eecf06238cd2ee8b93ab3bf8f609bdba80c626a33072",
+    "configHash": "3f8388c375adc2a246f5214e858f74c44488d3b6225539399a967cc18809e8e8",
     "lockHash": "67eb3243dfce80d7c5f15e85f13a7c5be27bbeb230b5d59db49d5d1dac43659e",
     "scenario": "static-app-initial-v1",
     "browserCache": "not-measured",
     "buildCache": "fresh-process-os-cache-uncontrolled"
   },
-  "sourceRevision": "be18eaf37444341b47476492344ce38fc40d94bf",
+  "sourceRevision": "508668a1a7c468689b7403d6c06ef101fe8a7805",
   "sourcePatchHash": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
   "metrics": {
     "initialRawBytes": 11197433,
@@ -24,9 +29,9 @@
     "currentGzipBytes": 16033826
   },
   "provenance": {
-    "started": "2026-09-11T13:24:18.487Z",
-    "finished": "2026-09-11T13:24:39.642Z",
-    "buildWallMs": 15612.367745,
+    "started": "2026-09-11T14:09:23.742Z",
+    "finished": "2026-09-11T14:09:44.408Z",
+    "buildWallMs": 15099.555667,
     "npm": "12.0.2",
     "rollup": "4.57.0",
     "platform": "linux",
@@ -34,35 +39,25 @@
     "command": "npm --prefix frontend run build",
     "exitStatus": 0
   },
-  "repeatability": [
-    {
-      "metrics": {
-        "initialRawBytes": 11197433,
-        "initialGzipBytes": 4693130,
-        "currentRawBytes": 29784049,
-        "currentGzipBytes": 16033826
+  "repeatability": {
+    "runs": 2,
+    "metricsIdentical": true,
+    "currentFilesIdentical": true,
+    "initialFilesIdentical": true,
+    "contributorsIdentical": true,
+    "reports": [
+      {
+        "path": "/home/tryinget/agnt/projects/bundle-identity-evidence-rCLZXe/build-1.json"
       },
-      "buildWallMs": 15612.367745
-    },
-    {
-      "metrics": {
-        "initialRawBytes": 11197433,
-        "initialGzipBytes": 4693130,
-        "currentRawBytes": 29784049,
-        "currentGzipBytes": 16033826
-      },
-      "buildWallMs": 15799.48006
-    },
-    {
-      "metrics": {
-        "initialRawBytes": 11197433,
-        "initialGzipBytes": 4693130,
-        "currentRawBytes": 29784049,
-        "currentGzipBytes": 16033826
-      },
-      "buildWallMs": 15337.957599
-    }
-  ],
+      {
+        "path": "/home/tryinget/agnt/projects/bundle-identity-evidence-rCLZXe/build-2.json"
+      }
+    ],
+    "buildWallMs": [
+      15099.555667,
+      15226.55689
+    ]
+  },
   "largestFiles": [
     {
       "file": "vendor/fonts/NotoColorEmoji.ttf",
@@ -260,5 +255,17 @@
     "Runtime-computed URLs and conditional resource requests are not derived from the static graph.",
     "Associated CSS assets are conservative potential costs, not observed transfer.",
     "Runtime-loaded MathJax extensions, external URLs and browser timing require separate runtime scenarios."
-  ]
+  ],
+  "identityRefresh": {
+    "reason": "Explicitly authorized schema-2 build-identity correction; fresh clean builds at original checkout path preserve all four original byte budgets. No emitted-byte normalization or loading change.",
+    "previousSourceRevision": "be18eaf37444341b47476492344ce38fc40d94bf",
+    "previousConfigHash": "9ba3f62315ea61d976e2eecf06238cd2ee8b93ab3bf8f609bdba80c626a33072",
+    "previousMetrics": {
+      "initialRawBytes": 11197433,
+      "initialGzipBytes": 4693130,
+      "currentRawBytes": 29784049,
+      "currentGzipBytes": 16033826
+    },
+    "previousBaselinePreserved": "/home/tryinget/agnt/projects/bundle-identity-evidence-rCLZXe/baseline-schema1-preserved.json"
+  }
 }
