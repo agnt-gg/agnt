@@ -55,6 +55,6 @@ onBeforeUnmount(()=>{epoch++;controller?.abort();});
 <style scoped>
 .recovery-panel { padding: 12px; border: 1px solid var(--terminal-border-color); border-radius: 6px; color: var(--color-text); background: var(--color-background); }
 p, li { overflow-wrap: anywhere; }
-textarea { display: block; width: 100%; box-sizing: border-box; color: inherit; background: var(--color-background); }
+textarea { display: block; width: 100%; box-sizing: border-box; color: inherit; background: var(--color-darker-0); }
 button { margin: 6px; cursor: pointer; } button:disabled { cursor: not-allowed; opacity: .5; }
 </style>
