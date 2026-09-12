@@ -102,7 +102,17 @@ class NodeExecutor {
         fullToolDef = allTools.find((tool) => tool.type === node.type);
 
         if (!fullToolDef) {
-          console.warn(`Could not find tool definition for type: ${node.type}`);
+          // F5: fail closed BEFORE model/action. With neither a DB definition
+          // nor inline code on the node there is nothing legitimate to run:
+          // the AI path would call the model with a phantom tool, and the code
+          // paths would execute nothing meaningful. Nodes that carry their own
+          // inline definition (node.code / node.base) remain supported below.
+          if (!node.code) {
+            throw new Error(
+              `Custom tool definition not found: ${node.type} — failing closed before model/action (no custom_tools row and no inline definition on the node)`
+            );
+          }
+          console.warn(`No custom_tools row for type ${node.type}; using the node's inline definition (supported inline mode)`);
         }
 
         // Merge the full tool definition with the node data

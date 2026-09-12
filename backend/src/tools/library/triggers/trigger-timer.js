@@ -133,13 +133,19 @@ class TriggerTimer extends BaseTrigger {
       const BOOT_GRACE_MS = 30_000;
       const uptimeMs = process.uptime() * 1000;
       const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
-      setTimeout(() => {
+      // F1: the fire-on-start shot must be disarmable by stop. Register the
+      // handle in engine.timerIntervals (like the schedule chain) so
+      // stopWorkflowListeners() clears it; a trigger that already fired is
+      // additionally rejected by the engine's not-listening guard.
+      const fireOnStartTimerId = setTimeout(() => {
+        engine.timerIntervals.delete(`${node.id}:fireOnStart`);
         engine.processWorkflowTrigger({
           type: 'timer',
           nodeId: node.id,
           timestamp: new Date().toISOString(),
         });
       }, delay);
+      engine.timerIntervals.set(`${node.id}:fireOnStart`, fireOnStartTimerId);
     }
 
     scheduleNextRun();
