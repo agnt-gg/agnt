@@ -3,8 +3,9 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'node:crypto';
 import WebhookModel from '../WebhookModel.js';
-import pathManager from '../../utils/PathManager.js';
+import pathManager, { detectStorageMode } from '../../utils/PathManager.js';
 import { setupFullTextSearch } from './fts.js';
 import { migrateLegacyDatabase } from './legacyMigration.js';
 import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
@@ -13,14 +14,42 @@ import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
 // already creates the directory and falls back to a temp dir on failure.
 let dbDir = pathManager.getDataDir();
 
+// Test-storage isolation: validate the data directory BEFORE any write probe.
+// In test mode this module must never re-home (probe failure is fatal, not
+// a fallback), never discover legacy sources, and never open through symlinks.
+const storageMode = detectStorageMode();
+
+if (storageMode === 'test') {
+  let dbDirSt = null;
+  try { dbDirSt = fs.lstatSync(dbDir); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (dbDirSt && !dbDirSt.isDirectory()) {
+    throw new Error(
+      '[test-storage] database directory is not a real directory: ' + dbDir +
+      ' (symlink/FIFO/device). A test database must live inside the declared root.'
+    );
+  }
+  if (dbDirSt) {
+    const realBeforeProbe = fs.realpathSync(dbDir);
+    if (realBeforeProbe !== path.resolve(dbDir)) {
+      throw new Error(
+        '[test-storage] database directory is reached through a symlink: ' +
+        dbDir + ' -> ' + realBeforeProbe
+      );
+    }
+  }
+}
+
 // Verify write permissions at the resolved location. If it's read-only for
 // some reason, fall back to a Documents/HOME-relative directory so the app
 // can still boot.
 try {
-  const testFile = path.join(dbDir, '.test');
-  fs.writeFileSync(testFile, 'test');
+  const testFile = path.join(dbDir, '.probe-' + process.pid + '-' + crypto.randomUUID());
+  const probe = fs.openSync(testFile, 'wx', 0o600);
+  fs.closeSync(probe);
   fs.unlinkSync(testFile);
 } catch (error) {
+  if (storageMode === 'test') throw new Error('[test-storage] write probe failed; fallback refused');
   console.error('Error with primary directory:', error);
   if (process.platform === 'darwin' && process.env.HOME) {
     dbDir = path.join(process.env.HOME, 'Documents', 'AGNT_Data');
@@ -38,11 +67,27 @@ try {
 // copy it into place. See legacyMigration.js — this used to be an unguarded
 // copyFileSync that would happily start a 30 GB copy with no free-space
 // check and leave a truncated database behind if it died partway.
-migrateLegacyDatabase({ dbDir });
+if (storageMode !== 'test') {
+  migrateLegacyDatabase({ dbDir });
+} else {
+  console.log('[test-storage] legacy migration discovery skipped (test mode)');
+}
 
 // Database path in user's data directory
 const dbPath = path.join(dbDir, 'agnt.db');
 console.log('Final database path:', dbPath);
+
+// Refuse pre-existing aliases BEFORE the SQLite constructor or its queued writes.
+// This does not eliminate a concurrent path swap: sqlite3 exposes no descriptor
+// binding API here. Use OS confinement for adversarial code and filesystem races.
+if (storageMode === 'test') {
+  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+    try {
+      const st = fs.lstatSync(dbPath + suffix);
+      if (!st.isFile() || st.nlink !== 1) throw new Error('[test-storage] database or sidecar alias refused');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
 
 // Initialize database
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -50,6 +95,8 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('Database initialization error:', err);
   } else {
     console.log('Database successfully initialized at:', dbPath);
+
+
   }
 });
 
@@ -2406,7 +2453,7 @@ async function dbRunWithRetry(fn, maxRetries = 5, baseDelay = 500) {
 // TRUNCATE checkpoint resets the -wal file to zero bytes when no reader
 // blocks it; failures are non-fatal and simply retried on the next cycle.
 if (!skipSchemaInit) {
-  const runWalCheckpoint = () => {
+  const runWalCheckpoint = storageMode === 'test' ? () => {} : () => {
     db.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
       if (err) console.warn('[DB] WAL checkpoint failed (non-fatal):', err.message);
     });
