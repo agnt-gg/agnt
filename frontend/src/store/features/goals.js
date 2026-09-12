@@ -92,6 +92,13 @@ const getters = {
   getGoalTaskProgress: (state) => (goalId) => state.goalTaskProgress[goalId] || null,
 };
 
+function clearInactiveProgress(state, goal) {
+  if (['needs_review','validated','completed','failed','error','stopped','paused','planning','pending'].includes(goal.status)) {
+    const { [goal.id]: obsolete, ...rest } = state.liveIteration;
+    state.liveIteration = rest;
+  }
+}
+
 const mutations = {
   SET_LOADING(state, loading) {
     state.isLoading = loading;
@@ -107,6 +114,7 @@ const mutations = {
 
   SET_GOALS(state, goals) {
     state.goals = goals;
+    goals.forEach(goal => clearInactiveProgress(state, goal));
   },
 
   SET_GOALS_SUMMARY(state, goals) {
@@ -126,7 +134,10 @@ const mutations = {
     const index = state.goals.findIndex((goal) => goal.id === updatedGoal.id);
     if (index !== -1) {
       state.goals.splice(index, 1, { ...state.goals[index], ...updatedGoal });
+    } else if (updatedGoal.status) {
+      state.goals.push(updatedGoal);
     }
+    clearInactiveProgress(state, updatedGoal);
   },
 
   REMOVE_GOAL(state, goalId) {
@@ -1261,6 +1272,8 @@ const actions = {
       if (!response.ok) return;
 
       const status = await response.json();
+      if (status.status) commit('UPDATE_GOAL', { id: goalId, status: status.status,
+        ...(status.loop_status !== undefined ? {loop_status:status.loop_status} : {}) });
       if (!status.allTasks || status.allTasks.length === 0) return;
 
       // Hydrate goalTaskProgress from the API response
