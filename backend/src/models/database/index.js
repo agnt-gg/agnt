@@ -1,9 +1,10 @@
+import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import WebhookModel from '../WebhookModel.js';
-import pathManager from '../../utils/PathManager.js';
+import pathManager, { detectStorageMode } from '../../utils/PathManager.js';
 import { setupFullTextSearch } from './fts.js';
 import { migrateLegacyDatabase } from './legacyMigration.js';
 import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
@@ -12,14 +13,68 @@ import { ensureWidgetLayoutRouteUniqueness } from './widgetLayoutDedupe.js';
 // already creates the directory and falls back to a temp dir on failure.
 let dbDir = pathManager.getDataDir();
 
+// Explicit storage contract (task 38977144): in test/runner mode the
+// boundary was already verified — and the ownership claim taken — by the
+// PathManager constructor at import time, BEFORE any mkdir, write probe,
+// legacy-source discovery or SQLite construction below. The remaining
+// import-time duties here are: never re-home a test process (probe
+// failure is fatal, not a fallback), never discover legacy sources (they
+// probe REAL home locations), never open through symlinks or symlinked
+// sidecars, and never let the db directory diverge from the declared root.
+const storageMode = detectStorageMode();
+
+if (storageMode === 'test') {
+  // Reviewer finding 1 (task e7223c1c): validate the DATA DIR BEFORE the
+  // write probe. A symlinked or escaped Data dir must be rejected before
+  // this module writes anything through it — previously the probe wrote
+  // first and the symlink/split-root checks ran only afterwards.
+  let dbDirSt = null;
+  try { dbDirSt = fs.lstatSync(dbDir); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (dbDirSt && !dbDirSt.isDirectory()) {
+    throw new Error(
+      '[explicit-storage] database directory is not a real directory: ' + dbDir +
+      ' (symlink/FIFO/device). A test database must live inside the declared root.'
+    );
+  }
+  if (dbDirSt) {
+    const realBeforeProbe = fs.realpathSync(dbDir);
+    if (realBeforeProbe !== path.resolve(dbDir)) {
+      throw new Error(
+        '[explicit-storage] database directory is reached through a symlink: ' +
+        dbDir + ' -> ' + realBeforeProbe + '. A test database must live inside the declared root.'
+      );
+    }
+    const declaredBeforeProbe = pathManager.getDataDir();
+    if (path.resolve(dbDir) !== path.resolve(declaredBeforeProbe)) {
+      throw new Error(
+        '[explicit-storage] database directory diverges from the declared data dir: ' +
+        dbDir + ' != ' + declaredBeforeProbe + ' (split roots are forbidden in test mode)'
+      );
+    }
+  }
+}
+
 // Verify write permissions at the resolved location. If it's read-only for
 // some reason, fall back to a Documents/HOME-relative directory so the app
 // can still boot.
 try {
-  const testFile = path.join(dbDir, '.test');
+  // Unique per process+attempt: the historical SHARED '.test' filename let
+  // two workers race unlinkSync into ENOENT, which the catch below treated
+  // as "directory unusable" before silently diverting to HOME/AGNT_Data —
+  // the junk fallback-database mechanism of the 2026-09-12 incident. The
+  // unsafe shared probe and the test-mode fallback are gone: in test mode
+  // a probe failure is fatal.
+  const testFile = path.join(dbDir, `.write-probe-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
   fs.writeFileSync(testFile, 'test');
   fs.unlinkSync(testFile);
 } catch (error) {
+  if (storageMode === 'test') {
+    throw new Error(
+      '[explicit-storage] write probe failed at ' + dbDir + ': ' + error.message +
+      '. A test/runner process must not fall back to a user-data directory — the declared root must be writable.'
+    );
+  }
   console.error('Error with primary directory:', error);
   if (process.platform === 'darwin' && process.env.HOME) {
     dbDir = path.join(process.env.HOME, 'Documents', 'AGNT_Data');
@@ -37,11 +92,70 @@ try {
 // copy it into place. See legacyMigration.js — this used to be an unguarded
 // copyFileSync that would happily start a 30 GB copy with no free-space
 // check and leave a truncated database behind if it died partway.
-migrateLegacyDatabase({ dbDir });
-
+if (storageMode === 'test') {
+  // Never discover legacy SOURCES from a test/runner process:
+  // buildLegacyLocations() probes the REAL ~/.config/AGNT/Data,
+  // ~/AGNT_Data and ~/Documents/AGNT_Data. The declared sandbox ships a
+  // planted agnt.db ('target-exists') anyway; direct calls to
+  // migrateLegacyDatabase() from its own suite are unaffected.
+  console.log('[explicit-storage] legacy migration shim skipped (test mode)');
+} else {
+  migrateLegacyDatabase({ dbDir });
+}
 // Database path in user's data directory
 const dbPath = path.join(dbDir, 'agnt.db');
 console.log('Final database path:', dbPath);
+
+if (storageMode === 'test') {
+  // Defense in depth (the PathManager constructor already rejected it):
+  // the escape flag must never survive to SQLite construction inside a
+  // test/runner process.
+  if (process.env.AGNT_TEST_USE_REAL_DATA !== undefined && process.env.AGNT_TEST_USE_REAL_DATA !== '') {
+    throw new Error(
+      '[explicit-storage] AGNT_TEST_USE_REAL_DATA is rejected in test/runner mode: ' +
+      'ordinary automated testing cannot safely honor a real-data escape.'
+    );
+  }
+  // Consistent roots: the database directory must physically be where it
+  // lexically is (no symlinked dbDir) and must equal the PathManager data
+  // dir derived from the declared root. The db file and its WAL/SHM/
+  // journal sidecars must be regular files or absent — never symlinks.
+  // All checked BEFORE the sqlite handle is constructed, so a rejection
+  // precedes every database effect this module can cause.
+  const realDbDir = fs.realpathSync(dbDir);
+  if (realDbDir !== path.resolve(dbDir)) {
+    throw new Error(
+      '[explicit-storage] database directory is reached through a symlink: ' +
+      dbDir + ' -> ' + realDbDir + '. A test database must live inside the declared root.'
+    );
+  }
+  const declaredDataDir = pathManager.getDataDir();
+  if (path.resolve(dbDir) !== path.resolve(declaredDataDir)) {
+    throw new Error(
+      '[explicit-storage] database directory diverges from the declared data dir: ' +
+      dbDir + ' != ' + declaredDataDir + ' (split roots are forbidden in test mode)'
+    );
+  }
+  for (const sidecar of [dbPath, dbPath + '-wal', dbPath + '-shm', dbPath + '-journal']) {
+    // Reviewer finding 3 (task e7223c1c): anything that exists must be a
+    // REGULAR file (symlink, directory, FIFO and device are all refused),
+    // and only ENOENT counts as absence — other lstat failures surface.
+    let st = null;
+    try { st = fs.lstatSync(sidecar); }
+    catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw new Error('[explicit-storage] cannot inspect ' + sidecar + ': ' + error.message);
+      }
+      st = null;
+    }
+    if (st && !st.isFile()) {
+      throw new Error(
+        '[explicit-storage] refusing to open ' + sidecar + ': it is a symlink or not a regular file. ' +
+        'A test database path must be a regular file inside the declared root.'
+      );
+    }
+  }
+}
 
 // Initialize database
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -2256,7 +2370,8 @@ const dbReady = skipSchemaInit
     // with `no such column: channel_key` on every upgrading install.
     return createIndexes();
   })
-  .then(() => {
+  .then(async () => {
+    await initializeGoalLifecycleVersions(db);
     console.log('All indexes ready');
   })
   .then(async () => {

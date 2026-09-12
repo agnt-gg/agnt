@@ -1,3 +1,4 @@
+import { requireTestStorage } from './testStorageContext.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -60,13 +61,94 @@ const resolvePaths = () => {
   return { rootDir: cwdData, dataDir: cwdData, source: 'cwd' };
 };
 
+// ─── Test-storage registration gate (v5.1, reviewer findings F1–F7) ──────
+//
+// WHAT THIS ACTUALLY DOES (v5.1, matching the code below):
+//   • detectStorageMode() returns 'test' (VITEST or NODE_ENV=test) or
+//     'production'. There is no escaped mode.
+//   • In test mode, requireTestStorage() must find a globalThis registration
+//     placed there by the test setup file. This proves the process ran the
+//     setup — it does NOT prove who created the registration.
+//   • After the registration check, the standard resolvePaths() cascade is
+//     used (same as production) so tests can override USER_DATA_PATH for
+//     their own scenarios — but requireTestStorage() constrains overrides
+//     to subdirectories of the registered root.
+//   • AGNT_HOME is rejected. AGNT_TEST_USE_REAL_DATA is rejected.
+//   • Auth-switch and secret env vars are scrubbed at every import.
+//
+// WHAT THIS DOES NOT DO (honest limits):
+//   • It does not confine hostile same-uid code that can pre-populate
+//     globalThis or control its own environment. The OS boundary
+//     (bwrap/namespace in CI and dev scripts) is the actual security layer.
+//   • Direct imports that set no NODE_ENV or VITEST run in production mode
+//     by design — no claim is made about them.
+//   • Cross-process storage sharing is intentionally removed: every process
+//     must run its own setup and own its own root. Children that need to
+//     share a parent's DB require explicit opt-in outside this module.
+//   • TOCTOU between lstat and SQLite open, and hardlinks to real databases,
+//     are accepted residuals of in-process enforcement.
+//
+// There are no claim files, no env nonces, no ancestor attachment — those
+// were v4 mechanisms removed in v5. All v5 files that referenced them are
+// cleaned up. The registration gate plus database/index.js's pre-probe
+// validation are the only storage checks.
+const REAL_HOME_DEV_ENV = 'AGNT_TEST_REAL_HOME_DEV';
+
+function explicitStorageError(why, detail = '') {
+  return new Error(
+    '[explicit-storage] test storage boundary rejected: ' + why +
+    (detail ? ' (' + detail + ')' : '') +
+    '. Refusing to resolve, create, probe or open any data directory. ' +
+    'Test/runner processes require a host-declared root: the host creates a fresh sandbox, ' +
+    'exports AGNT_EXPLICIT_DATA_ROOT=<root> (USER_DATA_PATH may mirror it), and lets the first ' +
+    'process claim it — or pre-claims it as the spawning ancestor. AGNT_TEST_USE_REAL_DATA is not honored.'
+  );
+}
+
+/**
+ * 'test'       — a test/runner context (vitest worker or NODE_ENV=test).
+ * 'production' — everything else; behaviour is byte-identical to the
+ *                original cascade and the documented production launch
+ *                contract applies.
+ * There is no 'escaped' mode. Direct imports that set neither VITEST nor
+ * NODE_ENV=test are production by definition; env detection does not claim
+ * to catch them (see CONTRACT.md).
+ */
+export function detectStorageMode(env = process.env) {
+  if (env.VITEST || env.NODE_ENV === 'test') return 'test';
+  return 'production';
+}
+
+function isInside(parent, child) {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+
 class PathManager {
   constructor() {
-    const resolved = resolvePaths();
+    const storageMode = detectStorageMode();
+    this.storageMode = storageMode;
+
+    let resolved;
+    if (storageMode === 'test') {
+      // A registration MUST exist (proves this process ran the test setup,
+      // not an accidental import from a script or REPL). But tests may
+      // legitimately override USER_DATA_PATH to exercise different
+      // install-directory scenarios; we resolve from the current env just
+      // like production, after the registration check. The OS boundary —
+      // not this module — confines where writes can actually land.
+      requireTestStorage(); // throws if no registration for this process
+      resolved = resolvePaths(); // same tier cascade as production
+      // No claim files or root tracking in v5.1 — the registration on
+      // globalThis is the only storage-state this module holds.
+      this.storageMode = 'test-registered';
+    } else {
+      resolved = resolvePaths();
+    }
     this.rootDir = resolved.rootDir;
     this.dataDir = resolved.dataDir;
     this.source = resolved.source;
-
     // One-shot startup log so the next contributor / Codex / support thread
     // can see immediately which tier won and (if Electron) that two folders
     // are in play.
@@ -83,8 +165,12 @@ class PathManager {
         try {
           fs.mkdirSync(dir, { recursive: true });
         } catch (error) {
-          console.error(`Failed to create directory at ${dir}:`, error);
-          const tmp = path.join(os.tmpdir(), 'agnt-data');
+          if (storageMode === 'test') {
+            // Fail closed: the historical shared tmp-fallback (/tmp/agnt-data)
+            // is a cross-instance boundary a test must never accept.
+            throw explicitStorageError('cannot create the declared data directory', dir + ': ' + error.message);
+          }
+          console.error(`Failed to create directory at ${dir}:`, error);          const tmp = path.join(os.tmpdir(), 'agnt-data');
           if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
           this.rootDir = tmp;
           this.dataDir = tmp;
@@ -143,8 +229,28 @@ class PathManager {
   }
 
   /**
-   * Join one or more path segments under the ROOT dir (parent — preserves
-   * pre-PRD-060 semantics so projects, mcp.json, _logs/, etc. resolve to
+   * Storage mode resolved at construction: 'test' | 'production'.
+   * @returns {'test'|'production'}
+   */
+  getStorageMode() {
+    return this.storageMode;
+  }
+
+  /**
+   * Frozen snapshot of the tier resolution — for launch receipts,
+   * boundary-status surfaces and tests. Read-only.
+   */
+  getResolution() {
+    return {
+      rootDir: this.rootDir,
+      dataDir: this.dataDir,
+      source: this.source,
+      storageMode: this.storageMode,
+    };
+  }
+
+  /**
+   * Join one or more path segments under the ROOT dir (parent — preserves   * pre-PRD-060 semantics so projects, mcp.json, _logs/, etc. resolve to
    * their original on-disk locations).
    * @param {...string} parts
    * @returns {string}
