@@ -207,10 +207,26 @@ RUN mkdir -p /app/unfirehose \
 COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# This image is a production artefact. The setting also selects the Docker
+# path tier (utils/PathManager.js): with it, generated secrets and the
+# database live under /app/data — the declared volume — and survive a
+# container recreate. Without it they would land in the node user's home
+# inside the container and be lost, taking every encrypted credential along.
+# compose and the documented `docker run` already set this; the image now
+# guarantees it.
+ENV NODE_ENV=production
+
 # Bind all interfaces inside the container. The server defaults to loopback
 # for desktop installs; in a container the network namespace is the isolation
 # boundary and the published port is the explicit opt-in.
 ENV BIND_HOST=0.0.0.0
+
+# A container is a network install, so it verifies session tokens by asking
+# the issuer rather than holding the issuer's signing key. This also makes it
+# a RESTRICTED install: it refuses to start until AGNT_TENANT_OWNER (or
+# AGNT_TENANT_MEMBERS) names who may use it. Set here, not only in compose,
+# so a plain `docker run` is correct too. See backend/src/services/auth/authMode.js.
+ENV AGNT_AUTH_MODE=verify-remote
 # Expose backend port
 EXPOSE 3333
 

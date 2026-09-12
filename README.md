@@ -307,24 +307,23 @@ newgrp docker
 # Create persistent data directories
 mkdir -p ~/.agnt/data ~/.agnt/logs
 
-# Generate production secrets
-export JWT_SECRET=$(openssl rand -base64 32)
-export SESSION_SECRET=$(openssl rand -base64 32)
-export ENCRYPTION_KEY=$(openssl rand -base64 32)
-
-# Run AGNT headlessly on port 3333
+# Run AGNT headlessly on port 3333. AGNT_TENANT_OWNER is the email you sign in
+# to AGNT with: a container is reachable from the network, so it admits only
+# the accounts you name and refuses to start until one is. Secrets are
+# generated on first boot and kept under ~/.agnt/data/secrets — do not set them.
 docker run -d \
   --name agnt \
   --restart unless-stopped \
   -p 3333:3333 \
   -e NODE_ENV=production \
-  -e JWT_SECRET="$JWT_SECRET" \
-  -e SESSION_SECRET="$SESSION_SECRET" \
-  -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+  -e AGNT_TENANT_OWNER=you@example.com \
   -v "$HOME/.agnt/data:/app/data" \
   -v "$HOME/.agnt/logs:/app/logs" \
   ghcr.io/agnt-gg/agnt:latest
 ```
+
+Teammates: add `-e AGNT_TENANT_MEMBERS=a@example.com,b@example.com`. See
+[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for compose, secrets and updates.
 
 Then open:
 
@@ -660,13 +659,12 @@ Optional location overrides:
 # APP_PATH=/app
 ```
 
-Production secrets should be changed.
-
-```env
-JWT_SECRET=your-random-jwt-secret
-SESSION_SECRET=your-random-session-secret
-ENCRYPTION_KEY=your-random-encryption-key
-```
+Secrets are generated per install on first boot and stored under the data
+directory; there is nothing to set. In particular, do **not** put a random
+`JWT_SECRET` in `backend/.env` on a desktop or `npm start` install: that
+install verifies session tokens locally against the issuer's key, so any
+other value rejects every sign-in. A placeholder value such as
+`CHANGE_ME_IN_PRODUCTION` stops the backend from starting at all.
 
 Generate secure values with:
 

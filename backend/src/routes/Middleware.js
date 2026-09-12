@@ -67,8 +67,8 @@ class Middleware {
    * must leave nothing behind — a local users row, or a poisoned single-slot
    * session cache, are both effects a stranger should not be able to cause.
    */
-  refuseNonMember(res, userId, verdict = null) {
-    if (isPermittedUser(userId, verdict)) return false;
+  refuseNonMember(res, userId, verdict = null, email = '') {
+    if (isPermittedUser(userId, verdict, email)) return false;
     console.warn(`[tenant] refused ${userId}: not a member of this instance`);
     res.status(403).json({
       success: false,
@@ -163,7 +163,7 @@ class Middleware {
         const userId = this.extractUserId(decoded);
 
         if (decoded && userId) {
-          if (this.refuseNonMember(res, userId)) return;
+          if (this.refuseNonMember(res, userId, null, decoded.email)) return;
 
           // Sync user to local database (create or update)
           await this.syncRemoteUserToLocal(decoded);
@@ -200,7 +200,7 @@ class Middleware {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userId = this.extractUserId(decoded);
-      if (this.refuseNonMember(res, userId)) return;
+      if (this.refuseNonMember(res, userId, null, decoded.email)) return;
 
       req.user = {
         isAuthenticated: true,
@@ -256,7 +256,7 @@ class Middleware {
           // The same call now also answers whether this person belongs to THIS
           // instance, so the decision is made on the live membership list
           // rather than on whatever was baked into the container at boot.
-          if (this.refuseNonMember(res, userId, remote.tenant)) return;
+          if (this.refuseNonMember(res, userId, remote.tenant, remote.user.email)) return;
 
           await this.syncRemoteUserToLocal({ ...remote.user, id: userId });
 
