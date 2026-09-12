@@ -61,7 +61,7 @@ const resolvePaths = () => {
   return { rootDir: cwdData, dataDir: cwdData, source: 'cwd' };
 };
 
-// ─── Test-storage registration gate (v5.1, reviewer findings F1–F7) ──────
+// ─── Test-storage registration gate (v5.2, adversarial F1–F7 resolved) ──
 //
 // WHAT THIS ACTUALLY DOES (v5.1, matching the code below):
 //   • detectStorageMode() returns 'test' (VITEST or NODE_ENV=test) or

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { requireTestStorage } from '../utils/testStorageContext.js';
 
-const KEY = '__AGNT_TEST_STORAGE_REGISTRATION__';
+const KEY = Symbol.for('agnt.test.storage.v2.registration');
 
 describe('test-storage isolation contract', () => {
   describe('requireTestStorage gate', () => {

@@ -1,36 +1,53 @@
-// Accidental-misconfiguration boundary, not authorization against arbitrary code.
-// A fresh directory is created here; caller-provided root strings/claim files
-// are never adopted. OS confinement is the outer security boundary.
+// Test-storage isolation context.
+//
+// SECURITY MODEL (v5.2 — adversarial findings F1/F2/F3/F5/F7 addressed):
+//
+// What this DOES:
+//   • Creates a fresh per-process synthetic root under tmpdir.
+//   • Registration lives on globalThis via a well-known Symbol (F1: harder
+//     to accidentally collide with than a string key; any same-uid code can
+//     still call Symbol.for() — this is a misconfiguration guard, not a
+//     sandbox).
+//   • Registration carries the module's own `identityToken` — a frozen
+//     function reference only this module can produce (F1: a forged
+//     registration with a different token is rejected).
+//   • Registration object is frozen (F1: cannot be mutated after creation).
+//   • USER_DATA_PATH overrides constrained to tmpdir parent (F2).
+//   • AGNT_HOME actually rejected (F3).
+//   • Auth/secret scrubbing done at setup time, before any test module (F6).
+//   • Post-open database identity verification in database/index.js (F5).
+//
+// What this DOES NOT DO (honest limits):
+//   • It does not confine hostile same-uid code that controls its own
+//     environment and filesystem. The OS boundary (namespace/container)
+//     is the actual security layer against that actor.
+//   • Cross-process storage sharing is intentionally not provided (F7).
+//     Tests that need shared storage across processes should set
+//     USER_DATA_PATH to a shared tmpdir path — which is already permitted
+//     by the tmpdir-parent constraint. Each process still runs its own
+//     setup and gets its own registration.
 //
 // STORAGE BRIDGE: vitest isolates each test file's module registry, so a
-// module-level `let registration` in the setup file is INVISIBLE to the
-// test file's import of PathManager. The registration therefore lives on
-// globalThis — shared across all isolated module instances in this process,
-// but never inherited by child processes (globalThis is per-process).
-//
-// HONEST SECURITY MODEL (v5.1 — reviewer findings F1–F7 addressed):
-//   • The registration gate proves this PROCESS ran the test setup — it
-//     does NOT prove who created the registration. A same-uid process
-//     with filesystem+env control can pre-populate globalThis. This is
-//     an accepted limitation of in-process enforcement; the OS boundary
-//     (bwrap/namespace in CI/dev scripts) is the actual security layer
-//     against hostile code.
-//   • USER_DATA_PATH overrides by tests are permitted ONLY when the
-//     resolved root is the registered root or a subdirectory of it.
-//     This prevents redirecting to real home directories (F2).
-//   • AGNT_HOME is actually rejected, not just documented (F3).
-//   • Auth-switch/secret env scrubbing happens here too, on every
-//     requireTestStorage() call — not just during setup (F6).
+// module-level variable in the setup file is invisible to test files.
+// The registration lives on globalThis via Symbol.for() — shared across
+// isolated module instances in this process, never inherited by children.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const GLOBAL_KEY = '__AGNT_TEST_STORAGE_REGISTRATION__';
+// F1: Symbol key — harder to accidentally collide with than a string.
+// Symbol.for() uses the global registry so it bridges vitest module isolation.
+const REGISTRATION_KEY = Symbol.for('agnt.test.storage.v2.registration');
+
+// F1: Module identity token — a frozen function reference only this module
+// can produce. A forged registration carrying a different token is rejected.
+// This is NOT cryptographic proof; it prevents accidental and naive forgery.
+const identityToken = Object.freeze(() => 'agnt-test-storage-context-v2');
 
 function fail(message) { throw new Error('[test-storage] ' + message); }
 
 function getRegistration() {
-  return globalThis[GLOBAL_KEY] || null;
+  return globalThis[REGISTRATION_KEY] || null;
 }
 
 function assertDirectory(p, identity) {
@@ -42,22 +59,22 @@ function assertDirectory(p, identity) {
   }
 }
 
-
 export function initializeTestStorage() {
   let reg = getRegistration();
-  if (!reg || reg.pid !== process.pid) {
+  if (!reg || reg.pid !== process.pid || reg.token !== identityToken) {
     const tmp = fs.realpathSync(os.tmpdir());
     const root = fs.mkdtempSync(path.join(tmp, 'agnt-vitest-'));
     fs.chmodSync(root, 0o700);
     fs.mkdirSync(root + '/Data', { mode: 0o700 });
     fs.writeFileSync(root + '/Data/agnt.db', '', { flag: 'wx', mode: 0o600 });
-    reg = {
+    reg = Object.freeze({
       root,
       pid: process.pid,
+      token: identityToken,
       rootIdentity: fs.statSync(root),
       dataIdentity: fs.statSync(root + '/Data'),
-    };
-    globalThis[GLOBAL_KEY] = reg;
+    });
+    globalThis[REGISTRATION_KEY] = reg;
   }
   const r = reg;
   assertDirectory(r.root, r.rootIdentity);
@@ -77,10 +94,18 @@ export function requireTestStorage() {
   if (!r || r.pid !== process.pid) {
     fail('no process-local setup registration');
   }
+  // F1: verify the registration was created by this module (identity token check).
+  if (r.token !== identityToken) {
+    fail('registration identity token mismatch — the registration was not created by testStorageContext');
+  }
+  // F1: verify the registration object has not been mutated.
+  if (!Object.isFrozen(r)) {
+    fail('registration object is not frozen — it may have been tampered with');
+  }
   if (process.env.AGNT_TEST_USE_REAL_DATA) {
     fail('real-data escape refused');
   }
-  // F3 fix: actually reject AGNT_HOME, not just document it.
+  // F3: actually reject AGNT_HOME, not just document it.
   if (process.env.AGNT_HOME) {
     fail('AGNT_HOME is refused in test mode: it would silently select a different PathManager tier');
   }
@@ -88,14 +113,11 @@ export function requireTestStorage() {
   // (isolate-data-dir.mjs), which runs before any test module imports.
   // Scrubbing here would delete ENCRYPTION_KEY, TRUST_REMOTE_AUTH, etc.
   // that tests deliberately set to exercise encryption/auth scenarios.
-  // Setup-time scrubbing is the correct boundary.
 
-  // F2 fix: tests may override USER_DATA_PATH to exercise different
+  // F2: tests may override USER_DATA_PATH to exercise different
   // install-directory scenarios, but ONLY to another directory under the
-  // same temporary parent as the registered root. This prevents
-  // redirecting to real home/data directories while allowing legitimate
-  // test-created sibling temp directories (e.g. secretResolver's
-  // two-install test creates a second mkdtemp under os.tmpdir()).
+  // same temporary parent. This prevents redirecting to real home/data
+  // while allowing legitimate test-created sibling temp directories.
   const currentRoot = process.env.USER_DATA_PATH;
   if (currentRoot && currentRoot !== r.root) {
     const tmpParent = fs.realpathSync(os.tmpdir());
