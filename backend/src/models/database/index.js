@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'node:crypto';
 import WebhookModel from '../WebhookModel.js';
 import pathManager, { detectStorageMode } from '../../utils/PathManager.js';
 import { setupFullTextSearch } from './fts.js';
@@ -42,10 +43,12 @@ if (storageMode === 'test') {
 // some reason, fall back to a Documents/HOME-relative directory so the app
 // can still boot.
 try {
-  const testFile = path.join(dbDir, '.test');
-  fs.writeFileSync(testFile, 'test');
+  const testFile = path.join(dbDir, '.probe-' + process.pid + '-' + crypto.randomUUID());
+  const probe = fs.openSync(testFile, 'wx', 0o600);
+  fs.closeSync(probe);
   fs.unlinkSync(testFile);
 } catch (error) {
+  if (storageMode === 'test') throw new Error('[test-storage] write probe failed; fallback refused');
   console.error('Error with primary directory:', error);
   if (process.platform === 'darwin' && process.env.HOME) {
     dbDir = path.join(process.env.HOME, 'Documents', 'AGNT_Data');
@@ -73,6 +76,18 @@ if (storageMode !== 'test') {
 const dbPath = path.join(dbDir, 'agnt.db');
 console.log('Final database path:', dbPath);
 
+// Refuse pre-existing aliases BEFORE the SQLite constructor or its queued writes.
+// This does not eliminate a concurrent path swap: sqlite3 exposes no descriptor
+// binding API here. Use OS confinement for adversarial code and filesystem races.
+if (storageMode === 'test') {
+  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+    try {
+      const st = fs.lstatSync(dbPath + suffix);
+      if (!st.isFile() || st.nlink !== 1) throw new Error('[test-storage] database or sidecar alias refused');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
+
 // Initialize database
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
@@ -80,55 +95,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
   } else {
     console.log('Database successfully initialized at:', dbPath);
 
-// Test-storage isolation (F5): verify database and sidecars after open.
-// Post-open fstat catches TOCTOU between pre-open lstat and SQLite open.
-// Hardlink check (st_nlink) catches databases aliased to real data.
-if (storageMode === 'test') {
-  // F5: post-open identity verification — the opened file must match the
-  // pre-open lstat (dev/ino). This narrows the TOCTOU window.
-  try {
-    const preOpen = fs.lstatSync(dbPath);
-    const dbFd = fs.openSync(dbPath, 'r');
-    const postOpen = fs.fstatSync(dbFd);
-    fs.closeSync(dbFd);
-    if (preOpen.dev !== postOpen.dev || preOpen.ino !== postOpen.ino) {
-      throw new Error(
-        '[test-storage] database file identity changed between lstat and open: ' + dbPath +
-        ' (possible TOCTOU swap). Refusing to proceed.'
-      );
-    }
-    // F5: reject hardlinked databases — st_nlink > 1 means another name
-    // (possibly a real data directory) points at the same inode.
-    if (postOpen.nlink > 1) {
-      throw new Error(
-        '[test-storage] database has ' + postOpen.nlink + ' hard links: ' + dbPath +
-        ' — a test database must not be aliased to a real data file.'
-      );
-    }
-  } catch (e) {
-    if (e.code !== 'ENOENT') throw e;
-  }
 
-  // Sidecar files must be regular files (not symlinks/devices).
-  for (const suffix of ['-wal', '-shm', '-journal']) {
-    const sidecarPath = dbPath + suffix;
-    try {
-      const st = fs.lstatSync(sidecarPath);
-      if (!st.isFile()) {
-        throw new Error(
-          '[test-storage] database sidecar is not a regular file: ' + sidecarPath +
-          ' (symlink/FIFO/device). A test database must not use aliased sidecars.'
-        );
-      }
-      // F5: sidecars must also not be hardlinked.
-      if (st.nlink > 1) {
-        throw new Error(
-          '[test-storage] database sidecar has ' + st.nlink + ' hard links: ' + sidecarPath
-        );
-      }
-    } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  }
-}
   }
 });
 
