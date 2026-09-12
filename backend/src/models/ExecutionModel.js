@@ -66,8 +66,14 @@ class ExecutionModel {
     return new Promise((resolve, reject) => {
       const safeStatus = status || 'stopped';
 
+      // F2/F3: terminal rows finalize once. Once an execution reached a
+      // terminal status, a different-status write (e.g. a late deactivate
+      // stamping 'stopped' over 'completed') matches zero rows and changes
+      // nothing; same-status writes are also refused, and non-terminal rows
+      // (started/running) transition freely. Single-statement guard: no
+      // read-then-write race window.
       db.run(
-        'UPDATE workflow_executions SET status = ?, log = ?, end_time = ?, credits_used = ? WHERE id = ?',
+        'UPDATE workflow_executions SET status = ?, log = ?, end_time = ?, credits_used = ? WHERE id = ? AND status NOT IN (\'completed\', \'error\', \'stopped\', \'insufficient-credits\')',
         [safeStatus, log, new Date().toISOString(), creditsUsed, id],
         function (err) {
           if (err) reject(err);
