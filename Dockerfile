@@ -41,6 +41,15 @@ COPY frontend/ ./
 # .spec.js fails the build when an alias target is not copied into this stage.
 COPY backend/src/services/ai/descriptor /app/backend/src/services/ai/descriptor
 
+# The same reach, without an alias: plain relative imports from frontend/src
+# into backend/src/utils. Both are dependency-free helpers shared so the two
+# sides frame the same bytes the same way. Each broke the container build the
+# day it landed, because nothing built the container. The spec above now
+# derives this list from the imports themselves — add a file here when it
+# tells you to, one file at a time, never backend/ wholesale.
+COPY backend/src/utils/compactedTranscript.js /app/backend/src/utils/compactedTranscript.js
+COPY backend/src/utils/artifactPreviewUrls.js /app/backend/src/utils/artifactPreviewUrls.js
+
 # Build frontend
 RUN npm run build
 
