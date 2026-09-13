@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import { aliases } from './build/aliases.js';
 import { preserveHashedAssets } from './build/assetRetention.js';
 import { verifyDeps } from './build/verifyDeps.js';
+import { bundleMeasurement } from './build/bundleMeasurement.js';
 
 // Fail here, loudly and self-namingly, if a concurrent npm run pruned the
 // shared node_modules — instead of dying mid-build on a transitive package
@@ -44,6 +45,7 @@ export default defineConfig({
     // instead of deleting them the moment they stop being current. Required by
     // emptyOutDir:false below — see build/assetRetention.js for why.
     preserveHashedAssets(),
+    bundleMeasurement(),
   ],
   // Defined once in build/aliases.js and shared with vitest.config.js — see
   // that file for why `@llm` points into backend/src and why that costs

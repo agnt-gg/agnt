@@ -1,0 +1,18 @@
+{
+  "initialRawBytes": {
+    "absolute": 0,
+    "relative": 0
+  },
+  "initialGzipBytes": {
+    "absolute": 0,
+    "relative": 0
+  },
+  "currentRawBytes": {
+    "absolute": 0,
+    "relative": 0
+  },
+  "currentGzipBytes": {
+    "absolute": 0,
+    "relative": 0
+  }
+}
