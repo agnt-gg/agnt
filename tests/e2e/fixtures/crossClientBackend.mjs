@@ -61,6 +61,14 @@ fs.mkdirSync(dataDir, { recursive: true });
 // should inherit an orphaned database — which would copy a real one in.
 fs.writeFileSync(path.join(dataDir, 'agnt.db'), '');
 
+// PR145 mode-3 production boot (contract §3.C): this process IS the child —
+// a synthetic-store production boot inside a test worker's process tree.
+// Storage is selected by the production tier-3 override set here BEFORE any
+// backend import; test markers from the spawning worker are removed so the
+// resolution is deterministic production-on-synthetic, never an ambient
+// test-mode inversion.
+process.env.NODE_ENV = 'development';
+delete process.env.VITEST;
 process.env.AGNT_HOME = TMP;
 delete process.env.USER_DATA_PATH;
 delete process.env.DOCKER_CONTAINER;

@@ -32,6 +32,10 @@ const __dirname = path.dirname(__filename);
  *                      rootDir = dataDir = ~/.agnt/data
  *   5. cwd fallback  — CI / weird envs only
  *                      rootDir = dataDir = cwd/data
+ *
+ * TEST MODE (VITEST / NODE_ENV=test) uses NONE of these tiers: storage is
+ * resolved exclusively from the admitted storage context (D1) — see the
+ * registration gate below and backend/src/utils/testStorageContext.js.
  */
 const resolvePaths = () => {
   if (
@@ -61,20 +65,26 @@ const resolvePaths = () => {
   return { rootDir: cwdData, dataDir: cwdData, source: 'cwd' };
 };
 
-// ─── Test-storage registration gate (v5.2, adversarial F1–F7 resolved) ──
+// ─── Test-storage resolution gate (v6.0, PR145 A1 D1) ─────────────────────
 //
-// WHAT THIS ACTUALLY DOES (v5.1, matching the code below):
+// WHAT THIS ACTUALLY DOES (v6.0, matching the code below):
 //   • detectStorageMode() returns 'test' (VITEST or NODE_ENV=test) or
 //     'production'. There is no escaped mode.
-//   • In test mode, requireTestStorage() must find a globalThis registration
-//     placed there by the test setup file. This proves the process ran the
-//     setup — it does NOT prove who created the registration.
-//   • After the registration check, the standard resolvePaths() cascade is
-//     used (same as production) so tests can override USER_DATA_PATH for
-//     their own scenarios — but requireTestStorage() constrains overrides
-//     to subdirectories of the registered root.
-//   • AGNT_HOME is rejected. AGNT_TEST_USE_REAL_DATA is rejected.
-//   • Auth-switch and secret env vars are scrubbed at every import.
+//   • In TEST mode this module reads NO environment variable at all: the
+//     root comes exclusively from the validated storage context
+//     (requireTestStorage() → rootDir = ctx.root, dataDir = ctx.root/Data).
+//     USER_DATA_PATH / AGNT_HOME / TMPDIR / HOME mutations after setup are
+//     inert to resolution (S3/R04). The explicit override API is
+//     admitTestRoot() in testStorageContext.js — never an env var.
+//   • Validation strictly precedes creation: requireTestStorage() validates
+//     the registration (structural shape, pid, frozen admitted-parent
+//     anchor, ancestor walk — every component lstat'd as a plain directory,
+//     not a symlink, realpath === lexical — and root dev/ino identity)
+//     BEFORE this constructor runs any mkdir; only then are missing
+//     interior directories created.
+//   • Production behaviour is byte-identical to the original cascade: the
+//     same five tiers, the same tmp-fallback, the same logs. Nothing in
+//     the production branch reads the storage context.
 //
 // WHAT THIS DOES NOT DO (honest limits):
 //   • It does not confine hostile same-uid code that can pre-populate
@@ -82,26 +92,27 @@ const resolvePaths = () => {
 //     (bwrap/namespace in CI and dev scripts) is the actual security layer.
 //   • Direct imports that set no NODE_ENV or VITEST run in production mode
 //     by design — no claim is made about them.
-//   • Cross-process storage sharing is intentionally removed: every process
-//     must run its own setup and own its own root. Children that need to
-//     share a parent's DB require explicit opt-in outside this module.
-//   • TOCTOU between lstat and SQLite open, and hardlinks to real databases,
-//     are accepted residuals of in-process enforcement.
+//   • Cross-process storage sharing is intentionally not provided here:
+//     every process runs its own setup and owns its own root (the explicit
+//     shared-store child contract is Stage C).
+//   • TOCTOU between validation and the SQLite open remains a documented
+//     trusted-mode residual: database/index.js revalidates the dbDir
+//     identity after its write probe (D5), and enforced-mode containment
+//     is Stage D. Race-safety is never claimed for trusted mode.
 //
-// There are no claim files, no env nonces, no ancestor attachment — those
-// were v4 mechanisms removed in v5. All v5 files that referenced them are
-// cleaned up. The registration gate plus database/index.js's pre-probe
-// validation are the only storage checks.
-const REAL_HOME_DEV_ENV = 'AGNT_TEST_REAL_HOME_DEV';
+// The dead REAL_HOME_DEV_ENV constant (written in v4, never read anywhere)
+// is deleted (D13); so is the AGNT_EXPLICIT_DATA_ROOT guidance from the
+// error text — the override API it described never existed.
 
 function explicitStorageError(why, detail = '') {
   return new Error(
     '[explicit-storage] test storage boundary rejected: ' + why +
     (detail ? ' (' + detail + ')' : '') +
     '. Refusing to resolve, create, probe or open any data directory. ' +
-    'Test/runner processes require a host-declared root: the host creates a fresh sandbox, ' +
-    'exports AGNT_EXPLICIT_DATA_ROOT=<root> (USER_DATA_PATH may mirror it), and lets the first ' +
-    'process claim it — or pre-claims it as the spawning ancestor. AGNT_TEST_USE_REAL_DATA is not honored.'
+    'Test/runner processes require an admitted storage context: the trusted setup ' +
+    '(tests/setup/isolate-data-dir.mjs) calls initializeTestStorage(), and a fixture ' +
+    'overrides the ACTIVE root only via admitTestRoot() from testStorageContext.js. ' +
+    'AGNT_TEST_USE_REAL_DATA is not honored.'
   );
 }
 
@@ -132,16 +143,21 @@ class PathManager {
 
     let resolved;
     if (storageMode === 'test') {
-      // A registration MUST exist (proves this process ran the test setup,
-      // not an accidental import from a script or REPL). But tests may
-      // legitimately override USER_DATA_PATH to exercise different
-      // install-directory scenarios; we resolve from the current env just
-      // like production, after the registration check. The OS boundary —
-      // not this module — confines where writes can actually land.
-      requireTestStorage(); // throws if no registration for this process
-      resolved = resolvePaths(); // same tier cascade as production
-      // No claim files or root tracking in v5.1 — the registration on
-      // globalThis is the only storage-state this module holds.
+      // D1 (v6.0): test mode resolves ONLY from the validated storage
+      // context — ZERO environment reads. requireTestStorage() throws a
+      // typed error unless this process has a valid admitted registration
+      // (it also refuses the AGNT_HOME / AGNT_TEST_USE_REAL_DATA
+      // misconfiguration signals), and its validation — structural shape,
+      // pid, frozen admitted-parent anchor, ancestor walk (each component
+      // lstat'd as a plain directory, not a symlink, realpath === lexical)
+      // and root dev/ino identity — runs BEFORE the mkdir loop below:
+      // validation strictly precedes any creating effect.
+      const admitted = requireTestStorage();
+      resolved = {
+        rootDir: admitted.root,
+        dataDir: path.join(admitted.root, 'Data'),
+        source: 'test-context',
+      };
       this.storageMode = 'test-registered';
     } else {
       resolved = resolvePaths();

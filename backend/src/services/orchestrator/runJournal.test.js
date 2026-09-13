@@ -21,6 +21,7 @@ import fsp from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { admitTestRoot, getStorageContext } from '../../utils/testStorageContext.js';
 
 vi.mock('../../utils/realtimeSync.js', () => ({
   broadcastToUser: () => {},
@@ -34,6 +35,7 @@ let recovery;
 let activeRuns;
 let TMP;
 const savedEnv = {};
+let setupRoot; // PR145 P10: restored in afterAll for the next file in this fork
 
 const USER = 'user-journal-1';
 
@@ -76,11 +78,16 @@ beforeAll(async () => {
   for (const k of ['AGNT_HOME', 'USER_DATA_PATH', 'DOCKER_CONTAINER']) savedEnv[k] = process.env[k];
   delete process.env.USER_DATA_PATH;
   delete process.env.DOCKER_CONTAINER;
-  process.env.AGNT_HOME = TMP;
 
-  const dataDir = path.join(TMP, '.agnt', 'data');
-  await fsp.mkdir(dataDir, { recursive: true });
-  await fsp.writeFile(path.join(dataDir, 'agnt.db'), '');
+  // PR145 A1/P10 migration (D1 + R-1): test-mode storage resolution reads
+  // ONLY the admitted storage context — the env dance can no longer select
+  // storage, and a stray AGNT_HOME is a loud tripwire. The private root is
+  // admitted explicitly below and restored in afterAll so the next file in
+  // this vitest fork still finds a live active root. No pre-seeded agnt.db:
+  // admission performs no creating effects (D4) and the test-mode boot skips
+  // legacy-migration discovery entirely.
+  setupRoot = getStorageContext().root;
+  admitTestRoot(TMP);
 
   const dbMod = await import('../../models/database/index.js');
   db = dbMod.default;
@@ -102,6 +109,8 @@ afterAll(async () => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  // PR145 P10: restore the setup admission before deleting this file's root.
+  admitTestRoot(setupRoot);
   await fsp.rm(TMP, { recursive: true, force: true }).catch(() => {});
 });
 
@@ -154,7 +163,7 @@ describe('writing the journal', () => {
   it('leaves no temp files behind — a half-written journal must never be recovered', async () => {
     runJournal.flushAllSync([makeRun('conv-atomic', streamingEvents())]);
 
-    const dir = path.join(TMP, '.agnt', 'data', 'run-journal');
+    const dir = path.join(TMP, 'Data', 'run-journal');
     expect(fs.readdirSync(dir).filter((f) => f.includes('.tmp'))).toEqual([]);
   });
 
@@ -334,7 +343,7 @@ describe('recovering at boot', () => {
   });
 
   it('discards an unreadable journal instead of failing every future boot', async () => {
-    const dir = path.join(TMP, '.agnt', 'data', 'run-journal');
+    const dir = path.join(TMP, 'Data', 'run-journal');
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, 'corrupt-abcdef12.json'), '{ this is not json');
 

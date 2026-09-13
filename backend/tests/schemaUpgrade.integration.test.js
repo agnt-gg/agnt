@@ -24,12 +24,18 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import sqlite3 from 'sqlite3';
+import { admitTestRoot, getStorageContext } from '../src/utils/testStorageContext.js';
 
 // Isolate every AGNT path BEFORE the database module is imported. These are
 // read at module-evaluation time, so this must happen at file scope.
 const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-schema-upgrade-'));
-process.env.AGNT_HOME = testRoot;
-process.env.USER_DATA_PATH = testRoot;
+// PR145 A1/P10 (D1): test-mode resolution reads ONLY the admitted storage
+// context — AGNT_HOME/USER_DATA_PATH cannot select storage here (AGNT_HOME is
+// a loud tripwire). The synthetic legacy-schema root is admitted explicitly;
+// layout note: this file already builds its db under testRoot/Data, which
+// matches the test-context dataDir.
+const setupRoot = getStorageContext().root;
+admitTestRoot(testRoot);
 process.env.APPDATA = testRoot;
 process.env.LOCALAPPDATA = testRoot;
 process.env.AGNT_DISABLE_EXTERNAL_POLLING = 'true';
@@ -111,6 +117,8 @@ describe('booting a pre-migration database', () => {
   afterAll(() => {
     process.removeListener('uncaughtException', onUncaught);
     try {
+    // PR145 P10: restore the setup admission before removing the synthetic root.
+    admitTestRoot(setupRoot);
       fs.rmSync(testRoot, { recursive: true, force: true });
     } catch {
       // Windows keeps sqlite handles until process teardown; harmless.

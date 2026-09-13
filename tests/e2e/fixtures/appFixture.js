@@ -58,15 +58,26 @@ async function startBackend(port) {
   fs.mkdirSync(path.join(tmp, '.agnt', 'data'), { recursive: true });
   // A zero-byte agnt.db disarms the legacy-migration shim, which would
   // otherwise treat this as a fresh install and copy a real database in.
+  // (Kept: this child runs a REAL production boot, where legacy discovery is
+  // part of the documented behaviour being exercised — PR145 mode 3.)
   fs.writeFileSync(path.join(tmp, '.agnt', 'data', 'agnt.db'), '');
+  // Synthetic HOME/TMPDIR: the child gets no real-home mounts at all.
+  fs.mkdirSync(path.join(tmp, 'tmp'), { recursive: true });
 
   const log = [];
   const proc = spawn('node', [path.join(REPO, 'backend', 'server.js')], {
     cwd: REPO,
+    // PR145 mode-3 production boot (contract §3.C): the child runs the REAL
+    // production startup against SYNTHETIC storage. Its environment is
+    // CONSTRUCTED, not inherited: no ambient worker state, test markers,
+    // mirrors or credentials can reach it, and the synthetic store is the
+    // only writable home it has. AGNT_HOME is the production tier-3 selector;
+    // USER_DATA_PATH stays absent so the Electron tier cannot shadow it.
     env: {
-      ...process.env,
+      PATH: process.env.PATH,
+      HOME: tmp,
+      TMPDIR: path.join(tmp, 'tmp'),
       AGNT_HOME: tmp,
-      USER_DATA_PATH: '',
       PORT: String(port),
       NODE_ENV: 'development',
       JWT_SECRET: TEST_JWT_SECRET,

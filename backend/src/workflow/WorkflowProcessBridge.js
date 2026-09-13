@@ -1,6 +1,11 @@
 import { fork } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+// PR145 Stage C (F7-A): explicit shared-store child contract — test-mode
+// fork children cannot inherit this process's storage registration (it is
+// process-local by design), so the bridge hands them the shared synthetic
+// store through a validated descriptor + preload instead of ambient env.
+import { sharedStoreChildEnv } from '../utils/syntheticChild.mjs';
 import {
   subscribe as subscribeSessionToken,
   getSessionToken,
@@ -128,17 +133,32 @@ class WorkflowProcessBridge {
       // That field is reassigned by restart(); a handler that re-reads it later
       // acts on whatever process happens to be current at fire time, which is
       // how the force-kill timer used to SIGKILL its own replacement.
-      const child = fork(workflowProcessPath, [], {
+      // The fork env below is the legacy production contract. In TEST mode
+      // the child additionally adopts the parent's shared synthetic store via
+      // an explicit descriptor (validated bookkeeping + ppid lease — never an
+      // env-selected tier): the preload runs BEFORE WorkflowProcess.js's
+      // import of the database module, which is what used to kill test-mode
+      // children (F7-A: registration is process-local). The production branch
+      // is unchanged — same keys, same values, no descriptor, no preload.
+      const isTestMode = process.env.VITEST || process.env.NODE_ENV === 'test';
+      const childEnv = {
+        ...process.env,
+        IS_WORKFLOW_PROCESS: 'true',
+        // PRD-084-R2 §0.2: schema is fully initialized by the parent
+        // before spawn() is called (server.js awaits dbReady), so the
+        // child skips createTables/migrations/FTS setup entirely.
+        AGNT_SKIP_DB_INIT: '1',
+      };
+      const forkOpts = {
         stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-        env: {
-          ...process.env,
-          IS_WORKFLOW_PROCESS: 'true',
-          // PRD-084-R2 §0.2: schema is fully initialized by the parent
-          // before spawn() is called (server.js awaits dbReady), so the
-          // child skips createTables/migrations/FTS setup entirely.
-          AGNT_SKIP_DB_INIT: '1',
-        },
-      });
+        env: childEnv,
+      };
+      if (isTestMode) {
+        Object.assign(childEnv, sharedStoreChildEnv());
+        forkOpts.execArgv = [...(forkOpts.execArgv || process.execArgv),
+          '--import', pathToFileURL(path.join(__dirname, '../utils/syntheticChild.mjs')).href];
+      }
+      const child = fork(workflowProcessPath, [], forkOpts);
       this.workflowProcess = child;
 
       // Handle messages from workflow process
