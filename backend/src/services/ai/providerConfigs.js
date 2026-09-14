@@ -94,7 +94,7 @@ const PROVIDER_CONFIGS = [
       imageGen: {
         models: ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-2'],
         operations: ['generate', 'edit'],
-        defaultModel: 'gpt-image-1',
+        defaultModel: 'latest', // AGNT execution-time policy, never an upstream ID
         supportedSizes: {
           'gpt-image-1': ['1024x1024', '1536x1024', '1024x1536', 'auto'],
           'gpt-image-1-mini': ['1024x1024', '1536x1024', '1024x1536', 'auto'],

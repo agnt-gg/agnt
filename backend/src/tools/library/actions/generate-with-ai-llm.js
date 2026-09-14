@@ -379,7 +379,7 @@ class GenerateWithAiLlm extends BaseAction {
       }
 
       // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
-      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
+      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId, signal: workflowEngine?.signal || workflowEngine?.abortSignal };
 
       // Route based on mode
       const mode = params.mode || 'Text Generation';
@@ -414,7 +414,7 @@ class GenerateWithAiLlm extends BaseAction {
         origin: 'workflow_node',
         originId: workflowEngine?.currentExecutionId || null,
         provider: normalizedProvider,
-        model: params.model || response?.model || 'unknown',
+        model: response?.imageMetadata?.resolvedModel || params.model || response?.model || 'unknown',
         usage: {
           inputTokens: response?.inputTokens || 0,
           outputTokens: response?.outputTokens || 0,
@@ -932,11 +932,27 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateImageWithOpenAI(params) {
+    const checkCancelled = () => { if (params.signal?.aborted) throw new Error('Image request cancelled.'); };
+    checkCancelled();
     const openai = new OpenAI({ apiKey: params.apiKey });
     const operation = params.imageOperation || 'Generate';
-    // Registry default, not a literal. 'dall-e-3' no longer exists on the
-    // account — verified live 2026-08-11, it returns 400 "does not exist".
-    const model = params.model || imageDefaultModel('openai');
+    const selection = await ProviderRegistry.resolveOpenAiImageSelection({
+      model: params.model == null || params.model === '' ? imageDefaultModel('openai') : params.model,
+      operation,
+      signal: params.signal,
+      listModels: (options) => openai.models.list(options),
+    });
+    const model = selection.resolvedModel;
+    checkCancelled();
+    const requestOptions = { maxRetries: 0, signal: params.signal };
+    const render = {};
+    if (params.imageStyle && model !== 'dall-e-3') throw new Error('Image style is supported only by DALL-E 3; it was not discarded.');
+    if (params.imageQuality) {
+      const qualities = model === 'dall-e-3' ? ['standard', 'hd']
+        : model.startsWith('gpt-image-') ? ['auto','low','medium','high', ...(/^gpt-image-2\.5(?:-|$)/.test(model) ? ['xhigh','max'] : [])] : [];
+      if (!qualities.includes(params.imageQuality)) throw new Error('Unsupported image quality for this model.');
+      render.quality = params.imageQuality;
+    }
 
     let response;
 
@@ -949,6 +965,7 @@ class GenerateWithAiLlm extends BaseAction {
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
           ...openAiImageFormat(model, params.responseFormat),
+          ...render,
         };
 
         // DALL-E 3 took quality/style in its own vocabulary ('standard'|'hd',
@@ -959,7 +976,8 @@ class GenerateWithAiLlm extends BaseAction {
           if (params.imageStyle) requestParams.style = params.imageStyle;
         }
 
-        response = await openai.images.generate(requestParams);
+        checkCancelled();
+        response = await openai.images.generate(requestParams, requestOptions);
       } else if (operation === 'Edit') {
         // Image editing (requires reference image)
         if (!params.referenceImage) {
@@ -973,16 +991,17 @@ class GenerateWithAiLlm extends BaseAction {
         // Convert base64 to RGBA PNG file for OpenAI API
         const imageFile = await this.base64ToFile(params.referenceImage, 'image.png');
 
-        console.log('OpenAI Edit - Using prompt:', params.imagePrompt);
+        checkCancelled();
 
         response = await openai.images.edit({
-          model: model === 'dall-e-3' ? 'dall-e-2' : model, // DALL-E 3 doesn't support edits
+          model, // Unsupported model/operation combinations fail before dispatch
           image: imageFile,
+          ...render,
           prompt: params.imagePrompt, // This is the edit instruction
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
           ...openAiImageFormat(model, params.responseFormat),
-        });
+        }, requestOptions);
       } else if (operation === 'Variation') {
         // Image variation (DALL-E 2 only)
         if (!params.referenceImage) {
@@ -992,15 +1011,17 @@ class GenerateWithAiLlm extends BaseAction {
         // Convert base64 to RGBA PNG file for OpenAI API
         const imageFile = await this.base64ToFile(params.referenceImage, 'image.png');
 
+        checkCancelled();
         response = await openai.images.createVariation({
-          model: 'dall-e-2', // Only DALL-E 2 supports variations
+          model, // Resolver requires an explicit DALL-E 2 pin for Variation
           image: imageFile,
           n: Number(params.numberOfImages) || 1,
           size: params.imageSize || '1024x1024',
           response_format: params.responseFormat || 'b64_json',
-        });
+        }, requestOptions);
       }
 
+      checkCancelled();
       // Format images with proper data URL prefix
       const images = response.data.map((img) => {
         if (img.b64_json) {
@@ -1013,6 +1034,12 @@ class GenerateWithAiLlm extends BaseAction {
       return {
         generatedImages: images,
         imageMetadata: {
+          ...selection,
+          requestedQuality: params.imageQuality ?? null,
+          requestedStyle: params.imageStyle ?? null,
+          returnedQuality: response.quality ?? null,
+          returnedStyle: response.style ?? null,
+          returnedModel: typeof response.model === 'string' ? response.model : null,
           model: model,
           operation: operation,
           size: params.imageSize || '1024x1024',
