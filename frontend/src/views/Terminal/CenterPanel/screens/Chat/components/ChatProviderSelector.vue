@@ -89,6 +89,8 @@
         </div>
 
         <!-- Connection Status -->
+        <CodexSpeedControl :provider="selectedProvider" />
+
         <div v-if="selectedProvider" class="connection-status">
           <span class="status-indicator" :class="{ connected: isProviderConnected }"></span>
           <span class="status-text">
@@ -133,6 +135,9 @@
           </div>
         </div>
         </template>
+
+        <!-- Keep the Codex preference visible when routing can choose Codex. -->
+        <CodexSpeedControl v-if="activeMode !== 'pinned'" provider="openai-codex" />
 
         <!--
           MODE — the tri-state that was missing, and the last thing in the
@@ -182,6 +187,7 @@ import CustomProviderDialog from '../../Settings/components/ProviderSelector/Cus
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
+import CodexSpeedControl from '@/components/common/CodexSpeedControl.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
@@ -203,6 +209,7 @@ export default {
     Tooltip,
     RefreshModelsButton,
     ReasoningControl,
+    CodexSpeedControl,
     SimpleModal,
   },
   props: {

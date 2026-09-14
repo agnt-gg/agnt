@@ -987,6 +987,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // The factory passes options through without a provider key, and this
     // class serves exactly one provider.
     this.provider = 'openai-codex';
+    this.codexPriority = options.codexPriority === true || options.codexPriority === 'true';
     // Codex reasoning models — match by prefix so new models work automatically
     this.reasoningModels = new Set();
     // The ChatGPT backend hiccups (transient 5xx with the generic
@@ -1331,6 +1332,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       stream: true, // ChatGPT backend REQUIRES streaming
       include: ['reasoning.encrypted_content'],
     };
+
+    // Opt in only; omitting the tier preserves the backend's existing default.
+    if (this.codexPriority) params.service_tier = 'priority';
 
     // Codex backend rejects requests without reasoning.effort for gpt-5.x-codex
     // models with a 400 (no body). When the user's reasoningValue is 'default'
