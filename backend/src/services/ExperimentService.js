@@ -35,10 +35,33 @@ class ExperimentService {
     }
   }
 
+  static nativeRuns = new Set();
+
   static async runExperiment(experimentId, userId, { provider, model } = {}) {
+    let owned = false;
     try {
       const experiment = await ExperimentModel.findOne(experimentId);
       if (!experiment) throw new Error(`Experiment not found: ${experimentId}`);
+      if (experiment.user_id !== userId) throw new Error('Experiment ownership mismatch');
+      owned = true;
+      // Native fixture mode writes execution trees for Traces, never chat conversations.
+      if (experiment.config?.executionMode === 'native-fixture-v1') {
+        const { runNativeFixtures } = await import('./evolution/NativeFixtureExperiment.js');
+        const { default: executions } = await import('../models/AgentExecutionModel.js');
+        const { default: llm } = await import('./ai/LlmExecutionService.js');
+        const dataset = await EvalDatasetService.getDatasetById(experiment.eval_dataset_id);
+        if (!dataset) throw new Error('Evaluation dataset not found');
+        if (this.nativeRuns.has(experimentId) || experiment.status !== 'planned') {
+          owned = false; // rejected replay must not change an active/completed experiment
+          throw new Error('Native experiment already started; create a new experiment for a repeat');
+        }
+        this.nativeRuns.add(experimentId);
+        try {
+          return await runNativeFixtures({ experiment, dataset, userId,
+            provider: provider || experiment.config.provider, model: model || experiment.config.model },
+            { executions, experiments: ExperimentModel, llm, broadcast: broadcastToUser });
+        } finally { this.nativeRuns.delete(experimentId); }
+      }
 
       // Auto-generate synthetic dataset if none was provided at creation time
       let datasetId = experiment.eval_dataset_id;
@@ -123,8 +146,10 @@ class ExperimentService {
       return result;
     } catch (error) {
       console.error('[ExperimentService] Error running experiment:', error);
-      await ExperimentModel.updateStatus(experimentId, 'failed').catch(() => {});
-      broadcastToUser(userId, 'experiment:status', { experimentId, status: 'failed' });
+      if (owned) {
+        await ExperimentModel.updateStatus(experimentId, 'failed').catch(() => {});
+        broadcastToUser(userId, 'experiment:status', { experimentId, status: 'failed' });
+      }
       throw error;
     }
   }

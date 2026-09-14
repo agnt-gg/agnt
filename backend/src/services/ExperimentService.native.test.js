@@ -1,0 +1,27 @@
+import {describe,it,expect,vi} from 'vitest';
+import fs from 'node:fs';
+vi.mock('../models/ExperimentModel.js',()=>({default:{}}));
+vi.mock('./EvalDatasetService.js',()=>({default:{}}));
+vi.mock('../models/SkillModel.js',()=>({default:{}}));
+vi.mock('../models/GoalModel.js',()=>({default:{}}));
+vi.mock('../models/TaskModel.js',()=>({default:{}}));
+vi.mock('./ai/LlmService.js',()=>({createLlmClient:vi.fn()}));
+vi.mock('./orchestrator/llmAdapters.js',()=>({createLlmAdapter:vi.fn()}));
+vi.mock('./ai/providerConfigs.js',()=>({getProviderConfig:vi.fn()}));
+vi.mock('../models/UserModel.js',()=>({default:{}}));
+vi.mock('../models/database/index.js',()=>({default:{}}));
+vi.mock('../utils/realtimeSync.js',()=>({broadcastToUser:vi.fn()}));
+vi.mock('./evolution/VerifierGate.js',()=>({default:{},calculateComposite:vi.fn()}));
+vi.mock('../models/AgentExecutionModel.js',()=>({default:{}}));
+vi.mock('./ai/LlmExecutionService.js',()=>({default:{}}));
+vi.mock('./evolution/NativeFixtureExperiment.js',()=>({runNativeFixtures:vi.fn(async()=>({executionId:'batch'}))}));
+import Service from './ExperimentService.js';
+import Model from '../models/ExperimentModel.js';
+import Datasets from './EvalDatasetService.js';
+import {runNativeFixtures} from './evolution/NativeFixtureExperiment.js';
+describe('ExperimentService native wiring',()=>{
+ it('dispatches without cloning goals or invoking legacy judge',async()=>{Model.findOne=vi.fn(async()=>({id:'e',user_id:'u',status:'planned',eval_dataset_id:'d',config:{executionMode:'native-fixture-v1',provider:'p',model:'m'}}));Datasets.getDatasetById=vi.fn(async()=>({user_id:'u',items:[]}));Model.updateStatus=vi.fn();const r=await Service.runExperiment('e','u');expect(r.executionId).toBe('batch');expect(runNativeFixtures).toHaveBeenCalled();expect(Service.nativeRuns.size).toBe(0);});
+ it('does not mark another user experiment failed',async()=>{Model.findOne=vi.fn(async()=>({user_id:'other'}));Model.updateStatus=vi.fn();await expect(Service.runExperiment('e','u')).rejects.toThrow('ownership');expect(Model.updateStatus).not.toHaveBeenCalled();});
+ it('does not overwrite a completed experiment on replay',async()=>{Model.findOne=vi.fn(async()=>({id:'e',user_id:'u',status:'completed',config:{executionMode:'native-fixture-v1'}}));Datasets.getDatasetById=vi.fn(async()=>({}));Model.updateStatus=vi.fn();await expect(Service.runExperiment('e','u')).rejects.toThrow('already started');expect(Model.updateStatus).not.toHaveBeenCalled();});
+ it('native helper has no chat or content-output creation path',()=>{const text=fs.readFileSync(new URL('./evolution/NativeFixtureExperiment.js',import.meta.url),'utf8');expect(text).not.toMatch(/orchestrator\/chat|ContentOutputModel|fetch\(/);});
+});
