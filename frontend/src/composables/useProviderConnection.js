@@ -9,6 +9,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { usesLocalKeyStore, saveConnectorApiKey } from '@/services/connectorApiKey.js';
 import {
   isTrustedOAuthMessageOrigin,
   hasOAuthMessagePayload,
@@ -408,9 +409,20 @@ export function useProviderConnection(modalRef) {
 
   const saveApiKey = async (app, apiKey) => {
     try {
+      const normalizedId = resolveProviderKey(app.id) || app.id;
+
+      // A connector-catalogue provider has no row in the remote key store, so
+      // posting there answers 404 and the key is silently lost. This screen
+      // reaches the same providers as Connectors.vue and must agree with it.
+      if (usesLocalKeyStore(normalizedId)) {
+        await saveConnectorApiKey(normalizedId, apiKey);
+        await showAlert('Success', `API key for ${app.name} saved successfully!`);
+        await refreshHealth();
+        return;
+      }
+
       const token = localStorage.getItem('token');
       const encryptedApiKey = encrypt(apiKey);
-      const normalizedId = resolveProviderKey(app.id) || app.id;
       const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${normalizedId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

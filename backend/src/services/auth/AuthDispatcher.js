@@ -6,6 +6,7 @@
  */
 
 import { getProviderConfig, getAllProviderConfigs } from '../ai/providerConfigs.js';
+import { getConnectorProvider } from './connectorCatalog.js';
 import ClaudeCodeAuthManager from './ClaudeCodeAuthManager.js';
 import CodexAuthManager from './CodexAuthManager.js';
 import GeminiCliAuthManager from './GeminiCliAuthManager.js';
@@ -76,7 +77,7 @@ const AUTH_SCHEME_MAP = {
  * Returns null if provider not found.
  */
 export function getAuthEntry(providerId) {
-  const config = getProviderConfig(providerId);
+  const config = getProviderConfig(providerId) || getConnectorProvider(providerId);
   if (!config) return null;
 
   const schemeEntry = AUTH_SCHEME_MAP[config.authScheme];

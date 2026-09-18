@@ -84,6 +84,7 @@ const ENV_KEY_MAP = Object.freeze({
   jira: 'JIRA_API_TOKEN',
   figma: 'FIGMA_ACCESS_TOKEN',
   firecrawl: 'FIRECRAWL_API_KEY',
+  typesafe: 'TYPESAFE_API_KEY',
   'atlas-cloud': 'MONGODB_ATLAS_API_KEY',
 
   // ── Marketing / CRM / sales ────────────────────────────────────────

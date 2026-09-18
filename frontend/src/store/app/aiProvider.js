@@ -2,6 +2,7 @@ import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 import { authSubject } from '../auth/licenseIdentity.js';
+import { isConnectorOnlyProvider } from '../auth/connectorCatalog.js';
 
 // SHARED PROVIDER DESCRIPTOR — the same module the backend imports.
 //
@@ -269,6 +270,11 @@ export function connectableAiProviders(providers, { codexStatus } = {}) {
           categories = [];
         }
       }
+      // Connector-only rows (TypeSafe/Jev) are API-key tiles on
+      // Connectors → API/OAuth. They share the AI category so they are
+      // findable there, but they have no chat completions endpoint.
+      if (isConnectorOnlyProvider(p.id || p.key)) return false;
+
       return categories.some((c) => String(c).toLowerCase() === 'ai');
     })
     // By the LABEL, which is what these grids render. Sorting by the auth API's

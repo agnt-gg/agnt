@@ -843,6 +843,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
 import { encrypt } from '@/views/_utils/encryption.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { usesLocalKeyStore, saveConnectorApiKey } from '@/services/connectorApiKey.js';
 import { providerLabel, byProviderLabel } from '@/store/app/aiProvider.js';
 import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
@@ -1324,6 +1325,17 @@ export default {
 
     async function saveApiKey(app, apiKey) {
       try {
+        // Connector-catalogue rows go to the local key store — see
+        // services/connectorApiKey.js for why, and for the other call site.
+        if (usesLocalKeyStore(app.id)) {
+          await saveConnectorApiKey(app.id, apiKey);
+          app.connected = true;
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+          store.dispatch('appAuth/checkConnectionHealth');
+          await showAlert('Success', `API key for ${app.name} saved successfully!`);
+          return;
+        }
+
         const token = localStorage.getItem('token');
         const encryptedApiKey = encrypt(apiKey);
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {

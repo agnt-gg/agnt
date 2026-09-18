@@ -180,6 +180,14 @@ describe('connectableAiProviders — one list for every setup grid', () => {
     ]);
   });
 
+  it('does not offer TypeSafe as a chat-model tile even though its category is AI', () => {
+    const list = connectableAiProviders([
+      AI('openai', 'OpenAI'),
+      AI('typesafe', 'TypeSafe AI'),
+    ]);
+    expect(list.map((p) => p.id)).toEqual(['openai']);
+  });
+
   it('keeps only AI-category providers', () => {
     const list = connectableAiProviders([
       AI('openai', 'OpenAI'),

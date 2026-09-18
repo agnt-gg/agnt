@@ -2,6 +2,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { backfillLocalProviderKeys } from '@/services/localKeyBackfill.js';
 import axios from 'axios';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
+import { mergeConnectorCatalog } from '@/store/auth/connectorCatalog.js';
 import providerAuthService from '@/services/providerAuthService.js';
 import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
@@ -391,14 +392,14 @@ const actions = {
         }
       }
 
-      commit('SET_ALL_PROVIDERS', mergedProviders);
+      commit('SET_ALL_PROVIDERS', mergeConnectorCatalog(mergedProviders));
       return { authoritative: true };
     } catch (error) {
       console.error('Error fetching all providers:', error);
       // Still expose the CLI-tied local providers even if the remote fetch fails.
       // Chutes is intentionally absent: it requires the remote auth service to
       // store/retrieve its API key, so showing it offline would be misleading.
-      commit('SET_ALL_PROVIDERS', [
+      commit('SET_ALL_PROVIDERS', mergeConnectorCatalog([
         {
           id: 'openai-codex',
           name: 'OpenAI Codex',
@@ -453,7 +454,7 @@ const actions = {
           instructions: 'Uses the local Cursor Agent CLI (~/.cursor). Sign in with `cursor-agent login`. Uses your Cursor subscription — no API key.',
           localOnly: true,
         },
-      ]);
+      ]));
 
       // Committing this is right — the CLI providers genuinely do work with no
       // remote — but it is six providers where the real catalogue is seventy.

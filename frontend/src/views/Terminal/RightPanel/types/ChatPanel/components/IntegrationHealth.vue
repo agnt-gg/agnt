@@ -54,6 +54,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
+import { usesLocalKeyStore, saveConnectorApiKey } from '@/services/connectorApiKey.js';
 import {
   isTrustedOAuthMessageOrigin,
   hasOAuthMessagePayload,
@@ -453,6 +454,16 @@ export default {
 
     const saveApiKey = async (app, apiKey) => {
       try {
+        // This panel reads store.state.appAuth.allProviders directly, so the
+        // client-injected connector rows DO reach it. Their keys belong in the
+        // local store — see services/connectorApiKey.js.
+        if (usesLocalKeyStore(app.id)) {
+          await saveConnectorApiKey(app.id, apiKey);
+          await showAlert('Success', `API key for ${app.name} saved successfully!`);
+          await refreshHealth();
+          return;
+        }
+
         const token = localStorage.getItem('token');
         const encryptedApiKey = encrypt(apiKey);
 

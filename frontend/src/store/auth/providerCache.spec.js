@@ -355,6 +355,7 @@ describe('fetchAllProviders does not freeze its offline fallback', () => {
     const committed = ctx.commit.mock.calls.find(([m]) => m === 'SET_ALL_PROVIDERS');
     expect(committed, 'the offline fallback stopped being committed').toBeTruthy();
     expect(committed[1].map((p) => p.id)).toContain('claude-code');
+    expect(committed[1].map((p) => p.id)).toContain('typesafe');
   });
 
   it('caches a real catalogue', async () => {
@@ -366,5 +367,26 @@ describe('fetchAllProviders does not freeze its offline fallback', () => {
     await appAuth.actions.fetchAllProviders(ctxFor(token));
 
     expect(callsTo(CATALOGUE)).toBe(1);
+  });
+
+  it('still injects TypeSafe onto the API/OAuth grid when the remote catalogue succeeds', async () => {
+    const token = makeJwt();
+    localStorage.setItem('token', token);
+    axios.get.mockImplementation(async () => ({
+      data: [
+        { id: 'google', name: 'Google', connectionType: 'oauth' },
+        { id: 'slack', name: 'Slack', connectionType: 'oauth' },
+      ],
+    }));
+
+    const ctx = ctxFor(token);
+    await appAuth.actions.fetchAllProviders(ctx);
+
+    const committed = ctx.commit.mock.calls.find(([m]) => m === 'SET_ALL_PROVIDERS');
+    const ids = committed[1].map((p) => p.id);
+    expect(ids).toContain('google');
+    expect(ids).toContain('typesafe');
+    expect(committed[1].find((p) => p.id === 'typesafe').connectionType).toBe('apikey');
+    expect(committed[1].find((p) => p.id === 'typesafe').connectorOnly).toBe(true);
   });
 });
