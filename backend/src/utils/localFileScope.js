@@ -37,6 +37,10 @@ const SECRET_BASENAMES = new Set([
   'credentials',
   'credentials.json',
   'secrets.json',
+  // Team storage is never an artifact: serving it bypasses row-level membership.
+  'teams.db',
+  'teams.db-wal',
+  'teams.db-shm',
   'id_rsa',
   'id_dsa',
   'id_ecdsa',

@@ -208,6 +208,8 @@
             :order="browserCardOrder"
           />
 
+          <ArtifactCards v-if="compactArtifacts && message.role === 'assistant'" :content="artifactContent" :tool-calls="message.toolCalls || []" :message-id="String(message.id || '')" @share="shareCard" />
+
           <!-- Uploaded Files Preview (for user messages) -->
           <div v-if="message.files && message.files.length > 0 && message.role === 'user'" class="uploaded-files-preview">
             <div v-for="(file, idx) in message.files" :key="idx" class="uploaded-file-item">
@@ -414,6 +416,9 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 // This defers the crypto-js dependency (~40KB) from the critical render path
 const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name: 'ProviderSetup' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
+import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
+import { compactArtifactText } from '@/utils/chatArtifacts.js';
+import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 // Lazy: a conversation that never browses should not download a streaming
 // client, and this one pulls the canvas stream view in behind it.
 const BrowserLiveCard = lazyComponent(() => import('./BrowserLiveCard.vue'), { name: 'BrowserLiveCard' });
@@ -568,6 +573,7 @@ export default {
     ProviderSetup,
     Tooltip,
     GoalProgressWidget,
+    ArtifactCards,
     BrowserLiveCard,
   },
   directives: {
@@ -602,6 +608,7 @@ export default {
       type: Map,
       default: () => new Map(),
     },
+    compactArtifacts: { type:Boolean, default:false },
     compact: {
       type: Boolean,
       default: false,
@@ -625,6 +632,7 @@ export default {
 
     // Get Vuex store for auth token
     const store = useStore();
+    const artifactContent = computed(() => props.message.content || (props.message.contentParts || []).filter(p=>p.type==='text').map(p=>p.text||'').join('\n'));
 
     // Build theme CSS tag by extracting all CSS custom properties from the live document.
     // Injected into iframes so HTML/D3/Three.js/Chart.js content can use var(--color-*) etc.
@@ -906,14 +914,13 @@ export default {
     const buildLocalFileUrl = (absPath) => sharedBuildLocalFileUrl(absPath, props.message?.id);
 
     // Open preview modal with HTML in iframe
+    // Inline Fullscreen is distinct from artifact-card Open preview.
     const openPreviewModal = (html) => {
-      // Store the raw HTML - srcdoc attribute will handle rendering
       const baseDir = getBaseDirFromToolCalls();
       previewHTML.value = injectTheme(rewriteLocalFileURLsInHTML(html, { baseDir }));
       previewIframeSrc.value = '';
+      previewSharePath.value = '';
       showPreviewModal.value = true;
-
-      // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
     };
 
@@ -2293,6 +2300,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         return renderMentionPills(userHtml, store.state.agents.agents);
       }
 
+      // Completed document outputs are tangible cards; streaming prose remains live.
+      if (props.compactArtifacts && props.message.role === 'assistant') text = compactArtifactText(text);
       // ASSISTANT MESSAGES: Process as markdown/HTML
       if (props.message.contentType === 'html') {
         return sanitizeHTML(text);
@@ -3032,12 +3041,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     // Anchors pointing at a file on disk are opened by the OS from their real
     // path (see utils/openLocalFile.js). Every other click passes straight
     // through untouched.
+    const shareCard = (item) => {
+      if(item.href)openBundleShareModal(absolutePathFromFileUrl(item.href),item.source||'');
+      else { const paired=findMatchingFileOnDisk(item.source);if(paired)openBundleShareModal(paired,item.source);else openShareModal(item.source); }
+    };
     const onMessageClick = (event) => {
       handleLocalFileLinkClick(event);
     };
 
     return {
       messageRef,
+      artifactContent,
+      shareCard,
       onMessageClick,
       reasoningContentRef,
       showReasoning,

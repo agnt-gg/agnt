@@ -221,6 +221,7 @@
                     v-else
                     :message="message"
                     :class="{ 'folded-original': isFoldedOriginal(message) }"
+                    :compact-artifacts="true"
                     :status="getMessageStatus(message)"
                     :runningTools="getRunningToolsForMessage(message)"
                     :imageCache="imageCache"
@@ -2398,6 +2399,7 @@ export default {
     };
 
     // What the right panel ("This conversation") needs from this screen.
+    watch(activeConversationIdForSelector, () => { if(store.getters['shell/inspect']?.kind==='artifact') store.dispatch('shell/clearInspect'); });
     const inspectorProps = computed(() => ({
       participants: chatParticipants.value,
       hasContext: hasMonitoringData.value,
@@ -2409,7 +2411,9 @@ export default {
     }));
 
     const handlePanelAction = (action, payload) => {
-      if (action === 'edit-workflow') {
+      if (action === 'expand-artifact') {
+        window.dispatchEvent(new CustomEvent('agnt:expand-artifact'));
+      } else if (action === 'edit-workflow') {
         emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
       } else if (action === 'edit-agent') {
         emit('screen-change', 'AgentForgeScreen', { agentId: payload });
@@ -2566,6 +2570,7 @@ export default {
     // browser. So the position has to be banked on the way out and re-applied
     // on the way back in, exactly as if it were a conversation switch.
     onDeactivated(() => flushScrollCapture());
+    onDeactivated(() => { if(store.getters['shell/inspect']?.kind === 'artifact') store.dispatch('shell/clearInspect'); });
     onActivated(() => restoreScroll());
 
     onUnmounted(() => {

@@ -55,6 +55,8 @@
       </div>
     </div>
 
+    <div class="gpw-open-actions"><button type="button" @click="openGoal">Open goal <i class="fas fa-arrow-right" aria-hidden="true"></i></button></div>
+
     <!-- Completed / Error state -->
     <div class="gpw-footer" v-if="isTerminal">
       <div v-if="isNeedsReview">Execution stopped for review. Completed tasks do not imply acceptance.</div>
@@ -92,6 +94,7 @@ export default {
   },
   setup(props) {
     const store = useStore();
+    const openGoal = () => store.dispatch('shell/inspect', { kind: 'goal', id: props.goalId, screen: 'ChatScreen' });
 
     const bestScore = ref(0);
     const errorMessage = ref('');
@@ -272,6 +275,7 @@ export default {
     );
 
     return {
+      openGoal,
       liveData,
       goal,
       taskProgress,
@@ -301,6 +305,8 @@ export default {
 </script>
 
 <style scoped>
+.gpw-open-actions{padding:10px 14px;border-top:1px solid var(--terminal-border-color)}.gpw-open-actions button{border:1px solid rgba(var(--primary-rgb),.3);border-radius:5px;background:none;color:var(--color-primary);padding:7px 10px;font:inherit;font-size:12px;cursor:pointer}
+
 .goal-progress-widget {
   margin: 1px 8px 8px;
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));

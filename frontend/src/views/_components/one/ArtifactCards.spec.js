@@ -1,0 +1,22 @@
+import {afterEach,describe,it,expect,vi} from 'vitest';
+import {mount,flushPromises} from '@vue/test-utils';
+import {createStore} from 'vuex';
+import ArtifactCards from './ArtifactCards.vue';
+import ArtifactThumbnail from './ArtifactThumbnail.vue';
+vi.mock('@/utils/openLocalFile.js',()=>({openLocalPath:vi.fn()}));
+const wrappers=[];afterEach(()=>{wrappers.splice(0).forEach(w=>w.unmount());vi.unstubAllGlobals()});
+function render(content){const inspect=vi.fn();const store=createStore({modules:{shell:{namespaced:true,actions:{inspect}}}});const w=mount(ArtifactCards,{props:{content,messageId:'m'},global:{plugins:[store]}});wrappers.push(w);return {w,inspect}}
+describe('reference artifact cards',()=>{
+ it('has the same type-preview-title-footer anatomy with actual content',()=>{const{w}=render('```html\n<title>Release report</title><h1>Evidence</h1>\n```\n```csv\nname,score\nA,3\n```');expect(w.findAll('.artifact-card')).toHaveLength(2);const card=w.find('.artifact-card');expect([...card.element.children].map(e=>e.tagName)).toEqual(['HEADER','BUTTON','DIV','FOOTER']);expect(card.find('h3').text()).toBe('Release report');expect(w.find('td').text()).toBe('name');expect(w.find('iframe').attributes('sandbox')).toBe('');expect(w.find('iframe').attributes('srcdoc')).toContain('Evidence')});
+ it('thumbnail and open button dispatch identical preview targets',async()=>{const{w,inspect}=render('```markdown\n# Weekly review\nText\n```');await w.find('.artifact-preview').trigger('click');await w.find('.open-preview').trigger('click');expect(inspect).toHaveBeenCalledTimes(2);expect(inspect.mock.calls[0][1]).toEqual(inspect.mock.calls[1][1]);expect(inspect.mock.calls[0][1].payload.kind).toBe('markdown');expect(w.find('h3').text()).toBe('Weekly review')});
+ it('renders images from their real reference, not sample artwork',()=>{const{w}=render('file:///C:/work/photo.png');expect(w.find('img').attributes('src')).toContain('/local-file/C:/work/photo.png');expect(w.find('.artifact-preview').attributes('aria-label')).toBe('Preview photo.png')});
+ it('preserves share and original-file actions',async()=>{const{w}=render('file:///C:/work/page.html');const share=w.findAll('button').find(b=>b.text()==='Share');await share.trigger('click');expect(w.emitted('share')[0][0].href).toBe('file:///C:/work/page.html');expect(w.findAll('button').some(b=>b.text()==='Open file')).toBe(true)});
+ it('shows a recoverable fallback instead of a fake thumbnail when a text file is missing',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false,status:404}));const w=mount(ArtifactThumbnail,{props:{item:{kind:'markdown',href:'file:///C:/missing.md',name:'missing.md'}}});wrappers.push(w);await flushPromises();expect(w.text()).toContain('Preview unavailable');expect(w.find('iframe').exists()).toBe(false)});
+ it('sanitizes Markdown thumbnails',()=>{const w=mount(ArtifactThumbnail,{props:{item:{kind:'markdown',source:'<script>bad()</script><img src=x onerror=bad()>'}}});wrappers.push(w);expect(w.find('script').exists()).toBe(false);expect(w.html()).not.toContain('onerror=')});
+});
+
+describe('non-renderable artifact covers',()=>{
+ it.each([['report.pdf','pdf','PDF document'],['release.zip','archive','File archive'],['slides.pptx','file','Downloadable file']])('gives %s a designed cover without loading binary bytes',async(name,kind,label)=>{const fetch=vi.fn();vi.stubGlobal('fetch',fetch);const{w,inspect}=render('file:///C:/work/'+name);await flushPromises();expect(w.find('.file-cover').text()).toContain(label);expect(w.find('iframe').exists()).toBe(false);expect(fetch).not.toHaveBeenCalled();await w.find('.artifact-preview').trigger('click');expect(inspect.mock.calls[0][1].payload.kind).toBe(kind);});
+ it('uses the same cover after a broken image fails',async()=>{const{w}=render('file:///C:/work/missing.png');await w.find('img').trigger('error');expect(w.find('.file-cover').text()).toContain('Preview unavailable');expect(w.find('img').exists()).toBe(false)});
+ it('does not show binary garbage for a file with an unknown extension',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce({ok:true,headers:new Headers({'Content-Range':'bytes 0-0/5'}),body:{cancel:vi.fn()}}).mockResolvedValueOnce({ok:true,text:async()=> 'PK'+String.fromCharCode(0)+'xx'}));const w=mount(ArtifactThumbnail,{props:{item:{kind:'text',href:'file:///C:/unknown.dat',name:'unknown.dat'}}});wrappers.push(w);await flushPromises();expect(w.find('.file-cover').exists()).toBe(true);expect(w.find('pre').exists()).toBe(false)});
+});

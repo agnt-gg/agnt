@@ -1,8 +1,9 @@
 <template>
   <!-- Selected state: the thing you clicked (a reference chip, a Working-now
        row, a toolbar pill). ✕ / Esc returns to the summary. -->
+  <ArtifactInspector v-if="target?.kind === 'artifact'" :artifact="target.payload" @close="clear" @expand="$emit('panel-action', 'expand-artifact')" />
   <EntityInspector
-    v-if="target"
+    v-else-if="target"
     :kind="target.kind"
     :id="target.id"
     caption="This conversation"
@@ -11,7 +12,7 @@
   />
 
   <!-- Summary state: what THIS conversation is doing, mentioning, costing. -->
-  <InspectorShell v-else caption="This conversation" :live="isStreaming" :closable="false">
+  <InspectorShell v-show="!target" caption="This conversation" :live="isStreaming" :closable="false">
     <InspSection title="Working now">
       <div v-if="isStreaming" class="card is-live" @click="inspectKind('running')">
         <div class="row">
@@ -62,7 +63,6 @@
         <button type="button" class="li-go" v-tooltip="'Open in Files'" @click.stop="openArtifact(a)"><i class="fas fa-external-link-alt"></i></button>
       </div>
     </InspSection>
-    <ArtifactPreview ref="preview" @open-in-files="openArtifact" />
 
     <InspSection title="This chat">
       <div class="li" @click="$emit('panel-action', 'open-provider-selector')">
@@ -101,7 +101,7 @@
  * Integration Health on Connectors; Resources under Settings › About and in
  * the Jump palette.
  */
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useStore } from 'vuex';
 import InspectorShell from '@/views/_components/one/InspectorShell.vue';
 import InspSection from '@/views/_components/one/InspSection.vue';
@@ -109,14 +109,15 @@ import EntityInspector from '@/views/_components/one/EntityInspector.vue';
 import { useInspect } from '@/composables/useInspect.js';
 import { collectEntityRefs, compileEntityMatchers, entityRegistryFromStore } from '@/utils/entityRefs.js';
 import { extractMessageArtifacts } from '@/utils/messageArtifacts.js';
-import ArtifactPreview from '@/views/_components/one/ArtifactPreview.vue';
+import ArtifactInspector from '@/views/_components/one/ArtifactInspector.vue';
+import { artifactKind } from '@/utils/chatArtifacts.js';
 
 const RUNNING = new Set(['running', 'executing', 'in_progress', 'active']);
 const ICONS = { agent: 'fas fa-robot', workflow: 'fas fa-project-diagram', goal: 'fas fa-bullseye', trace: 'fas fa-stream', memory: 'fas fa-brain' };
 
 export default {
   name: 'ChatPanel',
-  components: { InspectorShell, InspSection, EntityInspector, ArtifactPreview },
+  components: { InspectorShell, InspSection, EntityInspector, ArtifactInspector },
   props: {
     /** From Chat.vue via rightPanelProps. All optional. */
     participants: { type: Array, default: () => [] },
@@ -137,7 +138,7 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
-    const { target, clear, inspect } = useInspect(['agent', 'workflow', 'goal', 'trace', 'execution', 'memory', 'running', 'autonomy']);
+    const { target, clear, inspect } = useInspect(['artifact', 'agent', 'workflow', 'goal', 'trace', 'execution', 'memory', 'running', 'autonomy']);
 
     const isStreaming = computed(() => !!store.state.chat?.isStreaming);
     const isSaving = computed(() => !!store.state.chat?.isSaving);
@@ -191,9 +192,8 @@ export default {
     function stopStreaming() {
       emit('panel-action', 'stop-streaming');
     }
-    const preview = ref(null);
     function previewArtifact(a) {
-      preview.value?.show(a);
+      inspect('artifact', a.href, { screen:'ChatScreen', payload:{...a,id:a.href,kind:artifactKind(a.name)} });
     }
     function openArtifact(a) {
       emit('panel-action', 'open-artifact', a);
@@ -206,7 +206,7 @@ export default {
       else emit('panel-action', action, payload);
     }
 
-    return { target, clear, isStreaming, isSaving, running, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, kindIcon, when, saveNow, stopStreaming, preview, previewArtifact, openArtifact, onEntityAction };
+    return { target, clear, isStreaming, isSaving, running, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, kindIcon, when, saveNow, stopStreaming, previewArtifact, openArtifact, onEntityAction };
   },
 };
 </script>

@@ -53,9 +53,9 @@ const store = createStore({
   },
 });
 
-function mountMessage({ content, toolCalls = [] }) {
+function mountMessage({ content, toolCalls = [], compactArtifacts = false }) {
   return mount(MessageItem, {
-    props: { message: { id: 'm1', role: 'assistant', content, toolCalls }, status: null, imageCache: new Map() },
+    props: { compactArtifacts, message: { id: 'm1', role: 'assistant', content, toolCalls }, status: null, imageCache: new Map() },
     // Attached for real: the Share button only reveals itself when it is
     // `isConnected`, and a detached wrapper would make every visibility
     // assertion below pass or fail for the wrong reason.
@@ -246,4 +246,36 @@ describe('html code block paired with a file on disk', () => {
     expect(global.fetch.mock.calls.some(c => c[0] === 'https://agnt.gg/api/previews')).toBe(false);
     w.unmount();
   });
+});
+
+ describe('main-chat compact artifact cards',()=>{it('keeps bundle sharing available from a compact HTML card',async()=>{const html='<h1>Shared</h1>';const w=mountMessage({content:'```html\n'+html+'\n```',compactArtifacts:true});const share=[...w.element.querySelectorAll('.artifact-card button')].find(b=>b.textContent==='Share');expect(share).toBeTruthy();share.click();expect(await waitFor(()=>prepareArtifactBundle.mock.calls.length>0)).toBe(true);expect(prepareArtifactBundle.mock.calls[0][0]).toMatchObject({html:expect.stringContaining('<h1>Shared</h1>')});w.unmount();});});
+
+describe('inline Fullscreen stays fullscreen, independently of artifact cards',()=>{
+ it('opens paired HTML in the original modal without selecting the right inspector',async()=>{
+  const content='<h1>Paired fullscreen</h1>';
+  const w=mountMessage({content:'```html\n'+content+'\n```',toolCalls:[{name:'read_file',result:{path:ENTRY,content}}]});
+  const dispatch=vi.spyOn(store,'dispatch');dispatch.mockClear();
+  expect(await waitFor(()=>w.element.querySelector('.html-inline-preview-wrapper .preview-btn'))).toBe(true);
+  w.element.querySelector('.html-inline-preview-wrapper .preview-btn').click();await nextTick();
+  expect(w.find('.html-preview-modal').exists()).toBe(true);
+  expect(w.find('.html-preview-modal iframe').attributes('src')).toContain('/api/local-file/');
+  expect(dispatch.mock.calls.some(c=>c[0]==='shell/inspect')).toBe(false);
+  await w.find('.close-preview-btn').trigger('click');expect(w.find('.html-preview-modal').exists()).toBe(false);w.unmount();dispatch.mockRestore();
+ });
+ it('opens unpaired rendered HTML in the fullscreen modal',async()=>{
+  const w=mountMessage({content:'```html\n<h1>Fullscreen content</h1>\n```'.replaceAll('\n','\n')});
+  const dispatch=vi.spyOn(store,'dispatch');dispatch.mockClear();
+  expect(await waitFor(()=>w.element.querySelector('.html-inline-preview-wrapper .preview-btn'))).toBe(true);
+  w.element.querySelector('.html-inline-preview-wrapper .preview-btn').click();await nextTick();
+  expect(w.find('.html-preview-modal iframe').attributes('srcdoc')).toContain('Fullscreen content');
+  expect(dispatch.mock.calls.some(c=>c[0]==='shell/inspect')).toBe(false);
+  await w.find('.close-preview-btn').trigger('click');expect(document.body.style.overflow).toBe('');w.unmount();dispatch.mockRestore();
+ });
+ it('keeps raw inline iframe Fullscreen working in main chat',async()=>{
+  const w=mountMessage({content:'<iframe src="'+localFileUrl(ENTRY)+'"></iframe>',compactArtifacts:true});
+  expect(await waitFor(()=>hasIframeChrome(w))).toBe(true);
+  w.element.querySelector('.iframe-inline-preview-wrapper .preview-btn').click();await nextTick();
+  expect(w.find('.html-preview-modal iframe').attributes('src')).toContain('/api/local-file/');
+  await w.find('.close-preview-btn').trigger('click');w.unmount();
+ });
 });

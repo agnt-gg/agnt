@@ -1,7 +1,7 @@
 <template>
   <div
     class="terminal-content"
-    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen }"
+    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen, 'artifact-active': artifactTarget, 'artifact-expanded': artifactExpanded }"
     ref="terminalContentRef"
     tabindex="-1"
   >
@@ -616,7 +616,9 @@ export default {
     // folded in the same way and for the same reason.
     const showRightPanelSetting = ref(store.getters['theme/showRightPanel']);
     const rightPanelEnabled = computed(() => resolvePanel(props.activeRightPanel, props.screenId, 'rightPanel') !== false);
-    const showRightPanel = computed(() => showRightPanelSetting.value && rightPanelEnabled.value);
+    const artifactTarget = computed(() => props.screenId === 'ChatScreen' && (!store.getters['shell/inspect']?.screen || store.getters['shell/inspect']?.screen==='ChatScreen') && ['artifact','agent','workflow','goal','trace','execution','memory','running','autonomy'].includes(store.getters['shell/inspect']?.kind));
+    const artifactExpanded = ref(false);
+    const showRightPanel = computed(() => (showRightPanelSetting.value || artifactTarget.value) && rightPanelEnabled.value);
     const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
     // A screen may own its right-panel collapse state (screenRegistry
     // `rightCollapsedDefault`): it starts from that default and remembers the
@@ -634,6 +636,32 @@ export default {
     };
     const rightPanelCollapsed = ref(scopeGet('rightCollapsed', initialRightCollapsed()));
 
+    // Inspection temporarily borrows the panel. Capture once, not when switching artifacts.
+    let panelBeforeInspection = null;
+    watch(() => store.getters['shell/inspect'], () => {
+      if (!artifactTarget.value) {
+        artifactExpanded.value = false;
+        if (panelBeforeInspection) {
+          const previous = panelBeforeInspection;
+          panelBeforeInspection = null;
+          rightPanelWidth.value = previous.width;
+          rightPanelCollapsed.value = previous.collapsed;
+          rightAutoCollapsed.value = previous.autoCollapsed;
+          persistRightWidth(previous.width);
+          persistRightCollapsed(previous.collapsed);
+          persistRightUserSized(previous.userSized);
+        }
+        nextTick(calculateMainContentWidth);
+        return;
+      }
+      if (!panelBeforeInspection) panelBeforeInspection = {
+        width: rightPanelWidth.value, collapsed: rightPanelCollapsed.value,
+        userSized: isRightPanelUserSized.value, autoCollapsed: rightAutoCollapsed.value,
+      };
+      rightPanelCollapsed.value = false;
+      if (store.getters['shell/inspect'].kind === 'artifact') rightPanelWidth.value = Math.max(320, Math.min(620, Math.floor(layoutWidth() * .48)));
+      nextTick(calculateMainContentWidth);
+    });
     // Track if user manually set panel widths (vs auto-adjusted)
     // If the stored width matches a "minimum" value (200, 280), it was likely auto-shrunk
     const isLeftPanelUserSized = ref(
@@ -830,6 +858,7 @@ export default {
 
     const handlePanelAction = async (action, payload) => {
       if (action === 'close-panel') {
+        if (artifactTarget.value) store.dispatch('shell/clearInspect');
         isPanelOpen.value = false;
         return;
       }
@@ -1459,6 +1488,8 @@ export default {
     const onToggleLeftPanel = () => {
       if (leftPanelEnabled.value) toggleLeftPanelCollapsed();
     };
+    const onExpandArtifact = () => { if (artifactTarget.value) artifactExpanded.value=!artifactExpanded.value; };
+    const onArtifactEscape = (event) => { if(event.key==='Escape' && artifactTarget.value && !store.getters['shell/jumpOpen']){event.preventDefault();store.dispatch('shell/clearInspect');} };
     const onToggleRightPanel = () => {
       toggleRightPanelCollapsed();
     };
@@ -1472,6 +1503,8 @@ export default {
       terminalContentRef.value?.addEventListener('click', handleContainerClick);
       window.addEventListener('agnt:toggle-left-panel', onToggleLeftPanel);
       window.addEventListener('agnt:toggle-right-panel', onToggleRightPanel);
+      window.addEventListener('agnt:expand-artifact',onExpandArtifact);
+      window.addEventListener('keydown',onArtifactEscape);
       // Only focus input if the input line exists
       if (inputEnabled.value) {
         focusInput();
@@ -1521,6 +1554,8 @@ export default {
       unobserveLayout();
       window.removeEventListener('agnt:toggle-left-panel', onToggleLeftPanel);
       window.removeEventListener('agnt:toggle-right-panel', onToggleRightPanel);
+      window.removeEventListener('agnt:expand-artifact',onExpandArtifact);
+      window.removeEventListener('keydown',onArtifactEscape);
       if (terminalContentRef.value) {
         terminalContentRef.value.removeEventListener('click', handleContainerClick);
       }
@@ -1621,12 +1656,16 @@ export default {
       focusInput,
       scrollToBottom,
       triggerPanelMethod,
+      artifactTarget,
+      artifactExpanded,
       toggleRightPanelCollapsed,
       rightPanelCollapsed,
       showRightPanel,
     });
 
     return {
+      artifactTarget,
+      artifactExpanded,
       // Refs
       terminalContentRef,
       mainPanelRef,
@@ -1731,6 +1770,9 @@ export default {
 </script>
 
 <style scoped>
+.terminal-content.artifact-active.artifact-expanded .main-panel,.terminal-content.artifact-active.artifact-expanded .left-panel-component,.terminal-content.artifact-active.artifact-expanded .resize-handle{display:none!important}.terminal-content.artifact-active.artifact-expanded .right-panel-component{width:100%!important;flex:1!important}
+@media screen and (max-width:800px){.terminal-content.artifact-active .right-panel-component{display:flex!important;position:absolute!important;inset:0!important;width:100%!important;max-width:none!important;transform:none!important;z-index:100;background:var(--color-popup)}.terminal-content.artifact-active .main-panel{visibility:hidden}.terminal-content.artifact-active .right-panel-component.collapsed{width:100%!important}}
+
 .terminal-header {
   display: flex;
   flex-direction: row;

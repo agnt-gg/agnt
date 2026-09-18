@@ -14,10 +14,11 @@ import {
 describe('navigation preferences', () => {
   beforeEach(() => localStorage.clear());
 
-  it('starts from every built-in section in registry order', () => {
+  it('starts with a minimal rail while keeping all sections configurable', () => {
     const items = groupedNavigation().flatMap((group) => group.items);
     expect(items[0].id).toBe('chat');
-    expect(items.some((item) => item.id === 'store')).toBe(true);
+    expect(items.map(item=>item.id)).toEqual(['chat','goals','artifacts']);
+    expect(groupedNavigation([], {includeHidden:true}).flatMap(g=>g.items).some(i=>i.id==='store')).toBe(true);
     expect(items.every((item) => item.visible)).toBe(true);
   });
 

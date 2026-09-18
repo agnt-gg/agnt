@@ -27,6 +27,6 @@ describe('PanelBackdrop — exists only where the three-panel frame does', () =>
   it('the component and the body class are driven by ONE predicate, and custom pages are excluded', () => {
     expect(canvasSrc).toMatch(/<PanelBackdrop v-if="showPanelBackdrop"/);
     expect(canvasSrc).toMatch(/classList\.toggle\('has-panel-backdrop', showPanelBackdrop\.value\)/);
-    expect(canvasSrc).toMatch(/showPanelBackdrop = computed\(\(\) => !onCustomPage\.value && screenHasFrame\(props\.screenName\)\)/);
+    expect(canvasSrc).toMatch(/showPanelBackdrop = computed\(\(\) => !showLibrary\.value && !showTeamWorkspace\.value && !onCustomPage\.value && screenHasFrame\(props\.screenName\)\)/);
   });
 });

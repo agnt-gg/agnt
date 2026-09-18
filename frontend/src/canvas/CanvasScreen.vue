@@ -6,7 +6,8 @@
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
       <div class="cv-nav-panels">
-        <template v-if="onCustomPage && activePage">
+        <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : workspaceLabel }}</span></template>
+        <template v-else-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
         <template v-else-if="untabbedScreenLabel">
@@ -104,6 +105,22 @@
     <div class="cv-main-area">
       <!-- Sidebar: section icons -->
       <div v-if="isAuthenticated" class="cv-sidebar" :class="{ expanded: isSidebarExpanded }">
+        <WorkspaceSwitcher
+          :model-value="selectedTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
+          :error="workspaceError" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
+        />
+        <nav class="cv-primary-nav" aria-label="Primary navigation">
+          <Tooltip v-for="item in primaryItems" :key="item.id" :text="item.label" position="right" width="auto" :disabled="railLabelsVisible">
+            <button class="cv-sb-page" :class="{active:primaryActive===item.id}" :data-primary="item.id"
+              :data-tour-id="'sidebar.'+item.id" :aria-label="item.label"
+              :aria-current="primaryActive===item.id ? 'page' : undefined" @click="openPrimary(item.id)">
+              <i :class="item.icon" aria-hidden="true"></i>
+              <span v-if="item.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
+              <span class="cv-sb-label">{{ item.label }}</span>
+              <span v-if="item.id==='work' && railBadges.goals" class="cv-sb-badge">{{ railBadges.goals }}</span>
+            </button>
+          </Tooltip>
+        </nav>
         <!-- User-managed navigation: built-in and custom pages share one ordered, grouped rail. -->
         <div class="cv-sb-pages">
           <template v-for="(group, groupIndex) in navigationGroups" :key="group.name">
@@ -113,7 +130,7 @@
             <Tooltip v-for="item in group.items" :key="item.key" :text="item.label" position="right" width="auto" :disabled="railLabelsVisible">
               <button
                 class="cv-sb-page"
-                :class="{ active: item.type === 'section' ? (!onCustomPage && activeSection?.id === item.id) : (onCustomPage && item.id === activePageId) }"
+                :class="{ active: item.type === 'section' ? (!showLibrary && !showTeamWorkspace && !onCustomPage && activeSection?.id === item.id) : (onCustomPage && item.id === activePageId) }"
                 :data-tour-id="item.type === 'section' ? `sidebar.${item.id}` : undefined"
                 @click="openNavigationItem(item)"
                 @contextmenu.prevent="item.type === 'page' && openContextMenu($event, item.page)"
@@ -149,7 +166,7 @@
           <Tooltip v-for="section in bottomSections" :key="section.id" :text="section.label" position="right" width="auto" :disabled="railLabelsVisible">
             <button
               class="cv-sb-page"
-              :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
+              :class="{ active: !showLibrary && !showTeamWorkspace && !onCustomPage && activeSection && activeSection.id === section.id }"
               :data-tour-id="`sidebar.${section.id}`"
               @click="navigateToSection(section)"
             >
@@ -186,11 +203,13 @@
              each screen mounts is torn down on navigation, and for a frame or
              two nothing opaque covers this box (transparent under custom-bg).
              See PanelBackdrop.vue. -->
+        <LibraryHome v-if="showLibrary" @navigate="onJumpNavigate" @teams="openPrimary('teams')" />
+        <TeamWorkspace v-if="showTeamWorkspace" :selected-team-id="selectedTeamId" :initial-tab="teamNavigationTab" :hide-scope-selector="true" @update:selected-team-id="syncTeamSelection" @teams-loaded="syncWorkspaceTeams" @close="openPrimary('chat')" />
         <PanelBackdrop v-if="showPanelBackdrop" :screen-name="screenName" />
 
         <!-- Custom pages: full widget canvas system -->
         <WidgetCanvas
-          v-if="onCustomPage && activePageId"
+          v-if="!showLibrary && !showTeamWorkspace && onCustomPage && activePageId"
           :pageId="activePageId"
           :isCustomPage="true"
           @open-catalog="showCatalog = true"
@@ -203,7 +222,7 @@
         />
 
         <!-- Section screens: render directly via slot (fast, no widget overhead) -->
-        <slot v-else />
+        <div v-else v-show="!showLibrary && !showTeamWorkspace" class="cv-personal-content"><slot /></div>
       </div>
     </div>
 
@@ -297,6 +316,10 @@ import { setInnerSection } from './innerSection.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
+import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
+import LibraryHome from './LibraryHome.vue';
+import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
+import { API_CONFIG } from '@/tt.config.js';
 import PanelBackdrop from './PanelBackdrop.vue';
 import { screenHasFrame } from '@/views/Terminal/CenterPanel/screenRegistry.js';
 import { groupedNavigation, NAVIGATION_CHANGED_EVENT } from '@/services/navigationPreferences.js';
@@ -338,7 +361,7 @@ const marqueeDirective = {
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette, PanelBackdrop },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal, JumpPalette, PanelBackdrop, TeamWorkspace, LibraryHome, WorkspaceSwitcher },
   directives: { marquee: marqueeDirective },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
@@ -441,6 +464,23 @@ export default {
       isGlobalProviderSelectorOpen.value = true;
     };
 
+    const primaryItems = [
+      {id:'chat',label:'Chat',icon:'fas fa-comments'},
+      {id:'work',label:'Work',icon:'fas fa-tasks'},
+      {id:'library',label:'Library',icon:'fas fa-book-open'},
+      {id:'teams',label:'Teams',icon:'fas fa-users'},
+      {id:'find',label:'Search',icon:'fas fa-search'},
+    ];
+    const selectedTeamId = ref('');
+    const workspaceTeams = ref([]);
+    const workspaceError = ref('');
+    const teamNavigationTab = ref('Assets');
+    const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===selectedTeamId.value)?.name || 'Personal');
+    let workspaceGeneration = 0;
+    let workspaceRequest = null;
+    const showLibrary = ref(false);
+    const showTeamWorkspace = ref(false);
+    watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=''; });
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -476,11 +516,62 @@ export default {
     );
     const navigationGroups = computed(() => {
       navigationRevision.value;
-      return groupedNavigation(customPages.value);
+      // Preserve deliberate shortcuts, but do not duplicate the five primary destinations.
+      return groupedNavigation(customPages.value).map(group=>({...group,items:group.items.filter(item=>item.type==='page'||!['chat','goals','artifacts'].includes(item.id))})).filter(group=>group.items.length);
     });
 
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);
+    const primaryActive = computed(() => {
+      if(showTeamWorkspace.value)return teamNavigationTab.value==='Members'?'teams':'library';
+      if(showLibrary.value)return 'library';
+      if(onCustomPage.value)return '';
+      if(props.screenName==='ChatScreen')return 'chat';
+      if(['GoalsScreen','TracesScreen','DashboardScreen','AutonomyScreen'].includes(props.screenName))return 'work';
+      if(['ArtifactsScreen','AgentsScreen','AgentForgeScreen','WorkflowsScreen','WorkflowForgeScreen','ToolsScreen','ToolForgeScreen','SkillsScreen','MemoryScreen','WidgetManagerScreen','WidgetForgeScreen','PluginsScreen','MarketplaceScreen'].includes(props.screenName))return 'library';
+      return '';
+    });
+    function syncWorkspaceTeams(teams) {
+      workspaceTeams.value=teams;workspaceError.value='';
+      if(selectedTeamId.value&&!teams.some(t=>t.id===selectedTeamId.value))selectedTeamId.value='';
+    }
+    function syncTeamSelection(id) { selectedTeamId.value=id; }
+    async function loadWorkspaceTeams() {
+      if(!isAuthenticated.value)return;
+      const generation=workspaceGeneration;
+      if(workspaceRequest)return workspaceRequest;
+      const request=(async()=>{
+        try {
+          const response=await fetch(API_CONFIG.BASE_URL+'/teams',{headers:{Authorization:'Bearer '+(localStorage.getItem('token')||'')}});
+          if(!response.ok)throw Error('Teams unavailable ('+response.status+').');
+          const teams=await response.json();if(!Array.isArray(teams))throw Error('Invalid team list.');
+          if(generation===workspaceGeneration)syncWorkspaceTeams(teams);
+        }catch(error){if(generation===workspaceGeneration){workspaceError.value='Cannot load teams.';console.warn('[WorkspaceSwitcher]',error.message)}}
+      })();
+      workspaceRequest=request;
+      try{await request}finally{if(workspaceRequest===request)workspaceRequest=null}
+    }
+    function selectWorkspace(id) {
+      if(id&&!workspaceTeams.value.some(t=>t.id===id))return;
+      selectedTeamId.value=id;
+      onCustomPage.value=false;
+      showLibrary.value=false;
+      teamNavigationTab.value='Assets';
+      showTeamWorkspace.value=!!id;
+      if(!id)emit('screen-change','ChatScreen',{});
+    }
+    function openPrimary(id) {
+      if(id==='find'){openJump();return}
+      if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
+      if(id==='library'){onCustomPage.value=false;teamNavigationTab.value='Assets';showTeamWorkspace.value=!!selectedTeamId.value;showLibrary.value=!selectedTeamId.value;return}
+      selectedTeamId.value='';showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
+      emit('screen-change',id==='work'?'GoalsScreen':'ChatScreen',{});
+    }
+    watch(() => [isAuthenticated.value,store.state.userAuth?.token], () => {
+      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value='';workspaceError.value='';
+      showTeamWorkspace.value=false;
+      if(isAuthenticated.value)loadWorkspaceTeams();
+    }, {immediate:true});
 
     // Find the active section based on current screenName. Every screen has
     // exactly one owning row — sections.spec.js enforces it — so the screen
@@ -543,7 +634,7 @@ export default {
     // and MUST show the wallpaper between widgets — a backdrop there filled
     // the gaps in. One predicate drives both the component and the body class
     // that makes the frame's panels transparent, so they can never disagree.
-    const showPanelBackdrop = computed(() => !onCustomPage.value && screenHasFrame(props.screenName));
+    const showPanelBackdrop = computed(() => !showLibrary.value && !showTeamWorkspace.value && !onCustomPage.value && screenHasFrame(props.screenName));
     function syncBackdropClass() {
       document.body.classList.toggle('has-panel-backdrop', showPanelBackdrop.value);
     }
@@ -557,6 +648,9 @@ export default {
       store.dispatch('shell/openJump');
     }
     function onJumpNavigate(screen, opts) {
+      selectedTeamId.value='';
+      showLibrary.value=false;
+      showTeamWorkspace.value=false;
       onCustomPage.value = false;
       emit('screen-change', screen, opts || {});
     }
@@ -746,17 +840,24 @@ export default {
     }
 
     function switchToPage(pageId) {
+      selectedTeamId.value='';
+      showLibrary.value=false;
+      showTeamWorkspace.value=false;
       onCustomPage.value = true;
       store.dispatch('widgetLayout/setActivePage', pageId);
     }
     // Panels (Dashboard's left) ask the canvas to switch pages by event: the
     // custom-page flag lives here and nowhere else.
+    const onOpenTeamWorkspace = () => { openPrimary('teams'); };
     function onOpenPageEvent(e) {
       const id = e.detail?.pageId;
       if (id) switchToPage(id);
     }
 
     function navigateToSection(section) {
+      selectedTeamId.value='';
+      showLibrary.value=false;
+      showTeamWorkspace.value=false;
       onCustomPage.value = false;
       emit('screen-change', section.screens[0].screen);
     }
@@ -833,6 +934,7 @@ export default {
       // backdrop, so the class follows onCustomPage.
       syncBackdropClass();
       window.addEventListener('agnt:open-page', onOpenPageEvent);
+      window.addEventListener('agnt:open-team-workspace',onOpenTeamWorkspace);
       window.addEventListener('agnt:new-page', startAddPage);
       window.addEventListener(NAVIGATION_CHANGED_EVENT, refreshNavigation);
 
@@ -856,11 +958,13 @@ export default {
     });
 
     onBeforeUnmount(() => {
+      workspaceGeneration++;
       if (clockTimer) clearInterval(clockTimer);
       document.removeEventListener('click', closeCtx);
       document.removeEventListener('keydown', onGlobalKeydown);
       document.body.classList.remove('has-panel-backdrop');
       window.removeEventListener('agnt:open-page', onOpenPageEvent);
+      window.removeEventListener('agnt:open-team-workspace',onOpenTeamWorkspace);
       window.removeEventListener('agnt:new-page', startAddPage);
       window.removeEventListener(NAVIGATION_CHANGED_EVENT, refreshNavigation);
       narrowRailQuery?.removeEventListener('change', syncNarrowViewport);
@@ -868,6 +972,8 @@ export default {
 
     return {
       isAuthenticated,
+      primaryItems, primaryActive, openPrimary,
+      selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,
       showCatalog,
@@ -896,6 +1002,8 @@ export default {
       jumpKey,
       jumpHint,
       openJump,
+      showTeamWorkspace,
+      showLibrary,
       onJumpNavigate,
       ctxMenu,
       openContextMenu,
@@ -929,6 +1037,16 @@ export default {
 </script>
 
 <style scoped>
+
+/* Reference sidebar: scope first, then stable primary destinations. */
+.cv-primary-nav{display:flex;flex-direction:column;gap:2px;width:100%;align-items:center;margin-bottom:6px;flex-shrink:0}
+.cv-primary-nav :deep(.tooltip-container){width:100%}
+.cv-rail-shortcut{font-size:9px;font-family:inherit;color:var(--color-text-muted);opacity:.7;margin-left:auto;white-space:nowrap}
+
+.cv-primary-nav .cv-sb-page:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
+
+.cv-personal-content{height:100%;min-height:0;display:flex;flex-direction:column}.cv-personal-content>*{flex:1;min-height:0}
+
 .cv-root {
   display: flex;
   flex-direction: column;

@@ -57,6 +57,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Conversation Settings Routes](#conversation-settings-routes)
 - [Admin Routes](#admin-routes)
 - [Artifacts](#artifacts)
+- [Team Routes](#team-routes)
 
 ---
 
@@ -4121,6 +4122,68 @@ Manages per-user widget layout pages for the dashboard. Each page stores a grid 
 }
 ```
 
+
+
+## Team Routes
+
+Base path: `/api/teams`
+
+An initial same-server team library, separate from personal canvas layouts and conversation groups. Team rows, membership, invitations, assets, immutable revisions and audit events persist in `teams.db` beneath the configured data directory. No real personal-resource execution or cross-instance synchronization is granted by these routes.
+
+Every route requires the normal authenticated session. Team lookups are membership-scoped; nonmembers receive 404. Viewers may read all team library assets. Members may edit them. Owners/admins manage invitations; only the owner removes members. No local file paths or credentials are dereferenced from asset bodies.
+
+**GET** `/`
+- **Authentication**: Required
+- Lists teams containing the current user; returns id, name, owner_id and membership role.
+
+**POST** `/`
+- **Authentication**: Required
+- Body: `{ name }` (1–100 characters). Creates a private team with this user as protected owner.
+
+**POST** `/accept`
+- **Authentication**: Required
+- Body: `{ token }`. Consumes a single-use invitation only when the authenticated email matches. Expired/revoked/used tokens return 404; mismatched email returns 403.
+
+**GET** `/:teamId/members`
+- **Authentication**: Required
+- Team members only. Returns membership identities, email and role.
+
+**DELETE** `/:teamId/members/:memberId`
+- **Authentication**: Required
+- Owner only. Cannot remove the owner. Removes team access while retaining shared asset history.
+
+**GET** `/:teamId/invitations`
+- **Authentication**: Required
+- Owner/admin only. Lists unexpired pending invitations without tokens or hashes.
+
+**POST** `/:teamId/invitations`
+- **Authentication**: Required
+- Owner/admin only. Body: `{ email, role: 'viewer' | 'member' | 'admin' }`.
+- Returns one-time plaintext token, id, email, role and expiry. Only its SHA-256 hash is stored. The token is sent by the owner privately; this endpoint does not send email. Seven-day expiry; duplicate pending invitations return 409.
+
+**DELETE** `/:teamId/invitations/:id`
+- **Authentication**: Required
+- Owner/admin only. Invalidates the pending invitation.
+
+**GET** `/:teamId/assets`
+- **Authentication**: Required
+- Team members only. Lists up to 500 asset metadata rows (no body).
+
+**GET** `/:teamId/assets/:id`
+- **Authentication**: Required
+- Team members only. Optional positive integer `revision` selects an immutable historical body; default is current revision.
+
+**POST** `/:teamId/assets`
+- **Authentication**: Required
+- Owner/admin/member only. Body: `{ id?, name, kind, content, expectedRevision? }`.
+- Name: 1–180 characters. Kinds: markdown, text, html, csv, agent, workflow, tool, skill, widget, goal. Content is an inert UTF-8 definition/document, maximum 200 KB.
+- Existing asset requires its expected revision; mismatch returns 409 with no write. Each successful write creates a new immutable revision. No tool dispatch, credential binding, personal object mutation, or execution occurs.
+
+**GET** `/:teamId/activity`
+- **Authentication**: Required
+- Team members only. Last 100 attributable team events, without asset body or invitation token.
+
+Membership and writes are checked in serialized SQLite transactions. Team endpoints set `Cache-Control: no-store`. Hosted-team entitlement/seat accounting, shared workflow execution, per-resource guest exceptions, automatic mail and independent cloud tenancy are not implemented by this first library slice.
 
 ## Workspace Routes
 

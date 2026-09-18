@@ -4,6 +4,7 @@ export const NAVIGATION_STORAGE_KEY = 'agnt:sidebarNavigation:v1';
 export const NAVIGATION_CHANGED_EVENT = 'agnt:navigation-changed';
 export const PERSONAL_GROUP = 'PERSONAL';
 
+const DEFAULT_VISIBLE = new Set(['chat','goals','artifacts']);
 const DEFAULT_GROUPS = [...new Set(MAIN_SECTIONS.map((section) => section.group))];
 
 function cleanGroup(value, fallback = PERSONAL_GROUP) {
@@ -58,7 +59,7 @@ export function navigationItems(customPages = []) {
       icon: section.icon,
       section,
       group: cleanGroup(saved.group, section.group),
-      visible: saved.visible !== false,
+      visible: typeof saved.visible === 'boolean' ? saved.visible : DEFAULT_VISIBLE.has(section.id),
       order: Number.isFinite(saved.order) ? saved.order : index,
     };
   });

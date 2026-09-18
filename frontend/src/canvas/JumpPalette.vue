@@ -1,310 +1,456 @@
 <template>
   <Teleport to="body">
     <div v-if="open" class="jp-scrim" @mousedown.self="close" data-tour-id="jump.palette">
-      <div class="jp" role="dialog" aria-label="Jump to anything">
-        <div class="jp-input-row">
-          <i class="fas fa-search jp-input-icon"></i>
-          <input
-            ref="inputRef"
-            v-model="query"
-            class="jp-input"
-            type="text"
-            spellcheck="false"
-            placeholder="Jump to a screen, open a thing, or ask Annie…"
-            @keydown="onKey"
-          />
-          <kbd class="jp-kbd">esc</kbd>
-        </div>
-
+      <section class="jp" role="dialog" aria-modal="true" aria-label="Find pages and assets" ref="dialogRef" @keydown.esc.stop.prevent="close" @keydown.tab="trapFocus">
+        <div class="jp-input-row"><i class="fas fa-search" aria-hidden="true"></i><input ref="inputRef" v-model="query" class="jp-input" type="search" spellcheck="false" placeholder="Search pages, conversations, assets, skills, tools…" aria-label="Find a page or asset" @keydown="onKey" /><button class="jp-close" @click="close" aria-label="Close search"><i class="fas fa-times"></i></button></div>
+        <p v-if="catalogLoading" class="jp-status" role="status">Loading conversations and asset collections…</p>
+        <p v-if="catalogErrors.length" class="jp-status" role="alert">Some collections could not load: {{ catalogErrors.join('; ') }} <button @click="loadCatalog">Retry</button></p>
+        <p v-if="searchLimit" class="jp-status">More matches exist. Refine your search to narrow the results.</p>
+        <p v-if="fileError" class="jp-status" role="status">{{ fileError }} Other results remain available.</p>
+        <p v-else-if="filePending" class="jp-status" role="status">Searching files and history…</p>
         <div class="jp-results" ref="listRef">
-          <template v-if="index.groups.length">
-            <div v-for="g in index.groups" :key="g.id" class="jp-group">
-              <div class="jp-group-label">{{ g.label }}</div>
-              <button
-                v-for="item in g.items"
-                :key="item.id"
-                class="jp-row"
-                :class="{ sel: flat[selected]?.id === item.id }"
-                :data-jump-id="item.id"
-                @mouseenter="selected = flat.findIndex((r) => r.id === item.id)"
-                @click="run(item)"
-              >
-                <span class="jp-ic"><i :class="item.icon"></i></span>
-                <span class="jp-label">{{ item.label }}</span>
-                <span v-if="item.hint" class="jp-hint">{{ item.hint }}</span>
-                <kbd v-if="item.kbd" class="jp-kbd">{{ item.kbd }}</kbd>
-              </button>
+          <section v-for="group in categories" :key="group.id" class="jp-group">
+            <button class="jp-group-label" :aria-expanded="!collapsed.has(group.id)" @click="toggleGroup(group.id)"><i class="fas" :class="collapsed.has(group.id)?'fa-angle-right':'fa-angle-down'" aria-hidden="true"></i>{{ group.label }}<small>{{ group.items.length }}</small></button>
+            <div v-if="!collapsed.has(group.id)" class="jp-group-items">
+              <template v-for="family in families(group)" :key="family.id">
+                <button class="jp-row" :class="{sel:selected===family.id}" :data-jump-id="family.id" @click="run(family)" @mouseenter="selected=family.id"><span class="jp-ic"><i :class="family.icon"></i></span><span class="jp-label">{{ family.label }}<small v-if="family.snippet" class="jp-snippet">{{ family.snippet }}</small></span><small class="jp-hint">{{ family.hint }}</small></button>
+                <details v-if="family.children.length" class="jp-assets"><summary>{{ family.children.length }} saved {{ family.assetLabel }}</summary><button v-for="item in family.children" :key="item.id" class="jp-row" :data-jump-id="item.id" @click="run(item)"><span class="jp-label">{{ item.label }}</span><small class="jp-hint">{{ item.hint }}</small></button></details>
+              </template>
+              <span v-if="!group.items.length" class="jp-empty">No matches</span>
             </div>
-          </template>
-          <button v-else-if="index.fallthrough" class="jp-row sel jp-ask" @click="run(index.fallthrough)">
-            <span class="jp-ic jp-ic-ask"><i :class="index.fallthrough.icon"></i></span>
-            <span class="jp-label">{{ index.fallthrough.label }}</span>
-            <kbd class="jp-kbd">↵</kbd>
-          </button>
-          <div v-else class="jp-empty">Type to search screens, agents, workflows, goals and chats.</div>
+          </section>
+          <button v-if="query.trim() && !total" class="jp-row jp-ask" @click="ask"><span class="jp-ic"><i class="fas fa-comment-dots"></i></span><span>Ask Annie about “{{ query.trim() }}”</span></button>
         </div>
-
-        <div class="jp-foot">
-          <span><kbd class="jp-kbd">↑↓</kbd> move</span>
-          <span><kbd class="jp-kbd">↵</kbd> open</span>
-          <span><kbd class="jp-kbd">⇧↵</kbd> go to screen</span>
-          <span class="jp-foot-right">no match → sent to Annie</span>
-        </div>
-      </div>
+      </section>
     </div>
   </Teleport>
 </template>
+<script setup>
+import {
+  computed,
+  nextTick,
+  ref,
+  watch,
+  onBeforeUnmount
+} from 'vue';
+import {
+  useStore
+} from 'vuex';
+import {
+  useRouter
+} from 'vue-router';
+import {
+  ALL_SECTIONS
+} from './sections.js';
+import {
+  buildJumpCatalog
+} from './jumpCatalog.js';
+import {
+  API_CONFIG
+} from '@/tt.config.js';
+import { loadSearchSources, searchRequest, historySearchItems } from './searchSources.js';
+const emit = defineEmits(['navigate']);
+const store = useStore(),
+  router = useRouter();
+const query = ref(''),
+  selected = ref(null),
+  collapsed = ref(new Set()),
+  inputRef = ref(null),
+  listRef = ref(null),
+  dialogRef = ref(null);
+let returnFocus = null;
+const open = computed(() => store.getters['shell/jumpOpen']);
+const files = ref([]),
+  fileError = ref(''),
+  filePending = ref(false);
+let fileTimer = null,
+  fileAbort = null,
+  fileGeneration = 0;
+const remote=ref({}),catalogErrors=ref([]),catalogLoading=ref(false),history=ref([]),searchLimit=ref(false);let catalogAbort=null,catalogEpoch=0;
+const merge=(...lists)=>[...new Map(lists.flat().filter(Boolean).map(item=>[item.id||item.name,item])).values()];
+async function loadCatalog(){catalogAbort?.abort();catalogAbort=new AbortController();const epoch=++catalogEpoch;remote.value={};catalogErrors.value=[];catalogLoading.value=true;await loadSearchSources({token:localStorage.getItem('token'),signal:catalogAbort.signal,onSource:(key,items)=>{if(epoch===catalogEpoch)remote.value={...remote.value,[key]:items}},onError:(label,error)=>{if(epoch===catalogEpoch)catalogErrors.value.push(label+': '+error)}});if(epoch===catalogEpoch)catalogLoading.value=false;}
+const categories = computed(() => buildJumpCatalog({
+  sections: ALL_SECTIONS,
+  query: query.value,
+  files: files.value,
+  agents: merge(store.getters['agents/allAgents'] || [],remote.value.agents||[]),
+  workflows: merge(store.getters['workflows/allWorkflows'] || [],remote.value.workflows||[]),
+  goals: merge(store.getters['goals/allGoals'] || [],remote.value.goals||[]),
+  chats: merge(store.getters['contentOutputs/outputs'] || store.getters['contentOutputs/visibleOutputs'] || [],remote.value.outputs||[]).filter(item=>!item.content_type||item.content_type==='conversation'||item.conversation_id),
+  outputs:remote.value.outputs||[],history:history.value,widgets:remote.value.widgets||[],plugins:remote.value.plugins||[],
+  tools:merge(store.getters['tools/allTools']||[],remote.value.tools||[],remote.value.customTools||[]),
+  skills: merge(store.getters['skills/allSkills'] || [],remote.value.skills||[]),
+  pages: (store.getters['widgetLayout/allPages'] || []).filter(p => !String(p.route || '').startsWith('workspace:') && !ALL_SECTIONS.some(s => s.screens.some(t => t.screen === p.route)))
+}));
+watch(()=>store.state.userAuth?.token,()=>{catalogEpoch++;catalogAbort?.abort();fileGeneration++;clearTimeout(fileTimer);fileAbort?.abort();remote.value={};history.value=[];files.value=[];catalogErrors.value=[];if(open.value)close();});
+const total = computed(() => categories.value.reduce((n, g) => n + g.items.length, 0));
 
-<script>
-// JumpPalette — ⌘K. The router when you do not know which rail row owns a
-// thing. Index is built by jumpIndex.js from the stores that are already
-// loaded; this file only renders and dispatches.
-import { computed, nextTick, ref, watch } from 'vue';
-import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
-import { ALL_SECTIONS } from './sections.js';
-import { buildJumpIndex, flatten } from './jumpIndex.js';
-
-export default {
-  name: 'JumpPalette',
-  emits: ['navigate'],
-  setup(props, { emit }) {
-    const store = useStore();
-    const router = useRouter();
-    const query = ref('');
-    const selected = ref(0);
-    const inputRef = ref(null);
-    const listRef = ref(null);
-
-    const open = computed(() => store.getters['shell/jumpOpen']);
-
-    const index = computed(() =>
-      buildJumpIndex({
-        sections: ALL_SECTIONS,
-        agents: store.getters['agents/allAgents'] || [],
-        workflows: store.getters['workflows/allWorkflows'] || [],
-        goals: store.getters['goals/allGoals'] || [],
-        chats: (store.getters['contentOutputs/visibleOutputs'] || []).slice(0, 40),
-        approvals: (store.getters['insights/escalatedInsights'] || []).length,
-        hasProvider: !!store.state.aiProvider?.selectedProvider,
-        query: query.value,
-      }),
-    );
-    const flat = computed(() => flatten(index.value));
-
-    watch(query, () => {
-      selected.value = 0;
+function families(group) {
+  if (query.value.trim()) return group.items.map(i => ({
+    ...i,
+    children: []
+  }));
+  const pages = group.items.filter(i => i.id.startsWith('go:'));
+  const resources = group.items.filter(i => !i.id.startsWith('go:'));
+  const used = new Set();
+  const results = pages.map(page => {
+    const children = resources.filter(r => r.action.screen === page.action.screen || (page.action.screen === 'ChatScreen' && r.action.type === 'chat') || (page.action.screen === 'WorkspaceScreen' && r.action.type === 'page'));
+    children.forEach(c => used.add(c.id));
+    return {
+      ...page,
+      children,
+      assetLabel: page.label.toLowerCase()
+    }
+  });
+  for (const item of resources)
+    if (!used.has(item.id)) results.push({
+      ...item,
+      children: []
     });
-    watch(open, async (v) => {
-      if (v) {
-        query.value = '';
-        selected.value = 0;
-        await nextTick();
-        inputRef.value?.focus();
-      }
+  return results
+}
+
+function toggleGroup(id) {
+  const next = new Set(collapsed.value);
+  next.has(id) ? next.delete(id) : next.add(id);
+  collapsed.value = next
+}
+watch(open, async value => {
+  if (value) {
+    returnFocus = document.activeElement;
+    query.value = '';
+    history.value=[];
+    loadCatalog();
+    selected.value = null;
+    collapsed.value = new Set();
+    await nextTick();
+    inputRef.value?.focus()
+  } else {catalogEpoch++;catalogAbort?.abort();fileGeneration++;clearTimeout(fileTimer);fileAbort?.abort();catalogLoading.value=false;filePending.value=false;if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});}
+});
+watch(query, () => {
+  selected.value = null;
+  files.value = [];
+  history.value=[];searchLimit.value=false;
+  fileError.value = '';
+  filePending.value = false;
+  clearTimeout(fileTimer);
+  fileAbort?.abort();
+  const generation = ++fileGeneration;
+  if (!open.value || query.value.trim().length < 2) return;
+  filePending.value = true;
+  fileTimer = setTimeout(async () => {
+    fileAbort = new AbortController();
+    const options={signal:fileAbort.signal,token:localStorage.getItem('token')||''};
+    await Promise.all([
+      (async()=>{try{const body=await searchRequest('/filesystem/search?q='+encodeURIComponent(query.value.trim()),options);if(generation===fileGeneration){files.value=body.items||[];searchLimit.value=!!body.truncated;}}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')fileError.value+='File search unavailable. ';}})(),
+      (async()=>{try{const body=await searchRequest('/memory/search?q='+encodeURIComponent(query.value.trim())+'&limit=200',options);if(generation===fileGeneration){history.value=historySearchItems(body.results||[]);searchLimit.value=searchLimit.value||(body.results||[]).length>=200;}}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')fileError.value+='History search unavailable. ';}})(),
+    ]);
+    if(generation===fileGeneration)filePending.value=false;
+  }, 250);
+});
+onBeforeUnmount(() => {
+  catalogEpoch++;catalogAbort?.abort();
+  fileGeneration++;
+  clearTimeout(fileTimer);
+  fileAbort?.abort()
+});
+
+function close() {
+  catalogEpoch++;catalogAbort?.abort();catalogLoading.value=false;
+  fileGeneration++;
+  clearTimeout(fileTimer);
+  fileAbort?.abort();
+  filePending.value = false;
+  store.dispatch('shell/closeJump')
+}
+
+function run(item) {
+  if (!item) return;
+  const a = item.action;
+  close();
+  if (a.type === 'inspect') {
+    store.dispatch('shell/inspect', {
+      kind: a.kind,
+      id: a.id,
+      screen: a.screen
     });
-
-    const close = () => store.dispatch('shell/closeJump');
-
-    const scrollSelectedIntoView = () => {
-      const row = flat.value[selected.value];
-      if (!row || !listRef.value) return;
-      const el = listRef.value.querySelector(`[data-jump-id="${CSS.escape(row.id)}"]`);
-      el?.scrollIntoView({ block: 'nearest' });
-    };
-
-    const run = (item, { shift = false } = {}) => {
-      const a = item.action;
-      close();
-      switch (a.type) {
-        case 'screen':
-          emit('navigate', a.screen, a.opts || {});
-          break;
-        case 'inspect':
-          // ⇧↵ goes to the screen and selects; ↵ does the same today — the
-          // right panel on that screen swaps to the entity. (A future in-place
-          // inspector without navigation is what ⇧ is reserved to distinguish.)
-          store.dispatch('shell/inspect', { kind: a.kind, id: a.id, screen: a.screen });
-          emit('navigate', a.screen, { select: { kind: a.kind, id: a.id } });
-          break;
-        case 'chat':
-          router.push(`/chat?content-id=${a.id}`);
-          break;
-        case 'new-chat':
-          router.push('/chat');
-          window.dispatchEvent(new CustomEvent('trigger-new-chat'));
-          break;
-        case 'route':
-          router.push(a.path);
-          break;
-        case 'ask':
-          emit('navigate', 'ChatScreen', {});
-          // Chat.vue listens and drops the text into the composer / sends it.
-          window.dispatchEvent(new CustomEvent('agnt:ask-annie', { detail: { text: a.text, send: !shift } }));
-          break;
-        default:
-          break;
+    emit('navigate', a.screen, {
+      select: {
+        kind: a.kind,
+        id: a.id
       }
-    };
-
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        close();
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        selected.value = Math.min(flat.value.length - 1, selected.value + 1);
-        scrollSelectedIntoView();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        selected.value = Math.max(0, selected.value - 1);
-        scrollSelectedIntoView();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const row = flat.value[selected.value];
-        if (row) run(row, { shift: e.shiftKey });
+    })
+  } else if (a.type === 'screen') emit('navigate', a.screen, a.opts || {});
+  else if (a.type === 'chat') router.push({
+    path: '/chat',
+    query: {
+      'content-id': a.id
+    }
+  });
+  else if (a.type === 'conversation') {
+    searchRequest('/content-outputs/by-conversation/'+encodeURIComponent(a.id),{token:localStorage.getItem('token')||''}).then(body=>{const output=body.output||body.contentOutput||body;if(!output.id)throw Error('Conversation not available');router.push({path:'/chat',query:{'content-id':output.id}})}).catch(error=>{store.dispatch('shell/openJump');catalogErrors.value=[error.message]});
+  } else if(a.type==='output') {router.push({path:'/chat',query:{'content-id':a.id}});}
+  else if (a.type === 'teams') { window.dispatchEvent(new CustomEvent('agnt:open-team-workspace')); }
+  else if (a.type === 'page') {
+    window.dispatchEvent(new CustomEvent('agnt:open-page', {
+      detail: {
+        pageId: a.id
       }
-    };
+    }))
+  }
+}
 
-    return { open, query, selected, inputRef, listRef, index, flat, onKey, run, close };
-  },
-};
+function ask() {
+  const text = query.value.trim();
+  close();
+  emit('navigate', 'ChatScreen', {});
+  nextTick(() => window.dispatchEvent(new CustomEvent('agnt:ask-annie', {
+    detail: {
+      text,
+      send: false
+    }
+  })))
+}
+
+function rows() {
+  return [...(listRef.value?.querySelectorAll('[data-jump-id]') || [])].filter(el => el.getClientRects().length)
+}
+
+function onKey(e) {
+  if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
+  e.preventDefault();
+  const visible = rows();
+  let index = visible.findIndex(el => el.dataset.jumpId === selected.value);
+  if (e.key === 'Enter') {
+    const id = selected.value || visible[0]?.dataset.jumpId;
+    run(categories.value.flatMap(g => g.items).find(i => i.id === id));
+    return
+  }
+  index = Math.max(0, Math.min(visible.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1)));
+  selected.value = visible[index]?.dataset.jumpId;
+  visible[index]?.scrollIntoView({
+    block: 'nearest'
+  })
+}
+
+function trapFocus(e) {
+  const nodes = [...dialogRef.value.querySelectorAll('input,button,summary')].filter(el => !el.disabled && el.getClientRects().length);
+  const first = nodes[0],
+    last = nodes.at(-1);
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last?.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first?.focus()
+  }
+}
 </script>
-
 <style scoped>
+.jp-snippet{display:block;font-size:11px;line-height:1.5;color:var(--color-text-muted);margin-top:4px;white-space:normal;max-height:3em;overflow:hidden}
+
+.jp-status {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  padding: 8px 20px;
+  margin: 0;
+  border-bottom: 1px solid var(--terminal-border-color)
+}
+
 .jp-scrim {
   position: fixed;
   inset: 0;
   z-index: 9000;
-  background: rgba(var(--color-background-rgb, 16, 16, 31), 0.55);
+  background: rgba(var(--color-background-rgb), .6);
   backdrop-filter: blur(4px);
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 12vh;
+  padding: 28px;
+  display: flex
 }
+
 .jp {
-  width: min(640px, calc(100vw - 32px));
-  max-height: 70vh;
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  /* Modals ALWAYS use --color-popup. Never the page background. */
   background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
-  border-radius: 12px;
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 24px 70px #0006;
+  overflow: hidden
 }
+
 .jp-input-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 16px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted)
 }
-.jp-input-icon {
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
+
 .jp-input {
   flex: 1;
-  background: none;
+  min-width: 0;
   border: 0;
+  background: none;
   outline: 0;
   color: var(--color-text);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 300;
-  padding: 15px 0;
+  font: 300 15px 'League Spartan', sans-serif;
+  padding: 16px 0
 }
+
 .jp-input::placeholder {
-  color: var(--color-text-dull, #767888);
+  color: var(--color-text-muted)
 }
+
+.jp-close {
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 9px
+}
+
 .jp-results {
   overflow: auto;
-  padding: 6px;
-  flex: 1;
   min-height: 0;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  align-content: start;
+  align-items: start
 }
+
+.jp-group {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 7px;
+  min-width: 0;
+  overflow: hidden
+}
+
 .jp-group-label {
-  font-size: 9.5px;
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  padding: 8px 10px 4px;
-}
-.jp-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   width: 100%;
+  padding: 12px;
+  font: 400 10px 'League Spartan', sans-serif;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  text-align: left;
+  cursor: pointer
+}
+
+.jp-group-label small {
+  margin-left: auto;
+  font-size: 10px
+}
+
+.jp-group-items {
+  padding: 5px;
+  border-top: 1px solid var(--terminal-border-color)
+}
+
+.jp-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 8px;
+  width: 100%;
+  min-width: 0;
   border: 0;
+  border-radius: 7px;
   background: none;
   color: var(--color-text);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 300;
+  font: 300 13px 'League Spartan', sans-serif;
   text-align: left;
-  cursor: pointer;
+  cursor: pointer
 }
-.jp-row.sel {
-  background: rgba(var(--primary-rgb), 0.1);
+
+.jp-row.sel,
+.jp-row:hover {
+  background: rgba(var(--primary-rgb), .1)
 }
+
 .jp-ic {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
   color: var(--color-text-muted);
   font-size: 11px;
-  flex: 0 0 auto;
+  background: #ffffff04
 }
-.jp-ic-ask {
-  color: var(--color-primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-}
+
 .jp-label {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere
 }
+
 .jp-hint {
-  font-size: 10.5px;
-  color: var(--color-text-dull, #767888);
-  white-space: nowrap;
-}
-.jp-kbd {
   font-size: 10px;
-  padding: 1px 5px;
-  border: 1px solid var(--terminal-border-color);
-  border-bottom-width: 2px;
-  border-radius: 4px;
   color: var(--color-text-muted);
-  background: rgba(255, 255, 255, 0.03);
-  font-family: inherit;
+  white-space: nowrap
 }
+
+.jp-assets {
+  margin: 0 8px 6px 30px;
+  border-left: 1px solid var(--terminal-border-color);
+  padding-left: 8px
+}
+
+.jp-assets summary {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 7px 0
+}
+
 .jp-empty {
-  padding: 18px 12px;
-  color: var(--color-text-dull, #767888);
-  font-size: 12.5px;
-  text-align: center;
+  display: block;
+  padding: 10px;
+  font-size: 11px;
+  color: var(--color-text-muted)
 }
-.jp-foot {
-  display: flex;
-  gap: 14px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--terminal-border-color);
-  font-size: 10.5px;
-  color: var(--color-text-dull, #767888);
+
+.jp-ask {
+  grid-column: 1/-1;
+  border: 1px solid var(--terminal-border-color)
 }
-.jp-foot-right {
-  margin-left: auto;
+
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px
+}
+
+@media(max-width:900px) {
+  .jp-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+  }
+}
+
+@media(max-width:600px) {
+  .jp-scrim {
+    padding: 0
+  }
+
+  .jp {
+    border-radius: 0;
+    border: 0
+  }
+
+  .jp-results {
+    grid-template-columns: 1fr;
+    padding: 12px
+  }
 }
 </style>
