@@ -200,6 +200,14 @@ try {
     assert(Number(size) >= 32, `keyfile holds >= 32 bytes, got ${size}`, stat);
     const value = docker(['exec', NAME, 'cat', '/app/data/secrets/JWT_SECRET']).stdout.trim();
     assert(value !== PLACEHOLDER && value !== '6g8UlgibzfngealexqkNPv1/H2ZG00cb4gp2/5JSNgs=', 'keyfile is neither the placeholder nor the published desktop key');
+    // Encryption initializes lazily: a fresh database has no credentials yet.
+    // Exercise the real first-use path as the app user before checking persistence.
+    const encryption = docker(['exec', '--user', 'node', NAME, 'node', '--input-type=module', '-e',
+      "import { encrypt, decrypt } from '/app/backend/src/utils/encryption.js'; const value='smoke-roundtrip'; if(decrypt(encrypt(value))!==value) process.exit(1);"]);
+    assert(encryption.code === 0, 'first-use encryption round trip succeeds as node', encryption.out);
+    const ownership = docker(['exec', '--user', 'node', NAME, 'sh', '-c',
+      'test ! -w /app && test ! -w /app/backend/server.js && test ! -w /app/node_modules && test -w /app/data && test -w /app/logs && test -w /app/unfirehose']);
+    assert(ownership.code === 0, 'application stays read-only and runtime directories stay writable for node', ownership.out);
     for (const name of ['ENCRYPTION_KEY', 'SESSION_SECRET']) {
       const s = docker(['exec', NAME, 'stat', '-c', '%a', `/app/data/secrets/${name}`]).stdout.trim();
       assert(s === '600', `${name} keyfile generated with mode 600, got ${s || '(missing)'}`);
