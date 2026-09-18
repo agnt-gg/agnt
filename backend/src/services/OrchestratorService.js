@@ -1,3 +1,4 @@
+import { userMessageText } from './orchestrator/taskMemory.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -1326,8 +1327,8 @@ async function universalChatHandler(req, res, context = {}) {
     if (messageInput && messageInput.length > 0) {
       for (let i = messageInput.length - 1; i >= 0; i--) {
         const msg = messageInput[i];
-        if (msg && msg.role === 'user' && typeof msg.content === 'string') {
-          return msg.content;
+        if (msg && msg.role === 'user') {
+          return userMessageText(msg);
         }
       }
     }
@@ -1551,6 +1552,7 @@ async function universalChatHandler(req, res, context = {}) {
             );
 
             agentExecutionId = execId;
+            conversationContext.executionId = execId;
 
             sendEvent('agent_execution_started', {
               executionId: agentExecutionId,
@@ -4092,6 +4094,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         InsightTriggers.onChatCompleted(agentExecutionId, userId, {
           agentId,
           conversationId,
+          latestUserMessage: conversationContext.latestUserMessage,
           provider: normalizedProvider,
           model,
         }).catch(err => {

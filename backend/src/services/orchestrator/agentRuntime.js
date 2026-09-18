@@ -86,6 +86,8 @@ export async function buildAgentRuntime({
     latestUserMessage,
     enabledTools,
     ...contextOverrides,
+    // Workflow/goal runtimes do not pass through the chat user-message injector.
+    memoryInSystemPrompt: true,
   };
 
   if (builtInAgent) {

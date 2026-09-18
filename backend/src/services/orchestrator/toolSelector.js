@@ -83,6 +83,7 @@ export const DEFAULT_TOOLS = new Set([
   'get_trace',
   'save_agent_memory',
   'get_agent_memories',
+  'record_memory_use',
 ]);
 
 /**
