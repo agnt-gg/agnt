@@ -283,6 +283,41 @@ describe('mid-run steering composes with the adapter repair', () => {
     expect(serialized).not.toContain(USER_AFTER_TOOL_RESULT_LABEL);
   });
 
+  it('keeps every request a byte-prefix of the next (prompt cache stays warm)', () => {
+    // The fold rewrites the LAST tool_result of a carrier. That is only safe
+    // for caching because the steer is drained before that carrier's first
+    // request goes out, so no request ever contains the carrier unfolded.
+    // Anthropic serves a hit at request N's last breakpoint only if every
+    // message of N reappears verbatim at the head of N+1 - measure exactly
+    // that, block-normalised, across a steer and two further rounds.
+    const adapter = newAdapter();
+    const canon = (m) => JSON.stringify(
+      { ...m, content: typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content },
+      (k, v) => (k === 'cache_control' ? undefined : v),
+    );
+    const wire = (ledger) => {
+      const msgs = adapter._normalizeHistoryMessages(structuredClone(ledger));
+      adapter._applyRollingCacheBreakpoints(msgs, 2);
+      return msgs;
+    };
+    const carrier = (id) => adapter.formatToolResults([{ tool_call_id: id, role: 'tool', name: 'web_scrape', content: `{"id":"${id}"}` }]);
+    const toolUse = (id) => ({ role: 'assistant', content: [{ type: 'tool_use', id, name: 'web_scrape', input: { url: 'https://x.com/' + id } }] });
+
+    const ledger = [{ role: 'user', content: 'Research the pricing page.' }];
+    const requests = [wire(ledger)];
+    ledger.push(toolUse('t1'), ...carrier('t1'));
+    applySteerAsUserTurn(ledger, 'just the plan names');
+    requests.push(wire(ledger));
+    for (const id of ['t2', 't3']) { ledger.push(toolUse(id), ...carrier(id)); requests.push(wire(ledger)); }
+
+    for (let i = 0; i + 1 < requests.length; i++) {
+      const prev = requests[i], next = requests[i + 1];
+      expect(next.length).toBeGreaterThan(prev.length);
+      expect(next.slice(0, prev.length).map(canon)).toEqual(prev.map(canon));
+    }
+    expect(findTextOnlyAssistantTurns(requests.at(-1))).toEqual([]);
+  });
+
   it('still lands correctly if the orchestrator layer is bypassed entirely', () => {
     const adapter = newAdapter();
     const messages = [...toolRound(), { role: 'user', content: 'raw push, no shape awareness' }];
