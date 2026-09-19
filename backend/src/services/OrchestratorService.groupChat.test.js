@@ -101,12 +101,16 @@ describe('mention_agent terminal floor pass', () => {
     expect(code).toMatch(/currentRound > 0 && \(!finalContentForLogging \|\| finalIsStatusOnly\) && !floorPassed/);
   });
 
-  it('the continuation nudge is gated off after a floor pass and bounded', () => {
+  it('the continuation nudge is gated off after a floor pass, bounded, and provider-scoped', () => {
     const idx = code.indexOf('continuationNudges < MAX_CONTINUATION_NUDGES');
     expect(idx).toBeGreaterThan(-1);
     const guard = code.slice(code.lastIndexOf('while (', idx), idx);
+    expect(guard).toContain('continuationGuardsApply(normalizedProvider)');
     expect(guard).toContain('!floorPassed');
     expect(guard).toContain('!streamAbortController.signal.aborted');
+    // The widened safety net carries the same scope, so every other
+    // provider's round-end logic is exactly what it was.
+    expect(code).toMatch(/finalIsStatusOnly = continuationGuardsApply\(normalizedProvider\) && isNonTerminalStatus\(finalContentForLogging\)/);
   });
 });
 

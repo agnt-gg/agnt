@@ -38,6 +38,7 @@ import { findBlockingMissingParams, formatMissingParamsError } from './orchestra
 import {
   foldBlocksIntoLastToolResult,
   isNonTerminalStatus,
+  continuationGuardsApply,
   CONTINUATION_NUDGE_TEXT,
   MAX_CONTINUATION_NUDGES,
 } from './orchestrator/turnContinuity.js';
@@ -3609,6 +3610,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // work; if it answers in full instead, the loop ends on real content.
       // Each nudge is another model call, so it counts as a round.
       while (
+        continuationGuardsApply(normalizedProvider) &&
         (!toolCalls || toolCalls.length === 0) &&
         !floorPassed &&
         !streamAbortController.signal.aborted &&
@@ -3731,7 +3733,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // and defeat the terminal-tool contract.
     // A status line that survived the in-loop nudges is treated the same as
     // no text: the user must get a real summary, never "(Continuing.)".
-    const finalIsStatusOnly = isNonTerminalStatus(finalContentForLogging);
+    // Scoped like the nudge - other providers' round-end logic is unchanged.
+    const finalIsStatusOnly = continuationGuardsApply(normalizedProvider) && isNonTerminalStatus(finalContentForLogging);
     if (currentRound > 0 && (!finalContentForLogging || finalIsStatusOnly) && !floorPassed) {
       console.log(
         finalIsStatusOnly

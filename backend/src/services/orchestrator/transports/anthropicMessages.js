@@ -275,6 +275,10 @@ class AnthropicAdapter extends BaseAdapter {
     // Anthropic blocks), and the conversion + consecutive-role merge that
     // follow normalize any injected message into the correct final form.
     messages = BaseAdapter._sanitizeOutbound(messages, 'anthropic');
+    // Legacy "(Continuing.)" bridges and the model's imitations of them were
+    // only ever produced on this transport; scrub them here so the merge
+    // below absorbs the same-role neighbours the drop leaves behind.
+    messages = BaseAdapter._scrubImitableStatusTurns(messages, 'anthropic');
 
     const converted = [];
 

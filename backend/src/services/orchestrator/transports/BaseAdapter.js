@@ -298,7 +298,7 @@ class BaseAdapter {
         `an unpaired tool_use/tool_result.`
       );
     }
-    return BaseAdapter._scrubImitableStatusTurns(out, label);
+    return out;
   }
 
   /**
@@ -307,11 +307,15 @@ class BaseAdapter {
    * Each one in history is a demonstration that a text-only turn is an
    * acceptable way to end a tool round, and the model copies it, so the
    * conversation stalls a little more often on every request that carries
-   * them. Removing them at the single wire choke point cures conversations
-   * that were poisoned before the bridge was retired. See turnContinuity.js.
+   * them. Removing them cures conversations that were poisoned before the
+   * bridge was retired. See turnContinuity.js.
    *
-   * Consecutive same-role neighbours left behind are the merge pass's job on
-   * Anthropic and are legal on every other provider.
+   * Called ONLY from the Anthropic transport, not from _sanitizeOutbound:
+   * that transport is the one that ever injected the bridge, and its
+   * alternation merge absorbs the consecutive same-role neighbours a drop
+   * leaves behind. Other transports never carried the bridge, and Gemini's
+   * converter has no merge, so a drop there could hand the provider two
+   * adjacent user turns. Their outbound path is byte-for-byte unchanged.
    */
   static _scrubImitableStatusTurns(messages, label = 'provider') {
     if (!Array.isArray(messages) || messages.length === 0) return messages;

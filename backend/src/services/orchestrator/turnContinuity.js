@@ -114,6 +114,22 @@ export function isNonTerminalStatus(text) {
   return STATUS_ONLY_PATTERN.test(trimmed);
 }
 
+/**
+ * The providers that ever carried the fabricated bridge, and therefore the
+ * only ones whose models learned to end a round on it. The continuation
+ * guards are scoped to them so every other provider's round-end logic is
+ * exactly what it was before this module existed.
+ */
+const BRIDGE_AFFECTED_PROVIDERS = new Set(['anthropic', 'claude-code']);
+
+/**
+ * @param {string} provider Normalized provider key.
+ * @returns {boolean} Whether the continuation guards apply to this provider.
+ */
+export function continuationGuardsApply(provider) {
+  return BRIDGE_AFFECTED_PROVIDERS.has(String(provider || '').toLowerCase());
+}
+
 /** How many times a single turn may be nudged past a bare status line. */
 export const MAX_CONTINUATION_NUDGES = 2;
 

@@ -14,10 +14,12 @@ import {
   foldBlocksIntoLastToolResult,
   isImitableStatusTurn,
   isNonTerminalStatus,
+  continuationGuardsApply,
   USER_AFTER_TOOL_RESULT_LABEL,
   CONTINUATION_NUDGE_TEXT,
   MAX_CONTINUATION_NUDGES,
 } from './turnContinuity.js';
+import { BaseAdapter } from './llmAdapters.js';
 
 const assistantText = (text) => ({ role: 'assistant', content: [{ type: 'text', text }] });
 
@@ -61,11 +63,48 @@ describe('isNonTerminalStatus — pause detection', () => {
     expect(isNonTerminalStatus(undefined)).toBe(false);
   });
 
+  it('applies only to the transports that ever carried the bridge', () => {
+    expect(continuationGuardsApply('anthropic')).toBe(true);
+    expect(continuationGuardsApply('claude-code')).toBe(true);
+    expect(continuationGuardsApply('Anthropic')).toBe(true);
+    for (const other of ['openai', 'openai-codex', 'gemini', 'groq', 'openrouter', 'deepseek', 'ollama', '', undefined]) {
+      expect(continuationGuardsApply(other), String(other)).toBe(false);
+    }
+  });
+
   it('exposes a bounded nudge that keeps tools available', () => {
     expect(MAX_CONTINUATION_NUDGES).toBeGreaterThan(0);
     expect(MAX_CONTINUATION_NUDGES).toBeLessThanOrEqual(3);
     expect(CONTINUATION_NUDGE_TEXT).toMatch(/tool call/);
     expect(CONTINUATION_NUDGE_TEXT).toMatch(/not finished/);
+  });
+});
+
+describe('the scrubber never runs on another provider’s outbound path', () => {
+  // _sanitizeOutbound is the shared wire choke point for every transport.
+  // The scrub lives in the Anthropic transport only: other providers never
+  // carried the bridge, and Gemini has no alternation merge to absorb the
+  // same-role neighbours a drop leaves behind.
+  const poisoned = [
+    { role: 'user', content: 'go' },
+    { role: 'assistant', content: '(Continuing.)' },
+    { role: 'user', content: 'continue' },
+    { role: 'assistant', content: 'Continuing.' },
+    { role: 'user', content: 'why did you stop' },
+  ];
+
+  it.each(['openai-like', 'gemini', 'openai-codex', 'provider'])('%s: _sanitizeOutbound leaves a poisoned history untouched', (label) => {
+    // The orphan sanitizers return a fresh array even when nothing changes,
+    // so identity is the wrong pin; the content must be unchanged and BOTH
+    // status turns must still be there - proof the scrub did not run.
+    const out = BaseAdapter._sanitizeOutbound(poisoned, label);
+    expect(out).toEqual(poisoned);
+    expect(out.filter(isImitableStatusTurn)).toHaveLength(2);
+  });
+
+  it('the scrub itself still recognises the pattern when the Anthropic transport asks', () => {
+    const out = BaseAdapter._scrubImitableStatusTurns(poisoned, 'anthropic');
+    expect(out.map((m) => m.role)).toEqual(['user', 'user', 'user']);
   });
 });
 
