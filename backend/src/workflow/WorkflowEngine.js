@@ -14,6 +14,12 @@ import { assertWorkflowShape } from './validateWorkflowShape.js';
 
 dotenv.config();
 
+// How many finalized execution ids one engine instance remembers. Purely a
+// redundant-write fast path in front of the SQL terminal guard, so the only
+// requirement is that it comfortably covers the in-flight writes of a single
+// run rather than the engine's whole lifetime.
+const FINALIZED_EXECUTION_CACHE_LIMIT = 100;
+
 class WorkflowEngine extends EventEmitter {
   constructor(workflow, workflowId, userId, isSubWorkflow = false, parentInputData = {}) {
     super();
@@ -41,6 +47,12 @@ class WorkflowEngine extends EventEmitter {
     // F2/F3: executions this engine instance has already finalized. Terminal
     // rows finalize once — a later stop/complete write for the same execution
     // is suppressed here and refused again by the ExecutionModel guard.
+    //
+    // Bounded: a listening engine is long-lived and finalizes one entry per
+    // run, so an unbounded set grows for the life of the process. The SQL
+    // guard in ExecutionModel.update is the authoritative check — this set is
+    // only a fast path that skips a redundant UPDATE, so evicting the oldest
+    // entries costs nothing but a no-op round trip on an ancient execution.
     this.finalizedExecutions = new Set();
     this.triggerQueue = [];
     this.outputs = {};
@@ -82,11 +94,20 @@ class WorkflowEngine extends EventEmitter {
     console.log(`Received trigger for workflow ${this.workflowId}`);
 
     // F1: late events are prevented at the door. A trigger that arrives after
-    // stop (or before listeners are armed) is rejected instead of being
-    // queued or executed — this covers the queue path AND the synchronous
-    // waitForCompletion path, which previously bypassed these flags entirely.
-    if (this.stopRequested || !this.isListening) {
-      console.log(`Rejecting trigger for workflow ${this.workflowId}: not listening (stopped=${this.stopRequested})`);
+    // stop is rejected instead of being queued or executed — this covers the
+    // queue path AND the synchronous waitForCompletion path, which previously
+    // bypassed these flags entirely.
+    //
+    // Deliberately keyed on stopRequested ALONE, not on `!isListening`. An
+    // engine that never armed listeners is not a stopped engine: sub-workflow
+    // engines and direct programmatic callers construct an engine and drive it
+    // straight through this method without ever calling
+    // setupWorkflowListeners(). Rejecting on `!isListening` would refuse those
+    // legitimate first runs, and it buys nothing — stopWorkflowListeners() is
+    // the only thing that has to be enforced here, and it always sets
+    // stopRequested.
+    if (this.stopRequested) {
+      console.log(`Rejecting trigger for workflow ${this.workflowId}: workflow stopped`);
       return {
         accepted: false,
         rejected: true,
@@ -558,11 +579,19 @@ class WorkflowEngine extends EventEmitter {
       throw error;
     }
   }
-  // F2/F3: single terminal write per execution …
+  // F2/F3: one terminal write per execution. Returns the number of rows the
+  // database actually changed, so a caller can tell a real finalize from a
+  // write the terminal guard refused.
   async _finalizeExecution(executionId, status, log, creditsUsed) {
     if (this.finalizedExecutions.has(executionId)) return 0;
     const changes = await dbRunWithRetry(() => ExecutionModel.update(executionId, status, log, creditsUsed));
-    if (changes > 0) this.finalizedExecutions.add(executionId);
+    if (changes > 0) {
+      // Sets iterate in insertion order, so the first key is the oldest.
+      if (this.finalizedExecutions.size >= FINALIZED_EXECUTION_CACHE_LIMIT) {
+        this.finalizedExecutions.delete(this.finalizedExecutions.values().next().value);
+      }
+      this.finalizedExecutions.add(executionId);
+    }
     return changes;
   }
   _initializeNodeNameMapping() {
