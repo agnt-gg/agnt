@@ -318,15 +318,17 @@ class AnthropicAdapter extends BaseAdapter {
     // token end_turn responses (the *original* PRD-082 symptom, distinct
     // from the Fable refusal symptom in PRD-083).
     //
-    // A fully correct fix is non-trivial because Anthropic also requires
-    // alternating user/assistant — we can't just split the merged message
-    // without inserting a synthetic assistant turn.
+    // Anthropic also requires alternating user/assistant, so the merged
+    // message cannot simply be split - that needs a fabricated assistant
+    // turn, and the model imitated the one we used ("(Continuing.)"),
+    // ending real tool rounds on a bare status line.
     //
     // FIXED: the merge below still runs (it has to - Anthropic rejects
-    // consecutive same-role messages), and a repair pass then splits any
-    // resulting [tool_result..., text] user message into two turns with a
-    // minimal synthetic assistant turn between them. That satisfies both
-    // constraints at once. See BaseAdapter._splitTextAfterToolResults.
+    // consecutive same-role messages), and a repair pass then folds any
+    // content trailing the last tool_result INTO that tool_result behind a
+    // user-input label. Both constraints hold and nothing synthetic enters
+    // the assistant side of the transcript. See
+    // BaseAdapter._foldTextAfterToolResults and turnContinuity.js.
     const merged = [];
     for (const msg of converted) {
       const last = merged[merged.length - 1];
@@ -339,7 +341,7 @@ class AnthropicAdapter extends BaseAdapter {
       }
     }
 
-    return BaseAdapter._splitTextAfterToolResults(merged);
+    return BaseAdapter._foldTextAfterToolResults(merged);
   }
 
   async call(messages, tools, context = {}) {

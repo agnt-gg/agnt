@@ -12,6 +12,7 @@
 import axios from 'axios';
 import { manageContext } from '../../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from '../toolValidator.js';
+import { foldBlocksIntoLastToolResult, isImitableStatusTurn } from '../turnContinuity.js';
 import * as ProviderRegistry from '../../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../../ai/CustomOpenAIProviderService.js';
 import {
@@ -297,15 +298,32 @@ class BaseAdapter {
         `an unpaired tool_use/tool_result.`
       );
     }
-    return out;
+    return BaseAdapter._scrubImitableStatusTurns(out, label);
   }
 
   /**
-   * Minimal synthetic assistant turn inserted when a user turn has to be split
-   * away from the tool results preceding it. Deliberately contentless: it must
-   * not put reasoning, claims, or an answer into the model's mouth.
+   * Drop assistant turns that are nothing but a status line - the legacy
+   * fabricated bridges ("(Continuing.)") and the model's imitations of them.
+   * Each one in history is a demonstration that a text-only turn is an
+   * acceptable way to end a tool round, and the model copies it, so the
+   * conversation stalls a little more often on every request that carries
+   * them. Removing them at the single wire choke point cures conversations
+   * that were poisoned before the bridge was retired. See turnContinuity.js.
+   *
+   * Consecutive same-role neighbours left behind are the merge pass's job on
+   * Anthropic and are legal on every other provider.
    */
-  static TOOL_RESULT_BRIDGE_TEXT = '(Continuing.)';
+  static _scrubImitableStatusTurns(messages, label = 'provider') {
+    if (!Array.isArray(messages) || messages.length === 0) return messages;
+    let dropped = 0;
+    const out = messages.filter((m) => {
+      if (isImitableStatusTurn(m)) { dropped++; return false; }
+      return true;
+    });
+    if (dropped === 0) return messages;
+    console.log(`[Adapter Guard] ${label}: scrubbed ${dropped} status-only assistant turn(s) from outbound history`);
+    return out;
+  }
 
   /**
    * Structural invariant: a tool call the model cannot be SHOWN to have made
@@ -358,8 +376,8 @@ class BaseAdapter {
   }
 
   /**
-   * Split any user message shaped [tool_result..., <other blocks>] into two
-   * turns separated by a minimal synthetic assistant turn.
+   * Fold any content trailing the last tool_result of a user message INTO
+   * that tool_result, so no user message is shaped [tool_result..., text].
    *
    * WHY
    * ---
@@ -372,26 +390,28 @@ class BaseAdapter {
    * hit this, but so does any ordinary follow-up typed during a tool round.
    *
    * The merge cannot simply be skipped: Anthropic also rejects consecutive
-   * same-role messages. So the repair runs after it - keep the tool_result
-   * blocks attached to the assistant tool_use that produced them, emit a
-   * minimal assistant turn, then carry the remaining blocks as their own user
-   * turn. Both invariants hold simultaneously.
+   * same-role messages. The previous repair split the turn behind a fabricated
+   * assistant message ("(Continuing.)"). That satisfied both wire rules and
+   * created a worse problem: the model imitated the fabricated turn, ending
+   * real tool rounds on a bare status line. Folding the user's blocks into the
+   * tool_result - behind a label naming them as user input - satisfies both
+   * rules with nothing for the model to copy. See turnContinuity.js.
    *
    * Properties this pass is required to have, and which the tests pin:
    *  - Identity (by reference-equal content) when the shape is absent.
    *  - Idempotent: no output user message has content after its last
-   *    tool_result, so a second pass cannot find anything to split.
+   *    tool_result, so a second pass cannot find anything to fold.
    *  - Pairing-preserving: tool_result blocks stay immediately after their
-   *    originating assistant message, so tool_use/tool_result pairing and
-   *    strict alternation both survive.
+   *    originating assistant message; message count is unchanged.
+   *  - No fabricated assistant turn, ever.
    *
    * @param {Array<Object>} messages Anthropic-shaped, post-merge history.
    * @returns {Array<Object>} History with the anti-pattern removed.
    */
-  static _splitTextAfterToolResults(messages) {
+  static _foldTextAfterToolResults(messages) {
     if (!Array.isArray(messages) || messages.length === 0) return messages;
 
-    let splitCount = 0;
+    let foldCount = 0;
     const out = [];
 
     for (const msg of messages) {
@@ -408,28 +428,19 @@ class BaseAdapter {
       }
 
       const head = msg.content.slice(0, lastResultIdx + 1);
-      // Whitespace-only text blocks are dropped rather than promoted into a
-      // turn of their own - manufacturing an assistant turn to carry nothing
-      // would add noise to every subsequent request.
+      // Whitespace-only text blocks carry nothing worth folding.
       const trailing = msg.content
         .slice(lastResultIdx + 1)
         .filter((b) => !(b && b.type === 'text' && String(b.text || '').trim() === ''));
 
-      out.push({ ...msg, content: head });
-      if (trailing.length > 0) {
-        out.push({
-          role: 'assistant',
-          content: [{ type: 'text', text: BaseAdapter.TOOL_RESULT_BRIDGE_TEXT }],
-        });
-        out.push({ role: 'user', content: trailing });
-      }
-      splitCount++;
+      out.push(foldBlocksIntoLastToolResult({ ...msg, content: head }, trailing));
+      foldCount++;
     }
 
-    if (splitCount > 0) {
+    if (foldCount > 0) {
       console.log(
-        `[Adapter Guard] anthropic: split ${splitCount} user message(s) carrying ` +
-        `content after tool_result blocks into separate turns (PRD-082 anti-pattern).`
+        `[Adapter Guard] anthropic: folded trailing user content into the last ` +
+        `tool_result of ${foldCount} message(s) (PRD-082 anti-pattern).`
       );
     }
     return out;

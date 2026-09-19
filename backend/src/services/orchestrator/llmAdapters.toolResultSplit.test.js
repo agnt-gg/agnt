@@ -1,6 +1,7 @@
 /**
  * Regression guard: Anthropic payloads must never carry content after
- * tool_result blocks.
+ * tool_result blocks — and must never repair that shape by fabricating an
+ * assistant turn.
  *
  * Anthropic's guidance is explicit -- "never add text blocks immediately after
  * tool results" -- because it teaches the model to expect user input after
@@ -11,24 +12,27 @@
  * Anthropic rejects consecutive same-role messages, so a user follow-up landing
  * immediately after a tool-result carrier gets folded into it as
  * `[tool_result, ..., text]`. The merge cannot simply be dropped (alternation
- * is mandatory), so `BaseAdapter._splitTextAfterToolResults` runs after it and
- * re-splits the turn behind a minimal synthetic assistant bridge.
+ * is mandatory).
  *
- * This was left open in the source as "a fully correct fix is non-trivial ...
- * Left as a follow-up". Mid-run steering silently inherited it: the steer
- * reached the wire, correctly labelled, in a shape the model is trained to
- * ignore. It rendered but did not steer.
+ * The first repair re-split the turn behind a synthetic assistant bridge,
+ * "(Continuing.)". The model imitated it: real tool rounds started ending on
+ * that exact status line with no tool call, which exits the tool loop and
+ * stops the work mid-task. The persisted imitation then re-taught the pattern
+ * on every later request.
  *
- * These tests pin the three properties the repair must have -- identity when
- * the shape is absent, idempotence, and preservation of tool_use/tool_result
- * pairing plus strict alternation -- so a future refactor can't reopen it.
+ * `BaseAdapter._foldTextAfterToolResults` now folds the trailing content INTO
+ * the last tool_result behind a user-input label. These tests pin: identity
+ * when the shape is absent, idempotence, pairing + alternation, unchanged
+ * message count, no fabricated assistant turn, and that a history already
+ * poisoned with the old bridge is scrubbed at the wire.
  */
 
 import { describe, it, expect } from 'vitest';
 import { AnthropicAdapter, BaseAdapter } from './llmAdapters.js';
 import { applySteerAsUserTurn } from '../OrchestratorService.js';
+import { USER_AFTER_TOOL_RESULT_LABEL } from './turnContinuity.js';
 
-const BRIDGE = BaseAdapter.TOOL_RESULT_BRIDGE_TEXT;
+const LEGACY_BRIDGE = '(Continuing.)';
 const stubClient = { messages: { create: async () => ({}) } };
 const newAdapter = () => new AnthropicAdapter(stubClient, 'claude-opus-5', 'claude-code', {});
 
@@ -68,6 +72,14 @@ function findBrokenPairing(msgs) {
   return bad;
 }
 
+/** Assistant turns that are a single short text block and nothing else. */
+function findTextOnlyAssistantTurns(msgs) {
+  return msgs.filter(
+    (m) => m?.role === 'assistant' && Array.isArray(m.content) &&
+      m.content.length === 1 && m.content[0]?.type === 'text',
+  );
+}
+
 /** One completed tool round, followed by whatever the caller appends. */
 function toolRound(id = 'toolu_1') {
   return [
@@ -83,21 +95,26 @@ function toolRound(id = 'toolu_1') {
   ];
 }
 
-describe('BaseAdapter._splitTextAfterToolResults', () => {
-  it('splits [tool_result, text] into two turns behind a synthetic bridge', () => {
+describe('BaseAdapter._foldTextAfterToolResults', () => {
+  it('folds [tool_result, text] into the tool_result behind a user-input label', () => {
     const input = [
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }, { type: 'text', text: 'actually, stop' }] },
     ];
-    const out = BaseAdapter._splitTextAfterToolResults(input);
+    const out = BaseAdapter._foldTextAfterToolResults(input);
 
-    expect(out).toHaveLength(3);
-    expect(out[0].content).toEqual([{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]);
-    expect(out[1]).toEqual({ role: 'assistant', content: [{ type: 'text', text: BRIDGE }] });
-    expect(out[2]).toEqual({ role: 'user', content: [{ type: 'text', text: 'actually, stop' }] });
+    expect(out).toHaveLength(1);
+    expect(out[0].role).toBe('user');
+    expect(out[0].content).toHaveLength(1);
+    expect(out[0].content[0].tool_use_id).toBe('t1');
+    expect(out[0].content[0].content).toEqual([
+      { type: 'text', text: 'ok' },
+      { type: 'text', text: USER_AFTER_TOOL_RESULT_LABEL },
+      { type: 'text', text: 'actually, stop' },
+    ]);
     expect(findTextAfterToolResult(out)).toEqual([]);
   });
 
-  it('keeps every tool_result in the leading turn when several are batched', () => {
+  it('folds into the LAST tool_result when several are batched', () => {
     const input = [
       {
         role: 'user',
@@ -108,9 +125,10 @@ describe('BaseAdapter._splitTextAfterToolResults', () => {
         ],
       },
     ];
-    const out = BaseAdapter._splitTextAfterToolResults(input);
+    const out = BaseAdapter._foldTextAfterToolResults(input);
     expect(out[0].content.map((b) => b.type)).toEqual(['tool_result', 'tool_result']);
-    expect(out[2].content).toEqual([{ type: 'text', text: 'steer' }]);
+    expect(out[0].content[0].content).toBe('a');
+    expect(out[0].content[1].content.at(-1)).toEqual({ type: 'text', text: 'steer' });
   });
 
   it('is identity when no user message carries content after a tool_result', () => {
@@ -119,7 +137,7 @@ describe('BaseAdapter._splitTextAfterToolResults', () => {
       { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
       { role: 'user', content: 'thanks' },
     ];
-    const out = BaseAdapter._splitTextAfterToolResults(clean);
+    const out = BaseAdapter._foldTextAfterToolResults(clean);
     expect(out).toEqual(clean);
     // Untouched messages must pass through by reference - a rebuilt array here
     // would silently defeat any upstream cache-marker identity checks.
@@ -130,36 +148,44 @@ describe('BaseAdapter._splitTextAfterToolResults', () => {
     const input = [
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }, { type: 'text', text: 'steer' }] },
     ];
-    const once = BaseAdapter._splitTextAfterToolResults(input);
-    const twice = BaseAdapter._splitTextAfterToolResults(once);
+    const once = BaseAdapter._foldTextAfterToolResults(input);
+    const twice = BaseAdapter._foldTextAfterToolResults(once);
     expect(twice).toEqual(once);
   });
 
-  it('drops whitespace-only trailing text instead of manufacturing a turn', () => {
+  it('drops whitespace-only trailing text without touching the tool_result', () => {
     const input = [
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }, { type: 'text', text: '   ' }] },
     ];
-    const out = BaseAdapter._splitTextAfterToolResults(input);
+    const out = BaseAdapter._foldTextAfterToolResults(input);
     expect(out).toHaveLength(1);
-    expect(out[0].content.map((b) => b.type)).toEqual(['tool_result']);
+    expect(out[0].content).toEqual([{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]);
   });
 
   it('leaves non-user, string-content, and empty histories alone', () => {
-    expect(BaseAdapter._splitTextAfterToolResults([])).toEqual([]);
-    expect(BaseAdapter._splitTextAfterToolResults(null)).toBeNull();
+    expect(BaseAdapter._foldTextAfterToolResults([])).toEqual([]);
+    expect(BaseAdapter._foldTextAfterToolResults(null)).toBeNull();
     const misc = [
       { role: 'assistant', content: [{ type: 'text', text: 'hi' }] },
       { role: 'user', content: 'plain string' },
     ];
-    expect(BaseAdapter._splitTextAfterToolResults(misc)).toEqual(misc);
+    expect(BaseAdapter._foldTextAfterToolResults(misc)).toEqual(misc);
+  });
+
+  it('never fabricates an assistant turn', () => {
+    const input = [
+      ...toolRound(),
+    ];
+    input[2] = { ...input[2], content: [...input[2].content, { type: 'text', text: 'follow-up' }] };
+    const out = BaseAdapter._foldTextAfterToolResults(input);
+    expect(out.filter((m) => m.role === 'assistant')).toHaveLength(1);
+    expect(JSON.stringify(out)).not.toContain(LEGACY_BRIDGE);
   });
 });
 
-describe('AnthropicAdapter wire payload — no content after tool results', () => {
-  it('a follow-up typed during a tool round no longer merges into the tool result', () => {
+describe('AnthropicAdapter wire payload — no content after tool results, no fabricated turns', () => {
+  it('a follow-up typed during a tool round rides inside the tool result', () => {
     const adapter = newAdapter();
-    // The ordinary case: not a steer at all, just a user message that lands
-    // after a tool-result carrier. This is what the merge used to fold.
     const history = [...toolRound(), { role: 'user', content: 'actually, just the plan names' }];
 
     const wire = adapter._normalizeHistoryMessages(history);
@@ -167,7 +193,12 @@ describe('AnthropicAdapter wire payload — no content after tool results', () =
     expect(findTextAfterToolResult(wire)).toEqual([]);
     expect(findConsecutiveSameRole(wire)).toEqual([]);
     expect(findBrokenPairing(wire)).toEqual([]);
-    expect(wire.at(-1)).toEqual({ role: 'user', content: [{ type: 'text', text: 'actually, just the plan names' }] });
+    expect(wire).toHaveLength(3);
+    expect(findTextOnlyAssistantTurns(wire)).toEqual([]);
+    const carrier = wire.at(-1);
+    expect(carrier.role).toBe('user');
+    expect(JSON.stringify(carrier)).toContain('actually, just the plan names');
+    expect(JSON.stringify(carrier)).toContain(USER_AFTER_TOOL_RESULT_LABEL);
   });
 
   it('normalizing twice is stable', () => {
@@ -178,7 +209,7 @@ describe('AnthropicAdapter wire payload — no content after tool results', () =
     expect(twice).toEqual(once);
   });
 
-  it('an OpenAI-shaped role:"tool" history converts and splits correctly', () => {
+  it('an OpenAI-shaped role:"tool" history converts and folds correctly', () => {
     const adapter = newAdapter();
     const history = [
       { role: 'user', content: 'go' },
@@ -191,39 +222,68 @@ describe('AnthropicAdapter wire payload — no content after tool results', () =
     expect(findTextAfterToolResult(wire)).toEqual([]);
     expect(findConsecutiveSameRole(wire)).toEqual([]);
     expect(findBrokenPairing(wire)).toEqual([]);
+    expect(findTextOnlyAssistantTurns(wire)).toEqual([]);
+    expect(JSON.stringify(wire.at(-1))).toContain('stop and summarize');
+  });
+
+  it('THE REGRESSION: a history poisoned by the legacy bridge is scrubbed before it can be imitated', () => {
+    const adapter = newAdapter();
+    // What production persisted once the bridge had been imitated: the
+    // fabricated bridge, the steer it carried, the model's own copy of the
+    // bridge ending a round, and the user's manual "continue".
+    const history = [
+      ...toolRound('toolu_1'),
+      { role: 'assistant', content: [{ type: 'text', text: LEGACY_BRIDGE }] },
+      { role: 'user', content: 'just the plan names' },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'toolu_2', name: 'web_scrape', input: { url: 'https://x.com/pricing' } }],
+      },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_2', content: 'Starter, Pro, Enterprise' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Continuing.' }] },
+      { role: 'user', content: 'why did you stop? continue' },
+    ];
+
+    const wire = adapter._normalizeHistoryMessages(history);
+
+    expect(JSON.stringify(wire)).not.toContain(LEGACY_BRIDGE);
+    expect(findTextOnlyAssistantTurns(wire)).toEqual([]);
+    expect(findTextAfterToolResult(wire)).toEqual([]);
+    expect(findConsecutiveSameRole(wire)).toEqual([]);
+    expect(findBrokenPairing(wire)).toEqual([]);
+    // Nothing the user said was lost.
+    const text = JSON.stringify(wire);
+    expect(text).toContain('just the plan names');
+    expect(text).toContain('why did you stop? continue');
   });
 });
 
 describe('mid-run steering composes with the adapter repair', () => {
-  it('delivers the steer as its own user turn, bridged exactly once', () => {
+  it('delivers the steer inside the tool result, labelled exactly once', () => {
     const adapter = newAdapter();
     const messages = toolRound();
 
-    // Orchestrator layer bridges for Anthropic...
-    expect(applySteerAsUserTurn(messages, 'just give me the 3 plan names')).toBe('anthropic-bridged');
+    expect(applySteerAsUserTurn(messages, 'just give me the 3 plan names')).toBe('anthropic-tool-result');
+    expect(messages).toHaveLength(3);
 
-    // ...so the adapter repair must find nothing left to do. Two independently
-    // correct layers must not double-bridge.
     const wire = adapter._normalizeHistoryMessages(messages);
 
     expect(findTextAfterToolResult(wire)).toEqual([]);
     expect(findConsecutiveSameRole(wire)).toEqual([]);
     expect(findBrokenPairing(wire)).toEqual([]);
+    expect(findTextOnlyAssistantTurns(wire)).toEqual([]);
+    expect(wire).toHaveLength(3);
 
-    const bridges = wire.filter(
-      (m) => m.role === 'assistant' && Array.isArray(m.content) &&
-        m.content.some((b) => b.type === 'text' && (b.text === BRIDGE || b.text.startsWith('(Mid-run'))),
-    );
-    expect(bridges).toHaveLength(1);
-
-    const steer = wire.at(-1);
-    expect(steer.role).toBe('user');
-    expect(JSON.stringify(steer)).toContain('just give me the 3 plan names');
+    const carrier = wire.at(-1);
+    expect(carrier.role).toBe('user');
+    const serialized = JSON.stringify(carrier);
+    expect(serialized).toContain('just give me the 3 plan names');
+    expect(serialized.split('USER STEER').length - 1).toBe(1);
+    // The steer carries its own label; the generic fold label must not stack on it.
+    expect(serialized).not.toContain(USER_AFTER_TOOL_RESULT_LABEL);
   });
 
   it('still lands correctly if the orchestrator layer is bypassed entirely', () => {
-    // Defense in depth: even a raw user push (any future call site that does
-    // not know about provider shapes) must reach the model as a real turn.
     const adapter = newAdapter();
     const messages = [...toolRound(), { role: 'user', content: 'raw push, no shape awareness' }];
 
@@ -231,6 +291,7 @@ describe('mid-run steering composes with the adapter repair', () => {
 
     expect(findTextAfterToolResult(wire)).toEqual([]);
     expect(findConsecutiveSameRole(wire)).toEqual([]);
-    expect(wire.at(-1).content).toEqual([{ type: 'text', text: 'raw push, no shape awareness' }]);
+    expect(findTextOnlyAssistantTurns(wire)).toEqual([]);
+    expect(JSON.stringify(wire.at(-1))).toContain('raw push, no shape awareness');
   });
 });

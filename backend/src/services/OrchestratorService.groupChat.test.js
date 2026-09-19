@@ -36,13 +36,14 @@ describe('eviction watermark wiring', () => {
   });
 
   it('every manageContext call site passes evictedUnits and persists the result', () => {
+    // Turn start, tool-loop round, continuation nudge, no-text safety net.
     const callSites = code.match(/manageContext\(messages, model, finalToolSchemas, normalizedProvider, \{[^}]*\}/g) || [];
-    expect(callSites.length).toBe(3);
+    expect(callSites.length).toBe(4);
     for (const site of callSites) {
       expect(site).toContain('evictedUnits: conversationContext._evictedUnits || 0');
     }
     const persists = code.match(/conversationContext\._evictedUnits = \w+\.evictedUnits \|\| 0/g) || [];
-    expect(persists.length).toBe(3);
+    expect(persists.length).toBe(4);
   });
 
   it('the mid-turn cache revert can NEVER restore evicted units', () => {
@@ -95,7 +96,17 @@ describe('mention_agent terminal floor pass', () => {
   });
 
   it('the no-text follow-up safety net is gated off after a floor pass', () => {
-    expect(code).toMatch(/currentRound > 0 && !finalContentForLogging && !floorPassed/);
+    // The net also catches a status-only final line ("Continuing."); the
+    // floor-pass gate must survive that widening.
+    expect(code).toMatch(/currentRound > 0 && \(!finalContentForLogging \|\| finalIsStatusOnly\) && !floorPassed/);
+  });
+
+  it('the continuation nudge is gated off after a floor pass and bounded', () => {
+    const idx = code.indexOf('continuationNudges < MAX_CONTINUATION_NUDGES');
+    expect(idx).toBeGreaterThan(-1);
+    const guard = code.slice(code.lastIndexOf('while (', idx), idx);
+    expect(guard).toContain('!floorPassed');
+    expect(guard).toContain('!streamAbortController.signal.aborted');
   });
 });
 
