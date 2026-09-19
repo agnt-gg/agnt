@@ -93,7 +93,9 @@ describe('WorkflowEngine — a stopped engine stays stopped', () => {
       await engine._handleTriggerQueue();
 
       expect(scheduled).not.toHaveBeenCalled();
-      expect(engine.isRunning).toBe(false);
+      // Returned before claiming the run slot, so the queued item is untouched.
+      expect(engine.isRunning).toBeFalsy();
+      expect(engine.triggerQueue).toHaveLength(1);
     } finally {
       scheduled.mockRestore();
     }
