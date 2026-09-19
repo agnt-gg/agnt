@@ -135,8 +135,8 @@ class TriggerTimer extends BaseTrigger {
       const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
       // F1: the fire-on-start shot must be disarmable by stop. Register the
       // handle in engine.timerIntervals (like the schedule chain) so
-      // stopWorkflowListeners() clears it; a trigger that already fired is
-      // additionally rejected by the engine's not-listening guard.
+      // stopWorkflowListeners() clears it; a shot that already fired is
+      // additionally rejected by the engine's stopped-workflow guard.
       const fireOnStartTimerId = setTimeout(() => {
         engine.timerIntervals.delete(`${node.id}:fireOnStart`);
         engine.processWorkflowTrigger({
