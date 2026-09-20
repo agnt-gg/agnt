@@ -493,7 +493,7 @@ export default {
     let workspaceGeneration = 0;
     let workspaceRequest = null;
     const showLibrary = ref(false);
-    const showTeamWorkspace = ref(false);
+    const showTeamWorkspace = ref(new URLSearchParams(window.location.search).has('teams-panel'));
     watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=''; });
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);

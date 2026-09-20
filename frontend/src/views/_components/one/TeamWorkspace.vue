@@ -72,7 +72,7 @@ const sharedWorkspaces = ref([]);
 const workspaceName = ref('');
 const activeSharedWorkspace = ref(null);
 const nativeResources=ref([]);
-async function loadNativeResources(workspace){await perform(async()=>{activeSharedWorkspace.value=workspace;nativeResources.value=await request('/'+teamId.value+'/workspaces/'+workspace.id+'/native');await loadConnections();});}
+async function loadNativeResources(workspace){const params=new URLSearchParams(window.location.search);if(params.get('team')!==teamId.value||params.get('workspace')!==workspace.id){const url=new URL(nativeWorkspaceUrl(workspace));url.searchParams.set('teams-panel','1');window.location.assign(url.href);return;}await perform(async()=>{activeSharedWorkspace.value=workspace;nativeResources.value=await request('/'+teamId.value+'/workspaces/'+workspace.id+'/native');await loadConnections();});}
 async function nativeExecution(resource,action){const ticket=generation;await perform(async()=>{const connection=connections.value.find(c=>c.id===executionConnection.value);const result=await request('/'+teamId.value+'/workspaces/'+activeSharedWorkspace.value.id+'/native/'+resource.kind+'/'+resource.id+'/'+action,{method:'POST',body:JSON.stringify(action==='authorize'?{connectionId:connection?.id,provider:connection?.providerId,model:executionModel.value}:{input:executionInput.value})});if(ticket===generation)executionResult.value=result;});}
 function nativeWorkspaceUrl(workspace){const url=new URL(currentTeam.value.tenantUrl);url.searchParams.set('team',teamId.value);url.searchParams.set('workspace',workspace.id);return url.href;}
 const destinationWorkspaceId = ref('');
@@ -166,6 +166,8 @@ async function loadTeam() {
     if (ticket !== generation) return;
     assets.value = a;
     sharedWorkspaces.value = workspaces;
+    const queryWorkspace=new URLSearchParams(window.location.search).get('workspace');
+    if(queryWorkspace){activeSharedWorkspace.value=workspaces.find(w=>w.id===queryWorkspace)||null;if(activeSharedWorkspace.value){tab.value='Workspaces';nativeResources.value=await request('/'+id+'/workspaces/'+queryWorkspace+'/native');}}
     members.value = m;
     events.value = e;
     invitations.value = i;
