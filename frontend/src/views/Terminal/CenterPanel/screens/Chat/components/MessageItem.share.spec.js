@@ -258,7 +258,7 @@ describe('inline Fullscreen stays fullscreen, independently of artifact cards',(
   expect(await waitFor(()=>w.element.querySelector('.html-inline-preview-wrapper .preview-btn'))).toBe(true);
   w.element.querySelector('.html-inline-preview-wrapper .preview-btn').click();await nextTick();
   expect(w.find('.html-preview-modal').exists()).toBe(true);
-  expect(w.find('.html-preview-modal iframe').attributes('src')).toContain('/api/local-file/');
+  expect(w.find('.html-preview-modal iframe').attributes('src')).toContain('/api/local-preview/');
   expect(dispatch.mock.calls.some(c=>c[0]==='shell/inspect')).toBe(false);
   await w.find('.close-preview-btn').trigger('click');expect(w.find('.html-preview-modal').exists()).toBe(false);w.unmount();dispatch.mockRestore();
  });
@@ -275,7 +275,7 @@ describe('inline Fullscreen stays fullscreen, independently of artifact cards',(
   const w=mountMessage({content:'<iframe src="'+localFileUrl(ENTRY)+'"></iframe>',compactArtifacts:true});
   expect(await waitFor(()=>hasIframeChrome(w))).toBe(true);
   w.element.querySelector('.iframe-inline-preview-wrapper .preview-btn').click();await nextTick();
-  expect(w.find('.html-preview-modal iframe').attributes('src')).toContain('/api/local-file/');
+  expect(w.find('.html-preview-modal iframe').attributes('src')).toContain('/api/local-preview/');
   await w.find('.close-preview-btn').trigger('click');w.unmount();
  });
 });
