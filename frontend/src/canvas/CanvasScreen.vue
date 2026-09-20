@@ -321,7 +321,7 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Sidebar icons + toolbar sub-tabs both derive from this registry.
 // Lives in sections.js so sections.spec.js can hold it to the same screen
 // list Terminal.vue and the router maintain by hand.
-import { BOTTOM_SECTIONS, ALL_SECTIONS, SECTION_ROUTES, visibleTabs } from './sections.js';
+import { BOTTOM_SECTIONS, ALL_SECTIONS, visibleTabs } from './sections.js';
 import { setInnerSection } from './innerSection.js';
 import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
@@ -333,7 +333,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import { useMobileOverlay } from '@/composables/useMobileOverlay.js';
 import PanelBackdrop from './PanelBackdrop.vue';
 import { screenHasFrame } from '@/views/Terminal/CenterPanel/screenRegistry.js';
-import { groupedNavigation, NAVIGATION_CHANGED_EVENT } from '@/services/navigationPreferences.js';
+import { customNavigationPages, groupedNavigation, NAVIGATION_CHANGED_EVENT } from '@/services/navigationPreferences.js';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -520,14 +520,8 @@ export default {
       return notifiableUnreadIds(unread, { streamingIds: streaming }).size > 0;
     });
 
-    // Custom pages = pages that don't belong to any section.
-    // Also exclude workspace:* rows (owned by /api/workspaces) so tab names
-    // like General/Coding never appear as left-sidebar custom pages.
-    const customPages = computed(() =>
-      allPages.value.filter(
-        (p) => !SECTION_ROUTES.has(p.route) && !(typeof p.route === 'string' && p.route.startsWith('workspace:')),
-      ),
-    );
+    // Shared with Settings → Navigation so both arrange the same page list.
+    const customPages = computed(() => customNavigationPages(allPages.value));
     const navigationGroups = computed(() => {
       navigationRevision.value;
       // Verbatim: whatever Settings → Navigation says is visible, in its order,

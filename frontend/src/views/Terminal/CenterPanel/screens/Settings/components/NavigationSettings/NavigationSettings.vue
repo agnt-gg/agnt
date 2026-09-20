@@ -69,6 +69,7 @@ import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import {
   addNavigationGroup,
+  customNavigationPages,
   groupedNavigation,
   loadNavigationPreferences,
   moveNavigationGroup,
@@ -86,7 +87,9 @@ export default {
     const store = useStore();
     const revision = ref(0);
     const newGroup = ref('');
-    const customPages = computed(() => store.getters['widgetLayout/allPages'].filter((page) => !page.route));
+    // Same predicate the rail uses — this screen may not describe a different
+    // set of pages than the one the user is looking at.
+    const customPages = computed(() => customNavigationPages(store.getters['widgetLayout/allPages']));
     const groups = computed(() => {
       revision.value;
       return groupedNavigation(customPages.value, { includeHidden: true });

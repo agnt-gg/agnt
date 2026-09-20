@@ -1,4 +1,4 @@
-import { MAIN_SECTIONS } from '@/canvas/sections.js';
+import { MAIN_SECTIONS, SECTION_ROUTES } from '@/canvas/sections.js';
 
 export const NAVIGATION_STORAGE_KEY = 'agnt:sidebarNavigation:v1';
 export const NAVIGATION_CHANGED_EVENT = 'agnt:navigation-changed';
@@ -77,6 +77,21 @@ function persist(preferences) {
 
 export function navigationItemKey(type, id) {
   return `${type}:${id}`;
+}
+
+// A custom page is any page no section owns. workspace:* rows are owned by
+// /api/workspaces and appear as a tab of Chat, so tab names like General or
+// Coding must never become rail rows.
+//
+// This lives here, once, because the rail and Settings → Navigation must be
+// looking at the same list: they each used to carry their own filter, and
+// Settings' (`!page.route`) was the stricter of the two, so a routed custom
+// page like custom:scratch appeared on the rail while Settings claimed there
+// were no custom pages to arrange.
+export function customNavigationPages(pages = []) {
+  return pages.filter(
+    (page) => !SECTION_ROUTES.has(page.route) && !(typeof page.route === 'string' && page.route.startsWith('workspace:')),
+  );
 }
 
 export function navigationItems(customPages = []) {
