@@ -92,6 +92,7 @@ class WorkflowEngine extends EventEmitter {
   }
   async processWorkflowTrigger(triggerData, options = {}) {
     if(String(this.userId).startsWith('scope:')){const {currentTeamExecution}=await import('../services/authorization/TeamExecutionContext.js');if(!currentTeamExecution())throw new Error('Shared workflow requires its approved execution principal');}
+    else if(process.env.AGNT_TENANT_SLUG && this.userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted member workflows must use an approved shared execution principal');
     console.log(`Received trigger for workflow ${this.workflowId}`);
 
     // F1: late events are prevented at the door. A trigger that arrives after

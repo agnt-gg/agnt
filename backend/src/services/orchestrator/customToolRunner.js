@@ -84,6 +84,7 @@ function toExecutableNode(tool, args) {
  *          result or { error }.
  */
 export async function runCustomTool(tool, args, userId) {
+  if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER){const {currentTeamExecution}=await import('../authorization/TeamExecutionContext.js');if(!currentTeamExecution())throw new Error('Hosted members must use approved shared execution');}
   const node = toExecutableNode(tool, args);
   const engine = makeMinimalEngine(userId);
   const executor = new CustomToolExecutor(engine);
