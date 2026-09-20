@@ -78,7 +78,7 @@ function makeRes() {
 }
 
 const req = { params: { id: 'wf-1' }, user: { userId: 'user-1' } };
-const storedRow = { id: 'wf-1', workflow_data: JSON.stringify({ id: 'wf-1', nodes: [], edges: [] }) };
+const storedRow = { id: 'wf-1', user_id: 'user-1', workflow_data: JSON.stringify({ id: 'wf-1', nodes: [], edges: [] }) };
 
 const unavailable = (reason = 'not-spawned', message = 'Workflow process is not available') =>
   new WorkflowProcessUnavailableError(message, reason);

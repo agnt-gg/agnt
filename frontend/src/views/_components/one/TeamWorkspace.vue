@@ -3,17 +3,19 @@
     <header><CustomSelect v-if="!hideScopeSelector" v-model="teamId" :options="[{value:'',label:'Personal'},...teams.map(t=>({value:t.id,label:t.name}))]" :disabled="busy" @update:model-value="loadTeam" aria-label="Personal or team workspace" /><button @click="mode='create'">New team</button><button @click="mode='join'">Join team</button><button @click="$emit('close')">Back to personal workspace</button></header>
     <div v-if="error" class="error" role="alert">{{ error }} <button @click="error=''">Dismiss</button></div>
     <p v-if="loading" role="status">Loading…</p>
-    <form v-if="mode==='create'" @submit.prevent="create"><h2>Create team</h2><label>Name<input v-model="teamName" required maxlength="100" /></label><button :disabled="busy">Create</button><button type="button" @click="mode=''">Cancel</button></form>
+    <form v-if="mode==='create'" @submit.prevent="create"><h2>Enable Business team</h2><p>An active Business or managed cloud instance is required.</p><label>Cloud instance slug<input v-model="teamName" required maxlength="63" /></label><button :disabled="busy">Create</button><button type="button" @click="mode=''">Cancel</button></form>
     <form v-else-if="mode==='join'" @submit.prevent="join"><h2>Join team</h2><label>Invitation token<input v-model="inviteToken" required autocomplete="off" /></label><p>Sign in with the invited email. Invitation tokens are single-use and expire after seven days.</p><button :disabled="busy">Accept invitation</button><button type="button" @click="mode=''">Cancel</button></form>
     <template v-else-if="teamId">
-      <nav aria-label="Team views"><button v-for="name in ['Assets','Members','Activity']" :key="name" :class="{active:tab===name}" @click="tab=name">{{ name }}</button><small>{{ currentTeam?.name }} · {{ currentTeam?.role }}</small></nav>
+      <p v-if="currentTeam?.tenantUrl"><a :href="currentTeam.tenantUrl" rel="noopener">Open team cloud instance</a> · {{ currentTeam.seats?.used }} / {{ currentTeam.seats?.total }} seats <a v-if="admin" href="https://agnt.gg/instance" target="_blank" rel="noopener">Manage seats and billing</a></p>
+      <nav aria-label="Team views"><button v-for="name in ['Assets','Members','Workspaces','Activity']" :key="name" :class="{active:tab===name}" @click="tab=name">{{ name }}</button><small>{{ currentTeam?.name }} · {{ currentTeam?.role }}</small></nav>
       <div v-if="tab==='Assets'" class="team-content">
         <div class="team-actions"><input v-model="query" placeholder="Find a shared asset…" aria-label="Find shared asset" /><button v-if="editable" @click="newAsset">New shared asset</button><button v-if="editable" @click="mode='share'">Share a personal asset</button></div>
-        <p class="muted">Shared library for trusted users of this AGNT server. This is not an isolated cloud tenant. Personal files and credentials are not shared through this library. Definitions are versioned; executing shared agents or goals is not enabled here.</p>
+        <p class="muted">Versioned definitions shared with your Business team. Personal files and connections stay private. Shared definitions do not grant permission to execute.</p>
         <form v-if="mode==='share'" @submit.prevent="sharePersonal"><label>Personal resource<CustomSelect v-model="personalId" :options="personalResources.map(r=>({value:r.key,label:r.kind+' · '+r.name}))" placeholder="Choose a resource" /></label><p>Shares a reviewed snapshot. It will not silently track or modify the personal original. Remove secrets before sharing.</p><label class="check"><input type="checkbox" v-model="reviewed" required /> I reviewed this definition and removed credentials.</label><label v-if="personalId">Review and redact before sharing<textarea v-model="shareContent" rows="12" /></label><button :disabled="busy || !reviewed">Share snapshot</button><button type="button" @click="mode=''">Cancel</button></form>
-        <div v-else class="asset-layout"><div class="asset-list"><button v-for="a in filteredAssets" :key="a.id" class="asset" @click="openAsset(a)"><strong>{{ a.name }}</strong><small>{{ a.kind }} · v{{ a.revision }}</small></button><p v-if="!filteredAssets.length && !loading">No shared assets yet.</p></div><div v-if="selected" class="asset-detail"><div class="asset-title"><h2>{{ selected.name }}</h2><small>v{{ selected.revision }} · {{ selected.kind }}</small></div><label>Name<input v-model="draft.name" :readonly="!editable" maxlength="180" /></label><label>Kind<CustomSelect v-model="draft.kind" :disabled="!editable" :options="assetKinds.map(kind=>({value:kind,label:kind}))" /></label><label>Content<textarea v-model="draft.content" :readonly="!editable" rows="15" /></label><div class="team-actions"><button v-if="editable" :disabled="busy" @click="saveAsset">Save new version</button><button @click="download">Download</button><button @click="openAsset(selected)">Reload latest</button><button v-if="selected.revision>1" @click="loadVersion(selected.revision-1)">Previous version</button></div><p v-if="selected.revision<latestRevision" class="muted">Viewing historical version. Saving uses the last fetched revision and rejects stale updates.</p></div></div>
+        <div v-else class="asset-layout"><div class="asset-list"><button v-for="a in filteredAssets" :key="a.id" class="asset" @click="openAsset(a)"><strong>{{ a.name }}</strong><small>{{ a.kind }} · v{{ a.revision }}</small></button><p v-if="!filteredAssets.length && !loading">No shared assets yet.</p></div><div v-if="selected" class="asset-detail"><div class="asset-title"><h2>{{ selected.name }}</h2><small>v{{ selected.revision }} · {{ selected.kind }}</small></div><label v-if="editable">Add to workspace<CustomSelect v-model="destinationWorkspaceId" :options="[{value:'',label:'Team library'},...sharedWorkspaces.map(w=>({value:w.id,label:w.name}))]" /></label><label>Name<input v-model="draft.name" :readonly="!editable" maxlength="180" /></label><label>Kind<CustomSelect v-model="draft.kind" :disabled="!editable" :options="assetKinds.map(kind=>({value:kind,label:kind}))" /></label><label>Content<textarea v-model="draft.content" :readonly="!editable" rows="15" /></label><div class="team-actions"><button v-if="editable" :disabled="busy" @click="saveAsset">Save new version</button><button @click="download">Download</button><button @click="openAsset(selected)">Reload latest</button><button v-if="selected.revision>1" @click="loadVersion(selected.revision-1)">Previous version</button></div><p v-if="selected.revision<latestRevision" class="muted">Viewing historical version. Saving uses the last fetched revision and rejects stale updates.</p></div></div>
       </div>
-      <div v-else-if="tab==='Members'" class="team-content"><ul><li v-for="m in members" :key="m.user_id"><span>{{ m.email || m.user_id }}</span><small>{{ m.role }}</small><button v-if="currentTeam?.role==='owner' && m.role!=='owner'" @click="remove(m)">Remove</button></li></ul><form v-if="admin" @submit.prevent="invite"><h2>Invite by verified email</h2><label>Email<input v-model="inviteEmail" type="email" required /></label><label>Role<CustomSelect v-model="inviteRole" :options="[{value:'viewer',label:'Viewer — read only'},{value:'member',label:'Member — edit shared assets'},{value:'admin',label:'Admin — manage invitations'}]" /></label><button :disabled="busy">Create invitation</button><p>Copy the invitation token and send it to the recipient privately. No email is sent automatically.</p><textarea v-if="createdInvite" readonly :value="createdInvite" aria-label="Single-use invitation token" /></form><h3 v-if="invitations.length">Pending invitations</h3><ul><li v-for="i in invitations" :key="i.id"><span>{{ i.email }}</span><small>{{ i.role }}</small><button v-if="admin" @click="revoke(i)">Revoke</button></li></ul></div>
+      <div v-else-if="tab==='Members'" class="team-content"><ul><li v-for="m in members" :key="m.user_id"><span>{{ m.email || m.user_id }}</span><small>{{ m.role }}</small><button v-if="admin && m.role!=='owner'" @click="changeMemberRole(m)">{{ m.role==='admin' ? 'Make member' : 'Make admin' }}</button><button v-if="currentTeam?.role==='owner' && m.role!=='owner'" @click="remove(m)">Remove</button></li></ul><form v-if="admin" @submit.prevent="invite"><h2>Invite by verified email</h2><label>Email<input v-model="inviteEmail" type="email" required /></label><label>Role<CustomSelect v-model="inviteRole" :options="[{value:'member',label:'Member — edit shared assets'},{value:'admin',label:'Admin'}]" /></label><button :disabled="busy">Create invitation</button><p>Copy the invitation token and send it to the recipient privately. No email is sent automatically.</p><textarea v-if="createdInvite" readonly :value="createdInvite" aria-label="Single-use invitation token" /></form><h3 v-if="invitations.length">Pending invitations</h3><ul><li v-for="i in invitations" :key="i.id"><span>{{ i.email }}</span><small>{{ i.role }}</small><button v-if="admin" @click="revoke(i)">Revoke</button></li></ul></div>
+      <div v-else-if="tab==='Workspaces'" class="team-content"><form v-if="editable" @submit.prevent="createSharedWorkspace"><label>Workspace name<input v-model="workspaceName" required maxlength="100" /></label><button :disabled="busy">Create workspace</button></form><div v-for="workspace in sharedWorkspaces" :key="workspace.id" class="asset"><strong>{{ workspace.name }}</strong><small>All team members · v{{ workspace.revision }}</small><button @click="setWorkspaceOpen(workspace,!workspace.is_open)">{{ workspace.is_open ? 'Close for me' : 'Open for me' }}</button><button v-if="admin" @click="archiveWorkspace(workspace)">Archive</button></div><p v-if="!sharedWorkspaces.length">No team workspaces yet.</p></div>
       <div v-else class="team-content"><ul><li v-for="entry in events" :key="entry.id"><span>{{ entry.action }}</span><small>{{ entry.actor_id }} · {{ entry.created_at }}</small></li></ul><p v-if="!events.length">No activity yet.</p></div>
     </template>
     <div v-else-if="!mode" class="team-content"><h2>{{ hideScopeSelector ? 'Teams' : 'Personal workspace' }}</h2><p>Your personal resources stay private. Choose a team or create one to share versioned assets on this server.</p><div v-if="hideScopeSelector && teams.length" class="asset-list"><button v-for="team in teams" :key="team.id" class="asset" @click="teamId=team.id;loadTeam()"><strong>{{ team.name }}</strong><small>{{ team.role }}</small></button></div><button @click="$emit('close')">Continue personal work</button></div>
@@ -64,10 +66,17 @@ const teams = ref([]),
   error = ref('');
 let generation = 0;
 const shareContent = ref('');
+const sharedWorkspaces = ref([]);
+const workspaceName = ref('');
+const destinationWorkspaceId = ref('');
+async function changeMemberRole(member){await perform(async()=>{await request('/'+teamId.value+'/members/'+member.user_id,{method:'PATCH',body:JSON.stringify({role:member.role==='admin'?'member':'admin'})});members.value=await request('/'+teamId.value+'/members');});}
+async function createSharedWorkspace(){await perform(async()=>{await request('/'+teamId.value+'/workspaces',{method:'POST',body:JSON.stringify({name:workspaceName.value})});workspaceName.value='';sharedWorkspaces.value=await request('/'+teamId.value+'/workspaces');});}
+async function setWorkspaceOpen(workspace,isOpen){await perform(async()=>{await request('/'+teamId.value+'/workspaces/'+workspace.id+'/preferences',{method:'PUT',body:JSON.stringify({isOpen})});workspace.is_open=isOpen?1:0;});}
+async function archiveWorkspace(workspace){if(!window.confirm('Archive '+workspace.name+' for the team?'))return;await perform(async()=>{await request('/'+teamId.value+'/workspaces/'+workspace.id+'/archive',{method:'POST'});sharedWorkspaces.value=await request('/'+teamId.value+'/workspaces');});}
 const assetKinds = ['markdown', 'text', 'html', 'csv', 'agent', 'workflow', 'tool', 'skill', 'widget', 'goal'];
 const currentTeam = computed(() => teams.value.find(t => t.id === teamId.value));
-const editable = computed(() => ['owner', 'admin', 'member'].includes(currentTeam.value?.role));
-const admin = computed(() => ['owner', 'admin'].includes(currentTeam.value?.role));
+const editable = computed(() => currentTeam.value?.entitlement?.collaborationAllowed && currentTeam.value?.tenantUrl && window.location.origin === new URL(currentTeam.value.tenantUrl).origin && ['owner', 'admin', 'member'].includes(currentTeam.value?.role));
+const admin = computed(() => currentTeam.value?.capabilities?.manageMembers === true);
 const filteredAssets = computed(() => assets.value.filter(a => a.name.toLowerCase().includes(query.value.toLowerCase())));
 const personalResources = computed(() => [
   ['agent', store.getters['agents/allAgents'] || []],
@@ -121,6 +130,7 @@ async function loadTeam() {
   const ticket = ++generation,
     id = teamId.value;
   assets.value = [];
+  sharedWorkspaces.value = [];
   members.value = [];
   events.value = [];
   invitations.value = [];
@@ -131,9 +141,11 @@ async function loadTeam() {
   loading.value = true;
   error.value = '';
   try {
-    const [a, m, e, i] = await Promise.all([request('/' + id + '/assets'), request('/' + id + '/members'), request('/' + id + '/activity'), admin.value ? request('/' + id + '/invitations') : []]);
+    const onTenant = currentTeam.value?.tenantUrl && window.location.origin === new URL(currentTeam.value.tenantUrl).origin;
+    const [a, m, e, i, workspaces] = await Promise.all([onTenant ? request('/' + id + '/assets') : [], request('/' + id + '/members'), onTenant ? request('/' + id + '/activity') : [], admin.value ? request('/' + id + '/invitations') : [], onTenant ? request('/'+id+'/workspaces') : []]);
     if (ticket !== generation) return;
     assets.value = a;
+    sharedWorkspaces.value = workspaces;
     members.value = m;
     events.value = e;
     invitations.value = i;
@@ -152,7 +164,7 @@ function create() {
     const t = await request('', {
       method: 'POST',
       body: JSON.stringify({
-        name: teamName.value
+        tenantSlug: teamName.value.trim()
       })
     });
     await loadTeams();
@@ -171,7 +183,7 @@ function join() {
     });
     inviteToken.value = '';
     await loadTeams();
-    teamId.value = t.teamId;
+    teamId.value = t.id;
     await loadTeam()
   })
 }
@@ -274,6 +286,7 @@ function saveAsset() {
       method: 'POST',
       body: JSON.stringify(input)
     });
+    if(destinationWorkspaceId.value)await request('/'+teamId.value+'/workspaces/'+destinationWorkspaceId.value+'/resources',{method:'POST',body:JSON.stringify({assetId:r.id})});
     await loadTeam();
     await openAsset(r)
   })
@@ -317,6 +330,7 @@ watch(() => store.state.userAuth?.token, () => {
   teamId.value = '';
   teams.value = [];
   assets.value = [];
+  sharedWorkspaces.value = [];
   members.value = [];
   invitations.value = [];
   selected.value = null;

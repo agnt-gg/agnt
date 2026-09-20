@@ -27,7 +27,9 @@ class WorkflowModel {
 
   static async createOrUpdate(id, workflowData, userId, isShareable) {
     try {
+      if (!userId) throw Object.assign(new Error('Workflow owner required'), {status:401});
       const existingRow = await this.findOne(id);
+      if (existingRow && existingRow.user_id !== userId) throw Object.assign(new Error('Workflow not found'), {status:404});
       const extracted = this._extractSummaryFields(workflowData);
       // Preserve existing category if the update sends an empty one
       const name = extracted.name;
@@ -53,15 +55,14 @@ class WorkflowModel {
           db.run(
             `UPDATE workflows
               SET workflow_data = ?,
-                  user_id       = ?,
                   is_shareable  = ?,
                   name          = ?,
                   description   = ?,
                   category      = ?,
                   node_summary  = ?,
                   updated_at    = CURRENT_TIMESTAMP
-              WHERE id = ?`,
-            [workflowData, userId, isShareable ? 1 : 0, name, description, category, nodeSummary, id],
+              WHERE id = ? AND user_id = ?`,
+            [workflowData, isShareable ? 1 : 0, name, description, category, nodeSummary, id, userId],
             function (err) {
               if (err) reject(err);
               else resolve({ changes: this.changes });

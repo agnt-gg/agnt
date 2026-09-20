@@ -362,7 +362,7 @@ class WidgetDefinitionService {
 
       // Check existence
       const existing = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM widget_definitions WHERE id = ?', [widgetId], (err, row) =>
+        db.get('SELECT id FROM widget_definitions WHERE id = ? AND user_id = ?', [widgetId, req.user?.id || req.user?.userId], (err, row) =>
           err ? reject(err) : resolve(row),
         );
       });
@@ -374,8 +374,8 @@ class WidgetDefinitionService {
       // PRD-057: mark plugin-installed widgets as user-modified on UI updates
       await new Promise((resolve) => {
         db.run(
-          `UPDATE widget_definitions SET is_user_modified = 1 WHERE id = ? AND source_plugin IS NOT NULL`,
-          [widgetId],
+          `UPDATE widget_definitions SET is_user_modified = 1 WHERE id = ? AND user_id = ? AND source_plugin IS NOT NULL`,
+          [widgetId, req.user?.id || req.user?.userId],
           () => resolve()
         );
       });
@@ -396,7 +396,7 @@ class WidgetDefinitionService {
              is_shared = COALESCE(?, is_shared),
              thumbnail = COALESCE(?, thumbnail),
              updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
+           WHERE id = ? AND user_id = ?`,
           [
             name || null,
             description !== undefined ? description : null,
@@ -411,6 +411,7 @@ class WidgetDefinitionService {
             is_shared !== undefined ? (is_shared ? 1 : 0) : null,
             thumbnail !== undefined ? thumbnail : null,
             widgetId,
+            req.user?.id || req.user?.userId,
           ],
           (err) => (err ? reject(err) : resolve()),
         );
@@ -420,8 +421,8 @@ class WidgetDefinitionService {
       if (useThemeStyles !== undefined) {
         await new Promise((resolve) => {
           db.run(
-            `UPDATE widget_definitions SET use_theme_styles = ? WHERE id = ?`,
-            [useThemeStyles ? 1 : 0, widgetId],
+            `UPDATE widget_definitions SET use_theme_styles = ? WHERE id = ? AND user_id = ?`,
+            [useThemeStyles ? 1 : 0, widgetId, req.user?.id || req.user?.userId],
             () => resolve(), // Ignore error if column doesn't exist
           );
         });
@@ -449,7 +450,7 @@ class WidgetDefinitionService {
       const { widgetId } = req.params;
 
       await new Promise((resolve, reject) => {
-        db.run('DELETE FROM widget_definitions WHERE id = ?', [widgetId], (err) =>
+        db.run('DELETE FROM widget_definitions WHERE id = ? AND user_id = ?', [widgetId, req.user?.id || req.user?.userId], (err) =>
           err ? reject(err) : resolve(),
         );
       });

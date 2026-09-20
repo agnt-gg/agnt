@@ -60,6 +60,7 @@ class WorkflowService {
 
       // Find existing row (whether the user owns it or not)
       const existingWorkflow = await WorkflowModel.findOne(workflow.id);
+      if (existingWorkflow && existingWorkflow.user_id !== userId) return res.status(404).json({error:'Workflow not found'});
 
       // Remove ‘status’ so we don't overwrite the DB column
       delete workflow.status;

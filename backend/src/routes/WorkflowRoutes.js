@@ -26,8 +26,16 @@ WorkflowRoutes.post('/:id/stop', authenticateToken, WorkflowService.deactivateWo
 // WORKFLOW VERSION CONTROL ROUTES
 // ============================================================================
 
+async function requireWorkflowOwner(req,res,next) {
+  try {
+    const workflow = await WorkflowModel.findOne(req.params.workflowId);
+    if (!workflow || workflow.user_id !== (req.user?.userId || req.user?.id)) return res.status(404).json({error:'Workflow not found'});
+    next();
+  } catch(error) { console.error('[Workflow access]',error.message);res.status(500).json({error:'Unable to check workflow access'}); }
+}
+
 // GET /api/workflows/:id/versions - List versions
-WorkflowRoutes.get('/:workflowId/versions', authenticateToken, async (req, res) => {
+WorkflowRoutes.get('/:workflowId/versions', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
     const { workflowId } = req.params;
     const { limit, offset, checkpointsOnly } = req.query;
@@ -46,7 +54,7 @@ WorkflowRoutes.get('/:workflowId/versions', authenticateToken, async (req, res) 
 });
 
 // GET /api/workflows/:id/versions/:versionId - Get specific version
-WorkflowRoutes.get('/:workflowId/versions/:versionId', authenticateToken, async (req, res) => {
+WorkflowRoutes.get('/:workflowId/versions/:versionId', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
     const { workflowId, versionId } = req.params;
     const version = await WorkflowVersionService.getVersion(workflowId, parseInt(versionId));
@@ -63,7 +71,7 @@ WorkflowRoutes.get('/:workflowId/versions/:versionId', authenticateToken, async 
 });
 
 // POST /api/workflows/:id/revert - Revert to version
-WorkflowRoutes.post('/:workflowId/revert', authenticateToken, async (req, res) => {
+WorkflowRoutes.post('/:workflowId/revert', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
     const { workflowId } = req.params;
     const { versionId } = req.body;
@@ -91,7 +99,7 @@ WorkflowRoutes.post('/:workflowId/revert', authenticateToken, async (req, res) =
 });
 
 // POST /api/workflows/:id/checkpoint - Create checkpoint
-WorkflowRoutes.post('/:workflowId/checkpoint', authenticateToken, async (req, res) => {
+WorkflowRoutes.post('/:workflowId/checkpoint', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
     const { workflowId } = req.params;
     const { name, currentWorkflowState } = req.body;
@@ -114,7 +122,7 @@ WorkflowRoutes.post('/:workflowId/checkpoint', authenticateToken, async (req, re
 });
 
 // GET /api/workflows/:id/versions/compare - Compare versions
-WorkflowRoutes.get('/:workflowId/versions/compare', authenticateToken, async (req, res) => {
+WorkflowRoutes.get('/:workflowId/versions/compare', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
     const { workflowId } = req.params;
     const { versionA, versionB } = req.query;
@@ -133,7 +141,7 @@ WorkflowRoutes.get('/:workflowId/versions/compare', authenticateToken, async (re
 });
 
 // GET /api/workflows/:id/versions/stats - Storage stats
-WorkflowRoutes.get('/:workflowId/versions/stats', authenticateToken, async (req, res) => {
+WorkflowRoutes.get('/:workflowId/versions/stats', authenticateToken, requireWorkflowOwner, async (req, res) => {
   try {
     const { workflowId } = req.params;
     const stats = await WorkflowVersionService.getStorageStats(workflowId);
