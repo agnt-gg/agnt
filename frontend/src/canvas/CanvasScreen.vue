@@ -116,15 +116,15 @@
           :model-value="selectedTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
           :error="workspaceError" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
         />
-        <nav class="cv-primary-nav" aria-label="Primary navigation">
-          <Tooltip v-for="item in primaryItems" :key="item.id" :text="item.label" position="right" width="auto" :disabled="railLabelsVisible">
-            <button class="cv-sb-page" :class="{active:primaryActive===item.id}" :data-primary="item.id"
-              :data-tour-id="'sidebar.'+item.id" :aria-label="item.label"
-              :aria-current="primaryActive===item.id ? 'page' : undefined" @click="openMobilePrimary(item.id)">
-              <i :class="item.icon" aria-hidden="true"></i>
-              <span v-if="item.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
-              <span class="cv-sb-label">{{ item.label }}</span>
-              <span v-if="item.id==='work' && railBadges.goals" class="cv-sb-badge">{{ railBadges.goals }}</span>
+        <!-- Search is an ACTION, not a page: it opens the jump palette rather
+             than navigating anywhere, so it is the one rail row Settings does
+             not list. Every destination below comes from the registry. -->
+        <nav class="cv-primary-nav" aria-label="Search">
+          <Tooltip :text="jumpHint" position="right" width="auto" :disabled="railLabelsVisible">
+            <button class="cv-sb-page" data-primary="find" aria-label="Search" @click="openMobilePrimary('find')">
+              <i class="fas fa-search" aria-hidden="true"></i>
+              <span class="cv-sb-label">Search</span>
+              <span class="cv-rail-shortcut">{{ jumpKey }}</span>
             </button>
           </Tooltip>
         </nav>
@@ -138,8 +138,10 @@
             <Tooltip v-for="item in group.items" :key="item.key" :text="item.label" position="right" width="auto" :disabled="railLabelsVisible">
               <button
                 class="cv-sb-page"
-                :class="{ active: item.type === 'section' ? (!showLibrary && !showTeamWorkspace && !onCustomPage && activeSection?.id === item.id) : (onCustomPage && item.id === activePageId) }"
-                :data-tour-id="item.type === 'section' ? `sidebar.${item.id}` : undefined"
+                :class="{ active: isNavigationItemActive(item) }"
+                :data-tour-id="item.type === 'page' ? undefined : `sidebar.${item.id}`"
+                :aria-label="item.label"
+                :aria-current="isNavigationItemActive(item) ? 'page' : undefined"
                 @click="openMobileNavigationItem(item)"
                 @contextmenu.prevent="item.type === 'page' && openContextMenu($event, item.page)"
               >
@@ -483,13 +485,6 @@ export default {
       isGlobalProviderSelectorOpen.value = true;
     };
 
-    const primaryItems = [
-      {id:'chat',label:'Chat',icon:'fas fa-comments'},
-      {id:'work',label:'Work',icon:'fas fa-tasks'},
-      {id:'library',label:'Library',icon:'fas fa-book-open'},
-      {id:'teams',label:'Teams',icon:'fas fa-users'},
-      {id:'find',label:'Search',icon:'fas fa-search'},
-    ];
     const selectedTeamId = ref('');
     const workspaceTeams = ref([]);
     const workspaceError = ref('');
@@ -535,21 +530,28 @@ export default {
     );
     const navigationGroups = computed(() => {
       navigationRevision.value;
-      // Preserve deliberate shortcuts, but do not duplicate the five primary destinations.
-      return groupedNavigation(customPages.value).map(group=>({...group,items:group.items.filter(item=>item.type==='page'||!['chat','goals','artifacts'].includes(item.id))})).filter(group=>group.items.length);
+      // Verbatim: whatever Settings → Navigation says is visible, in its order,
+      // in its groups. No id is filtered here — a rail that quietly drops rows
+      // makes the settings screen a description of a sidebar nobody has.
+      return groupedNavigation(customPages.value);
     });
 
     // Is the active page a custom (user-created) page?
     const isCustomPage = computed(() => onCustomPage.value);
+    // Library and Teams are panels laid OVER the screen rather than screens of
+    // their own, so they are lit by their open state. Every other row is a real
+    // destination and lights itself from activeSection / activePageId.
     const primaryActive = computed(() => {
       if(showTeamWorkspace.value)return teamNavigationTab.value==='Members'?'teams':'library';
       if(showLibrary.value)return 'library';
-      if(onCustomPage.value)return '';
-      if(props.screenName==='ChatScreen')return 'chat';
-      if(['GoalsScreen','TracesScreen','DashboardScreen','AutonomyScreen'].includes(props.screenName))return 'work';
-      if(['ArtifactsScreen','AgentsScreen','AgentForgeScreen','WorkflowsScreen','WorkflowForgeScreen','ToolsScreen','ToolForgeScreen','SkillsScreen','MemoryScreen','WidgetManagerScreen','WidgetForgeScreen','PluginsScreen','MarketplaceScreen'].includes(props.screenName))return 'library';
       return '';
     });
+    function isNavigationItemActive(item) {
+      if (item.type === 'virtual') return primaryActive.value === item.id;
+      if (showLibrary.value || showTeamWorkspace.value) return false;
+      if (item.type === 'page') return onCustomPage.value && item.id === activePageId.value;
+      return !onCustomPage.value && activeSection.value?.id === item.id;
+    }
     function syncWorkspaceTeams(teams) {
       workspaceTeams.value=teams;workspaceError.value='';
       if(selectedTeamId.value&&!teams.some(t=>t.id===selectedTeamId.value))selectedTeamId.value='';
@@ -579,12 +581,15 @@ export default {
       showTeamWorkspace.value=!!id;
       if(!id)emit('screen-change','ChatScreen',{});
     }
+    // The rail rows that are not screens: Search opens the palette, Teams and
+    // Library open a panel over whatever is mounted (which is how a draft in
+    // the screen underneath survives a trip through them).
     function openPrimary(id) {
       if(id==='find'){openJump();return}
       if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
       if(id==='library'){onCustomPage.value=false;teamNavigationTab.value='Assets';showTeamWorkspace.value=!!selectedTeamId.value;showLibrary.value=!selectedTeamId.value;return}
       selectedTeamId.value='';showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
-      emit('screen-change',id==='work'?'GoalsScreen':'ChatScreen',{});
+      emit('screen-change','ChatScreen',{});
     }
     watch(() => [isAuthenticated.value,store.state.userAuth?.token], () => {
       workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value='';workspaceError.value='';
@@ -883,6 +888,7 @@ export default {
     }
     function openNavigationItem(item) {
       if (item.type === 'page') switchToPage(item.id);
+      else if (item.type === 'virtual') openPrimary(item.id);
       else navigateToSection(item.section);
     }
 
@@ -995,7 +1001,7 @@ export default {
       compactLayout, navigationElement, navigationOpen, openMobileNavigation, closeMobileNavigation,
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
-      primaryItems, primaryActive, openPrimary,
+      primaryActive, openPrimary, isNavigationItemActive,
       selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,

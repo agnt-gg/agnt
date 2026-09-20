@@ -4,8 +4,41 @@ export const NAVIGATION_STORAGE_KEY = 'agnt:sidebarNavigation:v1';
 export const NAVIGATION_CHANGED_EVENT = 'agnt:navigation-changed';
 export const PERSONAL_GROUP = 'PERSONAL';
 
-const DEFAULT_VISIBLE = new Set(['chat','goals','artifacts']);
-const DEFAULT_GROUPS = [...new Set(MAIN_SECTIONS.map((section) => section.group))];
+// Rail rows that are MODES rather than routed screens: Library browses every
+// asset you own, Teams opens the shared workspace. They own no screen, so they
+// cannot live in MAIN_SECTIONS — but they are destinations the user sees on the
+// rail, and a row you can see is a row you must be able to hide, reorder and
+// regroup. CanvasScreen.openPrimary(id) knows how to open them.
+export const VIRTUAL_SECTIONS = [
+  { id: 'library', group: 'ASSETS', icon: 'fas fa-book-open', label: 'Library' },
+  { id: 'teams', group: 'ASSETS', icon: 'fas fa-users', label: 'Teams' },
+];
+
+// The single registry behind BOTH the rail and Settings → Navigation. The rail
+// renders exactly this list filtered by `visible`; the only rows it hardcodes
+// are the Search shortcut (an action, not a page) and Settings at the foot. If
+// a row can appear on the rail it appears in this list, or Settings would be
+// describing a sidebar that does not exist.
+const BUILT_IN_ITEMS = [
+  ...MAIN_SECTIONS.map((section) => ({
+    type: 'section',
+    id: section.id,
+    label: section.label,
+    icon: section.icon,
+    group: section.group,
+    section,
+  })),
+  ...VIRTUAL_SECTIONS.map((virtual) => ({
+    type: 'virtual',
+    id: virtual.id,
+    label: virtual.label,
+    icon: virtual.icon,
+    group: virtual.group,
+  })),
+];
+
+const DEFAULT_VISIBLE = new Set(['chat','goals','artifacts','library','teams']);
+const DEFAULT_GROUPS = [...new Set(BUILT_IN_ITEMS.map((item) => item.group))];
 
 function cleanGroup(value, fallback = PERSONAL_GROUP) {
   const group = typeof value === 'string' ? value.trim().toUpperCase().slice(0, 32) : '';
@@ -48,18 +81,14 @@ export function navigationItemKey(type, id) {
 
 export function navigationItems(customPages = []) {
   const preferences = loadNavigationPreferences();
-  const sections = MAIN_SECTIONS.map((section, index) => {
-    const key = navigationItemKey('section', section.id);
+  const builtIn = BUILT_IN_ITEMS.map((item, index) => {
+    const key = navigationItemKey(item.type, item.id);
     const saved = preferences.items[key] || {};
     return {
+      ...item,
       key,
-      type: 'section',
-      id: section.id,
-      label: section.label,
-      icon: section.icon,
-      section,
-      group: cleanGroup(saved.group, section.group),
-      visible: typeof saved.visible === 'boolean' ? saved.visible : DEFAULT_VISIBLE.has(section.id),
+      group: cleanGroup(saved.group, item.group),
+      visible: typeof saved.visible === 'boolean' ? saved.visible : DEFAULT_VISIBLE.has(item.id),
       order: Number.isFinite(saved.order) ? saved.order : index,
     };
   });
@@ -78,7 +107,7 @@ export function navigationItems(customPages = []) {
       order: Number.isFinite(saved.order) ? saved.order : index,
     };
   });
-  return [...sections, ...pages];
+  return [...builtIn, ...pages];
 }
 
 export function groupedNavigation(customPages = [], { includeHidden = false } = {}) {

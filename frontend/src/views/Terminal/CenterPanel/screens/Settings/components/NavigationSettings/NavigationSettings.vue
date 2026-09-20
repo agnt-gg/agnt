@@ -38,7 +38,7 @@
           <i :class="item.icon"></i>
           <div class="item-copy">
             <strong>{{ item.label }}</strong>
-            <span>{{ item.type === 'section' ? 'Built-in page' : 'Custom page' }}</span>
+            <span>{{ item.type === 'page' ? 'Custom page' : 'Built-in page' }}</span>
           </div>
           <CustomSelect
             class="group-select"
