@@ -26,7 +26,7 @@ export class NativeTeamExecution {
   if(!['agent','tool','workflow'].includes(asset.kind))refuse(400,'This resource is not executable');
   let definition;try{definition=JSON.parse(asset.content);}catch{refuse(400,'Executable definition must be JSON');}
   if(asset.kind==='tool'&&(definition.code||definition.config?.code||!['AI','ai',undefined].includes(definition.base)||!['AI','ai',undefined].includes(definition.config?.base)))refuse(403,'Code tools require an isolated worker');
-  if(asset.kind==='agent'&&(definition.assignedTools?.length||definition.assignedWorkflows?.length))refuse(403,'Remove unapproved tool/workflow dependencies before authorizing this agent');
+  if(asset.kind==='agent'&&(definition.assignedTools?.length||definition.assignedWorkflows?.length||definition.assignedSkills?.length))refuse(403,'Remove unapproved tool/workflow/skill dependencies before authorizing this agent');
   if(asset.kind==='workflow'){if(!Array.isArray(definition.nodes)||definition.nodes.length>100||definition.nodes.some(node=>!SAFE_TEAM_NODES.has(node.type)||node.category==='custom'||node.code||node.base==='CODE_JS'||node.base==='CODE_PYTHON'))refuse(403,'Workflow contains operations not enabled for shared execution');}
   return definition;
  }
