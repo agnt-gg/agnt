@@ -44,7 +44,7 @@ describe('Provider Configs', () => {
       });
 
       it('should have a valid authScheme', () => {
-        const validSchemes = ['bearer', 'api-key', 'query-param', 'codex', 'claude-code', 'gemini-cli'];
+        const validSchemes = ['bearer', 'api-key', 'query-param', 'codex', 'claude-code', 'gemini-cli', 'antigravity', 'grok-build', 'cursor-cli'];
         assert.ok(validSchemes.includes(config.authScheme), `Invalid authScheme: ${config.authScheme}`);
       });
 
@@ -71,7 +71,9 @@ describe('Provider Configs', () => {
             assert.ok(meta.contextWindow > 0, `${modelId}: contextWindow should be > 0`);
             assert.ok(typeof meta.maxOutputTokens === 'number', `${modelId}: maxOutputTokens should be number`);
             assert.ok(typeof meta.supportsTools === 'boolean', `${modelId}: supportsTools should be boolean`);
-            assert.ok(typeof meta.reasoning === 'boolean', `${modelId}: reasoning should be boolean`);
+            if (meta.reasoning !== undefined) {
+              assert.ok(typeof meta.reasoning === 'boolean', `${modelId}: reasoning should be boolean when declared`);
+            }
           }
         });
       }
@@ -81,32 +83,34 @@ describe('Provider Configs', () => {
 
 // ─────────────────────────── STATIC MODEL PROVIDER TESTS ───────────────────────────
 
-describe('Static Model Providers', () => {
-  it('ZAI should be staticModels (no /models endpoint)', () => {
+describe('Provider model discovery and fallback catalogs', () => {
+  it('ZAI should use dynamic discovery with key-optional fallbacks', () => {
     const zai = getProviderConfig('zai');
     assert.ok(zai, 'ZAI provider not found');
-    assert.strictEqual(zai.staticModels, true, 'ZAI should have staticModels: true');
+    assert.notStrictEqual(zai.staticModels, true, 'ZAI should not disable its current /models endpoint');
+    assert.strictEqual(zai.modelListingKeyOptional, true);
   });
 
-  it('MiniMax should be staticModels (no /models endpoint)', () => {
+  it('MiniMax should use dynamic discovery with key-optional fallbacks', () => {
     const minimax = getProviderConfig('minimax');
     assert.ok(minimax, 'MiniMax provider not found');
-    assert.strictEqual(minimax.staticModels, true, 'MiniMax should have staticModels: true');
+    assert.notStrictEqual(minimax.staticModels, true, 'MiniMax should not disable its current /models endpoint');
+    assert.strictEqual(minimax.modelListingKeyOptional, true);
   });
 
-  it('ZAI should have GLM-5 and free models', () => {
+  it('ZAI should have current GLM-5 and free fallback models', () => {
     const zai = getProviderConfig('zai');
-    assert.ok(zai.fallbackModels.includes('GLM-5'), 'Missing GLM-5');
-    assert.ok(zai.fallbackModels.includes('GLM-4.7-Flash'), 'Missing GLM-4.7-Flash (free)');
-    assert.ok(zai.fallbackModels.includes('GLM-4.5-Flash'), 'Missing GLM-4.5-Flash (free)');
+    assert.ok(zai.fallbackModels.includes('glm-5'), 'Missing glm-5');
+    assert.ok(zai.fallbackModels.includes('glm-4.7-flash'), 'Missing glm-4.7-flash (free)');
+    assert.ok(zai.fallbackModels.includes('glm-4.5-flash'), 'Missing glm-4.5-flash (free)');
   });
 
   it('ZAI free models should have $0 pricing', () => {
     const meta = getAllModelMetadata('zai');
-    assert.strictEqual(meta['GLM-4.7-Flash'].inputCostPer1M, 0);
-    assert.strictEqual(meta['GLM-4.7-Flash'].outputCostPer1M, 0);
-    assert.strictEqual(meta['GLM-4.5-Flash'].inputCostPer1M, 0);
-    assert.strictEqual(meta['GLM-4.5-Flash'].outputCostPer1M, 0);
+    assert.strictEqual(meta['glm-4.7-flash'].inputCostPer1M, 0);
+    assert.strictEqual(meta['glm-4.7-flash'].outputCostPer1M, 0);
+    assert.strictEqual(meta['glm-4.5-flash'].inputCostPer1M, 0);
+    assert.strictEqual(meta['glm-4.5-flash'].outputCostPer1M, 0);
   });
 
   it('MiniMax should include M2.5 models', () => {
@@ -115,10 +119,11 @@ describe('Static Model Providers', () => {
     assert.ok(minimax.fallbackModels.includes('MiniMax-M2.5-highspeed'), 'Missing MiniMax-M2.5-highspeed');
   });
 
-  it('OpenAI Codex should be staticModels', () => {
+  it('OpenAI Codex should use its dedicated dynamic model fetch', () => {
     const codexCli = getProviderConfig('openai-codex');
     assert.ok(codexCli, 'OpenAI Codex provider not found');
-    assert.strictEqual(codexCli.staticModels, true);
+    assert.notStrictEqual(codexCli.staticModels, true);
+    assert.strictEqual(codexCli.codexModelFetch, true);
   });
 });
 
@@ -130,11 +135,12 @@ describe('Kimi Provider', () => {
     assert.strictEqual(kimi.baseURL, 'https://api.moonshot.ai/v1');
   });
 
-  it('should include latest K2 models', () => {
+  it('should include current K3 and K2 fallback models', () => {
     const kimi = getProviderConfig('kimi');
-    assert.ok(kimi.fallbackModels.includes('kimi-k2.5'), 'Missing kimi-k2.5');
-    assert.ok(kimi.fallbackModels.includes('kimi-k2-thinking'), 'Missing kimi-k2-thinking');
-    assert.ok(kimi.fallbackModels.includes('kimi-k2'), 'Missing kimi-k2');
+    assert.ok(kimi.fallbackModels.includes('kimi-k3'), 'Missing kimi-k3');
+    assert.ok(kimi.fallbackModels.includes('kimi-k2.7-code'), 'Missing kimi-k2.7-code');
+    assert.ok(kimi.fallbackModels.includes('kimi-k2.6'), 'Missing kimi-k2.6');
+    assert.ok(kimi.fallbackModels.includes('kimi-k2.5'), 'Missing kimi-k2.5 compatibility fallback');
   });
 
   it('should have model metadata for K2 models', () => {

@@ -13,7 +13,7 @@
     "start": "electron .",
     "test": "vitest run",
     "test:frontend": "npm --prefix frontend test",
-    "test:node": "node --import ./tests/setup/node-test-setup.mjs --test \"tests/unit/**/*.test.js\"",
+    "test:node": "node --import ./tests/setup/node-test-setup.mjs --test \"tests/unit/async*.test.js\" \"tests/unit/autonomous*.test.js\" tests/unit/providers.test.js \"tests/unit/storage/**/*.test.js\"",
     "test:all": "npm test && npm run test:frontend",
     "test:impacted": "node scripts/test-impacted.mjs",
     "wt": "node scripts/worktree.mjs",

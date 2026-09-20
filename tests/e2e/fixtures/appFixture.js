@@ -43,18 +43,31 @@ import { e2ePort, loginUser, signTestToken, TEST_JWT_SECRET } from './auth.js';
 
 // tests/e2e/fixtures/ -> tests/e2e/ -> tests/ -> repo root
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const fixtureEffects = { childStarts: 0, writableRoots: [] };
+
+export function fixtureState() {
+  return { childStarts: fixtureEffects.childStarts, writableRoots: [...fixtureEffects.writableRoots] };
+}
+
+export function validateFixtureContract({ repo = REPO, port, distIndex } = {}) {
+  const failures = [];
+  if (!path.isAbsolute(repo)) failures.push('repo path must be absolute');
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    failures.push('fixture port must be an unprivileged integer');
+  }
+  if (port === 3333 || port === 5173) failures.push(`fixture port ${port} is forbidden`);
+  if (!distIndex || !fs.existsSync(distIndex)) failures.push('frontend/dist/index.html is missing');
+  if (failures.length) throw new Error(`FIXTURE_REFUSED_BEFORE_SIDE_EFFECTS: ${failures.join('; ')}`);
+  return Object.freeze({ repo, port, distIndex });
+}
 
 /** Start backend/server.js against a throwaway data directory. */
 async function startBackend(port) {
   const distIndex = path.join(REPO, 'frontend', 'dist', 'index.html');
-  if (!fs.existsSync(distIndex)) {
-    throw new Error(
-      'frontend/dist is missing, so the backend has no app to serve.\n'
-      + 'Run: npm --prefix frontend run build',
-    );
-  }
+  validateFixtureContract({ repo: REPO, port, distIndex });
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agnt-e2e-'));
+  fixtureEffects.writableRoots.push(tmp);
   fs.mkdirSync(path.join(tmp, '.agnt', 'data'), { recursive: true });
   // A zero-byte agnt.db disarms the legacy-migration shim, which would
   // otherwise treat this as a fresh install and copy a real database in.
@@ -79,11 +92,12 @@ async function startBackend(port) {
       TMPDIR: path.join(tmp, 'tmp'),
       AGNT_HOME: tmp,
       PORT: String(port),
-      NODE_ENV: 'development',
+      NODE_ENV: 'production',
       JWT_SECRET: TEST_JWT_SECRET,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  fixtureEffects.childStarts += 1;
   const collect = (b) => { for (const l of b.toString().split('\n')) if (l.trim()) log.push(l); };
   proc.stdout.on('data', collect);
   proc.stderr.on('data', collect);
@@ -103,8 +117,14 @@ async function startBackend(port) {
     port,
     baseUrl: `http://127.0.0.1:${port}`,
     log,
-    stop: () => {
-      try { proc.kill('SIGTERM'); } catch { /* already gone */ }
+    stop: async () => {
+      if (proc.exitCode === null) {
+        try { proc.kill('SIGTERM'); } catch { /* already gone */ }
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 5000);
+          proc.once('exit', () => { clearTimeout(timer); resolve(); });
+        });
+      }
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
     },
   };
@@ -117,7 +137,7 @@ export const test = base.extend({
     try {
       await use(backend);
     } finally {
-      backend.stop();
+      await backend.stop();
     }
   }, { scope: 'worker', timeout: 240000 }],
 

@@ -30,13 +30,23 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (vitest)
+    name: ${{ matrix.check-name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '20'
+            check-name: 'Backend (vitest)'
+          - node: '22'
+            check-name: 'Backend (vitest) / Node 22'
+          - node: '26'
+            check-name: 'Backend (vitest) / Node 26'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
 
       # Install scripts are skipped because the two heavyweight native deps —
       # sharp (libvips) and ffmpeg-static (a ~70MB GitHub release download) —
@@ -87,13 +97,23 @@ jobs:
         run: node scripts/normalize-eol.mjs --check
 
   frontend:
-    name: Frontend (vitest + jsdom)
+    name: ${{ matrix.check-name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '20'
+            check-name: 'Frontend (vitest + jsdom)'
+          - node: '22'
+            check-name: 'Frontend (vitest + jsdom) / Node 22'
+          - node: '26'
+            check-name: 'Frontend (vitest + jsdom) / Node 26'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
       - name: Install frontend dependencies
         run: npm --prefix frontend ci --ignore-scripts
       - name: Run frontend suite
@@ -114,33 +134,9 @@ jobs:
   # console and a second tab. This suite has all three, and caught it on its
   # first real run.
   #
-  # WHY `--grep @ci` AND NOT `npm run test:e2e`
-  # ───────────────────────────────────────────
-  # tests/e2e holds eleven specs and ONE of them still cannot run here.
-  # Verified by reading what it actually does, not by its name:
-  #   async-tools          → spawns `npm start` (the whole Electron app), then
-  #                          sends "roll me a dice every minute for the next
-  #                          hour" and waits for an assistant reply and tool
-  #                          cards. That needs a REAL MODEL, which is slow,
-  #                          costly and nondeterministic — none of which a gate
-  #                          can carry. Its CSS selectors are all still valid;
-  #                          the model is the blocker. It also hardcodes
-  #                          localhost:3333, so running it on a developer's
-  #                          machine drives their live install.
-  # And ONE test is ungated on purpose rather than for lack of capability:
-  # workflows.spec.js's 'can create a new workflow' is skipped, because it is
-  # simply wrong about how creation works today — it only ever "passed" by not
-  # finding the button at all.
-  #
-  # (settings and tools used to be here too: they asserted that a thing
-  # labelled X was visible after clicking the thing labelled X, which the
-  # sidebar button itself satisfies. Measured, 'Settings' and 'Tools' appear as
-  # text on all four screens sampled, so neither check could go red. Both now
-  # assert something screen-specific and behavioural, and are gated.)
-  #
-  # Running the whole directory would therefore be permanently red, and this
-  # workflow exists precisely because a permanently-red job teaches everyone to
-  # ignore the ✗ (see the header, and the node-test job).
+  # The @ci suite remains the stable browser gate. Also run the migrated
+  # deterministic async-tool fixture explicitly; it uses no live provider.
+  # The unrelated workflow-creation case remains explicitly skipped.
   #
   # The selector is a TAG rather than a filename so the gate extends itself: a
   # future headless suite is covered by tagging @ci, not by remembering to edit
@@ -153,13 +149,23 @@ jobs:
   # failure for a check. It cannot happen here: `playwright test --grep` with no
   # matches prints "Error: No tests found" and exits 1. Verified, not assumed.
   cross-client:
-    name: Browser suite (Playwright)
+    name: ${{ matrix.check-name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '20'
+            check-name: 'Browser suite (Playwright)'
+          - node: '22'
+            check-name: 'Browser suite (Playwright) / Node 22'
+          - node: '26'
+            check-name: 'Browser suite (Playwright) / Node 26'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
 
       # Same --ignore-scripts reasoning as the backend job, and the same
       # exception: the harness backend mounts the REAL OrchestratorRoutes, whose
@@ -198,6 +204,8 @@ jobs:
 
       - name: Run the tagged browser suite
         run: npx playwright test --grep @ci
+      - name: Run deterministic async-tool browser fixture
+        run: npx playwright test tests/e2e/async-tools.spec.js
 
       # A browser failure that cannot be reproduced locally is worth very little
       # without its trace. playwright.config.js already records one on the first
@@ -207,39 +215,33 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-suite-playwright-traces
+          name: browser-suite-playwright-traces-node-${{ matrix.node }}
           path: test-results/
           retention-days: 7
 
-  # NOT a gate yet — this job reports; it does not block.
-  #
-  # tests/unit/** uses the node:test runner rather than vitest, so it was never
-  # picked up by any runner and has 13 accumulated failures. They are NOT test
-  # rot: they are provider-config assertions that need product answers (is
-  # `antigravity` a valid authScheme? does ZAI still ship GLM-5? is MiniMax
-  # staticModels?). Guessing at them in a test-infrastructure change would be
-  # inventing product decisions.
-  #
-  # continue-on-error sits on the STEP, not the job. At job level the job's
-  # conclusion is still reported as `failure` to the checks API, so every commit
-  # carried a permanent red ✗ — which is precisely the "ignore the red" habit
-  # this workflow exists to break. At step level the failure stays visible in
-  # the log while the job concludes green, so red always means something is
-  # genuinely broken.
-  #
-  # Delete the continue-on-error line the moment those 13 are resolved.
+  # Provider fixtures and runner selection were repaired in this PR.
+  # Native tests now gate every supported CI runtime; no allowed failure count.
   node-test:
-    name: node:test suite (report only — 13 known failures)
+    name: ${{ matrix.check-name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '20'
+            check-name: 'node:test suite'
+          - node: '22'
+            check-name: 'node:test suite / Node 22'
+          - node: '26'
+            check-name: 'node:test suite / Node 26'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Build the sqlite3 native binding
         run: npm rebuild sqlite3
       - name: Run node:test suite
-        continue-on-error: true
         run: npm run test:node

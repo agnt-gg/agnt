@@ -11,7 +11,35 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 
-const broadcastToUser = vi.fn();
+const broadcastObservers = new Set();
+const broadcastWaiterCleanups = new Set();
+const broadcastToUser = vi.fn((...args) => {
+  for (const observer of [...broadcastObservers]) observer(args);
+});
+
+function waitForBroadcast(predicate, label, timeoutMs = 1000) {
+  let timer;
+  let observer;
+  const promise = new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      broadcastObservers.delete(observer);
+      broadcastWaiterCleanups.delete(cleanup);
+    };
+    observer = (args) => {
+      if (!predicate(args)) return;
+      cleanup();
+      resolve(args);
+    };
+    broadcastObservers.add(observer);
+    broadcastWaiterCleanups.add(cleanup);
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`timed out waiting for ${label}`));
+    }, timeoutMs);
+  });
+  return promise;
+}
 vi.mock('../utils/realtimeSync.js', () => ({
   broadcastToUser: (...a) => broadcastToUser(...a),
 }));
@@ -38,17 +66,46 @@ async function fakeBrowser({
       { id: 12, url: 'https://github.com/', title: 'GitHub' },
     ],
   },
+  eventDelayMs = Number(process.env.TEST_WS_EVENT_DELAY_MS || 0),
 } = {}) {
   const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
   await new Promise((resolve) => server.once('listening', resolve));
   const received = [];
+  const messageObservers = new Set();
+  const closeObservers = new Set();
+  const waiterCleanups = new Set();
+  let outbound = Promise.resolve();
   let live = null;
+
+  const waitFor = (observers, predicate, label, timeoutMs = 1000) => new Promise((resolve, reject) => {
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      observers.delete(observer);
+      waiterCleanups.delete(cleanup);
+    };
+    const observer = (value) => {
+      if (!predicate(value)) return;
+      cleanup();
+      resolve(value);
+    };
+    observers.add(observer);
+    waiterCleanups.add(cleanup);
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`timed out waiting for ${label}`));
+    }, timeoutMs);
+  });
 
   server.on('connection', (socket) => {
     live = socket;
+    socket.on('close', () => {
+      for (const observer of [...closeObservers]) observer();
+    });
     socket.on('message', (raw) => {
       const message = JSON.parse(raw.toString());
       received.push(message);
+      for (const observer of [...messageObservers]) observer(message);
 
       if (message.method === 'Target.getTargets') {
         socket.send(JSON.stringify({ id: message.id, result: { targetInfos: pages } }));
@@ -65,8 +122,36 @@ async function fakeBrowser({
   return {
     url: () => `ws://127.0.0.1:${server.address().port}/devtools/browser/abc`,
     received,
-    /** Push an event as a real browser would. */
-    emit: (payload) => live?.send(JSON.stringify(payload)),
+    /** Push an event as a real browser would, preserving FIFO delivery. */
+    emit: (payload) => {
+      outbound = outbound.then(() => new Promise((resolve, reject) => {
+        const send = () => live?.send(JSON.stringify(payload), (error) => (error ? reject(error) : resolve()));
+        if (eventDelayMs > 0) setTimeout(send, eventDelayMs);
+        else send();
+      }));
+      return outbound;
+    },
+    waitForMessage: (predicate, label, timeoutMs) => waitFor(messageObservers, predicate, label, timeoutMs),
+    waitForClientClose: (timeoutMs) => waitFor(closeObservers, () => true, 'client WebSocket close', timeoutMs),
+    observeForbiddenMessage: (predicate, windowMs = 200) => new Promise((resolve) => {
+      let timer;
+      const cleanup = () => {
+        clearTimeout(timer);
+        messageObservers.delete(observer);
+        waiterCleanups.delete(cleanup);
+      };
+      const observer = (message) => {
+        if (!predicate(message)) return;
+        cleanup();
+        resolve(message);
+      };
+      messageObservers.add(observer);
+      waiterCleanups.add(cleanup);
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, windowMs);
+    }),
     methods: () => received.map((m) => m.method),
     /**
      * Kill the connection, the way a browser exiting does.
@@ -77,22 +162,23 @@ async function fakeBrowser({
      * a browser going away.
      */
     close: async () => {
+      for (const cleanup of [...waiterCleanups]) cleanup();
       try { live?.terminate(); } catch { /* never connected */ }
       await new Promise((resolve) => server.close(resolve));
     },
   };
 }
 
-const settle = () => new Promise((r) => { setTimeout(r, 60); });
-
 let browser;
 
 beforeEach(async () => {
+  broadcastObservers.clear();
   broadcastToUser.mockClear();
   browser = await fakeBrowser();
 });
 
 afterEach(async () => {
+  for (const cleanup of [...broadcastWaiterCleanups]) cleanup();
   _stopAll();
   await browser.close();
 });
@@ -160,49 +246,74 @@ describe('two viewers, one screencast', () => {
 });
 
 describe('frames go to the right room, and are acked on render', () => {
-  it('broadcasts a frame to its owner only', async () => {
+  it('Given an owned stream, when a frame is processed, then only its owner receives it', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    const frameDelivered = waitForBroadcast(
+      ([userId, event, payload]) => userId === 'u1' && event === 'browser:frame' && payload.frameId === 7,
+      'owned frame broadcast',
+    );
     browser.emit({ method: 'Page.screencastFrame', params: { data: 'AAA', sessionId: 7, metadata: { deviceWidth: 800 } } });
-    await settle();
+    await frameDelivered;
 
     expect(broadcastToUser).toHaveBeenCalledWith('u1', 'browser:frame', expect.objectContaining({
       instanceId: 'host:u1', data: 'AAA', frameId: 7,
     }));
   });
 
-  it('does NOT ack on arrival — the client acks after it paints', async () => {
+  it('Given a delivered frame, when the client has not painted, then no early or delayed arrival ACK is sent', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    const frameDelivered = waitForBroadcast(
+      ([, event, payload]) => event === 'browser:frame' && payload.frameId === 7,
+      'frame delivery before negative ACK observation',
+    );
+    const forbiddenAck = browser.observeForbiddenMessage(
+      (message) => message.method === 'Page.screencastFrameAck',
+    );
     browser.emit({ method: 'Page.screencastFrame', params: { data: 'AAA', sessionId: 7 } });
-    await settle();
+    await frameDelivered;
+    expect(await forbiddenAck).toBeNull();
 
     // Acking here would stream as fast as the encoder can go and bury a slow
     // client. The ack is the flow control, so it belongs to whoever paints.
     expect(browser.methods()).not.toContain('Page.screencastFrameAck');
   });
 
-  it('acks when the client says it painted', async () => {
+  it('Given a delivered frame, when the client reports paint, then the exact frame ACK reaches the peer', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    const frameDelivered = waitForBroadcast(
+      ([, event, payload]) => event === 'browser:frame' && payload.frameId === 7,
+      'frame delivery before client ACK',
+    );
     browser.emit({ method: 'Page.screencastFrame', params: { data: 'AAA', sessionId: 7 } });
-    await settle();
+    await frameDelivered;
 
+    const ackReceived = browser.waitForMessage(
+      (message) => message.method === 'Page.screencastFrameAck' && message.params.sessionId === 7,
+      'frame ACK at browser peer',
+    );
     expect(acknowledgeFrame('host:u1', 7)).toBe(true);
-    await settle();
-
-    const ack = browser.received.find((m) => m.method === 'Page.screencastFrameAck');
+    const ack = await ackReceived;
     expect(ack.params.sessionId).toBe(7);
     expect(ack.sessionId).toBe('S1');
   });
 
-  it('announces a top-level navigation, and ignores subframes', async () => {
+  it('Given top-level and subframe events, when a terminal navigation is processed, then only top-level URLs are announced', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
 
+    const terminalNavigation = waitForBroadcast(
+      ([, event, payload]) => event === 'browser:navigated' && payload.url === 'https://terminal.example',
+      'terminal top-level navigation',
+    );
     browser.emit({ method: 'Page.frameNavigated', params: { frame: { url: 'https://example.com' } } });
     browser.emit({ method: 'Page.frameNavigated', params: { frame: { url: 'https://ads.example', parentId: 'F1' } } });
-    await settle();
+    browser.emit({ method: 'Page.frameNavigated', params: { frame: { url: 'https://terminal.example' } } });
+    await terminalNavigation;
 
     const navigations = broadcastToUser.mock.calls.filter(([, event]) => event === 'browser:navigated');
-    expect(navigations).toHaveLength(1);
-    expect(navigations[0][2].url).toBe('https://example.com');
+    expect(navigations).toHaveLength(2);
+    expect(navigations.map(([, , payload]) => payload.url)).toEqual([
+      'https://example.com', 'https://terminal.example',
+    ]);
   });
 });
 
@@ -211,14 +322,18 @@ describe('what a viewer is allowed to send back', () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
   });
 
-  it('forwards a click, with the page session attached', async () => {
+  it('Given an allowed click, when it is dispatched, then the exact command reaches the page session', async () => {
+    const clickReceived = browser.waitForMessage(
+      (message) => message.method === 'Input.dispatchMouseEvent',
+      'allowed click at browser peer',
+    );
     const result = dispatchInput({
       userId: 'u1',
       instanceId: 'host:u1',
       method: 'Input.dispatchMouseEvent',
       params: { type: 'mousePressed', x: 10, y: 20 },
     });
-    await settle();
+    await clickReceived;
 
     expect(result.ok).toBe(true);
     const click = browser.received.find((m) => m.method === 'Input.dispatchMouseEvent');
@@ -226,7 +341,7 @@ describe('what a viewer is allowed to send back', () => {
     expect(click.sessionId).toBe('S1');
   });
 
-  it('REFUSES anything that is not an allowlisted input', async () => {
+  it('Given forbidden viewer methods, when followed by an allowed barrier command, then none reach the peer', async () => {
     // `Input.` looks like a safe namespace and is not — dispatchDragEvent can
     // start a file drag. The allowlist is by exact method for that reason.
     for (const method of [
@@ -239,7 +354,14 @@ describe('what a viewer is allowed to send back', () => {
       const result = dispatchInput({ userId: 'u1', instanceId: 'host:u1', method, params: {} });
       expect(result.ok, `${method} must be refused`).toBe(false);
     }
-    await settle();
+    const barrier = browser.waitForMessage(
+      (message) => message.method === 'Input.insertText' && message.params.barrier === true,
+      'allowed input protocol barrier',
+    );
+    expect(dispatchInput({
+      userId: 'u1', instanceId: 'host:u1', method: 'Input.insertText', params: { barrier: true },
+    }).ok).toBe(true);
+    await barrier;
     expect(browser.methods()).not.toContain('Runtime.evaluate');
     expect(browser.methods()).not.toContain('Page.navigate');
   });
@@ -283,14 +405,17 @@ describe('ordinary browser chrome', () => {
     ['reload', 'Page.reload', { ignoreCache: false }],
     ['navigate', 'Page.navigate', { url: 'https://example.com/path' }],
   ])('executes %s against the page session', async (action, method, params) => {
+    const commandReceived = browser.waitForMessage(
+      (message) => message.method === method,
+      `${method} command at browser peer`,
+    );
     const result = await controlBrowser({
       userId: 'u1', instanceId: 'host:u1', action,
       ...(action === 'navigate' ? { url: params.url } : {}),
     });
-    await settle();
+    const command = await commandReceived;
 
     expect(result.ok).toBe(true);
-    const command = browser.received.find((message) => message.method === method);
     expect(command.params).toEqual(params);
     expect(command.sessionId).toBe('S1');
   });
@@ -317,12 +442,16 @@ describe('ordinary browser chrome', () => {
 });
 
 describe('a browser that goes away', () => {
-  it('drops the session when the connection closes', async () => {
+  it('Given a live stream, when the peer close handler completes, then the session is removed', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
     expect(streamsForUser('u1')).toHaveLength(1);
 
+    const stoppedDelivered = waitForBroadcast(
+      ([userId, event, payload]) => userId === 'u1' && event === 'browser:stopped' && payload.instanceId === 'host:u1',
+      'browser:stopped lifecycle event',
+    );
     await browser.close();
-    await settle();
+    await stoppedDelivered;
 
     // A session left behind would report itself as streaming forever, and the
     // widget would sit on a frozen last frame with no way to recover.
@@ -330,10 +459,14 @@ describe('a browser that goes away', () => {
     expect(streamsForUser('u1')).toHaveLength(0);
   });
 
-  it('TELLS its viewers, so they recover instead of freezing on the last frame', async () => {
+  it('Given viewers of a live stream, when the browser disappears, then exactly one stopped event is delivered', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    const stoppedDelivered = waitForBroadcast(
+      ([userId, event, payload]) => userId === 'u1' && event === 'browser:stopped' && payload.instanceId === 'host:u1',
+      'exact browser:stopped lifecycle event',
+    );
     await browser.close();
-    await settle();
+    await stoppedDelivered;
 
     // A canvas still showing the last frame is indistinguishable from a page
     // that stopped changing — everything LOOKS fine, which is the most
@@ -344,14 +477,21 @@ describe('a browser that goes away', () => {
     expect(stopped[0][2].instanceId).toBe('host:u1');
   });
 
-  it('does NOT announce a stop the viewer asked for', async () => {
+  it('Given a viewer-requested stop, when the client socket close is processed, then no stopped event is announced', async () => {
     await startViewing({ userId: 'u1', instanceId: 'host:u1', cdpUrl: browser.url() });
+    const clientClosed = browser.waitForClientClose();
     stopViewing('host:u1');
-    await settle();
+    await clientClosed;
 
     // Telling a viewer that leaving worked would send it straight back to
     // polling for the browser it just chose to stop watching.
     expect(broadcastToUser.mock.calls.filter(([, e]) => e === 'browser:stopped')).toHaveLength(0);
+  });
+
+
+  it('Given a missing lifecycle event, when its failure deadline expires, then the wait fails honestly', async () => {
+    await expect(waitForBroadcast(([, event]) => event === 'browser:never', 'missing lifecycle event', 30))
+      .rejects.toThrow(/timed out waiting for missing lifecycle event/);
   });
 
   it('stopping something that was never started is not an error', () => {
