@@ -205,7 +205,7 @@ export default {
     // conversation on screen changes and when its turn ends — bounded by user
     // action, throttled by the store.
     const refreshHistory = (force = false) => {
-      store.dispatch('executionHistory/fetchExecutions', force ? { forceRefresh: true } : undefined).catch(() => {});
+      Promise.resolve(store.dispatch('executionHistory/fetchExecutions', force ? { forceRefresh: true } : undefined)).catch(() => {});
     };
     onMounted(() => refreshHistory());
     watch(activeConversationId, () => refreshHistory());
@@ -280,8 +280,7 @@ export default {
       else emit('panel-action', action, payload);
     }
 
-    return { target, clear, isStreaming, isSaving, running, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, kindIcon, when, saveNow, stopStreaming, previewArtifact, openArtifact, onEntityAction };
-    return { target, clear, isStreaming, isSaving, hereRuns, liveSince, elsewhere, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, inspectLiveTurn, kindIcon, age, goToConversation, saveNow, stopStreaming, preview, previewArtifact, openArtifact, onEntityAction };
+    return { target, clear, isStreaming, isSaving, hereRuns, liveSince, elsewhere, escalatedCount, modelLabel, toolsLabel, mentioned, artifacts, inspectKind, inspectLiveTurn, kindIcon, age, goToConversation, saveNow, stopStreaming, previewArtifact, openArtifact, onEntityAction };
   },
 };
 </script>

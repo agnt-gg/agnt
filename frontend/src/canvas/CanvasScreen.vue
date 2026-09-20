@@ -120,7 +120,7 @@
           <Tooltip v-for="item in primaryItems" :key="item.id" :text="item.label" position="right" width="auto" :disabled="railLabelsVisible">
             <button class="cv-sb-page" :class="{active:primaryActive===item.id}" :data-primary="item.id"
               :data-tour-id="'sidebar.'+item.id" :aria-label="item.label"
-              :aria-current="primaryActive===item.id ? 'page' : undefined" @click="openPrimary(item.id)">
+              :aria-current="primaryActive===item.id ? 'page' : undefined" @click="openMobilePrimary(item.id)">
               <i :class="item.icon" aria-hidden="true"></i>
               <span v-if="item.id === 'chat' && hasUnreadChats" class="cv-unread-dot cv-unread-dot-sb"></span>
               <span class="cv-sb-label">{{ item.label }}</span>
@@ -391,6 +391,7 @@ export default {
     function openMobileNavigationItem(item) { closeMobileNavigation({ restoreFocus: false }); openNavigationItem(item); }
     function navigateMobileSection(section) { closeMobileNavigation({ restoreFocus: false }); navigateToSection(section); }
     function startMobileAddPage() { closeMobileNavigation({ restoreFocus: false }); startAddPage(); }
+    function openMobilePrimary(id) { closeMobileNavigation({ restoreFocus: false }); openPrimary(id); }
     watch(() => props.screenName, () => closeMobileNavigation({ restoreFocus: false }));
     let clockTimer = null;
 
@@ -992,7 +993,7 @@ export default {
     return {
       requestMobileInspector: () => window.dispatchEvent(new CustomEvent('toggle-right-panel')),
       compactLayout, navigationElement, navigationOpen, openMobileNavigation, closeMobileNavigation,
-      openMobileNavigationItem, navigateMobileSection, startMobileAddPage,
+      openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
       primaryItems, primaryActive, openPrimary,
       selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,

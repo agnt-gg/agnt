@@ -24,12 +24,12 @@ describe('AGNT-One mobile navigation', () => {
    const { wrapper } = setup(); expect(wrapper.find('.cv-mobile-menu').exists()).toBe(true);
    expect(wrapper.find('.cv-sidebar').attributes('inert')).toBeDefined(); await wrapper.find('.cv-mobile-menu').trigger('click');
    const labels = wrapper.findAll('.cv-sidebar .cv-sb-page').map(b => b.text());
-   for(const label of ['Chat','Dashboard','Goals','Activity','Files','Agents','Workflows','Tools','Apps','Store','Settings','Custom test'])expect(labels.some(t=>t.includes(label))).toBe(true);
+   for(const label of ['Chat','Work','Library','Teams','Search','Settings','Custom test'])expect(labels.some(t=>t.includes(label))).toBe(true);
    expect(wrapper.find('.cv-sidebar').attributes('aria-modal')).toBe('true'); wrapper.unmount();
  });
  it('navigation closes the drawer and emits the original screen intent', async () => {
-   const { wrapper } = setup(); await wrapper.find('.cv-mobile-menu').trigger('click');await wrapper.find('[data-tour-id="sidebar.agents"]').trigger('click');
-   expect(wrapper.emitted('screen-change').at(-1)[0]).toBe('AgentsScreen'); expect(wrapper.find('.cv-sidebar').attributes('aria-hidden')).toBe('true'); wrapper.unmount();
+   const { wrapper } = setup(); await wrapper.find('.cv-mobile-menu').trigger('click');await wrapper.find('[data-tour-id="sidebar.work"]').trigger('click');
+   expect(wrapper.emitted('screen-change').at(-1)[0]).toBe('GoalsScreen'); expect(wrapper.find('.cv-sidebar').attributes('aria-hidden')).toBe('true'); wrapper.unmount();
  });
  it('resizing does not replace screen content or persist sidebar expansion', async () => {
    const { wrapper, resize } = setup();const original = wrapper.find('.stateful').element;
