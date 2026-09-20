@@ -485,7 +485,7 @@ export default {
       isGlobalProviderSelectorOpen.value = true;
     };
 
-    const selectedTeamId = ref('');
+    const selectedTeamId = ref(new URLSearchParams(window.location.search).get('team')||'');
     const workspaceTeams = ref([]);
     const workspaceError = ref('');
     const teamNavigationTab = ref('Assets');
@@ -567,6 +567,8 @@ export default {
       try{await request}finally{if(workspaceRequest===request)workspaceRequest=null}
     }
     function selectWorkspace(id) {
+      const locationUrl=new URL(window.location.href);
+      if(!id&&locationUrl.searchParams.has('team')){locationUrl.searchParams.delete('team');locationUrl.searchParams.delete('workspace');window.location.assign(locationUrl.href);return;}
       if(id&&!workspaceTeams.value.some(t=>t.id===id))return;
       selectedTeamId.value=id;
       onCustomPage.value=false;

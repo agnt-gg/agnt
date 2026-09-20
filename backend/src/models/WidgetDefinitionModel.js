@@ -61,7 +61,7 @@ class WidgetDefinitionModel {
   static async findByUserId(userId) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT * FROM widget_definitions WHERE user_id = ? OR is_shared = 1 ORDER BY updated_at DESC`,
+        `SELECT * FROM widget_definitions WHERE user_id = ? OR (is_shared = 1 AND user_id NOT LIKE 'scope:%') ORDER BY updated_at DESC`,
         [userId],
         (err, rows) => (err ? reject(err) : resolve(rows || [])),
       );
