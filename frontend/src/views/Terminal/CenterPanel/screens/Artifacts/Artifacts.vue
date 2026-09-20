@@ -365,7 +365,6 @@
 
 <script>
 import '@/styles/components/artifactMarkdown.css';
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';

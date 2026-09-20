@@ -8,11 +8,9 @@
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
-      <div class="cv-nav-panels">
+      <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
         <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : workspaceLabel }}</span></template>
         <template v-else-if="onCustomPage && activePage">
-      <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
-        <template v-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
         <template v-else-if="untabbedScreenLabel">
@@ -109,7 +107,11 @@
     <!-- ── MAIN AREA (sidebar + dashboard) ── -->
     <div class="cv-main-area">
       <!-- Sidebar: section icons -->
-      <div v-if="isAuthenticated" class="cv-sidebar" :class="{ expanded: isSidebarExpanded }">
+      <button v-if="compactLayout && navigationOpen" class="cv-nav-scrim" aria-label="Close navigation" @click="closeMobileNavigation()"></button>
+      <div v-if="isAuthenticated" ref="navigationElement" class="cv-sidebar" :class="{ expanded: isSidebarExpanded, 'cv-navigation-open': navigationOpen }"
+        :role="compactLayout ? 'dialog' : undefined" :aria-modal="compactLayout && navigationOpen ? 'true' : undefined"
+        :aria-label="compactLayout ? 'Navigation' : undefined" :inert="compactLayout && !navigationOpen ? true : undefined"
+        :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
         <WorkspaceSwitcher
           :model-value="selectedTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
           :error="workspaceError" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
@@ -126,11 +128,6 @@
             </button>
           </Tooltip>
         </nav>
-      <button v-if="compactLayout && navigationOpen" class="cv-nav-scrim" aria-label="Close navigation" @click="closeMobileNavigation()"></button>
-      <div v-if="isAuthenticated" ref="navigationElement" class="cv-sidebar" :class="{ expanded: isSidebarExpanded, 'cv-navigation-open': navigationOpen }"
-        :role="compactLayout ? 'dialog' : undefined" :aria-modal="compactLayout && navigationOpen ? 'true' : undefined"
-        :aria-label="compactLayout ? 'Navigation' : undefined" :inert="compactLayout && !navigationOpen ? true : undefined"
-        :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
         <button v-if="compactLayout" type="button" class="cv-mobile-nav-close" @click="closeMobileNavigation()">Close navigation <i class="fas fa-times"></i></button>
         <!-- User-managed navigation: built-in and custom pages share one ordered, grouped rail. -->
         <div class="cv-sb-pages">

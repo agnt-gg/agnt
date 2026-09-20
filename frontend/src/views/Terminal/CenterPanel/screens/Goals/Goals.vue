@@ -20,10 +20,8 @@
 
 <MobileCollection v-if="mobileView" v-show="!selectedGoalId" view-id="goals" title="Goals" count-label="goals" :items="mobileGoals" v-model:search="searchQuery" :tabs="[{id:'all',label:'All'},...columns.map(c=>({id:c.id,label:c.title || c.label || c.id}))]" :active="mobileGoalStatus" create-label="Create goal" icon="fas fa-bullseye" @tab="mobileGoalStatus = $event" @select="handleGoalClick" @create="showCreateModal = true"><template #item="{item}"><div class="m-goal-progress" :aria-label="(item.progress || 0) + '% complete'"><span :style="{width:(item.progress || 0)+'%'}"></span></div><small>{{ item.priority }} priority · {{ item.tasks?.length || 0 }} tasks</small><button @click="openScheduleModal(item)">Schedule</button><button v-if="item.status === 'executing'" @click="pauseGoal(item)">Pause</button><button v-if="item.status === 'paused'" @click="resumeGoal(item)">Resume</button><button @click="deleteGoal(item)">Delete</button></template><template #actions><GoalsToolbar v-model:searchQuery="searchQuery" v-model:activeFilters="activeFilters" v-model:sortBy="sortBy" :goals="allGoals || []" /></template></MobileCollection>
         <!-- Loading skeleton -->
-        <div v-if="isLoading && (!allGoals || allGoals.length === 0)" class="kanban-board">
-          <div v-for="i in 5" :key="'skeleton-' + i" class="kanban-column">
         <div v-if="!mobileView && isLoading && (!allGoals || allGoals.length === 0)" class="kanban-board">
-          <div v-for="i in 4" :key="'skeleton-' + i" class="kanban-column">
+          <div v-for="i in 5" :key="'skeleton-' + i" class="kanban-column">
             <div class="column-header">
               <div class="skeleton-block" style="height: 16px; width: 70px"></div>
               <div class="skeleton-block" style="height: 16px; width: 30px; border-radius: 12px"></div>
@@ -52,10 +50,8 @@
           </div>
         </div>
 
-        <div v-else class="kanban-board fade-in" @click.self="deselectGoal">
-          <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']" :data-stage="column.id">
         <div v-else-if="!mobileView" class="kanban-board fade-in" @click.self="deselectGoal">
-          <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']">
+          <div v-for="column in columns" :key="column.id" class="kanban-column" :class="[column.id + '-column']" :data-stage="column.id">
             <div class="column-header" :style="{ borderTopColor: column.color }">
               <div class="column-heading">
                 <h3>

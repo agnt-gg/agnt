@@ -124,7 +124,6 @@
  * Integration Health on Connectors; Resources under Settings › About and in
  * the Jump palette.
  */
-import { computed } from 'vue';
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
@@ -167,7 +166,6 @@ export default {
     const store = useStore();
     const { target, clear, inspect } = useInspect(['artifact', 'agent', 'workflow', 'goal', 'trace', 'execution', 'memory', 'running', 'autonomy']);
     const router = useRouter();
-    const { target, clear, inspect } = useInspect(['agent', 'workflow', 'goal', 'trace', 'execution', 'memory', 'running', 'autonomy']);
 
     const isStreaming = computed(() => !!store.state.chat?.isStreaming);
     const isSaving = computed(() => !!store.state.chat?.isSaving);

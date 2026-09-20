@@ -1,8 +1,7 @@
 <template>
   <div
     class="terminal-content"
-    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen, 'artifact-active': artifactTarget, 'artifact-expanded': artifactExpanded }"
-    :class="{ 'is-resizing': isResizing, 'mobile-presentation': isMobile }"
+    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen, 'artifact-active': artifactTarget, 'artifact-expanded': artifactExpanded, 'mobile-presentation': isMobile }"
     ref="terminalContentRef"
     tabindex="-1"
   >
@@ -656,8 +655,7 @@ export default {
     const rightPanelEnabled = computed(() => resolvePanel(props.activeRightPanel, props.screenId, 'rightPanel') !== false);
     const artifactTarget = computed(() => props.screenId === 'ChatScreen' && (!store.getters['shell/inspect']?.screen || store.getters['shell/inspect']?.screen==='ChatScreen') && ['artifact','agent','workflow','goal','trace','execution','memory','running','autonomy'].includes(store.getters['shell/inspect']?.kind));
     const artifactExpanded = ref(false);
-    const showRightPanel = computed(() => (showRightPanelSetting.value || artifactTarget.value) && rightPanelEnabled.value);
-    const showRightPanel = computed(() => (isMobile.value || showRightPanelSetting.value) && rightPanelEnabled.value);
+    const showRightPanel = computed(() => (isMobile.value || showRightPanelSetting.value || artifactTarget.value) && rightPanelEnabled.value);
     const leftPanelCollapsed = ref(scopeGet('leftCollapsed', store.getters['theme/leftPanelCollapsed']));
     // A screen may own its right-panel collapse state (screenRegistry
     // `rightCollapsedDefault`): it starts from that default and remembers the
@@ -899,8 +897,8 @@ export default {
     const handlePanelAction = async (action, payload) => {
       if (action === 'close-panel') {
         if (artifactTarget.value) store.dispatch('shell/clearInspect');
-        isPanelOpen.value = false;
         if (isMobile.value && store.getters['shell/inspect']) { store.dispatch('shell/clearInspect'); return; }
+        isPanelOpen.value = false;
         closeMobilePanel();
         return;
       }
