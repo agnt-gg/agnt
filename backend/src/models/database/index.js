@@ -2272,6 +2272,12 @@ const dbReady = skipSchemaInit
     console.log('All indexes ready');
   })
   .then(async () => {
+    if (process.env.AGNT_TENANT_SLUG) {
+      const { initializeTeamOwnership } = await import('../../services/authorization/initializeTeamOwnership.js');
+      await initializeTeamOwnership(dbPath);
+    }
+  })
+  .then(async () => {
     // Heal duplicate widget_layouts route pages and make (user_id, route)
     // structurally unique. See widgetLayoutDedupe.js for the full history —
     // a frontend race leaked one orphaned page row per cold start. Non-fatal:
@@ -2372,6 +2378,7 @@ const dbReady = skipSchemaInit
   })
   .catch((error) => {
     console.error('Error creating tables or running migrations:', error);
+    if(process.env.AGNT_TENANT_SLUG)throw error;
   });
 
 /**

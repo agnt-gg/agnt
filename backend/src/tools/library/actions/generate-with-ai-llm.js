@@ -1,3 +1,4 @@
+import {currentTeamExecution} from '../../../services/authorization/TeamExecutionContext.js';
 import BaseAction from '../BaseAction.js';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai/index.mjs';
@@ -327,6 +328,14 @@ class GenerateWithAiLlm extends BaseAction {
 
   async execute(params, inputData, workflowEngine) {
     this.validateParams(params);
+    if(currentTeamExecution()){
+      if(params.mode && params.mode!=='Text Generation')throw new Error('Team model connections currently support text generation');
+      const client=await createLlmClient(params.provider,workflowEngine.userId);
+      const adapter=await createLlmAdapter(params.provider,client,params.model);
+      const response=await adapter.call([{role:'user',content:params.prompt||''}],[],{maxTokens:params.maxTokens,temperature:params.temperature});
+      const text=response.responseMessage?.content||'';
+      return {generatedText:text,inputTokens:response.usage?.prompt_tokens||response.usage?.input_tokens||0,outputTokens:response.usage?.completion_tokens||response.usage?.output_tokens||0};
+    }
 
     try {
       const userId = workflowEngine.userId;

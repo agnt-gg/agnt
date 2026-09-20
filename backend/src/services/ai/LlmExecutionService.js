@@ -1,3 +1,4 @@
+import {currentTeamExecution} from '../authorization/TeamExecutionContext.js';
 import { createExecutionTelemetry, retainFailureTelemetry } from './executionTelemetry.js';
 import { retainFailureReceipts } from '../orchestrator/runAgentResult.js';
 import { createLlmClient } from './LlmService.js';
@@ -40,6 +41,7 @@ function isolateToolContext(context, toolSchemas) {
  */
 async function loadRequestedTools(context, toolSchemas, provider, userId) {
   const pending = context._requestedToolCategories;
+  if (currentTeamExecution()) return;
   if (!(pending instanceof Set) || pending.size === 0) return;
 
   const categories = new Set(pending);
@@ -107,7 +109,8 @@ class LlmExecutionService {
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       tools: toolSchemas.map((t) => t.function.name).sort(),
     };
-    return crypto.createHash('sha256').update(JSON.stringify(cacheData)).digest('hex');
+    const scope=currentTeamExecution()?.scopeId||config.userId;
+    return crypto.createHash('sha256').update(JSON.stringify({scope,...cacheData})).digest('hex');
   }
   _getCachedResponse(cacheKey) {
     if (!this.cacheEnabled) return null;

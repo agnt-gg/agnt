@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import db from "../models/database/index.js";
 import { resolveSecret } from "../utils/secretResolver.js";
+import { trustedScopeRequest } from '../services/authorization/ScopeRequestContext.js';
 import { rememberSessionToken } from "../services/auth/sessionTokenCache.js";
 import { isApiKey } from "../services/auth/apiKey.js";
 import { isPermittedUser, NOT_A_MEMBER } from "../services/auth/tenantOwnership.js";
@@ -138,6 +139,7 @@ class Middleware {
   }
 
   async authenticateToken(req, res, next) {
+    if (trustedScopeRequest(req)) return next();
     const authHeader = req.headers["authorization"];
     const token = authHeader && authHeader.split(" ")[1];
 

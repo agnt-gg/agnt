@@ -25,6 +25,9 @@ class NodeExecutor {
     this.customToolExecutor = new CustomToolExecutor(workflowEngine);
   }
   async executeNode(node, inputData) {
+    const {currentTeamExecution}=await import('../services/authorization/TeamExecutionContext.js');
+    const {SAFE_TEAM_NODES}=await import('../services/authorization/TeamToolPolicy.js');
+    if(currentTeamExecution()&&!SAFE_TEAM_NODES.has(node.type))throw new Error('Node is not enabled for team execution: '+node.type);
     const startTime = new Date();
     console.log(`Executing node: ${node.id} ${node.type} (${node.text})`);
 

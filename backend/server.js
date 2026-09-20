@@ -65,7 +65,10 @@ import AgentRoutes from './src/routes/AgentRoutes.js';
 import GoalRoutes from './src/routes/GoalRoutes.js';
 import LayoutRoutes from './src/routes/LayoutRoutes.js';
 import WorkspaceRoutes from './src/routes/WorkspaceRoutes.js';
-import TeamRoutes from './src/routes/TeamRoutes.js';
+import TeamRoutes, {getTeamRepository} from './src/routes/TeamRoutes.js';
+import {createHostedOperatorBoundary} from './src/routes/HostedOperatorBoundary.js';
+import {createPersonalAssetBoundary} from './src/routes/PersonalAssetBoundary.js';
+import {createScopeApiMiddleware} from './src/routes/ScopeApiMiddleware.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
 import ToolsRoutes from './src/routes/ToolsRoutes.js';
 import ToolSchemaRoutes from './src/routes/ToolSchemaRoutes.js';
@@ -107,7 +110,7 @@ import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import { prewarmCodexModels } from './src/routes/ModelRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
-import { sessionMiddleware } from './src/routes/Middleware.js';
+import { sessionMiddleware, authenticateToken } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 import { stashSteer, clearSteer } from './src/services/OrchestratorService.js';
 import SystemRoutes from './src/routes/SystemRoutes.js';
@@ -143,7 +146,7 @@ const config = {
     // it, so nothing is logged and the only symptom is "Failed to fetch".
     // X-AGNT-Client-Id identifies the sending client so it can ignore its own
     // run:started announcement (frontend chatService.js).
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-AGNT-Client-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-AGNT-Client-Id', 'X-AGNT-Team-ID', 'X-AGNT-Workspace-ID'],
     credentials: true,
     optionsSuccessStatus: 204,
   },
@@ -233,6 +236,10 @@ if (frontendExists) {
 
 // Define API routes
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
+app.use('/api', async (_req,res,next)=>{if(!process.env.AGNT_TENANT_SLUG)return next();try{await dbReady;next();}catch{res.status(503).json({error:'Tenant storage migration is not ready'});}});
+app.use('/api', createScopeApiMiddleware(authenticateToken, async id => {const repository=getTeamRepository();await repository.ready;return repository.get('SELECT * FROM shared_workspaces WHERE id=?',[id]);}));
+app.use('/api', createPersonalAssetBoundary(authenticateToken));
+app.use('/api', createHostedOperatorBoundary(authenticateToken));
 app.use('/api/users', UserRoutes);
 app.use('/api/auth', AuthRoutes);
 // Mounted under /api/auth but kept in its own file and its own path segment:

@@ -1,3 +1,4 @@
+import { currentTeamExecution } from '../authorization/TeamExecutionContext.js';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { OpenAI } from 'openai/index.mjs';
 import { GoogleGenAI } from '@google/genai';
@@ -277,6 +278,9 @@ async function getAntigravityClientHeaders() {
  * @throws {Error} If the provider is unsupported or the access token is missing.
  */
 export async function createLlmClient(provider, userId, options = {}) {
+  const teamExecution=currentTeamExecution();
+  if(teamExecution){if(String(provider).toLowerCase()!==teamExecution.provider)throw new Error('Provider is not granted to this team run');return teamExecution.broker.sdk();}
+  if(String(userId).startsWith('scope:'))throw new Error('Shared execution requires its approved principal');
   const { conversationId = null, cwd = process.cwd(), codexFullAuto = true, authToken = null } = options;
 
   // 1. Check if this is a custom DB-backed provider (unchanged)

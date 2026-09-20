@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireResourceAccess } from '../services/authorization/ApplicationAuthorization.js';
 import AgentService from '../services/AgentService.js';
 import AgentModel from '../models/AgentModel.js';
 import { authenticateToken } from './Middleware.js';
@@ -11,17 +12,17 @@ AgentRoutes.get('/health', AgentService.healthCheck);
 AgentRoutes.get('/', authenticateToken, AgentService.getAllAgents);
 AgentRoutes.get('/summary', authenticateToken, AgentService.getAllAgentsSummary);
 AgentRoutes.post('/save', authenticateToken, AgentService.saveOrUpdateAgent);
-AgentRoutes.get('/:id', authenticateToken, AgentService.getAgent);
-AgentRoutes.put('/:id', authenticateToken, AgentService.saveOrUpdateAgent);
-AgentRoutes.delete('/:id', authenticateToken, AgentService.deleteAgent);
+AgentRoutes.get('/:id', authenticateToken, requireResourceAccess('agents','view'), AgentService.getAgent);
+AgentRoutes.put('/:id', authenticateToken, requireResourceAccess('agents','edit'), AgentService.saveOrUpdateAgent);
+AgentRoutes.delete('/:id', authenticateToken, requireResourceAccess('agents','delete'), AgentService.deleteAgent);
 
 // Agent-specific chat routes
-AgentRoutes.post('/:id/chat', authenticateToken, AgentService.chatWithAgent);
-AgentRoutes.post('/:id/chat-stream', authenticateToken, AgentService.streamChatWithAgent);
-AgentRoutes.post('/:id/suggestions', authenticateToken, AgentService.getAgentSuggestions);
+AgentRoutes.post('/:id/chat', authenticateToken, requireResourceAccess('agents','run'), AgentService.chatWithAgent);
+AgentRoutes.post('/:id/chat-stream', authenticateToken, requireResourceAccess('agents','run'), AgentService.streamChatWithAgent);
+AgentRoutes.post('/:id/suggestions', authenticateToken, requireResourceAccess('agents','run'), AgentService.getAgentSuggestions);
 
 // PRD-057: Agent import/export
-AgentRoutes.get('/:id/export', authenticateToken, async (req, res) => {
+AgentRoutes.get('/:id/export', authenticateToken, requireResourceAccess('agents','view'), async (req, res) => {
   try {
     const agent = await AgentModel.findOne(req.params.id);
     if (!agent) return res.status(404).json({ error: 'Agent not found' });

@@ -1,4 +1,8 @@
 import express from 'express';
+import db,{dbReady} from '../models/database/index.js';
+import {databaseRepository,ensureSharedScope} from '../services/authorization/ScopeRepository.js';
+import {NativeTeamResources} from '../services/NativeTeamResources.js';
+import {NativeTeamExecution,initializeNativeTeamExecution} from '../services/NativeTeamExecution.js';
 import { CloudTeamClient } from '../services/CloudTeamClient.js';
 import { TeamWorkspaceRepository, initializeTeamWorkspaces } from '../services/TeamWorkspaceRepository.js';
 import sqlite3 from 'sqlite3';
@@ -13,11 +17,11 @@ import {
 // Separate serialized connection: team transactions never interleave with personal-resource writes.
 let repository;
 
-function repo() {
+export function getTeamRepository() {
   if (!repository) repository = new TeamRepository(new sqlite3.Database(pathManager.getDataPath('teams.db')));
   return repository
 }
-export function createTeamRouter(getRepository = repo, authenticate = authenticateToken, cloud = new CloudTeamClient()) {
+export function createTeamRouter(getRepository = getTeamRepository, authenticate = authenticateToken, cloud = new CloudTeamClient()) {
   const router = express.Router();
   router.use(authenticate);
   // Membership and entitlement always come from the cloud. Never use local membership as authority.
@@ -64,6 +68,8 @@ export function createTeamRouter(getRepository = repo, authenticate = authentica
       await repository.ready;
       if (!repository.workspacesReady) repository.workspacesReady = repository.transaction(() => initializeTeamWorkspaces(repository));
       await repository.workspacesReady;
+      if(!repository.executionReady)repository.executionReady=repository.transaction(()=>initializeNativeTeamExecution(repository));
+      await repository.executionReady;
       await repository.transaction(() => repository.run('INSERT OR IGNORE INTO teams(id,name,owner_id,created_at) VALUES(?,?,?,?)',[req.cloudTeam.id,req.cloudTeam.name,'cloud-authority',new Date().toISOString()]));
       const result = await fn(scoped, req, user);
       res.json(result ?? {
@@ -87,7 +93,17 @@ export function createTeamRouter(getRepository = repo, authenticate = authentica
   router.get('/:teamId/assets', handler((repo, req, user) => repo.assets(req.params.teamId, user)));
   router.get('/:teamId/assets/:id', handler((repo, req, user) => repo.asset(req.params.teamId, user, req.params.id, req.query.revision ? Number(req.query.revision) : undefined)));
   router.post('/:teamId/assets', handler((repo, req, user) => repo.save(req.params.teamId, user, req.body || {})));
+  router.post('/:teamId/assets/:id/authorize',handler((repo,req,user)=>new NativeTeamExecution(repo,cloud).bind(req.cloudTeam,user,req.headers.authorization,req.params.id,req.body)));
+  router.post('/:teamId/assets/:id/run',handler(async(repo,req,user)=>{await dbReady;const scope=await ensureSharedScope(databaseRepository(db),req.params.teamId);return new NativeTeamExecution(repo,cloud).run(req.cloudTeam,user,req.params.id,req.body?.input,scope);}));
   router.get('/:teamId/activity', handler((repo, req, user) => repo.history(req.params.teamId, user)));
+  const nativeScope=async(repo,req)=>{const workspace=await repo.get('SELECT * FROM shared_workspaces WHERE id=? AND team_id=? AND archived_at IS NULL',[req.params.workspaceId,req.params.teamId]);if(!workspace)throw Object.assign(new Error('Workspace not found'),{status:404});await dbReady;return ensureSharedScope(databaseRepository(db),req.params.teamId,workspace.id);};
+  router.get('/:teamId/workspaces/:workspaceId/native',handler(async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);}));
+  router.post('/:teamId/workspaces/:workspaceId/native/:kind/:id/:action',handler(async(repo,req,user)=>{
+    const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();const assetId=await resources.snapshot(req.params.teamId,user,scope,req.params.kind,req.params.id);const executor=new NativeTeamExecution(repo,cloud);
+    if(req.params.action==='authorize')return executor.bind(req.cloudTeam,user,req.headers.authorization,assetId,req.body);
+    if(req.params.action==='run')return executor.run(req.cloudTeam,user,assetId,req.body?.input,scope);
+    throw Object.assign(new Error('Unknown execution action'),{status:404});
+  }));
   router.get('/:teamId/workspaces',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).list(req.params.teamId,user)));
   router.post('/:teamId/workspaces',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).create(req.params.teamId,user,req.body?.name)));
   router.patch('/:teamId/workspaces/:id',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).update(req.params.teamId,user,req.params.id,req.body||{})));

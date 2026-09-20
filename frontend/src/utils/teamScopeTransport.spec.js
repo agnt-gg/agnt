@@ -1,0 +1,2 @@
+import {it,expect} from 'vitest';import {teamScopeHeaders} from './teamScopeTransport.js';
+it('adds scope only to native asset APIs on the configured server',()=>{const base='https://example.t1.agnt.gg/api',scope={teamId:'t',workspaceId:'w'};expect(teamScopeHeaders(base+'/agents',base,scope)).toEqual({'X-AGNT-Team-ID':'t','X-AGNT-Workspace-ID':'w'});for(const url of ['https://evil.test/api/agents',base+'/teams',base+'/users/settings',base+'/auth',base+'/plugins'])expect(teamScopeHeaders(url,base,scope)).toEqual({});});

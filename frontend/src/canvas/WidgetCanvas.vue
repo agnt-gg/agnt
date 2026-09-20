@@ -66,8 +66,10 @@ export default {
   props: {
     pageId: { type: String, required: true },
     isCustomPage: { type: Boolean, default: false },
+    sharedLayout: { type: Array, default: null },
+    readOnly: { type: Boolean, default: false },
   },
-  emits: ['open-catalog', 'screen-change'],
+  emits: ['open-catalog', 'screen-change', 'update:sharedLayout'],
   setup(props, { emit }) {
     const store = useStore();
     const canvasRef = ref(null);
@@ -82,7 +84,7 @@ export default {
 
     // Get widgets for active page from store
     const visibleWidgets = computed(() => {
-      const layout = store.getters['widgetLayout/pageLayout'](props.pageId);
+      const layout = props.sharedLayout ?? store.getters['widgetLayout/pageLayout'](props.pageId);
       if (!layout) return [];
       return layout.filter((w) => w.visible !== false);
     });
@@ -118,6 +120,19 @@ export default {
       if (resizeObserver) resizeObserver.disconnect();
     });
 
+    function updateLayout(action, payload) {
+      if (props.readOnly) return;
+      if (props.sharedLayout === null) return store.dispatch(action, payload);
+      const next = props.sharedLayout.map(widget => ({...widget}));
+      const index = next.findIndex(widget => widget.instanceId === payload.instanceId);
+      if (index < 0) return;
+      const widget = next[index];
+      if (action.endsWith('/removeWidget')) next.splice(index, 1);
+      else if (action.endsWith('/toggleWidgetCollapse')) widget.collapsed = !widget.collapsed;
+      else for (const field of ['col','row','cols','rows','zIndex']) if (payload[field] !== undefined) widget[field] = payload[field];
+      emit('update:sharedLayout', next);
+    }
+
     // ── Event handlers ──
     function onDragStart(instanceId) {
       showGrid.value = !!instanceId;
@@ -125,7 +140,7 @@ export default {
 
     function onDragEnd({ instanceId, col, row }) {
       showGrid.value = false;
-      store.dispatch('widgetLayout/updateWidgetPosition', {
+      updateLayout('widgetLayout/updateWidgetPosition', {
         pageId: props.pageId,
         instanceId,
         col,
@@ -139,22 +154,26 @@ export default {
 
     function onResizeEnd({ instanceId, cols, rows, col, row }) {
       showGrid.value = false;
+      if (props.sharedLayout !== null) {
+        updateLayout('widgetLayout/updateWidgetSize', {instanceId, cols, rows, col, row});
+        return;
+      }
       if (col !== undefined && row !== undefined) {
         // Restore from maximize
-        store.dispatch('widgetLayout/updateWidgetPosition', {
+        updateLayout('widgetLayout/updateWidgetPosition', {
           pageId: props.pageId,
           instanceId,
           col,
           row,
         });
-        store.dispatch('widgetLayout/updateWidgetSize', {
+        updateLayout('widgetLayout/updateWidgetSize', {
           pageId: props.pageId,
           instanceId,
           cols,
           rows,
         });
       } else {
-        store.dispatch('widgetLayout/updateWidgetSize', {
+        updateLayout('widgetLayout/updateWidgetSize', {
           pageId: props.pageId,
           instanceId,
           cols,
@@ -164,14 +183,14 @@ export default {
     }
 
     function onWidgetClose(instanceId) {
-      store.dispatch('widgetLayout/removeWidget', {
+      updateLayout('widgetLayout/removeWidget', {
         pageId: props.pageId,
         instanceId,
       });
     }
 
     function onWidgetCollapse(instanceId) {
-      store.dispatch('widgetLayout/toggleWidgetCollapse', {
+      updateLayout('widgetLayout/toggleWidgetCollapse', {
         pageId: props.pageId,
         instanceId,
       });
@@ -179,7 +198,7 @@ export default {
 
     function onBringToFront(instanceId) {
       topZ++;
-      store.dispatch('widgetLayout/updateWidgetZIndex', {
+      updateLayout('widgetLayout/updateWidgetZIndex', {
         pageId: props.pageId,
         instanceId,
         zIndex: topZ,
@@ -187,6 +206,7 @@ export default {
     }
 
     function onWidgetEdit(widget) {
+      if (props.readOnly) return;
       const def = getWidget(widget.widgetId);
       if (def?.isCustomWidget && def.customDefinition) {
         store.dispatch('widgetDefinitions/setActiveDefinition', def.customDefinition.id);
@@ -195,6 +215,7 @@ export default {
     }
 
     function onDoubleClick(e) {
+      if (props.readOnly) return;
       // Only open catalog when clicking empty canvas area
       if (e.target === canvasRef.value || e.target.classList.contains('grid-overlay')) {
         emit('open-catalog');

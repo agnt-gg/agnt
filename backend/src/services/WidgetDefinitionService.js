@@ -188,7 +188,7 @@ class WidgetDefinitionService {
       const rows = await new Promise((resolve, reject) => {
         db.all(
           `SELECT * FROM widget_definitions
-           WHERE user_id = ? OR is_shared = 1
+           WHERE user_id = ? OR (is_shared = 1 AND user_id NOT LIKE 'scope:%')
            ORDER BY updated_at DESC`,
           [userId || ''],
           (err, rows) => (err ? reject(err) : resolve(rows || [])),

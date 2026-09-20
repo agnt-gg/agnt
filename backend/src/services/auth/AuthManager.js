@@ -10,6 +10,7 @@ import { getAuthEntry } from './AuthDispatcher.js';
 // Add this import
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
 import { authHeader, getSessionToken } from './sessionTokenCache.js';
+import { assertPersonalCredentialContext } from '../authorization/TeamExecutionContext.js';
 
 // THIS IS NEEDED ON THE REMOTE SERVER FOR THE OAUTH SETUP
 class AuthManager {
@@ -39,6 +40,8 @@ class AuthManager {
   // a stale DB row. Remote is always tried last so existing users with
   // remote-stored keys keep working without any opt-in.
   async getValidAccessToken(userId, providerId) {
+    assertPersonalCredentialContext();
+    if(String(userId).startsWith('scope:'))throw new Error('Shared resource owners cannot use personal credentials');
     // Tier 1: env var
     const envVar = ENV_KEY_MAP[providerId];
     if (envVar) {

@@ -5491,6 +5491,9 @@ async function executeToolInner(toolName, args, authToken, context) {
  * receives them pre-resolved.
  */
 export async function executeTool(toolName, args, authToken, context) {
+  const {requireTeamTool}=await import('../authorization/TeamToolPolicy.js');
+  requireTeamTool(toolName);
+  if(process.env.AGNT_TENANT_SLUG){const {requireHostedToolAuthority}=await import('../authorization/HostedToolAuthority.js');await requireHostedToolAuthority(context?.userId,authToken);}
   // CRITICAL: Resolve data references in arguments before gate + execution
   const resolvedArgs = resolveDataReferences(args, context);
 

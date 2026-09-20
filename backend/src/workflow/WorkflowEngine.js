@@ -91,6 +91,7 @@ class WorkflowEngine extends EventEmitter {
     console.log(`Workflow ${this.workflowId} is now listening for events`);
   }
   async processWorkflowTrigger(triggerData, options = {}) {
+    if(String(this.userId).startsWith('scope:')){const {currentTeamExecution}=await import('../services/authorization/TeamExecutionContext.js');if(!currentTeamExecution())throw new Error('Shared workflow requires its approved execution principal');}
     console.log(`Received trigger for workflow ${this.workflowId}`);
 
     // F1: late events are prevented at the door. A trigger that arrives after
