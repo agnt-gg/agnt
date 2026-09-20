@@ -117,6 +117,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm --prefix frontend ci --ignore-scripts
       - name: Run frontend suite
+        env:
+          # Let jsdom provide Storage; Node 26's native accessor is not a DOM.
+          NODE_OPTIONS: ${{ matrix.node == '26' && '--no-experimental-webstorage' || '' }}
         run: npm --prefix frontend test
       - name: Build frontend
         run: npm --prefix frontend run build
@@ -243,5 +246,13 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build the sqlite3 native binding
         run: npm rebuild sqlite3
+      - name: Install confinement runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # Use the matrix runtime inside the runner's /usr-only namespace.
+          sudo install -m 0755 "$(command -v node)" /usr/bin/node
+          /usr/bin/node --version
+          /usr/bin/bwrap --version
       - name: Run node:test suite
         run: npm run test:node

@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { selectors as configuredSelectors, matchesSelector } from '../../../scripts/run-node-tests.mjs';
 import { getStorageContext } from '../../../backend/src/utils/testStorageContext.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -54,7 +55,8 @@ describe('node:test entrypoint storage admission (R01, AR-3)', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
     const script = pkg.scripts?.['test:node'];
     assert.equal(typeof script, 'string', 'package.json must define test:node');
-    const selectors = nodeTestSelectors(script);
+    assert.equal(script, 'node scripts/run-node-tests.mjs');
+    const selectors = configuredSelectors;
     assert.ok(selectors.length > 0, 'test:node must declare positive test-file selectors');
 
     const inventory = testFilesUnder(path.join(REPO, 'tests/unit')).map((file) => {
@@ -64,7 +66,7 @@ describe('node:test entrypoint storage admission (R01, AR-3)', () => {
         relative,
         native: /from\s+['"]node:test['"]|require\(\s*['"]node:test['"]\s*\)/.test(source),
         vitest: /from\s+['"]vitest['"]|require\(\s*['"]vitest['"]\s*\)/.test(source),
-        selected: selectors.some((selector) => path.matchesGlob(relative, selector)),
+        selected: selectors.some((selector) => matchesSelector(relative, selector)),
       };
     });
     const omitted = inventory.filter((file) => file.native && !file.selected).map((file) => file.relative);
