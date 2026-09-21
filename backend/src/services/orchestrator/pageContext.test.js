@@ -108,7 +108,7 @@ describe('listCanvasSurfaces', () => {
 
 describe('OrchestratorService uses the shared list (source guards)', () => {
   it('builds conversationContext from pickPageContext, not by hand', () => {
-    expect(orchestratorSource).toContain('...pickPageContext(req.body)');
+    expect(orchestratorSource).toContain('...pickPageContext(requestBody)');
   });
 
   it('imports it from the one module that owns it', () => {

@@ -69,7 +69,9 @@ describe('the delta mirror identifies its sender', () => {
     // All three things this handler tells the user's other clients about a
     // turn: it started, the user said something, and here is the answer.
     const stamped = /originClientId,/g;
-    expect((CODE.match(stamped) || []).length).toBe(3);
+    const executionBody = CODE.slice(CODE.indexOf('export async function executeChatSegment'));
+    expect((executionBody.match(stamped) || []).length).toBe(3);
+    expect(CODE.slice(0, CODE.indexOf('export async function executeChatSegment'))).toContain('originClientId,');
   });
 });
 

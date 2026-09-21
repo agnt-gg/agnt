@@ -389,6 +389,22 @@ if (process.env.AGNT_SKIP_DB_INIT !== '1') {
       console.error('[RunRecovery] Boot recovery failed (non-fatal):', err);
     }
 
+    // Main-chat continuity starts only after transcript recovery. Operational
+    // rollback switch; no new user-facing mode is required.
+    if (process.env.AGNT_CHAT_CONTINUITY !== '0') {
+      try {
+        const [{ default: database }, { executeChatSegment }, { bootConversationWork }, { mvpCompletionPolicy }] = await Promise.all([
+          import('./src/models/database/index.js'),
+          import('./src/services/OrchestratorService.js'),
+          import('./src/services/orchestrator/bootConversationWork.js'),
+          import('./src/services/orchestrator/mvpCompletionPolicy.js'),
+        ]);
+        await bootConversationWork({ database, executeSegment: executeChatSegment, enableScheduling: true, verificationPolicy: mvpCompletionPolicy });
+      } catch (error) {
+        console.error('[ConversationWork] Startup failed:', error);
+      }
+    }
+
     // Safety net for the journal. The event-driven throttle already gets every
     // published event to disk within seconds; what it cannot do is retry a
     // write that FAILED, because it only ever schedules work when the next

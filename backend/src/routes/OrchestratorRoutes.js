@@ -1,4 +1,5 @@
 import express from 'express';
+import { pauseConversationWork, conversationWorkStatus } from '../services/orchestrator/conversationWorkRegistry.js';
 import 'dotenv/config';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -108,8 +109,11 @@ router.get('/runs', authenticateToken, async (req, res) => {
 });
 
 // Is a turn still generating for this conversation?
-router.get('/runs/:conversationId', authenticateToken, (req, res) => {
-  res.json(getRunStatus(req.params.conversationId, req.user?.id));
+router.get('/runs/:conversationId', authenticateToken, async (req, res, next) => {
+  try {
+    const work = await conversationWorkStatus(req.params.conversationId, req.user?.id);
+    res.json({ ...getRunStatus(req.params.conversationId, req.user?.id), ...(work ? { work } : {}) });
+  } catch (error) { next(error); }
 });
 
 // Reattach to an in-flight turn: replays everything already emitted, then
@@ -139,10 +143,14 @@ router.get('/runs/:conversationId/stream', authenticateToken, (req, res) => {
 });
 
 // Explicit cancel. This is the ONLY way a client stops generation.
-router.post('/runs/:conversationId/cancel', authenticateToken, (req, res) => {
-  const result = cancelRun(req.params.conversationId, req.user?.id);
-  if (result === 'forbidden') return res.status(403).json({ success: false, result });
-  res.json({ success: result === 'cancelled', result });
+router.post('/runs/:conversationId/cancel', authenticateToken, async (req, res, next) => {
+  try {
+    // Persist the pause before interrupting the process-local model stream.
+    const paused = await pauseConversationWork(req.params.conversationId, req.user?.id);
+    const result = cancelRun(req.params.conversationId, req.user?.id);
+    if (result === 'forbidden') return res.status(403).json({ success: false, result });
+    res.json({ success: paused || result === 'cancelled', result: paused ? 'cancelled' : result });
+  } catch (error) { next(error); }
 });
 
 // Authoritative persisted transcript. The backend has always written this; until

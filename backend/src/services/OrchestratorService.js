@@ -1,3 +1,5 @@
+import { createChatTransport } from './orchestrator/chatTransport.js';
+import { admitConversationWork } from './orchestrator/conversationWorkRegistry.js';
 import { userMessageText } from './orchestrator/taskMemory.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
@@ -60,7 +62,7 @@ import { isGlobalFrontendEvent } from './orchestrator/globalFrontendEvents.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
-import { loadConversationState, saveConversationState } from './orchestrator/conversationStateStore.js';
+import { loadConversationState, saveConversationState, serializeConversationState, reviveConversationState } from './orchestrator/conversationStateStore.js';
 import autonomousMessageService from './AutonomousMessageService.js';
 import { shouldTriggerAutonomousFollowup } from './orchestrator/autonomousFollowupConfig.js';
 import UserModel from '../models/UserModel.js';
@@ -713,9 +715,23 @@ async function processUploadedFiles(files, conversationId) {
  * Supports: orchestrator, agent, workflow, tool, goal, and suggestions
  */
 async function universalChatHandler(req, res, context = {}) {
+  const originClientId = req?.headers?.['x-agnt-client-id'] || null;
+  const chatType = detectChatType(req, context);
   const userId = req.user?.id || null;
   const authToken = req.headers.authorization;
-  const files = req.files || []; // Multer files
+  if (chatType === 'suggestions') {
+    return handleSuggestions(req, res, { ...getChatConfig(chatType) }, userId, authToken);
+  }
+  const input = {
+    userId, authToken, files: req.files || [], body: req.body, chatType,
+    originClientId,
+    transport: createChatTransport(res),
+  };
+  if (chatType === 'orchestrator' && await admitConversationWork(input)) return;
+  return executeChatSegment(input, context);
+}
+
+export async function executeChatSegment({ userId, authToken, files = [], body: requestBody, chatType, originClientId = null, transport, signal, assertOwnership, dispatchTool, preparedHistory, preparedState, managedAsyncCallbacks }, context = {}) {
 
   /**
    * WHO SENT THIS TURN — read once, stamped on everything broadcast about it.
@@ -739,20 +755,20 @@ async function universalChatHandler(req, res, context = {}) {
    * assistant message of every new conversation. A single source cannot be
    * half-applied.
    */
-  const originClientId = req?.headers?.['x-agnt-client-id'] || null;
+
 
   // Multipart bodies (used when files are attached) arrive with every field as
   // a string. The downstream destructure expects `messages`, `pageContext`,
   // `pageState`, `agentContext`, etc. as objects/arrays, so decode any field
   // whose string value looks like JSON. Non-JSON strings are left untouched.
-  if (files.length > 0 && req.body && typeof req.body === 'object') {
-    for (const [k, v] of Object.entries(req.body)) {
+  if (files.length > 0 && requestBody && typeof requestBody === 'object') {
+    for (const [k, v] of Object.entries(requestBody)) {
       if (typeof v !== 'string') continue;
       const trimmed = v.trim();
       if (!trimmed) continue;
       const first = trimmed[0];
       if (first !== '{' && first !== '[') continue;
-      try { req.body[k] = JSON.parse(trimmed); } catch { /* leave as string */ }
+      try { requestBody[k] = JSON.parse(trimmed); } catch { /* leave as string */ }
     }
   }
 
@@ -778,7 +794,7 @@ async function universalChatHandler(req, res, context = {}) {
   }
 
   // Detect chat type and get configuration
-  const chatType = detectChatType(req, context);
+
   // getChatConfig returns a shared object — clone before mutating so per-user
   // overrides never leak into other requests.
   let config = { ...getChatConfig(chatType) };
@@ -791,10 +807,6 @@ async function universalChatHandler(req, res, context = {}) {
 
   log(`Universal chat handler: ${chatType}`, { userId, chatType });
 
-  // Handle suggestions differently (JSON response)
-  if (chatType === 'suggestions') {
-    return handleSuggestions(req, res, config, userId, authToken);
-  }
 
   // Extract common parameters
   const {
@@ -849,7 +861,7 @@ async function universalChatHandler(req, res, context = {}) {
     // as a pin. That is what makes enabling routing safe for the public API,
     // workflow nodes and tool calls without touching one of them.
     routingMode: requestRoutingMode,
-  } = req.body;
+  } = requestBody;
 
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
   const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
@@ -913,8 +925,7 @@ async function universalChatHandler(req, res, context = {}) {
   }
 
   if (!resolvedProvider || !resolvedModel) {
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(400).json({ error: 'Could not determine AI provider/model. Please select a provider in settings.' });
+    return transport.reject(400, 'Could not determine AI provider/model. Please select a provider in settings.');
   }
 
   // CRITICAL: Normalize provider to lowercase to ensure consistent handling
@@ -1107,86 +1118,25 @@ async function universalChatHandler(req, res, context = {}) {
   }
 
   // Validate message input (different formats for different handlers)
-  let messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
+  let messageInput = preparedHistory || originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
   if (!messageInput) {
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(400).json({ error: 'Messages or message with history are required in the request body.' });
+    return transport.reject(400, 'Messages or message with history are required in the request body.');
   }
 
-  messageInput = sanitizeOrphanToolCalls(messageInput);
-  messageInput = sanitizeUnexpectedToolResults(messageInput);
-  messageInput = sanitizeEmptyAssistantMessages(messageInput);
+  if (!preparedHistory) {
+    messageInput = sanitizeOrphanToolCalls(messageInput);
+    messageInput = sanitizeUnexpectedToolResults(messageInput);
+    messageInput = sanitizeEmptyAssistantMessages(messageInput);
+  }
 
-  // Set up streaming response
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Abort controller for cancelling LLM generation.
-  //
-  // IMPORTANT: this is aborted ONLY on an explicit client cancel (the Stop
-  // button, routed through activeRuns.cancelRun). It is deliberately NOT
-  // aborted when the SSE socket closes — a refresh must not destroy work the
-  // user asked for. See activeRuns.js for the full rationale.
+  transport.start();
   const streamAbortController = new AbortController();
-
-  // Is THIS response still writable? Distinct from "is the run still alive".
-  // Conflating the two is the bug: the transport can die many times over while
-  // a single run completes.
-  let sseOpen = true;
-
-  // Set once the conversation id is known; every event is mirrored into it so a
-  // reattaching client can replay the turn from the beginning.
+  const abortFromSupervisor = () => streamAbortController.abort(signal.reason);
+  if (signal?.aborted) abortFromSupervisor();
+  else signal?.addEventListener('abort', abortFromSupervisor, { once: true });
   let activeRun = null;
-
-  // SSE keepalive: Docker bridge NAT, reverse proxies (nginx/traefik), and corporate
-  // middleboxes silently drop idle TCP connections after 30–120s. During long tool
-  // executions or slow LLM generation, no bytes flow on the SSE channel and the
-  // connection dies with no error. A periodic comment line (`:` prefix) is ignored
-  // by the EventSource spec but keeps the underlying socket warm.
-  const HEARTBEAT_INTERVAL_MS = 15000;
-  const heartbeatInterval = setInterval(() => {
-    if (!sseOpen || res.writableFinished) {
-      clearInterval(heartbeatInterval);
-      return;
-    }
-    try {
-      res.write(': keepalive\n\n');
-    } catch (e) {
-      console.warn('[Stream Heartbeat] Write failed, closing SSE transport:', e.message);
-      sseOpen = false;
-      clearInterval(heartbeatInterval);
-    }
-  }, HEARTBEAT_INTERVAL_MS);
-
-  // Use res.on('close') — fires when the *response* connection is closed by the client.
-  // req.on('close') can fire prematurely once the request body is consumed.
-  //
-  // A closed socket means "this browser tab stopped listening", which is exactly
-  // what a refresh looks like. It does NOT mean "the user changed their mind".
-  // The run continues; the client can reattach via GET /orchestrator/runs/:id/stream.
-  res.on('close', () => {
-    clearInterval(heartbeatInterval);
-    if (!res.writableFinished) {
-      sseOpen = false;
-      console.log(
-        `[Stream] SSE transport closed for ${chatType} chat (conversation ${activeRun?.conversationId || 'pending'}) — run continues, reattachable`,
-      );
-    }
-  });
-
   const rawSendEvent = (eventName, data) => {
-    // 1. The socket that started this turn — may already be gone.
-    if (sseOpen) {
-      try {
-        res.write(`event: ${eventName}\n`);
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (e) {
-        console.warn('[Stream] SSE write failed, transport closed:', e.message);
-        sseOpen = false;
-      }
-    }
+    transport.send(eventName, data);
 
     // 2. Replay log + any reattached clients. This is what survives a refresh,
     //    so it must run whether or not the original socket is still alive.
@@ -1314,6 +1264,7 @@ async function universalChatHandler(req, res, context = {}) {
   const allToolCallsForLogging = [];
   let finalContentForLogging = '';
   let streamErrorForLogging = null;
+  let segmentStopReason = 'response_ended';
 
   // Agent execution tracking
   let agentExecutionId = null;
@@ -1348,7 +1299,7 @@ async function universalChatHandler(req, res, context = {}) {
     // One Canvas turn lost its workspace identity. Spreading from the shared
     // list means a new field cannot be added to one place and forgotten in the
     // other.
-    ...pickPageContext(req.body),
+    ...pickPageContext(requestBody),
     userId,
     conversationId,
     // PRD-051 identity mapping — coarse Phase 1 roles; refined in Phase 3
@@ -1392,6 +1343,11 @@ async function universalChatHandler(req, res, context = {}) {
   // way a fallback like this stays correct.
   const priorContext = conversationManager.get(conversationId)
     || await loadConversationState(conversationId);
+  // Explicit durable prefix overrides frozen fields, while live offloaded data
+  // remains available. Do not replace the whole context and lose query_data refs.
+  const resumedPrefix = preparedState ? reviveConversationState(preparedState) : null;
+  if (resumedPrefix && priorContext) Object.assign(priorContext, resumedPrefix);
+  else if (resumedPrefix) Object.assign(conversationContext, resumedPrefix);
   // A brand-new conversation used to start at calibration 1.0 and rediscover
   // the provider's real overhead over its first few turns, under-reporting
   // size and cost the whole time. The ratio is a property of the provider, so
@@ -1745,7 +1701,7 @@ async function universalChatHandler(req, res, context = {}) {
       }));
 
     // Broadcast user message to all connected tabs (real-time sync)
-    if (userId && messages.length > 0) {
+    if (!preparedHistory && userId && messages.length > 0) {
       const lastUserMessage = messages[messages.length - 1];
       if (lastUserMessage && lastUserMessage.role === 'user') {
         broadcastToUser(userId, RealtimeEvents.CHAT_USER_MESSAGE, {
@@ -1802,6 +1758,10 @@ async function universalChatHandler(req, res, context = {}) {
     } else {
       messages.unshift({ role: 'system', content: systemPrompt });
     }
+
+    // Prepared provider history already contains its frozen system prefix.
+    // Never prepend a newly constructed prompt at a supervisor boundary.
+    if (preparedHistory) messages = structuredClone(preparedHistory);
 
     // Resolve agent metadata for @ mention responses (avatar + name for SSE event)
     let agentMeta = {};
@@ -2477,8 +2437,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // tool produced an extra assistant message even when the result
           // was self-explanatory and the originating message was still on
           // screen — see autonomousFollowupConfig.js for the rationale.
-          const wantsAutonomousFollowup = shouldTriggerAutonomousFollowup(functionName);
-          const asyncCallbacks = wantsAutonomousFollowup
+          const wantsAutonomousFollowup = !managedAsyncCallbacks && shouldTriggerAutonomousFollowup(functionName);
+          const asyncCallbacks = managedAsyncCallbacks || (wantsAutonomousFollowup
             ? {
                 onProgress: async (progressData, execution) => {
                   if (progressData?.type === 'iteration_complete') {
@@ -2512,7 +2472,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
                   });
                 },
               }
-            : {};
+            : {});
 
           // Queue the async tool for background execution
           const executionId = asyncToolQueue.enqueue(
@@ -2526,13 +2486,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
             // Execute function wrapper — single dispatcher across all chat surfaces
             async (args, onProgress) => {
               console.log(`[AsyncTool] Executing ${functionName} for ${chatType} chat (autonomous follow-up: ${wantsAutonomousFollowup ? 'on' : 'off'})`);
-              return await executeTool(functionName, args, authToken, conversationContext);
+              await assertOwnership?.();
+              return dispatchTool
+                ? await dispatchTool({ toolCallId: toolCall.id, name: functionName, args, execute: () => executeTool(functionName, args, authToken, conversationContext) })
+                : await executeTool(functionName, args, authToken, conversationContext);
             },
             // The surface this tool was called from. Its broadcasts go to the
             // user's whole room, so without it a widget/workflow/goal async
             // tool is indistinguishable from a main-chat one on arrival.
             { chatType }
           );
+
+          managedAsyncCallbacks?.track?.(executionId);
 
           // Return immediate response indicating tool was queued
           const asyncResult = {
@@ -2551,7 +2516,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
         } else {
           // SYNCHRONOUS TOOL EXECUTION — single dispatcher across all chat surfaces
           try {
-            let rawFunctionResponse = await executeTool(functionName, functionArgs, authToken, conversationContext);
+            await assertOwnership?.();
+            let rawFunctionResponse = dispatchTool
+              ? await dispatchTool({ toolCallId: toolCall.id, name: functionName, args: functionArgs, execute: () => executeTool(functionName, functionArgs, authToken, conversationContext) })
+              : await executeTool(functionName, functionArgs, authToken, conversationContext);
 
           functionResponseContent = rawFunctionResponse;
 
@@ -2763,6 +2731,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
             }
           }
           } catch (executionError) {
+            if (executionError.code === 'operation_uncertain') {
+              streamAbortController.abort(executionError);
+              throw executionError;
+            }
             toolCallError = `Tool execution failed: ${executionError.message}`;
             console.error(`Tool execution error for ${functionName}:`, executionError);
 
@@ -3361,6 +3333,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // longer continue.
       if (toolCalls.some((tc) => tc.function?.name === 'mention_agent')) {
         floorPassed = true;
+        segmentStopReason = 'handoff';
         console.log(`[Floor] mention_agent executed in round ${currentRound} — ending turn, floor passes`);
         sendEvent('floor_passed', { assistantMessageId, round: currentRound });
         break;
@@ -3717,11 +3690,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     if (currentRound >= config.maxToolRounds) {
+      segmentStopReason = 'segment_budget';
       console.warn(`[Tool Loop] Maximum rounds (${config.maxToolRounds}) reached, forcing completion`);
       sendEvent('error', {
         error: `Maximum tool call rounds (${config.maxToolRounds}) reached. Stopping to prevent infinite loop.`,
       });
     }
+
+    await managedAsyncCallbacks?.settle?.();
 
     // Extract final content — always extract text from content arrays.
     // scrubEmptyPlaceholder collapses the bookkeeping placeholder to ''; the
@@ -4103,21 +4079,25 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }).catch(() => {});
     }
 
-    clearInterval(heartbeatInterval);
+    signal?.removeEventListener('abort', abortFromSupervisor);
     sendEvent('done', { message: 'Stream ended' });
 
     // Release the run AFTER 'done' is emitted, so reattached clients receive the
     // terminator before their socket is closed.
     endRun(conversationId, streamAbortController.signal.aborted ? 'cancelled' : 'completed');
 
-    if (sseOpen) {
-      try {
-        res.end();
-      } catch (e) {
-        console.warn('[Stream] res.end() failed — transport already gone:', e.message);
-      }
-    }
+    transport.finish();
   }
+  return {
+    status: streamAbortController.signal.aborted ? 'cancelled' : streamErrorForLogging ? 'error' : segmentStopReason,
+    conversationId,
+    executionId: agentExecutionId,
+    messages,
+    finalContent: finalContentForLogging,
+    prefixState: serializeConversationState(conversationContext),
+    runtimeSelection: { provider: normalizedProvider, model },
+    error: streamErrorForLogging,
+  };
 }
 
 /**

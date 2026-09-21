@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+import { createChatTransport } from './orchestrator/chatTransport.js';
 /**
  * Source-contract tests for the stream-lifetime wiring.
  *
@@ -48,8 +50,9 @@ function blockAfter(src, anchor) {
 
 describe('losing the socket does not cancel the run', () => {
   it('the close handler never aborts generation', () => {
-    const body = blockAfter(CODE, "res.on('close'");
-    expect(body, "res.on('close') handler not found").toBeTruthy();
+    const transportCode = fs.readFileSync(path.join(__dirname, 'orchestrator/chatTransport.js'), 'utf8');
+    const body = blockAfter(stripComments(transportCode), 'const close =');
+    expect(body).toBeTruthy();
 
     // THE REGRESSION THIS EXISTS TO CATCH. Restoring `streamAbortController.abort()`
     // here re-creates the original bug exactly: a refresh destroys the work.
@@ -57,8 +60,17 @@ describe('losing the socket does not cancel the run', () => {
   });
 
   it('the close handler closes only the transport', () => {
-    const body = blockAfter(CODE, "res.on('close'");
-    expect(body).toMatch(/sseOpen\s*=\s*false/);
+    const response = new EventEmitter();
+    const writes = [];
+    Object.assign(response, {setHeader() {}, flushHeaders() {}, write(value) {writes.push(value);}, end() {}});
+    const transport = createChatTransport(response);
+    transport.start();
+    transport.send('before', {});
+    response.emit('close');
+    transport.send('after', {});
+    transport.finish();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain('event: before');
   });
 
   it('the whole disconnect-equals-cancel concept is gone from the file', () => {
@@ -84,14 +96,13 @@ describe('every event reaches the replay log, not just the live socket', () => {
     // that returns before the publish reintroduces it.
     expect(body).toMatch(/publishToRun\(activeRun/);
 
-    const guardIndex = body.indexOf('if (sseOpen)');
+    const guardIndex = body.indexOf('transport.send(eventName, data)');
     const publishIndex = body.indexOf('publishToRun');
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(publishIndex).toBeGreaterThan(guardIndex);
 
     // Not nested inside the sseOpen branch...
-    const sseBlock = blockAfter(body, 'if (sseOpen)');
-    expect(sseBlock).not.toMatch(/publishToRun/);
+    expect(body.slice(0, publishIndex)).not.toMatch(/\breturn\b/);
 
     // ...and not conditional on transport health by any other route. Nesting is
     // only one way to couple the two; `if (activeRun && sseOpen)` reintroduces

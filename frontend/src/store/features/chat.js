@@ -5,6 +5,7 @@ import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 import { safeTruncate } from '@/utils/safeTruncate.js';
 import { reattachRun, cancelRun, fetchConversation } from '@/services/chatService.js';
+import { reduceConversationWork } from '@/services/conversationWorkState.js';
 import { serverMessagesToUi, transcriptSubstance } from '@/services/chatStreamReducer.js';
 import { serializeTranscript, parseTranscript } from '@/services/conversationTranscript.js';
 import { markRunStarted, markRunEnded } from '@/services/inflightRuns.js';
@@ -1066,6 +1067,11 @@ export default {
       conv.liveRuns = conv.liveRuns.map((r) =>
         r.executionId === executionId ? { ...r, status: status || 'completed', endedAt: endedAt || Date.now() } : r,
       );
+    },
+
+    SCOPED_SET_WORK_STATE(state, { conversationId, event }) {
+      const conversation = state.conversations[conversationId];
+      if (conversation) conversation.workState = reduceConversationWork(conversation.workState || null, event);
     },
 
     SCOPED_SET_STREAMING(state, { conversationId, value }) {
@@ -4107,6 +4113,9 @@ export default {
  */
 export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, conversationId) {
   switch (eventName) {
+    case 'work_state_changed':
+      commit('SCOPED_SET_WORK_STATE', { conversationId, event: data });
+      break;
     case 'conversation_started':
       // Migration already handled in processStream.
       // Save with debounce to avoid blocking the stream and delaying AI responses.
@@ -4291,6 +4300,11 @@ export function handleScopedStreamEvent({ commit, state, dispatch }, eventName, 
       commit('SCOPED_SET_STREAMING', { conversationId, value: false });
       lastStreamAutosaveAt.delete(conversationId);
       markRunEnded(conversationId);
+      // Managed work owns subsequent segments and steering, not frontend resubmission.
+      if (state?.conversations?.[conversationId]?.workState?.active) {
+        if (dispatch) dispatch('autosaveConversation', { debounce: true, conversationId });
+        break;
+      }
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: true, conversationId });
         // A steer the backend never applied is a HUMAN turn that has been

@@ -35,6 +35,7 @@ export const HANDLED_STREAM_EVENTS = Object.freeze([
   'tool_start',
   'tool_end',
   'final_content',
+  'work_state_changed',
   'error',
   'done',
 ]);
@@ -148,6 +149,15 @@ export function applyStreamEvent(message, eventName, data = {}) {
   if (!message) return { ...out, handled: false };
 
   switch (eventName) {
+    case 'work_state_changed': {
+      const labels = { queued: 'Working…', running: 'Working…', verifying: 'Verifying…', retry_wait: 'Retrying…', waiting_dependency: 'Waiting for a prerequisite', waiting_auth: 'Waiting for credentials', waiting_permission: 'Waiting for permission', paused: 'Paused', cancelled: 'Cancelled', succeeded: 'Complete' };
+      if (!data.workId || !Number.isSafeInteger(data.sequence) || !Object.hasOwn(labels, data.status)) break;
+      if (message.workState?.workId === data.workId && message.workState.sequence >= data.sequence) break;
+      message.workState = { workId: data.workId, sequence: data.sequence, status: data.status };
+      out.status = labels[data.status];
+      out.changed = true;
+      break;
+    }
     case 'content_delta':
       out.changed = appendText(message, data?.delta);
       // Text is the answer arriving — any "using tool…" line is now stale.
@@ -194,7 +204,7 @@ export function applyStreamEvent(message, eventName, data = {}) {
 
     case 'done':
       out.done = true;
-      out.status = '';
+      out.status = message.workState && !['succeeded', 'cancelled', 'paused'].includes(message.workState.status) ? 'Working…' : '';
       break;
 
     default:
