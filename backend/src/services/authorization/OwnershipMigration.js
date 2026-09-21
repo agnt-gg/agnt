@@ -1,8 +1,8 @@
 import {initializeOwnershipSchema} from './OwnershipSchema.js';
 import {inspectOwnershipInventory} from './OwnershipInventory.js';
 /** Offline-only transactional backfill. The caller must close ordinary application writers first. */
-export async function migrateOwnership(repository){
- const inventory=await inspectOwnershipInventory(repository);
+export async function migrateOwnership(repository, options = {}){
+ const inventory=await inspectOwnershipInventory(repository, options);
  if(!inventory.ready)throw new Error('Ownership inventory has unclassified tables: '+inventory.tables.filter(t=>t.status!=='classified').map(t=>t.table).join(', '));
  await repository.run('BEGIN IMMEDIATE');
  try{

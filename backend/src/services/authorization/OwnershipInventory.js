@@ -9,9 +9,16 @@ export const OWNERSHIP_INVENTORY = Object.freeze([
  ...['ownership_scopes','ownership_resource_types','scope_resource_owners','scope_api_audit','execution_principals','scoped_connections','execution_connection_grants','goal_lifecycle_versions','activation_milestone_outbox','users','estimate_calibration','model_metadata_cache','ledger_write_failures','installed_plugin_assets','schema_markers'].map(table=>({table,kind:'system'}))
 ].map(Object.freeze));
 /** Audit before migration. Unknown schemas stop migration rather than infer visibility. */
-export async function inspectOwnershipInventory(repository) {
+export async function inspectOwnershipInventory(repository, { extensions = [] } = {}) {
+ const known=new Set(OWNERSHIP_INVENTORY.map(entry=>entry.table));
+ for(const entry of extensions){
+  if(!entry||!/^plugin_[a-z0-9_]+$/.test(entry.table)||known.has(entry.table)||!['personal','inherited','system'].includes(entry.kind))throw new TypeError('Invalid or duplicate plugin ownership declaration');
+  if(entry.kind==='personal'&&!/^[a-z][a-z0-9_]*$/.test(entry.ownerColumn||''))throw new TypeError('Plugin ownership column required');
+  if(entry.kind==='inherited'&&(!/^[a-z][a-z0-9_]*$/.test(entry.parentColumn||'')||!/^[a-z][a-z0-9_]*$/.test(entry.parentTable||'')))throw new TypeError('Plugin parent declaration required');
+  known.add(entry.table);
+ }
  const tables=await repository.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
- const descriptors=new Map(OWNERSHIP_INVENTORY.map(entry=>[entry.table,entry]));
+ const descriptors=new Map([...OWNERSHIP_INVENTORY,...extensions].map(entry=>[entry.table,entry]));
  const results=[];
  for(const {name} of tables){
   if(!/^[a-z][a-z0-9_]*$/.test(name)){results.push({table:name,status:'unclassified'});continue;}
