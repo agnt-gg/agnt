@@ -389,9 +389,15 @@ if (process.env.AGNT_SKIP_DB_INIT !== '1') {
       console.error('[RunRecovery] Boot recovery failed (non-fatal):', err);
     }
 
-    // Main-chat continuity starts only after transcript recovery. Operational
-    // rollback switch; no new user-facing mode is required.
-    if (process.env.AGNT_CHAT_CONTINUITY !== '0') {
+    // Main-chat continuity starts only after transcript recovery.
+    //
+    // OPT-IN, NOT OPT-OUT. Default-on made this MVP the execution path for
+    // EVERY orchestrator turn on every install, including Anthropic /
+    // Claude Code, where resumed history is subject to strict tool_use /
+    // tool_result pairing that the resume path did not re-check. A feature
+    // that has not completed live-provider verification does not get to be
+    // the default; it gets to be requested.
+    if (process.env.AGNT_CHAT_CONTINUITY === '1') {
       try {
         const [{ default: database }, { executeChatSegment }, { bootConversationWork }, { mvpCompletionPolicy }] = await Promise.all([
           import('./src/models/database/index.js'),

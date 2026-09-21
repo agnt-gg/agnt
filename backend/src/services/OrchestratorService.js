@@ -1123,11 +1123,20 @@ export async function executeChatSegment({ userId, authToken, files = [], body: 
     return transport.reject(400, 'Messages or message with history are required in the request body.');
   }
 
-  if (!preparedHistory) {
-    messageInput = sanitizeOrphanToolCalls(messageInput);
-    messageInput = sanitizeUnexpectedToolResults(messageInput);
-    messageInput = sanitizeEmptyAssistantMessages(messageInput);
-  }
+  // ALWAYS sanitize, including a resumed segment.
+  //
+  // These three exist because Anthropic rejects a history whose tool_use has
+  // no matching tool_result ("tool_use ids were found without tool_result
+  // blocks"), and a segment that was cancelled, lost its lease, or died
+  // mid-round persists exactly that shape. Skipping them to protect the
+  // cached prefix traded a correctness guard for a cost optimisation and
+  // broke Anthropic/Claude Code outright.
+  //
+  // They are no-ops on a well-formed history — they only DELETE orphans — so
+  // a healthy resume keeps its bytes, and therefore its cache, unchanged.
+  messageInput = sanitizeOrphanToolCalls(messageInput);
+  messageInput = sanitizeUnexpectedToolResults(messageInput);
+  messageInput = sanitizeEmptyAssistantMessages(messageInput);
 
   transport.start();
   const streamAbortController = new AbortController();
