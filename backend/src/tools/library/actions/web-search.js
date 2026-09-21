@@ -1,16 +1,21 @@
 import BaseAction from '../BaseAction.js';
-import axios from 'axios';
+import { callService, serviceFailure } from '../../../services/agntServices.js';
 
-// Cache for Google Search keys to avoid repeated API calls
-let cachedGoogleSearchKeys = null;
-
+/**
+ * Web search, served by search.agnt.gg and included with AGNT Pro.
+ *
+ * Until now this fetched a shared Google key from api.agnt.gg and called
+ * Google itself — every install, paid or not, spending the same key. The
+ * hosted service meters per account against the plan's monthly allowance,
+ * and refuses a free account before it costs anything.
+ */
 class WebSearch extends BaseAction {
   static schema = {
-    title: 'Google Web Search API',
+    title: 'Web Search',
     category: 'action',
     type: 'web-search',
     icon: 'web',
-    description: 'This action node performs a web search using Google Custom Search API and returns the top results.',
+    description: 'Searches the web with Google and returns the top results. Included with AGNT Pro.',
     parameters: {
       searchQuery: {
         type: 'string',
@@ -20,21 +25,14 @@ class WebSearch extends BaseAction {
       numResults: {
         type: 'text',
         inputType: 'text',
-        description: 'The number of results to return (default: 5)',
-        default: 3,
-      },
-      sort: {
-        type: 'string',
-        inputType: 'select',
-        options: ['date', 'relevance'],
-        description: 'Sort order for the results',
-        default: 'date',
+        description: 'The number of results to return (1-10, default: 5)',
+        default: 5,
       },
     },
     outputs: {
       results: {
         type: 'array',
-        description: 'An array of search result objects',
+        description: 'An array of search result objects: title, link, snippet, source',
       },
       error: {
         type: 'string',
@@ -47,90 +45,19 @@ class WebSearch extends BaseAction {
     super('webSearch');
   }
 
-  async getGoogleSearchKeys() {
-    // Return cached keys if available
-    if (cachedGoogleSearchKeys) {
-      return cachedGoogleSearchKeys;
-    }
-
-    try {
-      // Fetch keys from remote API
-      const response = await axios.get(`${process.env.REMOTE_URL}/auth/google-search-keys`);
-
-      cachedGoogleSearchKeys = {
-        apiKey: response.data.apiKey,
-        searchEngineId: response.data.searchEngineId,
-      };
-
-      return cachedGoogleSearchKeys;
-    } catch (error) {
-      console.error('Error fetching Google Search keys from remote:', error.message);
-
-      // Fallback to local environment variables if remote fetch fails
-      console.log('Falling back to local environment variables');
-      return {
-        apiKey: process.env.GOOGLE_SEARCH_API_KEY,
-        searchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID,
-      };
-    }
-  }
-
-  async execute(params, inputData, workflowEngine) {
+  async execute(params) {
     this.validateParams(params);
-
+    const query = String(params.searchQuery || '').trim();
+    if (!query) return this.formatOutput({ results: [], error: 'searchQuery is required' });
+    const count = Math.max(1, Math.min(10, parseInt(params.numResults, 10) || 5));
     try {
-      // Get Google Search keys from remote API
-      const { apiKey, searchEngineId } = await this.getGoogleSearchKeys();
-
-      if (!apiKey || !searchEngineId) {
-        throw new Error('Google Search API credentials not configured');
-      }
-
-      const { searchQuery, numResults = 5, sort = 'relevance' } = params;
-
-      let url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&num=${numResults}&q=${encodeURIComponent(
-        searchQuery
-      )}`;
-
-      if (sort !== 'relevance') {
-        url += `&sort=${sort}`;
-      }
-
-      const response = await axios.get(url);
-
-      if (response.data.items && Array.isArray(response.data.items)) {
-        const results = response.data.items.map((item) => ({
-          title: item.title,
-          link: item.link,
-          snippet: item.snippet,
-        }));
-
-        return this.formatOutput({
-          success: true,
-          results,
-          error: null,
-        });
-      } else {
-        return this.formatOutput({
-          success: true,
-          results: [],
-          error: null,
-        });
-      }
+      const data = await callService('search', '/search', { method: 'POST', idempotent: true, body: { query, results: count } });
+      return this.formatOutput({ results: data.results || [], error: null });
     } catch (error) {
-      console.error('Error in WebSearch:', error);
-      return this.formatOutput({
-        success: false,
-        results: [],
-        error: error.message,
-      });
-    }
-  }
-  validateParams(params) {
-    if (!params.searchQuery) {
-      throw new Error('Search query is required for web search');
+      const failure = serviceFailure(error);
+      return this.formatOutput({ results: [], error: failure.message || failure.error, ...failure });
     }
   }
 }
 
-export default new WebSearch();
+export default WebSearch;

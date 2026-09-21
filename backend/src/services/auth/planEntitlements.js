@@ -61,7 +61,11 @@ const PAID_PLANS = new Set(['personal', 'always_on', 'business', 'enterprise']);
  * whole server table: a typo'd feature name should be a loud failure at review
  * time, not a silent `undefined` that quietly denies a paying customer.
  */
-const KNOWN_FEATURES = new Set(['remoteAccess', 'webhooks', 'emailServer', 'apiAccess', 'cloudSync']);
+const KNOWN_FEATURES = new Set([
+  'remoteAccess', 'webhooks', 'emailServer', 'apiAccess', 'cloudSync',
+  // Hosted services, included with Pro. Mirror `services` in the API's PLAN_DETAILS.
+  'models', 'search', 'sandbox', 'mail', 'hostedWebhooks',
+]);
 
 /**
  * A plan does not change between two requests seconds apart, and the pairing

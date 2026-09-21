@@ -56,6 +56,8 @@ import { augmentEnvPath } from '../../utils/envPath.js';
 import { coerceArgumentTypes } from '../../utils/argumentCoercion.js';
 import { prepareWrite } from '../../utils/lineEndings.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
+import { callService, serviceFailure } from '../agntServices.js';
+import { sendMail } from '../agntMail.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1087,75 +1089,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ query, searchQuery, num, numResults }) => {
-      // Handle both parameter naming conventions
-      const actualQuery = query || searchQuery;
-      const actualNum = num || numResults || 5;
-
-      console.log(`Tool call: executeWebSearch with query: "${actualQuery}", num: ${actualNum}`);
-
-      // Fetch Google Search keys from remote API
-      let apiKey, cx;
+    execute: async ({ query, num = 5 }) => {
+      console.log(`Tool call: web_search with query: "${query}"`);
+      if (!query) return JSON.stringify({ success: false, error: 'Search query is required.' });
       try {
-        const response = await fetch(`${process.env.REMOTE_URL}/auth/google-search-keys`);
-
-        if (!response.ok) {
-          console.error(`Failed to fetch Google Search keys from remote: ${response.status} ${response.statusText}`);
-          // Fallback to local environment variables
-          apiKey = process.env.GOOGLE_SEARCH_API_KEY;
-          cx = process.env.GOOGLE_SEARCH_ENGINE_ID;
-        } else {
-          const data = await response.json();
-          apiKey = data.apiKey;
-          cx = data.searchEngineId;
-        }
+        const data = await callService('search', '/search', { method: 'POST', idempotent: true, body: { query, results: Math.max(1, Math.min(10, Number(num) || 5)) } });
+        return JSON.stringify({ success: true, query, results: data.results || [], resultsCount: data.resultsCount ?? (data.results || []).length, usage: data.usage });
       } catch (error) {
-        console.error('Error fetching Google Search keys from remote:', error.message);
-        // Fallback to local environment variables
-        apiKey = process.env.GOOGLE_SEARCH_API_KEY;
-        cx = process.env.GOOGLE_SEARCH_ENGINE_ID;
-      }
-
-      if (!apiKey || !cx) {
-        const errorMsg = 'Google Search API key or Custom Search Engine ID is not configured. Please configure them on the remote server.';
-        console.error(errorMsg);
-        return JSON.stringify({ success: false, error: errorMsg });
-      }
-
-      if (!actualQuery) {
-        return JSON.stringify({ success: false, error: 'Search query is required' });
-      }
-
-      const resultsCount = Math.min(Math.max(1, Number(actualNum) || 5), 10);
-      const endpoint = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(actualQuery)}&num=${resultsCount}`;
-
-      try {
-        const response = await fetch(endpoint);
-        const data = await response.json();
-
-        if (!response.ok || data.error) {
-          const errorDetail = data.error?.message || response.statusText;
-          console.error(`Google Search API error ${response.status}: ${errorDetail}`);
-          return JSON.stringify({ success: false, error: `Google Search API error: ${errorDetail}` });
-        }
-
-        const results =
-          data.items?.map((item) => ({
-            title: item.title,
-            link: item.link,
-            snippet: item.snippet,
-            source: item.displayLink,
-          })) || [];
-
-        return JSON.stringify({
-          success: true,
-          query: actualQuery,
-          resultsCount: results.length,
-          results,
-        });
-      } catch (error) {
-        console.error('Google Custom Search API request failed:', error);
-        return JSON.stringify({ success: false, error: `Web search failed: ${error.message}` });
+        return JSON.stringify(serviceFailure(error));
       }
     },
   },
@@ -1179,69 +1120,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       },
     },
     execute: async ({ url }) => {
-      console.log(`Tool call: executeWebScrape (advanced) with url: "${url}"`);
-      if (!url) {
-        return JSON.stringify({ success: false, error: 'URL is required for web scraping.' });
-      }
-
+      console.log(`Tool call: web_scrape with url: "${url}"`);
+      if (!url) return JSON.stringify({ success: false, error: 'URL is required for web scraping.' });
       try {
-        // Use the imported scrape function from webScrape.js
-        const { textContent, links, codeContent } = await scrapeUtil.execute({ url });
-
-        // Check if the scrape itself reported an error (e.g., "ERROR: Could not extract main content...")
-        if (textContent.startsWith('Scraping failed for') || textContent.startsWith('ERROR:')) {
-          return JSON.stringify({
-            success: false,
-            error: `Web scraping failed for ${url}. Detail: ${textContent}`,
-            url,
-            textContent: null, // Explicitly nullify on error
-            links: [],
-            codeContent: '',
-          });
-        }
-
-        // Sanitize the scraped content to remove control characters that break JSON
-        // Note: JSON.stringify properly escapes \n and \t, so they are safe to preserve
-        const sanitizeText = (text) => {
-          if (!text || typeof text !== 'string') return text;
-          return text.replace(/[\x00-\x1F\x7F]/g, (match) => {
-            const charCode = match.charCodeAt(0);
-            switch (charCode) {
-              case 9:
-                return ' '; // tab -> space
-              case 10:
-                return '\n'; // preserve newlines for structured content
-              case 13:
-                return ''; // remove carriage return (\r\n → \n)
-              default:
-                return ''; // remove other control characters
-            }
-          });
-        };
-
-        const sanitizedTextContent = sanitizeText(textContent);
-        const sanitizedCodeContent = sanitizeText(codeContent);
-
-        return JSON.stringify({
-          success: true,
-          url,
-          textContent: sanitizedTextContent,
-          links,
-          codeContent: sanitizedCodeContent,
-          message: 'Content, links, and code snippets extracted successfully.',
-        });
+        const { textContent, links, codeContent } = await scrapeUtil(url);
+        return JSON.stringify({ success: true, url, textContent, links, codeContent, message: 'Content, links, and code snippets extracted successfully.' });
       } catch (error) {
-        console.error(`Advanced web scraping failed for ${url}:`, error);
-        // This catch block might be redundant if scrapeUtil.execute handles its own errors and returns a specific textContent.
-        // However, it's good for catching unexpected errors in the call itself.
-        return JSON.stringify({
-          success: false,
-          error: `Advanced web scraping failed: ${error.message}`,
-          url,
-          textContent: null,
-          links: [],
-          codeContent: '',
-        });
+        return JSON.stringify(serviceFailure(error));
       }
     },
   },
@@ -2861,7 +2746,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       type: 'function',
       function: {
         name: 'send_email',
-        description: 'Sends an email using a remote email service API. Requires REMOTE_URL to be set in environment variables.',
+        description: 'Sends an email from your agent inbox on mail.agnt.gg. Included with AGNT Pro.',
         parameters: {
           type: 'object',
           properties: {
@@ -2891,108 +2776,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         },
       },
     },
-    execute: async ({ to, subject, body, isHtml = false, senderName }, authToken, context) => {
-      console.log(`Tool call: send_email to: "${to}", subject: "${subject}"`);
-
-      if (!process.env.REMOTE_URL) {
-        const errorMsg = 'REMOTE_URL environment variable is not configured for email service.';
-        console.error(errorMsg);
-        return JSON.stringify({ success: false, error: errorMsg });
-      }
-
-      if (!to || !subject || !body) {
-        return JSON.stringify({ success: false, error: 'To, subject, and body are required for sending an email.' });
-      }
-
+    execute: async ({ to, subject, body, isHtml = false, senderName }) => {
+      console.log(`Tool call: send_email to: ${to}`);
+      if (!to || !subject || !body) return JSON.stringify({ success: false, error: 'to, subject and body are required.' });
       try {
-        // Extract workflowId from context if available, otherwise use a default
-        const workflowId = context?.workflowId || 'orchestrator-tool';
-
-        const params = {
-          to,
-          subject,
-          body,
-          isHtml,
-          senderName,
-        };
-
-        // Prefer the CALLER'S token — it is the real identity behind this send,
-        // and it is already in scope. Fall back to the remembered session token
-        // for the paths that invoke tools without one (schedules, autonomous
-        // loops). See services/auth/sessionTokenCache.js.
-        const bearer = typeof authToken === 'string' && authToken.length
-          ? (authToken.toLowerCase().startsWith('bearer ') ? authToken : `Bearer ${authToken}`)
-          : null;
-
-        const response = await fetch(`${process.env.REMOTE_URL}/email/send`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(bearer ? { Authorization: bearer } : authHeader()),
-          },
-          body: JSON.stringify({
-            params,
-            workflowId,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Email API error: ${response.status} ${response.statusText}`, errorText);
-
-          // Email is a paid feature. A 403 here means the account's plan does
-          // not include it, and the model needs to be told THAT rather than
-          // "Forbidden" — otherwise it retries, or invents a reason.
-          let parsed = null;
-          try {
-            parsed = JSON.parse(errorText);
-          } catch {
-            /* not JSON; fall through to the generic error below */
-          }
-          const denial = response.status === 403 ? readPlanDenialBody(parsed) : null;
-          if (denial) {
-            return JSON.stringify({
-              success: false,
-              error: planDenialMessage(denial, 'Sending email'),
-              upgrade_required: true,
-              required_feature: denial.requiredFeature,
-              to,
-              subject,
-            });
-          }
-
-          return JSON.stringify({
-            success: false,
-            error: `Email service API error: ${response.statusText}`,
-            details: errorText,
-            to,
-            subject,
-          });
-        }
-
-        const responseData = await response.json();
-        console.log('Email sent successfully via API. Response:', responseData);
-
-        return JSON.stringify({
-          success: true,
-          messageId: responseData.messageId,
-          to,
-          subject,
-          serverResponse: {
-            status: response.status,
-            statusText: response.statusText,
-            data: responseData,
-          },
-        });
+        const result = await sendMail({ to, subject, text: isHtml ? String(body).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : body, html: isHtml ? body : undefined });
+        return JSON.stringify({ success: true, messageId: result.id, state: result.state, from: result.from, to, subject, ...(senderName ? { note: 'senderName is not applied; mail is sent from your agent inbox ' + result.from } : {}) });
       } catch (error) {
-        console.error('Error sending email via API:', error);
-        return JSON.stringify({
-          success: false,
-          error: `Failed to send email via API: ${error.message}`,
-          details: error.toString(),
-          to,
-          subject,
-        });
+        return JSON.stringify(serviceFailure(error));
       }
     },
   },

@@ -27,8 +27,20 @@ const backendSrc = path.resolve(here, '..', '..');
 const CALLERS = [
   'tools/triggers/EmailReceiver.js',
   'tools/triggers/WebhookReceiver.js',
-  'tools/library/actions/send-email.js',
   'services/auth/AuthManager.js',
+];
+
+/**
+ * Files that reach the hosted services (mail/search/webhooks/sandbox/models)
+ * only through agntServices.callService, which attaches the session header
+ * once for all of them. They must not open their own connection.
+ */
+const SERVICE_CALLERS = [
+  'tools/library/actions/send-email.js',
+  'tools/library/actions/web-search.js',
+  'tools/library/actions/web-scrape.js',
+  'services/agntMail.js',
+  'services/agntWebhooks.js',
 ];
 
 /** Strip comments so documentation of the old shape cannot satisfy a check. */
@@ -86,14 +98,24 @@ describe('background calls to api.agnt.gg identify themselves', () => {
     });
   }
 
-  it('the orchestrator send_email tool authenticates too', () => {
-    // fetch(), not axios, so it is checked separately rather than bent into the
-    // scanner above.
-    const source = read('services/orchestrator/tools.js');
-    const index = source.indexOf('/email/send');
-    expect(index, '/email/send call not found in tools.js').toBeGreaterThan(-1);
-    const call = source.slice(index, index + 700);
-    expect(call).toMatch(/Authorization|authHeader\(\)/);
+  it('agntServices attaches the session header to every hosted-service call', () => {
+    const source = read('services/agntServices.js');
+    expect(source).toMatch(/sessionTokenCache\.js/);
+    const fetches = source.match(/fetch\s*\(/g) || [];
+    expect(fetches.length, 'callService must own the one fetch').toBe(1);
+    expect(source).toMatch(/\.\.\.authHeader\(\)/);
+  });
+
+  it('hosted-service callers never open their own connection', () => {
+    for (const rel of SERVICE_CALLERS) {
+      const source = read(rel);
+      expect(source, `${rel} must import callService`).toMatch(/agntServices\.js/);
+      expect(source, `${rel} opens a raw connection instead of using callService`).not.toMatch(/\baxios\.|\bfetch\s*\(|REMOTE_URL/);
+    }
+    const tools = read('services/orchestrator/tools.js');
+    expect(tools).toMatch(/from '\.\.\/agntServices\.js'/);
+    expect(tools, 'send_email must not call the retired /email/send relay').not.toMatch(/\/email\/send/);
+    expect(tools, 'web_search must not fetch shared Google keys').not.toMatch(/google-search-keys/);
   });
 
   it('every caller imports the token cache', () => {
