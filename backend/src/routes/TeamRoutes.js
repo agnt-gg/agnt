@@ -42,6 +42,11 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
       const teamId = path.split('/')[1];
       const team = await cloud.access(req.headers.authorization, teamId);
       if (!process.env.AGNT_TENANT_SLUG) return res.status(409).json({error:'Open the team cloud instance to access its shared assets',code:'team_instance_required',tenantUrl:team.tenantUrl});
+      const parts=path.split('/');
+      if(parts[2]==='workspaces'&&parts[3]){
+        const capability=parts.at(-1)==='run'?'runs.execute':parts.at(-1)==='authorize'||parts.at(-1)==='archive'?'access.manage':req.method==='GET'?'resources.read':'resources.write';
+        await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(parts[3])+'/access/'+capability);
+      }
       req.cloudTeam = team;
       next();
     } catch(error) {
@@ -104,7 +109,11 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     if(req.params.action==='run')return executor.run(req.cloudTeam,user,assetId,req.body?.input,scope,req.headers.authorization);
     throw Object.assign(new Error('Unknown execution action'),{status:404});
   }));
-  router.get('/:teamId/workspaces',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).list(req.params.teamId,user)));
+  router.get('/:teamId/workspaces',handler(async(repo,req,user)=>{
+    const workspaces=await new TeamWorkspaceRepository(repo).list(req.params.teamId,user);const visible=[];
+    for(const workspace of workspaces){try{await cloud.request(req.headers.authorization,'/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspace.id)+'/access/resources.read');visible.push(workspace);}catch(error){if(![403,404].includes(error.status))throw error;}}
+    return visible;
+  }));
   router.post('/:teamId/workspaces',handler(async(repo,req,user)=>{
     if(req.cloudTeam.role!=='owner')throw Object.assign(new Error('Only the owner can create a cloud workspace'),{status:403});
     const workspace=await new TeamWorkspaceRepository(repo).create(req.params.teamId,user,req.body?.name);
