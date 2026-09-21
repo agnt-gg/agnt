@@ -254,7 +254,9 @@ describe('a container that ran with the compose placeholder as ENCRYPTION_KEY', 
     const fresh = encrypt('new-credential');
     expect(keyGenerationOf(fresh)).toBe('current');
     const body = fresh.slice(CIPHERTEXT_PREFIX.length);
-    const underPlaceholder = CryptoJS.AES.decrypt(body, PLACEHOLDER).toString(CryptoJS.enc.Utf8);
+    let underPlaceholder;
+    try { underPlaceholder = CryptoJS.AES.decrypt(body, PLACEHOLDER).toString(CryptoJS.enc.Utf8); }
+    catch (error) { expect(error.message).toBe('Malformed UTF-8 data'); return; }
     expect(underPlaceholder).not.toBe('new-credential');
   });
 
