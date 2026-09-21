@@ -26,8 +26,8 @@
           </div>
           <div class="email-server-details">
             <span class="label">Email:</span>
-            <code class="detail-text">workflow-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx@agnt.gg</code>
-            <Tooltip text="Upgrade to unlock email listeners" width="auto">
+            <code class="detail-text">agent-xxxxxxxx@mail.agnt.gg</code>
+            <Tooltip text="Included with AGNT Pro" width="auto">
               <button class="copy-btn disabled" disabled>
                 <i class="fas fa-copy"></i>
                 <i class="fas fa-lock lock-icon"></i>
@@ -50,9 +50,10 @@
           </div>
         </div>
       </div>
-      <div class="locked-overlay">
+      <div class="locked-overlay" role="button" tabindex="0" @click="showUpgrade = true" @keydown.enter="showUpgrade = true">
         <i class="fas fa-lock"></i>
-        <p>Upgrade to unlock</p>
+        <p>Mail is included with AGNT Pro</p>
+        <button class="upgrade-cta" type="button" @click.stop="showUpgrade = true">Go Pro</button>
       </div>
     </div>
 
@@ -68,7 +69,7 @@
           <div class="email-server-details">
             <span class="label">Email:</span>
             <code class="detail-text">{{ listener.email_address }}</code>
-            <Tooltip :text="isPro ? 'Copy Email Address' : 'Upgrade to unlock email listeners'" width="auto">
+            <Tooltip :text="isPro ? 'Copy Email Address' : 'Included with AGNT Pro'" width="auto">
               <button
                 class="copy-btn"
                 @click="isPro ? copyToClipboard(listener.email_address, listener.id) : null"
@@ -97,6 +98,7 @@
         </div>
       </div>
     </div>
+    <UpgradeModal :open="showUpgrade" reason="Mail is included with AGNT Pro." @close="showUpgrade = false" />
   </div>
 </template>
 
@@ -105,11 +107,13 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useLicense } from '@/composables/useLicense';
+import UpgradeModal from '@/components/UpgradeModal.vue';
 
 export default {
   name: 'EmailServer',
   components: {
     Tooltip,
+    UpgradeModal,
   },
   emits: ['open-workflow'],
   setup(props, { emit }) {
@@ -119,8 +123,9 @@ export default {
     const copiedId = ref(null);
 
     // Use verified license for premium check
-    const { isPremium, hasEmailServer } = useLicense();
-    const isPro = computed(() => isPremium.value && hasEmailServer.value);
+    const { hasMail } = useLicense();
+    const isPro = hasMail;
+    const showUpgrade = ref(false);
 
     onMounted(() => {
       if (isPro.value) {
@@ -172,6 +177,7 @@ export default {
     };
 
     return {
+      showUpgrade,
       emailListeners,
       isLoading,
       copiedId,
@@ -464,4 +470,6 @@ body.dark .email-server-card {
   background: rgba(127, 129, 147, 0.1);
   color: var(--color-light-med-navy);
 }
+.locked-overlay { cursor: pointer; }
+.upgrade-cta { margin-top: 10px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--color-pink); color: var(--color-background); font-weight: 700; cursor: pointer; }
 </style>

@@ -115,6 +115,22 @@ export function useLicense() {
   });
 
   /**
+   * The five hosted services included with AGNT Pro. Each is a plain boolean
+   * in the signed license (see PLAN_DETAILS.features.services on the API), and
+   * every one requires a valid paid license — a flag alone is not enough.
+   */
+  const serviceEnabled = (name) => {
+    if (!isPremium.value) return false;
+    const services = hasFeature('services');
+    return !!(services && typeof services === 'object' ? services[name] : hasFeature(name));
+  };
+  const hasModels = computed(() => serviceEnabled('models'));
+  const hasSearch = computed(() => serviceEnabled('search'));
+  const hasSandbox = computed(() => serviceEnabled('sandbox'));
+  const hasMail = computed(() => serviceEnabled('mail'));
+  const hasHostedWebhooks = computed(() => serviceEnabled('hostedWebhooks'));
+
+  /**
    * Check if plugins are enabled
    */
   const hasPlugins = computed(() => {
@@ -196,6 +212,12 @@ export function useLicense() {
   };
 
   return {
+    // Hosted services (Pro)
+    hasModels,
+    hasSearch,
+    hasSandbox,
+    hasMail,
+    hasHostedWebhooks,
     // Core state
     license,
     licenseStatus,

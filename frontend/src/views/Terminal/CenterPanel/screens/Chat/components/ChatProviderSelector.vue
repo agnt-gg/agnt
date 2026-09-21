@@ -176,6 +176,7 @@
 <script>
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import { useLicense } from '@/composables/useLicense';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import ProviderModelSearch from '@/components/common/ProviderModelSearch.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
@@ -237,6 +238,7 @@ export default {
   },
   emits: ['close'],
   setup(props, { emit }) {
+    const { hasModels } = useLicense();
     const store = useStore();
     const selectorRef = ref(null);
     const providerSelect = ref(null);
@@ -309,6 +311,9 @@ export default {
         return isLocalServerRunning.value;
       }
 
+      // AGNT Models is connected by the plan, not by a key.
+      if (resolveProviderKey(selectedProvider.value) === 'agnt') return hasModels.value;
+
       // Custom providers are always "connected" (they're user-created)
       const isCustom = customProviders.value.some((p) => p.id === selectedProvider.value);
       if (isCustom) {
@@ -347,11 +352,19 @@ export default {
     // Transform providers into CustomSelect options format
     const providerOptions = computed(() => {
       // Built-in providers
-      const builtInOptions = providers.value.map((provider) => ({
-        label: PROVIDER_DISPLAY_NAMES[provider] || provider,
-        value: provider,
-        disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(resolveProviderKey(provider)),
-      }));
+      const builtInOptions = providers.value.map((provider) => {
+        const key = resolveProviderKey(provider);
+        if (key === 'agnt') {
+          // Included with Pro: no key to connect. Free accounts see it, badged, so
+          // the upgrade is discoverable from the place they would use it.
+          return { label: hasModels.value ? 'AGNT Flash · included' : 'AGNT Flash · PRO', value: provider, disabled: !hasModels.value };
+        }
+        return {
+          label: PROVIDER_DISPLAY_NAMES[provider] || provider,
+          value: provider,
+          disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(key),
+        };
+      });
 
       // Custom providers (always enabled)
       const customOptions = customProviders.value.map((provider) => ({

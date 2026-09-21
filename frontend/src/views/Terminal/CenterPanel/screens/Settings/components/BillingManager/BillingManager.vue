@@ -238,9 +238,10 @@ export default {
       // Map planType to display name
       const planMap = {
         free: 'Community Core',
-        personal: 'Personal Pro',
-        business: 'Business Pro',
-        enterprise: 'Enterprise',
+        personal: 'AGNT Pro',
+        always_on: 'Pro + Always-On',
+        business: 'AGNT Team',
+        enterprise: 'Managed Operations',
       };
       return planMap[this.planType] || 'Community Core';
     },
@@ -326,89 +327,88 @@ export default {
       }
     },
 
-    activePricingTier() {
-      // Use discount pricing if DISCOUNT_ENABLED flag is true
-      return DISCOUNT_ENABLED ? 'discount' : 'base';
-    },
 
     isScheduledUpgrade() {
       if (!this.scheduledPlanChange) return false;
-      const planHierarchy = ['Community Core', 'Personal Pro', 'Business Pro', 'Enterprise'];
+      const planHierarchy = ['Community Core', 'AGNT Pro', 'Pro + Always-On', 'AGNT Team', 'Managed Operations'];
       const currentIndex = planHierarchy.indexOf(this.scheduledPlanChange.currentPlanName);
       const newIndex = planHierarchy.indexOf(this.scheduledPlanChange.newPlanName);
       return newIndex > currentIndex;
     },
 
     plans() {
-      // Get the active pricing based on selected interval
-      const interval = this.selectedInterval;
-      const prices = this.activePrices;
-
+      // The Pro ladder. Prices and allowances mirror the live plan tables on
+      // api.agnt.gg; change them there first. Team seats are added on the
+      // Billing page after purchase, not chosen here.
+      const y = this.selectedInterval === 'yearly';
+      const six = (flash, search, minutes, mail, hooks) => [
+        { text: 'Hosted instance', included: true, detail: 'Your agent at yourname.agnt.gg' },
+        { text: 'AGNT Flash', included: true, detail: flash },
+        { text: 'Search', included: true, detail: search },
+        { text: 'Sandbox', included: true, detail: minutes },
+        { text: 'Mail', included: true, detail: mail },
+        { text: 'Webhooks', included: true, detail: hooks },
+      ];
       return [
         {
           id: 2,
-          name: 'Personal Pro',
+          planType: 'personal',
+          name: 'AGNT Pro',
           icon: '⭐',
-          price: prices.personal[interval].price,
-          originalPrice: prices.personal[interval].originalPrice,
-          tagline: 'Best for individuals',
+          price: y ? '$290/year' : '$29/mo',
+          originalPrice: null,
+          tagline: 'Your agent, hosted. Everything included.',
           features: [
-            { text: 'Full Core Features', included: true },
-            { text: 'Unlimited workflows', included: true },
-            { text: 'All integrations', included: true },
-            { text: 'Paid Marketplace Listings', included: true },
-            { text: 'Support', included: true, detail: 'Community Pro (< 48h)' },
-            { text: 'Cloud Sync', included: true, detail: 'Sync Every 15m' },
-            { text: 'API Access', included: true, detail: 'Personal' },
-            { text: 'Webhooks', included: true, detail: 'Trigger Every 15m' },
-            { text: 'Email Server', included: true, detail: 'Batches Every 15m' },
-            { text: 'Multi-Seat', included: false },
-            { text: 'White-Label', included: false },
-            { text: 'White Glove Concierge + SLA', included: false },
+            ...six('100M credits / mo', '150 searches + 750 pages / mo', '100 compute-minutes / mo', '1,000 units · 1 inbox', '1,000 units · 1 endpoint'),
+            { text: 'Runtime', included: true, detail: 'Sleeps when idle · 8 active hrs/day' },
+            { text: 'Seats', included: true, detail: '1' },
           ],
         },
         {
           id: 3,
-          name: 'Business Pro',
-          icon: '🚀',
-          price: prices.business[interval].price,
-          originalPrice: prices.business[interval].originalPrice,
-          tagline: 'For teams up to 10',
+          planType: 'always_on',
+          name: 'Pro + Always-On',
+          icon: '🌙',
+          price: y ? '$490/year' : '$49/mo',
+          originalPrice: null,
+          tagline: 'Pro, awake around the clock.',
           popular: true,
           features: [
-            { text: 'Full Core Features', included: true },
-            { text: 'Unlimited workflows', included: true },
-            { text: 'All integrations', included: true },
-            { text: 'Paid Marketplace Listings', included: true },
-            { text: 'Support', included: true, detail: 'Business Pro (< 24h)' },
-            { text: 'Cloud Sync', included: true, detail: 'Realtime Sync' },
-            { text: 'API Access', included: true, detail: 'Business' },
-            { text: 'Webhooks', included: true, detail: 'Realtime Trigger' },
-            { text: 'Email Server', included: true, detail: 'Realtime Email' },
-            { text: 'Multi-Seat', included: true, detail: '(up to 10)' },
-            { text: 'White-Label', included: false },
-            { text: 'White Glove Concierge + SLA', included: false },
+            ...six('300M credits / mo', '500 searches + 2,500 pages / mo', '300 compute-minutes / mo', '5,000 units · 5 inboxes', '5,000 units · 3 endpoints'),
+            { text: 'Runtime', included: true, detail: 'Never sleeps' },
+            { text: 'Seats', included: true, detail: '1' },
           ],
         },
         {
           id: 4,
-          name: 'Enterprise',
-          icon: '👑',
-          price: '$33k+/year',
-          tagline: 'Custom solutions',
+          planType: 'business',
+          name: 'AGNT Team',
+          icon: '🚀',
+          price: y ? '$990/year' : '$99/mo',
+          originalPrice: null,
+          tagline: 'Always-On for three people, one shared instance.',
           features: [
-            { text: 'Full Core Features', included: true },
-            { text: 'Unlimited workflows', included: true },
-            { text: 'All integrations', included: true },
-            { text: 'Paid Marketplace Listings', included: true },
-            { text: 'Support', included: true, detail: 'Business Pro (< 12h)' },
-            { text: 'Cloud Sync', included: true, detail: 'Realtime Sync' },
-            { text: 'API Access', included: true, detail: 'Unlimited' },
-            { text: 'Webhooks', included: true, detail: 'Realtime Trigger' },
-            { text: 'Email Server', included: true, detail: 'Realtime Email' },
-            { text: 'Multi-Seat', included: true, detail: '(Unlimited)' },
-            { text: 'White-Label', included: true, detail: 'Full' },
-            { text: 'White Glove Concierge + SLA', included: true, detail: 'Custom' },
+            ...six('600M credits / mo', '1,400 searches + 7,000 pages / mo', '600 compute-minutes / mo', '20,000 units · 15 inboxes', '20,000 units · 10 endpoints'),
+            { text: 'Runtime', included: true, detail: 'Never sleeps' },
+            { text: 'Seats', included: true, detail: '3 · +$25/mo each extra' },
+            { text: 'Shared credential vault', included: true },
+            { text: 'Audit receipts', included: true },
+          ],
+        },
+        {
+          id: 5,
+          planType: 'enterprise',
+          name: 'Managed Operations',
+          icon: '👑',
+          price: 'Custom',
+          originalPrice: null,
+          tagline: 'Priced to your operation',
+          features: [
+            { text: 'Everything in Team', included: true },
+            { text: 'Unlimited seats', included: true },
+            { text: 'Dedicated isolated runtime', included: true },
+            { text: 'Custom SLA & 24/7 incident response', included: true },
+            { text: 'Dedicated operations engineer', included: true },
           ],
         },
       ];
@@ -453,11 +453,11 @@ export default {
         return 'Current Plan';
       }
 
-      if (plan.name === 'Enterprise') {
+      if (plan.planType === 'enterprise') {
         return 'Contact Sales';
       }
 
-      const planHierarchy = ['Community Core', 'Personal Pro', 'Business Pro', 'Enterprise'];
+      const planHierarchy = ['Community Core', 'AGNT Pro', 'Pro + Always-On', 'AGNT Team', 'Managed Operations'];
       const currentIndex = planHierarchy.indexOf(this.currentPlan);
       const targetIndex = planHierarchy.indexOf(plan.name);
 
@@ -473,7 +473,7 @@ export default {
         return; // Already on this plan
       }
 
-      if (plan.name === 'Enterprise') {
+      if (plan.planType === 'enterprise') {
         this.handleContactSales();
         return;
       }
@@ -494,7 +494,7 @@ export default {
       }
 
       // Determine if this is a downgrade or upgrade
-      const planHierarchy = ['Community Core', 'Personal Pro', 'Business Pro', 'Enterprise'];
+      const planHierarchy = ['Community Core', 'AGNT Pro', 'Pro + Always-On', 'AGNT Team', 'Managed Operations'];
       const currentIndex = planHierarchy.indexOf(this.currentPlan);
       const targetIndex = planHierarchy.indexOf(plan.name);
       const isDowngrade = targetIndex < currentIndex;
@@ -521,10 +521,7 @@ export default {
 
       this.loading = true;
       try {
-        const planTypeMap = {
-          'Personal Pro': 'personal',
-          'Business Pro': 'business',
-        };
+        const planTypeMap = Object.fromEntries(this.plans.map((p) => [p.name, p.planType]));
 
         const token = this.$store.state.userAuth.token;
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/users/subscription/update`, {
@@ -537,7 +534,6 @@ export default {
           body: JSON.stringify({
             newPlanType: planTypeMap[planName],
             interval: 'yearly',
-            pricingTier: this.activePricingTier,
           }),
         });
 
@@ -577,15 +573,11 @@ export default {
       if (this.planType === 'free') {
         this.loading = true;
         try {
-          const planTypeMap = {
-            'Personal Pro': 'personal',
-            'Business Pro': 'business',
-          };
+          const planTypeMap = Object.fromEntries(this.plans.map((p) => [p.name, p.planType]));
 
           await this.createSubscription({
             planType: planTypeMap[planName],
             interval: this.selectedInterval,
-            pricingTier: this.activePricingTier,
             successUrl: `${window.location.origin}/settings?subscription=success`,
             cancelUrl: `${window.location.origin}/settings?subscription=cancelled`,
           });
@@ -620,10 +612,7 @@ export default {
 
       this.loading = true;
       try {
-        const planTypeMap = {
-          'Personal Pro': 'personal',
-          'Business Pro': 'business',
-        };
+        const planTypeMap = Object.fromEntries(this.plans.map((p) => [p.name, p.planType]));
 
         const token = this.$store.state.userAuth.token;
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/users/subscription/update`, {
@@ -636,7 +625,6 @@ export default {
           body: JSON.stringify({
             newPlanType: planTypeMap[planName],
             interval: 'yearly',
-            pricingTier: this.activePricingTier,
           }),
         });
 
@@ -1066,30 +1054,6 @@ ${this.contactForm.message}
   },
   data() {
     // Define base and discount prices for both monthly and yearly
-    const basePrices = {
-      personal: {
-        monthly: { price: '$29/mo', originalPrice: null },
-        yearly: { price: '$290/year', originalPrice: null },
-      },
-      business: {
-        monthly: { price: '$333/mo', originalPrice: null },
-        yearly: { price: '$3,333/year', originalPrice: null },
-      },
-    };
-
-    const discountPrices = {
-      personal: {
-        monthly: { price: '$22/mo', originalPrice: '$33/mo' },
-        yearly: { price: '$222/year', originalPrice: '$333/year' },
-      },
-      business: {
-        monthly: { price: '$222/mo', originalPrice: '$333/mo' },
-        yearly: { price: '$2,222/year', originalPrice: '$3,333/year' },
-      },
-    };
-
-    // Select prices based on DISCOUNT_ENABLED flag
-    const activePrices = DISCOUNT_ENABLED ? discountPrices : basePrices;
 
     return {
       DISCOUNT_MESSAGE, // Make the constant available in template
@@ -1109,7 +1073,6 @@ ${this.contactForm.message}
       imagePreview: '',
       basePrices,
       discountPrices,
-      activePrices,
     };
   },
 };

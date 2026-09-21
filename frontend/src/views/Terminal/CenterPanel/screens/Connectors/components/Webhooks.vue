@@ -26,8 +26,8 @@
           </div>
           <div class="webhook-url">
             <span class="label">URL:</span>
-            <code class="url-text">https://api.agnt.gg/webhooks/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>
-            <Tooltip text="Upgrade to unlock webhooks" width="auto">
+            <code class="url-text">https://webhooks.agnt.gg/in/xxxxxxxxxxxx</code>
+            <Tooltip text="Included with AGNT Pro" width="auto">
               <button class="copy-btn disabled" disabled>
                 <i class="fas fa-copy"></i>
                 <i class="fas fa-lock lock-icon"></i>
@@ -54,9 +54,10 @@
           </div>
         </div>
       </div>
-      <div class="locked-overlay">
+      <div class="locked-overlay" role="button" tabindex="0" @click="showUpgrade = true" @keydown.enter="showUpgrade = true">
         <i class="fas fa-lock"></i>
-        <p>Upgrade to unlock</p>
+        <p>Webhooks are included with AGNT Pro</p>
+        <button class="upgrade-cta" type="button" @click.stop="showUpgrade = true">Go Pro</button>
       </div>
     </div>
 
@@ -72,7 +73,7 @@
           <div class="webhook-url">
             <span class="label">URL:</span>
             <code class="url-text">{{ webhook.webhook_url }}</code>
-            <Tooltip :text="isPro ? 'Copy URL' : 'Upgrade to unlock webhooks'" width="auto">
+            <Tooltip :text="isPro ? 'Copy URL' : 'Included with AGNT Pro'" width="auto">
               <button
                 class="copy-btn"
                 @click="isPro ? copyToClipboard(webhook.webhook_url, webhook.id) : null"
@@ -110,6 +111,7 @@
         </div> -->
       </div>
     </div>
+    <UpgradeModal :open="showUpgrade" reason="Webhooks is included with AGNT Pro." @close="showUpgrade = false" />
   </div>
 </template>
 
@@ -120,6 +122,7 @@ import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useLicense } from '@/composables/useLicense';
+import UpgradeModal from '@/components/UpgradeModal.vue';
 
 export default {
   name: 'Webhooks',
@@ -127,6 +130,7 @@ export default {
     BaseButton,
     SimpleModal,
     Tooltip,
+    UpgradeModal,
   },
   emits: ['open-workflow'],
   setup(props, { emit }) {
@@ -136,8 +140,9 @@ export default {
     const copiedId = ref(null);
 
     // Use verified license for premium check
-    const { isPremium, hasWebhooks } = useLicense();
-    const isPro = computed(() => isPremium.value && hasWebhooks.value);
+    const { hasHostedWebhooks } = useLicense();
+    const isPro = hasHostedWebhooks;
+    const showUpgrade = ref(false);
 
     onMounted(() => {
       if (isPro.value) {
@@ -211,6 +216,7 @@ export default {
     };
 
     return {
+      showUpgrade,
       simpleModal,
       webhooks,
       isLoading,
@@ -544,4 +550,6 @@ body.dark .webhook-card {
   background: rgba(127, 129, 147, 0.1);
   color: var(--color-light-med-navy);
 }
+.locked-overlay { cursor: pointer; }
+.upgrade-cta { margin-top: 10px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--color-pink); color: var(--color-background); font-weight: 700; cursor: pointer; }
 </style>
