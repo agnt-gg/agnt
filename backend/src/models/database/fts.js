@@ -137,7 +137,19 @@ function buildUpdateTriggerSql(spec) {
     spec.pkType === 'integer'
       ? `DELETE FROM ${spec.name} WHERE rowid = old.${spec.pkCol};`
       : `DELETE FROM ${spec.name} WHERE doc_id = old.${spec.pkCol};`;
-  return `CREATE TRIGGER IF NOT EXISTS ${spec.source}_au AFTER UPDATE ON ${spec.source} BEGIN
+  // SCOPED TO THE MIRRORED COLUMNS ONLY.
+  //
+  // A bare `AFTER UPDATE` re-indexed the row for ANY column change, including
+  // columns the FTS row does not mirror. That is wasted work, and it is also a
+  // correctness trap: an AFTER INSERT trigger elsewhere that back-fills an
+  // unrelated column (ownership scope_id) issues an UPDATE inside the insert,
+  // this trigger then deleted and re-inserted a row the `_ai` trigger had just
+  // written in the same statement, and the insert failed with a bare
+  // SQLITE_CONSTRAINT. Naming the mirrored columns keeps the index correct —
+  // they are the only columns whose change can alter the FTS row — and leaves
+  // unrelated column writes alone.
+  const mirrored = [...spec.unindexed, ...spec.indexed].join(', ');
+  return `CREATE TRIGGER IF NOT EXISTS ${spec.source}_au AFTER UPDATE OF ${mirrored} ON ${spec.source} BEGIN
     ${deleteClause}
     INSERT INTO ${spec.name}(${cols.join(', ')})
     VALUES (${newCols.join(', ')});
@@ -191,6 +203,17 @@ export async function setupFullTextSearch(db) {
     try {
       await dbRun(db, buildCreateVirtualTableSql(spec));
       await dbRun(db, buildInsertTriggerSql(spec));
+      // Existing installs already hold the broad `AFTER UPDATE` trigger, and
+      // `CREATE TRIGGER IF NOT EXISTS` will not replace it. Replace it only
+      // when it is actually the old shape, so a healthy database is untouched.
+      const currentUpdateTrigger = await dbGet(
+        db,
+        `SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?`,
+        [`${spec.source}_au`],
+      );
+      if (currentUpdateTrigger && !/AFTER\s+UPDATE\s+OF\s/i.test(currentUpdateTrigger.sql || '')) {
+        await dbRun(db, `DROP TRIGGER ${spec.source}_au`);
+      }
       await dbRun(db, buildUpdateTriggerSql(spec));
       await dbRun(db, buildDeleteTriggerSql(spec));
 
