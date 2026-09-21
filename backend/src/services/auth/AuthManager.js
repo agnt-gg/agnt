@@ -42,6 +42,7 @@ class AuthManager {
   async getValidAccessToken(userId, providerId) {
     assertPersonalCredentialContext();
     if(String(userId).startsWith('scope:'))throw new Error('Shared resource owners cannot use personal credentials');
+    if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted members must use approved team connections');
     // Tier 1: env var
     const envVar = ENV_KEY_MAP[providerId];
     if (envVar) {
