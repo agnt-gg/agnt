@@ -58,6 +58,7 @@ import { prepareWrite } from '../../utils/lineEndings.js';
 import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
 import { callService, serviceFailure } from '../agntServices.js';
 import { sendMail } from '../agntMail.js';
+import { runJob, summarizeJob } from '../agntSandbox.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1125,6 +1126,41 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       try {
         const { textContent, links, codeContent } = await scrapeUtil(url);
         return JSON.stringify({ success: true, url, textContent, links, codeContent, message: 'Content, links, and code snippets extracted successfully.' });
+      } catch (error) {
+        return JSON.stringify(serviceFailure(error));
+      }
+    },
+  },
+  sandbox_run: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'sandbox_run',
+        description:
+          'Run a shell command in a fresh, isolated cloud VM (Python 3 and Node available) and get back its output and any exported files. The VM is destroyed afterwards. Use for untrusted code, heavy computation, or anything that must not touch this machine. Included with AGNT Pro.',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Shell command to run, e.g. "python3 main.py > result.txt"' },
+            inputs: {
+              type: 'array',
+              description: 'Files to place in the VM first: [{ path: "main.py", content: "..." }] (up to 8, 8 MB total)',
+              items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] },
+            },
+            outputs: { type: 'array', items: { type: 'string' }, description: 'Relative file paths to export when done, e.g. ["result.txt"]' },
+            lifetimeSeconds: { type: 'number', description: 'Whole-job deadline in seconds including boot and export (10-900, default 120)' },
+            size: { type: 'string', enum: ['small', 'medium', 'large'], description: 'VM size; medium and large cost 2x and 4x compute-minutes' },
+          },
+          required: ['command'],
+        },
+      },
+    },
+    execute: async ({ command, inputs = [], outputs = [], lifetimeSeconds, size }) => {
+      console.log(`Tool call: sandbox_run: ${String(command).slice(0, 120)}`);
+      if (!command) return JSON.stringify({ success: false, error: 'command is required.' });
+      try {
+        const job = await runJob({ command, inputs, outputs, lifetimeSeconds, size });
+        return JSON.stringify(summarizeJob(job));
       } catch (error) {
         return JSON.stringify(serviceFailure(error));
       }
