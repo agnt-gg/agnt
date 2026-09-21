@@ -129,6 +129,7 @@ describe('staleness', () => {
 });
 
 describe('two valid credentials for one user do not fight over the slot', () => {
+  beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date('2026-09-01T00:00:00Z'));});
   // The defect this covers: a second window, a paired device or a stale storage
   // copy leaves TWO unexpired tokens for the SAME user in circulation. The
   // single-user poison latch never trips (the ids match), so the slot flipped

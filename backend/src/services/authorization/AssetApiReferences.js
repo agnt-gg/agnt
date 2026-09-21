@@ -7,6 +7,8 @@ export function assetApiReferences(path,body={}){
  if(tables[api]&&id&&!reserved.has(id))add(tables[api],id);
  if(api==='experiments'&&id==='datasets'&&tail[0]&&!['generate'].includes(tail[0]))add('eval_datasets',tail[0]);
  if(api==='executions'){if(id==='agents'&&tail[0]&&!['list','clear-completed'].includes(tail[0]))add('agent_executions',tail[0]);else if(id&&!['activity','streak','conversation','agents'].includes(id))add('workflow_executions',id);}
+ if(api==='insights'&&id==='memory'&&tail[0]&&!['entry','orphaned'].includes(tail[0]))add('agents',tail[0]);
+ if(api==='insights'&&['target','source'].includes(id)){const typeMap={agent:'agents',workflow:'workflows',tool:'tools',skill:'skills',goal:'goals',agent_execution:'agent_executions',workflow_execution:'workflow_executions'};if(typeMap[tail[0]])add(typeMap[tail[0]],tail[1]);}
  if(api==='insights'&&id==='memory'&&tail[0]==='entry')add('agent_memory',tail[1]);
  if(api==='memory'&&id==='trace')add('agent_executions',tail[0]);
  if(api==='skillforge'&&id==='skill')add('skills',tail[0]);
@@ -15,7 +17,7 @@ export function assetApiReferences(path,body={}){
   if(api==='agents')add('agents',body.agent?.id);if(api==='workflows')add('workflows',body.workflow?.id);if(api==='custom-tools')add('tools',body.tool?.id);if(api==='content-outputs')add('content_outputs',body.output?.id||body.id);
  }
  for(const [container,keys]of [['agent',{assignedTools:'tools',assignedWorkflows:'workflows',assignedSkills:'skills'}]]){for(const [key,table]of Object.entries(keys)){for(const id of Array.isArray(body[container]?.[key])?body[container][key]:[])add(table,id);}}
- for(const id of Array.isArray(body.outputIds)?body.outputIds:[])add('content_outputs',id);
- for(const [key,table]of Object.entries({agentId:'agents',workflowId:'workflows',toolId:'tools',goalId:'goals',groupId:'groups'}))add(table,body[key]);
+ for(const id of Array.isArray(body.outputIds||body.output_ids)?(body.outputIds||body.output_ids):[])add('content_outputs',id);
+ for(const [key,table]of Object.entries({agentId:'agents',workflowId:'workflows',toolId:'tools',goalId:'goals',groupId:'groups',group_id:'groups',parent_id:'groups',activeSkillId:'skills',activeGoalId:'goals'}))add(table,body[key]);
  return result;
 }

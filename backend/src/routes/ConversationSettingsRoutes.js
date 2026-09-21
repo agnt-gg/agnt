@@ -13,6 +13,7 @@ router.get('/:id/settings', authenticateToken, async (req, res) => {
   try {
     const conversationId = req.params.id;
     const row = await ConversationSettingsModel.get(conversationId);
+    if(row && row.user_id !== req.user?.userId)return res.status(404).json({error:'Conversation not found'});
     res.json({
       conversationId,
       activeSkillId: row?.active_skill_id || null,
@@ -38,6 +39,8 @@ router.patch('/:id/settings', authenticateToken, async (req, res) => {
   try {
     const conversationId = req.params.id;
     const userId = req.user?.userId || null;
+    const existing=await ConversationSettingsModel.get(conversationId);
+    if(existing && existing.user_id!==userId)return res.status(404).json({error:'Conversation not found'});
     const { activeSkillId, activeGoalId, provider, model, routingMode } = req.body || {};
 
     // Guard field types: an AI override is a non-empty string or an explicit
