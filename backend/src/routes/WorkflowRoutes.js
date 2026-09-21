@@ -84,7 +84,7 @@ WorkflowRoutes.post('/:workflowId/revert', authenticateToken, requireWorkflowOwn
 
     // Broadcast update to all clients
     if (req.app.get('io')) {
-      req.app.get('io').emit('workflow:reverted', {
+      req.app.get('io').to(`user:${req.user.userId}`).emit('workflow:reverted', {
         workflowId,
         versionNumber: result.revertedToVersion,
         workflowState: result.workflowState,
