@@ -16,6 +16,9 @@ export function createScopeApiMiddleware(authenticate,getWorkspace){return async
   const workspaceId=req.headers['x-agnt-workspace-id']||null;
   if(workspaceId){const workspace=await getWorkspace(workspaceId);if(!workspace||workspace.team_id!==teamId||workspace.archived_at)throw Object.assign(new Error('Workspace not found'),{status:404});}
   const action=scopeApiAction(req.method,req.path);requireScopeApiRole(team.role,action);
+  if(!workspaceId)throw Object.assign(new Error('Select a cloud workspace for native resources'),{status:403});
+  const capability=action==='view'?'resources.read':action==='run'?'runs.execute':'resources.write';
+  await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(process.env.AGNT_TENANT_SLUG)+'/workspaces/'+encodeURIComponent(workspaceId)+'/access/'+capability);
   const scope=await ensureSharedScope(repository,teamId,workspaceId);
   const context={actorId:req.user.userId||req.user.id,teamId,workspaceId,scopeId:scope.id,resourceOwnerId:scope.resourceOwnerId,role:team.role,authorization:req.headers.authorization};
   const authorization=new ResourceAuthorization(repository,async(_context,_action,resourceScope)=>{if(resourceScope.id!==scope.id)throw Object.assign(new Error('Resource not found in this workspace'),{status:404});});
