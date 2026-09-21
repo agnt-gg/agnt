@@ -14,8 +14,21 @@ import { callService } from './agntServices.js';
 
 /** Create the hosted endpoint for a workflow. Name is informational on the service. */
 export async function createEndpoint(workflowId, name) {
-  const endpoint = await callService('webhooks', '/endpoints', { method: 'POST', idempotent: true, body: { name: name || 'workflow-' + String(workflowId).slice(0, 8) } });
+  const wanted = name || 'workflow-' + String(workflowId).slice(0, 8);
+  // The endpoint is named for the workflow, so the service is the record of
+  // truth: if one already exists (local row lost, app reinstalled, restart
+  // before the row was written) adopt it rather than minting a duplicate that
+  // eats the plan's endpoint allowance.
+  const existing = await findEndpointByName(wanted);
+  if (existing) return existing;
+  const endpoint = await callService('webhooks', '/endpoints', { method: 'POST', idempotent: true, body: { name: wanted } });
   return { id: endpoint.id, slug: endpoint.slug, url: endpoint.url, state: endpoint.state };
+}
+
+async function findEndpointByName(name) {
+  const list = await callService('webhooks', '/endpoints');
+  const hit = (list.endpoints || []).find((e) => e.name === name && e.state === 'active');
+  return hit ? { id: hit.id, slug: hit.slug, url: hit.url, state: hit.state } : null;
 }
 
 export async function retireEndpoint(endpointId) {
