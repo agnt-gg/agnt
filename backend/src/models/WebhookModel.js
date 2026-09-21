@@ -58,14 +58,14 @@ class WebhookModel {
   static create(webhookData) {
     return new Promise((resolve, reject) => {
       const id = uuidv4();
-      const { workflow_id, user_id, webhook_url, method, auth_type } = webhookData;
+      const { workflow_id, user_id, webhook_url, method, auth_type, endpoint_id, slug } = webhookData;
 
       const query = `
-        INSERT INTO webhooks (id, workflow_id, user_id, webhook_url, method, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO webhooks (id, workflow_id, user_id, webhook_url, method, auth_type, endpoint_id, slug)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.run(query, [id, workflow_id, user_id, webhook_url, method || null, auth_type || null], function (err) {
+      db.run(query, [id, workflow_id, user_id, webhook_url, method || null, auth_type || null, endpoint_id || null, slug || null], function (err) {
         if (err) {
           reject(err);
         } else {
@@ -116,6 +116,35 @@ class WebhookModel {
     });
   }
 
+  /** Adopt a hosted endpoint onto a row created by the retired relay. Scoped to the owner. */
+  static attachEndpoint(workflowId, userId, { endpoint_id, slug, webhook_url }) {
+    if (!userId) return Promise.reject(new Error('attachEndpoint requires a userId'));
+    return new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE webhooks SET endpoint_id = ?, slug = ?, webhook_url = ?, updated_at = CURRENT_TIMESTAMP WHERE workflow_id = ? AND user_id = ?',
+        [endpoint_id, slug, webhook_url, workflowId, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ updated: this.changes > 0 });
+        }
+      );
+    });
+  }
+
+  /** Advance the event cursor. Monotonic: never moves backwards. */
+  static saveCursor(workflowId, cursor) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE webhooks SET cursor = MAX(COALESCE(cursor, 0), ?), updated_at = CURRENT_TIMESTAMP WHERE workflow_id = ?',
+        [cursor, workflowId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ updated: this.changes > 0 });
+        }
+      );
+    });
+  }
+
   // Load all webhooks (for server restart)
   static loadAll() {
     return new Promise((resolve, reject) => {
@@ -152,12 +181,12 @@ class WebhookModel {
               const existing = await this.findByWorkflowId(wf.id);
 
               if (!existing) {
-                // Create webhook record with placeholder URL (will be updated when workflow starts)
-                const webhookUrl = `${process.env.REMOTE_URL}/webhook/${wf.id}`;
+                // Placeholder until activation creates the hosted endpoint and
+                // writes the real https://webhooks.agnt.gg/in/{slug} URL.
                 await this.create({
                   workflow_id: wf.id,
                   user_id: wf.user_id,
-                  webhook_url: webhookUrl,
+                  webhook_url: 'pending',
                   method: null,
                   auth_type: null,
                 });

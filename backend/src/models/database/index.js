@@ -666,6 +666,24 @@ function createTables() {
       )`
       );
 
+      // Hosted webhooks (2026-09): each workflow's inbound URL lives on
+      // webhooks.agnt.gg. endpoint_id/slug identify it there; cursor is the
+      // receivedAt of the last event handed to the engine, so a restart
+      // resumes without replaying or skipping.
+      [
+        { name: 'endpoint_id', type: 'TEXT' },
+        { name: 'slug', type: 'TEXT' },
+        { name: 'cursor', type: 'INTEGER' },
+      ].forEach((col) => {
+        db.run(`ALTER TABLE webhooks ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to webhooks:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to webhooks table`);
+          }
+        });
+      });
+
       // ==================== OAUTH_TOKENS TABLE ====================
       db.run(`CREATE TABLE IF NOT EXISTS oauth_tokens (
         id TEXT PRIMARY KEY,

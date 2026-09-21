@@ -247,7 +247,7 @@ export default {
       setup: async (engine, node) => {
         try {
           const { method, authType, authToken, username, password } = node.parameters;
-          const webhookUrl = ProcessManager.WebhookReceiver.registerWebhook(
+          const webhookUrl = await ProcessManager.WebhookReceiver.registerWebhook(
             engine.workflowId,
             engine.userId,
             method,
@@ -280,7 +280,7 @@ export default {
     //   setup: async (engine, node) => {
     //     try {
     //       const { authType, authToken, username, password } = node.parameters;
-    //       const webhookUrl = ProcessManager.WebhookReceiver.registerWebhook(
+    //       const webhookUrl = await ProcessManager.WebhookReceiver.registerWebhook(
     //         engine.workflowId,
     //         engine.userId,
     //         'POST', // Zapier always uses POST

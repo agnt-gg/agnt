@@ -115,7 +115,7 @@ class WebhookListener extends BaseTrigger {
 
     try {
       const { method, authType, authToken, username, password, responseMode, responseBody, responseContentType } = node.parameters;
-      this.webhookUrl = ProcessManager.WebhookReceiver.registerWebhook(
+      this.webhookUrl = await ProcessManager.WebhookReceiver.registerWebhook(
         engine.workflowId,
         engine.userId,
         method,

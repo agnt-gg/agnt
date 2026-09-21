@@ -424,7 +424,7 @@ import { ref, onMounted, computed, shallowRef } from 'vue';
 import { lazyComponent } from '@/utils/chunkRecovery.js';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
-import { API_CONFIG, AI_PROVIDERS_CONFIG, IMAP_EMAIL_DOMAIN } from '@/tt.config';
+import { API_CONFIG, AI_PROVIDERS_CONFIG } from '@/tt.config';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { useProviderConnection } from '@/composables/useProviderConnection.js';
@@ -477,6 +477,12 @@ export default {
   emits: ['update:nodeContent', 'update:edgeContent'],
   data() {
     return {
+      hostedWebhookUrl: null,
+      hostedWebhookPro: null,
+      hostedWebhookRequested: null,
+      hostedInboxAddress: null,
+      hostedInboxPro: null,
+      hostedInboxRequested: false,
       localEdgeContent: {
         conditions: [{ if: '', condition: 'true', value: '' }],
         maxIterations: 1,
@@ -1008,15 +1014,45 @@ export default {
       value = value.replace('{{FRONTEND_URL}}', API_CONFIG.FRONTEND_URL);
       value = value.replace('{{BASE_URL}}', API_CONFIG.BASE_URL);
       value = value.replace('{{REMOTE_URL}}', API_CONFIG.REMOTE_URL);
-      value = value.replace('{{WEBHOOK_URL}}', API_CONFIG.WEBHOOK_URL);
 
-      // Handle email-specific replacements
+      // Hosted addresses come from the services, not from config: the webhook
+      // URL exists only once the workflow has been activated, and the inbox
+      // address belongs to the account. Both are Pro; a free account sees the
+      // upgrade prompt in place of an address.
+      if (value.includes('{{WEBHOOK_URL}}')) {
+        this.ensureHostedWebhookUrl();
+        value = this.hostedWebhookUrl || (this.hostedWebhookPro === false ? 'Included with AGNT Pro — upgrade to get a webhook URL' : 'Activate the workflow to get your webhook URL');
+      }
       if (this.nodeContent.type === 'receive-email' && key === 'emailAddress') {
-        const imapUserDomain = IMAP_EMAIL_DOMAIN.BASE_DOMAIN;
-        value = value.replace('{{IMAP_EMAIL_DOMAIN}}', imapUserDomain);
+        this.ensureHostedInbox();
+        value = this.hostedInboxAddress || (this.hostedInboxPro === false ? 'Included with AGNT Pro — upgrade to get an inbox' : 'Setting up your inbox…');
       }
 
       return value;
+    },
+    async ensureHostedWebhookUrl() {
+      if (this.hostedWebhookRequested === this.workflowId) return;
+      this.hostedWebhookRequested = this.workflowId;
+      try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/api/agnt-services/webhook/${this.workflowId}`, { credentials: 'include' });
+        const data = await res.json();
+        this.hostedWebhookPro = data.pro !== false;
+        this.hostedWebhookUrl = data.url || null;
+      } catch {
+        this.hostedWebhookRequested = null;
+      }
+    },
+    async ensureHostedInbox() {
+      if (this.hostedInboxRequested) return;
+      this.hostedInboxRequested = true;
+      try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/api/agnt-services/inbox`, { credentials: 'include' });
+        const data = await res.json();
+        this.hostedInboxPro = data.pro !== false;
+        this.hostedInboxAddress = data.address || null;
+      } catch {
+        this.hostedInboxRequested = false;
+      }
     },
 
     onTextareaFocus(event) {

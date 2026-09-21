@@ -1,32 +1,28 @@
-import axios from 'axios';
 import { EventEmitter } from 'events';
-import { authHeader } from '../../services/auth/sessionTokenCache.js';
+import { listInbound } from '../../services/agntMail.js';
+import { serviceFailure } from '../../services/agntServices.js';
 
 /**
- * Inbound email trigger poller.
+ * Inbound email trigger, served by mail.agnt.gg.
  *
- * IDENTIFIES ITSELF. Every call below carries the user's session token when one
- * is known. The remote /email/poll returns pending triggers and
- * /email/confirm-processed deletes them, and until now both went out with no
- * credential at all — so the server had to serve anonymous callers, which meant
- * it could not scope results to an owner and anyone could read or delete any
- * user's inbound mail.
+ * The account has one hosted inbox; every workflow with a "Built-in Email"
+ * receive-email trigger listens on it. This receiver polls the inbox since a
+ * cursor and offers each new message to every listening engine. The cursor
+ * advances only past messages that at least one engine accepted, so a message
+ * arriving while a workflow is still starting is seen again on the next poll.
  *
- * The header is inert today: the matching server routes are behind an
- * enforcement gate that is in shadow, so it is accepted and counted but not
- * required. That is the point — the client learns to identify itself first,
- * the server starts insisting only once the counters show adoption.
- *
- * If no token is known yet (fresh start, nobody has opened the UI), the header
- * is simply absent and the call behaves exactly as it does today.
+ * Hosted mail is part of AGNT Pro. A free account's poll gets a plan refusal,
+ * which is logged once per poll; nothing is queued locally for it.
  */
 class EmailReceiver extends EventEmitter {
   constructor(processManager) {
     super();
     this.processManager = processManager;
-    this.remoteUrl = process.env.REMOTE_URL;
     this.pollInterval = null;
-    this.activeTriggers = new Set(); // Track active triggers
+    this.activeTriggers = new Set();
+    this.since = Date.now();
+    this.polling = false;
+    this.lastDenial = 0;
     this.pollingEnabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING !== 'true';
 
     if (this.pollingEnabled) {
@@ -38,12 +34,11 @@ class EmailReceiver extends EventEmitter {
   }
 
   startPolling() {
-    if (!this.pollingEnabled) return;
+    if (!this.pollingEnabled || this.pollInterval) return;
     console.log('Local EmailReceiver: Starting polling...');
-    this.pollInterval = setInterval(() => {
-      this.pollForTriggers();
-    }, 10000); // Poll every 10 seconds
+    this.pollInterval = setInterval(() => this.pollForTriggers(), 10000);
   }
+
   stopPolling() {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
@@ -51,92 +46,92 @@ class EmailReceiver extends EventEmitter {
       console.log('Local EmailReceiver: Polling stopped.');
     }
   }
+
+  /** Engines currently listening on the built-in inbox. */
+  _listeningWorkflows() {
+    const out = [];
+    for (const [workflowId, engine] of this.processManager.activeWorkflows) {
+      if (!(engine.isListening || engine.isRunning)) continue;
+      const nodes = engine.workflow?.nodes || engine.nodes || [];
+      const usesBuiltIn = nodes.some((n) => n.type === 'receive-email' && (n.parameters?.emailConfig || 'Built-in Email') === 'Built-in Email');
+      if (usesBuiltIn) out.push(workflowId);
+    }
+    return out;
+  }
+
   async pollForTriggers() {
+    if (this.polling) return;
+    const workflowIds = this._listeningWorkflows();
+    if (workflowIds.length === 0) return; // nobody listening: do not spend a request
+    this.polling = true;
     try {
-      const response = await axios.get(`${this.remoteUrl}/email/poll`, { headers: authHeader() });
-      const { triggers } = response.data;
-
-      // Only log if there are triggers to process
-      if (triggers.length === 0) return;
-
-      console.log(`Local EmailReceiver: Received ${triggers.length} workflow triggers`);
-
-      const processedTriggerIds = [];
-
-      for (const trigger of triggers) {
-        // Identifiers only — `trigger` carries the whole inbound email.
-        console.log(`Local EmailReceiver: processing trigger ${trigger.id} for workflow ${trigger.workflowId}`);
-        const success = await this._triggerWorkflowByEmail(trigger.workflowId, trigger.triggerData);
-        // Only confirm if the workflow was actually triggered
-        // If workflow not found in this process, let the other process handle it
-        if (success) {
-          processedTriggerIds.push(trigger.id);
-        } else {
-          console.log(`Local EmailReceiver: Workflow ${trigger.workflowId} not ready, will retry on next poll`);
+      let inbox, messages;
+      try {
+        ({ inbox, messages } = await listInbound({ since: this.since }));
+      } catch (error) {
+        const failure = serviceFailure(error);
+        if (Date.now() - this.lastDenial > 60000) {
+          console.error(`Local EmailReceiver: ${failure.message || failure.error}`);
+          this.lastDenial = Date.now();
         }
+        return;
       }
+      if (!messages.length) return;
+      console.log(`Local EmailReceiver: ${messages.length} new message(s) on ${inbox.address}`);
 
-      // Confirm processed triggers
-      if (processedTriggerIds.length > 0) {
-        try {
-          await axios.post(
-            `${this.remoteUrl}/email/confirm-processed`,
-            { processedTriggerIds },
-            { headers: authHeader() }
-          );
-          console.log(`Local EmailReceiver: Confirmed processing of ${processedTriggerIds.length} triggers`);
-        } catch (confirmError) {
-          console.error('Local EmailReceiver: Error confirming processed triggers:', confirmError);
+      let advanced = this.since;
+      for (const message of messages) {
+        let accepted = false;
+        for (const workflowId of workflowIds) {
+          if (await this._triggerWorkflowByEmail(workflowId, message)) accepted = true;
         }
+        if (!accepted) break; // engines not ready: leave the cursor here
+        advanced = Math.max(advanced, message.createdAt || advanced);
       }
+      this.since = advanced;
     } catch (error) {
-      console.error('Local EmailReceiver: Error polling for workflow triggers:', error);
+      console.error('Local EmailReceiver: Error polling for inbound mail:', error);
+    } finally {
+      this.polling = false;
     }
   }
-  async _triggerWorkflowByEmail(workflowId, email) {
-    console.log('Local EmailReceiver: Attempting trigger for workflow id:', workflowId);
-    // The sender and subject are enough to trace a delivery. The full `email`
-    // object carries the body, the HTML part and every attachment, which then
-    // sat in the process log and in any support bundle collected from it.
-    console.log(`Local EmailReceiver: email from=${email?.from ?? '<unknown>'} subject=${JSON.stringify(email?.subject ?? '')}`);
-    console.log('Local EmailReceiver: Active workflows:', Array.from(this.processManager.activeWorkflows.keys()));
 
-    // Check if the workflow is already being triggered
-    if (this.activeTriggers.has(workflowId)) {
-      console.log(`Local EmailReceiver: Workflow ${workflowId} is already being triggered. Skipping.`);
-      return false;
-    }
-
+  async _triggerWorkflowByEmail(workflowId, message) {
+    if (this.activeTriggers.has(workflowId)) return false;
     const activeEngine = this.processManager.activeWorkflows.get(workflowId);
-    if (activeEngine && (activeEngine.isListening || activeEngine.isRunning)) {
-      console.log(`Local EmailReceiver: Triggering workflow ${workflowId}`);
-      const triggerData = {
-        type: 'email',
-        from: email.from,
-        to: email.to,
-        subject: email.subject,
-        body: email.body,
-        html: email.html,
-        attachments: email.attachments,
-      };
+    if (!activeEngine || !(activeEngine.isListening || activeEngine.isRunning)) return false;
 
-      // Add to active triggers
-      this.activeTriggers.add(workflowId);
+    // Sender and subject are enough to trace a delivery; the body stays out of the log.
+    console.log(`Local EmailReceiver: triggering ${workflowId} with mail from=${message.from ?? '<unknown>'} subject=${JSON.stringify(message.subject ?? '')}`);
+    const triggerData = {
+      type: 'email',
+      id: message.id,
+      from: message.from,
+      to: message.to,
+      subject: message.subject,
+      body: message.text ?? '',
+      html: undefined, // the service returns plain text; html is not carried
+      attachments: message.attachments || [],
+      messageId: message.messageId,
+      replyTo: message.replyTo,
+      receivedAt: message.createdAt,
+    };
 
-      try {
-        await activeEngine.processWorkflowTrigger(triggerData);
-        return true;
-      } catch (error) {
-        console.error(`Local EmailReceiver: Error processing workflow ${workflowId}:`, error);
-        return false;
-      } finally {
-        // Remove from active triggers
-        this.activeTriggers.delete(workflowId);
-      }
-    } else {
-      console.log(`Local EmailReceiver: Workflow ${workflowId} not found in active workflows or not in listening state. Ignoring email trigger.`);
+    this.activeTriggers.add(workflowId);
+    try {
+      await activeEngine.processWorkflowTrigger(triggerData);
+      return true;
+    } catch (error) {
+      console.error(`Local EmailReceiver: Error triggering workflow ${workflowId}:`, error);
       return false;
+    } finally {
+      this.activeTriggers.delete(workflowId);
     }
+  }
+
+  shutdown() {
+    this.stopPolling();
+    console.log('Local EmailReceiver: Shut down.');
   }
 }
 

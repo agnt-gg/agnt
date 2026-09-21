@@ -87,7 +87,7 @@ class ZapierTrigger extends BaseTrigger {
 
     try {
       const { authType, authToken, username, password } = node.parameters;
-      this.webhookUrl = ProcessManager.WebhookReceiver.registerWebhook(
+      this.webhookUrl = await ProcessManager.WebhookReceiver.registerWebhook(
         engine.workflowId,
         engine.userId,
         'POST', // Zapier always uses POST

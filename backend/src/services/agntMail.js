@@ -49,8 +49,30 @@ export async function sendMail({ to, subject, text, html, attachments, inReplyTo
 }
 
 /** Inbound messages received after `since` (epoch ms), oldest first. */
-export async function listInbound({ since, limit = 50 } = {}) {
+/**
+ * Inbound messages newer than `since` (createdAt, ms), oldest first, with bodies.
+ *
+ * The service pages summaries oldest-first behind an opaque nextCursor; there
+ * is no server-side "since" filter, so paging stops as soon as a page holds
+ * nothing newer than the watermark. Bodies are fetched per message because the
+ * list carries only headers.
+ */
+export async function listInbound({ since = 0, limit = 50 } = {}) {
   const inbox = await defaultInbox();
-  const data = await callService('mail', `/inboxes/${inbox.id}/messages`, { query: { since, limit } });
-  return { inbox, messages: data.messages || [] };
+  const fresh = [];
+  let cursor = '';
+  for (let page = 0; page < 20 && fresh.length < limit; page++) {
+    const data = await callService('mail', `/inboxes/${inbox.id}/messages`, { query: cursor ? { cursor } : undefined });
+    const summaries = data.messages || [];
+    for (const s of summaries) if ((s.createdAt || 0) > since) fresh.push(s);
+    if (!data.nextCursor || summaries.length === 0) break;
+    cursor = data.nextCursor;
+  }
+  fresh.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const messages = [];
+  for (const s of fresh.slice(0, limit)) {
+    const detail = await callService('mail', `/inboxes/${inbox.id}/messages/${s.id}`);
+    messages.push({ ...s, ...detail });
+  }
+  return { inbox, messages };
 }
