@@ -494,7 +494,7 @@ export default {
     let workspaceRequest = null;
     const showLibrary = ref(false);
     const showTeamWorkspace = ref(new URLSearchParams(window.location.search).has('teams-panel'));
-    watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=''; });
+    watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=new URLSearchParams(window.location.search).get('team')||''; });
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -584,12 +584,12 @@ export default {
       if(id==='find'){openJump();return}
       if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
       if(id==='library'){onCustomPage.value=false;teamNavigationTab.value='Assets';showTeamWorkspace.value=!!selectedTeamId.value;showLibrary.value=!selectedTeamId.value;return}
-      selectedTeamId.value='';showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
+      selectedTeamId.value=new URLSearchParams(window.location.search).get('team')||'';showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
       emit('screen-change','ChatScreen',{});
     }
     watch(() => [isAuthenticated.value,store.state.userAuth?.token], () => {
-      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value='';workspaceError.value='';
-      showTeamWorkspace.value=false;
+      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value=isAuthenticated.value?(new URLSearchParams(window.location.search).get('team')||''):'';workspaceError.value='';
+      showTeamWorkspace.value=isAuthenticated.value&&new URLSearchParams(window.location.search).has('teams-panel');
       if(isAuthenticated.value)loadWorkspaceTeams();
     }, {immediate:true});
 
