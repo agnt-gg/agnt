@@ -79,7 +79,7 @@ InsightRoutes.get('/target/:targetType/:targetId', authenticateToken, async (req
   try {
     const { targetType, targetId } = req.params;
     const { status } = req.query;
-    const insights = await InsightModel.findByTarget(targetType, targetId, { status });
+    const insights = await InsightModel.findByTarget(targetType, targetId, { status,userId:req.user.userId });
     res.json({ success: true, insights });
   } catch (error) {
     console.error('[Insight Route] Target insights error:', error);
@@ -91,7 +91,7 @@ InsightRoutes.get('/target/:targetType/:targetId', authenticateToken, async (req
 InsightRoutes.get('/source/:sourceType/:sourceId', authenticateToken, async (req, res) => {
   try {
     const { sourceType, sourceId } = req.params;
-    const insights = await InsightModel.findBySource(sourceType, sourceId);
+    const insights = await InsightModel.findBySource(sourceType, sourceId, {userId:req.user.userId});
     res.json({ success: true, insights });
   } catch (error) {
     console.error('[Insight Route] Source insights error:', error);
@@ -158,7 +158,7 @@ InsightRoutes.get('/memory/:agentId', authenticateToken, async (req, res) => {
   try {
     const { agentId } = req.params;
     const { memoryType } = req.query;
-    const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType });
+    const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType,userId:req.user.userId });
     res.json({ success: true, memories });
   } catch (error) {
     console.error('[Insight Route] Memory list error:', error);

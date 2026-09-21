@@ -219,9 +219,10 @@ class AgentMemoryModel {
    * IN-list of types (used by retrieval to quota user-set vs. auto-extracted
    * tiers in the candidate pool).
    */
-  static findByAgentId(agentId, { memoryType, memoryTypes, limit = 50 } = {}) {
+  static findByAgentId(agentId, { memoryType, memoryTypes, limit = 50, userId } = {}) {
     let query = 'SELECT * FROM agent_memory WHERE agent_id = ?';
     const params = [agentId];
+    if(userId){query+=' AND user_id = ?';params.push(userId);}
 
     if (memoryType) { query += ' AND memory_type = ?'; params.push(memoryType); }
     if (Array.isArray(memoryTypes) && memoryTypes.length > 0) {

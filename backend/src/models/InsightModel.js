@@ -77,9 +77,10 @@ class InsightModel {
   /**
    * Find insights targeting a specific asset.
    */
-  static findByTarget(targetType, targetId, { status, limit = 50 } = {}) {
+  static findByTarget(targetType, targetId, { status, limit = 50, userId } = {}) {
     let query = 'SELECT * FROM insights WHERE target_type = ? AND target_id = ?';
     const params = [targetType, targetId];
+    if(userId){query+=' AND user_id = ?';params.push(userId);}
 
     if (status) { query += ' AND status = ?'; params.push(status); }
 
@@ -256,11 +257,11 @@ class InsightModel {
   /**
    * Find insights by source (execution that generated them).
    */
-  static findBySource(sourceType, sourceId, { limit = 50 } = {}) {
+  static findBySource(sourceType, sourceId, { limit = 50, userId } = {}) {
     return new Promise((resolve, reject) => {
       db.all(
-        'SELECT * FROM insights WHERE source_type = ? AND source_id = ? ORDER BY created_at DESC LIMIT ?',
-        [sourceType, sourceId, limit],
+        `SELECT * FROM insights WHERE source_type = ? AND source_id = ? ${userId ? 'AND user_id = ?' : ''} ORDER BY created_at DESC LIMIT ?`,
+        [sourceType, sourceId, ...(userId?[userId]:[]), limit],
         (err, rows) => {
           if (err) reject(err);
           else {
