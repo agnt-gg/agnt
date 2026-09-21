@@ -105,7 +105,16 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     throw Object.assign(new Error('Unknown execution action'),{status:404});
   }));
   router.get('/:teamId/workspaces',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).list(req.params.teamId,user)));
-  router.post('/:teamId/workspaces',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).create(req.params.teamId,user,req.body?.name)));
+  router.post('/:teamId/workspaces',handler(async(repo,req,user)=>{
+    if(req.cloudTeam.role!=='owner')throw Object.assign(new Error('Only the owner can create a cloud workspace'),{status:403});
+    const workspace=await new TeamWorkspaceRepository(repo).create(req.params.teamId,user,req.body?.name);
+    const base='/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspace.id);
+    try{
+      await cloud.request(req.headers.authorization,base,{method:'PUT',body:'{}'});
+      for(const capability of ['resources.read','resources.write','files.read','files.write','runs.execute','runs.read','connections.use'])await cloud.request(req.headers.authorization,base+'/members/'+encodeURIComponent(user)+'/capabilities/'+capability,{method:'PUT',body:'{}'});
+      return workspace;
+    }catch(error){await new TeamWorkspaceRepository(repo).archive(req.params.teamId,user,workspace.id);throw error;}
+  }));
   router.patch('/:teamId/workspaces/:id',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).update(req.params.teamId,user,req.params.id,req.body||{})));
   router.put('/:teamId/workspaces/:id/preferences',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).close(req.params.teamId,user,req.params.id,req.body?.isOpen)));
   router.post('/:teamId/workspaces/:id/archive',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).archive(req.params.teamId,user,req.params.id)));
