@@ -10,7 +10,10 @@ export async function initializeNativeTeamExecution(repository){
 }
 export class NativeTeamExecution {
  constructor(repository,cloud,nativeRepository){Object.assign(this,{repository,cloud,nativeRepository});}
- async bind(team,user,authorization,assetId,{connectionId,provider,model}={}){
+ async bind(team,user,authorization,assetId,{connectionId,provider,model,workspaceId}={}){
+  if(!workspaceId||!team.tenantSlug)refuse(400,'A cloud workspace is required; library definitions cannot execute');
+  const workspacePath='/'+encodeURIComponent(team.id)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(workspaceId);
+  await this.cloud.request(authorization,workspacePath+'/access/access.manage');
   if(team.role!=='owner')refuse(403,'Only the owner can authorize shared execution');
   if(typeof model!=='string'||!model||model.length>200)refuse(400,'Model is required');
   const asset=await this.repository.asset(team.id,user,assetId);this.validate(asset);
@@ -19,6 +22,7 @@ export class NativeTeamExecution {
   const previous=await this.repository.get('SELECT principal_id FROM team_native_bindings WHERE asset_id=? AND team_id=?',[assetId,team.id]);
   if(previous)await this.cloud.request(authorization,'/'+team.id+'/principals/'+previous.principal_id,{method:'DELETE'});
   const principal=await this.cloud.request(authorization,'/'+team.id+'/principals',{method:'POST',body:JSON.stringify({name:asset.name,connectionIds:[connectionId]})});
+  await this.cloud.request(authorization,workspacePath+'/principals/'+encodeURIComponent(principal.id)+'/connections/'+encodeURIComponent(connectionId),{method:'PUT',body:'{}'});
   await this.repository.run('INSERT INTO team_native_bindings VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET principal_id=excluded.principal_id,principal_secret=excluded.principal_secret,connection_id=excluded.connection_id,provider=excluded.provider,model=excluded.model,approved_revision=excluded.approved_revision,approved_by=excluded.approved_by',[assetId,team.id,principal.id,encrypt(principal.token),connectionId,provider,model,asset.revision,user]);
   return{principalId:principal.id,approvedRevision:asset.revision};
  }
@@ -30,12 +34,17 @@ export class NativeTeamExecution {
   if(asset.kind==='workflow'){if(!Array.isArray(definition.nodes)||definition.nodes.length>100||definition.nodes.some(node=>!SAFE_TEAM_NODES.has(node.type)||node.category==='custom'||node.code||node.base==='CODE_JS'||node.base==='CODE_PYTHON'))refuse(403,'Workflow contains operations not enabled for shared execution');}
   return definition;
  }
- async run(team,user,assetId,input,scope){
+ async run(team,user,assetId,input,scope,authorization){
+  if(!scope?.id?.startsWith('workspace:')||!team.tenantSlug)refuse(400,'A cloud workspace is required; library definitions cannot execute');
+  const workspaceId=scope.id.slice('workspace:'.length);
+  const accessPath='/'+encodeURIComponent(team.id)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(workspaceId)+'/access/';
+  const permission=await this.cloud.request(authorization,accessPath+'runs.execute');
+  await this.cloud.request(authorization,accessPath+'connections.use');
   if(!['owner','admin','member'].includes(team.role))refuse(403,'Your team role does not allow execution');
   const asset=await this.repository.asset(team.id,user,assetId);const definition=this.validate(asset);
   const binding=await this.repository.get('SELECT * FROM team_native_bindings WHERE asset_id=? AND team_id=?',[assetId,team.id]);if(!binding||binding.approved_revision!==asset.revision)refuse(409,'The owner must authorize this revision and its connection before running');
   const runId=randomUUID();await this.repository.run('INSERT INTO team_native_runs(id,team_id,asset_id,revision,actor_id,principal_id,status) VALUES(?,?,?,?,?,?,?)',[runId,team.id,assetId,asset.revision,user,binding.principal_id,'running']);
-  const broker=new TeamBrokerClient({principalId:binding.principal_id,principalToken:decrypt(binding.principal_secret),connectionId:binding.connection_id});
+  const broker=new TeamBrokerClient({teamId:team.id,tenantSlug:team.tenantSlug,workspaceId,authorization,accessRevision:permission.accessRevision,principalId:binding.principal_id,principalToken:decrypt(binding.principal_secret),connectionId:binding.connection_id});
   const context={teamId:team.id,scopeId:scope.id,actorId:user,principalId:binding.principal_id,provider:binding.provider,broker,allowedTools:new Set()};
   try{const result=await withTeamExecution(context,async()=>{
    if(asset.kind==='agent'){

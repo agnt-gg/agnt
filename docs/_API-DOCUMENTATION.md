@@ -2,6 +2,19 @@
 
 This document provides comprehensive documentation for all API endpoints in the AGNT backend system.
 
+## Workspace File Routes
+
+Base path: `/api/workspace-files`
+
+Hosted instances only. Bearer authentication and a current cloud workspace capability are required on every request. Team membership alone does not grant file access.
+
+| Method | Path | Capability | Behavior |
+|---|---|---|---|
+| GET | `/:teamId/:workspaceId/content?path=<relative-path>` | `files.read` | Download a regular file as an attachment |
+| PUT | `/:teamId/:workspaceId/content?path=<relative-path>` | `files.write` | Write an `application/octet-stream` body, maximum 10 MiB |
+
+Storage is private and partitioned by team, tenant and workspace. Absolute paths, traversal, links and drive-qualified paths are refused. These routes do not expose the desktop project directory. Missing files return 404; permission refusals return 403. This is distinct from approved execution permission.
+
 ## Local API (http://localhost:3333/api/)
 
 ## Table of Contents (Local)
@@ -21,6 +34,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Evolution / Insight Routes](#evolution--insight-routes)
 - [Experiment Routes](#experiment-routes)
 - [FileSystem Routes](#filesystem-routes)
+- [Workspace File Routes](#workspace-file-routes)
 - [Goal Routes](#goal-routes)
 - [Group Routes](#group-routes)
 - [Layout Routes](#layout-routes)
