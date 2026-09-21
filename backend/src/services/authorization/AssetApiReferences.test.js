@@ -1,0 +1,2 @@
+import {it,expect} from 'vitest';import {assetApiReferences} from './AssetApiReferences.js';
+it('normalizes encoded IDs and includes nested assignment and bulk references',()=>{expect(assetApiReferences('/agents/%61')).toContainEqual({table:'agents',id:'a'});expect(assetApiReferences('/agents/save',{agent:{id:'a',assignedTools:['t'],assignedSkills:['s']}})).toEqual([{table:'agents',id:'a'},{table:'tools',id:'t'},{table:'skills',id:'s'}]);expect(assetApiReferences('/groups/bulk-move',{outputIds:['o']})).toContainEqual({table:'content_outputs',id:'o'});});
