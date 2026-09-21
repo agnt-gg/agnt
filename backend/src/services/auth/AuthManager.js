@@ -43,6 +43,10 @@ class AuthManager {
     assertPersonalCredentialContext();
     if(String(userId).startsWith('scope:'))throw new Error('Shared resource owners cannot use personal credentials');
     if(process.env.AGNT_TENANT_SLUG && userId!==process.env.AGNT_TENANT_OWNER)throw new Error('Hosted members must use approved team connections');
+    // AGNT Models is credentialed by the account itself: the session token the
+    // desktop already holds is what models.agnt.gg accepts. There is no key to
+    // store, so nothing below applies.
+    if (providerId === 'agnt') return getSessionToken() || null;
     // Tier 1: env var
     const envVar = ENV_KEY_MAP[providerId];
     if (envVar) {

@@ -80,6 +80,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'chutes':
     case 'local':
     case 'minimax':
+    case 'agnt':
     case 'openrouter':
     case 'togetherai': {
       const extraBody = buildOpenAiLikeReasoningExtraBody(lowerCaseProvider, model, options.reasoningValue);

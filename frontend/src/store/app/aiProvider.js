@@ -96,6 +96,7 @@ const MODEL_CACHE_VERSION_FALLBACK = 12;
 // The sort itself lives after PROVIDER_DISPLAY_NAMES, because it orders by the
 // LABEL a user reads rather than by `displayName` — see `byProviderLabel`.
 const BUILT_IN_PROVIDERS = [
+  { key: 'agnt', displayName: 'AGNT' },
   { key: 'anthropic', displayName: 'Anthropic' },
   { key: 'antigravity', displayName: 'Antigravity' },
   { key: 'cerebras', displayName: 'Cerebras' },
@@ -1253,6 +1254,28 @@ export default {
         }
       } catch (error) {
         console.warn('Failed to load user settings from backend:', error);
+      }
+      await dispatch('applyIncludedModelDefault');
+    },
+
+    /**
+     * A paid account with no provider chosen starts on the model that comes
+     * with the plan. Runs once per install (the choice is persisted like any
+     * other), never overrides a selection the user made, and does nothing for
+     * free accounts — they keep the "connect a provider" prompt.
+     */
+    async applyIncludedModelDefault({ commit, dispatch, state, rootGetters }) {
+      if (state.selectedProvider) return;
+      if (!rootGetters['userAuth/isPremium']) return;
+      if (!state.providers.includes('agnt')) return;
+      try {
+        await dispatch('fetchProviderModels', { provider: 'agnt' });
+        const models = state.allModels.agnt || [];
+        const model = models.includes('agnt-flash') ? 'agnt-flash' : models[0];
+        await dispatch('setProvider', 'agnt');
+        if (model) await dispatch('setModel', model);
+      } catch (error) {
+        console.warn('Included model default not applied:', error?.message || error);
       }
     },
 

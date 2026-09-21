@@ -29,6 +29,7 @@ Storage is private and partitioned by team, tenant and workspace. Absolute paths
 - [Content Output Routes](#content-output-routes)
 - [Custom Provider Routes](#custom-provider-routes)
 - [Custom Tool Routes](#custom-tool-routes)
+- [AGNT Services Routes](#agnt-services-routes)
 - [Email Listener Routes](#email-listener-routes)
 - [Execution Routes](#execution-routes)
 - [Evolution / Insight Routes](#evolution--insight-routes)
@@ -2164,6 +2165,40 @@ Base path: `/api/custom-tools`
 ```
 
 ---
+
+## AGNT Services Routes
+
+Base path: `/api/agnt-services`
+
+What the hosted AGNT services (Models, Search, Sandbox, Mail, Webhooks) have given this account. These are read-only lookups the editor uses to show a trigger's real address; the addresses themselves are minted by the services, not derived locally.
+
+### Get Entitlements
+
+**GET** `/entitlements`
+
+- **Authentication**: Required
+- **Description**: Whether this account may use each hosted service under its plan
+- **Response**:
+
+```json
+{ "models": true, "search": true, "sandbox": true, "mail": true, "webhooks": true }
+```
+
+### Get Inbox Address
+
+**GET** `/inbox`
+
+- **Authentication**: Required
+- **Description**: The hosted inbox every "Built-in Email" trigger listens on; created on first use
+- **Response**: `{ "pro": true, "address": "agent-x@mail.agnt.gg", "inboxId": "..." }` or `{ "pro": false, "address": null }`
+
+### Get Webhook URL
+
+**GET** `/webhook/:workflowId`
+
+- **Authentication**: Required
+- **Description**: The public `https://webhooks.agnt.gg/in/{slug}` URL of a workflow's webhook. `url` is null until the workflow has been activated once.
+- **Response**: `{ "pro": true, "url": "https://webhooks.agnt.gg/in/abc123", "state": "active" }`
 
 ## Email Listener Routes
 

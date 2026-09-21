@@ -68,6 +68,8 @@ const ROUTING = {
   groq: { route: ROUTE.NATIVE, chatClass: 'ChatGroq' },
   deepseek: { route: ROUTE.NATIVE, chatClass: 'ChatDeepSeek' },
   openrouter: { route: ROUTE.NATIVE, chatClass: 'ChatOpenRouter' },
+  // AGNT Models: OpenAI-compatible at models.agnt.gg; session-credentialed.
+  agnt: { route: ROUTE.NATIVE, chatClass: 'ChatOpenRouter' },
   cerebras: { route: ROUTE.NATIVE, chatClass: 'ChatCerebras' },
 
   // ── OpenAI-compatible, keyed on providerConfigs.baseURL ───────────

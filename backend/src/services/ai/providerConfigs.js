@@ -786,6 +786,34 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+  // ─────────────────────────── AGNT ───────────────────────────
+  // AGNT Models: the model included with AGNT Pro. OpenAI-compatible, served by
+  // models.agnt.gg, credentialed by the account session rather than a stored
+  // key (see AuthManager.getValidAccessToken). Free accounts are refused by the
+  // service with a plan message; the app shows the Pro gate instead.
+  {
+    key: 'agnt',
+    name: 'AGNT',
+    baseURL: 'https://models.agnt.gg/models/v1',
+    sdkType: 'openai',
+    authScheme: 'bearer',
+    included: true,
+    staticModels: true,
+    modelListingKeyOptional: true,
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+      vision: { supportsStreaming: true },
+    },
+    recommendedModels: ['agnt-flash'],
+    fallbackModels: ['agnt-flash'],
+    modelMetadata: {
+      // Published pay-as-you-go rates; the plan's included credits make most calls $0.
+      'agnt-flash': { contextWindow: 1000000, maxOutputTokens: 65536, inputCostPer1M: 1.25, outputCostPer1M: 5.0, inputCacheReadCostPer1M: 0.025, supportsVision: true, supportsTools: true },
+    },
+    compat: {},
+    sdkOptions: {},
+  },
+
   // ─────────────────────────── DEEPSEEK ───────────────────────────
   {
     key: 'deepseek',

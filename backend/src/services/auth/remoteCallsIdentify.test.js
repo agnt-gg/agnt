@@ -25,8 +25,6 @@ const backendSrc = path.resolve(here, '..', '..');
 
 /** Files that talk to REMOTE_URL from a context with no request in scope. */
 const CALLERS = [
-  'tools/triggers/EmailReceiver.js',
-  'tools/triggers/WebhookReceiver.js',
   'services/auth/AuthManager.js',
 ];
 
@@ -36,6 +34,10 @@ const CALLERS = [
  * once for all of them. They must not open their own connection.
  */
 const SERVICE_CALLERS = [
+  'tools/triggers/EmailReceiver.js',
+  'tools/triggers/WebhookReceiver.js',
+  'services/agntSandbox.js',
+  'tools/library/actions/run-sandbox.js',
   'tools/library/actions/send-email.js',
   'tools/library/actions/web-search.js',
   'tools/library/actions/web-scrape.js',
