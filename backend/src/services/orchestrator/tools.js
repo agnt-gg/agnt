@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
 import AGNT from '../../libs/agnt2.js';
-import scrapeUtil from '../../utils/webScrape.js';
+import { scrape as scrapeUtil } from '../../tools/library/actions/web-scrape.js';
 import toolRegistry from './toolRegistry.js';
 // Injected into every tool schema; kept in its own module with a cost guard
 // because this block's size is multiplied by the tool count.
