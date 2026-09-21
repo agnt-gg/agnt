@@ -221,6 +221,47 @@ function isOwnAssistantMessage(speaker, viewer, assumeOwnAssistant) {
  * followed by role:"tool" result messages. The backend adapters handle
  * converting to provider-specific formats (Anthropic, Gemini, etc.).
  */
+/**
+ * Split an assistant message into tool rounds by walking contentParts.
+ *
+ * A round is the text that preceded a group of tool calls, plus those calls.
+ * A trailing text part with no calls after it is a closing prose-only round.
+ * The reducer already separates rounds: text arriving after a tool_call part
+ * starts a new text part, so the interleave in contentParts is the real one.
+ *
+ * Falls back to the legacy single-round shape when contentParts is absent
+ * (messages persisted before the field existed) or does not reference every
+ * tool call — never drop a call the model actually made.
+ */
+function splitIntoRounds(msg) {
+  const parts = Array.isArray(msg.contentParts) ? msg.contentParts : null;
+  const legacy = () => [{ text: msg.content || '', toolCalls: msg.toolCalls }];
+  if (!parts || parts.length === 0) return legacy();
+
+  const byId = new Map(msg.toolCalls.map((tc) => [tc.id, tc]));
+  const referenced = new Set(parts.filter((p) => p.type === 'tool_call').map((p) => p.toolCallId));
+  if (!msg.toolCalls.every((tc) => referenced.has(tc.id))) return legacy();
+
+  const rounds = [];
+  let text = '';
+  let toolCalls = [];
+  for (const part of parts) {
+    if (part.type === 'text') {
+      if (toolCalls.length > 0) {
+        rounds.push({ text, toolCalls });
+        text = '';
+        toolCalls = [];
+      }
+      text += part.text || '';
+    } else if (part.type === 'tool_call') {
+      const tc = byId.get(part.toolCallId);
+      if (tc) toolCalls.push(tc);
+    }
+  }
+  if (text || toolCalls.length > 0) rounds.push({ text, toolCalls });
+  return rounds.length > 0 ? rounds : legacy();
+}
+
 export function buildChatHistory(messages, provider = null, viewer = null, options = {}) {
   const result = [];
   const assumeOwnAssistant = options.assumeOwnAssistant === true;
@@ -265,39 +306,48 @@ export function buildChatHistory(messages, provider = null, viewer = null, optio
       : '';
 
     if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
-      // Assistant message with tool_calls attached
-      const assistantMessage = {
-        role: 'assistant',
-        content: msg.content || '',
-        tool_calls: msg.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: 'function',
-          function: {
-            name: tc.name,
-            arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
-          },
-        })),
-      };
-      if (reasoningContent) {
-        assistantMessage.reasoning_content = reasoningContent;
-      }
-      result.push(assistantMessage);
+      // ONE ASSISTANT TURN PER ROUND, IN THE ORDER IT HAPPENED.
+      //
+      // A two-round turn streamed as text₁ → call₁ → result₁ → text₂ → call₂
+      // → result₂. Emitting it as ONE assistant message (all prose, then every
+      // call) rewrites that into "narrate every outcome, then run the tools",
+      // and the model — a few-shot imitator of its own transcript, see
+      // turnContinuity.js — learns to do exactly that on the next turn.
+      // contentParts is the only record of the real interleaving; walk it.
+      const rounds = splitIntoRounds(msg);
+      for (const round of rounds) {
+        const assistantMessage = { role: 'assistant', content: round.text };
+        if (round.toolCalls.length > 0) {
+          assistantMessage.tool_calls = round.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
+            },
+          }));
+        }
+        if (reasoningContent && round === rounds[0]) {
+          assistantMessage.reasoning_content = reasoningContent;
+        }
+        result.push(assistantMessage);
 
-      // Tool result messages
-      for (const tc of msg.toolCalls) {
-        if (tc.result !== undefined || tc.error) {
-          let content;
-          if (tc.error) {
-            content = JSON.stringify({ error: tc.error });
-          } else if (typeof tc.result === 'string') {
-            content = tc.result;
-          } else {
-            content = JSON.stringify(tc.result ?? '');
+        // Tool result messages for THIS round only
+        for (const tc of round.toolCalls) {
+          if (tc.result !== undefined || tc.error) {
+            let content;
+            if (tc.error) {
+              content = JSON.stringify({ error: tc.error });
+            } else if (typeof tc.result === 'string') {
+              content = tc.result;
+            } else {
+              content = JSON.stringify(tc.result ?? '');
+            }
+            if (content.length > MAX_TOOL_RESULT_CHARS) {
+              content = content.substring(0, MAX_TOOL_RESULT_CHARS) + '\n[...truncated]';
+            }
+            result.push({ role: 'tool', tool_call_id: tc.id, content });
           }
-          if (content.length > MAX_TOOL_RESULT_CHARS) {
-            content = content.substring(0, MAX_TOOL_RESULT_CHARS) + '\n[...truncated]';
-          }
-          result.push({ role: 'tool', tool_call_id: tc.id, content });
         }
       }
     } else {
