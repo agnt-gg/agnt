@@ -1,7 +1,7 @@
 # Team MVP test build
 
 Client branch: `fix/teams-mvp`, based on `feat/agnt-one`.
-Cloud API: server commit `c4a00d2` is deployed.
+Cloud API: server commit `d27f2e4` is deployed.
 
 ## Start
 
@@ -12,7 +12,7 @@ Desktop can manage Business teams, invitations, connection grants and membership
 ## Acceptance sequence
 
 1. With an active Business subscription, enable the team for its existing tenant slug. Free and Personal must be refused by the API.
-2. Invite a second account. Check the invitation delivery status. The invitee signs in with that email and accepts the single-use token; a paid personal account is not required.
+2. Invite a second account. Check the invitation delivery status. The invitee follows the public acceptance link (or pastes its single-use token in Teams), signs in with that email and accepts; a paid personal account is not required.
 3. Create a team workspace. Open its shared canvas and add a widget. In another member session reload the workspace; the layout should match. Competing writes return a revision conflict rather than overwrite. Closing is personal; archiving is team-wide.
 4. Open **native workspace**. Existing agents/tools/workflows/editors use that workspace's non-login resource owner. Existing personal assets remain personal. Return to Personal via the switcher (full reload clears scope context).
 5. Owner: create an approved model connection under Connections. Supported model brokers: OpenAI, Anthropic, Groq, DeepSeek, Grok and OpenRouter. GitHub repository listing is also supported. Provider credentials remain on the cloud server.
@@ -25,7 +25,7 @@ Shared agents run through the native LLM engine with no unapproved tools/workflo
 
 ## Verification scope
 
-Full frontend suite: 4,944 passed. Serial backend baseline: 6,406 passed, 2 skipped; additional changed-path checks and hosted boot/model-matrix tests are captured in `teams-*.log` in this worktree. Provider responses and invitation delivery are mocked in integration tests; no claim of real mailbox delivery or paid model invocation is made. Production health and unauthenticated denial probes passed, and the remote isolated HTTP/principal tests passed on the production machine.
+Full frontend suite: 4,944 passed. Serial backend baseline: 6,406 passed, 2 skipped. The later run reached 6,405 passed / 3 failed / 2 skipped: two fixed-date session tests expired at midnight (now clock-pinned), and the existing randomized legacy-decrypt test failed once; all three passed on rerun. Additional changed-path checks and hosted boot/model-matrix tests are captured in `teams-*.log` in this worktree. Provider responses and invitation delivery are mocked in integration tests; no claim of real mailbox delivery or paid model invocation is made. Production health and unauthenticated denial probes passed, and the remote isolated HTTP/principal tests passed on the production machine.
 
 ## Storage migration
 
