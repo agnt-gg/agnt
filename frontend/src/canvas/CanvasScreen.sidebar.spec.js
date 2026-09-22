@@ -9,8 +9,8 @@ const mounted=[];
 const teams=[{id:'engineering',name:'Engineering',role:'owner'},{id:'research',name:'Research',role:'member'}];
 beforeEach(()=>{vi.stubGlobal('ResizeObserver',class{observe(){} disconnect(){}});localStorage.clear();vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>teams})));});
 afterEach(()=>{mounted.splice(0).forEach(w=>w.unmount());vi.unstubAllGlobals();document.body.innerHTML='';});
-function setup(){const pages=[{id:'chat',name:'Chat',route:'ChatScreen'},{id:'goal',name:'Goals',route:'GoalsScreen'},{id:'custom',name:'Scratch',route:'custom:scratch'}];const store=createStore({modules:{
- userAuth:{namespaced:true,state:()=>({token:'user-1'}),getters:{isAuthenticated:()=>true}},
+function setup(planType='free'){const pages=[{id:'chat',name:'Chat',route:'ChatScreen'},{id:'goal',name:'Goals',route:'GoalsScreen'},{id:'custom',name:'Scratch',route:'custom:scratch'}];const store=createStore({modules:{
+ userAuth:{namespaced:true,state:()=>({token:'user-1',plan:planType}),getters:{isAuthenticated:()=>true,planType:s=>s.plan}},
  aiProvider:{namespaced:true,state:()=>({selectedProvider:'openai',selectedModel:'gpt-4o'})},
  widgetLayout:{namespaced:true,state:()=>({pages}),getters:{allPages:s=>s.pages,activePageId:()=> 'custom',activePage:()=>pages[2],isLoaded:()=>true,pageForRoute:s=>route=>s.pages.find(p=>p.route===route)},actions:{setActivePage:vi.fn(),createPageFromDefault:vi.fn(),fetchLayouts:vi.fn()}},
  shell:{namespaced:true,state:()=>({jump:false}),getters:{jumpOpen:s=>s.jump,inspect:()=>null,updateAvailable:()=>false},mutations:{open(s){s.jump=true}},actions:{openJump({commit}){commit('open')},toggleJump({commit}){commit('open')}}}},
@@ -29,6 +29,25 @@ describe('reference sidebar ordering and context',()=>{
  it('follows Settings when a row is hidden, regrouped or reordered',async()=>{const{wrapper}=setup();await flushPromises();updateNavigationItem('section:goals',{visible:false});updateNavigationItem('virtual:teams',{group:'Focus'});updateNavigationItem('section:store',{visible:true});window.dispatchEvent(new CustomEvent(NAVIGATION_CHANGED_EVENT));await flushPromises();expect(wrapper.findAll('.cv-sb-pages .cv-sb-page').map(b=>b.attributes('aria-label'))).toEqual(['Chat','Files','Library','Store','Scratch','Teams']);expect(wrapper.findAll('.cv-sb-pages .cv-sb-cap-text').map(c=>c.text())).toEqual(['TODAY','WORK','ASSETS','CONNECTORS','PERSONAL','FOCUS']);});
  it('opens real destinations and preserves mounted personal draft under Library',async()=>{const{wrapper,store}=setup();await flushPromises();const draft=wrapper.find('#personal-draft').element;await wrapper.find('[data-tour-id="sidebar.library"]').trigger('click');expect(wrapper.findComponent({name:'LibraryHome'}).exists()).toBe(true);expect(wrapper.find('#personal-draft').element).toBe(draft);expect(wrapper.find('[data-tour-id="sidebar.library"]').attributes('aria-current')).toBe('page');expect(wrapper.find('.cv-sb-pages [data-tour-id="sidebar.chat"]').attributes('aria-current')).toBeUndefined();expect(wrapper.find('panel-backdrop-stub').exists()).toBe(false);await wrapper.find('.cv-sb-pages [data-tour-id="sidebar.goals"]').trigger('click');expect(wrapper.emitted('screen-change').at(-1)[0]).toBe('GoalsScreen');expect(wrapper.findComponent({name:'LibraryHome'}).exists()).toBe(false);await wrapper.find('.cv-sb-pages [data-tour-id="sidebar.chat"]').trigger('click');expect(wrapper.emitted('screen-change').at(-1)[0]).toBe('ChatScreen');expect(wrapper.find('.cv-sb-pages [data-tour-id="sidebar.chat"]').attributes('aria-current')).toBe('page');expect(wrapper.find('[data-primary="find"]').exists()).toBe(false)});
  it('still opens the palette from the jump bar above the canvas',async()=>{const{wrapper,store}=setup();await flushPromises();await wrapper.find('[data-tour-id="toolbar.jump"]').trigger('click');expect(store.getters['shell/jumpOpen']).toBe(true)});
+
+ // An offer, not a destination: it sits below Settings, is the same button as
+ // every other row, and opens billing rather than a screen of its own.
+ it('offers Upgrade under Settings on a free plan, and opens billing',async()=>{const{wrapper}=setup('free');await flushPromises();
+  const upgrade=wrapper.find('[data-tour-id="sidebar.upgrade"]');
+  expect(upgrade.exists()).toBe(true);
+  expect(upgrade.text()).toContain('Upgrade to Pro');
+  expect(upgrade.classes()).toContain('cv-sb-page');
+  const foot=wrapper.find('.cv-sb-bottom').findAll('button');
+  expect(foot.at(-1).attributes('data-tour-id')).toBe('sidebar.upgrade');
+  expect(foot.at(-2).attributes('data-tour-id')).toBe('sidebar.settings');
+  await upgrade.trigger('click');
+  expect(wrapper.emitted('screen-change').at(-1)).toEqual(['SettingsScreen',{section:'billing'}]);
+ });
+
+ // Selling Pro to someone who already pays for it reads as a billing bug.
+ it.each(['pro','enterprise','founder'])('hides Upgrade on the %s plan',async(plan)=>{const{wrapper}=setup(plan);await flushPromises();
+  expect(wrapper.find('[data-tour-id="sidebar.upgrade"]').exists()).toBe(false);
+ });
  it('selects a team by actual ID, synchronizes its panel, and does not mislabel personal chat as shared',async()=>{const{wrapper}=setup();await flushPromises();const picker=wrapper.findComponent(WorkspaceSwitcher);picker.vm.$emit('select','engineering');await flushPromises();expect(picker.props('modelValue')).toBe('engineering');expect(wrapper.findComponent({name:'TeamWorkspace'}).props()).toMatchObject({selectedTeamId:'engineering',initialTab:'Assets',hideScopeSelector:true});expect(wrapper.find('[data-tour-id="sidebar.library"]').attributes('aria-current')).toBe('page');await wrapper.find('[data-tour-id="sidebar.teams"]').trigger('click');expect(wrapper.findComponent({name:'TeamWorkspace'}).props('initialTab')).toBe('Members');expect(wrapper.find('[data-tour-id="sidebar.teams"]').attributes('aria-current')).toBe('page');wrapper.findComponent({name:'TeamWorkspace'}).vm.$emit('update:selectedTeamId','research');await flushPromises();expect(picker.props('modelValue')).toBe('research');await wrapper.find('.cv-sb-pages [data-tour-id="sidebar.chat"]').trigger('click');expect(picker.props('modelValue')).toBe('');expect(wrapper.find('#personal-draft').element.value).toBe('keep my draft');});
  it('updates newly created team labels without fake sample workspaces',async()=>{const{wrapper}=setup();await flushPromises();await wrapper.find('[data-tour-id="sidebar.teams"]').trigger('click');const panel=wrapper.findComponent({name:'TeamWorkspace'});panel.vm.$emit('teams-loaded',[...teams,{id:'design',name:'Design',role:'owner'}]);panel.vm.$emit('update:selectedTeamId','design');await flushPromises();expect(wrapper.findComponent(WorkspaceSwitcher).text()).toContain('Design');});
  it('clears selected team on identity change',async()=>{const{wrapper,store}=setup();await flushPromises();wrapper.findComponent(WorkspaceSwitcher).vm.$emit('select','engineering');await flushPromises();store.state.userAuth.token='user-2';await flushPromises();expect(wrapper.findComponent(WorkspaceSwitcher).props('modelValue')).toBe('');expect(wrapper.find('.team-fixture').exists()).toBe(false)});

@@ -179,6 +179,18 @@
               <span v-if="railBadges[section.id]" class="cv-sb-badge" :class="{ 'is-warn': section.id === 'apps' }">{{ railBadges[section.id] }}</span>
             </button>
           </Tooltip>
+
+          <!-- Shown only to a plan that can actually upgrade. A paid account
+               being sold what it already owns reads as a billing error, so
+               enterprise and pro never see this. -->
+          <Tooltip v-if="canUpgrade" text="Upgrade to Pro" position="right" width="auto" :disabled="railLabelsVisible">
+            <button class="cv-sb-page cv-sb-upgrade" data-tour-id="sidebar.upgrade" @click="openUpgrade">
+              <i class="fas fa-bolt"></i>
+              <span class="cv-sb-label" v-marquee>
+                <span class="cv-sb-label-inner">Upgrade to Pro</span>
+              </span>
+            </button>
+          </Tooltip>
         </div>
 
         <!-- Collapse / expand toggle -->
@@ -496,6 +508,20 @@ export default {
 
     // Settings can hide, move, and regroup both built-in and custom pages.
     const bottomSections = BOTTOM_SECTIONS;
+
+    // Only a plan that can actually buy something is offered the upgrade.
+    // Anything already paid for (pro, enterprise, and the founder tiers) is
+    // excluded by allow-listing the plans that CAN upgrade rather than
+    // blocklisting the ones that cannot — a new paid tier added later must not
+    // start advertising Pro to the people who outrank it.
+    const UPGRADEABLE_PLANS = ['free', 'community', 'trial', ''];
+    const canUpgrade = computed(() =>
+      UPGRADEABLE_PLANS.includes(String(store.getters['userAuth/planType'] || '').toLowerCase())
+    );
+    const openUpgrade = () => {
+      closeMobileNavigation({ restoreFocus: false });
+      emit('screen-change', 'SettingsScreen', { section: 'billing' });
+    };
     const navigationRevision = ref(0);
     const refreshNavigation = () => { navigationRevision.value += 1; };
 
@@ -998,6 +1024,8 @@ export default {
       activePage,
       allPages,
       bottomSections,
+      canUpgrade,
+      openUpgrade,
       navigationGroups,
       railLabelsVisible,
       hasUnreadChats,
@@ -1639,6 +1667,37 @@ export default {
   width: 16px;
   text-align: center;
   flex-shrink: 0;
+}
+
+/* Upgrade: the one row that is an offer rather than a destination, so it is the
+   one row with a filled background. Inherits .cv-sb-page geometry exactly — it
+   must read as the same size button as Settings above it, not as an ornament.
+   Flat gold on a darker gold border. NO glow, no gradient, no shadow. */
+.cv-sb-upgrade {
+  background: rgba(212, 175, 55, 0.14);
+  border-color: rgba(212, 175, 55, 0.42);
+  color: #d4af37;
+}
+
+.cv-sb-upgrade:hover {
+  background: rgba(212, 175, 55, 0.2);
+  border-color: rgba(212, 175, 55, 0.6);
+  color: #e3c04a;
+}
+
+.cv-sb-upgrade:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.7);
+  outline-offset: -2px;
+}
+
+/* Sits apart from Settings so it reads as its own thing, not another nav row. */
+.cv-sidebar .cv-sb-upgrade {
+  margin-top: 6px;
+}
+
+.cv-sidebar.expanded .cv-sb-upgrade .cv-sb-label-inner {
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 /* Live count on a row that has something happening. Expanded it sits at the
