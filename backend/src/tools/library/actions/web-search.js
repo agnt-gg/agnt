@@ -60,4 +60,4 @@ class WebSearch extends BaseAction {
   }
 }
 
-export default WebSearch;
+export default new WebSearch();

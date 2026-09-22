@@ -178,6 +178,14 @@ class LocalWebhookReceiver extends EventEmitter {
           events = await pullEvents(webhook.endpointId, webhook.since);
         } catch (error) {
           const failure = serviceFailure(error);
+          if (failure.status === 404 || failure.code === 'endpoint_not_found' || failure.error === 'endpoint_not_found') {
+            // The hosted endpoint is gone (retired, or the service forgot it).
+            // The workflow is still listening, so it gets a new one now rather
+            // than logging the same line every ten seconds until someone
+            // re-activates it by hand.
+            await this._replaceEndpoint(workflowId, webhook);
+            continue;
+          }
           // A plan refusal here means the subscription lapsed under a live
           // workflow. Say so once per poll; the endpoint keeps storing events.
           console.error(`LocalWebhookReceiver: ${workflowId}: ${failure.message || failure.error}`);
@@ -201,6 +209,19 @@ class LocalWebhookReceiver extends EventEmitter {
       console.error('LocalWebhookReceiver: Error polling for webhook triggers:', error);
     } finally {
       this.polling = false;
+    }
+  }
+
+  /** Swap a dead hosted endpoint for a live one and record the new URL. */
+  async _replaceEndpoint(workflowId, webhook) {
+    try {
+      const endpoint = await createEndpoint(workflowId);
+      Object.assign(webhook, { endpointId: endpoint.id, slug: endpoint.slug, url: endpoint.url, since: Date.now() });
+      await WebhookModel.attachEndpoint(workflowId, webhook.userId, { endpoint_id: endpoint.id, slug: endpoint.slug, webhook_url: endpoint.url });
+      console.log(`LocalWebhookReceiver: ${workflowId}: hosted endpoint was gone; now ${endpoint.url}`);
+    } catch (error) {
+      const failure = serviceFailure(error);
+      console.error(`LocalWebhookReceiver: ${workflowId}: could not replace hosted endpoint: ${failure.message || failure.error}`);
     }
   }
 

@@ -76,4 +76,4 @@ class RunSandbox extends BaseAction {
   }
 }
 
-export default RunSandbox;
+export default new RunSandbox();

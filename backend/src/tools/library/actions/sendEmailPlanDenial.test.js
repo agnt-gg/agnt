@@ -29,8 +29,8 @@ describe('send-email plan denial', () => {
       if (path === '/inboxes') return { inboxes: [{ id: 'inb-1', address: 'agent-1@mail.agnt.gg', state: 'active', created_at: 1 }] };
       throw new ServiceError('mail', 402, 'pro_required', { message: 'Your agent inbox is included with AGNT Pro. Upgrade at agnt.gg/pricing.' });
     });
-    const { default: SendEmail } = await import('./send-email.js');
-    const out = await new SendEmail().execute({ to: 'a@b.co', subject: 's', body: 'b' });
+    const { default: sendEmail } = await import('./send-email.js');
+    const out = await sendEmail.execute({ to: 'a@b.co', subject: 's', body: 'b' });
     const result = out.output ?? out;
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/AGNT Pro/);
@@ -44,8 +44,8 @@ describe('send-email plan denial', () => {
       expect(opts.body.to).toBe('a@b.co');
       return { id: 'dlv-1', state: 'queued' };
     });
-    const { default: SendEmail } = await import('./send-email.js');
-    const out = await new SendEmail().execute({ to: 'a@b.co', subject: 's', body: 'b' });
+    const { default: sendEmail } = await import('./send-email.js');
+    const out = await sendEmail.execute({ to: 'a@b.co', subject: 's', body: 'b' });
     const result = out.output ?? out;
     expect(result.success).toBe(true);
     expect(result.messageId).toBe('dlv-1');

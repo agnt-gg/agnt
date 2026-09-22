@@ -87,4 +87,4 @@ class SendEmail extends BaseAction {
   }
 }
 
-export default SendEmail;
+export default new SendEmail();

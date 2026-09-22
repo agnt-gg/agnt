@@ -68,4 +68,4 @@ class WebScrape extends BaseAction {
   }
 }
 
-export default WebScrape;
+export default new WebScrape();
