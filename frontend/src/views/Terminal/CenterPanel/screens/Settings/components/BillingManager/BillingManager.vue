@@ -1069,7 +1069,6 @@ ${this.contactForm.message}
       isSubmitting: false,
       uploadedImage: null,
       imagePreview: '',
-      basePrices,
     };
   },
 };
