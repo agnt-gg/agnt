@@ -70,6 +70,7 @@ import TeamRoutes, {getTeamRepository} from './src/routes/TeamRoutes.js';
 import {createHostedOperatorBoundary} from './src/routes/HostedOperatorBoundary.js';
 import {createPersonalAssetBoundary} from './src/routes/PersonalAssetBoundary.js';
 import {createScopeApiMiddleware} from './src/routes/ScopeApiMiddleware.js';
+import {createShareRouter} from './src/routes/ShareRoutes.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
 import ToolsRoutes from './src/routes/ToolsRoutes.js';
 import ToolSchemaRoutes from './src/routes/ToolSchemaRoutes.js';
@@ -264,6 +265,8 @@ app.use('/api/goals', GoalRoutes);
 app.use('/api/layouts', LayoutRoutes);
 app.use('/api/workspaces', WorkspaceRoutes);
 app.use('/api/teams', TeamRoutes);
+// Copy to team / copy to personal. Personal-side only: /api/share is not a team-scoped API.
+app.use('/api/share', createShareRouter({ getRepository: getTeamRepository }));
 app.use('/api/workspace-files', WorkspaceFileRoutes);
 app.use('/api/orchestrator', OrchestratorRoutes);
 app.use('/api/tools', ToolsRoutes);

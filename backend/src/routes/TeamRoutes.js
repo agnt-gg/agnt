@@ -6,6 +6,9 @@ import {NativeTeamExecution,initializeNativeTeamExecution} from '../services/Nat
 import { CloudTeamClient } from '../services/CloudTeamClient.js';
 import { TeamWorkspaceRepository, initializeTeamWorkspaces, DEFAULT_PROJECT_NAME } from '../services/TeamWorkspaceRepository.js';
 import { CAPABILITIES, syncProjectAccess } from '../services/TeamAccess.js';
+import { buildBundle, installBundle } from '../services/sharing/TeamBundle.js';
+import { nativeStore, nodeProvider } from '../services/sharing/nativeStore.js';
+import { parseItems } from './ShareRoutes.js';
 import sqlite3 from 'sqlite3';
 import pathManager from '../utils/PathManager.js';
 import {
@@ -103,6 +106,21 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   router.post('/:teamId/assets/:id/run',(_req,res)=>res.status(410).json({error:'Library definitions cannot execute'}));
   router.get('/:teamId/activity', handler((repo, req, user) => repo.history(req.params.teamId, user)));
   const nativeScope=async(repo,req)=>{const workspace=await repo.get('SELECT * FROM shared_workspaces WHERE id=? AND team_id=? AND archived_at IS NULL',[req.params.workspaceId,req.params.teamId]);if(!workspace)throw Object.assign(new Error('Workspace not found'),{status:404});await dbReady;return ensureSharedScope(databaseRepository(db),req.params.teamId,workspace.id);};
+  // Copy to team lands here. The cloud already checked resources.write on this project (router middleware);
+  // the bundle is sanitized AGAIN because the sender is never trusted, and installs as the project's owner.
+  router.post('/:teamId/workspaces/:workspaceId/install',handler(async(repo,req,user)=>{
+    const scope=await nativeScope(repo,req);
+    const replaces=req.body?.replaces&&typeof req.body.replaces==='object'?req.body.replaces:{};
+    const result=await installBundle(nativeStore,scope.resourceOwnerId,req.body?.bundle,{replaces});
+    await repo.transaction(()=>repo.event(req.params.teamId,user,'items.copied_in',req.params.workspaceId));
+    return result;
+  }));
+  // Copy to personal reads from here: resources.read on this project, sanitized on the way out.
+  router.get('/:teamId/workspaces/:workspaceId/export',handler(async(repo,req)=>{
+    const scope=await nativeScope(repo,req);
+    const {bundle}=await buildBundle(nativeStore,scope.resourceOwnerId,parseItems(req.query.items),{includeDependencies:true,nodeProvider});
+    return bundle;
+  }));
   router.get('/:teamId/workspaces/:workspaceId/native',handler(async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);}));
   router.post('/:teamId/workspaces/:workspaceId/native/:kind/:id/:action',handler(async(repo,req,user)=>{
     const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();const assetId=await resources.snapshot(req.params.teamId,user,scope,req.params.kind,req.params.id);const executor=new NativeTeamExecution(repo,cloud);

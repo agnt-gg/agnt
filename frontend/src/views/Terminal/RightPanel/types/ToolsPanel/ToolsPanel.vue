@@ -77,6 +77,7 @@
         <BaseButton class="action-button publish" @click="showPublishModal = true">
           <i class="fas fa-store"></i> Publish to Marketplace
         </BaseButton>
+        <CopyToTeamButton kind="tool" :id="selectedTool.id" :name="selectedTool.title || selectedTool.name" />
       </div>
     </div>
     <ListSummaryPanel
@@ -113,6 +114,7 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { deleteTool } from '@/views/Terminal/RightPanel/types/ToolForgePanel/components/ToolPanel/components/TopMenu/components/ToolActions/toolActionsApi.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
 import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -120,7 +122,7 @@ import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 export default {
   name: 'ToolsPanel',
-  components: { BaseButton, MarketplaceFormModal, SimpleModal, ListSummaryPanel },
+  components: { BaseButton, CopyToTeamButton, MarketplaceFormModal, SimpleModal, ListSummaryPanel },
   props: {
     selectedTool: {
       type: Object,

@@ -12,6 +12,10 @@ async function call(prefix, path, options = {}) {
 }
 export const teamRequest = (path, options) => call('/teams', path, options);
 export const tenantRequest = (path, options) => call('/tenants', path, options);
+/** Copy to team / copy to personal. Always the personal backend; see backend ShareRoutes.js. */
+export const shareRequest = (path, options) => call('/share', path, options);
+export const PROVIDER_NAMES = Object.freeze({ agnt: 'AGNT', openai: 'OpenAI', anthropic: 'Anthropic', github: 'GitHub', groq: 'Groq', deepseek: 'DeepSeek', grokai: 'Grok', openrouter: 'OpenRouter', google: 'Google', gemini: 'Gemini', slack: 'Slack', discord: 'Discord', stripe: 'Stripe', dropbox: 'Dropbox', twitter: 'X', youtube: 'YouTube', firecrawl: 'Firecrawl' });
+export const providerName = id => PROVIDER_NAMES[id] || id;
 const body = value => JSON.stringify(value);
 
 export const ROLES = Object.freeze([

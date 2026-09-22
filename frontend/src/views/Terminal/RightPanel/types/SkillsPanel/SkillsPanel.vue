@@ -60,6 +60,7 @@
               <i class="fas fa-store"></i>
               Publish to Marketplace
             </BaseButton>
+            <CopyToTeamButton v-if="!isReadonly" kind="skill" :id="selectedSkill.id" :name="selectedSkill.name" />
             <BaseButton v-if="!isReadonly" @click="handleDelete" variant="danger" full-width>
               <i class="fas fa-trash"></i>
               Delete Skill
@@ -89,12 +90,13 @@
 import { computed } from 'vue';
 import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'SkillsPanel',
-  components: { BaseButton, Tooltip, ListSummaryPanel },
+  components: { BaseButton, CopyToTeamButton, Tooltip, ListSummaryPanel },
   props: {
     selectedSkill: {
       type: Object,

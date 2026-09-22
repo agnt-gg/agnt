@@ -7,10 +7,12 @@
       </div>
       <div class="actions">
         <button v-if="currentTeam && !onTeamInstance" class="primary" @click="open(currentTeam)">Open {{ currentTeam.name }}</button>
+        <button v-if="currentTeam && !onTeamInstance && !inTeamSpace" @click="copyFrom = currentTeam">Copy from {{ currentTeam.name }}…</button>
         <button v-if="unteamedBusinessTenants.length" @click="mode = 'create'">Enable a team</button>
         <button @click="mode = 'join'">Join with an invitation</button>
       </div>
     </header>
+    <CopyFromTeamDialog v-if="copyFrom" :team="copyFrom" @close="copyFrom = null" />
     <div v-if="error" class="error" role="alert">{{ error }} <button class="link" @click="error = ''">Dismiss</button></div>
     <p v-if="loading" class="loading" role="status">Loading…</p>
 
@@ -71,7 +73,8 @@ import TeamConnections from '@/views/_components/team/TeamConnections.vue';
 import TeamActivity from '@/views/_components/team/TeamActivity.vue';
 import TeamLibrary from '@/views/_components/team/TeamLibrary.vue';
 import { roleLabel, teamRequest, tenantRequest } from '@/utils/teamClient.js';
-import { openTeam } from '@/composables/useSpaces.js';
+import { currentTeamScope, openTeam } from '@/composables/useSpaces.js';
+import CopyFromTeamDialog from '@/views/_components/team/CopyFromTeamDialog.vue';
 import '@/views/_components/team/team.css';
 
 const TABS = ['Members', 'Projects', 'Connections', 'Activity', 'Library'];
@@ -85,6 +88,9 @@ const store = useStore();
 const teams = ref([]), tenants = ref([]), teamId = ref(props.selectedTeamId), tab = ref(normalizeTab(props.initialTab));
 const mode = ref(''), tenantSlug = ref(''), inviteToken = ref(''), busy = ref(false), loading = ref(false), error = ref('');
 let generation = 0;
+const copyFrom = ref(null);
+// Copying INTO Personal is started from Personal, where the personal backend lives.
+const inTeamSpace = Boolean(currentTeamScope());
 
 const currentTeam = computed(() => teams.value.find(t => t.id === teamId.value) || null);
 const onTeamInstance = computed(() => { try { return Boolean(currentTeam.value?.tenantUrl) && window.location.origin === new URL(currentTeam.value.tenantUrl).origin; } catch { return false; } });

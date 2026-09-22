@@ -64,6 +64,7 @@
               <i class="fas fa-store"></i>
               Publish to Marketplace
             </BaseButton>
+            <CopyToTeamButton kind="agent" :id="selectedAgent.id" :name="selectedAgent.name" />
             <!-- export agent as canonical envelope -->
             <BaseButton @click="exportAgentJson" variant="secondary" full-width>
               <i class="fas fa-file-export"></i>
@@ -140,6 +141,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import CustomCategoryDropdown from '../WorkflowsPanel/CustomCategoryDropdown.vue';
@@ -150,6 +152,7 @@ export default {
   name: 'AgentsPanel',
   components: {
     BaseButton,
+    CopyToTeamButton,
     MarketplaceFormModal,
     SimpleModal,
     CustomCategoryDropdown,

@@ -84,6 +84,7 @@
         <BaseButton v-if="!isMarketplaceWorkflow" class="action-button publish" @click="showPublishModal = true">
           <i class="fas fa-store"></i> Publish to Marketplace
         </BaseButton>
+        <CopyToTeamButton v-if="!isMarketplaceWorkflow" kind="workflow" :id="selectedWorkflow.id" :name="selectedWorkflow.name" />
         <!-- export workflow as canonical envelope -->
         <BaseButton v-if="!isMarketplaceWorkflow" class="action-button" @click="exportWorkflowJson">
           <i class="fas fa-file-export"></i> Export JSON
@@ -145,6 +146,7 @@ import { computed, ref, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+import CopyToTeamButton from '@/views/_components/team/CopyToTeamButton.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import CustomCategoryDropdown from './CustomCategoryDropdown.vue';
 import ReviewSection from './components/ReviewSection.vue';
@@ -156,7 +158,7 @@ import ListSummaryPanel from '@/views/_components/one/ListSummaryPanel.vue';
 
 export default {
   name: 'WorkflowsPanel',
-  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, ListSummaryPanel },
+  components: { BaseButton, CopyToTeamButton, SvgIcon, CustomCategoryDropdown, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, ListSummaryPanel },
   props: {
     selectedWorkflowId: {
       type: String,
