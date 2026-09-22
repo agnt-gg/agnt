@@ -36,7 +36,7 @@
       </div>
       <nav aria-label="Team views"><button v-for="name in TABS" :key="name" :class="{ active: tab === name }" :aria-current="tab === name ? 'page' : undefined" @click="tab = name">{{ name }}</button></nav>
       <TeamMembers v-if="tab === 'Members'" :team="currentTeam" @error="showError" @changed="loadTeams" />
-      <TeamProjects v-else-if="tab === 'Projects'" :team="currentTeam" :on-team-instance="onTeamInstance" @error="showError" @open-project="project => open(currentTeam, project.id)" />
+      <TeamProjects v-else-if="tab === 'Projects'" :team="currentTeam" :on-team-instance="onTeamInstance" @error="showError" @open-project="project => open(currentTeam, project.id)" @go-connections="tab = 'Connections'" />
       <TeamConnections v-else-if="tab === 'Connections'" :team="currentTeam" @error="showError" />
       <TeamActivity v-else-if="tab === 'Activity'" :team="currentTeam" :on-team-instance="onTeamInstance" @error="showError" />
       <TeamLibrary v-else :team="currentTeam" :on-team-instance="onTeamInstance" @error="showError" />

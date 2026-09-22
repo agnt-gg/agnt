@@ -3,22 +3,32 @@ import {withTeamExecution} from './authorization/TeamExecutionContext.js';
 import {TeamBrokerClient} from './authorization/TeamBrokerClient.js';
 import {SAFE_TEAM_NODES} from './authorization/TeamToolPolicy.js';
 import {encrypt,decrypt} from '../utils/encryption.js';
-const refuse=(status,message)=>{throw Object.assign(new Error(message),{status});};
+const refuse=(status,message,extra={})=>{throw Object.assign(new Error(message),{status,...extra});};
 export async function initializeNativeTeamExecution(repository){
  await repository.run('CREATE TABLE IF NOT EXISTS team_native_bindings(asset_id TEXT PRIMARY KEY REFERENCES team_assets(id),team_id TEXT NOT NULL,principal_id TEXT NOT NULL,principal_secret TEXT NOT NULL,connection_id TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,approved_revision INTEGER NOT NULL,approved_by TEXT NOT NULL)');
  await repository.run('CREATE TABLE IF NOT EXISTS team_native_runs(id TEXT PRIMARY KEY,team_id TEXT NOT NULL,asset_id TEXT NOT NULL,revision INTEGER NOT NULL,actor_id TEXT NOT NULL,principal_id TEXT NOT NULL,status TEXT NOT NULL,result_json TEXT,error TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
 }
 export class NativeTeamExecution {
  constructor(repository,cloud,nativeRepository){Object.assign(this,{repository,cloud,nativeRepository});}
- async bind(team,user,authorization,assetId,{connectionId,provider,model,workspaceId}={}){
+ /**
+  * Publish: approve THIS revision to run with a team connection. Owners and admins publish.
+  * The connection is the team's own connection for the item's provider, so nobody types
+  * connection ids or model names; an explicit choice still wins when given.
+  */
+ async bind(team,user,authorization,assetId,{connectionId,provider,model,workspaceId,hints={}}={}){
   if(!workspaceId||!team.tenantSlug)refuse(400,'A cloud workspace is required; library definitions cannot execute');
   const workspacePath='/'+encodeURIComponent(team.id)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(workspaceId);
   await this.cloud.request(authorization,workspacePath+'/access/access.manage');
-  if(team.role!=='owner')refuse(403,'Only the owner can authorize shared execution');
-  if(typeof model!=='string'||!model||model.length>200)refuse(400,'Model is required');
+  if(!['owner','admin'].includes(team.role))refuse(403,'Only owners and admins can publish');
+  provider=provider||hints.provider||null;model=model||hints.model||null;
+  if(typeof model!=='string'||!model||model.length>200)refuse(400,'Choose a model for this item in its settings, then publish');
   const asset=await this.repository.asset(team.id,user,assetId);this.validate(asset);
   const connections=await this.cloud.request(authorization,'/'+team.id+'/connections');
-  const connection=connections.find(c=>c.id===connectionId&&c.providerId===provider);if(!connection)refuse(404,'Approved connection not found');
+  const candidates=connections.filter(c=>connectionId?c.id===connectionId:provider?c.providerId===provider:true);
+  const connection=candidates.length===1||connectionId||provider?candidates[0]:null;
+  if(!connection)refuse(409,provider?'Connect '+provider+' for the team first (Team → Connections)':'Choose which team connection this item should use',{code:'connection_required',provider});
+  // Everything below (principal, grants, binding) must use the RESOLVED connection, not the optional input.
+  provider=connection.providerId;connectionId=connection.id;
   const previous=await this.repository.get('SELECT principal_id FROM team_native_bindings WHERE asset_id=? AND team_id=?',[assetId,team.id]);
   if(previous)await this.cloud.request(authorization,'/'+team.id+'/principals/'+previous.principal_id,{method:'DELETE'});
   const principal=await this.cloud.request(authorization,'/'+team.id+'/principals',{method:'POST',body:JSON.stringify({name:asset.name,connectionIds:[connectionId]})});
@@ -41,8 +51,9 @@ export class NativeTeamExecution {
   const permission=await this.cloud.request(authorization,accessPath+'runs.execute');
   await this.cloud.request(authorization,accessPath+'connections.use');
   if(!['owner','admin','member'].includes(team.role))refuse(403,'Your team role does not allow execution');
-  const asset=await this.repository.asset(team.id,user,assetId);const definition=this.validate(asset);
-  const binding=await this.repository.get('SELECT * FROM team_native_bindings WHERE asset_id=? AND team_id=?',[assetId,team.id]);if(!binding||binding.approved_revision!==asset.revision)refuse(409,'The owner must authorize this revision and its connection before running');
+  // Always the PUBLISHED revision: editing a published item makes a draft, and the approved version keeps running.
+  const binding=await this.repository.get('SELECT * FROM team_native_bindings WHERE asset_id=? AND team_id=?',[assetId,team.id]);if(!binding)refuse(409,'Publish this before running it',{code:'publish_required'});
+  const asset=await this.repository.asset(team.id,user,assetId,binding.approved_revision);const definition=this.validate(asset);
   const runId=randomUUID();await this.repository.run('INSERT INTO team_native_runs(id,team_id,asset_id,revision,actor_id,principal_id,status) VALUES(?,?,?,?,?,?,?)',[runId,team.id,assetId,asset.revision,user,binding.principal_id,'running']);
   const broker=new TeamBrokerClient({teamId:team.id,tenantSlug:team.tenantSlug,workspaceId,authorization,accessRevision:permission.accessRevision,principalId:binding.principal_id,principalToken:decrypt(binding.principal_secret),connectionId:binding.connection_id});
   const context={teamId:team.id,scopeId:scope.id,actorId:user,principalId:binding.principal_id,provider:binding.provider,broker,allowedTools:new Set()};

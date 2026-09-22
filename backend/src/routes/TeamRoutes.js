@@ -48,7 +48,7 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
       if (!process.env.AGNT_TENANT_SLUG) return res.status(409).json({error:'Open the team cloud instance to access its shared assets',code:'team_instance_required',tenantUrl:team.tenantUrl});
       const parts=path.split('/');
       if(parts[2]==='workspaces'&&parts[3]&&parts[3]!=='default'){
-        const capability=parts.at(-1)==='run'?'runs.execute':parts.at(-1)==='authorize'||parts.at(-1)==='archive'||parts.includes('capabilities')||parts.at(-1)==='overrides'?'access.manage':req.method==='GET'?'resources.read':'resources.write';
+        const capability=parts.at(-1)==='run'?'runs.execute':['authorize','publish','archive','overrides'].includes(parts.at(-1))||parts.includes('capabilities')?'access.manage':req.method==='GET'?'resources.read':'resources.write';
         await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(parts[3])+'/access/'+capability);
       }
       req.cloudTeam = team;
@@ -87,7 +87,10 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     } catch (error) {
       if (!error.status) console.error('[Teams]', error);
       res.status(error.status || 500).json({
-        error: error.status ? error.message : 'Team operation failed'
+        error: error.status ? error.message : 'Team operation failed',
+        // Machine-readable reason, so the UI can offer the fix (e.g. connect a provider) instead of just the text.
+        ...(error.status && error.code ? { code: error.code } : {}),
+        ...(error.status && error.provider ? { provider: error.provider } : {})
       })
     }
   };
@@ -124,7 +127,7 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
   router.get('/:teamId/workspaces/:workspaceId/native',handler(async(repo,req)=>{const scope=await nativeScope(repo,req);return new NativeTeamResources(databaseRepository(db),repo).list(scope);}));
   router.post('/:teamId/workspaces/:workspaceId/native/:kind/:id/:action',handler(async(repo,req,user)=>{
     const scope=await nativeScope(repo,req);const resources=new NativeTeamResources(databaseRepository(db),repo);await resources.initialize();const assetId=await resources.snapshot(req.params.teamId,user,scope,req.params.kind,req.params.id);const executor=new NativeTeamExecution(repo,cloud);
-    if(req.params.action==='authorize')return executor.bind(req.cloudTeam,user,req.headers.authorization,assetId,{...req.body,workspaceId:req.params.workspaceId});
+    if(req.params.action==='authorize'||req.params.action==='publish'){const hints=await resources.hints(scope,req.params.kind,req.params.id);return executor.bind(req.cloudTeam,user,req.headers.authorization,assetId,{connectionId:req.body?.connectionId,provider:req.body?.provider,model:req.body?.model,workspaceId:req.params.workspaceId,hints});}
     if(req.params.action==='run')return executor.run(req.cloudTeam,user,assetId,req.body?.input,scope,req.headers.authorization);
     throw Object.assign(new Error('Unknown execution action'),{status:404});
   }));

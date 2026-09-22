@@ -12,8 +12,26 @@
             <div class="who"><strong>{{ project.name }}</strong><span>{{ project.is_default ? 'Default project' : 'Project' }}</span></div>
             <div class="actions">
               <button class="primary" @click="$emit('open-project', project)">Open</button>
+              <button :aria-expanded="automationsFor === project.id" @click="toggleAutomations(project)">Automations</button>
               <button v-if="canManage" :aria-expanded="accessFor === project.id" @click="toggleAccess(project)">Access</button>
               <button v-if="isOwner && !project.is_default" class="danger" :disabled="busy" @click="archive(project)">Archive</button>
+            </div>
+            <div v-if="automationsFor === project.id" class="access" role="region" :aria-label="'Automations in ' + project.name">
+              <p>Agents, workflows and tools in this project. Publishing approves the current version to run with the team's connections; later edits wait as a draft while the published version keeps running.</p>
+              <p v-if="needsConnection" class="notice">{{ needsConnection }} <button class="link" @click="$emit('go-connections')">Open Connections</button></p>
+              <ul class="rows">
+                <li v-for="item in automations" :key="item.kind + item.id">
+                  <div class="who"><strong>{{ item.name }}</strong><span>{{ kindLabel(item.kind) }}</span></div>
+                  <span class="pill" :class="{ accent: item.status === 'published', warn: item.status === 'changed' }">{{ STATUS[item.status] || 'Draft' }}</span>
+                  <div class="actions">
+                    <button v-if="canManage && item.status !== 'published'" :disabled="busy" @click="publish(project, item)">{{ item.status === 'changed' ? 'Publish changes' : 'Publish' }}</button>
+                    <button v-if="canRun && item.status !== 'draft'" class="primary" :disabled="busy" @click="run(project, item)">Run</button>
+                  </div>
+                  <p v-if="results[item.kind + item.id]" class="result">{{ results[item.kind + item.id] }}</p>
+                </li>
+              </ul>
+              <p v-if="!automations.length && !busy" class="empty">Nothing here yet. Use Copy to team from your Personal space, or build something while in this team.</p>
+              <input v-if="canRun && automations.some(i => i.status !== 'draft')" v-model="runInput" placeholder="Input for the next run (optional)" aria-label="Run input" />
             </div>
             <div v-if="accessFor === project.id" class="access" role="region" :aria-label="'Access to ' + project.name">
               <p>People get their role's access here automatically. Add an exception only when one person needs more or less on this project.</p>
@@ -65,8 +83,33 @@ const ROLE_BASELINE = {
   viewer: ['resources.read', 'files.read', 'runs.read'],
 };
 
+const STATUS = { draft: 'Draft', published: 'Published', changed: 'Changed since publish' };
+const kindLabel = kind => ({ agent: 'Agent', workflow: 'Workflow', tool: 'Tool' })[kind] || kind;
 const props = defineProps({ team: { type: Object, required: true }, onTeamInstance: { type: Boolean, default: false } });
-const emit = defineEmits(['error', 'open-project']);
+const emit = defineEmits(['error', 'open-project', 'go-connections']);
+const automationsFor = ref(''), automations = ref([]), results = ref({}), runInput = ref(''), needsConnection = ref('');
+const canRun = computed(() => ['owner', 'admin', 'member'].includes(props.team.role));
+const nativeBase = project => '/' + props.team.id + '/workspaces/' + project.id + '/native';
+async function toggleAutomations(project) {
+  if (automationsFor.value === project.id) { automationsFor.value = ''; return; }
+  automationsFor.value = project.id; results.value = {}; needsConnection.value = '';
+  await perform(async () => { automations.value = await teamRequest(nativeBase(project)); });
+}
+/** Publish = approve this exact version, with the team's own connection for its provider. */
+async function publish(project, item) {
+  busy.value = true; needsConnection.value = '';
+  try {
+    await teamRequest(nativeBase(project) + '/' + item.kind + '/' + item.id + '/publish', { method: 'POST', body: '{}' });
+    automations.value = await teamRequest(nativeBase(project));
+  } catch (error) {
+    if (error.code === 'connection_required') needsConnection.value = error.message; else emit('error', error.message);
+  } finally { busy.value = false; }
+}
+const run = (project, item) => perform(async () => {
+  const outcome = await teamRequest(nativeBase(project) + '/' + item.kind + '/' + item.id + '/run', { method: 'POST', body: JSON.stringify({ input: runInput.value }) });
+  const content = outcome.result?.content ?? outcome.result?.output ?? outcome.result?.result;
+  results.value = { ...results.value, [item.kind + item.id]: outcome.status === 'completed' ? (typeof content === 'string' ? content : 'Finished.') : 'Did not finish: ' + (outcome.result?.error || 'see Activity') };
+});
 const projects = ref([]), members = ref([]), overrides = ref({}), accessFor = ref(''), name = ref(''), busy = ref(false);
 const isOwner = computed(() => props.team.role === 'owner');
 const canManage = computed(() => ['owner', 'admin'].includes(props.team.role));
@@ -106,6 +149,8 @@ watch(() => [props.team.id, props.onTeamInstance], () => { accessFor.value = '';
 defineExpose({ reload: () => perform(load) });
 </script>
 <style scoped>
+.notice { color: var(--color-yellow, #ffd700); }
+.result { flex-basis: 100%; white-space: pre-wrap; font: 12px/1.6 'Fira Code', monospace; color: var(--color-text); max-height: 200px; overflow: auto; margin: 0; }
 .access { flex-basis: 100%; padding: 4px 0 4px 12px; border-left: 2px solid rgba(var(--primary-rgb), .3); display: grid; gap: 8px; }
 .grid-table { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); padding-top: 8px; }
 </style>
