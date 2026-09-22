@@ -69,7 +69,7 @@ export async function serviceAllowed(service) {
  * `pro_required` (no plan), `allowance_exhausted` / `spending_not_authorized`
  * (plan used up), `authentication_required` (no session yet).
  */
-export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 4 } = {}) {
+export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 12 } = {}) {
   const s = SERVICES[service];
   if (!s) throw new Error('unknown service: ' + service);
   if (!(await serviceAllowed(service))) throw proRequired(service);
@@ -85,7 +85,6 @@ export async function callService(service, path, { method = 'GET', body, idempot
   const url = new URL(s.base + path);
   if (query) for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
 
-  return withLane(service, async () => {
   let attempt = 0;
   for (;;) {
     let res;
@@ -104,12 +103,15 @@ export async function callService(service, path, { method = 'GET', body, idempot
     if (res.ok) return data;
 
     const code = data?.error || data?.reason || ('http_' + res.status);
-    // The services run a small pool: one concurrent scrape on most plans, and
-    // a burst of parallel calls is ORDINARY here (the orchestrator fans out
-    // several scrapes per turn). Waiting our turn is the correct behaviour;
-    // surfacing "service_busy" to the user for a queue that clears in a second
-    // is not. Deterministic refusals — blocked page, no plan, bad input — are
-    // never retried, because the answer will not change.
+    // "Busy" is the service's execution pool being full, not a refusal. The
+    // caller may fan out as wide as it likes — a hundred scrapes at once is a
+    // legitimate way to spend an allowance — so a call that finds the pool
+    // full waits and tries again until it gets its turn. NOTHING here caps
+    // parallelism: the plan's allowance is the only limit, and burning all of
+    // it in one go is the user's call to make.
+    //
+    // Deterministic refusals — blocked page, no plan, bad input — are never
+    // retried, because the answer will not change.
     if (RETRYABLE.has(code) && attempt < retries) {
       await sleep(backoffMs(attempt++, res.headers.get('retry-after')));
       continue;
@@ -118,45 +120,6 @@ export async function callService(service, path, { method = 'GET', body, idempot
     const normalized = res.status === 402 || code === 'pro_required' || code === 'subscription_required' ? 'pro_required' : code;
     throw new ServiceError(service, res.status, normalized, { ...data, docs: s.docs, attempts: attempt + 1 });
   }
-  });
-}
-
-/** Test seam: how many calls are queued or running for a service. */
-export function laneDepth(service) {
-  const l = lanes.get(service);
-  return l ? { active: l.active, queued: l.queue.length, limit: l.limit } : { active: 0, queued: 0, limit: CONCURRENCY[service] ?? 2 };
-}
-
-/**
- * In-flight limit per service, client side.
- *
- * The services run a small execution pool and refuse the overflow rather than
- * queueing it — search is one concurrent scrape on most plans. The orchestrator
- * routinely fans out several scrapes in a turn, so without a gate here the
- * first one wins and the rest 429. Retrying alone does not fix that: the
- * retries collide with each other too. Queueing locally means every call still
- * happens, just in order, and the retry below is left to handle genuine
- * contention from ANOTHER process sharing the account.
- */
-const CONCURRENCY = { search: 1, models: 2, sandbox: 2, mail: 4, webhooks: 4 };
-const lanes = new Map();
-
-function lane(service) {
-  if (!lanes.has(service)) lanes.set(service, { active: 0, queue: [], limit: CONCURRENCY[service] ?? 2 });
-  return lanes.get(service);
-}
-
-async function withLane(service, run) {
-  const l = lane(service);
-  if (l.active >= l.limit) await new Promise((resolve) => l.queue.push(resolve));
-  l.active++;
-  try {
-    return await run();
-  } finally {
-    l.active--;
-    const next = l.queue.shift();
-    if (next) next();
-  }
 }
 
 /** Codes whose answer can change if we simply wait. */
@@ -164,11 +127,18 @@ const RETRYABLE = new Set(['service_busy', 'rate_limited', 'busy', 'worker_unava
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Honour Retry-After when sent; otherwise exponential with jitter, capped. */
+/**
+ * Honour Retry-After when sent; otherwise exponential with jitter, capped.
+ *
+ * The jitter is what makes a wide fan-out work: without it, every waiting call
+ * wakes on the same tick and collides again. Spread across a window that grows
+ * with the attempt, a large burst drains steadily instead of thrashing.
+ */
 function backoffMs(attempt, retryAfter) {
   const header = Number(retryAfter);
   if (Number.isFinite(header) && header > 0) return Math.min(header * 1000, 15000);
-  return Math.min(700 * 2 ** attempt, 8000) + Math.floor(Math.random() * 400);
+  const base = Math.min(500 * 2 ** attempt, 6000);
+  return base + Math.floor(Math.random() * base);
 }
 
 /**

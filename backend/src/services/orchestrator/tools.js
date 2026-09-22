@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
 import AGNT from '../../libs/agnt2.js';
-import { scrape as scrapeUtil } from '../../tools/library/actions/web-scrape.js';
+import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
 // Injected into every tool schema; kept in its own module with a cost guard
 // because this block's size is multiplied by the tool count.
@@ -1124,7 +1124,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       console.log(`Tool call: web_scrape with url: "${url}"`);
       if (!url) return JSON.stringify({ success: false, error: 'URL is required for web scraping.' });
       try {
-        const { textContent, links, codeContent } = await scrapeUtil(url);
+        // The local scraper's default export is a tool descriptor, not a
+        // function: call .execute({ url }). It launches the user's own Chrome,
+        // so scrapes run in parallel with no allowance and no per-page refusal.
+        const { textContent, links, codeContent } = await scrapeUtil.execute({ url });
         return JSON.stringify({ success: true, url, textContent, links, codeContent, message: 'Content, links, and code snippets extracted successfully.' });
       } catch (error) {
         return JSON.stringify(serviceFailure(error));

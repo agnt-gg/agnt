@@ -40,7 +40,6 @@ const SERVICE_CALLERS = [
   'tools/library/actions/run-sandbox.js',
   'tools/library/actions/send-email.js',
   'tools/library/actions/web-search.js',
-  'tools/library/actions/web-scrape.js',
   'services/agntMail.js',
   'services/agntWebhooks.js',
 ];
@@ -118,6 +117,10 @@ describe('background calls to api.agnt.gg identify themselves', () => {
     expect(tools).toMatch(/from '\.\.\/agntServices\.js'/);
     expect(tools, 'send_email must not call the retired /email/send relay').not.toMatch(/\/email\/send/);
     expect(tools, 'web_search must not fetch shared Google keys').not.toMatch(/google-search-keys/);
+    // Scraping runs on the user's own machine with their own Chrome: no
+    // account, no allowance, no per-page refusal. It is deliberately NOT a
+    // hosted service, so it must keep importing the local scraper.
+    expect(tools, 'web_scrape must use the local scraper').toMatch(/from '\.\.\/\.\.\/utils\/webScrape\.js'/);
   });
 
   it('every caller imports the token cache', () => {
