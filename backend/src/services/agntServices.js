@@ -69,7 +69,7 @@ export async function serviceAllowed(service) {
  * `pro_required` (no plan), `allowance_exhausted` / `spending_not_authorized`
  * (plan used up), `authentication_required` (no session yet).
  */
-export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query } = {}) {
+export async function callService(service, path, { method = 'GET', body, idempotent = false, timeoutMs = 60000, query, retries = 4 } = {}) {
   const s = SERVICES[service];
   if (!s) throw new Error('unknown service: ' + service);
   if (!(await serviceAllowed(service))) throw proRequired(service);
@@ -77,27 +77,98 @@ export async function callService(service, path, { method = 'GET', body, idempot
 
   const headers = { ...authHeader(), Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // ONE key for the whole call, reused by every retry. A retry that minted a
+  // fresh key would be a second billable operation rather than a retry — the
+  // exact way a "harmless" backoff double-charges someone.
   if (idempotent) headers['Idempotency-Key'] = 'agnt-' + crypto.randomUUID();
 
   const url = new URL(s.base + path);
   if (query) for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
 
-  let res;
-  try {
-    res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
-  } catch (error) {
-    throw new ServiceError(service, 0, 'unreachable', { message: error.message });
-  }
-  const text = await res.text();
-  let data;
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; }
-  if (!res.ok) {
+  return withLane(service, async () => {
+  let attempt = 0;
+  for (;;) {
+    let res;
+    try {
+      res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+    } catch (error) {
+      if (attempt < retries && error.name !== 'TimeoutError') {
+        await sleep(backoffMs(attempt++, null));
+        continue;
+      }
+      throw new ServiceError(service, 0, 'unreachable', { message: error.message });
+    }
+    const text = await res.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; }
+    if (res.ok) return data;
+
     const code = data?.error || data?.reason || ('http_' + res.status);
+    // The services run a small pool: one concurrent scrape on most plans, and
+    // a burst of parallel calls is ORDINARY here (the orchestrator fans out
+    // several scrapes per turn). Waiting our turn is the correct behaviour;
+    // surfacing "service_busy" to the user for a queue that clears in a second
+    // is not. Deterministic refusals — blocked page, no plan, bad input — are
+    // never retried, because the answer will not change.
+    if (RETRYABLE.has(code) && attempt < retries) {
+      await sleep(backoffMs(attempt++, res.headers.get('retry-after')));
+      continue;
+    }
     // The service says this account has no plan: render it as the Pro gate.
     const normalized = res.status === 402 || code === 'pro_required' || code === 'subscription_required' ? 'pro_required' : code;
-    throw new ServiceError(service, res.status, normalized, { ...data, docs: s.docs });
+    throw new ServiceError(service, res.status, normalized, { ...data, docs: s.docs, attempts: attempt + 1 });
   }
-  return data;
+  });
+}
+
+/** Test seam: how many calls are queued or running for a service. */
+export function laneDepth(service) {
+  const l = lanes.get(service);
+  return l ? { active: l.active, queued: l.queue.length, limit: l.limit } : { active: 0, queued: 0, limit: CONCURRENCY[service] ?? 2 };
+}
+
+/**
+ * In-flight limit per service, client side.
+ *
+ * The services run a small execution pool and refuse the overflow rather than
+ * queueing it — search is one concurrent scrape on most plans. The orchestrator
+ * routinely fans out several scrapes in a turn, so without a gate here the
+ * first one wins and the rest 429. Retrying alone does not fix that: the
+ * retries collide with each other too. Queueing locally means every call still
+ * happens, just in order, and the retry below is left to handle genuine
+ * contention from ANOTHER process sharing the account.
+ */
+const CONCURRENCY = { search: 1, models: 2, sandbox: 2, mail: 4, webhooks: 4 };
+const lanes = new Map();
+
+function lane(service) {
+  if (!lanes.has(service)) lanes.set(service, { active: 0, queue: [], limit: CONCURRENCY[service] ?? 2 });
+  return lanes.get(service);
+}
+
+async function withLane(service, run) {
+  const l = lane(service);
+  if (l.active >= l.limit) await new Promise((resolve) => l.queue.push(resolve));
+  l.active++;
+  try {
+    return await run();
+  } finally {
+    l.active--;
+    const next = l.queue.shift();
+    if (next) next();
+  }
+}
+
+/** Codes whose answer can change if we simply wait. */
+const RETRYABLE = new Set(['service_busy', 'rate_limited', 'busy', 'worker_unavailable', 'service_unavailable', 'concurrency_limit', 'try_again_later']);
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Honour Retry-After when sent; otherwise exponential with jitter, capped. */
+function backoffMs(attempt, retryAfter) {
+  const header = Number(retryAfter);
+  if (Number.isFinite(header) && header > 0) return Math.min(header * 1000, 15000);
+  return Math.min(700 * 2 ** attempt, 8000) + Math.floor(Math.random() * 400);
 }
 
 /**
@@ -110,6 +181,14 @@ const SERVICE_MESSAGES = {
   allowance_exhausted: (s) => `This month's included ${s} allowance is used up. It resets next month, or add credit from Settings > Billing.`,
   spending_not_authorized: (s) => `This ${s} call would cost beyond the included allowance and spending is off. Turn it on from Settings > Billing.`,
   authentication_required: () => 'Sign in to AGNT to use hosted services.',
+  page_blocked: () => 'That site refuses automated visitors, so it cannot be scraped. Reddit, X and some news sites do this. Try an alternate host for the same content (for Reddit, append .json to the URL), or open it yourself.',
+  service_busy: (s) => `The ${s} service stayed busy after several retries. Try again in a moment.`,
+  destination_not_allowed: () => 'That address cannot be fetched: it is private, local, or not a public web page.',
+  invalid_url: () => 'That does not look like a public http(s) URL.',
+  extraction_failed: () => 'The page loaded but no readable content could be extracted from it.',
+  // The service throttles repeated FAILURES, so a run of blocked sites puts the
+  // account in a short cooldown. Retrying inside it only deepens the hole.
+  failure_rate_limited: () => 'Too many pages failed recently, so scraping is cooling down for a minute. The last few URLs were probably blocked or unreachable.',
   unreachable: (s) => `Could not reach ${s}.agnt.gg. Check your connection and try again.`,
 };
 
