@@ -214,7 +214,7 @@
              two nothing opaque covers this box (transparent under custom-bg).
              See PanelBackdrop.vue. -->
         <LibraryHome v-if="showLibrary" @navigate="onJumpNavigate" @teams="openPrimary('teams')" />
-        <TeamWorkspace v-if="showTeamWorkspace" :selected-team-id="selectedTeamId" :initial-tab="teamNavigationTab" :hide-scope-selector="true" @update:selected-team-id="syncTeamSelection" @teams-loaded="syncWorkspaceTeams" @close="openPrimary('chat')" />
+        <TeamWorkspace v-if="showTeamWorkspace" :selected-team-id="selectedTeamId" :initial-tab="teamNavigationTab" :hide-scope-selector="true" @update:selected-team-id="syncTeamSelection" @teams-loaded="syncWorkspaceTeams" @close="openPrimary('chat')" @open-billing="$emit('screen-change', 'SettingsScreen', { section: 'billing' })" />
         <PanelBackdrop v-if="showPanelBackdrop" :screen-name="screenName" />
 
         <!-- Custom pages: full widget canvas system -->

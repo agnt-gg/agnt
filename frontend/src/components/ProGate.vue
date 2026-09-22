@@ -31,6 +31,8 @@ import { useLicense } from '@/composables/useLicense';
 import UpgradeModal from './UpgradeModal.vue';
 
 const SERVICE_FLAGS = { models: 'hasModels', search: 'hasSearch', sandbox: 'hasSandbox', mail: 'hasMail', hostedWebhooks: 'hasHostedWebhooks' };
+// Feature names that map onto an existing license key.
+const ALIASES = { teams: 'multiUser' };
 
 export default {
   name: 'ProGate',
@@ -48,7 +50,7 @@ export default {
       const flag = SERVICE_FLAGS[props.feature];
       if (flag) return !!license[flag].value;
       if (!license.isPremium.value) return false;
-      const f = license.hasFeature(props.feature);
+      const f = license.hasFeature(ALIASES[props.feature] || props.feature);
       return !!(f && (typeof f !== 'object' || f.enabled));
     });
     const openUpgrade = () => { showUpgrade.value = true; };

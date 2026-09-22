@@ -29,6 +29,7 @@ Storage is private and partitioned by team, tenant and workspace. Absolute paths
 - [Content Output Routes](#content-output-routes)
 - [Custom Provider Routes](#custom-provider-routes)
 - [Custom Tool Routes](#custom-tool-routes)
+- [Tenant Proxy Routes](#tenant-proxy-routes)
 - [AGNT Services Routes](#agnt-services-routes)
 - [Email Listener Routes](#email-listener-routes)
 - [Execution Routes](#execution-routes)
@@ -2165,6 +2166,40 @@ Base path: `/api/custom-tools`
 ```
 
 ---
+
+## Tenant Proxy Routes
+
+Base path: `/api/tenants`
+
+The account's cloud instances, passed through to `api.agnt.gg/tenants` with the caller's own session. The Teams page manages the instance behind a team from here: who holds a seat, and the instance link. Only these routes are forwarded; everything else answers 404.
+
+### List Instances
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Every instance the account owns or is a member of, with plan, status, role and seat counts
+
+### Instance Detail
+
+**GET** `/:slug`
+
+- **Authentication**: Required
+- **Description**: One instance with its members and seats
+
+### Add Seat
+
+**POST** `/:slug/members`
+
+- **Authentication**: Required (owner or admin of the instance)
+- **Body**: `{ "email": "colleague@company.com", "role": "member" }`
+- **Description**: Gives an existing AGNT account a seat on the instance
+
+### Remove Seat
+
+**DELETE** `/:slug/members/:userId`
+
+- **Authentication**: Required (owner or admin, or the member themselves)
 
 ## AGNT Services Routes
 
