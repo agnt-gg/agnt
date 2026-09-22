@@ -218,12 +218,11 @@
         <div v-else-if="activeSection === 'backup'" class="settings-content" data-section="backup">
           <div class="content-header">
             <h2 class="content-title">Backup & Export</h2>
-            <p class="content-subtitle">Backup and export your data</p>
+            <p class="content-subtitle">Export memories, conversations, run traces and more</p>
           </div>
           <div class="settings-grid">
-            <div class="settings-section">
-              <h3>Data Management</h3>
-              <p>Backup and export options will be implemented here.</p>
+            <div class="settings-section full-width">
+              <DataExportSection />
             </div>
           </div>
         </div>
@@ -338,6 +337,7 @@ import ReferralsSection from './components/ReferralsSection/ReferralsSection.vue
 import PhoneAccessSection from './components/PhoneAccessSection/PhoneAccessSection.vue';
 import ConnectionSection from './components/ConnectionSection/ConnectionSection.vue';
 import LeaderboardSection from './components/LeaderboardSection/LeaderboardSection.vue';
+import DataExportSection from './components/DataExportSection/DataExportSection.vue';
 import { useSettingsTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
@@ -367,6 +367,7 @@ export default {
     LeaderboardSection,
     PhoneAccessSection,
     ConnectionSection,
+    DataExportSection,
     PopupTutorial,
   },
   emits: ['screen-change', 'start-tour'],

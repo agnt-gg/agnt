@@ -1,5 +1,6 @@
 import express from 'express';
 import MemorySearchService from '../services/MemorySearchService.js';
+import DataExportService from '../services/DataExportService.js';
 import { authenticateToken } from './Middleware.js';
 
 const MemoryRoutes = express.Router();
@@ -101,5 +102,71 @@ MemoryRoutes.get('/trace/:executionId', authenticateToken, async (req, res) => {
   }
 });
 MemoryRoutes.all('/trace/:executionId', methodNotAllowed('GET'));
+
+/**
+ * GET /api/memory/export/categories?since=YYYY-MM-DD&until=YYYY-MM-DD
+ *   What can be exported, with a row count per category for the filters.
+ */
+MemoryRoutes.get('/export/categories', authenticateToken, async (req, res) => {
+  try {
+    const categories = await DataExportService.countExportCategories(req.user.userId, {
+      since: req.query.since || null,
+      until: req.query.until || null,
+    });
+    res.json({ success: true, categories });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ success: false, error: err.message });
+    console.error('[MemoryRoutes] export categories error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+MemoryRoutes.all('/export/categories', methodNotAllowed('GET'));
+
+/**
+ * POST /api/memory/export
+ *   body: { categories: ['memories', ...] | 'all', since?, until?, compress? }
+ *   Returns a single-use, one-minute download URL. A native download cannot
+ *   send an Authorization header, and the session token must never ride in a
+ *   URL, so the URL carries this ticket instead.
+ */
+MemoryRoutes.post('/export', authenticateToken, (req, res) => {
+  try {
+    const options = DataExportService.normalizeExportOptions(req.body || {});
+    const { token, expiresAt } = DataExportService.createExportTicket(req.user.userId, options);
+    res.json({
+      success: true,
+      ticket: token,
+      downloadUrl: `${req.baseUrl}/export/download/${token}`,
+      expiresAt,
+      filename: DataExportService.exportFilename(options),
+      options,
+    });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ success: false, error: err.message });
+    console.error('[MemoryRoutes] export ticket error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/memory/export/download/:ticket
+ *   Authenticated by the ticket alone (single use, expires in a minute).
+ *   Streams the export as an attachment.
+ */
+MemoryRoutes.get('/export/download/:ticket', async (req, res) => {
+  const redeemed = DataExportService.consumeExportTicket(req.params.ticket);
+  if (!redeemed) {
+    return res.status(404).json({ success: false, error: 'This export link has expired or was already used. Start the export again.' });
+  }
+  try {
+    await DataExportService.streamExport({ userId: redeemed.userId, options: redeemed.options, res });
+  } catch (err) {
+    console.error('[MemoryRoutes] export stream error:', err);
+    if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+    else res.end();
+  }
+});
+MemoryRoutes.all('/export/download/:ticket', methodNotAllowed('GET'));
+MemoryRoutes.all('/export', methodNotAllowed('POST'));
 
 export default MemoryRoutes;
