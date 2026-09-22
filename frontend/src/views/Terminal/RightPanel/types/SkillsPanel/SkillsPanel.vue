@@ -56,6 +56,10 @@
               <i class="fas fa-file-export"></i>
               Export SKILL.md
             </BaseButton>
+            <BaseButton @click="handlePublish" variant="primary" full-width>
+              <i class="fas fa-store"></i>
+              Publish to Marketplace
+            </BaseButton>
             <BaseButton v-if="!isReadonly" @click="handleDelete" variant="danger" full-width>
               <i class="fas fa-trash"></i>
               Delete Skill
@@ -164,6 +168,15 @@ export default {
       }
     };
 
+    // Offered for a read-only on-disk skill too: publishing copies the
+    // playbook to a listing and never writes to the source directory, so the
+    // lock that forbids editing has no bearing on sharing it.
+    const handlePublish = () => {
+      if (props.selectedSkill) {
+        emit('panel-action', 'publish-skill', props.selectedSkill);
+      }
+    };
+
     const handleImport = () => {
       if (props.selectedSkill) {
         // Forward the original discovered-skill shape expected by the store action
@@ -179,6 +192,7 @@ export default {
       handleEdit,
       handleExport,
       handleDelete,
+      handlePublish,
       handleImport,
     };
   },

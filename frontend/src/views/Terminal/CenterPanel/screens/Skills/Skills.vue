@@ -96,9 +96,10 @@
             </div>
           </div>
 
-          <!-- Published marketplace skills, installable in one click, beside the
-               Create card. Renders the Create card alone if the catalogue is
-               unreachable. -->
+          <!-- Skills are a published asset type, so this fills with real
+               listings alongside the Create card. It needed no change when that
+               landed: the shelf asks isShelfEligible('skill'), which became
+               true the moment the API accepted the type. -->
           <MarketplaceShelf
             v-else-if="ownsNothing"
             asset-type="skill"
@@ -444,6 +445,16 @@
         </div>
       </Teleport>
 
+      <MarketplaceFormModal
+        :is-open="showPublishModal"
+        mode="publish"
+        item-type="skill"
+        :item="publishTarget"
+        :categories="publishCategories"
+        @close="showPublishModal = false"
+        @submit="publishSkill"
+      />
+
       <SimpleModal ref="simpleModal" />
     </template>
   </BaseScreen>
@@ -458,6 +469,7 @@ import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const SKILL_ICONS = [
@@ -675,6 +687,7 @@ const handlePanelAction = (action, payload) => {
   } else if (action === 'open-create-modal') openCreateModal();
   else if (action === 'open-edit-modal') openEditModal(payload);
   else if (action === 'export-skill') exportSkill(payload);
+  else if (action === 'publish-skill') openPublishModal(payload);
   else if (action === 'delete-skill') confirmDelete(payload);
   else if (action === 'import-discovered-skill') importDiscoveredSkill(payload);
 };
@@ -753,6 +766,70 @@ const confirmDelete = async (skill) => {
     } catch (err) {
       console.error('Delete error:', err);
     }
+  }
+};
+
+// ── Publishing ──────────────────────────────────────────────────────────────
+const showPublishModal = ref(false);
+const publishTarget = ref(null);
+const publishCategories = computed(() => {
+  const seen = new Set((allSkills.value || []).map((s) => s.category).filter(Boolean));
+  return ['general', ...[...seen].filter((c) => c !== 'general')].sort();
+});
+
+const openPublishModal = async (skill) => {
+  // The playbook IS the asset, and the API refuses a listing without it. Say
+  // so here rather than letting the user fill in a whole form for a 400.
+  if (!String(skill?.instructions || '').trim()) {
+    await simpleModal.value?.showModal({
+      title: 'Nothing to publish yet',
+      message: `"${skill?.name || 'This skill'}" has no instructions. A skill's instructions are what it actually does, so add them before publishing.`,
+      confirmText: 'OK',
+      showCancel: false,
+    });
+    return;
+  }
+  publishTarget.value = skill;
+  showPublishModal.value = true;
+};
+
+const publishSkill = async (publishData) => {
+  const skill = publishTarget.value;
+  try {
+    // Send the whole skill, not the four fields the edit form happens to
+    // carry: instructions, allowed_tools, license and compatibility all have
+    // to survive the round trip or the installed copy is a different skill.
+    await store.dispatch('marketplace/publishWorkflow', {
+      ...publishData,
+      asset_data: {
+        name: skill.name,
+        description: skill.description || '',
+        instructions: skill.instructions || '',
+        category: skill.category || 'general',
+        icon: skill.icon || 'fas fa-graduation-cap',
+        license: skill.license || '',
+        compatibility: skill.compatibility || '',
+        metadata: skill.metadata || {},
+        allowedTools: skill.allowedTools ?? skill.allowed_tools ?? [],
+      },
+    });
+    showPublishModal.value = false;
+    terminalLines.value.push(`[Skills] Published "${skill.name}" to the marketplace.`);
+    await simpleModal.value?.showModal({
+      title: 'Published',
+      message: `"${skill.name}" is now listed in the marketplace.`,
+      confirmText: 'Great',
+      showCancel: false,
+    });
+  } catch (err) {
+    console.error('Publish skill error:', err);
+    terminalLines.value.push(`[Skills] Publish failed: ${err.message}`);
+    await simpleModal.value?.showModal({
+      title: 'Publish Failed',
+      message: err.message || `Failed to publish "${skill?.name}".`,
+      confirmText: 'OK',
+      showCancel: false,
+    });
   }
 };
 

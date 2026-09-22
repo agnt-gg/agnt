@@ -22,21 +22,18 @@ const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const item = (o = {}) => ({ id: 'i1', title: 'Thing', asset_type: 'agent', downloads: 10, published_at: day(100), ...o });
 
 describe('useMarketplaceCard — the closed asset-type set', () => {
-  it('is exactly the five types the server publishes', () => {
+  it('is exactly the types the server serves', () => {
     expect([...MARKETPLACE_ASSET_TYPES].sort()).toEqual(['agent', 'plugin', 'skill', 'tool', 'workflow']);
   });
 
-  // Regression: skill was left out long after the server served it, which hid
-  // every published skill from the app and broke agnt:// links to them.
-  it('accepts skill, which the server publishes', () => {
+  // This list must never advertise a type the API would reject. Skills are in
+  // because the CHECK constraint, publish validation and install switch all
+  // accept them; widgets are still out, and WidgetManager's shelf MUST stay
+  // empty rather than render a grid nothing can install.
+  it('accepts skill now the API does, and still rejects widget', () => {
     expect(isShelfEligible('skill')).toBe(true);
-    expect(isShelfEligible('agent')).toBe(true);
-  });
-
-  // WidgetManager mounts a shelf too, and it MUST stay empty until the backend
-  // serves widgets.
-  it('rejects widget, so its shelf cannot render a bogus grid', () => {
     expect(isShelfEligible('widget')).toBe(false);
+    expect(isShelfEligible('agent')).toBe(true);
   });
 
   it('cannot be mutated by a caller', () => {
@@ -50,8 +47,8 @@ describe('useMarketplaceCard — icons and labels', () => {
     expect(assetIcon(item({ asset_type: 'tool' }))).toBe('fas fa-wrench');
     expect(assetIcon(item({ asset_type: 'plugin' }))).toBe('fas fa-puzzle-piece');
     expect(assetIcon(item({ asset_type: 'workflow' }))).toBe('fas fa-project-diagram');
-    expect(assetIcon(item({ asset_type: undefined }))).toBe('fas fa-project-diagram');
     expect(assetIcon(item({ asset_type: 'skill' }))).toBe('fas fa-graduation-cap');
+    expect(assetIcon(item({ asset_type: undefined }))).toBe('fas fa-project-diagram');
     expect(assetTypeLabel(item({ asset_type: 'plugin' }))).toBe('Plugin');
     expect(assetTypeLabel(item({ asset_type: 'skill' }))).toBe('Skill');
     expect(assetTypeLabel(item({ asset_type: 'nonsense' }))).toBe('Workflow');

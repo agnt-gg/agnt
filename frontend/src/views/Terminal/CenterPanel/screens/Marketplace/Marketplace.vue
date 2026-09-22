@@ -693,8 +693,8 @@ export default {
       { id: 'workflows', name: 'Workflows', icon: 'fas fa-project-diagram' },
       { id: 'agents', name: 'Agents', icon: 'fas fa-robot' },
       { id: 'tools', name: 'Tools', icon: 'fas fa-wrench' },
-      { id: 'plugins', name: 'Plugins', icon: 'fas fa-puzzle-piece' },
       { id: 'skills', name: 'Skills', icon: 'fas fa-graduation-cap' },
+      { id: 'plugins', name: 'Plugins', icon: 'fas fa-puzzle-piece' },
       // { id: 'featured', name: 'Featured', icon: 'fas fa-star' },
       { id: 'my-installs', name: 'My Installs', icon: 'fas fa-box-open' },
       { id: 'my-listings', name: 'My Listings', icon: 'fas fa-user-circle' },
@@ -709,6 +709,16 @@ export default {
     const marketplaceTools = computed(() => store.getters['marketplace/filteredMarketplaceTools'] || []);
     const marketplacePlugins = computed(() => store.getters['marketplace/filteredMarketplacePlugins'] || []);
     const marketplaceSkills = computed(() => store.getters['marketplace/filteredMarketplaceSkills'] || []);
+    // One list, so a new asset type cannot be added to the All tab and
+    // forgotten in free/paid, or in the spotlight pool. That is exactly how
+    // plugins stayed invisible on All after they shipped.
+    const everyAssetType = computed(() => [
+      ...marketplaceWorkflows.value,
+      ...marketplaceAgents.value,
+      ...marketplaceTools.value,
+      ...marketplaceSkills.value,
+      ...marketplacePlugins.value,
+    ]);
     const marketplaceItems = computed(() => store.getters['marketplace/filteredMarketplaceItems'] || []);
     const myPublishedItems = computed(() => store.state.marketplace.myPublishedItems || []);
     const myInstalls = computed(() => store.state.marketplace.myInstalls || []);
@@ -759,11 +769,11 @@ export default {
         case 'tools':
           items = marketplaceTools.value;
           break;
-        case 'plugins':
-          items = marketplacePlugins.value;
-          break;
         case 'skills':
           items = marketplaceSkills.value;
+          break;
+        case 'plugins':
+          items = marketplacePlugins.value;
           break;
         case 'featured':
           items = featuredWorkflows.value;
@@ -778,10 +788,11 @@ export default {
           break;
         case 'all':
           // Combine ALL asset types and remove duplicates by ID
-          // Union every asset type — plugins included. The remote /marketplace/items
-          // endpoint already returns all four types; this union was workflows+agents+
-          // tools only, which silently hid every plugin from the All tab.
-          const allItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value, ...marketplaceSkills.value];
+          // Union EVERY asset type. The remote /marketplace/items endpoint
+          // returns them all; this union was workflows+agents+tools only, which
+          // silently hid every plugin from the All tab. It now comes from one
+          // shared list so the next new type cannot repeat that.
+          const allItems = everyAssetType.value;
           const uniqueIds = new Set();
           items = allItems.filter((item) => {
             if (uniqueIds.has(item.id)) {
@@ -795,7 +806,7 @@ export default {
         case 'paid':
           // For free/paid, also combine all asset types and remove duplicates
           // Same union as 'all' — free/paid must not hide plugins either.
-          const combinedItems = [...marketplaceWorkflows.value, ...marketplaceAgents.value, ...marketplaceTools.value, ...marketplacePlugins.value, ...marketplaceSkills.value];
+          const combinedItems = everyAssetType.value;
           const seenIds = new Set();
           items = combinedItems.filter((item) => {
             if (seenIds.has(item.id)) {
@@ -923,8 +934,6 @@ export default {
           return 'tools';
         case 'plugins':
           return 'plugins';
-        case 'skills':
-          return 'skills';
         case 'featured':
           return 'items';
         case 'free':
@@ -1308,15 +1317,15 @@ export default {
           await store.dispatch('marketplace/updateFilters', filterUpdates);
           await store.dispatch('marketplace/fetchMarketplaceItems');
           break;
-        case 'plugins':
-          filterUpdates.assetType = 'plugin';
-          addLine(`[Marketplace] Viewing plugins`, 'info');
-          await store.dispatch('marketplace/updateFilters', filterUpdates);
-          await store.dispatch('marketplace/fetchMarketplaceItems');
-          break;
         case 'skills':
           filterUpdates.assetType = 'skill';
           addLine(`[Marketplace] Viewing skills`, 'info');
+          await store.dispatch('marketplace/updateFilters', filterUpdates);
+          await store.dispatch('marketplace/fetchMarketplaceItems');
+          break;
+        case 'plugins':
+          filterUpdates.assetType = 'plugin';
+          addLine(`[Marketplace] Viewing plugins`, 'info');
           await store.dispatch('marketplace/updateFilters', filterUpdates);
           await store.dispatch('marketplace/fetchMarketplaceItems');
           break;
@@ -1663,27 +1672,12 @@ export default {
      * and the router pushed a new query). Same function, so the two arrival
      * paths cannot drift apart.
      */
-    const findListing = (assetId) =>
-      [marketplaceWorkflows.value, marketplaceAgents.value, marketplaceTools.value, marketplacePlugins.value, marketplaceSkills.value]
-        .flat()
-        .find((i) => i && i.asset_id === assetId);
-
-    const openByAssetId = async (assetId) => {
+    const openByAssetId = (assetId) => {
       if (!assetId) return;
 
       // Search every bucket, not the filtered view: a link must work whatever
       // tab, category or search the user happened to leave the screen on.
-      let item = findListing(assetId);
-
-      // The buckets only hold what the LAST fetch asked for, and each type tab
-      // fetches its own type. A link arriving while the screen sits on Plugins
-      // would find no agent or skill at all. Fetch the whole catalogue once
-      // before concluding the listing does not exist.
-      if (!item) {
-        await store.dispatch('marketplace/updateFilters', { assetType: 'all' });
-        await store.dispatch('marketplace/fetchMarketplaceItems');
-        item = findListing(assetId);
-      }
+      const item = everyAssetType.value.find((i) => i && i.asset_id === assetId);
 
       if (!item) {
         // Name what was looked for. Silence here reads as "the link is broken"

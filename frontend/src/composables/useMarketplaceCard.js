@@ -23,22 +23,18 @@
 /**
  * The asset types the marketplace can actually serve.
  *
- * This is a CLOSED SET mirrored from the server's publish check
- * (MarketplaceController.publishItem: workflow | agent | tool | plugin | skill).
- * There is deliberately no `widget` — that screen can mount a shelf, but it
- * will correctly render nothing until the backend accepts the type. Callers
- * should use `isShelfEligible()` rather than assuming a shelf can be filled for
- * an arbitrary type.
- *
- * `skill` was missing long after the server began serving it, and that one
- * omission hid every published skill from the app: the Marketplace screen had
- * no bucket for them, an agnt://marketplace?item=<skill> link found nothing,
- * and the Skills screen's shelf stayed empty.
+ * This is a CLOSED SET mirrored from the server: `asset_type` is only ever one
+ * of these. `skill` joined it when the API's CHECK constraint and publish/
+ * install paths learned the type — this list must never advertise a type the
+ * backend would reject. There is still deliberately no `widget`: that screen
+ * can mount a shelf and it will correctly render nothing. Callers should use
+ * `isShelfEligible()` rather than assuming a shelf can be filled for an
+ * arbitrary type.
  */
 export const MARKETPLACE_ASSET_TYPES = Object.freeze(['agent', 'workflow', 'tool', 'plugin', 'skill']);
 
 /** Hue per asset type — the seed for every generated card gradient. */
-const TYPE_HUE = Object.freeze({ workflow: 192, agent: 150, tool: 45, plugin: 268, skill: 322 });
+const TYPE_HUE = Object.freeze({ workflow: 192, agent: 150, tool: 45, plugin: 268, skill: 320 });
 
 const ICONS = Object.freeze({
   agent: 'fas fa-robot',

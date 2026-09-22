@@ -1,43 +1,27 @@
 import { API_CONFIG } from '@/tt.config.js';
 
 /**
- * Where each installable asset type is saved on the LOCAL backend once the
- * remote install has returned its data, and which store refreshes to show it.
- * Plugins are absent on purpose: they are downloaded and installed by the
- * local plugin system (installWorkflow's plugin branch), not saved as a row.
- */
-const LOCAL_SAVE = Object.freeze({
-  workflow: { path: '/workflows/save', key: 'workflow', refresh: ['workflows/fetchWorkflows', {}] },
-  agent: { path: '/agents/save', key: 'agent', refresh: ['agents/fetchAgents', { force: true }] },
-  tool: { path: '/custom-tools/save', key: 'tool', refresh: ['tools/fetchTools', { force: true }] },
-  // The server has no SkillModel: its install returns the row, and this
-  // POST /api/skills/ is what actually creates the skill on this machine.
-  skill: { path: '/skills/', key: 'skill', refresh: ['skills/fetchSkills', undefined] },
-});
-
-/**
- * Save an installed asset to the local backend.
+ * Write an installed skill to the local backend.
  *
- * One implementation for both install paths. They used to carry separate
- * copies of this switch, which had already drifted: neither knew about
- * skills, and neither checked the response, so a failed save still reported
- * "Installed successfully".
+ * Shared by installItem and saveInstalledAsset so the two arrival paths
+ * cannot drift — the defect that leaves one of them saving a shape the other
+ * does not. POST /api/skills/ wants { skill } and requires name+description.
+ *
+ * This one DOES check the response, unlike its neighbours: reporting a
+ * successful install for a skill that never landed sends the user looking for
+ * something that is not there.
  */
-export async function saveAssetLocally({ assetType, assetData, token, dispatch }) {
-  const target = LOCAL_SAVE[assetType];
-  if (!target) throw new Error(`Unsupported asset type: ${assetType}`);
-  const response = await fetch(`${API_CONFIG.BASE_URL}${target.path}`, {
+async function saveSkillLocally(assetData, token) {
+  const response = await fetch(`${API_CONFIG.BASE_URL}/skills/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ [target.key]: assetData }),
+    body: JSON.stringify({ skill: assetData }),
   });
   if (!response.ok) {
-    let detail = '';
-    try { detail = (await response.json())?.error || ''; } catch { /* body was not JSON */ }
-    throw new Error(`Could not save the ${assetType} locally (${response.status})${detail ? `: ${detail}` : ''}`);
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to save skill (HTTP ${response.status})`);
   }
-  const [action, payload] = target.refresh;
-  await dispatch(action, payload, { root: true });
+  return response.json().catch(() => ({}));
 }
 
 export default {
@@ -165,6 +149,8 @@ export default {
         state.marketplaceAgents.push(item);
       } else if (item.asset_type === 'tool') {
         state.marketplaceTools.push(item);
+      } else if (item.asset_type === 'skill') {
+        state.marketplaceSkills.push(item);
       }
     },
     SET_MY_EARNINGS(state, earnings) {
@@ -479,6 +465,54 @@ export default {
         }
 
         switch (assetType) {
+          case 'workflow':
+            // Save workflow to local backend
+            await fetch(`${API_CONFIG.BASE_URL}/workflows/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ workflow: assetData }),
+            });
+            await dispatch('workflows/fetchWorkflows', {}, { root: true });
+            break;
+
+          case 'agent':
+            // Save agent to local backend
+            await fetch(`${API_CONFIG.BASE_URL}/agents/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ agent: assetData }),
+            });
+            await dispatch('agents/fetchAgents', { force: true }, { root: true });
+            break;
+
+          case 'tool':
+            // Save tool to local backend
+            await fetch(`${API_CONFIG.BASE_URL}/custom-tools/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ tool: assetData }),
+            });
+            await dispatch('tools/fetchTools', { force: true }, { root: true });
+            break;
+
+          case 'skill':
+            // POST /api/skills/ wraps the row in { skill } and requires name +
+            // description. Unlike the saves above this checks the response:
+            // a skill that failed to save while the install said "success"
+            // leaves the user hunting for something that was never there.
+            await saveSkillLocally(assetData, token);
+            await dispatch('skills/fetchSkills', null, { root: true });
+            break;
+
           case 'plugin':
             // For plugins, download and install via local plugin system
             // assetData contains: { name, downloadUrl, manifest, ... }
@@ -504,7 +538,7 @@ export default {
             break;
 
           default:
-            await saveAssetLocally({ assetType, assetData, token, dispatch });
+            throw new Error(`Unsupported asset type: ${assetType}`);
         }
 
         return data;
@@ -530,7 +564,51 @@ export default {
           throw new Error('No authentication token found');
         }
 
-        await saveAssetLocally({ assetType, assetData, token, dispatch });
+        switch (assetType) {
+          case 'workflow':
+            await fetch(`${API_CONFIG.BASE_URL}/workflows/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ workflow: assetData }),
+            });
+            await dispatch('workflows/fetchWorkflows', {}, { root: true });
+            break;
+
+          case 'agent':
+            await fetch(`${API_CONFIG.BASE_URL}/agents/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ agent: assetData }),
+            });
+            await dispatch('agents/fetchAgents', { force: true }, { root: true });
+            break;
+
+          case 'tool':
+            await fetch(`${API_CONFIG.BASE_URL}/custom-tools/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ tool: assetData }),
+            });
+            await dispatch('tools/fetchTools', { force: true }, { root: true });
+            break;
+
+          case 'skill':
+            await saveSkillLocally(assetData, token);
+            await dispatch('skills/fetchSkills', null, { root: true });
+            break;
+
+          default:
+            throw new Error(`Unsupported asset type: ${assetType}`);
+        }
 
         return { success: true };
       } catch (error) {
@@ -1090,7 +1168,9 @@ export default {
     filteredMarketplacePlugins: (state) => {
       return state.marketplacePlugins;
     },
-    filteredMarketplaceSkills: (state) => state.marketplaceSkills,
+    filteredMarketplaceSkills: (state) => {
+      return state.marketplaceSkills;
+    },
     isLoading: (state) => state.isLoading,
     error: (state) => state.error,
     selectedItem: (state) => state.selectedItem,

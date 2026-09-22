@@ -185,7 +185,7 @@ export default {
     itemType: {
       type: String,
       required: true,
-      validator: (value) => ['workflow', 'agent', 'tool', 'plugin', 'marketplace-item'].includes(value),
+      validator: (value) => ['workflow', 'agent', 'tool', 'plugin', 'skill', 'marketplace-item'].includes(value),
     },
     item: {
       type: Object,
@@ -365,7 +365,9 @@ export default {
       if (props.mode === 'publish') {
         if (props.itemType === 'workflow') {
           payload.workflow_id = props.item?.id;
-        } else if (props.itemType === 'agent' || props.itemType === 'tool') {
+        } else if (props.itemType === 'agent' || props.itemType === 'tool' || props.itemType === 'skill') {
+          // Same shape for all three: a local UUID as the asset id, and the
+          // asset itself in asset_data.
           payload.asset_id = props.item?.id;
           payload.asset_type = props.itemType;
         } else if (props.itemType === 'plugin') {
