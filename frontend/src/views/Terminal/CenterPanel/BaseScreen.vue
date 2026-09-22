@@ -159,10 +159,30 @@
                 <span class="chat-btn-label">Attach<span v-if="selectedFiles.length" class="chat-btn-count">{{ selectedFiles.length }}</span></span>
               </button>
             </Tooltip>
-            <Tooltip text="Model & provider" width="auto">
-              <button v-if="!isStreaming" @click="toggleProviderSelector" class="chat-provider-button">
+            <!--
+              This button says which model the chat WILL USE, not the word
+              "Model". A conversation can carry its own AI pin (chat.aiByConv),
+              and that pin beats the global selection on every send (chat.js,
+              hasConvAiOverride) — so with a static label, a pinned chat
+              silently ignored the model chosen in Settings and nothing on
+              screen explained why. The pin marker distinguishes "this CHAT
+              owns its model" from "following your global default", which is
+              the difference that makes a global change look broken.
+
+              The label rides .chat-btn-label, so the container query below
+              still collapses it to an icon on a narrow composer; the pin sits
+              OUTSIDE that span so the state survives the collapse.
+            -->
+            <Tooltip :text="providerButtonTooltip" width="auto">
+              <button
+                v-if="!isStreaming"
+                @click="toggleProviderSelector"
+                class="chat-provider-button"
+                :class="{ 'is-pinned': isConversationModelPinned }"
+              >
                 <i class="fas fa-robot"></i>
-                <span class="chat-btn-label">Model</span>
+                <span class="chat-btn-label chat-provider-model">{{ effectiveModelLabel || 'Model' }}</span>
+                <i v-if="isConversationModelPinned" class="fas fa-thumbtack chat-provider-pin"></i>
               </button>
             </Tooltip>
             <Tooltip text="Tools this chat may use" width="auto">
@@ -964,6 +984,39 @@ export default {
     watch([isProviderSelectorOpen, isToolSelectorOpen, isMobile], ([provider, tools, mobile]) => {
       if (mobile && (provider || tools)) pickerLayer.open(provider ? 'provider' : 'tools');
       else pickerLayer.close({ restoreFocus: mobile });
+    });
+
+    // --- Effective model named on the provider button ---
+    //
+    // Resolution mirrors the SEND path exactly (chat.js
+    // startStreamingConversation): a conversation override IS a pin and wins,
+    // otherwise the global selection applies. Channel config is deliberately
+    // not read here — ChatProviderSelector.restoreChannelConfig() already
+    // mirrors it into the global Vuex selection, so reading localStorage too
+    // would be a second, non-reactive source of the same answer.
+    const conversationAi = computed(() =>
+      props.conversationId ? store.state.chat?.aiByConv?.[props.conversationId] || null : null,
+    );
+
+    // Both halves required: conversation_settings holds rows with
+    // routing_mode='pinned' and a NULL pair, and reading those as a pin would
+    // render an empty label and claim the chat is pinned to nothing.
+    const isConversationModelPinned = computed(
+      () => !!(conversationAi.value?.provider && conversationAi.value?.model),
+    );
+
+    const effectiveModelLabel = computed(() =>
+      isConversationModelPinned.value
+        ? conversationAi.value.model
+        : store.state.aiProvider?.selectedModel || '',
+    );
+
+    const providerButtonTooltip = computed(() => {
+      if (isConversationModelPinned.value) {
+        return `This chat is pinned to ${conversationAi.value.model}. Changing your global model will NOT affect it — click to change or reset.`;
+      }
+      const model = store.state.aiProvider?.selectedModel;
+      return model ? `Using ${model} (global default) — click to change` : 'Model & provider';
     });
 
     const toggleProviderSelector = () => {
@@ -1808,6 +1861,9 @@ export default {
       // Provider selector
       isProviderSelectorOpen,
       providerSelectorStyle,
+      effectiveModelLabel,
+      isConversationModelPinned,
+      providerButtonTooltip,
       toggleProviderSelector,
       closeProviderSelector,
       // Tool selector
@@ -3061,6 +3117,34 @@ body[data-page='terminal-goals'] .scrollable-content {
 }
 .chat-btn-label {
   white-space: nowrap;
+}
+
+/* Model ids are long and unbounded ('claude-fable-5-1', 'stealth/ox-alpha').
+   Clamp the name instead of letting it push the send button off the row — the
+   composer is a container query, so an unbounded label here would trip the
+   collapse breakpoint rather than simply overflow. */
+.chat-provider-model {
+  display: inline-block;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  font-family: var(--font-family-mono);
+}
+
+/* --color-primary, not --color-blue: every theme redefines primary, so the
+   pinned accent follows the active theme instead of staying blue in all of
+   them. Hover must not wipe it out — that colour IS the signal. */
+.chat-provider-button.is-pinned,
+.chat-provider-button.is-pinned:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+/* Sits outside .chat-btn-label so the pin survives the container-query
+   collapse: on a narrow composer the name goes, the pinned state stays. */
+.chat-provider-pin {
+  font-size: 0.85em;
+  opacity: 0.9;
 }
 .chat-btn-count {
   margin-left: 4px;
