@@ -68,7 +68,7 @@ describe('SystemOverviewPanel presentation', () => {
     expect(wrapper.emitted('panel-action')).toEqual(destinations.map((destination) => ['navigate', destination]));
   });
 
-  it('retains exact large counts, add-on totals and reactive live state', async () => {
+  it('retains exact large counts, plugin totals and reactive live state', async () => {
     const { wrapper, store } = renderPanel();
     await flushPromises();
     expect(wrapper.findAll('.sys-tile')[0].text()).toContain('1234567');

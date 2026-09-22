@@ -24,7 +24,7 @@ export const TOUR_TARGETS = [
   { id: 'sidebar.tools',            selector: '[data-tour-id="sidebar.tools"]',            screen: null, description: 'Sidebar button: Tools (tabs: Tools, Widgets)', safeToSimulate: true },
 
   // ── Sidebar: CONNECTORS ────────────────────────────────────────────
-  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',             screen: null, description: 'Sidebar button: Apps (tabs: Apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Add-ons — plugins)', safeToSimulate: true },
+  { id: 'sidebar.apps',             selector: '[data-tour-id="sidebar.apps"]',             screen: null, description: 'Sidebar button: Apps (tabs: Apps — AI providers, API/OAuth, Emails, MCP, Vault, Webhooks; Plugins — installed and marketplace)', safeToSimulate: true },
   { id: 'sidebar.store',            selector: '[data-tour-id="sidebar.store"]',            screen: null, description: 'Sidebar button: Store (the marketplace)', safeToSimulate: true },
 
   // ── Sidebar: foot of the rail + controls ───────────────────────────

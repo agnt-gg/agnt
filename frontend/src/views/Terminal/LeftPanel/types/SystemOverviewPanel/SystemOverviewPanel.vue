@@ -78,16 +78,16 @@ const HYDRATION = [
   ['contentOutputs/outputs', 'contentOutputs/fetchOutputs', { limit: 1, offset: 0, loadAll: false, force: true }],
 ];
 
-// Add-ons has no store module, and the tools-derived `installedPlugins` getter
+// Plugins have no store module, and the tools-derived `installedPlugins` getter
 // groups plugin TOOLS by plugin_name — so a plugin that ships only agents,
 // workflows, skills or widgets (see GET /plugins/:name/assets) counts as zero.
 // GET /plugins/installed reports stats.total for every installed plugin.
-const fetchAddOnCount = async () => {
+const fetchPluginCount = async () => {
   const token = localStorage.getItem('token');
   const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/installed`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!response.ok) throw new Error(`Add-on count failed: ${response.status}`);
+  if (!response.ok) throw new Error(`Plugin count failed: ${response.status}`);
   const body = await response.json();
   return body?.stats?.total ?? (Array.isArray(body?.plugins) ? body.plugins.length : 0);
 };
@@ -98,7 +98,7 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const hydrating = ref(true);
-    const addOns = ref(0);
+    const pluginCount = ref(0);
 
     const g = (key, fallback) => {
       const v = store.getters[key];
@@ -131,7 +131,7 @@ export default {
         { label: 'Tools', value: len(g('tools/customTools', [])), icon: 'fas fa-wrench', screen: 'ToolsScreen' },
         { label: 'Skills', value: len(g('skills/allSkills', [])), icon: 'fas fa-graduation-cap', screen: 'SkillsScreen' },
         { label: 'Widgets', value: len(g('widgetDefinitions/allDefinitions', [])), icon: 'fas fa-th', screen: 'WidgetManagerScreen' },
-        { label: 'Add-ons', value: addOns.value, icon: 'fas fa-puzzle-piece', screen: 'PluginsScreen' },
+        { label: 'Plugins', value: pluginCount.value, icon: 'fas fa-puzzle-piece', screen: 'PluginsScreen' },
         { label: 'Memories', value: len(g('insights/agentMemories', [])), icon: 'fas fa-brain', screen: 'MemoryScreen' },
         { label: 'Schedules', value: len(g('schedules/allSchedules', [])), icon: 'fas fa-clock', screen: 'AutonomyScreen', opts: { section: 'schedules' } },
         { label: 'Connections', value: `${healthy} / ${total}`, icon: 'fas fa-plug', screen: 'ConnectorsScreen' },
@@ -147,9 +147,9 @@ export default {
         store.dispatch(action, payload).catch(() => {}),
       );
       jobs.push(
-        fetchAddOnCount()
+        fetchPluginCount()
           .then((count) => {
-            addOns.value = count;
+            pluginCount.value = count;
           })
           .catch(() => {}),
       );

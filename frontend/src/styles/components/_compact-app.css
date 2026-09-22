@@ -265,7 +265,7 @@
  .plugins-container .tabs{padding:10px 0;}
  .plugins-container .manual-install-section{border-radius:12px;margin-bottom:14px;}
  .plugins-container .section-header{min-height:48px;}
- .plugins-container .m-addon-version{font-size:11px;color:var(--color-text-muted);padding:10px 0;}
+ .plugins-container .m-plugin-version{font-size:11px;color:var(--color-text-muted);padding:10px 0;}
 }
 
 @media(max-width:800px){

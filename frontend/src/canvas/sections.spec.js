@@ -348,7 +348,7 @@ describe('canvas sections registry', () => {
     });
   });
 
-  it('CONNECTORS is Apps (Apps · Add-ons) then Store, last in the main rail; Settings is the foot alone', () => {
+  it('CONNECTORS is Apps (Apps · Plugins) then Store, last in the main rail; Settings is the foot alone', () => {
     // To a business user "connect Slack" and "install the Slack plugin" are
     // one intent, so Connections and Plugins are two tabs of one row. "Which
     // model" is one more thing you connect, so it is a view inside Apps
@@ -356,7 +356,9 @@ describe('canvas sections registry', () => {
     const connectors = MAIN_SECTIONS.filter((s) => s.group === 'CONNECTORS');
     expect(connectors.map((s) => s.id)).toEqual(['apps', 'store']);
     const apps = connectors[0];
-    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS', 'ADD-ONS']);
+    // "Add-on" is not a thing AGNT has. The unit is a plugin, everywhere the
+    // user can read one: this tab, the mobile heading, and the system counts.
+    expect(visibleTabs(apps, 'ConnectorsScreen').map((t) => t.label)).toEqual(['APPS', 'PLUGINS']);
     expect(apps.screens.map((t) => t.screen)).toEqual(['ConnectorsScreen', 'PluginsScreen']);
     expect(connectors[1].screens).toEqual([{ screen: 'MarketplaceScreen', label: 'STORE' }]);
     expect(MAIN_SECTIONS.slice(-2).map((s) => s.group)).toEqual(['CONNECTORS', 'CONNECTORS']);

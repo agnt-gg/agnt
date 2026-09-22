@@ -165,12 +165,12 @@ export const MAIN_SECTIONS = [
     badge: 'connect',
     screens: [
       { screen: 'ConnectorsScreen', label: 'APPS' },
-      { screen: 'PluginsScreen', label: 'ADD-ONS' },
+      { screen: 'PluginsScreen', label: 'PLUGINS' },
     ],
   },
   {
     // One word everyone already understands. It sells agents, workflows,
-    // tools, widgets and add-ons, so it is procurement for everything above
+    // tools, widgets and plugins, so it is procurement for everything above
     // rather than a tab of any one thing.
     id: 'store',
     group: 'CONNECTORS',

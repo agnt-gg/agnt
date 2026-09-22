@@ -76,7 +76,7 @@ describe('SystemOverviewPanel store bindings', () => {
     expect(source).toMatch(/limit: 1, offset: 0, loadAll: false, force: true/);
   });
 
-  it('counts add-ons from the plugins endpoint, not from plugin tools', () => {
+  it('counts plugins from the plugins endpoint, not from plugin tools', () => {
     // tools/installedPlugins groups plugin TOOLS by plugin_name, so a plugin
     // shipping only agents/workflows/skills/widgets would count as zero.
     expect(source).toMatch(/\/plugins\/installed/);
