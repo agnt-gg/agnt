@@ -1354,7 +1354,7 @@
       "category": "action",
       "type": "computer-use",
       "icon": "connect",
-      "description": "Drive this computer: real windows, real clicks, real typing. ONE tool — every capability is an `action`. LOOK: list_windows (what can I drive? pid + windowId for everything open), list_apps (what is installed, with a launchPath), observe (the window's accessibility tree + screenshot — every element gets an elementToken), observe_desktop, zoom, verify. ACT (needs confirm=true): click, double_click, right_click, type, paste_text, press_key, hotkey, scroll, set_value, drag, invoke_menu, clipboard_read, clipboard_write, set_window_frame, launch_app, bring_to_front, kill_app. ADDRESSING: target elements with elementToken from the LATEST observe (preferred) or elementIndex+snapshotId; a stale token is refused rather than clicked blind. Window-local x/y works for canvas surfaces. DELIVERY: background is the default and the mandatory first attempt — no cursor warp, no focus steal, no window raise. Escalate to foreground only when the driver itself says background is impossible. OUTCOMES: read `effect` — effect=\"unverifiable\" means the driver will not overclaim, NOT that the action failed. SESSION: session_start/session_state/session_end and cursor_on/cursor_off control the agent cursor and capture scope. DIAGNOSE: ensure (one-call bootstrap — install, start daemon, health probe), doctor, health, driver_status, permissions, config. The driver auto-starts, so LOOK and ACT work without calling ensure first.",
+      "description": "Drive this computer: real windows, real clicks, real typing. ONE tool — every capability is an `action`. LOOK: list_windows (what can I drive? pid + windowId for everything open), list_apps (what is installed, with a launchPath), observe (the window's accessibility tree + screenshot — every element gets an elementToken), observe_desktop, zoom, verify. ACT (needs confirm=true): click, double_click, right_click, type, paste_text, press_key, hotkey, scroll, set_value, drag, stroke (a path: points=[{x,y},...] with the button held throughout — for painting, signing, scrubbing), invoke_menu, clipboard_read, clipboard_write, set_window_frame, launch_app, bring_to_front, kill_app. CANVASES (Paint, WebGL, video, custom-drawn): they have no accessibility tree, so observe reports ax_tree_empty and escalation=px — that is the signal to act by pixel off the screenshot with deliveryMode=\"foreground\" (a canvas needs real pointer capture, which only SendInput gives). Use stroke, not drag, for anything that is a line rather than a jump. ADDRESSING: target elements with elementToken from the LATEST observe (preferred) or elementIndex+snapshotId; a stale token is refused rather than clicked blind. Window-local x/y works for canvas surfaces. DELIVERY: background is the default and the mandatory first attempt — no cursor warp, no focus steal, no window raise. Escalate to foreground only when the driver itself says background is impossible. OUTCOMES: read `effect` — effect=\"unverifiable\" means the driver will not overclaim, NOT that the action failed. SESSION: session_start/session_state/session_end and cursor_on/cursor_off control the agent cursor and capture scope. DIAGNOSE: ensure (one-call bootstrap — install, start daemon, health probe), doctor, health, driver_status, permissions, config. The driver auto-starts, so LOOK and ACT work without calling ensure first.",
       "parameters": {
         "action": {
           "type": "string",
@@ -1378,6 +1378,7 @@
             "scroll",
             "set_value",
             "drag",
+            "stroke",
             "invoke_menu",
             "clipboard_read",
             "clipboard_write",
@@ -1405,7 +1406,7 @@
             "stop",
             "version"
           ],
-          "description": "What to do. LOOK: list_windows, list_apps, list_windows_and_apps, observe, observe_desktop, zoom, verify. ACT: click, double_click, right_click, type, paste_text, press_key, hotkey, scroll, set_value, drag, invoke_menu, clipboard_read, clipboard_write, set_window_frame, launch_app, bring_to_front, kill_app. SESSION: session_start, session_state, session_escalate, session_end, cursor_on, cursor_off, cursor_theme. DIAGNOSE: ensure, doctor, health, driver_status, permissions, config, driver_tools, install, update, serve, stop, version."
+          "description": "What to do. LOOK: list_windows, list_apps, list_windows_and_apps, observe, observe_desktop, zoom, verify. ACT: click, double_click, right_click, type, paste_text, press_key, hotkey, scroll, set_value, drag, stroke, invoke_menu, clipboard_read, clipboard_write, set_window_frame, launch_app, bring_to_front, kill_app. SESSION: session_start, session_state, session_escalate, session_end, cursor_on, cursor_off, cursor_theme. DIAGNOSE: ensure, doctor, health, driver_status, permissions, config, driver_tools, install, update, serve, stop, version."
         },
         "confirm": {
           "type": "string",
@@ -1514,6 +1515,27 @@
           "inputType": "number",
           "required": false,
           "description": "Drag end Y."
+        },
+        "points": {
+          "type": "array",
+          "inputType": "textarea",
+          "required": false,
+          "items": {
+            "type": "object"
+          },
+          "description": "For stroke: 2..200 {x,y} points in window-local screenshot pixels. The button is pressed at the first, held through every point, released at the last -- one continuous path, which is what a paint canvas, a signature field or a slider needs and a two-point drag cannot give."
+        },
+        "steps": {
+          "type": "number",
+          "inputType": "number",
+          "required": false,
+          "description": "For drag: intermediate pointer-move events along the path (default 20, max 200). Raise it for canvases that sample motion."
+        },
+        "durationMs": {
+          "type": "number",
+          "inputType": "number",
+          "required": false,
+          "description": "For drag/stroke: wall-clock budget for the gesture (default 500). Slower reads as a hand, faster as a teleport."
         },
         "width": {
           "type": "number",

@@ -12,8 +12,23 @@ export function observationImages(base64, { mimeType = 'image/png', coordinateSp
   return [{ mimeType, data: base64, width, height, coordinateSpace, capturedAt: new Date().toISOString(), ...target }];
 }
 
+/**
+ * Which tool outputs carry a screenshot the model must SEE.
+ *
+ * `computer-use` is one tool whose LOOK actions (observe / observe_desktop /
+ * zoom / verify) return pixels and whose ACT actions do not. The gate is on
+ * the tool name, not the action, because at this point in the pipeline only
+ * the name is known -- and a result that carries no `modelImages` is simply
+ * passed through untouched below, so widening the name match to the unified
+ * tool costs nothing for a click. What it buys is the entire visual loop:
+ * without it every screenshot the unified tool took was deleted from the
+ * result and never reached the model. Measured live 2026-09-22 -- the agent
+ * painted blind for an hour.
+ */
+const CARRIES_SCREENSHOT = /^computer[-_](use|observe)$/;
+
 export function captureComputerImages(serialized, toolName, toolCallId, context, persistImage = null) {
-  if (!/^computer[-_]observe$/.test(toolName)) return serialized;
+  if (!CARRIES_SCREENSHOT.test(toolName)) return serialized;
   let observation;
   context.computerImages = [];
   try { observation = JSON.parse(serialized); } catch { return serialized; }

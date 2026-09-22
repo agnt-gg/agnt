@@ -18,8 +18,15 @@ export function createComputerOperationQueue() {
 }
 export const enqueueComputerOperation = createComputerOperationQueue();
 
+/**
+ * Every tool that touches the one shared desktop. `computer-use` is the tool
+ * the model is handed; the five engine names remain for history and for the
+ * engines' own tests. A name missing from here runs OUTSIDE the serial lane
+ * -- measured live 2026-09-22: the unified tool was absent, so its calls ran
+ * in parallel with each other and its screenshots were never attached.
+ */
 export function isComputerOperation(name) {
-  return /^computer[-_](observe|input|session|windows|setup)$/.test(name || '');
+  return /^computer[-_](use|observe|input|session|windows|setup)$/.test(name || '');
 }
 
 // Order complete calls before async bookkeeping can reorder their arrival at

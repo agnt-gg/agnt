@@ -75,6 +75,9 @@ const ROUTES = {
   scroll: { engine: 'input' },
   set_value: { engine: 'input' },
   drag: { engine: 'input' },
+  // A path with the button held through every point. What painting, signing
+  // and slider-scrubbing need and a two-point drag cannot give.
+  stroke: { engine: 'input' },
   invoke_menu: { engine: 'input' },
   clipboard_read: { engine: 'input' },
   clipboard_write: { engine: 'input' },
@@ -132,8 +135,13 @@ class ComputerUse extends BaseAction {
       + 'LOOK: list_windows (what can I drive? pid + windowId for everything open), list_apps (what is installed, with a '
       + 'launchPath), observe (the window\'s accessibility tree + screenshot — every element gets an elementToken), '
       + 'observe_desktop, zoom, verify. ACT (needs confirm=true): click, double_click, right_click, type, paste_text, '
-      + 'press_key, hotkey, scroll, set_value, drag, invoke_menu, clipboard_read, clipboard_write, set_window_frame, '
+      + 'press_key, hotkey, scroll, set_value, drag, stroke (a path: points=[{x,y},...] with the button held throughout '
+      + '— for painting, signing, scrubbing), invoke_menu, clipboard_read, clipboard_write, set_window_frame, '
       + 'launch_app, bring_to_front, kill_app. '
+      + 'CANVASES (Paint, WebGL, video, custom-drawn): they have no accessibility tree, so observe reports '
+      + 'ax_tree_empty and escalation=px — that is the signal to act by pixel off the screenshot with '
+      + 'deliveryMode="foreground" (a canvas needs real pointer capture, which only SendInput gives). '
+      + 'Use stroke, not drag, for anything that is a line rather than a jump. '
       + 'ADDRESSING: target elements with elementToken from the LATEST observe (preferred) or elementIndex+snapshotId; '
       + 'a stale token is refused rather than clicked blind. Window-local x/y works for canvas surfaces. '
       + 'DELIVERY: background is the default and the mandatory first attempt — no cursor warp, no focus steal, no window '
@@ -149,7 +157,7 @@ class ComputerUse extends BaseAction {
         required: true,
         options: ACTION_NAMES,
         description: 'What to do. LOOK: list_windows, list_apps, list_windows_and_apps, observe, observe_desktop, zoom, verify. '
-          + 'ACT: click, double_click, right_click, type, paste_text, press_key, hotkey, scroll, set_value, drag, invoke_menu, '
+          + 'ACT: click, double_click, right_click, type, paste_text, press_key, hotkey, scroll, set_value, drag, stroke, invoke_menu, '
           + 'clipboard_read, clipboard_write, set_window_frame, launch_app, bring_to_front, kill_app. '
           + 'SESSION: session_start, session_state, session_escalate, session_end, cursor_on, cursor_off, cursor_theme. '
           + 'DIAGNOSE: ensure, doctor, health, driver_status, permissions, config, driver_tools, install, update, serve, stop, version.',

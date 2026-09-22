@@ -22,6 +22,7 @@ import {
   verifyState, asBool, asInt, resolveDriverPath, notInstalledResult, ensureReady,
   callTool, invokeMenu, clipboardRead, clipboardWrite, setWindowFrame,
 } from '../../../services/computerUse/driver.js';
+import { pointerStroke } from '../../../services/computerUse/pointer.js';
 
 const DELIVERY_AWARE = new Set(['click', 'double_click', 'right_click', 'type', 'press_key', 'scroll', 'hotkey', 'paste_text']);
 
@@ -49,6 +50,7 @@ class ComputerInput extends BaseAction {
           "scroll",
           "set_value",
           "drag",
+          "stroke",
           "invoke_menu",
           "clipboard_read",
           "clipboard_write",
@@ -149,6 +151,25 @@ class ComputerInput extends BaseAction {
         "inputType": "number",
         "required": false,
         "description": "Drag end Y."
+      },
+      "points": {
+        "type": "array",
+        "inputType": "textarea",
+        "required": false,
+        "items": {"type": "object"},
+        "description": "For stroke: 2..200 {x,y} points in window-local screenshot pixels. The button is pressed at the first, held through every point, released at the last -- one continuous path, which is what a paint canvas, a signature field or a slider needs and a two-point drag cannot give."
+      },
+      "steps": {
+        "type": "number",
+        "inputType": "number",
+        "required": false,
+        "description": "For drag: intermediate pointer-move events along the path (default 20, max 200). Raise it for canvases that sample motion."
+      },
+      "durationMs": {
+        "type": "number",
+        "inputType": "number",
+        "required": false,
+        "description": "For drag/stroke: wall-clock budget for the gesture (default 500). Slower reads as a hand, faster as a teleport."
       },
       "width": {
         "type": "number",
@@ -547,7 +568,75 @@ class ComputerInput extends BaseAction {
           const arg = { ...base(), from_x: x, from_y: y, to_x: x2, to_y: y2 };
           if (windowId != null) arg.window_id = windowId;
           if (deliveryMode) arg.delivery_mode = deliveryMode;
+          const steps = asInt(params?.steps, 0, 1, 200);
+          const durationMs = asInt(params?.durationMs, 0, 1, 10000);
+          if (steps) arg.steps = steps;
+          if (durationMs) arg.duration_ms = durationMs;
           return finish(await callTool('drag', arg, { timeoutMs: 30000 }));
+        }
+
+        // A PATH, not a line.
+        //
+        // THE BUG THIS REPLACES. The first version of this ran one driver
+        // `drag` per segment. Every drag PRESSES AND RELEASES, so a 40-point
+        // stroke was 40 separate click-drags, and a canvas -- which holds
+        // mouse capture from button-down to button-up -- rendered nothing but
+        // disconnected taps. Measured live on Paint: blank canvas, every call
+        // reporting success. The driver has no press/move/release primitives
+        // to build a held path from, which is why pointer.js exists: SendInput
+        // on Windows, CGEvent on macOS, xdotool on Linux, one button-down,
+        // real motion through every point, one button-up.
+        case 'stroke': {
+          let points = params?.points;
+          if (typeof points === 'string') {
+            try { points = JSON.parse(points); } catch { return { success: false, error: 'points must be a JSON array of {x,y}.' }; }
+          }
+          if (pid == null || !Array.isArray(points) || points.length < 2) {
+            return { success: false, error: 'action="stroke" requires pid and points: 2..200 {x,y} in window-local screenshot pixels.' };
+          }
+          if (points.length > 200) return { success: false, error: 'stroke is capped at 200 points; split it.' };
+          const pts = points.map((p) => ({ x: Number(p?.x), y: Number(p?.y) }));
+          if (pts.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+            return { success: false, error: 'every stroke point needs finite x and y.' };
+          }
+          // Window-local screenshot pixels -> screen space. The model points
+          // at a pixel in the image it was shown; the pointer has to land on
+          // that same pixel on the actual display.
+          const wins = await callTool('list_windows', {}, { timeoutMs: 15000 });
+          const win = (wins.json?.windows || []).find(
+            (w) => w.pid === pid && (windowId == null || w.window_id === windowId),
+          );
+          if (!win?.bounds) {
+            return { success: false, dispatched: false, error: `Could not read window bounds for pid ${pid}${windowId != null ? ` window ${windowId}` : ''} — is it still open?` };
+          }
+          const screenPts = pts.map((p) => ({ x: win.bounds.x + p.x, y: win.bounds.y + p.y }));
+
+          // A canvas only takes capture from the foreground window.
+          const frontArg = { pid };
+          if (windowId != null) frontArg.window_id = windowId;
+          await callTool('bring_to_front', frontArg, { timeoutMs: 15000 });
+          await new Promise((r) => { setTimeout(r, 250); });
+
+          const totalMs = asInt(params?.durationMs, 0, 1, 20000) || Math.min(6000, 30 * pts.length);
+          const stepMs = Math.max(1, Math.round(totalMs / pts.length));
+          try {
+            const res = pointerStroke(screenPts, { button: 'left', stepMs });
+            return {
+              success: true,
+              dispatched: true,
+              action: 'stroke',
+              target: { pid, windowId },
+              effect: 'unverifiable',
+              route: 'trusted_input',
+              deliveryMode: 'foreground',
+              points: res.points,
+              from: pts[0],
+              to: pts[pts.length - 1],
+              hint: 'Stroke delivered with the button held through every point. Confirm with observe — a canvas cannot report what it drew.',
+            };
+          } catch (e) {
+            return { success: false, dispatched: false, action: 'stroke', error: String(e.message || e).slice(0, 300) };
+          }
         }
 
         // Native menu path — resolved one live level at a time through the
