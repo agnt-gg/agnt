@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!--
+  Shown INSIDE a team space's view when its instance cannot be reached. The
+  primary space and every other space keep working, so the way out is always
+  one click: retry this team, or go back to Personal.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>AGNT — team unavailable</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #12121c; color: #e0e0e0; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; padding: 32px; -webkit-app-region: drag; }
+      .card { width: 100%; max-width: 460px; background: #1b1b2b; border: 1px solid #2e3350; border-radius: 16px; padding: 32px; -webkit-app-region: no-drag; }
+      .mark { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; margin-bottom: 20px; background: rgba(255, 215, 0, 0.14); color: #ffd700; }
+      h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+      p { margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #8b93a7; }
+      code { display: block; padding: 10px 12px; margin-bottom: 20px; background: #12121c; border: 1px solid #2e3350; border-radius: 8px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; word-break: break-all; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+      button { font: inherit; font-size: 14px; padding: 10px 16px; border-radius: 10px; cursor: pointer; border: 1px solid #2e3350; background: transparent; color: #e0e0e0; }
+      button.primary { background: #19ef83; border-color: #19ef83; color: #0b0b12; font-weight: 600; }
+      button:focus-visible { outline: 2px solid #19ef83; outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="alert">
+      <div class="mark" aria-hidden="true">!</div>
+      <h1 id="title">This team is unreachable</h1>
+      <p>Your personal space and your other teams are unaffected. The team's instance may be restarting, or this computer may be offline.</p>
+      <code id="address"></code>
+      <div class="row">
+        <button class="primary" id="retry">Try again</button>
+        <button id="personal">Back to Personal</button>
+      </div>
+    </main>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const name = params.get('name') || 'This team';
+      const target = params.get('url') || '';
+      document.getElementById('title').textContent = name + ' is unreachable';
+      document.getElementById('address').textContent = target.replace(/\?.*$/, '');
+      document.getElementById('retry').addEventListener('click', () => { if (/^https?:\/\//.test(target)) location.href = target; });
+      document.getElementById('personal').addEventListener('click', () => window.electron?.spaces?.switch('primary'));
+    </script>
+  </body>
+</html>

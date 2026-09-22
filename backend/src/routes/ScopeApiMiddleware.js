@@ -6,17 +6,18 @@ import {CloudTeamClient} from '../services/CloudTeamClient.js';
 import {TEAM_ASSET_APIS,scopeApiAction,requireScopeApiRole} from '../services/authorization/ScopeApiPolicy.js';
 import {withScopeRequest} from '../services/authorization/ScopeRequestContext.js';
 const repository=databaseRepository(db),cloud=new CloudTeamClient();
-export function createScopeApiMiddleware(authenticate,getWorkspace){return async(req,res,next)=>{
+export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWorkspace=async()=>null){return async(req,res,next)=>{
  const teamId=req.headers['x-agnt-team-id'];if(!teamId)return next();
  const api=req.path.split('/')[1];if(!TEAM_ASSET_APIS.has(api))return res.status(403).json({error:'This API is not available in a team scope'});
  return authenticate(req,res,async()=>{try{
   if(!process.env.AGNT_TENANT_SLUG)throw Object.assign(new Error('Open the team cloud instance'),{status:409});
   await dbReady;
   const team=await cloud.access(req.headers.authorization,teamId);
-  const workspaceId=req.headers['x-agnt-workspace-id']||null;
+  // No project named: the team's default project. An explicitly named project is never substituted.
+  const workspaceId=req.headers['x-agnt-workspace-id']||(await getDefaultWorkspace(teamId))?.id||null;
   if(workspaceId){const workspace=await getWorkspace(workspaceId);if(!workspace||workspace.team_id!==teamId||workspace.archived_at)throw Object.assign(new Error('Workspace not found'),{status:404});}
   const action=scopeApiAction(req.method,req.path);requireScopeApiRole(team.role,action);
-  if(!workspaceId)throw Object.assign(new Error('Select a cloud workspace for native resources'),{status:403});
+  if(!workspaceId)throw Object.assign(new Error('This team has no project yet. The owner creates one by opening the team.'),{status:403,code:'no_default_project'});
   const capability=action==='view'?'resources.read':action==='run'?'runs.execute':'resources.write';
   await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(process.env.AGNT_TENANT_SLUG)+'/workspaces/'+encodeURIComponent(workspaceId)+'/access/'+capability);
   const scope=await ensureSharedScope(repository,teamId,workspaceId);

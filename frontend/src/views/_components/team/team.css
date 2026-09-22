@@ -1,0 +1,36 @@
+/* Shared by every Team view. Scoped under .team-panel so it never leaks into the app. */
+.team-panel { height: 100%; display: flex; flex-direction: column; background: var(--color-background); color: var(--color-text); overflow: auto; font-size: 13px; }
+.team-panel button, .team-panel input, .team-panel textarea { font: inherit; color: var(--color-text); border: 1px solid var(--terminal-border-color); border-radius: 6px; background: var(--color-darker-0); padding: 8px 10px; }
+.team-panel button { cursor: pointer; }
+.team-panel button:disabled { opacity: .5; cursor: default; }
+.team-panel button:hover:not(:disabled) { color: var(--color-primary); border-color: rgba(var(--primary-rgb), .35); }
+.team-panel button:focus-visible { outline: 2px solid var(--color-primary); }
+.team-panel button.primary { background: rgba(var(--primary-rgb), .12); border-color: rgba(var(--primary-rgb), .4); color: var(--color-primary); }
+.team-panel button.link { padding: 0; border: 0; background: transparent; color: var(--color-primary); font-size: 12px; }
+.team-panel button.danger:hover:not(:disabled) { color: var(--color-red, #ff7777); border-color: rgba(255, 80, 80, .4); }
+.team-panel button.icon { padding: 5px 8px; border-color: transparent; background: transparent; }
+.team-panel p, .team-panel .muted { font-size: 12px; line-height: 1.6; color: var(--color-text-muted); margin: 0; }
+.team-panel h2 { font-size: 20px; font-weight: 500; margin: 0 0 6px; }
+.team-panel h3 { font-size: 15px; font-weight: 500; margin: 0 0 4px; }
+.team-panel .team-body { padding: 20px; display: grid; gap: 24px; max-width: 980px; }
+.team-panel .section { display: grid; gap: 12px; }
+.team-panel .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.team-panel .inline-form input { flex: 1; min-width: 220px; }
+.team-panel .inline-form .custom-select { min-width: 130px; }
+.team-panel .rows { list-style: none; padding: 0; margin: 0; }
+.team-panel .rows > li { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--terminal-border-color); }
+.team-panel .who { flex: 1; min-width: 160px; display: grid; }
+.team-panel .who span { font-size: 12px; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.team-panel .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; align-items: center; }
+.team-panel .actions button { padding: 6px 10px; font-size: 12px; }
+.team-panel .pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--terminal-border-color); color: var(--color-text-muted); white-space: nowrap; }
+.team-panel .pill.accent { color: var(--color-primary); border-color: rgba(var(--primary-rgb), .35); }
+.team-panel .pill.warn { color: var(--color-red, #ff7777); border-color: rgba(255, 80, 80, .4); }
+.team-panel .error { padding: 12px 18px; background: rgba(255, 80, 80, .08); color: var(--color-red, #ff7777); }
+.team-panel .token-box { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--terminal-border-color); border-radius: 6px; background: var(--color-darker-0); }
+.team-panel .token-box code { flex: 1; font: 12px/1.5 'Fira Code', monospace; overflow-wrap: anywhere; }
+.team-panel .empty { padding: 24px; border: 1px dashed var(--terminal-border-color); border-radius: 8px; text-align: center; }
+.team-panel details summary { cursor: pointer; font-size: 12px; color: var(--color-text-muted); }
+.team-panel .grid-table { display: grid; gap: 6px 10px; align-items: center; font-size: 12px; }
+.team-panel .grid-table label { display: flex; gap: 6px; align-items: center; }
+@media (max-width: 800px) { .team-panel .team-body { padding: 14px; } }

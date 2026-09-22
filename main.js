@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard, crashReporter, webContents } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard, crashReporter, webContents } from 'electron';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -31,6 +31,9 @@ import {
 import { waitForBackend as pollBackendHealth, probeBackendOnce } from './electron/backendHealth.js';
 import { localFilePathFromUrl } from './electron/localFileLink.js';
 import { SCHEME, parseDeepLink, deepLinkFromArgv, intentToUrl } from './electron/deepLink.js';
+import { SpaceRegistry } from './electron/spaces/SpaceRegistry.js';
+import { SpaceViews } from './electron/spaces/SpaceViews.js';
+import { installSpaceIpc, hardenSpaceView } from './electron/spaces/spaceIpc.js';
 
 const BOOT_ID = randomUUID();
 process.env.AGNT_BOOT_ID = BOOT_ID;
@@ -107,6 +110,22 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow;
 let backendProcess;
+
+// This allowlist gates EVERY privileged capability Chromium asks about, not
+// just the microphone it was originally written for. A permission that is
+// absent is denied SILENTLY: requestFullscreen() never settles, no
+// 'fullscreenerror' fires, and document.fullscreenEnabled stays true, so the
+// browser still paints a fullscreen button that does nothing. Anything added
+// here must be a deliberate, named decision — hence the grouped sets. The
+// main window and every team space view read this one list.
+const MEDIA_PERMISSIONS = ['media', 'microphone', 'audioCapture'];
+const CLIPBOARD_PERMISSIONS = ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'];
+// 'fullscreen' backs element.requestFullscreen(): every <video> control bar
+// in chat, artifact previews, chart/3D popouts and embedded widgets.
+// pointerLock/keyboardLock are the same class (renderer-driven display
+// control behind a user gesture) and are what interactive canvases need.
+const DISPLAY_PERMISSIONS = ['fullscreen', 'pointerLock', 'keyboardLock'];
+const ALLOWED_PERMISSIONS = [...MEDIA_PERMISSIONS, ...CLIPBOARD_PERMISSIONS, ...DISPLAY_PERMISSIONS];
 // Which window attachWindowBehaviour() has already wired up (see there).
 let behaviourAttachedTo = null;
 
@@ -856,6 +875,7 @@ function closeBrowserBridge(webContentsId) {
 }
 
 ipcMain.handle('browser-bridge:start', async (_evt, webContentsId) => {
+  if (refuseSpaceSender(_evt, 'browser-bridge:start')) return { ok: false, error: 'Not available in a team space.' };
   try {
     const existing = browserBridges.get(webContentsId);
     if (existing && !existing.closed) return { ok: true, cdpUrl: existing.cdpUrl, reused: true };
@@ -1029,6 +1049,7 @@ ipcMain.on('open-external-url', (event, url) => {
 // Reveal a file or folder in the OS file manager (Explorer / Finder / Files).
 // Used by the artifacts file tree right-click menu.
 ipcMain.on('shell:show-item-in-folder', (event, fullPath) => {
+  if (refuseSpaceSender(event, 'shell:show-item-in-folder')) return;
   if (typeof fullPath !== 'string' || !fullPath) {
     console.error('[Electron] shell:show-item-in-folder: invalid path:', fullPath);
     return;
@@ -1059,6 +1080,7 @@ ipcMain.on('shell:show-item-in-folder', (event, fullPath) => {
  * that also swallows real failures.
  */
 ipcMain.handle('dialog:choose-directory', async (_evt, options = {}) => {
+  if (refuseSpaceSender(_evt, 'dialog:choose-directory')) return { ok: false, reason: 'failed' };
   if (isRemoteActive()) {
     return { ok: false, reason: 'remote-backend', remoteUrl: connection.url || null };
   }
@@ -1099,6 +1121,7 @@ ipcMain.handle('dialog:choose-directory', async (_evt, options = {}) => {
 // shell:show-item-in-folder — openPath on a file would launch it in its
 // associated app, which isn't what the menu action implies.
 ipcMain.on('shell:open-path', async (event, fullPath) => {
+  if (refuseSpaceSender(event, 'shell:open-path')) return;
   if (typeof fullPath !== 'string' || !fullPath) {
     console.error('[Electron] shell:open-path: invalid path:', fullPath);
     return;
@@ -1437,22 +1460,7 @@ function createWindow(opts = {}) {
    */
   mainWindow.webContents.setWebRTCIPHandlingPolicy('default_public_interface_only');
 
-  // This allowlist gates EVERY privileged capability Chromium asks about, not
-  // just the microphone it was originally written for. A permission that is
-  // absent is denied SILENTLY: requestFullscreen() never settles, no
-  // 'fullscreenerror' fires, and document.fullscreenEnabled stays true, so the
-  // browser still paints a fullscreen button that does nothing. Anything added
-  // here must be a deliberate, named decision — hence the grouped sets.
-  const MEDIA_PERMISSIONS = ['media', 'microphone', 'audioCapture'];
-  const CLIPBOARD_PERMISSIONS = ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'];
-  // 'fullscreen' backs element.requestFullscreen(): every <video> control bar
-  // in chat, artifact previews, chart/3D popouts and embedded widgets.
-  // pointerLock/keyboardLock are the same class (renderer-driven display
-  // control behind a user gesture) and are what interactive canvases need.
-  const DISPLAY_PERMISSIONS = ['fullscreen', 'pointerLock', 'keyboardLock'];
-  const ALLOWED_PERMISSIONS = [...MEDIA_PERMISSIONS, ...CLIPBOARD_PERMISSIONS, ...DISPLAY_PERMISSIONS];
-
-  // Both handlers read ONE list. They were duplicated literals, which is
+  // Both handlers read ONE list (ALLOWED_PERMISSIONS, module scope). They were duplicated literals, which is
   // exactly how a grant drifts out of one of them unnoticed.
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     const granted = ALLOWED_PERMISSIONS.includes(permission);
@@ -1651,6 +1659,8 @@ function createWindow(opts = {}) {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // Team views are children of this window and died with it.
+    spaceViews.reset();
   });
 
   // Add IPC listeners for window controls.
@@ -1672,6 +1682,42 @@ function createWindow(opts = {}) {
     if (mainWindow) mainWindow.close();
   });
 }
+
+// ============================================================================
+// SPACES — Personal plus each team, each in its own isolated session
+// ============================================================================
+// The main window's own page is the primary (personal) space and is untouched
+// by any of this. Team spaces are views laid over it; see electron/spaces/.
+const spaceRegistry = new SpaceRegistry(app.getPath('userData'));
+const SPACE_PRELOAD = path.join(__dirname, 'electron', 'spaces', 'spacePreload.cjs');
+const spaceViews = new SpaceViews({
+  getWindow: () => mainWindow,
+  WebContentsView,
+  preload: SPACE_PRELOAD,
+  configure: (view, space) => hardenSpaceView(view, space, {
+    shell,
+    preload: SPACE_PRELOAD,
+    allowedPermissions: ALLOWED_PERMISSIONS,
+    unavailablePage: path.join(__dirname, 'electron', 'spaces', 'space-unavailable.html'),
+  }),
+});
+/** Team spaces are remote, shared origins: they never reach this machine's files, dialogs or browser automation. */
+function refuseSpaceSender(event, channel) {
+  if (!spaceViews.isSpaceSender(event?.sender)) return false;
+  console.warn(`[spaces] refused ${channel} from a team space`);
+  return true;
+}
+installSpaceIpc({
+  ipcMain,
+  registry: spaceRegistry,
+  views: spaceViews,
+  primaryLabel: () => (isRemoteActive() ? 'Personal (cloud)' : 'Personal'),
+  broadcast: (channel, payload) => {
+    for (const contents of [mainWindow?.webContents, ...spaceViews.allWebContents()]) {
+      if (contents && !contents.isDestroyed()) contents.send(channel, payload);
+    }
+  },
+});
 
 // ============================================================================
 // CONNECTION IPC — drives Settings → Connection

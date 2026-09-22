@@ -240,7 +240,10 @@ if (frontendExists) {
 // Define API routes
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api', async (_req,res,next)=>{if(!process.env.AGNT_TENANT_SLUG)return next();try{await dbReady;next();}catch{res.status(503).json({error:'Tenant storage migration is not ready'});}});
-app.use('/api', createScopeApiMiddleware(authenticateToken, async id => {const repository=getTeamRepository();await repository.ready;return repository.get('SELECT * FROM shared_workspaces WHERE id=?',[id]);}));
+app.use('/api', createScopeApiMiddleware(authenticateToken,
+  async id => {const repository=getTeamRepository();await repository.ready;return repository.get('SELECT * FROM shared_workspaces WHERE id=?',[id]);},
+  // The table is created on first team use; before that there is simply no default.
+  async teamId => {const repository=getTeamRepository();await repository.ready;try{return await repository.get('SELECT w.* FROM shared_workspace_defaults d JOIN shared_workspaces w ON w.id=d.workspace_id WHERE d.team_id=? AND w.archived_at IS NULL',[teamId]);}catch(error){if(/no such table/.test(error.message))return null;throw error;}}));
 app.use('/api', createPersonalAssetBoundary(authenticateToken));
 app.use('/api', createHostedOperatorBoundary(authenticateToken));
 app.use('/api/users', UserRoutes);

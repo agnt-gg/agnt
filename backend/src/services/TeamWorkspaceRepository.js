@@ -5,7 +5,12 @@ export async function initializeTeamWorkspaces(repository){
  await repository.run('CREATE INDEX IF NOT EXISTS shared_workspaces_team ON shared_workspaces(team_id,archived_at)');
  await repository.run(`CREATE TABLE IF NOT EXISTS shared_workspace_preferences(workspace_id TEXT NOT NULL REFERENCES shared_workspaces(id),user_id TEXT NOT NULL,is_open INTEGER NOT NULL DEFAULT 1 CHECK(is_open IN (0,1)),PRIMARY KEY(workspace_id,user_id))`);
  await repository.run(`CREATE TABLE IF NOT EXISTS shared_workspace_resources(workspace_id TEXT NOT NULL REFERENCES shared_workspaces(id),asset_id TEXT NOT NULL REFERENCES team_assets(id),PRIMARY KEY(workspace_id,asset_id))`);
+ // One default project per team, so a native scope never needs the caller to pick one first.
+ await repository.run(`CREATE TABLE IF NOT EXISTS shared_workspace_defaults(team_id TEXT PRIMARY KEY REFERENCES teams(id),workspace_id TEXT NOT NULL REFERENCES shared_workspaces(id))`);
+ // Exceptions to a member's role on one project. Roles are the baseline; these survive role changes.
+ await repository.run(`CREATE TABLE IF NOT EXISTS shared_workspace_access_overrides(workspace_id TEXT NOT NULL REFERENCES shared_workspaces(id),user_id TEXT NOT NULL,capability TEXT NOT NULL,granted INTEGER NOT NULL CHECK(granted IN (0,1)),PRIMARY KEY(workspace_id,user_id,capability))`);
 }
+export const DEFAULT_PROJECT_NAME='General';
 export class TeamWorkspaceRepository {
  constructor(repository){this.repository=repository;}
  list(teamId,user){const r=this.repository;return r.transaction(async()=>{await r.member(teamId,user);return r.all('SELECT w.*,COALESCE(p.is_open,1) AS is_open FROM shared_workspaces w LEFT JOIN shared_workspace_preferences p ON p.workspace_id=w.id AND p.user_id=? WHERE w.team_id=? AND w.archived_at IS NULL ORDER BY w.created_at',[user,teamId]);});}
@@ -15,5 +20,11 @@ export class TeamWorkspaceRepository {
  close(teamId,user,id,isOpen){const r=this.repository;return r.transaction(async()=>{await r.member(teamId,user);await this.find(teamId,id);if(typeof isOpen!=='boolean')fail(400,'isOpen must be boolean');await r.run('INSERT INTO shared_workspace_preferences(workspace_id,user_id,is_open) VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET is_open=excluded.is_open',[id,user,isOpen?1:0]);return{success:true};});}
  archive(teamId,user,id){const r=this.repository;return r.transaction(async()=>{await r.member(teamId,user,['owner','admin']);await this.find(teamId,id);await r.run('UPDATE shared_workspaces SET archived_at=CURRENT_TIMESTAMP,revision=revision+1 WHERE id=?',[id]);await r.event(teamId,user,'workspace.archived',id);return{success:true};});}
  resources(teamId,user,id){const r=this.repository;return r.transaction(async()=>{await r.member(teamId,user);await this.find(teamId,id);return r.all('SELECT a.* FROM team_assets a JOIN shared_workspace_resources w ON w.asset_id=a.id WHERE w.workspace_id=? AND a.team_id=?',[id,teamId]);});}
+ /** The live default project, or null. An archived default is treated as absent. */
+ async defaultFor(teamId){return (await this.repository.get('SELECT w.* FROM shared_workspace_defaults d JOIN shared_workspaces w ON w.id=d.workspace_id WHERE d.team_id=? AND w.archived_at IS NULL',[teamId]))||null;}
+ async markDefault(teamId,workspaceId){await this.repository.run('INSERT INTO shared_workspace_defaults(team_id,workspace_id) VALUES(?,?) ON CONFLICT(team_id) DO UPDATE SET workspace_id=excluded.workspace_id',[teamId,workspaceId]);}
+ overrides(workspaceId,userId){return this.repository.all('SELECT capability,granted FROM shared_workspace_access_overrides WHERE workspace_id=? AND user_id=?',[workspaceId,userId]).then(rows=>rows.map(row=>({capability:row.capability,granted:row.granted===1})));}
+ setOverride(workspaceId,userId,capability,granted){return this.repository.run('INSERT INTO shared_workspace_access_overrides(workspace_id,user_id,capability,granted) VALUES(?,?,?,?) ON CONFLICT(workspace_id,user_id,capability) DO UPDATE SET granted=excluded.granted',[workspaceId,userId,capability,granted?1:0]);}
+ clearOverrides(workspaceId,userId){return this.repository.run('DELETE FROM shared_workspace_access_overrides WHERE workspace_id=? AND user_id=?',[workspaceId,userId]);}
  attach(teamId,user,id,assetId){const r=this.repository;return r.transaction(async()=>{await r.member(teamId,user,['owner','admin','member']);await this.find(teamId,id);if(!await r.get('SELECT id FROM team_assets WHERE id=? AND team_id=?',[assetId,teamId]))fail(404,'Asset not found');await r.run('INSERT OR IGNORE INTO shared_workspace_resources(workspace_id,asset_id) VALUES(?,?)',[id,assetId]);return{success:true};});}
 }

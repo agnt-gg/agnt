@@ -72,8 +72,8 @@ export const settingsDirectory = [
       {
         "id": "connection",
         "icon": "fas fa-server",
-        "label": "Remote Backend",
-        "description": "Select your backend host"
+        "label": "Connections",
+        "description": "This computer, remote servers and teams"
       },
       {
         "id": "security",

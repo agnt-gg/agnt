@@ -4,7 +4,8 @@ import {databaseRepository,ensureSharedScope} from '../services/authorization/Sc
 import {NativeTeamResources} from '../services/NativeTeamResources.js';
 import {NativeTeamExecution,initializeNativeTeamExecution} from '../services/NativeTeamExecution.js';
 import { CloudTeamClient } from '../services/CloudTeamClient.js';
-import { TeamWorkspaceRepository, initializeTeamWorkspaces } from '../services/TeamWorkspaceRepository.js';
+import { TeamWorkspaceRepository, initializeTeamWorkspaces, DEFAULT_PROJECT_NAME } from '../services/TeamWorkspaceRepository.js';
+import { CAPABILITIES, syncProjectAccess } from '../services/TeamAccess.js';
 import sqlite3 from 'sqlite3';
 import pathManager from '../utils/PathManager.js';
 import {
@@ -30,7 +31,7 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     if (!(req.user?.id || req.user?.userId)) return res.status(401).json({error:'Sign in required'});
     try {
       const path = req.path;
-      const assetRequest = /^\/[^/]+\/(assets|activity|workspaces)(\/|$)/.test(path);
+      const assetRequest = /^\/[^/]+\/(assets|activity|workspaces|access)(\/|$)/.test(path);
       if (!assetRequest) {
         const result = await cloud.request(req.headers.authorization, path, {
           method: req.method,
@@ -43,8 +44,8 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
       const team = await cloud.access(req.headers.authorization, teamId);
       if (!process.env.AGNT_TENANT_SLUG) return res.status(409).json({error:'Open the team cloud instance to access its shared assets',code:'team_instance_required',tenantUrl:team.tenantUrl});
       const parts=path.split('/');
-      if(parts[2]==='workspaces'&&parts[3]){
-        const capability=parts.at(-1)==='run'?'runs.execute':parts.at(-1)==='authorize'||parts.at(-1)==='archive'?'access.manage':req.method==='GET'?'resources.read':'resources.write';
+      if(parts[2]==='workspaces'&&parts[3]&&parts[3]!=='default'){
+        const capability=parts.at(-1)==='run'?'runs.execute':parts.at(-1)==='authorize'||parts.at(-1)==='archive'||parts.includes('capabilities')||parts.at(-1)==='overrides'?'access.manage':req.method==='GET'?'resources.read':'resources.write';
         await cloud.request(req.headers.authorization,'/'+encodeURIComponent(teamId)+'/instances/'+encodeURIComponent(team.tenantSlug)+'/workspaces/'+encodeURIComponent(parts[3])+'/access/'+capability);
       }
       req.cloudTeam = team;
@@ -109,21 +110,82 @@ export function createTeamRouter(getRepository = getTeamRepository, authenticate
     if(req.params.action==='run')return executor.run(req.cloudTeam,user,assetId,req.body?.input,scope,req.headers.authorization);
     throw Object.assign(new Error('Unknown execution action'),{status:404});
   }));
+  const projectPath=(req,workspaceId)=>'/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspaceId);
+  const requireManager=req=>{if(!['owner','admin'].includes(req.cloudTeam.role))throw Object.assign(new Error('Only owners and admins manage access'),{status:403});};
+  /** Everyone on the team gets their role's access to the listed projects. */
+  const syncAccess=async(repo,req,workspaceIds)=>{
+    const projects=new TeamWorkspaceRepository(repo);
+    const members=await cloud.request(req.headers.authorization,'/'+encodeURIComponent(req.params.teamId)+'/members');
+    return syncProjectAccess({cloud,authorization:req.headers.authorization,team:{id:req.params.teamId,tenantSlug:req.cloudTeam.tenantSlug},workspaceIds,members:Array.isArray(members)?members:[],overridesFor:(workspaceId,userId)=>projects.overrides(workspaceId,userId)});
+  };
+  /** Registers the project with the cloud, then grants the whole team access by role. Archives on failure. */
+  const createProject=async(repo,req,user,name)=>{
+    if(req.cloudTeam.role!=='owner')throw Object.assign(new Error('Only the owner can create a project'),{status:403});
+    const projects=new TeamWorkspaceRepository(repo);
+    const workspace=await projects.create(req.params.teamId,user,name);
+    try{
+      await cloud.request(req.headers.authorization,projectPath(req,workspace.id),{method:'PUT',body:'{}'});
+      await syncAccess(repo,req,[workspace.id]);
+      return workspace;
+    }catch(error){await projects.archive(req.params.teamId,user,workspace.id);throw error;}
+  };
+  // Concurrent first loads by the owner must create exactly one General project.
+  const ensuringDefault=new Map();
+  const ensureDefault=(repo,req,user)=>{
+    const teamId=req.params.teamId;
+    if(ensuringDefault.has(teamId))return ensuringDefault.get(teamId);
+    const pending=(async()=>{
+      const projects=new TeamWorkspaceRepository(repo);
+      const existing=await projects.defaultFor(teamId);if(existing)return existing;
+      const oldest=(await projects.list(teamId,user))[0];
+      if(oldest){await projects.markDefault(teamId,oldest.id);return oldest;}
+      if(req.cloudTeam.role!=='owner')return null;
+      const created=await createProject(repo,req,user,DEFAULT_PROJECT_NAME);
+      await projects.markDefault(teamId,created.id);return created;
+    })().finally(()=>ensuringDefault.delete(teamId));
+    ensuringDefault.set(teamId,pending);return pending;
+  };
+  router.get('/:teamId/workspaces/default',handler(async(repo,req,user)=>{
+    const project=await ensureDefault(repo,req,user);
+    if(!project)throw Object.assign(new Error('The team owner has not opened this team yet'),{status:404,code:'no_default_project'});
+    return project;
+  }));
+  router.post('/:teamId/access/sync',handler(async(repo,req,user)=>{
+    requireManager(req);
+    const projects=await new TeamWorkspaceRepository(repo).list(req.params.teamId,user);
+    const requested=Array.isArray(req.body?.workspaceIds)?new Set(req.body.workspaceIds):null;
+    return syncAccess(repo,req,projects.filter(p=>!requested||requested.has(p.id)).map(p=>p.id));
+  }));
+  /** Advanced: one capability for one person on one project. Recorded as an override so a role change keeps it. */
+  const setCapability=granted=>handler(async(repo,req)=>{
+    requireManager(req);
+    const {id,userId,capability}=req.params;
+    if(!CAPABILITIES.includes(capability))throw Object.assign(new Error('Unknown capability'),{status:400});
+    const projects=new TeamWorkspaceRepository(repo);await projects.find(req.params.teamId,id);
+    await cloud.request(req.headers.authorization,projectPath(req,id)+'/members/'+encodeURIComponent(userId)+'/capabilities/'+capability,{method:granted?'PUT':'DELETE',body:'{}'});
+    await projects.setOverride(id,userId,capability,granted);
+    return {success:true};
+  });
+  router.put('/:teamId/workspaces/:id/members/:userId/capabilities/:capability',setCapability(true));
+  router.delete('/:teamId/workspaces/:id/members/:userId/capabilities/:capability',setCapability(false));
+  router.delete('/:teamId/workspaces/:id/members/:userId/overrides',handler(async(repo,req)=>{
+    requireManager(req);
+    const projects=new TeamWorkspaceRepository(repo);await projects.find(req.params.teamId,req.params.id);
+    await projects.clearOverrides(req.params.id,req.params.userId);
+    return syncAccess(repo,req,[req.params.id]);
+  }));
+  router.get('/:teamId/workspaces/:id/members/:userId/overrides',handler(async(repo,req)=>{
+    const projects=new TeamWorkspaceRepository(repo);await projects.find(req.params.teamId,req.params.id);
+    return projects.overrides(req.params.id,req.params.userId);
+  }));
   router.get('/:teamId/workspaces',handler(async(repo,req,user)=>{
-    const workspaces=await new TeamWorkspaceRepository(repo).list(req.params.teamId,user);const visible=[];
+    await ensureDefault(repo,req,user);
+    const defaultProject=await new TeamWorkspaceRepository(repo).defaultFor(req.params.teamId);
+    const workspaces=(await new TeamWorkspaceRepository(repo).list(req.params.teamId,user)).map(w=>({...w,is_default:w.id===defaultProject?.id}));const visible=[];
     for(const workspace of workspaces){try{await cloud.request(req.headers.authorization,'/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspace.id)+'/access/resources.read');visible.push(workspace);}catch(error){if(![403,404].includes(error.status))throw error;}}
     return visible;
   }));
-  router.post('/:teamId/workspaces',handler(async(repo,req,user)=>{
-    if(req.cloudTeam.role!=='owner')throw Object.assign(new Error('Only the owner can create a cloud workspace'),{status:403});
-    const workspace=await new TeamWorkspaceRepository(repo).create(req.params.teamId,user,req.body?.name);
-    const base='/'+encodeURIComponent(req.params.teamId)+'/instances/'+encodeURIComponent(req.cloudTeam.tenantSlug)+'/workspaces/'+encodeURIComponent(workspace.id);
-    try{
-      await cloud.request(req.headers.authorization,base,{method:'PUT',body:'{}'});
-      for(const capability of ['resources.read','resources.write','files.read','files.write','runs.execute','runs.read','connections.use'])await cloud.request(req.headers.authorization,base+'/members/'+encodeURIComponent(user)+'/capabilities/'+capability,{method:'PUT',body:'{}'});
-      return workspace;
-    }catch(error){await new TeamWorkspaceRepository(repo).archive(req.params.teamId,user,workspace.id);throw error;}
-  }));
+  router.post('/:teamId/workspaces',handler((repo,req,user)=>createProject(repo,req,user,req.body?.name)));
   router.patch('/:teamId/workspaces/:id',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).update(req.params.teamId,user,req.params.id,req.body||{})));
   router.put('/:teamId/workspaces/:id/preferences',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).close(req.params.teamId,user,req.params.id,req.body?.isOpen)));
   router.post('/:teamId/workspaces/:id/archive',handler((repo,req,user)=>new TeamWorkspaceRepository(repo).archive(req.params.teamId,user,req.params.id)));

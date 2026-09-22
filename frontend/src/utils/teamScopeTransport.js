@@ -7,12 +7,23 @@ export function teamScopeHeaders(url,baseUrl,scope){
  if(!assetApis.has(api))return {};
  return {'X-AGNT-Team-ID':scope.teamId,...(scope.workspaceId?{'X-AGNT-Workspace-ID':scope.workspaceId}:{})};
 }
+/**
+ * The scope a page load runs in. The URL wins; otherwise the scope this tab was
+ * opened with, so a router navigation or reload that drops the query string
+ * cannot silently turn a team page personal.
+ */
+export function resolveTeamScope(host=window){
+ const params=new URLSearchParams(host.location.search);
+ const teamId=params.get('team');
+ if(teamId){const scope={teamId,workspaceId:params.get('workspace')||null};try{host.sessionStorage.setItem('agnt.teamScope',JSON.stringify(scope));}catch{}return scope;}
+ try{const stored=JSON.parse(host.sessionStorage.getItem('agnt.teamScope')||'null');return stored?.teamId?{teamId:String(stored.teamId),workspaceId:stored.workspaceId?String(stored.workspaceId):null}:null;}catch{return null;}
+}
 /** Context changes reload the page: no in-flight personal response can hydrate a team store. */
 export function installTeamScopeTransport({baseUrl,axios,host=window}){
- const params=new URLSearchParams(host.location.search);
- const teamId=params.get('team'),workspaceId=params.get('workspace');if(!teamId)return;
- const scope=Object.freeze({teamId,workspaceId});
+ const resolved=resolveTeamScope(host);if(!resolved)return null;
+ const scope=Object.freeze(resolved);
  const original=host.fetch.bind(host);
  host.fetch=(input,options={})=>{const url=typeof input==='string'?input:input.url;const headers=teamScopeHeaders(url,baseUrl,scope);return original(input,{...options,headers:new Headers({...Object.fromEntries(new Headers(input?.headers||{})),...Object.fromEntries(new Headers(options.headers||{})),...headers})});};
  axios.interceptors.request.use(config=>{Object.assign(config.headers,teamScopeHeaders(config.url,baseUrl,scope));return config;});
+ return scope;
 }

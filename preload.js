@@ -101,6 +101,20 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
 
+  // Spaces (desktop only): Personal plus each team, each in its own isolated
+  // session. Renderer code MUST feature-detect `window.electron?.spaces`.
+  // Team views get the same API from electron/spaces/spacePreload.cjs.
+  spaces: {
+    list: () => ipcRenderer.invoke('spaces:list'),
+    switch: (id, options) => ipcRenderer.invoke('spaces:switch', id, options),
+    syncTeams: (teams, options) => ipcRenderer.invoke('spaces:sync-teams', teams, options),
+    onChanged: (cb) => {
+      const handler = (_evt, state) => cb(state);
+      ipcRenderer.on('spaces:changed', handler);
+      return () => ipcRenderer.removeListener('spaces:changed', handler);
+    },
+  },
+
   // Listen for update notifications from main process
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('update-available', (event, updateInfo) => callback(updateInfo));

@@ -6,10 +6,12 @@
       <div v-if="compactLayout" class="cv-mobile-identity"><small>AGNT / ONE</small><strong>{{ activePage?.name && onCustomPage ? activePage.name : (untabbedScreenLabel || activeSectionTabs.find(tab => tab.screen === screenName)?.label || activeSection?.label || 'AGNT') }}</strong></div>
       <button v-if="compactLayout" class="cv-mobile-inspector" type="button" aria-label="Open page inspector" @click="requestMobileInspector"><i class="fas fa-info-circle"></i></button>
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
+      <!-- Which space everything on screen belongs to. Only shown in a team, where it matters. -->
+      <span v-if="activeTeamId" class="cv-space-chip" role="status" :aria-label="'Working in team ' + workspaceLabel"><i class="fas fa-users" aria-hidden="true"></i>{{ workspaceLabel }}</span>
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
       <div class="cv-nav-panels" :class="{ 'cv-single-tab': activeSectionTabs.length < 2 && !untabbedScreenLabel }">
-        <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : workspaceLabel }}</span></template>
+        <template v-if="showLibrary || showTeamWorkspace"><span class="cv-page-title">{{ showLibrary ? 'Library' : 'Teams' }}</span></template>
         <template v-else-if="onCustomPage && activePage">
           <span class="cv-page-title">{{ activePage.name }}</span>
         </template>
@@ -113,7 +115,7 @@
         :aria-label="compactLayout ? 'Navigation' : undefined" :inert="compactLayout && !navigationOpen ? true : undefined"
         :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
         <WorkspaceSwitcher
-          :model-value="selectedTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
+          :model-value="activeTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
           :error="workspaceError" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
         />
         <!-- No Search row here on purpose. The rail lists DESTINATIONS, and
@@ -331,6 +333,7 @@ import { notifiableUnreadIds } from '@/utils/conversationAttention.js';
 import { RAIL_BADGE_READERS, badgeLabel } from './railBadges.js';
 import JumpPalette from './JumpPalette.vue';
 import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
+import { currentTeamScope, openPersonal, openTeam } from '@/composables/useSpaces.js';
 import LibraryHome from './LibraryHome.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import { API_CONFIG } from '@/tt.config.js';
@@ -489,16 +492,21 @@ export default {
       isGlobalProviderSelectorOpen.value = true;
     };
 
-    const selectedTeamId = ref(new URLSearchParams(window.location.search).get('team')||'');
+    // The space this page RUNS in is fixed for its lifetime: a team page is a
+    // different session (desktop) or a different page load (browser), never a
+    // relabelled personal page. selectedTeamId is only which team the Teams
+    // management panel is showing.
+    const activeTeamId = ref(currentTeamScope()?.teamId || '');
+    const selectedTeamId = ref(activeTeamId.value);
     const workspaceTeams = ref([]);
     const workspaceError = ref('');
-    const teamNavigationTab = ref('Assets');
-    const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===selectedTeamId.value)?.name || 'Personal');
+    const teamNavigationTab = ref('Members');
+    const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===activeTeamId.value)?.name || (activeTeamId.value ? 'Team' : 'Personal'));
     let workspaceGeneration = 0;
     let workspaceRequest = null;
     const showLibrary = ref(false);
     const showTeamWorkspace = ref(new URLSearchParams(window.location.search).has('teams-panel'));
-    watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=new URLSearchParams(window.location.search).get('team')||''; });
+    watch(() => props.screenName, () => { showTeamWorkspace.value=false; showLibrary.value=false; selectedTeamId.value=activeTeamId.value; });
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -567,6 +575,9 @@ export default {
     function syncWorkspaceTeams(teams) {
       workspaceTeams.value=teams;workspaceError.value='';
       if(selectedTeamId.value&&!teams.some(t=>t.id===selectedTeamId.value))selectedTeamId.value='';
+      // The desktop keeps one space per team; this list is the full membership, so a removed team's space closes.
+      window.electron?.spaces?.syncTeams(teams.filter(t=>t.tenantUrl).map(t=>({id:t.id,name:t.name,tenantUrl:t.tenantUrl})),{replace:true})
+        .catch(error=>console.warn('[spaces] sync:',error.message));
     }
     function syncTeamSelection(id) { selectedTeamId.value=id; }
     async function loadWorkspaceTeams() {
@@ -584,28 +595,32 @@ export default {
       workspaceRequest=request;
       try{await request}finally{if(workspaceRequest===request)workspaceRequest=null}
     }
-    function selectWorkspace(id) {
-      const locationUrl=new URL(window.location.href);
-      if(!id&&locationUrl.searchParams.has('team')){locationUrl.searchParams.delete('team');locationUrl.searchParams.delete('workspace');window.location.assign(locationUrl.href);return;}
-      if(id&&!workspaceTeams.value.some(t=>t.id===id))return;
-      selectedTeamId.value=id;
-      onCustomPage.value=false;
-      showLibrary.value=false;
-      teamNavigationTab.value='Assets';
-      showTeamWorkspace.value=!!id;
-      if(!id)emit('screen-change','ChatScreen',{});
+    /**
+     * Switch the WHOLE app to a space. Nothing here relabels the current page:
+     * the desktop swaps to that space's own isolated view, a browser navigates
+     * to that space. '__manage' opens team management instead.
+     */
+    async function selectWorkspace(id) {
+      if(id==='__manage'){openPrimary('teams');return;}
+      if(id===activeTeamId.value){showTeamWorkspace.value=false;showLibrary.value=false;return;}
+      try {
+        if(!id){await openPersonal();return;}
+        const team=workspaceTeams.value.find(t=>t.id===id);if(!team)return;
+        if(!(await openTeam(team)))workspaceError.value=team.name+' has no instance address yet.';
+      } catch(error){workspaceError.value='Cannot open that space.';console.warn('[spaces]',error.message);}
     }
     // The rail rows that are not screens: Search opens the palette, Teams and
     // Library open a panel over whatever is mounted (which is how a draft in
     // the screen underneath survives a trip through them).
     function openPrimary(id) {
       if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
-      if(id==='library'){onCustomPage.value=false;teamNavigationTab.value='Assets';showTeamWorkspace.value=!!selectedTeamId.value;showLibrary.value=!selectedTeamId.value;return}
-      selectedTeamId.value=new URLSearchParams(window.location.search).get('team')||'';showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
+      // Library is always this space's library: every API it calls is already scoped to the space.
+      if(id==='library'){onCustomPage.value=false;showTeamWorkspace.value=false;showLibrary.value=true;return}
+      selectedTeamId.value=activeTeamId.value;showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
       emit('screen-change','ChatScreen',{});
     }
     watch(() => [isAuthenticated.value,store.state.userAuth?.token], () => {
-      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value=isAuthenticated.value?(new URLSearchParams(window.location.search).get('team')||''):'';workspaceError.value='';
+      workspaceGeneration++;workspaceRequest=null;workspaceTeams.value=[];selectedTeamId.value=isAuthenticated.value?activeTeamId.value:'';workspaceError.value='';
       showTeamWorkspace.value=isAuthenticated.value&&new URLSearchParams(window.location.search).has('teams-panel');
       if(isAuthenticated.value)loadWorkspaceTeams();
     }, {immediate:true});
@@ -1015,7 +1030,7 @@ export default {
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
       primaryActive, openPrimary, isNavigationItemActive,
-      selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
+      activeTeamId,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,
       showCatalog,
@@ -1155,6 +1170,13 @@ export default {
 .cv-toolbar .cv-pbtn,
 .cv-toolbar .cv-clock {
   -webkit-app-region: no-drag;
+}
+
+.cv-space-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  margin: 0 8px 0 2px; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 500; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+  color: var(--color-primary); background: rgba(var(--primary-rgb), .1); border: 1px solid rgba(var(--primary-rgb), .35);
 }
 
 .cv-brand-logo {
