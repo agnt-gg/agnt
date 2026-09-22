@@ -2219,6 +2219,25 @@ What the hosted AGNT services (Models, Search, Sandbox, Mail, Webhooks) have giv
 { "models": true, "search": true, "sandbox": true, "mail": true, "webhooks": true }
 ```
 
+### Get Usage
+
+**GET** `/usage`
+
+- **Authentication**: Required
+- **Description**: This month's usage across all five hosted services, each answering for itself. A service that cannot be reached is reported with `ok: false` and an error, without hiding the others.
+- **Response**:
+
+```json
+{
+  "services": [
+    { "service": "search", "ok": true, "plan": "AGNT included allowance", "period": "2026-09", "resetAt": 1790812800000,
+      "meters": [ { "key": "searches", "label": "Searches", "used": 10, "included": 1400, "unit": "searches" } ],
+      "balanceMicroUSD": 0, "allowOverage": false }
+  ],
+  "fetchedAt": 1790041000000
+}
+```
+
 ### Get Inbox Address
 
 **GET** `/inbox`

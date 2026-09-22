@@ -16,6 +16,12 @@ export const settingsDirectory = [
         "description": "Plan and subscription"
       },
       {
+        "id": "usage",
+        "icon": "fas fa-chart-bar",
+        "label": "Usage",
+        "description": "What you've used of Models, Search, Sandbox, Mail and Webhooks"
+      },
+      {
         "id": "profile",
         "icon": "fas fa-user",
         "label": "Profile",

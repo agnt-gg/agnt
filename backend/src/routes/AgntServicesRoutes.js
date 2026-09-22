@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateToken } from './Middleware.js';
 import WebhookModel from '../models/WebhookModel.js';
 import { defaultInbox } from '../services/agntMail.js';
-import { serviceAllowed, SERVICES, serviceFailure } from '../services/agntServices.js';
+import { serviceAllowed, SERVICES, serviceFailure, callService } from '../services/agntServices.js';
 
 /**
  * What the hosted services have given this account: the inbox address every
@@ -19,6 +19,62 @@ AgntServicesRoutes.get('/entitlements', authenticateToken, async (_req, res) => 
   const out = {};
   for (const name of Object.keys(SERVICES)) out[name] = await serviceAllowed(name).catch(() => false);
   res.json(out);
+});
+
+/**
+ * Usage across every hosted service, in one shape the Usage page can render
+ * without knowing each service's dialect. Each service answers for itself;
+ * one being down does not blank the others.
+ */
+AgntServicesRoutes.get('/usage', authenticateToken, async (_req, res) => {
+  // Models and Search answer flat; Mail, Webhooks and Sandbox nest the plan
+  // under `hosting` with the prepaid balance beside it. Counts of inboxes and
+  // endpoints are not in usage at all, so they come from their own lists.
+  const meters = {
+    models: (u) => [{ key: 'credits', label: 'Model credits', used: u.usedCredits ?? u.usedUnits, included: u.includedCredits ?? u.includedUnits, unit: 'credits' }],
+    search: (u) => [
+      { key: 'searches', label: 'Searches', used: u.usedSearches, included: u.includedSearches, unit: 'searches' },
+      { key: 'scrapes', label: 'Pages scraped', used: u.usedScrapes, included: u.includedScrapes, unit: 'pages' },
+    ],
+    sandbox: (u) => [{ key: 'minutes', label: 'Compute minutes', used: u.usedUnits, included: u.includedUnits, unit: 'min' }],
+    mail: (u, extra) => [
+      { key: 'units', label: 'Mail units', used: u.usedUnits, included: u.includedUnits, unit: 'units' },
+      { key: 'inboxes', label: 'Inboxes', used: extra.count, included: u.maxInboxes, unit: 'inboxes' },
+      { key: 'storage', label: 'Storage', used: u.storedBytes, included: u.storageBytes, unit: 'bytes' },
+    ],
+    webhooks: (u, extra) => [
+      { key: 'units', label: 'Webhook units', used: u.usedUnits, included: u.includedUnits, unit: 'units' },
+      { key: 'endpoints', label: 'Endpoints', used: extra.count, included: u.maxInboxes ?? u.maxEndpoints, unit: 'endpoints' },
+    ],
+  };
+  const extras = {
+    mail: async () => ({ count: ((await callService('mail', '/inboxes')).inboxes || []).filter((i) => i.state === 'active').length }),
+    webhooks: async () => ({ count: ((await callService('webhooks', '/endpoints')).endpoints || []).filter((e) => e.state === 'active').length }),
+  };
+  const services = await Promise.all(
+    Object.keys(SERVICES).map(async (name) => {
+      try {
+        const raw = await callService(name, '/usage');
+        const u = raw.hosting ? { ...raw.hosting, balance: { available: raw.available, credit: raw.credit } } : raw;
+        const extra = extras[name] ? await extras[name]().catch(() => ({})) : {};
+        return {
+          service: name,
+          ok: true,
+          eligible: u.eligible !== false,
+          plan: u.planName || u.tier || null,
+          period: u.period || null,
+          resetAt: u.resetAt || null,
+          meters: meters[name](u, extra).filter((m) => m.included !== undefined || m.used !== undefined).map((m) => ({ ...m, used: Number(m.used) || 0, included: m.included == null ? null : Number(m.included) })),
+          balanceMicroUSD: u.balance?.available ?? null,
+          allowOverage: !!u.allowOverage,
+        };
+      } catch (error) {
+        const failure = serviceFailure(error);
+        return { service: name, ok: false, error: failure.message || failure.error, code: failure.code, meters: [] };
+      }
+    })
+  );
+  res.set('Cache-Control', 'no-store').json({ services, fetchedAt: Date.now() });
 });
 
 AgntServicesRoutes.get('/inbox', authenticateToken, async (_req, res) => {

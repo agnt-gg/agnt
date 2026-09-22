@@ -124,6 +124,19 @@
           </div>
         </div>
 
+        <!-- Usage Section -->
+        <div v-else-if="activeSection === 'usage'" class="settings-content" data-section="usage">
+          <div class="content-header">
+            <h2 class="content-title">Usage</h2>
+            <p class="content-subtitle">What you've used this month of the hosted services included with your plan</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width">
+              <UsageManager />
+            </div>
+          </div>
+        </div>
+
         <!-- Referrals Section -->
         <div v-else-if="activeSection === 'referrals'" class="settings-content" data-section="referrals">
           <div class="content-header">
@@ -312,6 +325,7 @@ import ApiKeyManager from './components/ApiKeyManager/ApiKeyManager.vue';
 import ThemeSelector from './components/ThemeSelector/ThemeSelector.vue';
 import NavigationSettings from './components/NavigationSettings/NavigationSettings.vue';
 import BillingManager from './components/BillingManager/BillingManager.vue';
+import UsageManager from './components/UsageManager/UsageManager.vue';
 import CreditPurchase from '../../../../_components/common/CreditPurchase.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import NewsPanel from '@/views/Terminal/RightPanel/types/NewsPanel/NewsPanel.vue';
@@ -340,6 +354,7 @@ export default {
     ThemeSelector,
     NavigationSettings,
     BillingManager,
+    UsageManager,
     CreditPurchase,
     ResourcesSection,
     NewsPanel,
