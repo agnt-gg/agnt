@@ -217,36 +217,63 @@ describe('canvas sections registry', () => {
     // Approvals is a rule you set once, so it lives behind Settings.
     const agents = MAIN_SECTIONS.find((s) => s.id === 'agents');
     expect(agents.screens[0].screen).toBe('AgentsScreen');
-    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'SKILLS', 'MEMORY']);
+    // AGENT FORGE sits immediately after AGENTS and is drawn either way: the
+    // way in to the builder cannot be visible only once you are already in it.
+    expect(visibleTabs(agents, 'AgentsScreen').map((t) => t.label)).toEqual(['AGENTS', 'AGENT FORGE', 'SKILLS', 'MEMORY']);
     expect(visibleTabs(agents, 'AgentForgeScreen').map((t) => t.label)).toEqual(['AGENTS', 'AGENT FORGE', 'SKILLS', 'MEMORY']);
     expect(agents.screens.some((t) => t.screen === 'AutonomyScreen')).toBe(false);
   });
 
-  it('Workflows is its own row with only its forge; Tools owns Widgets as a tab', () => {
+  it('Workflows is its own row paired with its forge; Tools owns Widgets as a tab', () => {
     const workflows = MAIN_SECTIONS.find((s) => s.id === 'workflows');
-    expect(visibleTabs(workflows, 'WorkflowsScreen').map((t) => t.label)).toEqual(['WORKFLOWS']);
+    expect(visibleTabs(workflows, 'WorkflowsScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
     expect(visibleTabs(workflows, 'WorkflowForgeScreen').map((t) => t.label)).toEqual(['WORKFLOWS', 'WORKFLOW FORGE']);
 
     // Widgets have the shape of tools: made here, used elsewhere.
     const tools = MAIN_SECTIONS.find((s) => s.id === 'tools');
     expect(tools.screens[0].screen).toBe('ToolsScreen');
-    expect(visibleTabs(tools, 'ToolsScreen').map((t) => t.label)).toEqual(['TOOLS', 'WIDGETS']);
-    // Editors appear only while you are inside them, and only their own.
-    expect(visibleTabs(tools, 'ToolForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'TOOL FORGE', 'WIDGETS']);
-    expect(visibleTabs(tools, 'WidgetForgeScreen').map((t) => t.label)).toEqual(['TOOLS', 'WIDGETS', 'WIDGET FORGE']);
+    // Each forge trails its own page, so the strip pairs them: Tools | Tool
+    // Forge, then Widgets | Widget Forge. Same order from anywhere in the row.
+    const toolsStrip = ['TOOLS', 'TOOL FORGE', 'WIDGETS', 'WIDGET FORGE'];
+    expect(visibleTabs(tools, 'ToolsScreen').map((t) => t.label)).toEqual(toolsStrip);
+    expect(visibleTabs(tools, 'ToolForgeScreen').map((t) => t.label)).toEqual(toolsStrip);
+    expect(visibleTabs(tools, 'WidgetForgeScreen').map((t) => t.label)).toEqual(toolsStrip);
     for (const id of ['automations', 'library', 'skills', 'widgets', 'marketplace', 'connect', 'plugins']) {
       expect(MAIN_SECTIONS.some((s) => s.id === id)).toBe(false);
     }
   });
 
-  it('every forge is a contextual tab', () => {
-    // A forge is an editor you enter from a card, not a destination.
+  it('every forge is a permanent tab, directly after the page it builds for', () => {
     const forges = ALL_SECTIONS.flatMap((s) => s.screens).filter((t) => /ForgeScreen$/.test(t.screen));
     expect(forges.length).toBeGreaterThanOrEqual(4);
-    expect(forges.filter((t) => t.ctx !== true).map((t) => t.screen)).toEqual([]);
+
+    // Not contextual and not hidden: a builder you cannot see is a builder
+    // nobody finds.
+    expect(forges.filter((t) => t.ctx === true).map((t) => t.screen)).toEqual([]);
+    expect(forges.filter((t) => t.tab === false).map((t) => t.screen)).toEqual([]);
+
+    // Adjacency is the whole point of the pairing, so it is pinned rather than
+    // left to the order someone happens to type the array in.
+    const pairs = {
+      AgentForgeScreen: 'AgentsScreen',
+      WorkflowForgeScreen: 'WorkflowsScreen',
+      ToolForgeScreen: 'ToolsScreen',
+      WidgetForgeScreen: 'WidgetManagerScreen',
+    };
+    for (const [forge, page] of Object.entries(pairs)) {
+      const section = ALL_SECTIONS.find((s) => s.screens.some((t) => t.screen === forge));
+      const strip = visibleTabs(section, page).map((t) => t.screen);
+      expect(strip.indexOf(forge), `${forge} follows ${page}`).toBe(strip.indexOf(page) + 1);
+    }
   });
 
-  it('visibleTabs honours tab:false and ctx:true, and the toolbar uses it', () => {
+  it('visibleTabs honours tab:false and the ctx:true mechanism, and the toolbar uses it', () => {
+    // ctx:true still works — nothing uses it today, and the filter that
+    // implements it must not rot in the meantime.
+    const ctxOnly = { screens: [{ screen: 'AScreen', label: 'A' }, { screen: 'BScreen', label: 'B', ctx: true }] };
+    expect(visibleTabs(ctxOnly, 'AScreen').map((t) => t.label)).toEqual(['A']);
+    expect(visibleTabs(ctxOnly, 'BScreen').map((t) => t.label)).toEqual(['A', 'B']);
+
     const settings = BOTTOM_SECTIONS.find((s) => s.id === 'settings');
     expect(visibleTabs(settings, 'ExperimentsScreen').map((t) => t.label)).toEqual(['SETTINGS']);
     expect(visibleTabs(null, 'ChatScreen')).toEqual([]);

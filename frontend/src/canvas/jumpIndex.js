@@ -71,7 +71,10 @@ export function buildJumpIndex(src) {
         id: `go:${tab.screen}`,
         icon: SCREEN_ICONS[tab.screen] || section.icon,
         label,
-        hint: tab.ctx ? 'editor' : '',
+        // Keyed on the screen name, not on tab.ctx: the forges stopped being
+        // contextual tabs when they became permanent ones, and this hint is
+        // about what the destination IS, not about how its tab is drawn.
+        hint: /ForgeScreen$/.test(tab.screen) || tab.ctx ? 'editor' : '',
         action: { type: 'screen', screen: tab.screen },
         _hay: [label, tab.label, section.group],
       });

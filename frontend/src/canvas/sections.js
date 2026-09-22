@@ -35,10 +35,12 @@
 //   tab: false  — owned and routed by the row, never drawn in the toolbar
 //                 (navigated from the screen's own left panel; SYSTEM screens).
 //   ctx: true   — a CONTEXTUAL tab: drawn only while it is the active screen.
-//                 Every forge uses this. A forge is an editor you enter from a
-//                 card, not a destination you pick from the strip; showing its
-//                 tab only while you are inside it keeps the strip about
-//                 destinations and still tells you where you are.
+//                 NO FORGE USES THIS. A forge is where the thing gets built,
+//                 and a tab you can only see once you are already inside it
+//                 cannot tell you it exists — every forge sits permanently
+//                 beside the page it builds for (Workflows | Workflow Forge),
+//                 so the way in is always visible. Kept for any future tab
+//                 that genuinely is per-record state rather than a place.
 //   badge: fn   — optional getter (store) → number | '' rendered on the rail
 //                 row. Only rows with something live carry one.
 //
@@ -116,7 +118,7 @@ export const MAIN_SECTIONS = [
     label: 'Agents',
     screens: [
       { screen: 'AgentsScreen', label: 'AGENTS' },
-      { screen: 'AgentForgeScreen', label: 'AGENT FORGE', ctx: true },
+      { screen: 'AgentForgeScreen', label: 'AGENT FORGE' },
       { screen: 'SkillsScreen', label: 'SKILLS' },
       { screen: 'MemoryScreen', label: 'MEMORY' },
     ],
@@ -130,7 +132,7 @@ export const MAIN_SECTIONS = [
     label: 'Workflows',
     screens: [
       { screen: 'WorkflowsScreen', label: 'WORKFLOWS' },
-      { screen: 'WorkflowForgeScreen', label: 'WORKFLOW FORGE', ctx: true },
+      { screen: 'WorkflowForgeScreen', label: 'WORKFLOW FORGE' },
     ],
   },
   {
@@ -144,9 +146,9 @@ export const MAIN_SECTIONS = [
     label: 'Tools',
     screens: [
       { screen: 'ToolsScreen', label: 'TOOLS' },
-      { screen: 'ToolForgeScreen', label: 'TOOL FORGE', ctx: true },
+      { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
       { screen: 'WidgetManagerScreen', label: 'WIDGETS' },
-      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE', ctx: true },
+      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
 
