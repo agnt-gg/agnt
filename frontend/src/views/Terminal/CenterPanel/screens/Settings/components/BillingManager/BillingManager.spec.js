@@ -1,5 +1,27 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { createStore } from 'vuex';
 import BillingManager from './BillingManager.vue';
+
+/**
+ * data() is the one place a stale identifier fails at runtime and nowhere
+ * else: the build passes, the computed tests pass, and Settings goes blank
+ * for every user. Mounting is the only test that catches it.
+ */
+describe('BillingManager mounts', () => {
+  it('renders the plan ladder for a signed-in user', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+    const store = createStore({
+      modules: {
+        userAuth: { namespaced: true, state: { token: 't', planType: 'free', user: { email: 'a@b.co' } }, getters: { isPremium: () => false, licenseInfo: () => null, planName: () => 'Community Core' }, actions: { fetchLicense: () => null, fetchSubscription: () => null } },
+      },
+    });
+    const wrapper = mount(BillingManager, { global: { plugins: [store], directives: { tooltip: {} }, stubs: { SimpleModal: true, Tooltip: { template: '<div><slot /></div>' } } } });
+    expect(wrapper.text()).toContain('AGNT Pro');
+    expect(wrapper.text()).toContain('$290/year');
+    vi.unstubAllGlobals();
+  });
+});
 
 /**
  * The prices shown must be the prices checkout charges. These mirror

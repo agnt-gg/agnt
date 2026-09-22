@@ -1053,8 +1053,6 @@ ${this.contactForm.message}
     }
   },
   data() {
-    // Define base and discount prices for both monthly and yearly
-
     return {
       DISCOUNT_MESSAGE, // Make the constant available in template
       loading: false,
@@ -1072,7 +1070,6 @@ ${this.contactForm.message}
       uploadedImage: null,
       imagePreview: '',
       basePrices,
-      discountPrices,
     };
   },
 };
