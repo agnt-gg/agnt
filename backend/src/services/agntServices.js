@@ -100,13 +100,26 @@ export async function callService(service, path, { method = 'GET', body, idempot
   return data;
 }
 
+/**
+ * Sentences for the service codes a user can act on. Anything not listed falls
+ * back to the code itself, which is still better than a bare status.
+ */
+const SERVICE_MESSAGES = {
+  endpoint_limit: () => 'Your plan\'s webhook endpoints are all in use. Stop a webhook workflow you no longer need, or add endpoints from Settings > Billing.',
+  inbox_limit_reached: () => 'Your plan\'s inboxes are all in use. Remove one, or add inboxes from Settings > Billing.',
+  allowance_exhausted: (s) => `This month's included ${s} allowance is used up. It resets next month, or add credit from Settings > Billing.`,
+  spending_not_authorized: (s) => `This ${s} call would cost beyond the included allowance and spending is off. Turn it on from Settings > Billing.`,
+  authentication_required: () => 'Sign in to AGNT to use hosted services.',
+  unreachable: (s) => `Could not reach ${s}.agnt.gg. Check your connection and try again.`,
+};
+
 /** Tool-friendly failure shape. Tools return this instead of throwing. */
 export function serviceFailure(error) {
   if (error instanceof ServiceError) {
     // `error` is what a workflow node shows the user, so it carries the human
     // sentence when there is one; the machine code lives in `code`. A plan
     // refusal from the service (402) reads the same as a local one.
-    const message = error.detail?.message
+    const message = error.detail?.message || SERVICE_MESSAGES[error.code]?.(error.service)
       || (error.code === 'pro_required' ? `This is included with AGNT Pro. Upgrade at agnt.gg/pricing to use ${error.service}.` : null);
     return { success: false, error: message || error.code, code: error.code, service: error.service, status: error.status, ...(message ? { message } : {}), ...(error.detail?.docs ? { docs: error.detail.docs } : {}) };
   }

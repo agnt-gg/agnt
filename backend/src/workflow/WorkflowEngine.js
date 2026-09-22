@@ -172,23 +172,32 @@ class WorkflowEngine extends EventEmitter {
   // PRIVATE METHODS
   async _setupTriggerListeners() {
     const triggerNodes = this.workflow.nodes.filter((node) => node.category === 'trigger');
+    const failed = [];
 
     for (const node of triggerNodes) {
       let triggerSetup = false;
 
-      // Try file-based trigger first (from triggers subdirectory)
+      // Try file-based trigger first (from triggers subdirectory). Only a
+      // MISSING module falls back to ToolConfig; a trigger that exists and fails
+      // to set up has already recorded its error, and must not be quietly
+      // replaced by a legacy setup that "works" against a retired relay.
+      let trigger = null;
       try {
-        const triggerModule = await import(`../tools/library/triggers/${node.type}.js`);
-        const trigger = triggerModule.default;
-        if (trigger && typeof trigger.setup === 'function') {
-          await trigger.setup(this, node);
-          triggerSetup = true;
-          console.log(`✓ Using file-based trigger setup for ${node.type}`);
-        }
+        trigger = (await import(`../tools/library/triggers/${node.type}.js`)).default;
       } catch (importError) {
-        // File-based trigger not found, will fall back to ToolConfig
         console.log(`○ File-based trigger not found for ${node.type}, trying ToolConfig`);
         console.log(`Import error details:`, importError.message);
+      }
+      if (trigger && typeof trigger.setup === 'function') {
+        triggerSetup = true;
+        try {
+          await trigger.setup(this, node);
+          console.log(`✓ Using file-based trigger setup for ${node.type}`);
+        } catch (error) {
+          console.error(`Error setting up trigger ${node.type}: ${error.message}`);
+          this._updateNodeError(node.id, error.message);
+          failed.push(node);
+        }
       }
 
       // Backward compatibility: fall back to ToolConfig
