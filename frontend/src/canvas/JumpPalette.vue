@@ -19,6 +19,13 @@
               <span v-if="!group.items.length" class="jp-empty">No matches</span>
             </div>
           </section>
+          <section v-if="storeSuggestions.length" class="jp-group jp-store">
+            <div class="jp-group-label jp-store-label"><i class="fas fa-store" aria-hidden="true"></i>You don’t have one — the Store does<small>{{ storeSuggestions.length }}</small></div>
+            <div class="jp-group-items">
+              <button v-for="item in storeSuggestions" :key="item.id" class="jp-row" :class="{sel:selected===item.id}" :data-jump-id="item.id" @click="run(item)" @mouseenter="selected=item.id"><span class="jp-ic"><i :class="item.icon"></i></span><span class="jp-label">{{ item.label }}<small v-if="item.snippet" class="jp-snippet">{{ item.snippet }}</small></span><small class="jp-hint">{{ item.hint }}</small></button>
+            </div>
+          </section>
+          <p v-else-if="query.trim() && !total && storeUnavailable" class="jp-row jp-store-down">Nothing installed matches, and the Store could not be reached.</p>
           <button v-if="query.trim() && !total" class="jp-row jp-ask" @click="ask"><span class="jp-ic"><i class="fas fa-comment-dots"></i></span><span>Ask Annie about “{{ query.trim() }}”</span></button>
         </div>
       </section>
@@ -48,7 +55,7 @@ import {
 import {
   API_CONFIG
 } from '@/tt.config.js';
-import { loadSearchSources, searchRequest, historySearchItems } from './searchSources.js';
+import { loadSearchSources, searchRequest, historySearchItems, marketplaceSearch, marketplaceStoreItems } from './searchSources.js';
 const emit = defineEmits(['navigate']);
 const store = useStore(),
   router = useRouter();
@@ -67,6 +74,11 @@ let fileTimer = null,
   fileAbort = null,
   fileGeneration = 0;
 const remote=ref({}),catalogErrors=ref([]),catalogLoading=ref(false),history=ref([]),searchLimit=ref(false);let catalogAbort=null,catalogEpoch=0;
+// Store suggestions are fetched with the other debounced sources but RENDERED
+// only when nothing installed matches. Gating the fetch on `total === 0`
+// instead would race: `total` climbs as the file and history requests land, so
+// a fetch keyed on it would fire, and cancel, on results that had not arrived.
+const storeHits=ref([]),storeUnavailable=ref(false);
 const merge=(...lists)=>[...new Map(lists.flat().filter(Boolean).map(item=>[item.id||item.name,item])).values()];
 async function loadCatalog(){catalogAbort?.abort();catalogAbort=new AbortController();const epoch=++catalogEpoch;remote.value={};catalogErrors.value=[];catalogLoading.value=true;await loadSearchSources({token:localStorage.getItem('token'),signal:catalogAbort.signal,onSource:(key,items)=>{if(epoch===catalogEpoch)remote.value={...remote.value,[key]:items}},onError:(label,error)=>{if(epoch===catalogEpoch)catalogErrors.value.push(label+': '+error)}});if(epoch===catalogEpoch)catalogLoading.value=false;}
 const categories = computed(() => buildJumpCatalog({
@@ -82,8 +94,11 @@ const categories = computed(() => buildJumpCatalog({
   skills: merge(store.getters['skills/allSkills'] || [],remote.value.skills||[]),
   pages: (store.getters['widgetLayout/allPages'] || []).filter(p => !String(p.route || '').startsWith('workspace:') && !ALL_SECTIONS.some(s => s.screens.some(t => t.screen === p.route)))
 }));
-watch(()=>store.state.userAuth?.token,()=>{catalogEpoch++;catalogAbort?.abort();fileGeneration++;clearTimeout(fileTimer);fileAbort?.abort();remote.value={};history.value=[];files.value=[];catalogErrors.value=[];if(open.value)close();});
+watch(()=>store.state.userAuth?.token,()=>{catalogEpoch++;catalogAbort?.abort();fileGeneration++;clearTimeout(fileTimer);fileAbort?.abort();remote.value={};history.value=[];files.value=[];storeHits.value=[];storeUnavailable.value=false;catalogErrors.value=[];if(open.value)close();});
 const total = computed(() => categories.value.reduce((n, g) => n + g.items.length, 0));
+// "No assets match" means nothing INSTALLED matches: store hits live outside
+// `categories`, so they can never suppress the very empty state they answer.
+const storeSuggestions = computed(() => (query.value.trim() && !total.value ? storeHits.value : []));
 
 function families(group) {
   if (query.value.trim()) return group.items.map(i => ({
@@ -120,6 +135,7 @@ watch(open, async value => {
     returnFocus = document.activeElement;
     query.value = '';
     history.value=[];
+    storeHits.value=[];storeUnavailable.value=false;
     loadCatalog();
     selected.value = null;
     collapsed.value = new Set();
@@ -131,6 +147,7 @@ watch(query, () => {
   selected.value = null;
   files.value = [];
   history.value=[];searchLimit.value=false;
+  storeHits.value=[];storeUnavailable.value=false;
   fileError.value = '';
   filePending.value = false;
   clearTimeout(fileTimer);
@@ -144,6 +161,10 @@ watch(query, () => {
     await Promise.all([
       (async()=>{try{const body=await searchRequest('/filesystem/search?q='+encodeURIComponent(query.value.trim()),options);if(generation===fileGeneration){files.value=body.items||[];searchLimit.value=!!body.truncated;}}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')fileError.value+='File search unavailable. ';}})(),
       (async()=>{try{const body=await searchRequest('/memory/search?q='+encodeURIComponent(query.value.trim())+'&limit=200',options);if(generation===fileGeneration){history.value=historySearchItems(body.results||[]);searchLimit.value=searchLimit.value||(body.results||[]).length>=200;}}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')fileError.value+='History search unavailable. ';}})(),
+      // Deliberately NOT folded into fileError: the Store being unreachable is
+      // not a degraded local search, and saying so next to results the user
+      // can already act on would be noise.
+      (async()=>{try{const term=query.value.trim();const items=await marketplaceSearch(term,{signal:fileAbort.signal});if(generation===fileGeneration)storeHits.value=marketplaceStoreItems(items,term);}catch(error){if(generation===fileGeneration&&error.name!=='AbortError')storeUnavailable.value=true;}})(),
     ]);
     if(generation===fileGeneration)filePending.value=false;
   }, 250);
@@ -190,6 +211,12 @@ function run(item) {
   else if (a.type === 'conversation') {
     searchRequest('/content-outputs/by-conversation/'+encodeURIComponent(a.id),{token:localStorage.getItem('token')||''}).then(body=>{const output=body.output||body.contentOutput||body;if(!output.id)throw Error('Conversation not available');router.push({path:'/chat',query:{'content-id':output.id}})}).catch(error=>{store.dispatch('shell/openJump');catalogErrors.value=[error.message]});
   } else if(a.type==='output') {router.push({path:'/chat',query:{'content-id':a.id}});}
+  else if (a.type === 'store') {
+    // ?item=<asset_id> is the catalogue's existing deep link: Marketplace.vue
+    // resolves it on cold mount AND from a route watcher when warm, and the
+    // asset id is stable across republishes where the listing UUID is not.
+    router.push({ path: '/marketplace', query: { item: a.assetId } });
+  }
   else if (a.type === 'teams') { window.dispatchEvent(new CustomEvent('agnt:open-team-workspace')); }
   else if (a.type === 'page') {
     window.dispatchEvent(new CustomEvent('agnt:open-page', {
@@ -223,7 +250,9 @@ function onKey(e) {
   let index = visible.findIndex(el => el.dataset.jumpId === selected.value);
   if (e.key === 'Enter') {
     const id = selected.value || visible[0]?.dataset.jumpId;
-    run(categories.value.flatMap(g => g.items).find(i => i.id === id));
+    // Store rows are selectable but live outside `categories`, so Enter has to
+    // look in both or the highlighted row does nothing.
+    run([...categories.value.flatMap(g => g.items), ...storeSuggestions.value].find(i => i.id === id));
     return
   }
   index = Math.max(0, Math.min(visible.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1)));
@@ -424,6 +453,26 @@ function trapFocus(e) {
 .jp-ask {
   grid-column: 1/-1;
   border: 1px solid var(--terminal-border-color)
+}
+
+/* The empty state answers a shopping question, so it spans the grid rather
+   than sitting in one of three columns as if it were a category. */
+.jp-store {
+  grid-column: 1/-1;
+  border-color: rgba(var(--primary-rgb), .35)
+}
+
+.jp-store-label {
+  cursor: default;
+  color: var(--color-primary)
+}
+
+.jp-store-down {
+  grid-column: 1/-1;
+  margin: 0;
+  cursor: default;
+  color: var(--color-text-muted);
+  font-size: 11px
 }
 
 button:focus-visible,
