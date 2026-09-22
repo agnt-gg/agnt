@@ -33,13 +33,19 @@ const props = defineProps({
   teams: { type: Array, default: () => [] },
   compact: { type: Boolean, default: false },
   error: { type: String, default: '' },
+  // Unread per space, keyed by team id ('' is Personal). Shown on the OTHER spaces only.
+  unread: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(['select', 'refresh']);
 const select = ref(null);
 const label = computed(() => props.teams.find(team => team.id === props.modelValue)?.name || (props.modelValue ? 'Team' : 'Personal'));
+const withUnread = (value, name) => {
+  const count = value === props.modelValue ? 0 : props.unread[value] || 0;
+  return count ? name + ' · ' + (count > 99 ? '99+' : count) : name;
+};
 const options = computed(() => [
-  { value: '', label: 'Personal' },
-  ...props.teams.map(team => ({ value: team.id, label: team.name })),
+  { value: '', label: withUnread('', 'Personal') },
+  ...props.teams.map(team => ({ value: team.id, label: withUnread(team.id, team.name) })),
   { value: MANAGE_TEAMS, label: props.teams.length ? 'Manage teams…' : 'Join or create a team…' },
 ]);
 async function open() {

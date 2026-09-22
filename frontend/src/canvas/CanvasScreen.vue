@@ -116,7 +116,7 @@
         :aria-hidden="compactLayout && !navigationOpen ? 'true' : undefined" tabindex="-1">
         <WorkspaceSwitcher
           :model-value="activeTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
-          :error="workspaceError" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
+          :error="workspaceError" :unread="spaceUnread" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
         />
         <!-- No Search row here on purpose. The rail lists DESTINATIONS, and
              search is an action, not a page — it is reached from the jump bar
@@ -540,11 +540,26 @@ export default {
     // exclude the selected conversation: selection is not attention (the
     // whole email-model rule), and this dot exists precisely to be seen from
     // OTHER screens.
-    const hasUnreadChats = computed(() => {
+    const unreadChatCount = computed(() => {
       const unread = store.getters['contentOutputs/unreadOutputIdSet'];
       const streaming = store.getters['chat/streamingOutputIds'];
-      return notifiableUnreadIds(unread, { streamingIds: streaming }).size > 0;
+      return notifiableUnreadIds(unread, { streamingIds: streaming }).size;
     });
+    const hasUnreadChats = computed(() => unreadChatCount.value > 0);
+    // One inbox across spaces: this space reports its own count; the space picker shows the others'.
+    watch(unreadChatCount, count => window.electron?.spaces?.reportUnread?.(count), { immediate: true });
+    const spaceUnread = ref({});
+    let stopSpaceUpdates = null;
+    const applySpaceState = state => {
+      spaceUnread.value = Object.fromEntries((state?.spaces || []).map(space => [space.kind === 'team' ? space.teamId : '', space.unread || 0]));
+    };
+    onMounted(() => {
+      const host = window.electron?.spaces;
+      if (!host) return;
+      stopSpaceUpdates = host.onChanged?.(applySpaceState) || null;
+      host.list?.().then(applySpaceState).catch(error => console.warn('[spaces] list:', error.message));
+    });
+    onBeforeUnmount(() => stopSpaceUpdates?.());
 
     // Shared with Settings → Navigation so both arrange the same page list.
     const customPages = computed(() => customNavigationPages(allPages.value));
@@ -1030,7 +1045,7 @@ export default {
       openMobileNavigationItem, navigateMobileSection, startMobileAddPage, openMobilePrimary,
       isAuthenticated,
       primaryActive, openPrimary, isNavigationItemActive,
-      activeTeamId,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
+      activeTeamId,spaceUnread,selectedTeamId,workspaceTeams,workspaceError,workspaceLabel,teamNavigationTab,selectWorkspace,syncWorkspaceTeams,syncTeamSelection,loadWorkspaceTeams,
       globalModelLabel,
       globalProviderLabel,
       showCatalog,

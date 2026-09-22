@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
     list: () => ipcRenderer.invoke('spaces:list'),
     switch: (id, options) => ipcRenderer.invoke('spaces:switch', id, options),
     syncTeams: (teams, options) => ipcRenderer.invoke('spaces:sync-teams', teams, options),
+    reportUnread: (count) => ipcRenderer.send('spaces:report-unread', count),
     onChanged: (cb) => {
       const handler = (_evt, state) => cb(state);
       ipcRenderer.on('spaces:changed', handler);

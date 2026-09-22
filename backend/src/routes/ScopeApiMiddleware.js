@@ -3,12 +3,15 @@ import {ResourceAuthorization} from '../services/authorization/ResourceAuthoriza
 import db,{dbReady} from '../models/database/index.js';
 import {databaseRepository,ensureSharedScope} from '../services/authorization/ScopeRepository.js';
 import {CloudTeamClient} from '../services/CloudTeamClient.js';
-import {TEAM_ASSET_APIS,scopeApiAction,requireScopeApiRole} from '../services/authorization/ScopeApiPolicy.js';
+import {TEAM_ASSET_APIS,PRIVATE_IN_TEAM_APIS,scopeApiAction,requireScopeApiRole} from '../services/authorization/ScopeApiPolicy.js';
 import {withScopeRequest} from '../services/authorization/ScopeRequestContext.js';
 const repository=databaseRepository(db),cloud=new CloudTeamClient();
 export function createScopeApiMiddleware(authenticate,getWorkspace,getDefaultWorkspace=async()=>null){return async(req,res,next)=>{
  const teamId=req.headers['x-agnt-team-id'];if(!teamId)return next();
- const api=req.path.split('/')[1];if(!TEAM_ASSET_APIS.has(api))return res.status(403).json({error:'This API is not available in a team scope'});
+ const api=req.path.split('/')[1];
+ // Personal-within-team data: served as the caller's own rows. The header is ignored, never honoured.
+ if(PRIVATE_IN_TEAM_APIS.has(api))return next();
+ if(!TEAM_ASSET_APIS.has(api))return res.status(403).json({error:'This API is not available in a team scope'});
  return authenticate(req,res,async()=>{try{
   if(!process.env.AGNT_TENANT_SLUG)throw Object.assign(new Error('Open the team cloud instance'),{status:409});
   await dbReady;

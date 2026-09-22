@@ -10,12 +10,23 @@ import { PRIMARY_SPACE_ID } from './SpaceRegistry.js';
 const TEAM_LIST_LIMIT = 50;
 
 export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadcast }) {
+  // Unread counts, reported by each space's own renderer about ITSELF. A space can never set
+  // another space's count: the id comes from the sender, not the message.
+  const unread = new Map();
   const state = sender => ({
     activeId: views.activeId,
     selfId: sender ? views.spaceIdFor(sender) : undefined,
-    spaces: [{ id: PRIMARY_SPACE_ID, kind: 'personal', label: primaryLabel() }, ...registry.list()],
+    spaces: [{ id: PRIMARY_SPACE_ID, kind: 'personal', label: primaryLabel() }, ...registry.list()].map(space => ({ ...space, unread: unread.get(space.id) || 0 })),
   });
   const announce = () => broadcast('spaces:changed', state());
+
+  ipcMain.on('spaces:report-unread', (event, count) => {
+    const id = views.spaceIdFor(event.sender);
+    const value = Number.isInteger(count) && count >= 0 ? Math.min(count, 9999) : 0;
+    if ((unread.get(id) || 0) === value) return;
+    unread.set(id, value);
+    announce();
+  });
 
   ipcMain.handle('spaces:list', event => state(event.sender));
 
@@ -31,7 +42,7 @@ export function installSpaceIpc({ ipcMain, registry, views, primaryLabel, broadc
     if (!Array.isArray(teams) || teams.length > TEAM_LIST_LIMIT) return { ok: false, error: 'Invalid team list' };
     const { changed, removed } = registry.syncTeams(teams, { replace: options?.replace === true });
     // Losing a team closes its view: a removed member must not keep a live session on screen.
-    for (const id of removed) views.close(id);
+    for (const id of removed) { views.close(id); unread.delete(id); }
     if (changed) announce();
     return { ok: true, changed };
   });

@@ -16,8 +16,9 @@ async function serve(getDefault) {
   const app = express();
   app.use('/api', createScopeApiMiddleware((req, _res, next) => { req.user = { id: 'alice' }; next(); }, async id => projects[id] || null, getDefault));
   app.get('/api/goals', (req, res) => res.json({ owner: req.user.id }));
+  app.get('/api/memory', (req, res) => res.json({ owner: req.user?.id || 'unauthenticated-until-its-own-guard' }));
   const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
-  const call = async (headers) => { const r = await fetch(`http://127.0.0.1:${server.address().port}/api/goals`, { headers: { Authorization: 'Bearer t', 'X-AGNT-Team-ID': 'team', ...headers } }); return { status: r.status, body: await r.json() }; };
+  const call = async (headers, path = '/goals') => { const r = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { headers: { Authorization: 'Bearer t', 'X-AGNT-Team-ID': 'team', ...headers } }); return { status: r.status, body: await r.json() }; };
   return { call, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
@@ -27,6 +28,15 @@ it('uses the default project when none is named, and never overrides an explicit
     expect((await call({})).body.owner).toBe('scope:general');
     expect((await call({ 'X-AGNT-Workspace-ID': 'other' })).body.owner).toBe('scope:other');
     expect((await call({ 'X-AGNT-Workspace-ID': 'foreign' })).status).toBe(404);
+  } finally { await close(); }
+});
+
+it('never pools chats or memory under the team: a team header on them is ignored, not honoured', async () => {
+  const { call, close } = await serve(async () => ({ id: 'general' }));
+  try {
+    const result = await call({}, '/memory');
+    expect(result.status).toBe(200);
+    expect(result.body.owner).not.toMatch(/^scope:/);
   } finally { await close(); }
 });
 

@@ -1,4 +1,6 @@
-const assetApis=new Set(['agents','workflows','custom-tools','content-outputs','goals','layouts','workspaces','widget-definitions','skills','skillforge','experiments','insights','memory','groups','conversations','schedules','wallets','ledger','routing','contracts','mutations','evolution','executions']);
+// Shared with the team. Chats, chat folders and memory are deliberately absent: they stay yours
+// inside a team. Mirrors backend ScopeApiPolicy.TEAM_ASSET_APIS (parity is tested).
+const assetApis=new Set(['agents','workflows','custom-tools','goals','layouts','workspaces','widget-definitions','skills','skillforge','experiments','insights','schedules','wallets','ledger','routing','contracts','mutations','evolution','executions']);
 export function teamScopeHeaders(url,baseUrl,scope){
  if(!scope?.teamId)return {};
  const target=new URL(url,baseUrl),base=new URL(baseUrl);

@@ -23,7 +23,9 @@ const SRC = fs.readFileSync(path.join(HERE, 'CanvasScreen.vue'), 'utf8');
 
 describe('canvas unread-chats dot wiring', () => {
   it('derives from the chime set — notifiableUnreadIds over unread minus streaming', () => {
-    expect(SRC).toMatch(/notifiableUnreadIds\(unread, \{ streamingIds: streaming \}\)\.size > 0/);
+    // One count feeds both the dot and the cross-space unread badge; the dot is that count > 0.
+    expect(SRC).toMatch(/notifiableUnreadIds\(unread, \{ streamingIds: streaming \}\)\.size;/);
+    expect(SRC).toMatch(/hasUnreadChats = computed\(\(\) => unreadChatCount\.value > 0\)/);
     expect(SRC).toContain("store.getters['contentOutputs/unreadOutputIdSet']");
     expect(SRC).toContain("store.getters['chat/streamingOutputIds']");
   });

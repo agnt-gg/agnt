@@ -121,13 +121,15 @@ describe('SpaceViews', () => {
 describe('space IPC', () => {
   function setup() {
     const handlers = {};
-    const ipcMain = { handle: (channel, fn) => { handlers[channel] = fn; } };
+    const ipcMain = { handle: (channel, fn) => { handlers[channel] = fn; }, on: (channel, fn) => { handlers[channel] = fn; } };
     const registry = new SpaceRegistry(dir);
-    const views = { activeId: PRIMARY_SPACE_ID, show: vi.fn((space) => ({ ok: true, activeId: space ? space.id : PRIMARY_SPACE_ID })), close: vi.fn(), spaceIdFor: () => PRIMARY_SPACE_ID };
+    const teamSender = { team: true };
+    const views = { activeId: PRIMARY_SPACE_ID, show: vi.fn((space) => ({ ok: true, activeId: space ? space.id : PRIMARY_SPACE_ID })), close: vi.fn(), spaceIdFor: sender => (sender === teamSender ? 'team:acme' : PRIMARY_SPACE_ID) };
     const broadcast = vi.fn();
     installSpaceIpc({ ipcMain, registry, views, primaryLabel: () => 'Personal', broadcast });
     const invoke = (channel, ...args) => handlers[channel]({ sender: {} }, ...args);
-    return { invoke, views, broadcast, registry };
+    const send = (sender, channel, ...args) => handlers[channel]({ sender }, ...args);
+    return { invoke, send, teamSender, views, broadcast, registry };
   }
 
   it('lists Personal first, then teams', async () => {
@@ -156,6 +158,24 @@ describe('space IPC', () => {
     expect(views.close).toHaveBeenCalledWith('team:acme');
     expect(await invoke('spaces:sync-teams', Array.from({ length: 51 }, (_, i) => ({ ...acme, id: 't' + i })))).toMatchObject({ ok: false });
     expect(await invoke('spaces:sync-teams', 'nope')).toMatchObject({ ok: false });
+  });
+});
+
+describe('unread across spaces', () => {
+  it('each space reports only its own count, bounded, and the list carries it', async () => {
+    const handlers = {};
+    const ipcMain = { handle: (c, fn) => { handlers[c] = fn; }, on: (c, fn) => { handlers[c] = fn; } };
+    const teamSender = {};
+    const registry = new SpaceRegistry(dir);
+    registry.syncTeams([acme]);
+    const broadcast = vi.fn();
+    installSpaceIpc({ ipcMain, registry, views: { activeId: PRIMARY_SPACE_ID, spaceIdFor: s => (s === teamSender ? 'team:acme' : PRIMARY_SPACE_ID) }, primaryLabel: () => 'Personal', broadcast });
+    handlers['spaces:report-unread']({ sender: teamSender }, 3);
+    handlers['spaces:report-unread']({ sender: {} }, 99999);
+    handlers['spaces:report-unread']({ sender: {} }, 'lots');
+    const state = await handlers['spaces:list']({ sender: {} });
+    expect(Object.fromEntries(state.spaces.map(s => [s.id, s.unread]))).toEqual({ primary: 0, 'team:acme': 3 });
+    expect(broadcast).toHaveBeenCalledWith('spaces:changed', expect.anything());
   });
 });
 
