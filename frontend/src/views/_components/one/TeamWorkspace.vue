@@ -179,7 +179,7 @@ function addSeat() {
   perform(async () => {
     const slug = currentTeam.value.tenantSlug;
     const added = await tenantRequest('/' + slug + '/members', { method: 'POST', body: JSON.stringify({ email: seatEmail.value.trim().toLowerCase(), role: seatRole.value }) });
-    if (added.userId) await request('/' + teamId.value + '/instance-members/' + encodeURIComponent(added.userId), { method: 'PUT', body: '{}' }).catch(() => {});
+    if (added.userId) await request('/' + teamId.value + '/members', { method: 'POST', body: JSON.stringify({ userId: added.userId, role: seatRole.value }) });
     seatEmail.value = '';
     await Promise.all([loadInstanceMembers(), loadTeam()]);
   });
@@ -195,7 +195,8 @@ function removeSeat(p) {
 /** Someone already seated on the instance joins the team (or leaves it). */
 function setInstanceAccess(p, join) {
   perform(async () => {
-    await request('/' + teamId.value + '/instance-members/' + encodeURIComponent(p.user_id), { method: join ? 'PUT' : 'DELETE', body: '{}' });
+    if (join) await request('/' + teamId.value + '/members', { method: 'POST', body: JSON.stringify({ userId: p.user_id, role: 'member' }) });
+    else await request('/' + teamId.value + '/members/' + encodeURIComponent(p.user_id), { method: 'DELETE' });
     await Promise.all([loadInstanceMembers(), loadTeam()]);
   });
 }
