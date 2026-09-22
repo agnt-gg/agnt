@@ -1034,7 +1034,7 @@ export default {
       if (this.hostedWebhookRequested === this.workflowId) return;
       this.hostedWebhookRequested = this.workflowId;
       try {
-        const res = await fetch(`${API_CONFIG.BASE_URL}/api/agnt-services/webhook/${this.workflowId}`, { credentials: 'include' });
+        const res = await fetch(`${API_CONFIG.BASE_URL}/agnt-services/webhook/${this.workflowId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
         const data = await res.json();
         this.hostedWebhookPro = data.pro !== false;
         this.hostedWebhookUrl = data.url || null;
@@ -1046,7 +1046,7 @@ export default {
       if (this.hostedInboxRequested) return;
       this.hostedInboxRequested = true;
       try {
-        const res = await fetch(`${API_CONFIG.BASE_URL}/api/agnt-services/inbox`, { credentials: 'include' });
+        const res = await fetch(`${API_CONFIG.BASE_URL}/agnt-services/inbox`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
         const data = await res.json();
         this.hostedInboxPro = data.pro !== false;
         this.hostedInboxAddress = data.address || null;

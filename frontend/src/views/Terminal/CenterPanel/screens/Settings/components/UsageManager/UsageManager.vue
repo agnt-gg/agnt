@@ -99,7 +99,7 @@ export default {
       error.value = '';
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_CONFIG.BASE_URL}/api/agnt-services/usage${force ? '?t=' + Date.now() : ''}`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(`${API_CONFIG.BASE_URL}/agnt-services/usage${force ? '?t=' + Date.now() : ''}`, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error(`Usage request failed (${res.status})`);
         const data = await res.json();
         services.value = data.services || [];
