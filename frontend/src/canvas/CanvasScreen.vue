@@ -116,18 +116,10 @@
           :model-value="selectedTeamId" :teams="workspaceTeams" :compact="!railLabelsVisible"
           :error="workspaceError" @select="selectWorkspace" @refresh="loadWorkspaceTeams"
         />
-        <!-- Search is an ACTION, not a page: it opens the jump palette rather
-             than navigating anywhere, so it is the one rail row Settings does
-             not list. Every destination below comes from the registry. -->
-        <nav class="cv-primary-nav" aria-label="Search">
-          <Tooltip :text="jumpHint" position="right" width="auto" :disabled="railLabelsVisible">
-            <button class="cv-sb-page" data-primary="find" aria-label="Search" @click="openMobilePrimary('find')">
-              <i class="fas fa-search" aria-hidden="true"></i>
-              <span class="cv-sb-label">Search</span>
-              <span class="cv-rail-shortcut">{{ jumpKey }}</span>
-            </button>
-          </Tooltip>
-        </nav>
+        <!-- No Search row here on purpose. The rail lists DESTINATIONS, and
+             search is an action, not a page — it is reached from the jump bar
+             above the canvas and by its keyboard shortcut. Every row below
+             comes from the navigation registry. -->
         <button v-if="compactLayout" type="button" class="cv-mobile-nav-close" @click="closeMobileNavigation()">Close navigation <i class="fas fa-times"></i></button>
         <!-- User-managed navigation: built-in and custom pages share one ordered, grouped rail. -->
         <div class="cv-sb-pages">
@@ -581,7 +573,6 @@ export default {
     // Library open a panel over whatever is mounted (which is how a draft in
     // the screen underneath survives a trip through them).
     function openPrimary(id) {
-      if(id==='find'){openJump();return}
       if(id==='teams'){showLibrary.value=false;onCustomPage.value=false;teamNavigationTab.value='Members';showTeamWorkspace.value=true;return}
       if(id==='library'){onCustomPage.value=false;teamNavigationTab.value='Assets';showTeamWorkspace.value=!!selectedTeamId.value;showLibrary.value=!selectedTeamId.value;return}
       selectedTeamId.value=new URLSearchParams(window.location.search).get('team')||'';showLibrary.value=false;showTeamWorkspace.value=false;onCustomPage.value=false;
@@ -1063,12 +1054,7 @@ export default {
 
 <style scoped>
 
-/* Reference sidebar: scope first, then stable primary destinations. */
-.cv-primary-nav{display:flex;flex-direction:column;gap:2px;width:100%;align-items:center;margin-bottom:6px;flex-shrink:0}
-.cv-primary-nav :deep(.tooltip-container){width:100%}
-.cv-rail-shortcut{font-size:9px;font-family:inherit;color:var(--color-text-muted);opacity:.7;margin-left:auto;white-space:nowrap}
-
-.cv-primary-nav .cv-sb-page:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
+/* Reference sidebar: scope first, then the destinations from the registry. */
 
 .cv-personal-content{height:100%;min-height:0;display:flex;flex-direction:column}.cv-personal-content>*{flex:1;min-height:0}
 

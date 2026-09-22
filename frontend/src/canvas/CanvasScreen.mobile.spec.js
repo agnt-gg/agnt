@@ -24,7 +24,10 @@ describe('AGNT-One mobile navigation', () => {
    const { wrapper } = setup(); expect(wrapper.find('.cv-mobile-menu').exists()).toBe(true);
    expect(wrapper.find('.cv-sidebar').attributes('inert')).toBeDefined(); await wrapper.find('.cv-mobile-menu').trigger('click');
    const labels = wrapper.findAll('.cv-sidebar .cv-sb-page').map(b => b.text());
-   for(const label of ['Search','Chat','Goals','Files','Library','Teams','Settings','Custom test'])expect(labels.some(t=>t.includes(label))).toBe(true);
+   for(const label of ['Chat','Goals','Files','Library','Teams','Settings','Custom test'])expect(labels.some(t=>t.includes(label))).toBe(true);
+   // The drawer mirrors the rail, and the rail carries destinations only:
+   // search is reached from the jump bar, not from a nav row.
+   expect(labels.some(t=>t.includes('Search'))).toBe(false);
    expect(wrapper.find('.cv-sidebar').attributes('aria-modal')).toBe('true'); wrapper.unmount();
  });
  it('navigation closes the drawer and emits the original screen intent', async () => {
