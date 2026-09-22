@@ -121,7 +121,7 @@ class AIBrowserControl extends BaseAction {
     chatOnly: true,
     description: 'Drive the AGNT Browser widget DIRECTLY by running Python in it, one step at a time, '
       + 'and read the result back. Use this when YOU want to look at a page and decide what to do next — '
-      + 'it has no nested agent, so you stay in control between steps. Use ai_browser_use instead when a '
+      + 'it has no nested agent, so you stay in control between steps. Use action="run" instead when a '
       + 'whole task should be handed off and completed autonomously. '
       + 'A browser is always available: it drives the Browser widget on the canvas, and opens a clean '
       + 'browser of its own if no widget is there — so never ask the user to open one. '
@@ -176,15 +176,17 @@ class AIBrowserControl extends BaseAction {
       return this.formatOutput({ success: false, error: 'No Python was provided for the browser step.' });
     }
 
-    // GATE 1 of 2. The catalogue hides this tool from the workflow canvas; this
-    // is the gate that actually holds, because a workflow JSON can name a node
-    // type the palette never offered.
+    // GATE 1 of 2, and the one that actually holds. The engine is no longer a
+    // registered tool at all, so there is no node type to name -- but this stays
+    // because `browser` IS a node, and action="script" is reachable from it.
+    // The parameter is a PROGRAM; trigger data must never become code.
     if (!this.isChatRun(workflowEngine)) {
       return this.formatOutput({
         success: false,
-        error: 'Browser Control only runs in a conversation, where a person is present and the Python comes '
-          + 'from the assistant rather than from trigger data. Use the Browser Agent node (ai-browser-use) '
-          + 'in a workflow: it takes an instruction in plain English and runs the browser itself.',
+        error: 'action="script" only runs in a conversation, where a person is present and the Python comes '
+          + 'from the assistant rather than from trigger data. In a workflow use the browser node with '
+          + 'action="run": it takes an instruction in plain English and runs the browser itself, or the '
+          + 'verbs (navigate/click/type) for deterministic steps.',
       });
     }
 

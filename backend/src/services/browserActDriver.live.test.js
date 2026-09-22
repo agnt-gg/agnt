@@ -13,7 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import {
   ensureFallbackSurface, closeFallbackSurfaceGracefully, installedBrowsers,
-} from '../tools/library/actions/browserFallbackSurface.js';
+} from '../tools/library/browserEngines/browserFallbackSurface.js';
 import { performBrowserAction, _resetDrivers } from './browserActDriver.js';
 
 const FIXTURE = `<!doctype html><html><head><title>Fixture</title></head><body>

@@ -1,8 +1,9 @@
 import BaseAction from '../BaseAction.js';
-import actTool from './ai-browser-act.js';
-import useTool from './ai-browser-use.js';
-import controlTool from './ai-browser-control.js';
+import actTool from '../browserEngines/ai-browser-act.js';
+import useTool from '../browserEngines/ai-browser-use.js';
+import controlTool from '../browserEngines/ai-browser-control.js';
 import { BROWSER_ACTIONS } from '../../../services/browserActDriver.js';
+import { browserUseProviderOptions } from '../browserEngines/browserUseProviders.js';
 
 /**
  * THE browser tool — one tool, three levels of delegation.
@@ -23,12 +24,19 @@ import { BROWSER_ACTIONS } from '../../../services/browserActDriver.js';
  *
  * A FAÇADE, NOT A REWRITE
  * -----------------------
- * This file is a dispatcher. The engines stay where they are, unchanged:
- * verbs go to the CDP driver, `run` to the nested browser-use agent with all
- * its provider plumbing, `script` to the Python daemon. The legacy tools stay
- * registered so the existing workflow nodes keep executing — they are the
- * alias layer, scheduled for deletion one release after nothing depends on
- * them.
+ * This file is a dispatcher. The engines are unchanged: verbs go to the CDP
+ * driver, `run` to the nested browser-use agent with all its provider
+ * plumbing, `script` to the Python daemon.
+ *
+ * THE ENGINES ARE NOT TOOLS. They live in `library/browserEngines/`, which is
+ * deliberately NOT one of the directories ToolRegistry scans, so they cannot
+ * register themselves however valid their schemas are. That is the whole
+ * enforcement: a tool is a file in a scanned category, and the machinery is
+ * not in one. They were registered as tools until the DB was checked and no
+ * saved workflow, agent or channel named them (45 tables, every column, zero
+ * hits), at which point the alias layer was cost with no benefit — three
+ * redundant entries in the user's tool picker and three chances for the model
+ * to pick the wrong one. This is the ONLY browser tool.
  *
  * WHY EACH ENGINE SEES ONLY ITS OWN PARAMETERS
  * --------------------------------------------
@@ -178,8 +186,15 @@ class Browser extends BaseAction {
       provider: {
         required: false,
         type: 'string',
-        inputType: 'text',
+        inputType: 'select',
         inputSize: 'half',
+        // Generated from providerConfigs, exactly as the engine declares it.
+        // A hand-written list here would be a THIRD copy of the same fact, and
+        // the manifests already proved how that ends: the old hand-written
+        // ['OpenAI','Gemini','DeepSeek'] advertised two providers that were
+        // broken and omitted seventeen that worked. A provider added to the
+        // routing table appears here with nobody remembering to edit a list.
+        options: browserUseProviderOptions(),
         description: 'For run in a workflow: which AI provider drives the agent. In chat the conversation’s provider is used.',
       },
       model: {

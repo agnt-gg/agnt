@@ -639,7 +639,11 @@ export default {
     const runningMap = computed(() => store.state.chatUnified.runningToolCalls[chatChannelKey.value] || {});
     const isStreaming = computed(() => store.getters['chatUnified/isStreaming'](chatChannelKey.value));
 
-    const browserToolNames = new Set(['browser', 'ai_browser_act', 'ai_browser_use', 'ai_browser_control']);
+    // Live path only: this scans for a RUNNING call, and `browser` is the only
+    // browser tool the model can emit. The three it consolidated are no longer
+    // registered, so they can never appear here. History is different — see
+    // MessageItem's BROWSER_TOOL_NAMES, which still knows the old names.
+    const browserToolNames = new Set(['browser']);
 
     /**
      * Browser is not an optional post-result suggestion. It is the surface the

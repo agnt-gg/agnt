@@ -293,7 +293,7 @@ export async function getLiveSurface(userId, selector = {}, probe = probeBridge)
 /**
  * Wait briefly for a surface to appear.
  *
- * Calling ai_browser_use from chat ALSO auto-opens the Browser widget
+ * Calling the browser tool from chat ALSO auto-opens the Browser widget
  * (TOOL_WIDGET_MAP), so on a cold canvas the tool and the window race: the tool
  * runs backend-side immediately while the widget is still mounting, attaching
  * its debugger and minting a bridge. Without this the first "go look at X" of a

@@ -22,11 +22,11 @@ const BUILTIN_CATEGORY_MAP = [
  *
  * A workflow node's parameters are templated from trigger data — text that
  * arrives from Discord, email or a webhook. A tool whose parameter IS a program
- * therefore cannot be a node, and `ai-browser-control` declares `chatOnly` to
- * say so. This filter is the polite half of that rule: it keeps the tool out of
- * the palette and out of every catalogue an LLM builds workflows from. The half
- * that actually holds is the refusal inside the action itself, because a
- * workflow JSON can name a type that was never offered.
+ * therefore cannot be a node, and declares `chatOnly` to say so. This filter is
+ * the polite half of that rule: it keeps the tool out of the palette and out of
+ * every catalogue an LLM builds workflows from. The half that actually holds is
+ * the refusal inside the action itself, because a workflow JSON can name a type
+ * that was never offered.
  */
 function isWorkflowNode(tool) {
   return !tool?.chatOnly;

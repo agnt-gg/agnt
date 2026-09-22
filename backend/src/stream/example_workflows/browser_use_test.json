@@ -4,15 +4,16 @@
   "nodes": [
     {
       "id": "cc24dc22-4d80-4e6c-8d88-a4f7c6532170",
-      "text": "AI Browser Use",
+      "text": "Browser",
       "x": 720,
       "y": 368,
       "isEditing": false,
-      "type": "ai-browser-use",
+      "type": "browser",
       "icon": "web",
       "category": "action",
       "isSelected": false,
       "parameters": {
+        "action": "run",
         "instructions": "ORIGINAL TASK:\n{{receiveDiscordMessage.content}}\n\nHELPFUL NOTES (optional):\n{{aILLMCall.generatedText}}",
         "provider": "OpenAI"
       },

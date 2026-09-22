@@ -1,11 +1,16 @@
 /**
- * CONTRACT: the Browser Agent's schema is identical in all three places it
- * lives — the action class, the backend manifest, and the frontend manifest.
+ * CONTRACT: the Browser Agent is an ENGINE, not a tool, and its schema still
+ * describes what the code actually reads.
  *
- * Nothing generates the manifests; they are hand-maintained copies. The node
- * spent a long time advertising three providers because the code changed and
- * the copies did not, and no test related them. Run
- * `node backend/scripts/sync-browser-tool-schemas.mjs` when this fails.
+ * It used to be a registered tool whose schema was copied by hand into two
+ * manifests, and it spent a long time advertising three dead providers because
+ * the code changed and the copies did not. It is now reached only through the
+ * `browser` tool's action="run", so the copies are gone — and the assertion
+ * that replaced them is that they STAY gone, because a re-added manifest entry
+ * would put a fourth browser tool back in the user's picker.
+ *
+ * What still matters, and is still tested below: the schema declares every
+ * parameter the engine reads, and the browser-use version stays pinned.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -25,27 +30,43 @@ const { browserUseProviderOptions } = await import('./browserUseProviders.js');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..', '..', '..', '..');
 
-const manifestEntry = (relativePath) => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'));
-  const entry = manifest.actions.find((tool) => tool?.type === 'ai-browser-use');
-  expect(entry, `ai-browser-use missing from ${relativePath}`).toBeTruthy();
-  return entry;
-};
+const MANIFESTS = [
+  'backend/src/tools/toolLibrary.json',
+  'frontend/src/tools/_toolLibrary.json',
+];
+
+const manifest = (relativePath) => JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'));
 
 const { schema } = action.constructor;
 
-describe('schema is the same everywhere', () => {
-  for (const relativePath of [
-    'backend/src/tools/toolLibrary.json',
-    'frontend/src/tools/_toolLibrary.json',
-  ]) {
-    it(`matches ${relativePath}`, () => {
-      const entry = manifestEntry(relativePath);
-      expect(entry.parameters).toEqual(JSON.parse(JSON.stringify(schema.parameters)));
-      expect(entry.outputs).toEqual(JSON.parse(JSON.stringify(schema.outputs)));
-      expect(entry.description).toBe(schema.description);
+describe('the engines are not tools', () => {
+  // There is ONE browser tool. These three were registered alongside it as
+  // back-compat aliases, which meant the picker listed four browser tools and
+  // the model had three chances to choose the wrong one. The DB was checked
+  // before they were removed -- 45 tables, every column, zero references.
+  const LEGACY = ['ai-browser-use', 'ai-browser-control', 'ai-browser-act'];
+
+  for (const relativePath of MANIFESTS) {
+    it(`no legacy browser entry survives in ${relativePath}`, () => {
+      const types = manifest(relativePath).actions.map((tool) => tool?.type);
+      for (const legacy of LEGACY) {
+        expect(types, `${legacy} is back in the manifest -- the picker will show it as a tool`).not.toContain(legacy);
+      }
+      // Absence is only meaningful if the list was actually built.
+      expect(types).toContain('browser');
     });
   }
+
+  it('lives outside every directory ToolRegistry scans', () => {
+    // The enforcement is structural, not a denylist: ToolRegistry readdir-scans
+    // a fixed set of category directories, and browserEngines/ is not one of
+    // them. Move this file back under actions/ and it registers itself again,
+    // however absent from the manifest it is.
+    const SCANNED = ['actions', 'triggers', 'controls', 'utilities', 'widgets', 'custom', 'mcp'];
+    const dir = path.basename(here);
+    expect(dir).toBe('browserEngines');
+    expect(SCANNED).not.toContain(dir);
+  });
 });
 
 describe('schema declares what the code actually reads', () => {

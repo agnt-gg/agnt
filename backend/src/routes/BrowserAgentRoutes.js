@@ -22,7 +22,7 @@ import {
 } from '../services/browserSurfaces.js';
 import { isStreaming, ownsStream } from '../services/BrowserScreencastService.js';
 import { acquireViewer, releaseViewer } from '../services/BrowserViewerLeaseService.js';
-import { ensureFallbackSurface } from '../tools/library/actions/browserFallbackSurface.js';
+import { ensureFallbackSurface } from '../tools/library/browserEngines/browserFallbackSurface.js';
 
 const router = express.Router();
 

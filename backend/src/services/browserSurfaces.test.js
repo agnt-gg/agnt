@@ -184,7 +184,7 @@ describe('waiting for a window that is still opening', () => {
   });
 
   it('waits for a window that appears a moment later', async () => {
-    // The real race: calling ai_browser_use auto-opens the Browser widget, so
+    // The real race: calling the browser tool auto-opens the Browser widget, so
     // the tool starts looking before the window has finished mounting.
     setTimeout(() => registerSurface('u1', 'w_late', { cdpUrl: CDP }), 60);
     const surface = await waitForSurface('u1', {}, 1000, 10, alive);

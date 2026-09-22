@@ -2702,11 +2702,12 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
      * Tool calls that drive a browser, and therefore have something to
      * watch.
      *
-     * All four names, not just the current one: "browser" is the tool
-     * today, but the three it consolidated remain dispatchable as aliases
-     * for existing workflow nodes, and a conversation loaded from history
-     * can contain any of them. A card that only knew the new name would
-     * render nothing for yesterday's transcript.
+     * All four names, not just the current one. `browser` is the only tool
+     * that can be CALLED now — the three it consolidated were de-registered
+     * once the DB confirmed nothing referenced them — but this list is about
+     * READING, not calling: a conversation loaded from history can still
+     * contain any of them, and a card that only knew the new name would
+     * render nothing for yesterday's transcript. These stay forever.
      */
     const BROWSER_TOOL_NAMES = new Set([
       'browser',

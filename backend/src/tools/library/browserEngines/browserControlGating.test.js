@@ -1,19 +1,21 @@
 /**
- * CONTRACT: Browser Control is registered as a tool, and is NOT a workflow node.
+ * CONTRACT: running a model-authored PROGRAM stays chat-only, now that Browser
+ * Control is an engine behind `browser` action="script" rather than a tool.
  *
- * Those two statements have to be true at the same time, in three files that
- * nothing relates to each other:
+ * A workflow node's parameters are templated from trigger data — text arriving
+ * from Discord, email or a webhook. A parameter that IS a program therefore
+ * must never be reachable from a node. That used to be carried by a `chatOnly`
+ * flag on a registered tool; the tool is gone, so what has to hold now is:
  *
- *   - both toolLibrary.json manifests must carry it, or the orchestrator cannot
- *     offer it in chat at all;
- *   - nodeTypeCatalog must NOT return it, or it appears in the node palette and
- *     in every catalogue an LLM builds workflows from;
- *   - the workflow-chat system prompt must not list it, or the workflow builder
- *     is taught to emit a node type the engine then refuses at run time.
+ *   - `browser` IS a workflow node (the verbs and action="run" are the whole
+ *     point of unattended browser automation);
+ *   - the refusal inside the engine still fires, because that is the half that
+ *     actually holds — a workflow JSON can name anything;
+ *   - the legacy types appear in no catalogue and no system prompt, or the
+ *     workflow builder is taught to emit a node type that no longer exists.
  *
- * The `chatOnly` flag is what carries that intent across all three. This test
- * exists because a flag nothing reads is indistinguishable from a flag that
- * works, right up until a webhook executes a model-authored program.
+ * This test exists because a gate nothing reads is indistinguishable from a
+ * gate that works, right up until a webhook executes a model-authored program.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -37,42 +39,32 @@ const MANIFESTS = [
   'frontend/src/tools/_toolLibrary.json',
 ];
 
-describe('it is registered where chat can reach it', () => {
+describe('chat reaches the program engine through the one browser tool', () => {
   for (const relativePath of MANIFESTS) {
-    it(`appears in ${relativePath}`, () => {
-      const entry = manifest(relativePath).actions.find((tool) => tool?.type === 'ai-browser-control');
-      expect(entry, 'run node backend/scripts/sync-browser-tool-schemas.mjs').toBeTruthy();
-      expect(entry.chatOnly).toBe(true);
-      expect(entry.parameters.python).toBeTruthy();
+    it(`${relativePath} carries browser, and none of the engines`, () => {
+      const entries = manifest(relativePath).actions;
+      const browserEntry = entries.find((tool) => tool?.type === 'browser');
+
+      expect(browserEntry, 'the one browser tool must be registered').toBeTruthy();
+      expect(browserEntry.parameters.python, 'action="script" needs its parameter').toBeTruthy();
+
+      for (const legacy of ['ai-browser-control', 'ai-browser-use', 'ai-browser-act']) {
+        expect(entries.map((t) => t?.type), legacy).not.toContain(legacy);
+      }
     });
   }
 
-  it('does not accidentally mark the Browser Agent chat-only', () => {
-    // The Browser Agent is the workflow half of this pair. If it ever picked up
-    // the flag, unattended browser automation would silently stop existing.
+  it('does not mark the one browser tool chat-only', () => {
+    // `browser` is the workflow half too. If it ever picked up the flag,
+    // unattended browser automation would silently stop existing.
     for (const relativePath of MANIFESTS) {
-      const entry = manifest(relativePath).actions.find((tool) => tool?.type === 'ai-browser-use');
+      const entry = manifest(relativePath).actions.find((tool) => tool?.type === 'browser');
       expect(entry.chatOnly).toBeUndefined();
     }
   });
 });
 
-describe('the manifests cannot drift from the class', () => {
-  // The same protection ai-browser-use.schema.test.js gives the Browser Agent.
-  // Nothing regenerates these manifests; the Browser Agent's provider dropdown
-  // advertised two dead providers for months because no test related the copies.
-  for (const relativePath of MANIFESTS) {
-    it(`matches the class schema in ${relativePath}`, async () => {
-      const { schema } = (await import('./ai-browser-control.js')).default.constructor;
-      const entry = manifest(relativePath).actions.find((tool) => tool?.type === 'ai-browser-control');
-
-      expect(entry.parameters).toEqual(JSON.parse(JSON.stringify(schema.parameters)));
-      expect(entry.outputs).toEqual(JSON.parse(JSON.stringify(schema.outputs)));
-      expect(entry.description).toBe(schema.description);
-      expect(entry.title).toBe(schema.title);
-    });
-  }
-
+describe('the engine still declares what it reads', () => {
   it('declares every parameter the action actually reads', async () => {
     // `reuseBrowser` was the counter-example on the other tool: documented,
     // coded against, absent from the schema, and therefore permanently
@@ -95,9 +87,11 @@ describe('it is not offered as a workflow node', () => {
     const types = flat.map((tool) => tool.type);
 
     expect(types).not.toContain('ai-browser-control');
+    expect(types).not.toContain('ai-browser-use');
+    expect(types).not.toContain('ai-browser-act');
     // The other half of the assertion: the filter must not have eaten the
     // catalogue. A test that only checks for absence passes on an empty list.
-    expect(types).toContain('ai-browser-use');
+    expect(types).toContain('browser');
     expect(flat.length).toBeGreaterThan(20);
   });
 
@@ -108,22 +102,26 @@ describe('it is not offered as a workflow node', () => {
     const text = String(await getWorkflowSystemContent(null, {}, null));
 
     expect(text).not.toContain('ai-browser-control');
+    expect(text).not.toContain('ai-browser-use');
+    expect(text).not.toContain('ai-browser-act');
     // Same reason as above: absence is only meaningful if the list was built.
-    expect(text).toContain('ai-browser-use');
+    expect(text).toContain('browser');
   });
 });
 
-describe('the two browser tools stay distinguishable', () => {
-  it('point the model at each other for the case they do not cover', async () => {
+describe('no engine still advertises itself as a tool the model can pick', () => {
+  it('names no dead tool, because there is nothing left to choose between', async () => {
+    // These descriptions used to point the model at each other, because picking
+    // the wrong one of three was silent and costly. The model is now handed one
+    // schema, so a reference to `ai_browser_use` is not guidance any more -- it
+    // is an instruction to call a tool that does not exist.
     const control = (await import('./ai-browser-control.js')).default.constructor.schema;
     const agent = (await import('./ai-browser-use.js')).default.constructor.schema;
 
-    // Each description has to name the other tool, because the wrong choice is
-    // silent: the Browser Agent works in chat (just slower and blind to the
-    // outer conversation), and Browser Control simply refuses in a workflow.
-    expect(control.description).toMatch(/ai_browser_use/);
-    expect(control.title).toBe('Browser Control');
-    expect(agent.title).toBe('Browser Agent');
+    for (const { type, description } of [control, agent]) {
+      expect(description, type).not.toMatch(/ai_browser_(use|act|control)/);
+      expect(description, type).not.toMatch(/ai-browser-(use|act|control)/);
+    }
   });
 
   it('steers the model to goto_url instead of new_tab', async () => {

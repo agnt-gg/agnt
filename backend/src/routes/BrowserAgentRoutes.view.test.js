@@ -36,7 +36,7 @@ vi.mock('./Middleware.js', () => ({
 /** The launcher is the one collaborator we do not want really running. */
 const ensureFallbackSurface = vi.fn();
 const closeFallbackSurface = vi.fn();
-vi.mock('../tools/library/actions/browserFallbackSurface.js', () => ({
+vi.mock('../tools/library/browserEngines/browserFallbackSurface.js', () => ({
   ensureFallbackSurface: (...a) => ensureFallbackSurface(...a),
   closeFallbackSurface: (...a) => closeFallbackSurface(...a),
   default: (...a) => ensureFallbackSurface(...a),

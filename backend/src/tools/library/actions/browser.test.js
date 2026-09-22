@@ -4,13 +4,14 @@
  * declares, and a refusal that teaches when the action is wrong.
  *
  * The engines' own behavior is pinned in their own suites (browserActDriver,
- * ai-browser-use, ai-browser-control); nothing here re-tests it.
+ * ai-browser-use, ai-browser-control, now under library/browserEngines/);
+ * nothing here re-tests it.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const actExecute = vi.fn();
-vi.mock('./ai-browser-act.js', () => ({
+vi.mock('../browserEngines/ai-browser-act.js', () => ({
   default: {
     execute: (...a) => actExecute(...a),
     constructor: {
@@ -24,7 +25,7 @@ vi.mock('./ai-browser-act.js', () => ({
 }));
 
 const useExecute = vi.fn();
-vi.mock('./ai-browser-use.js', () => ({
+vi.mock('../browserEngines/ai-browser-use.js', () => ({
   default: {
     execute: (...a) => useExecute(...a),
     constructor: {
@@ -38,7 +39,7 @@ vi.mock('./ai-browser-use.js', () => ({
 }));
 
 const controlExecute = vi.fn();
-vi.mock('./ai-browser-control.js', () => ({
+vi.mock('../browserEngines/ai-browser-control.js', () => ({
   default: {
     execute: (...a) => controlExecute(...a),
     constructor: {

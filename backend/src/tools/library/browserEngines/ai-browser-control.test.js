@@ -157,8 +157,9 @@ describe('it only runs where a person is present', () => {
     expect(out.success).toBe(false);
     expect(out.error).toMatch(/only runs in a conversation/i);
     // Naming the alternative is the difference between a dead end and a
-    // redirect: the workflow answer is the Browser Agent node.
-    expect(out.error).toMatch(/ai-browser-use/);
+    // redirect: the workflow answer is the browser node's action="run".
+    expect(out.error).toMatch(/action="run"/);
+    expect(out.error, 'must not name a tool that no longer exists').not.toMatch(/ai-browser-use/);
     expect(spawn).not.toHaveBeenCalled();
   });
 

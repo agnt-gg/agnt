@@ -79,16 +79,9 @@ const ID_FIELDS = {
 export const TOOL_WIDGET_MAP = {
   // Annie browsing in chat should be something you can WATCH. No id to bind:
   // the widget owns its own browser surface, so opening it is the whole job.
-  ai_browser_use: { widgetId: 'browser' },
-  // Browser Control wants the widget even more than the Browser Agent does. It
-  // can fall back to launching a clean browser of its own, but that opens a
-  // separate window; opening the widget on the first call keeps the work on the
-  // canvas, beside the conversation, where the user is already looking.
-  ai_browser_control: { widgetId: 'browser' },
-  // Browser Actions is the verbs path — the one agents reach for by default —
-  // and it streams into the same widget so the user watches the clicks land.
-  ai_browser_act: { widgetId: 'browser' },
-  // The unified tool: verbs, run and script all show their work in the widget.
+  // Verbs, run and script are all one tool now, and all show their work here.
+  // Opening the widget on the first call keeps the work on the canvas, beside
+  // the conversation, rather than in a separate window the user did not ask for.
   browser: { widgetId: 'browser' },
   update_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },
   revert_workflow: { widgetId: 'workflow-forge', idKind: 'workflow', routeParam: 'id' },

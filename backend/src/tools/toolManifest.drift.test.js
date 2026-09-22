@@ -19,7 +19,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import browser from './library/actions/browser.js';
-import browserAct from './library/actions/ai-browser-act.js';
 import computerInput from './library/actions/computer-input.js';
 import computerSetup from './library/utilities/computer-setup.js';
 import computerSession from './library/utilities/computer-session.js';
@@ -39,7 +38,12 @@ const manifests = MANIFEST_PATHS.map((manifestPath) => ({
 const entriesOf = (manifest) => Object.values(manifest).flat().filter((entry) => entry?.type);
 const entryFor = (manifest, type) => entriesOf(manifest).find((entry) => entry.type === type);
 
-const TOOLS = [browser, browserAct, computerInput, computerSetup, computerSession, computerWindows, computerObserve];
+const TOOLS = [browser, computerInput, computerSetup, computerSession, computerWindows, computerObserve];
+
+// De-registered 2026-09: `browser` is the one browser tool, and these three are
+// engines behind it, living outside every scanned directory. A manifest entry
+// is what makes a tool visible in the picker, so their absence is the contract.
+const DE_REGISTERED = ['ai-browser-use', 'ai-browser-control', 'ai-browser-act'];
 
 describe('the manifests match the code the model will actually run', () => {
   it.each(manifests.flatMap(({ manifestPath, manifest }) => TOOLS.map((tool) => [
@@ -54,7 +58,6 @@ describe('the manifests match the code the model will actually run', () => {
     for (const { manifest } of manifests) {
       const bucketOf = (type) => Object.entries(manifest).find(([, list]) => Array.isArray(list) && list.some((e) => e?.type === type))?.[0];
       expect(bucketOf('browser')).toBe('actions');
-      expect(bucketOf('ai-browser-act')).toBe('actions');
       expect(bucketOf('computer-input')).toBe('actions');
       for (const t of ['computer-setup', 'computer-session', 'computer-windows', 'computer-observe']) {
         expect(bucketOf(t), t).toBe('utilities');
@@ -62,8 +65,18 @@ describe('the manifests match the code the model will actually run', () => {
     }
   });
 
+  it('no de-registered browser engine is back in a manifest', () => {
+    for (const { manifestPath, manifest } of manifests) {
+      const types = entriesOf(manifest).map((entry) => entry.type);
+      for (const type of DE_REGISTERED) {
+        expect(types, `${path.relative(REPO_ROOT, manifestPath)} re-registered ${type}`).not.toContain(type);
+      }
+      expect(types, 'the one browser tool must still be there').toContain('browser');
+    }
+  });
+
   it('advertises every browser verb, not the eight it used to have', () => {
-    const advertised = entryFor(manifests[0].manifest, 'ai-browser-act').parameters.action.description;
+    const advertised = entryFor(manifests[0].manifest, 'browser').parameters.action.description;
     for (const verb of ['wait', 'select', 'hover', 'dialog', 'tabs', 'open', 'focus', 'close', 'console', 'errors', 'requests']) {
       expect(advertised, `manifest never mentions "${verb}"`).toContain(verb);
     }
@@ -93,7 +106,7 @@ describe('the manifests match the code the model will actually run', () => {
    */
   it('asks the model for nothing but the verb — anything else makes the tool uncallable', () => {
     for (const { manifestPath, manifest } of manifests) {
-      for (const type of ['browser', 'ai-browser-act']) {
+      for (const type of ['browser']) {
         const params = entryFor(manifest, type).parameters;
         const mandatory = Object.entries(params)
           .filter(([, def]) => def.default === undefined && !def.conditional && def.required !== false)

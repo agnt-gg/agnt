@@ -1,5 +1,5 @@
 /**
- * Copy the browser tools' schemas from their action classes into the two
+ * Copy the browser tool's schema from its action class into the two
  * toolLibrary.json manifests.
  *
  * The manifests are hand-maintained duplicates of every action's schema — the
@@ -7,10 +7,15 @@
  * either. That is how the Browser Agent's provider dropdown kept offering three
  * providers long after two of them had stopped working.
  *
- * Run after changing ai-browser-use.js or ai-browser-control.js:
+ * There is ONE browser tool. The three engines behind it (act / use / control)
+ * are not registered and have no manifest entries, so they are deliberately
+ * absent from the list below — adding one back would put a fourth browser tool
+ * in the user's picker, and toolManifest.drift.test.js fails if it happens.
+ *
+ * Run after changing browser.js:
  *   node backend/scripts/sync-browser-tool-schemas.mjs
  *
- * ai-browser-use.schema.test.js fails if you forget.
+ * toolManifest.drift.test.js fails if you forget.
  *
  * Splices only the objects it owns rather than re-serialising the file: these
  * manifests are not canonically formatted, so a whole-file rewrite would bury a
@@ -26,8 +31,7 @@ const repoRoot = path.resolve(here, '..', '..');
 
 /** Ordered: each tool is placed after the one before it when first inserted. */
 const TOOLS = [
-  { type: 'ai-browser-use', module: '../src/tools/library/actions/ai-browser-use.js' },
-  { type: 'ai-browser-control', module: '../src/tools/library/actions/ai-browser-control.js' },
+  { type: 'browser', module: '../src/tools/library/actions/browser.js' },
 ];
 
 /** Byte span of the JSON object containing `marker`. */
