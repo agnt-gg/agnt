@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import Goals from './Goals.vue';
 import GoalCard from './components/GoalCard.vue';
+import { readFileSync } from 'node:fs';
 import GoalsToolbar from './components/GoalsToolbar.vue';
 import GoalsPanel from '@/views/Terminal/RightPanel/types/GoalsPanel/GoalsPanel.vue';
 
@@ -74,6 +75,40 @@ describe('Goals five-column board', () => {
     expect(dispatch.mock.calls.filter(([action]) => action === 'goals/fetchGoalTasks')).toEqual([['goals/fetchGoalTasks', 'plan']]);
     await wrapper.find('.goal-detail-back').trigger('click');
     expect(wrapper.findAll('[data-stage]')).toHaveLength(5);
+  });
+
+  // The header used to be one wrapping flex row: the chips sat on flex:1 and
+  // shoved "New goal" onto a second line UNDER a search box that stretched to
+  // fill the window. The primary action must sit on the top line, above the
+  // filters, and the search box must not be the thing that grows.
+  it('puts the primary action on the head row, above a search box that does not stretch', () => {
+    const { wrapper } = setup(Goals);
+    const toolbar = wrapper.findComponent(GoalsToolbar);
+
+    const head = toolbar.find('.gt-head');
+    expect(head.exists()).toBe(true);
+    expect(head.find('.new-goal-button').exists()).toBe(true);
+    expect(head.find('.gt-title').text()).toBe('GOALS');
+
+    // Search and chips live on the row below, never beside the action.
+    const filters = toolbar.find('.gt-filters');
+    expect(filters.find('.search-input').exists()).toBe(true);
+    expect(filters.find('.filter-chips').exists()).toBe(true);
+    expect(filters.find('.new-goal-button').exists()).toBe(false);
+
+    // Order on the page: action row is rendered before the filter row.
+    const rows = toolbar.findAll('.gt-head, .gt-filters');
+    expect(rows.map((r) => r.classes().find((c) => c.startsWith('gt-')))).toEqual(['gt-head', 'gt-filters']);
+
+    // The chips take the slack, not the input. Read from source because scoped
+    // styles are not applied in jsdom, and "does not stretch" is the entire
+    // point of the change.
+    // Vitest serves modules over http, so import.meta.url is not a file URL
+    // here — read from the project root instead.
+    const css = readFileSync('src/views/Terminal/CenterPanel/screens/Goals/components/GoalsToolbar.vue', 'utf8');
+    const rule = (selector) => css.split(selector + ' {')[1]?.split('}')[0] || '';
+    expect(rule('.search-input')).toMatch(/flex:\s*0\s+0\s+240px/);
+    expect(rule('.filter-chips')).toMatch(/flex:\s*1/);
   });
 
   it('opens native creation from the toolbar without starting a goal', async () => {

@@ -1,55 +1,77 @@
 <template>
+  <!--
+    TWO ROWS, not one wrapping row. Everything used to sit on a single flex
+    line with the chips on flex:1, so the chips ate the middle and pushed the
+    primary action onto a second line BELOW the search box — the one control
+    that should never be hard to find was the one that moved. Identity and
+    actions are now a fixed top line, and the controls that narrow the list sit
+    together underneath.
+  -->
   <div class="goals-toolbar">
-    <div class="search-input">
-      <i class="fas fa-search"></i>
-      <input
-        ref="searchRef"
-        :value="searchQuery"
-        placeholder="Search goals..."
-        aria-label="Search goals"
-        @input="onSearchInput"
+    <div v-if="!compact" class="gt-head">
+      <div class="gt-identity">
+        <span class="gt-title">GOALS</span>
+        <span class="gt-count">{{ goals.length }} {{ goals.length === 1 ? 'goal' : 'goals' }}</span>
+      </div>
+      <div class="gt-actions">
+        <CustomSelect
+          class="sort-select"
+          :model-value="sortBy"
+          :options="sortOptions"
+          @update:model-value="$emit('update:sortBy', $event)"
+        />
+        <BaseButton type="button" class="new-goal-button" @click="$emit('create-goal')">
+          <i class="fas fa-plus" aria-hidden="true"></i> New goal
+        </BaseButton>
+      </div>
+    </div>
+
+    <div class="gt-filters">
+      <div class="search-input">
+        <i class="fas fa-search"></i>
+        <input
+          ref="searchRef"
+          :value="searchQuery"
+          placeholder="Search goals..."
+          aria-label="Search goals"
+          @input="onSearchInput"
+        />
+        <kbd v-if="!searchQuery">/</kbd>
+      </div>
+
+      <div class="filter-chips">
+        <button
+          v-for="filter in statusFilters"
+          :key="filter.value"
+          class="filter-chip"
+          :class="{ active: activeFilters.includes(filter.value) }"
+          :aria-pressed="activeFilters.includes(filter.value)"
+          @click="toggleFilter(filter.value)"
+        >
+          <span class="chip-dot" :class="filter.value"></span>
+          {{ filter.label }}
+          <span class="chip-count">{{ filter.count }}</span>
+        </button>
+        <button
+          v-if="activeFilters.length > 0"
+          class="filter-chip clear-chip"
+          @click="clearFilters"
+          v-tooltip="'Clear filters'"
+        >
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Compact (inside the mobile sheet) has no head row, so the sort
+           control rides here instead of disappearing with it. -->
+      <CustomSelect
+        v-if="compact"
+        class="sort-select"
+        :model-value="sortBy"
+        :options="sortOptions"
+        @update:model-value="$emit('update:sortBy', $event)"
       />
-      <kbd v-if="!searchQuery">/</kbd>
     </div>
-
-    <div class="filter-chips">
-      <button
-        v-for="filter in statusFilters"
-        :key="filter.value"
-        class="filter-chip"
-        :class="{ active: activeFilters.includes(filter.value) }"
-        :aria-pressed="activeFilters.includes(filter.value)"
-        @click="toggleFilter(filter.value)"
-      >
-        <span class="chip-dot" :class="filter.value"></span>
-        {{ filter.label }}
-        <span class="chip-count">{{ filter.count }}</span>
-      </button>
-      <button
-        v-if="activeFilters.length > 0"
-        class="filter-chip clear-chip"
-        @click="clearFilters"
-        v-tooltip="'Clear filters'"
-      >
-        <i class="fas fa-times"></i>
-      </button>
-    </div>
-
-    <CustomSelect
-      class="sort-select"
-      :model-value="sortBy"
-      :options="[
-        { label: 'Newest first', value: 'created_desc' },
-        { label: 'Oldest first', value: 'created_asc' },
-        { label: 'Most progress', value: 'progress_desc' },
-        { label: 'Least progress', value: 'progress_asc' },
-        { label: 'Priority', value: 'priority' },
-      ]"
-      @update:model-value="$emit('update:sortBy', $event)"
-    />
-    <BaseButton type="button" class="new-goal-button" @click="$emit('create-goal')">
-      <i class="fas fa-plus" aria-hidden="true"></i> New goal
-    </BaseButton>
   </div>
 </template>
 
@@ -67,10 +89,23 @@ export default {
     activeFilters: { type: Array, default: () => [] },
     sortBy: { type: String, default: 'created_desc' },
     goals: { type: Array, default: () => [] },
+    /** Inside the mobile sheet, which draws its own heading and create button. */
+    compact: { type: Boolean, default: false },
   },
   emits: ['update:searchQuery', 'update:activeFilters', 'update:sortBy', 'create-goal'],
   setup(props, { emit }) {
     const searchRef = ref(null);
+
+    // Hoisted out of the template: an inline array literal is a new object on
+    // every render, so CustomSelect saw a changed prop on each keystroke in
+    // the search box next to it.
+    const sortOptions = [
+      { label: 'Newest first', value: 'created_desc' },
+      { label: 'Oldest first', value: 'created_asc' },
+      { label: 'Most progress', value: 'progress_desc' },
+      { label: 'Least progress', value: 'progress_asc' },
+      { label: 'Priority', value: 'priority' },
+    ];
 
     const statusFilters = computed(() => {
       const counts = props.goals.reduce((counts, goal) => {
@@ -99,6 +134,7 @@ export default {
 
     return {
       searchRef,
+      sortOptions,
       statusFilters,
       toggleFilter,
       clearFilters,
@@ -112,10 +148,62 @@ export default {
 <style scoped>
 .goals-toolbar {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  /* The words in this header collapse on the HEADER's width, not the
+     viewport's: with both side panels open the centre column is ~735px at
+     1440 wide. Same rule as ScreenToolbar. */
+  container-type: inline-size;
+  container-name: goals-toolbar;
+}
+
+/* Row 1 — what this screen is, and the one thing you came here to do. */
+.gt-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 10px 0;
-  flex-wrap: wrap;
+}
+
+.gt-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gt-title {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--color-green);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gt-count {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  padding: 1px 6px;
+  background: var(--color-darker-0);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.gt-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Row 2 — the controls that narrow what is on the board. */
+.gt-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .search-input {
@@ -126,9 +214,16 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 0 10px;
-  min-width: 220px;
-  flex: 0 1 280px;
+  /* Fixed, not fluid. A search box has no reason to grow to the width of the
+     window — the chips beside it are what should take the slack. */
+  flex: 0 0 240px;
   transition: border-color 0.2s ease;
+}
+
+@container goals-toolbar (max-width: 640px) {
+  .search-input {
+    flex-basis: 170px;
+  }
 }
 
 .search-input:focus-within {
@@ -170,6 +265,7 @@ export default {
   gap: 6px;
   flex-wrap: wrap;
   flex: 1;
+  min-width: 0;
 }
 
 .filter-chip {
@@ -228,9 +324,10 @@ export default {
 
 .new-goal-button {
   width: auto;
-  min-height: 36px;
-  padding: 8px 12px;
-  font-size: 0.85em;
+  min-height: 0;
+  padding: 6px 12px;
+  font-size: 0.8em;
+  white-space: nowrap;
 }
 
 .sort-select {
@@ -238,8 +335,8 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   color: var(--color-text);
-  padding: 6px 10px;
-  font-size: 0.8em;
+  padding: 5px 10px;
+  font-size: 0.78em;
   font-family: inherit;
   cursor: pointer;
   outline: none;
