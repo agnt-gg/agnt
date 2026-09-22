@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import input from './actions/computer-input.js';
-import observe from './utilities/computer-observe.js';
+import input from './computerEngines/computer-input.js';
+import observe from './computerEngines/computer-observe.js';
 
 let directory, previous;
 beforeAll(() => {

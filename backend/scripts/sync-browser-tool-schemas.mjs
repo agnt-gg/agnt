@@ -32,6 +32,10 @@ const repoRoot = path.resolve(here, '..', '..');
 /** Ordered: each tool is placed after the one before it when first inserted. */
 const TOOLS = [
   { type: 'browser', module: '../src/tools/library/actions/browser.js' },
+  // Computer Use builds its parameter and output union from its five engines
+  // at class-definition time, so a hand-written manifest copy would be stale
+  // the moment any engine gains a parameter. Generated, always.
+  { type: 'computer-use', module: '../src/tools/library/actions/computer-use.js' },
 ];
 
 /** Byte span of the JSON object containing `marker`. */

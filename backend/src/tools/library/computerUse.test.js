@@ -18,11 +18,11 @@ import path from 'node:path';
 import SchemaValidator from '../SchemaValidator.js';
 import { readOutcome, resolveDriverPath, parseDriverJson } from '../../services/computerUse/driver.js';
 
-import setup from './utilities/computer-setup.js';
-import session from './utilities/computer-session.js';
-import windows from './utilities/computer-windows.js';
-import observe from './utilities/computer-observe.js';
-import input from './actions/computer-input.js';
+import setup from './computerEngines/computer-setup.js';
+import session from './computerEngines/computer-session.js';
+import windows from './computerEngines/computer-windows.js';
+import observe from './computerEngines/computer-observe.js';
+import input from './computerEngines/computer-input.js';
 
 const TOOLS = { setup, session, windows, observe, input };
 
@@ -109,7 +109,7 @@ describe('registration: built in, not a plugin', () => {
   });
 
   it('the nested-agent loop (cua-act) is deliberately not ported', async () => {
-    await expect(import('./actions/computer-act.js')).rejects.toThrow();
+    await expect(import('./computerEngines/computer-act.js')).rejects.toThrow();
   });
 });
 
@@ -278,7 +278,10 @@ describe('without a driver', () => {
         const r = await tool.execute({ pid: 1, windowId: 1, session: 'x' });
         expect(r.success).toBe(false);
         expect(r.installed).toBe(false);
-        expect(r.error).toMatch(/computer-setup/);
+        // Names the ACTION the caller can run, not a tool that no longer
+        // exists: there is one Computer Use tool now.
+        expect(r.error).toMatch(/computer_use/);
+        expect(r.error).toMatch(/ensure/);
       }
       const r = await input.execute({ action: 'click', pid: 1, elementToken: 't', confirm: true });
       expect(r.installed).toBe(false);

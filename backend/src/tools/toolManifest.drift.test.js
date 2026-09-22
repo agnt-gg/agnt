@@ -19,11 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import browser from './library/actions/browser.js';
-import computerInput from './library/actions/computer-input.js';
-import computerSetup from './library/utilities/computer-setup.js';
-import computerSession from './library/utilities/computer-session.js';
-import computerWindows from './library/utilities/computer-windows.js';
-import computerObserve from './library/utilities/computer-observe.js';
+import computerUse from './library/actions/computer-use.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../..');
@@ -38,12 +34,18 @@ const manifests = MANIFEST_PATHS.map((manifestPath) => ({
 const entriesOf = (manifest) => Object.values(manifest).flat().filter((entry) => entry?.type);
 const entryFor = (manifest, type) => entriesOf(manifest).find((entry) => entry.type === type);
 
-const TOOLS = [browser, computerInput, computerSetup, computerSession, computerWindows, computerObserve];
+const TOOLS = [browser, computerUse];
 
 // De-registered 2026-09: `browser` is the one browser tool, and these three are
 // engines behind it, living outside every scanned directory. A manifest entry
 // is what makes a tool visible in the picker, so their absence is the contract.
-const DE_REGISTERED = ['ai-browser-use', 'ai-browser-control', 'ai-browser-act'];
+const DE_REGISTERED = [
+  'ai-browser-use', 'ai-browser-control', 'ai-browser-act',
+  // Same demotion, same reason: five stages of one capability, whose split
+  // leaked into titles like "Computer Input (Click / Type / Menu / Keys /
+  // Clipboard)". They are actions on computer-use now.
+  'computer-input', 'computer-observe', 'computer-windows', 'computer-session', 'computer-setup',
+];
 
 describe('the manifests match the code the model will actually run', () => {
   it.each(manifests.flatMap(({ manifestPath, manifest }) => TOOLS.map((tool) => [
@@ -58,10 +60,10 @@ describe('the manifests match the code the model will actually run', () => {
     for (const { manifest } of manifests) {
       const bucketOf = (type) => Object.entries(manifest).find(([, list]) => Array.isArray(list) && list.some((e) => e?.type === type))?.[0];
       expect(bucketOf('browser')).toBe('actions');
-      expect(bucketOf('computer-input')).toBe('actions');
-      for (const t of ['computer-setup', 'computer-session', 'computer-windows', 'computer-observe']) {
-        expect(bucketOf(t), t).toBe('utilities');
-      }
+      // Computer Use is an ACTION, not a utility. The four utilities it
+      // absorbed were only utilities because looking at the screen had been
+      // split away from acting on it; one tool that does both acts.
+      expect(bucketOf('computer-use')).toBe('actions');
     }
   });
 
@@ -83,10 +85,9 @@ describe('the manifests match the code the model will actually run', () => {
   });
 
   it('no manifest entry still names the plugin the computer tools came from', () => {
-    for (const t of ['computer-input', 'computer-setup', 'computer-session', 'computer-windows', 'computer-observe']) {
-      for (const { manifest } of manifests) {
-        expect(JSON.stringify(entryFor(manifest, t)), t).not.toMatch(/cua-(setup|session|windows|observe|input|act)\b/);
-      }
+    for (const { manifest } of manifests) {
+      expect(JSON.stringify(entryFor(manifest, 'computer-use')), 'computer-use')
+        .not.toMatch(/cua-(setup|session|windows|observe|input|act)\b/);
     }
   });
 
@@ -106,7 +107,7 @@ describe('the manifests match the code the model will actually run', () => {
    */
   it('asks the model for nothing but the verb — anything else makes the tool uncallable', () => {
     for (const { manifestPath, manifest } of manifests) {
-      for (const type of ['browser']) {
+      for (const type of ['browser', 'computer-use']) {
         const params = entryFor(manifest, type).parameters;
         const mandatory = Object.entries(params)
           .filter(([, def]) => def.default === undefined && !def.conditional && def.required !== false)
@@ -116,16 +117,22 @@ describe('the manifests match the code the model will actually run', () => {
     }
   });
 
-  it('the computer tools kept the optionality their plugin schemas declared', () => {
-    for (const type of ['computer-setup', 'computer-session', 'computer-windows', 'computer-observe', 'computer-input']) {
-      const params = entryFor(manifests[0].manifest, type).parameters;
+  /**
+   * The union must not inherit a mandatory parameter from any engine.
+   *
+   * computer-session declared `session` required, because every driver call it
+   * makes is scoped to a session id. Folded into a union that also serves
+   * list_windows and doctor, that would make the WHOLE tool demand a session
+   * id to list windows -- the same uncallable-tool failure as above, arriving
+   * by inheritance instead of by authoring.
+   */
+  it('inherits no engine\'s mandatory parameter into the union', () => {
+    for (const { manifestPath, manifest } of manifests) {
+      const params = entryFor(manifest, 'computer-use').parameters;
       const mandatory = Object.entries(params)
         .filter(([, def]) => def.default === undefined && !def.conditional && def.required !== false)
         .map(([name]) => name);
-      // computer-session is the one tool that genuinely cannot act without an
-      // identity: every driver call it makes is scoped to a session id.
-      const allowed = type === 'computer-session' ? ['session'] : [];
-      expect(mandatory, type).toEqual(allowed);
+      expect(mandatory, `${path.relative(REPO_ROOT, manifestPath)} computer-use`).toEqual(['action']);
     }
   });
 

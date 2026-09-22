@@ -100,6 +100,11 @@ export const ORCHESTRATOR_RESIDENT_GROUPS = [
   // precisely because the model could not see it and reached for the
   // nested-agent tool it could.
   'browser',
+  // ONE schema, and it is the only way to reach built-in desktop control. The
+  // five tools it replaced were in NO group at all, so they fell into the
+  // anonymous "installed" bucket that discover_tools only samples -- native
+  // app automation was effectively unreachable without asking for everything.
+  'computer',
 ];
 
 /**

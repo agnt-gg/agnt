@@ -57,7 +57,7 @@ export function appendComputerImages(messages, images, format, supportsVision = 
     for (const image of selected) {
       const decodedBytes = Math.floor(image.data.length * 3 / 4) - (image.data.endsWith('==') ? 2 : image.data.endsWith('=') ? 1 : 0);
       if (decodedBytes > 5 * 1024 * 1024 || (image.width || 0) > 8000 || (image.height || 0) > 8000) {
-        content.push({type:'text',text:'VISUAL INPUT UNAVAILABLE: screenshot exceeds this provider\'s image limit. Use computer-observe mode=zoom or accessibility targets. Do not guess pixels.'});
+        content.push({type:'text',text:'VISUAL INPUT UNAVAILABLE: screenshot exceeds this provider\'s image limit. Use computer_use action=zoom or accessibility targets. Do not guess pixels.'});
       } else content.push({type:'image',source:{type:'base64',media_type:image.mimeType,data:image.data}});
     }
     // The screenshot IS the observation tool's output, so on Anthropic it

@@ -4,7 +4,7 @@
  * BUILT IN, NOT A PLUGIN. Ported from the cua-toolkit plugin (v0.5.0, verified
  * live against driver 0.19.3) so desktop control ships with AGNT the way the
  * browser does, instead of being something a user has to find and install.
- * The driver binary itself is still installed on demand (computer-setup
+ * The driver binary itself is still installed on demand (computer_use
  * action="ensure") because it is a signed native service, not JavaScript.
  *
  * Every measured gotcha below is kept verbatim — they were paid for.
@@ -269,7 +269,7 @@ export function notInstalledResult() {
   return {
     success: false,
     installed: false,
-    error: 'Cua Driver is not installed. Run computer-setup with action="ensure" (confirm=true) to auto-install + start it, or action="install".',
+    error: 'Cua Driver is not installed. Run computer_use with action="ensure" (confirm=true) to auto-install + start it, or action="install".',
   };
 }
 

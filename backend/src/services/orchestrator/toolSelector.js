@@ -231,6 +231,20 @@ export const TOOL_GROUPS = {
   browser: [
     'browser',
   ],
+  // ONE computer tool. It was five (input/observe/windows/session/setup) and
+  // the split leaked into the names: a tool called "Computer Input (Click /
+  // Type / Menu / Keys / Clipboard)" is a title listing its own verbs, which
+  // is what a title must do when those verbs cannot be actions on one tool.
+  // They can be. The engines live outside every scanned directory, so they
+  // cannot register themselves.
+  //
+  // It was ALSO in no group at all, which is worse than it sounds: a tool in
+  // no group falls into the anonymous "installed" bucket, and discover_tools
+  // shows that bucket only as a TRUNCATED SAMPLE. Built-in desktop control was
+  // effectively invisible unless the model asked for everything.
+  computer: [
+    'computer_use',
+  ],
   canvas: [
     'get_canvas_state',
     'inspect_canvas_widget',
@@ -310,6 +324,9 @@ export const GROUP_TRIGGERS = {
   // carries none of the keywords and is the single most common way the request
   // arrives.
   browser: /\b(browsers?|browse|browsing|websites?|web\s?pages?|webpages?|urls?|navigate|surf|visit\s+\S+|[\w-]+\.(?:com|org|net|io|gg|ai|dev|app|co)\b)/i,
+  // "click the button in Photoshop", "what's open on my desktop", "type this
+  // into Notepad" -- desktop control requests rarely say "computer".
+  computer: /\b(desktops?|computers?|screens?|apps?|applications?|click(?:ing)?|typ(?:e|ing)|keyboards?|mouse|clipboards?|copy\s*(?:and\s*)?paste|screenshots?|open\s+(?:\w+\s+)?(?:app|application|program)|native\s+apps?)\b/i,
   canvas: /\b(canvas|workspaces?|widgets?|windows?|panes?|tabs?|open\s+(?:the\s+)?(?:traces|goals|dashboard|memory|artifacts)|looking\s+at|on\s+(?:my|the)\s+screen)\b/i,
   mcp: /\b(mcp|mcps|model\s*context\s*protocols?)\b/i,
 };
@@ -333,6 +350,7 @@ export const GROUP_DESCRIPTIONS = {
   tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
   appearance: "Set or clear the app's background image/video live (ephemeral overlay — never overwrites the user's saved theme background)",
   browser: 'Drive a real browser with one tool: fast deterministic verbs by default, a whole-task autonomous agent via action="run", raw Python/CDP via action="script"',
+  computer: 'Drive this computer with one tool: list windows and apps, observe a window\'s accessibility tree, then click, type, use menus, keys and the clipboard on real native applications',
   canvas: 'See and arrange the Workspaces page: read open widget windows, inspect their contents, open/close/move them',
   mcp: 'Tools exposed by your configured MCP servers (mcp__<server>__<tool>)',
 };
