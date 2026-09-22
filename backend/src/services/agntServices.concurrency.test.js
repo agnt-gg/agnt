@@ -36,7 +36,7 @@ describe('callService parallelism', () => {
     }));
 
     const count = 50;
-    await Promise.all(Array.from({ length: count }, (_, i) => callService('search', '/scrape', { method: 'POST', body: { url: 'https://e' + i } })));
+    await Promise.all(Array.from({ length: count }, (_, i) => callService('search', '/search', { method: 'POST', body: { query: 'q' + i } })));
     expect(peak, 'all 50 must be in flight together; any lower number means a local cap was reintroduced').toBe(count);
     vi.unstubAllGlobals();
   });
@@ -50,7 +50,7 @@ describe('callService parallelism', () => {
       return ++call === 1 ? fail(429, 'service_busy') : ok({ done: true });
     }));
 
-    await callService('search', '/scrape', { method: 'POST', idempotent: true, body: {} });
+    await callService('search', '/search', { method: 'POST', idempotent: true, body: {} });
     expect(keys).toHaveLength(2);
     expect(keys[0], 'a retry must not mint a new key').toBe(keys[1]);
     vi.unstubAllGlobals();
@@ -59,11 +59,11 @@ describe('callService parallelism', () => {
   it('does not retry a deterministic refusal', async () => {
     const { callService } = await import('./agntServices.js');
     let calls = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => { calls++; return fail(503, 'page_blocked'); }));
+    vi.stubGlobal('fetch', vi.fn(async () => { calls++; return fail(400, 'invalid_search'); }));
 
-    const error = await callService('search', '/scrape', { method: 'POST', body: {} }).catch((e) => e);
-    expect(error.code).toBe('page_blocked');
-    expect(calls, 'a blocked page will still be blocked next time').toBe(1);
+    const error = await callService('search', '/search', { method: 'POST', body: {} }).catch((e) => e);
+    expect(error.code).toBe('invalid_search');
+    expect(calls, 'an invalid request will still be invalid next time').toBe(1);
     vi.unstubAllGlobals();
   });
 });

@@ -34,7 +34,6 @@ AgntServicesRoutes.get('/usage', authenticateToken, async (_req, res) => {
     models: (u) => [{ key: 'credits', label: 'Model credits', used: u.usedCredits ?? u.usedUnits, included: u.includedCredits ?? u.includedUnits, unit: 'credits' }],
     search: (u) => [
       { key: 'searches', label: 'Searches', used: u.usedSearches, included: u.includedSearches, unit: 'searches' },
-      { key: 'scrapes', label: 'Pages scraped', used: u.usedScrapes, included: u.includedScrapes, unit: 'pages' },
     ],
     sandbox: (u) => [{ key: 'minutes', label: 'Compute minutes', used: u.usedUnits, included: u.includedUnits, unit: 'min' }],
     mail: (u, extra) => [

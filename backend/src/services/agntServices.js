@@ -104,14 +104,14 @@ export async function callService(service, path, { method = 'GET', body, idempot
 
     const code = data?.error || data?.reason || ('http_' + res.status);
     // "Busy" is the service's execution pool being full, not a refusal. The
-    // caller may fan out as wide as it likes — a hundred scrapes at once is a
+    // caller may fan out as wide as it likes — a hundred searches at once is a
     // legitimate way to spend an allowance — so a call that finds the pool
     // full waits and tries again until it gets its turn. NOTHING here caps
     // parallelism: the plan's allowance is the only limit, and burning all of
     // it in one go is the user's call to make.
     //
-    // Deterministic refusals — blocked page, no plan, bad input — are never
-    // retried, because the answer will not change.
+    // Deterministic refusals — no plan, bad input — are never retried,
+    // because the answer will not change.
     if (RETRYABLE.has(code) && attempt < retries) {
       await sleep(backoffMs(attempt++, res.headers.get('retry-after')));
       continue;
@@ -123,7 +123,7 @@ export async function callService(service, path, { method = 'GET', body, idempot
 }
 
 /** Codes whose answer can change if we simply wait. */
-const RETRYABLE = new Set(['service_busy', 'rate_limited', 'busy', 'worker_unavailable', 'service_unavailable', 'concurrency_limit', 'try_again_later']);
+const RETRYABLE = new Set(['service_busy', 'rate_limited', 'busy', 'service_unavailable', 'concurrency_limit', 'try_again_later']);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -151,14 +151,10 @@ const SERVICE_MESSAGES = {
   allowance_exhausted: (s) => `This month's included ${s} allowance is used up. It resets next month, or add credit from Settings > Billing.`,
   spending_not_authorized: (s) => `This ${s} call would cost beyond the included allowance and spending is off. Turn it on from Settings > Billing.`,
   authentication_required: () => 'Sign in to AGNT to use hosted services.',
-  page_blocked: () => 'That site refuses automated visitors, so it cannot be scraped. Reddit, X and some news sites do this. Try an alternate host for the same content (for Reddit, append .json to the URL), or open it yourself.',
   service_busy: (s) => `The ${s} service stayed busy after several retries. Try again in a moment.`,
-  destination_not_allowed: () => 'That address cannot be fetched: it is private, local, or not a public web page.',
-  invalid_url: () => 'That does not look like a public http(s) URL.',
-  extraction_failed: () => 'The page loaded but no readable content could be extracted from it.',
-  // The service throttles repeated FAILURES, so a run of blocked sites puts the
+  // The service throttles repeated FAILURES, so a run of failed calls puts the
   // account in a short cooldown. Retrying inside it only deepens the hole.
-  failure_rate_limited: () => 'Too many pages failed recently, so scraping is cooling down for a minute. The last few URLs were probably blocked or unreachable.',
+  failure_rate_limited: (s) => `Too many ${s} requests failed recently, so ${s} is cooling down for a few minutes. Try again shortly.`,
   unreachable: (s) => `Could not reach ${s}.agnt.gg. Check your connection and try again.`,
 };
 
