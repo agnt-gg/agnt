@@ -1,3 +1,4 @@
+import { isDefaultSkill } from '../utils/skillTrust.js';
 import SkillModel from '../models/SkillModel.js';
 import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
@@ -93,7 +94,7 @@ class SkillService {
   static buildSkillCatalog(skills) {
     if (!skills || skills.length === 0) return '';
 
-    const { entries: visible } = filterSupersededEntries(skills);
+    const { entries: visible } = filterSupersededEntries(skills.filter(isDefaultSkill));
     if (visible.length === 0) return '';
 
     const entries = visible
@@ -127,7 +128,7 @@ You have skills available (listed above in <available-skills> as one-line gists)
   static buildSkillsContext(skills) {
     if (!skills || skills.length === 0) return '';
 
-    const skillBlocks = skills.map((skill) => {
+    const skillBlocks = skills.filter(isDefaultSkill).map((skill) => {
       const parts = [`<skill name="${skill.name}">`];
       if (skill.description) parts.push(`  <description>${skill.description}</description>`);
       if (skill.instructions) parts.push(`  <instructions>${skill.instructions}</instructions>`);

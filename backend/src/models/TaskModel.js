@@ -21,7 +21,7 @@ class TaskModel {
   static findByGoalId(goalId) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT t.*, a.name as agent_name 
+        `SELECT t.*, COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=t.id),0) AS lifecycle_revision, a.name as agent_name
          FROM tasks t
          LEFT JOIN agents a ON t.agent_id = a.id
          WHERE t.goal_id = ?
@@ -44,7 +44,7 @@ class TaskModel {
   static findOne(id) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT t.*, a.name as agent_name, w.workflow_data
+        `SELECT t.*, COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=t.id),0) AS lifecycle_revision, a.name as agent_name, w.workflow_data
          FROM tasks t
          LEFT JOIN agents a ON t.agent_id = a.id
          LEFT JOIN workflows w ON t.workflow_id = w.id
@@ -85,7 +85,7 @@ class TaskModel {
     });
   }
 
-  static updateStatus(taskId, status, progress = null, startedAt = null, completedAt = null, input = null, output = null, error = null) {
+  static updateStatus(taskId, status, progress = null, startedAt = null, completedAt = null, input = null, output = null, error = null, expected = null) {
     return new Promise((resolve, reject) => {
       const updatedAt = new Date().toISOString();
       let query = `UPDATE tasks SET status = ?, updated_at = ?`;
@@ -127,6 +127,11 @@ class TaskModel {
       query += ` WHERE id = ?`;
       params.push(taskId);
 
+      if (expected) {
+        if (!Number.isSafeInteger(expected.revision) || expected.revision < 0) return reject(new Error('Task revision required'));
+        query += " AND goal_id = ? AND EXISTS (SELECT 1 FROM goals WHERE goals.id=tasks.goal_id AND user_id=? AND deleted_at IS NULL) AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='task' AND entity_id=tasks.id),0)=?";
+        params.push(expected.goalId,expected.userId,expected.revision);
+      }
       db.run(query, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);

@@ -108,7 +108,8 @@ export default {
       return fn ? fn(props.goal.id).length : 0;
     });
 
-    const taskProgress = computed(() => store.getters['goals/getGoalTaskProgress'](props.goal.id));
+    const taskProgress = computed(() => ['executing','running'].includes(props.goal.status)
+      ? store.getters['goals/getGoalTaskProgress'](props.goal.id) : null);
 
     const displayTotal = computed(() => taskProgress.value?.total ?? props.goal.task_count ?? 0);
     const displayCompleted = computed(() => taskProgress.value?.completed ?? props.goal.completed_tasks ?? 0);

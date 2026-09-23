@@ -88,6 +88,26 @@ const CREDENTIAL_FAILURE_STATUSES = new Set([401, 403, 429]);
 const ROUTE_FAILURE_STATUSES = new Set([404, 405, 410]);
 
 /**
+ * How long one provider attempt may take before it is abandoned.
+ *
+ * Without this the SDP exchange had no deadline at all: Node's fetch waits
+ * minutes for headers, and the browser's own request waited on us just as
+ * long. A provider route that accepted the connection and never answered —
+ * which is what a stalled edge looks like — therefore pinned the client on
+ * "Connecting…" indefinitely, with nothing logged on either side.
+ *
+ * A timeout is treated like a route failure, not a credential failure: the
+ * same token is tried on the next URL, because a stalled host says nothing
+ * about the token. It is long enough for a healthy exchange (measured in the
+ * hundreds of milliseconds) and short enough that the client's own connect
+ * deadline still sees a real answer rather than firing first.
+ */
+export const PROVIDER_TIMEOUT_MS = 8000;
+
+/** The abort classes fetch raises when the signal above fires. */
+const isTimeoutError = (err) => err?.name === 'TimeoutError' || err?.name === 'AbortError';
+
+/**
  * The ways one credential can be spent on a Realtime session, best first.
  *
  * WHY A ChatGPT TOKEN HAS TWO
@@ -359,7 +379,7 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
          */
         // Semantic turn detection: the model decides when the user is done
         // from what they said, not from how long they have been quiet.
-        turn_detection: { type: 'semantic_vad' },
+        turn_detection: { type: 'semantic_vad', eagerness: 'low' },
       },
       // Still configured even though the session default is text: the voice
       // applies to the responses the CLIENT creates, which are the ones that
@@ -380,11 +400,21 @@ export function buildSessionConfig({ voice = DEFAULT_VOICE, assistantName, surfa
  * Exchange the browser's SDP offer for OpenAI's SDP answer, attaching the
  * server-authored session config.
  *
- * @returns {Promise<{ ok: true, sdp: string } | { ok: false, status: number, reason: string, detail?: string }>}
+ * @returns {Promise<{ ok: true, sdp: string, source: string } | { ok: false, status: number, reason: string, detail?: string }>}
  *   "No credentials" is a NORMAL result, not an exception — the client falls
  *   back to the cascade pipeline. Only genuine provider failures carry detail.
+ *   `source` names the credential that opened the session (see
+ *   VOICE_CREDENTIAL_SOURCE) so the caller can tell a subscription session
+ *   from a metered one.
  */
-export async function createRealtimeCall({ sdp, userId, voice, assistantName, surface } = {}) {
+export async function createRealtimeCall({
+  sdp,
+  userId,
+  voice,
+  assistantName,
+  surface,
+  timeoutMs = PROVIDER_TIMEOUT_MS,
+} = {}) {
   if (typeof sdp !== 'string' || !sdp.trim()) {
     return { ok: false, status: 400, reason: 'missing-sdp' };
   }
@@ -406,20 +436,49 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
   // actually act on. A borrowed ChatGPT token being refused is not actionable —
   // see the quiet-degrade note below — so it never becomes the reported failure.
   let surfaceable = null;
+  /** At least one attempt was abandoned at the deadline. */
+  let timedOut = false;
 
   for (const credential of chain) {
     for (const attempt of realtimeAttemptsFor(credential, { sdp, session })) {
       let res;
       try {
         const { headers, body } = attempt.build();
-        res = await fetch(attempt.url, { method: 'POST', headers, body });
+        res = await fetch(attempt.url, {
+          method: 'POST',
+          headers,
+          body,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
       } catch (err) {
+        if (isTimeoutError(err)) {
+          // A stalled host, not a refused token: the same credential gets its
+          // next route. See PROVIDER_TIMEOUT_MS.
+          console.warn(`[speech] ${attempt.name} did not answer within ${timeoutMs}ms; trying the next route.`);
+          timedOut = true;
+          continue;
+        }
         // The network is not a property of the credential; the next one would
         // fail the same way.
         return { ok: false, status: 502, reason: 'network', detail: err?.message };
       }
 
-      if (res.ok) return { ok: true, sdp: await res.text() };
+      if (res.ok) {
+        // Which credential paid for this session is the one fact a user with
+        // both a subscription and a metered key cares about, so it is logged
+        // on every success and warned about when it is the key: the chain
+        // prefers the subscription, so reaching the key means the
+        // subscription was refused or missing — silently, until now.
+        if (isBorrowedCredential(credential.source)) {
+          console.info(`[speech] realtime session opened via ${attempt.name} on the ChatGPT subscription.`);
+        } else {
+          console.warn(
+            `[speech] realtime session opened via ${attempt.name} on the METERED OpenAI API key` +
+              ' (no subscription credential was accepted).',
+          );
+        }
+        return { ok: true, sdp: await res.text(), source: credential.source };
+      }
 
       let detail = '';
       try {
@@ -468,11 +527,18 @@ export async function createRealtimeCall({ sdp, userId, voice, assistantName, su
   // Every credential refused. If none of them was one the user can fix, this is
   // indistinguishable from having no credential at all: drop to the cascade
   // pipeline instead of showing an error for a feature they never asked for.
-  return surfaceable ?? { ok: false, status: 200, reason: 'no-credentials' };
+  //
+  // A walk that ended only because the provider never answered is a different
+  // fact from "no credential works": it is transient, and the client may retry
+  // it — so it is reported as such rather than as a missing credential.
+  if (surfaceable) return surfaceable;
+  if (timedOut) return { ok: false, status: 504, reason: 'timeout' };
+  return { ok: false, status: 200, reason: 'no-credentials' };
 }
 
 export default {
   createRealtimeCall,
+  PROVIDER_TIMEOUT_MS,
   buildSessionConfig,
   buildInstructions,
   buildTools,

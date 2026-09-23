@@ -1,3 +1,4 @@
+import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
 import sqlite3 from 'sqlite3';
 import { createImageSettingsStore } from '../../services/images/imageSettingsStore.js';
 import path from 'path';
@@ -739,6 +740,16 @@ function createTables() {
         FOREIGN KEY (agent_id) REFERENCES agents(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
+
+      // Additive and nullable: old runs have unknown telemetry, never invented zeros.
+      db.run('ALTER TABLE agent_executions ADD COLUMN execution_telemetry TEXT', (err) => {
+        if (err && !err.message.includes('duplicate column name')) console.error('Execution telemetry migration failed:', err.message);
+      });
+
+      // Returned policy-processed evidence is separate from content-free telemetry.
+      db.run('ALTER TABLE agent_executions ADD COLUMN returned_tool_receipts TEXT', (err) => {
+        if (err && !err.message.includes('duplicate column name')) console.error('Receipt migration failed');
+      });
 
       // Index for faster agent execution lookups
       createIndex(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
@@ -2258,6 +2269,7 @@ const dbReady = skipSchemaInit
     return createIndexes();
   })
   .then(async () => {
+    await initializeGoalLifecycleVersions(db);
     console.log('All indexes ready');
     await createImageSettingsStore(db).initialize();
   })

@@ -5,6 +5,9 @@ import { imageSettingsService } from '../services/images/imageSettingsRuntime.js
 import { createImageSettingsHandlers } from '../services/images/imageSettingsHandlers.js';
 const imageSettingsHandlers = createImageSettingsHandlers(imageSettingsService);
 import { requireAuth } from '../utils/authGuard.js';
+import db from '../models/database/index.js';
+import { activationMilestoneHandler } from './activationMilestoneHandler.js';
+import packageInfo from '../../../package.json' with { type: 'json' };
 
 // Set up new route
 const UserRoutes = express.Router();
@@ -24,6 +27,7 @@ const authenticateSSEToken = requireAuth({ allowQuery: true });
 // Define routes
 UserRoutes.get('/health', UserService.healthCheck);
 UserRoutes.get('/user-stats', authenticateToken, UserService.getUserStats);
+UserRoutes.post('/activation-sync', requireAuth(), activationMilestoneHandler({ db, appVersion: packageInfo.version }));
 
 UserRoutes.get('/image-settings', authenticateToken, imageSettingsHandlers.get);
 UserRoutes.put('/image-settings', authenticateToken, imageSettingsHandlers.put);

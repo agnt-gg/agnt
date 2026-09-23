@@ -32,6 +32,7 @@
  * pipeline labels those blocks and the renderer highlights once, on close.
  */
 import showdown from 'showdown';
+import { renderArtifactReference } from './artifactReference.js';
 
 export const STREAMING_ATTR = 'data-streaming';
 
@@ -202,6 +203,11 @@ const restoreFencedBlocks = (html, streaming) => {
       const langClass = safeLang ? ` class="${safeLang} language-${safeLang}"` : '';
       const streamAttr = streaming ? ` ${STREAMING_ATTR}="true"` : '';
       return `<pre${streamAttr}><code${langClass}${streamAttr}>${escaped}</code></pre>`;
+    }
+
+    if (safeLang === 'artifact') {
+      const artifact = renderArtifactReference(block.content);
+      if (artifact) return artifact;
     }
 
     // Handle special viz languages (morphdom preserves these during streaming)

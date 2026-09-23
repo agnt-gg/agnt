@@ -41,6 +41,15 @@ COPY frontend/ ./
 # .spec.js fails the build when an alias target is not copied into this stage.
 COPY backend/src/services/ai/descriptor /app/backend/src/services/ai/descriptor
 
+# The same reach, without an alias: plain relative imports from frontend/src
+# into backend/src/utils. Both are dependency-free helpers shared so the two
+# sides frame the same bytes the same way. Each broke the container build the
+# day it landed, because nothing built the container. The spec above now
+# derives this list from the imports themselves — add a file here when it
+# tells you to, one file at a time, never backend/ wholesale.
+COPY backend/src/utils/compactedTranscript.js /app/backend/src/utils/compactedTranscript.js
+COPY backend/src/utils/artifactPreviewUrls.js /app/backend/src/utils/artifactPreviewUrls.js
+
 # Build frontend
 RUN npm run build
 
@@ -134,25 +143,25 @@ RUN mkdir -p /app/backend/plugins/installed \
     /app/logs \
     /app/data \
     /app/data/_logs \
-    && chown -R node:node /app
+    && chown -R node:node /app/data /app/logs
 
 # Declare /app/data as a volume so data persists across container removal
 # even if users forget to pass -v. Named/bind mounts via -v take precedence.
 VOLUME /app/data
 
 # Copy built frontend from frontend-builder with correct ownership
-COPY --from=frontend-builder --chown=node:node /app/frontend/dist /app/frontend/dist
+COPY --from=frontend-builder --chown=root:root /app/frontend/dist /app/frontend/dist
 
 # Copy dependencies from backend-builder with correct ownership
-COPY --from=backend-builder --chown=node:node /app/node_modules /app/node_modules
+COPY --from=backend-builder --chown=root:root /app/node_modules /app/node_modules
 
 # Copy application code with correct ownership
-COPY --chown=node:node backend/ /app/backend/
-COPY --chown=node:node scripts/ /app/scripts/
-COPY --chown=node:node main.js /app/
-COPY --chown=node:node preload.js /app/
-COPY --chown=node:node package*.json /app/
-COPY --chown=node:node assets/ /app/assets/
+COPY --chown=root:root backend/ /app/backend/
+COPY --chown=root:root scripts/ /app/scripts/
+COPY --chown=root:root main.js /app/
+COPY --chown=root:root preload.js /app/
+COPY --chown=root:root package*.json /app/
+COPY --chown=root:root assets/ /app/assets/
 
 # Expose backend/.env to dotenv (which loads from cwd=/app)
 RUN ln -sf /app/backend/.env /app/.env
@@ -199,7 +208,6 @@ RUN ln -sf /app/backend/.env /app/.env
 # here is belt-and-braces rather than the sole guarantee — a RUN that touches
 # /app/data after the VOLUME declaration above would otherwise be discarded.
 RUN mkdir -p /app/unfirehose \
-    && chown -R root:root /app \
     && chown -R node:node /app/data /app/logs /app/unfirehose \
     && chmod 755 /app
 
@@ -207,10 +215,26 @@ RUN mkdir -p /app/unfirehose \
 COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# This image is a production artefact. The setting also selects the Docker
+# path tier (utils/PathManager.js): with it, generated secrets and the
+# database live under /app/data — the declared volume — and survive a
+# container recreate. Without it they would land in the node user's home
+# inside the container and be lost, taking every encrypted credential along.
+# compose and the documented `docker run` already set this; the image now
+# guarantees it.
+ENV NODE_ENV=production
+
 # Bind all interfaces inside the container. The server defaults to loopback
 # for desktop installs; in a container the network namespace is the isolation
 # boundary and the published port is the explicit opt-in.
 ENV BIND_HOST=0.0.0.0
+
+# A container is a network install, so it verifies session tokens by asking
+# the issuer rather than holding the issuer's signing key. This also makes it
+# a RESTRICTED install: it refuses to start until AGNT_TENANT_OWNER (or
+# AGNT_TENANT_MEMBERS) names who may use it. Set here, not only in compose,
+# so a plain `docker run` is correct too. See backend/src/services/auth/authMode.js.
+ENV AGNT_AUTH_MODE=verify-remote
 # Expose backend port
 EXPOSE 3333
 
