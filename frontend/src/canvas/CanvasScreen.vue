@@ -147,7 +147,7 @@
                 <!-- Badge lookup stays keyed by the registry section id; the preference layer only changes presentation. -->
                 <span v-if="railBadges[item.id]" class="cv-sb-badge" :class="{ 'is-warn': item.id === 'apps' }">{{ railBadges[item.id] }}</span>
                 <!-- Just unlocked and not yet visited. A live count outranks it. -->
-                <span v-else-if="item.fresh" class="cv-sb-badge is-new">NEW</span>
+                <span v-else-if="item.fresh" class="cv-sb-badge is-new" role="img" aria-label="New" title="New"></span>
               </button>
             </Tooltip>
           </template>
@@ -1765,11 +1765,16 @@ export default {
 .cv-sb-badge.is-warn {
   color: var(--color-yellow, #ffd700);
 }
-/* A row the account just unlocked. Same slot and size as a live count, so the
-   rail never reflows; its own colour, so it is never mistaken for one. */
+/* A row the account just unlocked: a 6px dot in the live-count slot, so the
+   label is never truncated and the rail never reflows; blue, so it is never
+   mistaken for the green unread dot or a count. */
 .cv-sb-badge.is-new {
-  color: var(--color-blue, #12e0ff);
-  letter-spacing: 0.08em;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--color-blue, #12e0ff);
+  flex-shrink: 0;
 }
 .cv-sidebar.expanded .cv-sb-badge {
   display: inline-block;

@@ -55,12 +55,16 @@ export function useAITour() {
 // PopupTutorial uses `target` (CSS selector), `position`, `autoProgress`,
 // `enforceStep`, `simulateClick`, `media`, `navigateToScreen`, and an
 // `onBefore` async hook.
-function stepsToPopupConfig(steps) {
-  return steps.map((s) => {
+export function stepsToPopupConfig(steps) {
+  return steps.map((s, index) => {
     const hasTarget = !!s.targetSelector;
+    const isLast = index === steps.length - 1;
     return {
       title: s.title,
       content: s.content,
+      // PopupTutorial labels every step "Next" unless told otherwise, so a
+      // one-step highlight read "Next" beside a full progress bar.
+      buttonText: s.buttonText || (isLast ? 'Got it' : undefined),
       target: s.targetSelector || undefined,
       position: hasTarget ? (s.position || 'bottom') : 'center',
       autoProgress: s.autoAdvanceMs,

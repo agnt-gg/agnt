@@ -979,10 +979,15 @@ export default {
     updateContextWindow();
 
     // Quick Actions
+    // First-run starters are jobs, not questions about the system. Each one is
+    // a door to the next ring of the app: connecting something opens Apps,
+    // automating something opens Workflows (see navigationOnion.js). `text` is
+    // the pill; `prompt` is what is sent, so Annie gets enough to act on.
     const initialSuggestions = [
-      { id: 1, text: 'What can you do?', icon: '🤔' },
-      { id: 2, text: 'List all available tools', icon: '🛠️' },
-      { id: 4, text: 'What skills do you have?', icon: '📁' },
+      { id: 1, text: 'Connect an app', icon: 'fas fa-plug', prompt: 'Help me connect an app. Ask me which one, then connect it.' },
+      { id: 2, text: 'Automate a weekly task', icon: 'fas fa-redo', prompt: 'I want to automate something I do every week. Ask me what it is, then set it up as a workflow.' },
+      { id: 3, text: 'Research a topic', icon: 'fas fa-search', prompt: 'Research a topic for me and give me a short sourced summary. Ask me the topic first.' },
+      { id: 4, text: 'What can you do?', icon: 'fas fa-compass', prompt: 'In a few lines, what can you do for me? Suggest three things to try first.' },
     ];
     const suggestions = ref([...initialSuggestions]);
     const isLoadingSuggestions = ref(false);
@@ -1925,7 +1930,7 @@ export default {
     };
 
     const executeSuggestion = (suggestion) => {
-      handleUserInputSubmit(suggestion.text);
+      handleUserInputSubmit(suggestion.prompt || suggestion.text);
     };
 
     const toggleToolCallExpansion = (messageId, toolCallIndex) => {

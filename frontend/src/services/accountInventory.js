@@ -38,22 +38,35 @@ export function storeHas(store, key) {
 }
 
 /**
- * Populate the modules in `entries` that are still empty.
- * Resolves to the set of GETTER keys whose data is now trustworthy — already
- * non-empty, or loaded without error. A module that is missing or whose load
- * failed is left out: "we could not find out" is not "there are none".
+ * Populate one module if it is still empty. Resolves true when its data is now
+ * trustworthy — already non-empty, or loaded without error — and false when
+ * the module is missing or its load failed: "we could not find out" is not
+ * "there are none".
  */
-export async function hydrate(store, entries = HYDRATION) {
+export async function hydrateOne(store, [getter, action, payload]) {
+  if (!storeHas(store, getter)) return false;
+  if (len(store.getters[getter]) > 0) return true;
+  try {
+    await store.dispatch(action, payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Populate every module in `entries`. `onLoaded(getter)` fires the moment each
+ * one is trustworthy, so one slow or hung endpoint never holds back the rest.
+ * Resolves to the full set once all have settled.
+ */
+export async function hydrate(store, entries = HYDRATION, onLoaded = () => {}) {
   const loaded = new Set();
-  await Promise.allSettled(
-    entries.map(async ([getter, action, payload]) => {
-      if (!storeHas(store, getter)) return;
-      if (len(store.getters[getter]) > 0) {
-        loaded.add(getter);
-        return;
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (await hydrateOne(store, entry)) {
+        loaded.add(entry[0]);
+        onLoaded(entry[0]);
       }
-      await store.dispatch(action, payload);
-      loaded.add(getter);
     }),
   );
   return loaded;

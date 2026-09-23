@@ -170,11 +170,14 @@ export function isUnlocked(id, state = loadOnionState()) {
  * @param {object} facts  fact name → array | number
  * @param {Set<string>} known  fact names that have finished loading
  * @param {object} state  current onion state (not mutated)
+ * @param {object} [options]
+ * @param {(id: string) => boolean} [options.quiet]  rows whose flip right now
+ *        is not news (the caller's startup window); they unlock silently.
  * @returns {{ state: object, announced: string[] }}  `announced` lists rows
  *          that flipped false → true AFTER being seeded — the only unlocks the
  *          UI should celebrate. Silent seeds never appear in it.
  */
-export function evaluateUnlocks(facts, known, state) {
+export function evaluateUnlocks(facts, known, state, { quiet = () => false } = {}) {
   const unlocked = new Set(state.unlocked);
   const seeded = new Set(state.seeded);
   const fresh = new Set(state.fresh);
@@ -188,7 +191,7 @@ export function evaluateUnlocks(facts, known, state) {
     const passes = Boolean(rule.when(facts, unlocked));
     if (passes) {
       unlocked.add(rule.id);
-      if (seeded.has(rule.id)) {
+      if (seeded.has(rule.id) && !quiet(rule.id)) {
         announced.push(rule.id);
         fresh.add(rule.id);
       }

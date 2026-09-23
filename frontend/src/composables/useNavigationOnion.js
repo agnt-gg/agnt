@@ -49,6 +49,21 @@ const ONION_HYDRATION = [
 // First paint belongs to the chat. The counts can wait a beat.
 const HYDRATE_DELAY_MS = 1200;
 
+// STARTUP IS NOT NEWS. A store action can resolve before its records land —
+// it dedupes against the app's own startup fetch already in flight — so a
+// row can be judged "none yet" and then see its data a moment later. Any row
+// first judged during this session's load, flipping within this window after
+// the load settles, is the account loading, not the person doing something:
+// it unlocks silently. Rows judged in an EARLIER session keep announcing —
+// a workflow made elsewhere since then really is new to them.
+const SETTLE_MS = 5000;
+
+// Every tutorial popup — a screen's own first-visit tour and the AI host —
+// renders this root only while visible. One popup at a time: while another is
+// up, the announcement waits and looks again.
+const OTHER_POPUP = '.popup-tutorial';
+const RETRY_MS = 1500;
+
 /**
  * @param {object} store  vuex store
  * @param {object} options
@@ -62,15 +77,25 @@ export function useNavigationOnion(store, { teams, teamsKnown, canAnnounce }) {
   const state = ref(loadOnionState());
   const known = ref(new Set());
   const queue = [];
+  const seededAtStart = new Set(state.value.seeded);
+  let settling = true;
   let hydrateTimer = null;
+  let settleTimer = null;
+  let retryTimer = null;
   let disposed = false;
+  const quiet = (id) => settling && !seededAtStart.has(id);
 
   const chatCount = () => store.getters['contentOutputs/totalCount'] || len(store.getters['contentOutputs/outputs']);
 
+  // Counts, not arrays. The store adds records IN PLACE (workflows/ADD_WORKFLOW
+  // pushes), which leaves an array's identity unchanged — a computed that only
+  // held the reference never re-ran, so the first workflow went unnoticed.
+  // Reading .length (and copying connectedApps element by element) subscribes
+  // to the contents.
   const facts = computed(() => {
-    const out = { connectedApps: store.state.appAuth?.connectedApps || [], teams: unref(teams) || [] };
+    const out = { connectedApps: [...(store.state.appAuth?.connectedApps || [])], teams: len(unref(teams)) };
     for (const [fact, getter] of Object.entries(FACT_GETTERS)) {
-      out[fact] = fact === 'chats' ? chatCount() : store.getters[getter] || [];
+      out[fact] = fact === 'chats' ? chatCount() : len(store.getters[getter]);
     }
     return out;
   });
@@ -93,6 +118,11 @@ export function useNavigationOnion(store, { teams, teamsKnown, canAnnounce }) {
 
   async function announceNext() {
     if (disposed || !queue.length || tour.isActive.value || !unref(canAnnounce)) return;
+    if (document.querySelector(OTHER_POPUP)) {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(announceNext, RETRY_MS);
+      return;
+    }
     const id = queue.shift();
     const rule = UNLOCK_RULE_BY_ID[id];
     // A row the person hid on purpose stays hidden — and stays quiet.
@@ -110,7 +140,7 @@ export function useNavigationOnion(store, { teams, teamsKnown, canAnnounce }) {
   }
 
   function evaluate() {
-    const { state: next, announced } = evaluateUnlocks(facts.value, knownFacts.value, state.value);
+    const { state: next, announced } = evaluateUnlocks(facts.value, knownFacts.value, state.value, { quiet });
     const changed =
       next.unlocked.length !== state.value.unlocked.length ||
       next.seeded.length !== state.value.seeded.length ||
@@ -140,17 +170,25 @@ export function useNavigationOnion(store, { teams, teamsKnown, canAnnounce }) {
     state.value = loadOnionState();
   }
 
+  // Each fact becomes known the moment its own load settles: one slow
+  // endpoint must not keep every other row from being judged.
+  function markKnown(key) {
+    if (disposed || known.value.has(key)) return;
+    known.value = new Set([...known.value, key]);
+  }
+
   async function load() {
-    const loaded = await hydrate(store, ONION_HYDRATION);
-    if (storeHas(store, 'appAuth/connectedApps')) {
+    const appsLoaded = (async () => {
+      if (!storeHas(store, 'appAuth/connectedApps')) return;
       try {
         await store.dispatch('appAuth/fetchConnectedApps');
-        loaded.add('appAuth');
+        markKnown('appAuth');
       } catch {
-        /* unknown, not empty — see accountInventory.hydrate */
+        /* unknown, not empty — see accountInventory.hydrateOne */
       }
-    }
-    if (!disposed) known.value = new Set([...known.value, ...loaded]);
+    })();
+    await Promise.all([hydrate(store, ONION_HYDRATION, markKnown), appsLoaded]);
+    if (!disposed) settleTimer = setTimeout(() => { settling = false; }, SETTLE_MS);
   }
 
   watch([facts, knownFacts], evaluate, { deep: false });
@@ -166,6 +204,8 @@ export function useNavigationOnion(store, { teams, teamsKnown, canAnnounce }) {
   onBeforeUnmount(() => {
     disposed = true;
     clearTimeout(hydrateTimer);
+    clearTimeout(settleTimer);
+    clearTimeout(retryTimer);
     window.removeEventListener(NAVIGATION_CHANGED_EVENT, reload);
   });
 

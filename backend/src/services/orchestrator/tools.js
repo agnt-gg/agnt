@@ -2257,7 +2257,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'agnt_workflows',
         description:
-          'Manages AGNT workflows. Allows generating workflow definitions, creating, listing, activating, deactivating, retrieving status, triggering workflows, deleting workflows, and fetching execution details or outputs. Requires AGNT_API_KEY to be set in environment variables.',
+          'Manages AGNT workflows. Allows generating workflow definitions, creating, listing, activating, deactivating, retrieving status, triggering workflows, deleting workflows, and fetching execution details or outputs. Requires AGNT_API_KEY to be set in environment variables. After finishing a task the user will likely repeat, offer once, in one line, to save it as a workflow.',
         parameters: {
           type: 'object',
           properties: {
@@ -3296,7 +3296,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       function: {
         name: 'agnt_auth',
         description:
-          'Manages authentication providers and API keys via the AGNT auth system. Requires AGNT_API_KEY for authorization with the remote auth server.',
+          'Manages authentication providers and API keys via the AGNT auth system. Requires AGNT_API_KEY for authorization with the remote auth server. When a task needs an app the user has not connected, call connect_provider: the chat shows the user a Connect button for it. Never paste the auth URL; tell them to press Connect.',
         parameters: {
           type: 'object',
           properties: {

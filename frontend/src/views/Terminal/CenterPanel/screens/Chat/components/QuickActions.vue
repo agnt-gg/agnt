@@ -3,7 +3,9 @@
     <div class="suggestions-container">
       <TransitionGroup name="suggestion" tag="div" class="suggestions-grid">
         <button v-for="suggestion in suggestions" :key="suggestion.id" class="suggestion-card" @click="$emit('execute', suggestion)">
-          <span class="suggestion-icon">{{ suggestion.icon }}</span>
+          <!-- Starters carry a Font Awesome class; AI follow-ups still send an emoji. -->
+          <i v-if="isIconClass(suggestion.icon)" class="suggestion-icon" :class="suggestion.icon" aria-hidden="true"></i>
+          <span v-else class="suggestion-icon">{{ suggestion.icon }}</span>
           <span class="suggestion-text"><span class="suggestion-text-inner">{{ suggestion.text }}</span></span>
           <div class="suggestion-glow"></div>
         </button>
@@ -26,6 +28,11 @@ export default {
     },
   },
   emits: ['execute'],
+  methods: {
+    isIconClass(icon) {
+      return typeof icon === 'string' && /^fa[srlbd]? fa-/.test(icon);
+    },
+  },
 };
 </script>
 
@@ -73,6 +80,14 @@ export default {
 .suggestion-icon {
   font-size: var(--font-size-xs);
   flex-shrink: 0;
+}
+i.suggestion-icon {
+  color: var(--color-text-muted);
+  width: 12px;
+  text-align: center;
+}
+.suggestion-card:hover i.suggestion-icon {
+  color: var(--color-green);
 }
 
 .suggestion-text {

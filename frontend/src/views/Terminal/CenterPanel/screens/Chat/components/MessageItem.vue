@@ -84,6 +84,10 @@
                   </Tooltip>
                 </div>
 
+                <!-- Annie asked to connect an app: the button, right here, whether
+                     or not the row is expanded. See connectCards.js. -->
+                <ConnectCard v-if="connectTarget(tc.toolCall)" :provider="connectTarget(tc.toolCall)" />
+
                 <div v-if="isExpanded(tc.index)" class="tool-call-content">
                   <!-- tool_pending draws the card before the arguments exist;
                        tool_start fills them in. Say so rather than render an
@@ -417,12 +421,14 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 // This defers the crypto-js dependency (~40KB) from the critical render path
 const ProviderSetup = lazyComponent(() => import('./ProviderSetup.vue'), { name: 'ProviderSetup' });
 import GoalProgressWidget from './GoalProgressWidget.vue';
+import { connectTarget } from './connectCards.js';
 import ArtifactCards from '@/views/_components/one/ArtifactCards.vue';
 import { compactArtifactText } from '@/utils/chatArtifacts.js';
 import { absolutePathFromFileUrl } from '@/utils/localFileUrl.js';
 // Lazy: a conversation that never browses should not download a streaming
 // client, and this one pulls the canvas stream view in behind it.
 const BrowserLiveCard = lazyComponent(() => import('./BrowserLiveCard.vue'), { name: 'BrowserLiveCard' });
+const ConnectCard = lazyComponent(() => import('./ConnectCard.vue'), { name: 'ConnectCard' });
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { renderMarkdown, HIGHLIGHTABLE_CODE_SELECTOR } from '@/utils/markdownPipeline';
 import { vMorphHtml } from '@/utils/morphHtmlDirective';
@@ -576,6 +582,7 @@ export default {
     GoalProgressWidget,
     ArtifactCards,
     BrowserLiveCard,
+    ConnectCard,
   },
   directives: {
     'morph-html': vMorphHtml,
@@ -3091,6 +3098,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       extractMaxIterations,
       isAsyncToolRunning,
       stopAsyncTool,
+      connectTarget,
       toggleToolCall,
       assistantAvatar,
       emojiAvatar,
