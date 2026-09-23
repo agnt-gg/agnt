@@ -1,3 +1,4 @@
+import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
  * The Google Gemini transport — gemini, gemini-cli and antigravity.
  *
@@ -488,9 +489,9 @@ class GeminiAdapter extends BaseAdapter {
     return toolCalls;
   }
 
-  async call(messages, tools) {
+  async call(messages, tools, context = {}) {
     let lastError;
-    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'gemini');
+    let currentMessages = appendComputerImages(BaseAdapter._sanitizeOutbound(messages, 'gemini'), context.computerImages, 'gemini', ProviderRegistry.supportsVision(context.provider || 'gemini', this.model));
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -688,6 +689,8 @@ class GeminiAdapter extends BaseAdapter {
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
+
+    currentMessages = appendComputerImages(currentMessages, context.computerImages, 'gemini', ProviderRegistry.supportsVision(context.provider || 'gemini', this.model));
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';

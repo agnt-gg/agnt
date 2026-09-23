@@ -88,8 +88,9 @@ export default {
 
     // detect if dark mode so we can change doc images
     const updateDarkMode = () => {
-      const theme = localStorage.getItem('currentTheme') || 'dark';
-      isDarkMode.value = !['light', 'rose'].includes(theme);
+      // The store keeps this class on <body> for every theme, including the ones that follow
+      // the desktop, so reading it beats re-deriving the rule from the theme name.
+      isDarkMode.value = document.body.classList.contains('dark');
     };
 
     const getConverter = async () => {

@@ -399,9 +399,10 @@ export async function snapshotWindow(pid, windowId, {
   if (r.error === 'not_installed') return { ok: false, error: 'not_installed' };
 
   const state = parseDriverJson(r.stdout) || {};
-  if (!r.ok && !state.elements) {
+  const outcome = readOutcome(r);
+  if (!outcome.ok || !Array.isArray(state.elements) || !state.snapshot_id) {
     if (shotFile) { try { fs.unlinkSync(shotFile); } catch { /* ignore */ } }
-    return { ok: false, error: r.stderr || r.stdout?.slice(0, 500) || r.error || 'get_window_state failed' };
+    return { ok: false, refused: outcome.refused, code: outcome.code, error: !outcome.ok ? outcome.summary : 'Invalid get_window_state response: missing snapshot_id or elements.' };
   }
 
   const elements = (Array.isArray(state.elements) ? state.elements : []).map((el) => ({
@@ -509,7 +510,7 @@ export async function verifyState(pid, windowId, expect, { session = null, timeo
   const json = parseDriverJson(r.stdout);
   const predicates = Array.isArray(json?.predicates) ? json.predicates : [];
   return {
-    ok: r.ok,
+    ok: r.ok && json?.status !== 'refused',
     status: json?.status || (r.ok ? 'unknown' : 'error'),
     satisfied: json?.status === 'satisfied',
     stable: json?.stable === true,

@@ -21,6 +21,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { aliases } from '../../../frontend/build/aliases.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // tests/e2e/fixtures/ -> tests/e2e/ -> tests/ -> repo root
@@ -117,7 +118,7 @@ export async function startHarnessVite(vitePort, backendPort) {
     configFile: false,
     root: path.join(FRONTEND, '_harness'),
     plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.includes('-') || t === 'webview' } } })],
-    resolve: { alias: { '@': path.join(FRONTEND, 'src') } },
+    resolve: { alias: aliases },
     server: {
       // Bound explicitly to 127.0.0.1. Left to its default, Vite binds
       // "localhost", which resolves to ::1 on some machines while Playwright

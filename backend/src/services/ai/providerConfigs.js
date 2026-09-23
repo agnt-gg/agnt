@@ -1297,6 +1297,17 @@ const PROVIDER_CONFIGS = [
 
 export const PROVIDER_TEMPLATES = [
   {
+    key: 'atlascloud',
+    name: 'Atlas Cloud',
+    baseURL: 'https://api.atlascloud.ai/v1',
+    defaultModel: 'qwen/qwen3.5-397b-a17b',
+    supportsTools: true,
+    supportsVision: true,
+    supportsStreaming: true,
+    description:
+      'Atlas Cloud - OpenAI-compatible access to text and multimodal models',
+  },
+  {
     key: 'cline-pass',
     name: 'Cline Pass',
     baseURL: 'https://api.cline.bot/api/v1',

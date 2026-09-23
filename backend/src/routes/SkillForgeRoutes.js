@@ -1,3 +1,4 @@
+import SkillDraftService from '../services/evolution/SkillDraftService.js';
 import express from 'express';
 import SkillForgeOrchestrator from '../services/goal/SkillForgeOrchestrator.js';
 import SkillEvalModel from '../models/SkillEvalModel.js';
@@ -143,6 +144,15 @@ SkillForgeRoutes.post('/settings', authenticateToken, async (req, res) => {
     console.error('[SkillForge Route] Settings update error:', error);
     res.status(500).json({ error: 'Failed to update settings' });
   }
+});
+
+// Explicit owner review. Acceptance is not an empirical success claim.
+SkillForgeRoutes.post('/skill/:skillId/versions/:versionId/accept', authenticateToken, async (req, res) => {
+  try {
+    if (req.body?.confirm !== true || typeof req.body?.contentHash !== 'string') return res.status(400).json({error:'confirm and contentHash required'});
+    const result = await SkillDraftService.accept(req.params.skillId, req.params.versionId, req.user.userId, req.body.contentHash);
+    res.json({success:true,result});
+  } catch(error) { res.status(409).json({error:error.message}); }
 });
 
 console.log('SkillForge Routes Started...');

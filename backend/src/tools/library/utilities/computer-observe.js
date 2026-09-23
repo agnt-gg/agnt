@@ -20,7 +20,10 @@
 // verify_state predicate then proved the display read "Display is 7". Asking
 // the model to eyeball a screenshot is a guess; this is a measurement.
 import BaseAction from '../BaseAction.js';
+import { enqueueComputerOperation } from '../../../services/computerUse/operationQueue.js';
 import { asBool, asInt, resolveDriverPath, snapshotWindow, notInstalledResult, ensureReady, verifyState, desktopState, zoomRegion } from '../../../services/computerUse/driver.js';
+
+import { observationImages } from '../../../services/computerUse/observationImages.js';
 
 const img = (b64, alt, mime = 'image/png') =>
   `<img src="data:${mime};base64,${b64}" alt="${alt}" style="max-width:100%;border-radius:8px;border:1px solid #2a2a3a;" />`;
@@ -161,6 +164,7 @@ class ComputerObserve extends BaseAction {
       }
     },
     "outputs": {
+      "modelImages": {"type":"array","description":"Typed screenshot input for the model, separate from display HTML; native dimensions and coordinate space are preserved."},
       "success": {
         "type": "boolean",
         "description": "True when the observation succeeded — for mode=verify, true only when the predicates are SATISFIED."
@@ -270,7 +274,11 @@ class ComputerObserve extends BaseAction {
 
   constructor() { super('computer-observe'); }
 
-  async execute(params) {
+  async execute(params, inputData, workflowEngine) {
+    return enqueueComputerOperation(() => this.executeOperation(params), workflowEngine?.abortSignal || workflowEngine?.signal);
+  }
+
+  async executeOperation(params) {
     const legacyCapture = String(params?.captureMode || '');
     const mode = ['window', 'desktop', 'zoom', 'verify'].includes(String(params?.mode)) ? String(params.mode) : 'window';
     const pid = params?.pid != null && params?.pid !== '' ? Number.parseInt(params.pid, 10) : null;
@@ -305,6 +313,7 @@ class ComputerObserve extends BaseAction {
           effectiveScope: d.effectiveScope,
           screenSize: d.screenSize,
           hasScreenshot: true,
+          modelImages: observationImages(d.screenshotB64, {coordinateSpace:'desktop',session}),
           imageHtml: showImage ? img(d.screenshotB64, 'Full desktop capture') : null,
           hint: 'Desktop scope has no element tree. Act with screen-absolute pixels: computer-input scope="desktop" x/y (no pid/windowId).',
           bootstrap: boot.steps,
@@ -331,8 +340,9 @@ class ComputerObserve extends BaseAction {
           success: true, mode, pid, windowId,
           region: { x1, y1, x2, y2 },
           width: z.width, height: z.height, mime: z.mime,
+          modelImages: observationImages(z.b64, {mimeType:z.mime,coordinateSpace:'crop',pid,windowId,region:{x1,y1,x2,y2}}),
           imageHtml: showImage && z.b64 ? img(z.b64, `Zoom ${x1},${y1}-${x2},${y2}`, z.mime) : null,
-          hint: 'Coordinates you read off this crop can be used directly — pass fromZoom-style x/y back through a pixel click only after re-observing; otherwise use element tokens.',
+          hint: 'This crop is magnified and padded. Do NOT use crop-local coordinates as window coordinates. Re-observe the full window to pick window-local pixels or use a fresh element token.',
           bootstrap: boot.steps,
         };
       }
@@ -392,7 +402,7 @@ class ComputerObserve extends BaseAction {
       });
       if (!snap.ok) {
         if (snap.error === 'not_installed') return notInstalledResult();
-        return { success: false, error: snap.error };
+        return { success: false, error: snap.error, refused: snap.refused, code: snap.code };
       }
 
       const minimizedTrap = snap.degraded && snap.totalElementCount === 0 && !snap.screenshotB64;
@@ -409,7 +419,10 @@ class ComputerObserve extends BaseAction {
         elementsComplete: snap.elementsComplete,
         elements: snap.elements,
         treeMarkdown: snap.treeMarkdown,
+        elementFrameSpace: process.platform === 'win32' ? 'desktop' : 'driver-native',
+        coordinateHint: 'On Windows element.frame rectangles are desktop-relative, NOT window screenshot pixels. Prefer elementToken; pick x/y from the native full-window screenshot. Do not send element.frame centers directly as window-local clicks.',
         hasScreenshot: !!snap.screenshotB64,
+        modelImages: observationImages(snap.screenshotB64, {pid,windowId,session,snapshotId:snap.snapshotId}),
         degraded: snap.degraded,
         degradedReason: snap.degradedReason,
         escalation: snap.escalation,

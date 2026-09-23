@@ -44,7 +44,7 @@ class GoalModel {
 
   static findOne(id) {
     return new Promise((resolve, reject) => {
-      db.get(`SELECT * FROM goals WHERE id = ?`, [id], (err, goal) => {
+      db.get(`SELECT *, COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='goal' AND entity_id=goals.id),0) AS lifecycle_revision FROM goals WHERE id = ?`, [id], (err, goal) => {
         if (err) reject(err);
         else if (goal) {
           goal.success_criteria = JSON.parse(goal.success_criteria || '{}');
@@ -128,11 +128,18 @@ class GoalModel {
       );
     });
   }
-  static updateStatus(id, status, completedAt = null) {
+  static updateStatus(id, status, completedAt = null, expected = null) {
     const updatedAt = new Date().toISOString();
     const finalCompletedAt = completedAt || (status === 'completed' || status === 'validated' ? updatedAt : null);
     return new Promise((resolve, reject) => {
-      db.run(`UPDATE goals SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?`, [status, finalCompletedAt, updatedAt, id], function (err) {
+      let sql = 'UPDATE goals SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?';
+      const params = [status, finalCompletedAt, updatedAt, id];
+      if (expected) {
+        if (!Number.isSafeInteger(expected.revision)) return reject(new Error('Goal revision required'));
+        sql += " AND user_id=? AND deleted_at IS NULL AND COALESCE((SELECT revision FROM goal_lifecycle_versions WHERE kind='goal' AND entity_id=goals.id),0)=?";
+        params.push(expected.userId,expected.revision);
+      }
+      db.run(sql, params, function (err) {
         if (err) reject(err);
         else resolve(this.changes);
       });

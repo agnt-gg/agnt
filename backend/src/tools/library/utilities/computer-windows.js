@@ -8,6 +8,7 @@
 //        computer-input action="launch_app". The answer to "is X installed?"
 //   include="both"
 import BaseAction from '../BaseAction.js';
+import { enqueueComputerOperation } from '../../../services/computerUse/operationQueue.js';
 import { resolveDriverPath, runDriver, parseDriverJson, notInstalledResult, ensureReady, listApps } from '../../../services/computerUse/driver.js';
 
 class ComputerWindows extends BaseAction {
@@ -94,7 +95,11 @@ class ComputerWindows extends BaseAction {
 
   constructor() { super('computer-windows'); }
 
-  async execute(params) {
+  async execute(params, inputData, workflowEngine) {
+    return enqueueComputerOperation(() => this.executeOperation(params), workflowEngine?.abortSignal || workflowEngine?.signal);
+  }
+
+  async executeOperation(params) {
     const filter = String(params?.filter || '').trim().toLowerCase();
     const include = ['windows', 'apps', 'both'].includes(String(params?.include)) ? String(params.include) : 'windows';
     const runningOnly = String(params?.runningOnly ?? 'true') !== 'false';

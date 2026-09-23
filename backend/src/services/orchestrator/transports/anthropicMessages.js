@@ -1,3 +1,4 @@
+import { appendComputerImages } from '../../computerUse/observationImages.js';
 /**
  * The Anthropic Messages transport — anthropic and claude-code.
  *
@@ -274,6 +275,10 @@ class AnthropicAdapter extends BaseAdapter {
     // Anthropic blocks), and the conversion + consecutive-role merge that
     // follow normalize any injected message into the correct final form.
     messages = BaseAdapter._sanitizeOutbound(messages, 'anthropic');
+    // Legacy "(Continuing.)" bridges and the model's imitations of them were
+    // only ever produced on this transport; scrub them here so the merge
+    // below absorbs the same-role neighbours the drop leaves behind.
+    messages = BaseAdapter._scrubImitableStatusTurns(messages, 'anthropic');
 
     const converted = [];
 
@@ -317,15 +322,17 @@ class AnthropicAdapter extends BaseAdapter {
     // token end_turn responses (the *original* PRD-082 symptom, distinct
     // from the Fable refusal symptom in PRD-083).
     //
-    // A fully correct fix is non-trivial because Anthropic also requires
-    // alternating user/assistant — we can't just split the merged message
-    // without inserting a synthetic assistant turn.
+    // Anthropic also requires alternating user/assistant, so the merged
+    // message cannot simply be split - that needs a fabricated assistant
+    // turn, and the model imitated the one we used ("(Continuing.)"),
+    // ending real tool rounds on a bare status line.
     //
     // FIXED: the merge below still runs (it has to - Anthropic rejects
-    // consecutive same-role messages), and a repair pass then splits any
-    // resulting [tool_result..., text] user message into two turns with a
-    // minimal synthetic assistant turn between them. That satisfies both
-    // constraints at once. See BaseAdapter._splitTextAfterToolResults.
+    // consecutive same-role messages), and a repair pass then folds any
+    // content trailing the last tool_result INTO that tool_result behind a
+    // user-input label. Both constraints hold and nothing synthetic enters
+    // the assistant side of the transcript. See
+    // BaseAdapter._foldTextAfterToolResults and turnContinuity.js.
     const merged = [];
     for (const msg of converted) {
       const last = merged[merged.length - 1];
@@ -338,15 +345,15 @@ class AnthropicAdapter extends BaseAdapter {
       }
     }
 
-    return BaseAdapter._splitTextAfterToolResults(merged);
+    return BaseAdapter._foldTextAfterToolResults(merged);
   }
 
-  async call(messages, tools) {
+  async call(messages, tools, context = {}) {
     let lastError;
     // PRD-083 (CTO follow-up): mirror callStream's one-shot refusal fallback
     // here too so the suggestions feature (and other non-streaming consumers)
     // also benefits from auto-fallback to Opus 4.8 on Fable/Mythos refusals.
-    let currentMessages = messages;
+    let currentMessages = appendComputerImages(messages, context.computerImages, 'anthropic', ProviderRegistry.supportsVision(context.provider || 'anthropic', this.model));
     let fallbackAttempted = false;
     const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
 
@@ -784,6 +791,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
+
+    currentMessages = appendComputerImages(currentMessages, context.computerImages, 'anthropic', ProviderRegistry.supportsVision(context.provider || 'anthropic', this.model));
 
     // Labeled so the in-catch `continue streamingAttemptLoop` below skips the
     // inner pause_turn-resume `while` and restarts the whole attempt cleanly.

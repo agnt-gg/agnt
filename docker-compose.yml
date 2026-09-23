@@ -33,11 +33,43 @@ services:
       - WEBHOOK_URL=http://localhost:3001
       - FRONTEND_URL=http://localhost:3333
 
-      # Security Secrets (CHANGE THESE IN PRODUCTION!)
-      # Generate secure secrets with: openssl rand -base64 32
-      - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION}
-      - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION}
+      # WHO MAY USE THIS INSTALL — REQUIRED.
+      #
+      # This container is reachable from the network (BIND_HOST=0.0.0.0 and a
+      # published port — that is the point of running it). Anyone who can reach
+      # it and holds a genuine AGNT account could otherwise sign in, and signup
+      # is open. So the install admits only the accounts named here.
+      #
+      # AGNT_TENANT_OWNER is the email you sign in to AGNT with. Compose refuses
+      # to start until it is set; put it in a `.env` file next to this file:
+      #
+      #   echo "AGNT_TENANT_OWNER=you@example.com" >> .env
+      #
+      # Teammates: AGNT_TENANT_MEMBERS=a@example.com,b@example.com
+      # Deliberately open to every AGNT account: AGNT_TENANT_MEMBERS=*
+      - AGNT_TENANT_OWNER=${AGNT_TENANT_OWNER:?Set AGNT_TENANT_OWNER to the email you sign in to AGNT with, e.g. in a .env file next to docker-compose.yml. See docs/SELF_HOSTING.md.}
+      - AGNT_TENANT_MEMBERS=${AGNT_TENANT_MEMBERS:-}
+
+      # HOW TOKENS ARE VERIFIED. verify-remote (the image default, repeated
+      # here so it is visible) means this container holds a private JWT_SECRET
+      # of its own and asks api.agnt.gg whether each session token is genuine.
+      # A container must not hold the issuer's signing key — it sits on a
+      # network — and cannot verify a cloud token without it, so this is the
+      # only mode in which a self-hosted install both stays private and lets
+      # you log in. Leave it.
+      - AGNT_AUTH_MODE=${AGNT_AUTH_MODE:-verify-remote}
+
+      # SECRETS ARE GENERATED, NOT CONFIGURED.
+      #
+      # JWT_SECRET, SESSION_SECRET and ENCRYPTION_KEY are created on first boot
+      # with a CSPRNG and stored, mode 0600, under /app/data/secrets — on the
+      # bind mount below, so they survive restarts and image updates. Do not
+      # set them here. This file used to default all three to a placeholder,
+      # which meant every install ran with a key printed in a public
+      # repository; the app now refuses to start if it sees that value.
+      #
+      # To bring your own (e.g. from a secrets manager), set the variable in
+      # the environment; a real value always wins over the generated one.
 
       # Trust remote authentication (for semi-local mode) — OFF BY DEFAULT.
       #

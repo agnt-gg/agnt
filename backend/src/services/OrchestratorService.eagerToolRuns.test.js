@@ -41,7 +41,7 @@ describe('the per-call executor exists before the first stream starts', () => {
   });
 
   it('the round claims runs instead of starting them itself', () => {
-    expect(CODE).toContain('const toolPromises = toolCalls.map((toolCall) => claimToolRun(toolCall));');
+    expect(CODE).toContain('const toolPromises = mapOrderedComputerCalls(toolCalls, claimToolRun);');
     expect(CODE).not.toContain('toolCalls.map(async (toolCall) =>');
   });
 

@@ -16,8 +16,10 @@
 // normalized in lib/driver.js readOutcome(). Read `effect`, and remember that
 // effect:"unverifiable" is the driver declining to overclaim, NOT a failure.
 import BaseAction from '../BaseAction.js';
+import { validateVerificationPredicates } from '../../../services/computerUse/verificationPredicates.js';
+import { enqueueComputerOperation } from '../../../services/computerUse/operationQueue.js';
 import {
-  asBool, asInt, resolveDriverPath, notInstalledResult, ensureReady,
+  verifyState, asBool, asInt, resolveDriverPath, notInstalledResult, ensureReady,
   callTool, invokeMenu, clipboardRead, clipboardWrite, setWindowFrame,
 } from '../../../services/computerUse/driver.js';
 
@@ -31,6 +33,7 @@ class ComputerInput extends BaseAction {
     "icon": "connect",
     "description": "Primitive input on a real window with background delivery — no cursor warp, no focus steal, no window raise. Element actions target elements via elementToken from the LATEST computer-observe snapshot (preferred) or elementIndex+snapshotId, or window-local x/y pixels for canvas surfaces. Highlights: invoke_menu resolves a native menu path through the accessibility API and fails closed instead of clicking blind; paste_text writes the clipboard and sends Ctrl+V, which reaches editors exposing no ValuePattern (Windows 11 Notepad); set_window_frame moves/resizes with verified read-back. Every response reports the driver's closed action facts (effect/route/escalation) — note that effect=unverifiable means the driver will not overclaim, NOT that the action failed. Requires confirm=true.",
     "parameters": {
+      "expect": {"type":"array","inputType":"textarea","required":false,"items":{"type":"object"},"description":"Optional 1..8 verify_state predicates. Measures the postcondition after dispatch, in the same serialized operation. Requires exact pid/windowId. taskVerified=false on unknown or unsatisfied; never repeat an irreversible action merely because verification is unknown."},
       "action": {
         "type": "string",
         "inputType": "select",
@@ -235,6 +238,8 @@ class ComputerInput extends BaseAction {
       }
     },
     "outputs": {
+      "taskVerified": {"type":"boolean","description":"Only true when supplied postconditions were measured satisfied. Dispatch alone is not task success."},
+      "verification": {"type":"object","description":"Postcondition measurement from verify_state, distinct from input delivery."},
       "success": {
         "type": "boolean",
         "description": "True when the action was dispatched and not refused."
@@ -332,7 +337,11 @@ class ComputerInput extends BaseAction {
 
   constructor() { super('computer-input'); }
 
-  async execute(params) {
+  async execute(params, inputData, workflowEngine) {
+    return enqueueComputerOperation(() => this.executeOperation(params), workflowEngine?.abortSignal || workflowEngine?.signal);
+  }
+
+  async executeOperation(params) {
     const action = String(params?.action || 'click').toLowerCase();
     const confirm = asBool(params?.confirm);
     const num = (v) => (v != null && v !== '' ? Number(v) : null);
@@ -354,6 +363,11 @@ class ComputerInput extends BaseAction {
     const scope = String(params?.scope || '').toLowerCase() === 'desktop' ? 'desktop' : null;
     const deliveryMode = ['background', 'foreground'].includes(String(params?.deliveryMode)) ? String(params.deliveryMode) : null;
 
+    const numericInputs = {pid,windowId,elementIndex,x,y,x2,y2,width,height};
+    if (Object.values(numericInputs).some(value => value != null && !Number.isFinite(value))) {
+      return {success:false,dispatched:false,error:'Target identifiers and coordinates must be finite numbers.'};
+    }
+
     if (!confirm) {
       return { success: false, dispatched: false, error: 'Refusing to dispatch input to your desktop without confirm=true.' };
     }
@@ -372,7 +386,7 @@ class ComputerInput extends BaseAction {
         a.element_index = elementIndex;
         a.snapshot_id = snapshotId;
         if (windowId != null) a.window_id = windowId;
-      } else if (x != null && y != null) { a.x = x; a.y = y; }
+      } else if (x != null && y != null) { a.x = x; a.y = y; if (windowId != null) a.window_id = windowId; }
       else if (!allowNone) throw new Error('Provide elementToken (preferred), elementIndex+snapshotId, or x+y.');
       return a;
     };
@@ -384,7 +398,20 @@ class ComputerInput extends BaseAction {
       return b;
     };
 
-    const finish = (o, extra = {}) => ({
+    let expected = params?.expect;
+    if (typeof expected === 'string') {
+      try { expected = JSON.parse(expected); } catch { return { success: false, dispatched: false, error: 'expect must be a JSON array.' }; }
+    }
+    if (expected != null && (!Array.isArray(expected) || !expected.length || expected.length > 8 || pid == null || windowId == null || scope)) {
+      return { success: false, dispatched: false, error: 'expect requires 1..8 predicates and an exact pid/windowId in window scope.' };
+    }
+    if (expected != null) {
+      const error = validateVerificationPredicates(expected);
+      if (error) return {success:false,dispatched:false,error};
+    }
+    const finish = async (o, extra = {}) => {
+      const verification = o.ok && expected ? await verifyState(pid, windowId, expected, {session, timeoutMs:4000, stableSamples:1}) : null;
+      return ({
       success: o.ok,
       dispatched: o.ok,
       action,
@@ -414,7 +441,9 @@ class ComputerInput extends BaseAction {
       error: o.ok ? null : o.summary,
       hint: this.hintFor(o, action),
       ...extra,
+      ...(expected ? { verification, taskVerified: verification?.satisfied === true } : {}),
     });
+    };
 
     try {
       switch (action) {
@@ -475,9 +504,7 @@ class ComputerInput extends BaseAction {
           if (!text) return { success: false, error: 'action="press_key" requires text = a key name (return, tab, escape, up, down, f5, a, 1...). Use action="hotkey" for combinations.' };
           const arg = { ...base(), key: text };
           if (windowId != null) arg.window_id = windowId;
-          const addr = addressing({ allowNone: true });
-          if (addr.element_token) arg.element_token = addr.element_token;
-          else if (addr.x != null) { arg.x = addr.x; arg.y = addr.y; }
+          Object.assign(arg, addressing({ allowNone: true }));
           if (Array.isArray(params?.modifiers) && params.modifiers.length) arg.modifiers = params.modifiers;
           if (deliveryMode) arg.delivery_mode = deliveryMode;
           return finish(await callTool('press_key', arg, { timeoutMs: 30000 }));

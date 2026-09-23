@@ -1,5 +1,6 @@
 // computer-setup.js — install, verify, and manage the Cua Driver daemon.
 import BaseAction from '../BaseAction.js';
+import { enqueueComputerOperation } from '../../../services/computerUse/operationQueue.js';
 import {
   asBool, resolveDriverPath, runDriver, detectSession0, parseDriverJson,
   ensureReady, isInstalled, installDriver, startDaemon, isDaemonRunning, callTool,
@@ -152,7 +153,11 @@ class ComputerSetup extends BaseAction {
 
   constructor() { super('computer-setup'); }
 
-  async execute(params) {
+  async execute(params, inputData, workflowEngine) {
+    return enqueueComputerOperation(() => this.executeOperation(params), workflowEngine?.abortSignal || workflowEngine?.signal);
+  }
+
+  async executeOperation(params) {
     const action = String(params?.action || 'status').toLowerCase();
     const confirm = asBool(params?.confirm);
     const resolved = resolveDriverPath();
