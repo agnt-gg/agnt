@@ -160,6 +160,16 @@ describe('interpretEvent — a cancelled response does not re-run its tool call'
     expect(actions.some((a) => a.type === BridgeAction.TURN_COMPLETE)).toBe(true);
   });
 
+  it('a cancelled call still reports its words, so a pause cannot lose them', () => {
+    const actions = interpretEvent(doneWithCall('cancelled'));
+    expect(actions).toContainEqual({ type: BridgeAction.UNDELIVERED_SPEECH, text: 'what is the build status' });
+  });
+
+  it('a completed call reports no undelivered speech', () => {
+    const actions = interpretEvent(doneWithCall('completed'));
+    expect(actions.some((a) => a.type === BridgeAction.UNDELIVERED_SPEECH)).toBe(false);
+  });
+
   it('FAILS OPEN: a missing status still dispatches', () => {
     // `status` is a GA-interface field. Treating its absence as "cancelled"
     // would stop dispatching every call on any shape that omits it — a session

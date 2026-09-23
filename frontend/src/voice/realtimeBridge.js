@@ -54,7 +54,25 @@ export const BridgeAction = Object.freeze({
    * purely in audio and would otherwise leave no trace at all.
    */
   TURN_COMPLETE: 'turn_complete',
+  /**
+   * Words from a run_agnt call on a response the server CANCELLED — the user
+   * paused long enough to end the turn, then kept talking. Never run (that is
+   * the repeat bug), but never forgotten either: the runtime carries them into
+   * the next delivered utterance. See utteranceCarry.js.
+   */
+  UNDELIVERED_SPEECH: 'undelivered_speech',
 });
+
+/** The quoted words in a run_agnt call's arguments, or '' if unreadable. */
+function readUserMessage(rawArguments) {
+  try {
+    const args = rawArguments ? JSON.parse(rawArguments) : {};
+    const spoken = typeof args.user_message === 'string' ? args.user_message : args.instruction;
+    return typeof spoken === 'string' ? spoken.trim() : '';
+  } catch {
+    return ''; // a half-written call carries nothing we can trust
+  }
+}
 
 /** The only tool the session declares. Kept in sync with realtimeVoiceService. */
 export const AGNT_TOOL_NAME = 'run_agnt';
@@ -150,7 +168,11 @@ export function interpretEvent(event) {
         // Deliberately before `hadToolCall`: a call we refuse to run must not
         // be reported as one that ran, or the runtime treats the turn as
         // already recorded in the chat when nothing was ever sent.
-        if (!completed) continue;
+        if (!completed) {
+          const words = item.name === AGNT_TOOL_NAME ? readUserMessage(item.arguments) : '';
+          if (words) actions.push({ type: BridgeAction.UNDELIVERED_SPEECH, text: words });
+          continue;
+        }
         hadToolCall = true;
 
         // Arguments arrive as a JSON *string*. A model can emit malformed JSON

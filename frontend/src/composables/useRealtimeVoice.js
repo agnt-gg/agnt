@@ -50,6 +50,7 @@ import {
   BridgeAction,
 } from '../voice/realtimeBridge.js';
 import { isFillerOnly, meaningfulTranscript } from '../voice/asrArtifacts.js';
+import { appendCarry, carryable, mergeCarry } from '../voice/utteranceCarry.js';
 import { MIC_CONSTRAINTS } from '../voice/micConstraints.js';
 import { createPrerollBuffer } from '../voice/prerollBuffer.js';
 import { createConnectTimeline } from '../voice/connectTimeline.js';
@@ -247,6 +248,19 @@ export function useRealtimeVoice(options = {}) {
    */
   let utteranceCredit = 0;
 
+  /**
+   * WORDS SPOKEN BEFORE A PAUSE ARE STILL THE USER'S MESSAGE.
+   *
+   * A pause long enough to end the turn, then more speech, cancels the
+   * response that was delivering the first half — and a cancelled call is
+   * never run. `carriedSpeech` holds those words until the next call that IS
+   * run, which delivers them first. `lastDelivered` tells lost speech apart
+   * from a cancelled call that merely repeats what already ran.
+   * See utteranceCarry.js.
+   */
+  let carriedSpeech = '';
+  let lastDelivered = '';
+
   const speakQueue = [];
   /**
    * Bumped every time the user takes the floor — barge-in, or stopping the
@@ -421,6 +435,11 @@ export function useRealtimeVoice(options = {}) {
     // run these words again until the user actually speaks again.
     utteranceCredit = 0;
 
+    // Everything said since the last delivery, in the order it was said.
+    const userMessage = mergeCarry(carriedSpeech, action.instruction);
+    carriedSpeech = '';
+    lastDelivered = userMessage;
+
     state.value = RealtimeState.WORKING;
     runFinished = false;
 
@@ -446,7 +465,7 @@ export function useRealtimeVoice(options = {}) {
     let result;
     try {
       result = await Promise.race([
-        onRunAgnt(action.instruction, emit),
+        onRunAgnt(userMessage, emit),
         new Promise((resolve) =>
           setTimeout(
             () =>
@@ -586,6 +605,13 @@ export function useRealtimeVoice(options = {}) {
 
         case BridgeAction.RUN_AGNT:
           void handleRunAgnt(action, gen);
+          break;
+
+        case BridgeAction.UNDELIVERED_SPEECH:
+          // Filler is noise whichever half it is in — same rule as a live call.
+          if (!isFillerOnly(action.text)) {
+            carriedSpeech = appendCarry(carriedSpeech, carryable(action.text, lastDelivered));
+          }
           break;
 
         case BridgeAction.ERROR:
@@ -1103,6 +1129,8 @@ export function useRealtimeVoice(options = {}) {
     speakQueue.length = 0;
     dispatchedCalls.clear();
     utteranceCredit = 0;
+    carriedSpeech = '';
+    lastDelivered = '';
     speechEpoch += 1;
     responseActive = false;
     narrating = false;

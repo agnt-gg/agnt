@@ -89,6 +89,81 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** A run_agnt call on a response with the given status. */
+const callFrame = (callId, words, status) =>
+  JSON.stringify({
+    type: 'response.done',
+    response: {
+      ...(status ? { status } : {}),
+      output: [
+        { type: 'function_call', name: AGNT_TOOL_NAME, call_id: callId, arguments: JSON.stringify({ user_message: words }) },
+      ],
+    },
+  });
+
+describe('useRealtimeVoice — a pause mid-thought loses nothing', () => {
+  /**
+   * The reported bug: talk, pause long enough for the turn to end, keep
+   * talking. The server cancels the response delivering the first half, a
+   * cancelled call is never run, and the model then quotes only the second
+   * half — so the first half reached nobody.
+   */
+  it('REGRESSION: the words before the pause are delivered with the words after', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+
+    userSpoke(s);
+    // Turn ended on the pause; the user resumed, so the server cancelled it.
+    userSpoke(s);
+    s._handleMessage(callFrame('c1', 'look at the voice system, it keeps', 'cancelled'));
+    s._handleMessage(callFrame('c2', 'dropping my words', 'completed'));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onRunAgnt).toHaveBeenCalledTimes(1);
+    expect(onRunAgnt).toHaveBeenCalledWith(
+      'look at the voice system, it keeps dropping my words',
+      expect.any(Function)
+    );
+  });
+
+  it('does not double the first half when the model already included it', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+    userSpoke(s);
+    userSpoke(s);
+    s._handleMessage(callFrame('c1', 'look at the voice system', 'cancelled'));
+    s._handleMessage(callFrame('c2', 'look at the voice system and fix it', 'completed'));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(onRunAgnt).toHaveBeenCalledWith('look at the voice system and fix it', expect.any(Function));
+  });
+
+  it('a cancelled repeat of words already delivered is not carried (the repeat bug stays fixed)', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+    userSpoke(s);
+    s._handleMessage(callFrame('c1', 'check the build', 'completed'));
+    await vi.advanceTimersByTimeAsync(10);
+    // A later response re-issues the same words and is cancelled by barge-in.
+    userSpoke(s);
+    s._handleMessage(callFrame('c2', 'check the build', 'cancelled'));
+    s._handleMessage(callFrame('c3', 'now deploy it', 'completed'));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(onRunAgnt).toHaveBeenLastCalledWith('now deploy it', expect.any(Function));
+  });
+
+  it('a session stop forgets carried words', async () => {
+    const onRunAgnt = vi.fn(async () => 'ok');
+    const s = harness({ onRunAgnt });
+    userSpoke(s);
+    s._handleMessage(callFrame('c1', 'half a thought', 'cancelled'));
+    s.stop();
+    userSpoke(s);
+    s._handleMessage(callFrame('c2', 'a new session', 'completed'));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(onRunAgnt).toHaveBeenCalledWith('a new session', expect.any(Function));
+  });
+});
+
 describe('useRealtimeVoice — AGNT is the brain', () => {
   it('routes a run_agnt call to the orchestrator and speaks its result', async () => {
     const onRunAgnt = vi.fn(async () => 'the build is green');
