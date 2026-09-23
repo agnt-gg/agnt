@@ -7,6 +7,7 @@
  */
 
 import fetch from 'node-fetch';
+export { resolveOpenAiImageSelection, isImageModelPolicy } from './imageModelSelection.js';
 import { buildProviderCapabilities, getProviderConfig, getAllProviderConfigs, getModelMetadata } from './providerConfigs.js';
 
 // Cache for dynamically fetched models
