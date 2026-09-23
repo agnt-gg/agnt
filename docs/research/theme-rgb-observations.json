@@ -1,0 +1,649 @@
+{
+  "schema": "agnt.theme-rgb-research-observations.v1",
+  "note": "Research observations, not migration approval. Matching palette comparisons omitted; rerun the browser probe for all comparisons.",
+  "inventory": {
+    "schema": "agnt.theme-rgb-inventory.v1",
+    "git": {
+      "mode": "snapshot",
+      "commit": "535e136c2217a1e694c71634389baca71daf1a49"
+    },
+    "scope": {
+      "root": "frontend/src",
+      "extensions": [
+        "vue",
+        "css",
+        "js",
+        "ts",
+        "html"
+      ],
+      "files": "tracked regular blobs",
+      "excludes": [
+        ".spec.",
+        ".test.",
+        "node_modules/",
+        "plugins/",
+        ".cache/",
+        "cache/",
+        "caches/",
+        "dist/",
+        "coverage/"
+      ],
+      "listedFiles": 581,
+      "parsedFiles": 194,
+      "semantics": "Literal ASCII *-rgb source occurrences; comments excluded; strings included; not runtime reachability.",
+      "parsing": "Only files containing -rgb are parsed; Vue custom blocks omitted; no external src loading or CSS evaluation."
+    },
+    "totals": {
+      "references": {
+        "occurrences": 1657,
+        "files": 184
+      },
+      "directRgba": {
+        "occurrences": 1641,
+        "files": 181
+      },
+      "declarations": {
+        "occurrences": 73,
+        "files": 10
+      }
+    },
+    "tokens": {
+      "--blue-rgb": {
+        "references": {
+          "occurrences": 47,
+          "files": 19
+        },
+        "directRgba": {
+          "occurrences": 46,
+          "files": 19
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      },
+      "--color-accent-rgb": {
+        "references": {
+          "occurrences": 5,
+          "files": 1
+        },
+        "directRgba": {
+          "occurrences": 5,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--color-background-rgb": {
+        "references": {
+          "occurrences": 8,
+          "files": 4
+        },
+        "directRgba": {
+          "occurrences": 6,
+          "files": 4
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      },
+      "--color-blue-rgb": {
+        "references": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "directRgba": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--color-green-rgb": {
+        "references": {
+          "occurrences": 6,
+          "files": 1
+        },
+        "directRgba": {
+          "occurrences": 6,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--color-primary-rgb": {
+        "references": {
+          "occurrences": 8,
+          "files": 3
+        },
+        "directRgba": {
+          "occurrences": 8,
+          "files": 3
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--color-purple-rgb": {
+        "references": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "directRgba": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--color-yellow-rgb": {
+        "references": {
+          "occurrences": 6,
+          "files": 1
+        },
+        "directRgba": {
+          "occurrences": 6,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--green-rgb": {
+        "references": {
+          "occurrences": 1087,
+          "files": 134
+        },
+        "directRgba": {
+          "occurrences": 1080,
+          "files": 130
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      },
+      "--indigo-rgb": {
+        "references": {
+          "occurrences": 2,
+          "files": 2
+        },
+        "directRgba": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      },
+      "--orange-rgb": {
+        "references": {
+          "occurrences": 11,
+          "files": 6
+        },
+        "directRgba": {
+          "occurrences": 11,
+          "files": 6
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--pink-rgb": {
+        "references": {
+          "occurrences": 3,
+          "files": 3
+        },
+        "directRgba": {
+          "occurrences": 2,
+          "files": 2
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      },
+      "--primary-rgb": {
+        "references": {
+          "occurrences": 369,
+          "files": 75
+        },
+        "directRgba": {
+          "occurrences": 366,
+          "files": 75
+        },
+        "declarations": {
+          "occurrences": 9,
+          "files": 9
+        }
+      },
+      "--red-rgb": {
+        "references": {
+          "occurrences": 59,
+          "files": 28
+        },
+        "directRgba": {
+          "occurrences": 59,
+          "files": 28
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      },
+      "--violet-rgb": {
+        "references": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "directRgba": {
+          "occurrences": 1,
+          "files": 1
+        },
+        "declarations": {
+          "occurrences": 1,
+          "files": 1
+        }
+      },
+      "--yellow-rgb": {
+        "references": {
+          "occurrences": 43,
+          "files": 14
+        },
+        "directRgba": {
+          "occurrences": 42,
+          "files": 14
+        },
+        "declarations": {
+          "occurrences": 8,
+          "files": 8
+        }
+      }
+    }
+  },
+  "browser": {
+    "schema": "agnt.theme-rgb-browser-research.v1",
+    "capturedAt": "2026-09-07T18:55:06.444Z",
+    "sourceHead": "535e136c2217a1e694c71634389baca71daf1a49",
+    "browserVersion": "152.0.7977.64",
+    "sources": [
+      {
+        "file": "frontend/src/styles/main.css",
+        "sha256": "f703a7c1a0d347dc2b2fbb0e8c57369b2395617b86da8aed60575c3cf0b2e59c"
+      },
+      {
+        "file": "frontend/src/styles/base/_variables.css",
+        "sha256": "73bcb67fc9a28a30ce6bd9891d08576a72cbf1819b2bba502503ffb5c14daa1d"
+      },
+      {
+        "file": "frontend/src/styles/themes/_core.css",
+        "sha256": "cae8bd6882943706231fbeda33fa4a0626c9e14d0db4d82c97aac21f6e13da08"
+      },
+      {
+        "file": "frontend/src/styles/themes/_light.css",
+        "sha256": "dfc54c7148743c84f1a21d2a06375bce5c46f0437cfd3ab89631eabc209d2b2a"
+      },
+      {
+        "file": "frontend/src/styles/themes/_dark.css",
+        "sha256": "2389a2acb2cf44ca9dfcb0d5e8c9412d71e15d45b73ad7d54f7c007b064a8239"
+      },
+      {
+        "file": "frontend/src/styles/themes/_cyberpunk.css",
+        "sha256": "32e406df470262c0820a635a8f4250a52369091f0a0fdf082837110e88b2614e"
+      },
+      {
+        "file": "frontend/src/styles/themes/_midnight.css",
+        "sha256": "01de7bd14d695ef7e23f6bdcd2c06fb25c5bd058d445c651ae5476849bf34da1"
+      },
+      {
+        "file": "frontend/src/styles/themes/_ember.css",
+        "sha256": "b9613ade6f5c46bc741f1c43bbe3925723d0c42badade6b38934afc4156136c9"
+      },
+      {
+        "file": "frontend/src/styles/themes/_nord.css",
+        "sha256": "de56385aae5bc3131fad34c6022ae429384308846e98b230e2a7da1c7c3786f3"
+      },
+      {
+        "file": "frontend/src/styles/themes/_rose.css",
+        "sha256": "5fc7867154cf843bed721733b01ed60d92d1c6177da5adec7011d22cda658fce"
+      },
+      {
+        "file": "frontend/src/styles/themes/_hacker.css",
+        "sha256": "17e0de75fc8e57a880a56de118e73f8b1a6c1ee1187966485e7bbb5b716cbe15"
+      },
+      {
+        "file": "frontend/src/styles/themes/_semantic.css",
+        "sha256": "27d35cd2c8c8e57603f4c03352caf755b475bbc66d14c30c4d065a268f30a8a1"
+      },
+      {
+        "file": "frontend/src/styles/themes/_aliases.css",
+        "sha256": "57575df2e654595aaf16563567714126ac5d286a85c28ad99116a5b1ce767cab"
+      },
+      {
+        "file": "frontend/public/js/libs/html2canvas.js",
+        "sha256": "05bd7e10b62644653ee309ed7d8b0a5f5d9f9765867c89c56c7c86e93bcae1ab"
+      },
+      {
+        "file": "scripts/research/theme-rgb-browser-probe.mjs",
+        "sha256": "6d420666fb06a1f9a6c060a37557fe0a6e3ddc1a818d7694231fac9ac862bbee"
+      }
+    ],
+    "scope": "Palette-only DOM fixture at alpha .9; isolated vendored html2canvas capture; no app E2E or minimum-engine proof.",
+    "summary": {
+      "comparisons": 128,
+      "equalPixels": 118,
+      "differentPixels": 10
+    },
+    "palette": {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+      "relativeSyntaxSupported": true,
+      "alpha": 0.9,
+      "comparisons": [
+        {
+          "theme": "dark midnight",
+          "triplet": "--orange-rgb",
+          "color": "--color-orange",
+          "legacy": {
+            "computed": "rgba(255, 149, 0, 0.9)",
+            "pixel": [
+              255,
+              149,
+              0,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.878431 0.596078 0.25098 / 0.9)",
+            "pixel": [
+              224,
+              152,
+              64,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark midnight",
+          "triplet": "--violet-rgb",
+          "color": "--color-violet",
+          "legacy": {
+            "computed": "rgba(209, 61, 229, 0.9)",
+            "pixel": [
+              210,
+              61,
+              230,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.690196 0.376471 1 / 0.9)",
+            "pixel": [
+              176,
+              96,
+              255,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark ember",
+          "triplet": "--orange-rgb",
+          "color": "--color-orange",
+          "legacy": {
+            "computed": "rgba(255, 149, 0, 0.9)",
+            "pixel": [
+              255,
+              149,
+              0,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.878431 0.564706 0.25098 / 0.9)",
+            "pixel": [
+              224,
+              144,
+              64,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark ember",
+          "triplet": "--violet-rgb",
+          "color": "--color-violet",
+          "legacy": {
+            "computed": "rgba(209, 61, 229, 0.9)",
+            "pixel": [
+              210,
+              61,
+              230,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.627451 0.478431 0.8 / 0.9)",
+            "pixel": [
+              160,
+              122,
+              204,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark nord",
+          "triplet": "--orange-rgb",
+          "color": "--color-orange",
+          "legacy": {
+            "computed": "rgba(255, 149, 0, 0.9)",
+            "pixel": [
+              255,
+              149,
+              0,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.815686 0.529412 0.439216 / 0.9)",
+            "pixel": [
+              208,
+              135,
+              112,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark nord",
+          "triplet": "--violet-rgb",
+          "color": "--color-violet",
+          "legacy": {
+            "computed": "rgba(209, 61, 229, 0.9)",
+            "pixel": [
+              210,
+              61,
+              230,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.705882 0.556863 0.678431 / 0.9)",
+            "pixel": [
+              180,
+              142,
+              173,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "rose",
+          "triplet": "--orange-rgb",
+          "color": "--color-orange",
+          "legacy": {
+            "computed": "rgba(255, 149, 0, 0.9)",
+            "pixel": [
+              255,
+              149,
+              0,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.752941 0.439216 0.25098 / 0.9)",
+            "pixel": [
+              192,
+              112,
+              64,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "rose",
+          "triplet": "--violet-rgb",
+          "color": "--color-violet",
+          "legacy": {
+            "computed": "rgba(209, 61, 229, 0.9)",
+            "pixel": [
+              210,
+              61,
+              230,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.533333 0.407843 0.690196 / 0.9)",
+            "pixel": [
+              136,
+              104,
+              176,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark hacker",
+          "triplet": "--orange-rgb",
+          "color": "--color-orange",
+          "legacy": {
+            "computed": "rgba(255, 149, 0, 0.9)",
+            "pixel": [
+              255,
+              149,
+              0,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.376471 0.752941 0.25098 / 0.9)",
+            "pixel": [
+              96,
+              192,
+              64,
+              230
+            ]
+          },
+          "equalPixels": false
+        },
+        {
+          "theme": "dark hacker",
+          "triplet": "--violet-rgb",
+          "color": "--color-violet",
+          "legacy": {
+            "computed": "rgba(209, 61, 229, 0.9)",
+            "pixel": [
+              210,
+              61,
+              230,
+              230
+            ]
+          },
+          "relative": {
+            "computed": "color(srgb 0.25098 0.752941 0.501961 / 0.9)",
+            "pixel": [
+              64,
+              192,
+              128,
+              230
+            ]
+          },
+          "equalPixels": false
+        }
+      ],
+      "customBackground": {
+        "legacy": {
+          "computed": "rgba(8, 8, 24, 0.9)",
+          "pixel": [
+            8,
+            8,
+            24,
+            230
+          ]
+        },
+        "relative": {
+          "computed": "color(srgb 0 0 0 / 0.9)",
+          "pixel": [
+            0,
+            0,
+            0,
+            230
+          ]
+        }
+      },
+      "unresolvedCanvas": {
+        "sentinel": "#010203",
+        "afterAssignment": "#010203"
+      }
+    },
+    "capture": [
+      {
+        "value": "rgba(var(--green-rgb), .1)",
+        "acceptedStyle": "rgba(var(--green-rgb), .1)",
+        "syntaxSupported": true,
+        "computed": "rgba(25, 239, 131, 0.1)",
+        "ok": true,
+        "width": 40,
+        "height": 40
+      },
+      {
+        "value": "rgb(from var(--color-green) r g b / .1)",
+        "acceptedStyle": "rgb(from var(--color-green) r g b / .1)",
+        "syntaxSupported": true,
+        "computed": "color(srgb 0.0980392 0.937255 0.513726 / 0.1)",
+        "ok": false,
+        "error": "Attempting to parse an unsupported color function \"color\""
+      },
+      {
+        "value": "color-mix(in srgb, var(--color-green) 10%, transparent)",
+        "acceptedStyle": "color-mix(in srgb, var(--color-green) 10%, transparent)",
+        "syntaxSupported": true,
+        "computed": "color(srgb 0.0980392 0.937255 0.513726 / 0.1)",
+        "ok": false,
+        "error": "Attempting to parse an unsupported color function \"color\""
+      }
+    ]
+  }
+}
