@@ -203,6 +203,20 @@ docker build -t agnt:latest .
 
 ## Quick Start with Docker
 
+### Before you start: name the owner
+
+A container is reachable from the network — that is the point of running one —
+so it admits only the AGNT accounts you name. Every recipe below sets
+`AGNT_TENANT_OWNER` to **the email you sign in to AGNT with**. Without it the
+container refuses to start (exit status 78) and says so in its log.
+
+- Teammates: `AGNT_TENANT_MEMBERS=a@example.com,b@example.com`
+- Deliberately open to every AGNT account: `AGNT_TENANT_MEMBERS=*`
+
+Secrets (`JWT_SECRET`, `SESSION_SECRET`, `ENCRYPTION_KEY`) are **generated on
+first boot** and stored under `/app/data/secrets` on your data volume. Do not
+set them; see [Secrets](#secrets) if you need to bring your own.
+
 ### Option 1: Pull the Pre-built Image from GHCR (Recommended)
 
 ```bash
@@ -212,10 +226,11 @@ docker run -d \
   -v agnt-data:/app/data \
   -e NODE_ENV=production \
   -e BASE_URL=http://localhost:3333 \
+  -e AGNT_TENANT_OWNER=you@example.com \
   --restart unless-stopped \
   ghcr.io/agnt-gg/agnt:latest
 
-# Access at http://localhost:3333
+# Access at http://localhost:3333 and sign in with that account
 ```
 
 **Available GHCR tags:**
@@ -242,6 +257,7 @@ docker run -d \
   -v agnt-plugins:/app/backend/plugins/installed \
   -e NODE_ENV=production \
   -e BASE_URL=http://localhost:3333 \
+  -e AGNT_TENANT_OWNER=you@example.com \
   --restart unless-stopped \
   agnt:latest
 ```
@@ -263,9 +279,10 @@ services:
       - NODE_ENV=production
       - BASE_URL=http://localhost:3333
       - REMOTE_URL=https://api.agnt.gg
-      - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-here}
-      - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
+      # The email you sign in to AGNT with. Compose refuses to start without it.
+      - AGNT_TENANT_OWNER=${AGNT_TENANT_OWNER:?Set AGNT_TENANT_OWNER to your AGNT login email}
+      - AGNT_TENANT_MEMBERS=${AGNT_TENANT_MEMBERS:-}
+      # Secrets are generated on first boot under /app/data/secrets. Do not set them here.
     volumes:
       - agnt-data:/app/data
     restart: unless-stopped
@@ -277,6 +294,9 @@ volumes:
 Start the service:
 
 ```bash
+# Name the owner once, next to the compose file
+echo "AGNT_TENANT_OWNER=you@example.com" >> .env
+
 # Start AGNT
 docker-compose up -d
 
@@ -304,9 +324,10 @@ services:
       - NODE_ENV=production
       - BASE_URL=http://localhost:3333
       - REMOTE_URL=https://api.agnt.gg
-      - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-here}
-      - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
+      # The email you sign in to AGNT with. Compose refuses to start without it.
+      - AGNT_TENANT_OWNER=${AGNT_TENANT_OWNER:?Set AGNT_TENANT_OWNER to your AGNT login email}
+      - AGNT_TENANT_MEMBERS=${AGNT_TENANT_MEMBERS:-}
+      # Secrets are generated on first boot under /app/data/secrets. Do not set them here.
     volumes:
       - agnt-data:/app/data
       - agnt-plugins:/app/backend/plugins/installed
@@ -334,6 +355,9 @@ Start the service:
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
+# Name the owner once, next to the compose file
+echo "AGNT_TENANT_OWNER=you@example.com" >> .env
+
 # Start AGNT
 docker-compose up -d
 
@@ -354,14 +378,17 @@ Configure AGNT by setting these environment variables:
 |----------|-------------|---------|---------|
 | `NODE_ENV` | Application environment | `development` | `production` |
 | `BASE_URL` | Base URL for the application | `http://localhost:3333` | `https://agnt.yourdomain.com` |
-| `JWT_SECRET` | Secret for JWT token generation | (auto-generated) | Random 32+ char string |
-| `SESSION_SECRET` | Secret for session management | (auto-generated) | Random 64+ char string |
-| `ENCRYPTION_KEY` | Key for data encryption | (auto-generated) | Random 32+ char string |
+| `AGNT_TENANT_OWNER` | The AGNT account that owns this install — the email you sign in with. **The container refuses to start without it.** | (none) | `you@example.com` |
 
 ### Optional Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `AGNT_TENANT_MEMBERS` | Other accounts allowed to sign in: comma-separated emails or account ids. `*` admits every AGNT account — only set that deliberately. | unset |
+| `AGNT_AUTH_MODE` | `verify-remote` (the image default): the container keeps a private `JWT_SECRET` and asks `api.agnt.gg` whether each session token is genuine. This is the only mode in which a network-reachable install both stays private and lets you sign in. Leave it. | `verify-remote` |
+| `JWT_SECRET` | Generated on first boot; see [Secrets](#secrets). Set only to bring your own. | generated |
+| `SESSION_SECRET` | Generated on first boot. Set only to bring your own. | generated |
+| `ENCRYPTION_KEY` | Generated on first boot; encrypts stored provider keys and OAuth tokens. Set only to bring your own — and keep it with the data volume, or those rows become unreadable. | generated |
 | `PORT` | Server port | `3333` |
 | `REMOTE_URL` | Remote API URL for sharing/webhooks | `https://api.agnt.gg` |
 | `WEBHOOK_URL` | Webhook endpoint URL | `http://localhost:3001` |
@@ -733,29 +760,39 @@ services:
 - ✅ Regular backups of data volumes
 - ✅ Monitor logs for suspicious activity
 
-### Using Docker Secrets
+### Secrets
 
-For enhanced security in Docker Swarm:
+On first boot the container generates `JWT_SECRET`, `SESSION_SECRET` and
+`ENCRYPTION_KEY` with a CSPRNG and stores each in its own file, mode `0600`,
+under `/app/data/secrets` — on your data volume, so they survive restarts and
+image updates. Back that directory up with the database: `ENCRYPTION_KEY` is
+what opens every stored provider key and OAuth token.
 
-```yaml
-version: '3.8'
+**Do not set these to a placeholder.** Earlier versions of the compose file
+defaulted all three to `CHANGE_ME_IN_PRODUCTION`, which meant a container ran
+with a key printed in a public repository. The application now refuses to
+start if it sees any of those published values (exit status 78, with the
+reason in the log). Remove the line and restart; rows written under the old
+value are re-encrypted automatically on the next boot.
 
-services:
-  agnt:
-    # ... other config
-    secrets:
-      - jwt_secret
-      - session_secret
-    environment:
-      - JWT_SECRET_FILE=/run/secrets/jwt_secret
-      - SESSION_SECRET_FILE=/run/secrets/session_secret
+**To bring your own** (a secrets manager, Docker or Swarm secrets, Vault):
+set the variable in the container's environment. A real value in the
+environment always wins over the generated one. The `*_FILE` convention is
+not supported; read the file into the variable in your entrypoint or unit.
 
-secrets:
-  jwt_secret:
-    external: true
-  session_secret:
-    external: true
+```bash
+# Swarm / compose secrets, read into the environment at start
+docker run -d \
+  -e AGNT_TENANT_OWNER=you@example.com \
+  -e ENCRYPTION_KEY="$(cat /run/secrets/agnt_encryption_key)" \
+  -v agnt-data:/app/data \
+  ghcr.io/agnt-gg/agnt:latest
 ```
+
+`JWT_SECRET` deserves one note. On a container it verifies nothing — session
+tokens are checked by asking `api.agnt.gg` (`AGNT_AUTH_MODE=verify-remote`) —
+so any private value is fine. Do **not** copy a desktop install's value onto
+a network-reachable machine.
 
 ## Advanced Configuration
 

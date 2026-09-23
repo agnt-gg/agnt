@@ -54,6 +54,7 @@ import jwt from 'jsonwebtoken';
 
 import { isPermittedUser, NOT_A_MEMBER } from '../services/auth/tenantOwnership.js';
 import { tenantVerdictSync, verifiedUserSync } from '../services/auth/remoteTokenVerifier.js';
+import { isRemoteVerifyMode } from '../services/auth/authMode.js';
 
 /** Reasons a resolution can fail. Exported so tests + callers share one vocabulary. */
 export const SocketAuthFailure = {
@@ -101,12 +102,15 @@ export function extractUserId(payload) {
 export function isStrictSocketAuth(env = process.env) {
   if (env.SOCKET_AUTH_STRICT === 'true') return true;
   if (env.SOCKET_AUTH_STRICT === 'false') return false;
-  return env.NODE_ENV === 'production' || env.TRUST_REMOTE_AUTH === 'true';
+  // verify-remote is the mark of a network-reachable install; an unverified
+  // claim must never be a way onto one, whatever NODE_ENV says.
+  return env.NODE_ENV === 'production' || env.TRUST_REMOTE_AUTH === 'true' || isRemoteVerifyMode(env);
 }
 
 /**
- * Verify a token and return its user id, or a failure reason.
- * @returns {{ userId: string } | { error: string }}
+ * Verify a token and return its user id (and email, when the token carries
+ * one), or a failure reason.
+ * @returns {{ userId: string, email?: string } | { error: string }}
  */
 function verifyToken(token, env) {
   const trustRemote = env.TRUST_REMOTE_AUTH === 'true';
@@ -118,7 +122,7 @@ function verifyToken(token, env) {
     try {
       const decoded = jwt.verify(token, env.JWT_SECRET);
       const userId = extractUserId(decoded);
-      if (userId) return { userId };
+      if (userId) return { userId, email: decoded?.email };
     } catch (err) {
       // An expired LOCAL token is expired, full stop — never fall through
       // to decode, or `exp` would be trivially bypassable.
@@ -137,7 +141,7 @@ function verifyToken(token, env) {
   const confirmed = verifiedUserSync(token);
   if (confirmed) {
     const userId = extractUserId(confirmed);
-    if (userId) return { userId };
+    if (userId) return { userId, email: confirmed?.email };
   }
 
   if (!trustRemote) return { error: SocketAuthFailure.INVALID_TOKEN };
@@ -183,7 +187,7 @@ export function resolveSocketIdentity(payload = {}, env = process.env) {
     // Same cached verdict the REST and media paths use, keyed by this exact
     // token — a socket must not outlive a removal that the HTTP API already
     // honours, and every realtime fan-out targets a user room.
-    if (!isPermittedUser(result.userId, tenantVerdictSync(token))) {
+    if (!isPermittedUser(result.userId, tenantVerdictSync(token), result.email)) {
       return { ok: false, reason: NOT_A_MEMBER };
     }
     return { ok: true, userId: result.userId, source: SocketIdentitySource.TOKEN, verified: true };

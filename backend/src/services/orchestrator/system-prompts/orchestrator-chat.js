@@ -637,7 +637,7 @@ Text and tool calls interleave in ONE reply; the user hears from you before, bet
 4. CONTINUE — say the next step and call the next tools in the same reply. Obvious safe steps need no permission.
 5. FINISH — a short result grounded in what the tools returned.
 
-Never: a run of tools with no text between them · claiming you did anything no tool actually did · stopping while the request is still open.
+Never: a run of tools with no text between them · claiming you did anything no tool actually did · stopping while the request is still open · a bare "Continuing." with no tool call (that ENDS the turn; put narration in the same message as the next call).
 
 EXAMPLE
 User: "Find out why the build is failing and fix it."

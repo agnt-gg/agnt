@@ -273,10 +273,8 @@ describe('findTiered gives the tool path the quota the prompt path already had',
     expect(all.mock.calls).toHaveLength(1);
   });
 
-  it('the get_agent_memories tool actually calls it', async () => {
-    // The tiering can be perfect and still not be wired up. Observed live: the
-    // tool returned 26 of 30 rows as duplicate workflow bottleneck reports
-    // because it called findByAgentId flat.
+  it('the tool now uses authorized full-index retrieval rather than legacy tiering', async () => {
+    // Legacy callers keep their tiering, but task search must query before LIMIT.
     const fs = await import('fs');
     const path = await import('path');
     const { fileURLToPath } = await import('url');
@@ -287,7 +285,8 @@ describe('findTiered gives the tool path the quota the prompt path already had',
     const idx = src.indexOf('get_agent_memories: {');
     expect(idx).toBeGreaterThan(-1);
     const block = src.slice(idx, idx + 2200);
-    expect(block).toMatch(/AgentMemoryModel\.findTiered\(/);
+    expect(block).toMatch(/AgentMemoryModel\.searchRelevant\(/);
+    expect(block).toMatch(/AgentMemoryModel\.findAuthorized\(/);
     expect(block).not.toMatch(/AgentMemoryModel\.findByAgentId\(/);
   });
 });

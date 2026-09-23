@@ -740,25 +740,14 @@ async function handleUpdateTaskStatus(args, authToken, context) {
   const { goal_id, task_id, status, progress, output, error } = args;
 
   try {
-    // This would typically call a backend endpoint to update task status
-    // For now, we'll simulate the update and return success
-    console.log(`Updating task ${task_id} in goal ${goal_id} to status: ${status}`);
-
-    return JSON.stringify({
-      success: true,
-      goal_id,
-      task_id,
-      status,
-      progress,
-      output,
-      error,
-      message: `Task status updated successfully`,
-    });
+    const { updateTaskRecord } = await import('../goal/updateTaskRecord.js');
+    return JSON.stringify(await updateTaskRecord(args, context?.userId));
   } catch (err) {
     console.error('Error updating task status:', err);
     return JSON.stringify({
       success: false,
       error: `Failed to update task status: ${err.message}`,
+      ...(err.code ? {code:err.code,writeState:err.writeState,retryable:err.retryable ?? false} : {}),
     });
   }
 }
