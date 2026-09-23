@@ -205,12 +205,30 @@ jobs:
       - name: Install Chromium system dependencies
         timeout-minutes: 10
         run: npx playwright install-deps chromium
+      - name: Test observer with local fake commands
+        env:
+          PR145_CONTROL_ROOT: ${{ runner.temp }}/pr145-observer-controls
+        run: python3 scripts/pr145-observer-test.py
       - name: Download pinned Chromium
         timeout-minutes: 10
         env:
           PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: '60000'
           DEBUG: pw:install
-        run: npx playwright install chromium
+        run: python3 scripts/pr145-observer.py "${{ runner.temp }}/pr145-chromium" "$(command -v node)"
+
+      - name: Preserve Chromium observer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-observer-node-${{ matrix.node }}
+          path: |
+            ${{ runner.temp }}/pr145-observer-controls/
+            ${{ runner.temp }}/pr145-chromium/installer.json
+            ${{ runner.temp }}/pr145-chromium/installer.stdout
+            ${{ runner.temp }}/pr145-chromium/installer.stderr
+            ${{ runner.temp }}/pr145-chromium/archive.json
+            ${{ runner.temp }}/pr145-chromium/chromium-145.0.7632.6.zip
+          retention-days: 7
 
       - name: Run the tagged browser suite
         run: npx playwright test --grep @ci
@@ -261,7 +279,12 @@ jobs:
           sudo install -m 0755 "$(command -v node)" /usr/bin/node
           /usr/bin/node --version
           /usr/bin/bwrap --version
+      - name: Compare synthetic namespace ownership profiles
+        id: namespace-probe
+        timeout-minutes: 3
+        run: python3 scripts/pr145-namespace.py "${{ runner.temp }}/pr145-native-evidence/namespace-comparison"
       - name: Run node:test suite
+        if: ${{ !cancelled() && steps.namespace-probe.outcome != 'skipped' }}
         env:
           PR145_TEST_EVIDENCE_ROOT: ${{ runner.temp }}/pr145-native-evidence
         run: npm run test:node
@@ -272,4 +295,38 @@ jobs:
           name: native-sandbox-node-${{ matrix.node }}
           path: ${{ runner.temp }}/pr145-native-evidence/
           if-no-files-found: warn
+          retention-days: 7
+
+  public-node-contract:
+    name: Public node:test contract / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Public behavioral compatibility contract
+        run: node scripts/pr145-public-node-contract.cjs "${{ runner.temp }}/pr145-public-contract"
+      - name: Retain nongating private parser observations
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p "${{ runner.temp }}/pr145-public-contract"
+          set +e
+          timeout --signal=TERM --kill-after=5s 30s node scripts/pr145-parser-diagnostic.cjs >"${{ runner.temp }}/pr145-public-contract/parser.stdout" 2>"${{ runner.temp }}/pr145-public-contract/parser.stderr"
+          rc=$?
+          printf '%s\n' "$rc" >"${{ runner.temp }}/pr145-public-contract/parser.exit"
+          # Diagnostic only; the public contract and all main suites remain gating.
+          exit 0
+      - name: Retain exact public contract receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-node-contract-${{ matrix.node }}
+          path: ${{ runner.temp }}/pr145-public-contract/
           retention-days: 7

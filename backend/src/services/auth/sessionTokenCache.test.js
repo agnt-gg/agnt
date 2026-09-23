@@ -134,8 +134,8 @@ describe('two valid credentials for one user do not fight over the slot', () => 
   // single-user poison latch never trips (the ids match), so the slot flipped
   // on every request and re-pushed across the fork ~623 times in 11 unattended
   // hours. Background callers then used whichever credential landed last.
-  const LONGER = jwtExpiring('2026-09-21T00:00:00Z', 'longer');
-  const SHORTER = jwtExpiring('2026-09-10T00:00:00Z', 'shorter');
+  const LONGER = jwtExpiring(new Date(Date.now() + 20 * 86400000).toISOString(), 'longer');
+  const SHORTER = jwtExpiring(new Date(Date.now() + 9 * 86400000).toISOString(), 'shorter');
 
   it('refuses a token that dies sooner than the one already held', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -166,7 +166,7 @@ describe('two valid credentials for one user do not fight over the slot', () => 
     // If "never go backwards" were implemented as "never change", the test
     // above would pass and token rotation would silently stop working.
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const renewed = jwtExpiring('2026-10-30T00:00:00Z', 'renewed');
+    const renewed = jwtExpiring(new Date(Date.now() + 59 * 86400000).toISOString(), 'renewed');
 
     rememberSessionToken(LONGER, 'user-1');
     rememberSessionToken(renewed, 'user-1');
@@ -179,6 +179,7 @@ describe('two valid credentials for one user do not fight over the slot', () => 
     // slot to a dead credential permanently.
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-01T00:00:00Z'));
+    const SHORTER = jwtExpiring('2026-09-10T00:00:00Z', 'shorter');
     rememberSessionToken(SHORTER, 'user-1');
 
     vi.setSystemTime(new Date('2026-09-11T00:00:00Z')); // SHORTER has expired
