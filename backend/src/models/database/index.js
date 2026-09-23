@@ -2441,5 +2441,7 @@ if (!skipSchemaInit) {
   if (typeof walCheckpointTimer.unref === 'function') walCheckpointTimer.unref();
 }
 
-export { dbReady, dbRunWithRetry };
+// dbPath: for bulk jobs (restore, reset) that need their OWN connection, so their transactions
+// can never swallow, or be rolled back with, the application's writes on this shared one.
+export { dbReady, dbRunWithRetry, dbPath };
 export default db;

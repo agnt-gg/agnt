@@ -86,6 +86,71 @@ async function inflateWorkflowVersion(row) {
  * indexed foreign key (ids only), then streamed `pageSize` rows at a time.
  */
 export const EXPORT_CATEGORIES = [
+  // ---- Your work: what a fresh instance needs to be YOURS again. Listed first, and in
+  // dependency order (tools and skills before the workflows and agents that use them),
+  // so a restore reading the file top to bottom never meets a reference to a missing item.
+  // Rows carry no credentials: those live in oauth_tokens / api_keys, which are never exported.
+  {
+    id: 'tools',
+    group: 'work',
+    label: 'Custom tools',
+    description: 'Tools you built, with their prompts, code and settings.',
+    table: 'tools',
+    ownerColumn: 'created_by',
+    scope: 'created_by = ?',
+    dateColumn: 'created_at',
+    pageSize: 100,
+  },
+  {
+    id: 'skills',
+    group: 'work',
+    label: 'Skills',
+    description: 'Skills you made, with their version history. Built-in skills come with AGNT, so they are not included.',
+    table: 'skills',
+    // Built-in skills are installed with every copy of AGNT: exporting them would only duplicate.
+    scope: 'user_id = ? AND COALESCE(is_builtin, 0) = 0',
+    dateColumn: 'created_at',
+    pageSize: 50,
+    children: [
+      { key: 'versions', table: 'skill_versions', foreignKey: 'skill_id', orderBy: 'created_at', pageSize: 50 },
+    ],
+  },
+  {
+    id: 'workflows',
+    group: 'work',
+    label: 'Workflows',
+    description: 'Your workflows as they are now. Their saved history is under Workflow versions.',
+    table: 'workflows',
+    scope: 'user_id = ? AND deleted_at IS NULL',
+    dateColumn: 'created_at',
+    pageSize: 50,
+  },
+  {
+    id: 'agents',
+    group: 'work',
+    label: 'Agents',
+    description: 'Your agents with their instructions, tools, workflows and skills.',
+    table: 'agents',
+    ownerColumn: 'created_by',
+    scope: 'created_by = ? AND deleted_at IS NULL',
+    dateColumn: 'created_at',
+    pageSize: 100,
+    children: [
+      { key: 'resources', table: 'agent_resources', foreignKey: 'agent_id', orderBy: 'agent_id', pageSize: 100 },
+      { key: 'workflowLinks', table: 'agent_workflows', foreignKey: 'agent_id', orderBy: 'id', pageSize: 100 },
+    ],
+  },
+  {
+    id: 'widgets',
+    group: 'work',
+    label: 'Widgets',
+    description: 'Custom widgets you created for your dashboards.',
+    table: 'widget_definitions',
+    scope: 'user_id = ?',
+    dateColumn: 'created_at',
+    pageSize: 50,
+  },
+  // ---- History: what AGNT remembers and what it has done.
   {
     id: 'memories',
     label: 'Agent memories',
@@ -157,7 +222,8 @@ export const EXPORT_CATEGORIES = [
     children: [
       // Task input/output routinely runs to tens of megabytes: one at a time.
       { key: 'tasks', table: 'tasks', foreignKey: 'goal_id', orderBy: 'order_index', pageSize: 1 },
-      { key: 'evaluations', table: 'goal_evaluations', foreignKey: 'goal_id', orderBy: 'created_at', pageSize: 50 },
+      // Fresh installs name this evaluated_at; older ones gained created_at by migration.
+      { key: 'evaluations', table: 'goal_evaluations', foreignKey: 'goal_id', orderBy: ['created_at', 'evaluated_at'], pageSize: 50 },
     ],
   },
   {
@@ -215,11 +281,27 @@ export function normalizeExportOptions({ categories, since, until, compress } = 
   return { categories: selected, since: normSince, until: normUntil, compress: compress === true };
 }
 
+/** The day after YYYY-MM-DD, as YYYY-MM-DD. */
+export function nextDay(date) {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Date bounds are a plain range on the stored text, never substr(): wrapping the column in a
+ * function hid it from the (user_id, start_time) indexes and turned a 27 ms count into 26 s.
+ * Both stored formats ("2026-09-22 16:06:33", "2026-09-22T17:26:21.836Z") sort by their
+ * leading YYYY-MM-DD, so `>= since` and `< the day after until` select exactly those days.
+ */
 function whereFor(category, userId, { since, until }) {
   const clauses = [`(${category.scope})`];
   const params = [userId];
-  if (since) { clauses.push(`substr(${category.dateColumn}, 1, 10) >= ?`); params.push(since); }
-  if (until) { clauses.push(`substr(${category.dateColumn}, 1, 10) <= ?`); params.push(until); }
+  // A date range narrows HISTORY. Your work is always carried whole: a backup that dropped an
+  // agent because it was created before `since` would restore a broken instance.
+  if (category.group === 'work') return { clause: clauses.join(' AND '), params };
+  if (since) { clauses.push(`${category.dateColumn} >= ?`); params.push(since); }
+  if (until) { clauses.push(`${category.dateColumn} < ?`); params.push(nextDay(until)); }
   return { clause: clauses.join(' AND '), params };
 }
 
@@ -232,10 +314,10 @@ export async function countExportCategories(userId, filters = {}) {
       const { clause, params } = whereFor(category, userId, { since, until });
       try {
         const row = await dbGet(`SELECT COUNT(*) AS n FROM ${category.table} WHERE ${clause}`, params);
-        return { id: category.id, label: category.label, description: category.description, count: row?.n ?? 0 };
+        return { id: category.id, group: category.group || 'history', label: category.label, description: category.description, count: row?.n ?? 0 };
       } catch (err) {
         // A missing table on an older schema is reported, not fatal.
-        return { id: category.id, label: category.label, description: category.description, count: null, error: err.message };
+        return { id: category.id, group: category.group || 'history', label: category.label, description: category.description, count: null, error: err.message };
       }
     })
   );
@@ -265,16 +347,32 @@ async function decodeRow(row, payloadColumns = []) {
 }
 
 /**
+ * The column to order a child table by, resolved against the LIVE schema: the first of the
+ * declared candidates that exists, else insertion order. Schemas drift between fresh installs
+ * and migrated ones, and a sort column must never be the reason an export fails.
+ */
+const columnsByTable = new Map();
+export async function childOrderColumn(child) {
+  if (!columnsByTable.has(child.table)) {
+    columnsByTable.set(child.table, new Set((await dbAll(`PRAGMA table_info("${child.table}")`)).map((c) => c.name)));
+  }
+  const columns = columnsByTable.get(child.table);
+  const candidates = Array.isArray(child.orderBy) ? child.orderBy : [child.orderBy];
+  return candidates.find((name) => columns.has(name)) || 'rowid';
+}
+
+/**
  * Ordered child rowids for a page of parents: parentId -> [rowid, ...].
  * Ids only, so it stays small however heavy the child rows are.
  */
 export async function childRowIdsByParent(child, parentIds) {
   const byParent = new Map();
   if (parentIds.length === 0) return byParent;
+  const orderBy = await childOrderColumn(child);
   const rows = await dbAll(
     `SELECT rowid AS rid, ${child.foreignKey} AS fk FROM ${child.table}
      WHERE ${child.foreignKey} IN (${parentIds.map(() => '?').join(',')})
-     ORDER BY ${child.foreignKey}, ${child.orderBy}, rowid`,
+     ORDER BY ${child.foreignKey}, ${orderBy}, rowid`,
     parentIds
   );
   for (const { rid, fk } of rows) {
@@ -477,6 +575,8 @@ export function consumeExportTicket(token, now = Date.now()) {
   if (!ticket || ticket.expiresAt <= now) return null;
   return { userId: ticket.userId, options: ticket.options };
 }
+
+export { CATEGORY_BY_ID };
 
 export default {
   EXPORT_CATEGORIES,

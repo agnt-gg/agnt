@@ -71,6 +71,7 @@ import {createHostedOperatorBoundary} from './src/routes/HostedOperatorBoundary.
 import {createPersonalAssetBoundary} from './src/routes/PersonalAssetBoundary.js';
 import {createScopeApiMiddleware} from './src/routes/ScopeApiMiddleware.js';
 import {createShareRouter} from './src/routes/ShareRoutes.js';
+import {createDataRouter} from './src/routes/DataRoutes.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
 import ToolsRoutes from './src/routes/ToolsRoutes.js';
 import ToolSchemaRoutes from './src/routes/ToolSchemaRoutes.js';
@@ -267,6 +268,8 @@ app.use('/api/workspaces', WorkspaceRoutes);
 app.use('/api/teams', TeamRoutes);
 // Copy to team / copy to personal. Personal-side only: /api/share is not a team-scoped API.
 app.use('/api/share', createShareRouter({ getRepository: getTeamRepository }));
+// Backup restore and reset. Personal only: 'data' is not a team-scoped API, so a team header is refused.
+app.use('/api/data', createDataRouter());
 app.use('/api/workspace-files', WorkspaceFileRoutes);
 app.use('/api/orchestrator', OrchestratorRoutes);
 app.use('/api/tools', ToolsRoutes);

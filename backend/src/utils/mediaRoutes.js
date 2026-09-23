@@ -56,6 +56,10 @@ export const MEDIA_ROUTE_PREFIXES = Object.freeze([
   // Generated images by opaque id, resolved from {{IMAGE_REF:id}} once the
   // in-memory base64 cache is gone (i.e. after any page reload).
   '/api/images',
+  // Backup downloads: a native download is a navigation and cannot carry a header. The route
+  // ALSO requires a single-use, one-minute ticket bound to the same user; the cookie only proves
+  // who is asking. GET-only, no side effects.
+  '/api/memory/export/download',
 ]);
 
 export default { MEDIA_ROUTE_PREFIXES };

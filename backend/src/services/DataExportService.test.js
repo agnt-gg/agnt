@@ -38,6 +38,16 @@ vi.mock('../models/database/index.js', () => ({
   },
 }));
 
+// The download guard reads the session cookie in production; here the same header names the user.
+vi.mock('../utils/authGuard.js', () => ({
+  requireAuth: () => (req, res, next) => {
+    const user = req.headers['x-test-user'];
+    if (!user) return res.status(401).json({ success: false, error: 'auth required' });
+    req.user = { userId: user };
+    next();
+  },
+}));
+
 // Route tests: stand in for JWT auth with a header naming the user.
 vi.mock('../routes/Middleware.js', () => ({
   authenticateToken: (req, res, next) => {
@@ -83,7 +93,14 @@ CREATE TABLE goals (id TEXT PRIMARY KEY, user_id TEXT, title TEXT, created_at TE
 CREATE TABLE tasks (id TEXT PRIMARY KEY, goal_id TEXT, title TEXT, order_index INTEGER);
 CREATE TABLE goal_evaluations (id TEXT PRIMARY KEY, goal_id TEXT, score REAL, created_at TEXT);
 CREATE TABLE content_outputs (id TEXT PRIMARY KEY, user_id TEXT, title TEXT, content TEXT, updated_at TEXT);
-CREATE TABLE workflows (id TEXT PRIMARY KEY, user_id TEXT, name TEXT);
+CREATE TABLE workflows (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, workflow_data TEXT, created_at TEXT, deleted_at TEXT);
+CREATE TABLE tools (id TEXT PRIMARY KEY, title TEXT, created_by TEXT, config TEXT, created_at TEXT);
+CREATE TABLE skills (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, is_builtin INTEGER, created_at TEXT);
+CREATE TABLE skill_versions (id TEXT PRIMARY KEY, skill_id TEXT, user_id TEXT, version INTEGER, created_at TEXT);
+CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT, created_by TEXT, tools TEXT, created_at TEXT, deleted_at TEXT);
+CREATE TABLE agent_resources (agent_id TEXT PRIMARY KEY, credit_limit INTEGER, credits_used INTEGER);
+CREATE TABLE agent_workflows (id INTEGER PRIMARY KEY AUTOINCREMENT, agent_id TEXT, workflow_id TEXT);
+CREATE TABLE widget_definitions (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, source_code TEXT, created_at TEXT);
 CREATE TABLE workflow_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, workflow_id TEXT, version_number INTEGER, workflow_state TEXT, is_compressed INTEGER, created_at TEXT);
 `;
 
@@ -128,8 +145,24 @@ async function seed() {
   await run(`INSERT INTO content_outputs VALUES ('o1',?,'report','# hello','2026-09-02 12:00:00')`, [A]);
   await run(`INSERT INTO content_outputs VALUES ('ob',?,'SECRET-OF-B','x','2026-09-02 12:00:00')`, [B]);
 
-  await run(`INSERT INTO workflows VALUES ('wf1',?,'mine')`, [A]);
-  await run(`INSERT INTO workflows VALUES ('wfb',?,'SECRET-OF-B')`, [B]);
+  await run(`INSERT INTO workflows VALUES ('wf1',?,'mine','{"nodes":[]}','2026-09-02 08:00:00',NULL)`, [A]);
+  await run(`INSERT INTO workflows VALUES ('wfgone',?,'deleted','{}','2026-09-02 08:00:00','2026-09-03')`, [A]);
+  await run(`INSERT INTO workflows VALUES ('wfb',?,'SECRET-OF-B','{}','2026-09-02 08:00:00',NULL)`, [B]);
+
+  // Your work. Built-in skills and deleted agents are not the user's work to carry.
+  await run(`INSERT INTO tools VALUES ('tool1','Summarize',?,'{"provider":"openai"}','2026-09-02 08:00:00')`, [A]);
+  await run(`INSERT INTO tools VALUES ('toolb','SECRET-OF-B',?,'{}','2026-09-02 08:00:00')`, [B]);
+  await run(`INSERT INTO skills VALUES ('sk1',?,'writing',0,'2026-09-02 08:00:00')`, [A]);
+  await run(`INSERT INTO skills VALUES ('skbuiltin',?,'builtin',1,'2026-09-02 08:00:00')`, [A]);
+  await run(`INSERT INTO skills VALUES ('skb',?,'SECRET-OF-B',0,'2026-09-02 08:00:00')`, [B]);
+  await run(`INSERT INTO skill_versions VALUES ('sv1','sk1',?,1,'2026-09-02 08:00:00')`, [A]);
+  await run(`INSERT INTO agents VALUES ('ag1','Researcher',?,'["tool1"]','2026-09-02 08:00:00',NULL)`, [A]);
+  await run(`INSERT INTO agents VALUES ('aggone','Old',?,'[]','2026-09-02 08:00:00','2026-09-03')`, [A]);
+  await run(`INSERT INTO agents VALUES ('agb','SECRET-OF-B',?,'[]','2026-09-02 08:00:00',NULL)`, [B]);
+  await run(`INSERT INTO agent_resources VALUES ('ag1',1000,5)`);
+  await run(`INSERT INTO agent_workflows (agent_id,workflow_id) VALUES ('ag1','wf1')`);
+  await run(`INSERT INTO widget_definitions VALUES ('wd1',?,'Clock','<div/>','2026-09-02 08:00:00')`, [A]);
+  await run(`INSERT INTO widget_definitions VALUES ('wdb',?,'SECRET-OF-B','','2026-09-02 08:00:00')`, [B]);
   const state = JSON.stringify({ nodes: [{ id: 'n' }], edges: [] });
   const compressed = zlib.gzipSync(state).toString('base64');
   await run(`INSERT INTO workflow_versions (workflow_id,version_number,workflow_state,is_compressed,created_at) VALUES ('wf1',1,?,1,'2026-09-02 10:00:00')`, [compressed]);
@@ -175,9 +208,34 @@ describe('DataExportService — full export', () => {
     expect(doc.categories).toEqual(Service.EXPORT_CATEGORIES.map((c) => c.id));
     expect(JSON.stringify(doc)).not.toContain('SECRET-OF-B');
     expect(doc.counts).toEqual({
+      tools: 1, skills: 1, workflows: 1, agents: 1, widgets: 1,
       memories: 3, insights: 1, conversations: 1, traces: 2, workflowRuns: 1, goals: 1, outputs: 1, workflowVersions: 2,
     });
     for (const [id, n] of Object.entries(doc.counts)) expect(doc[id]).toHaveLength(n);
+  });
+
+  it('carries your work with what it needs, and never built-ins, deleted items or anyone else\'s', async () => {
+    const { doc } = await exportDoc({ categories: ['tools', 'skills', 'workflows', 'agents', 'widgets'] });
+    expect(doc.skills.map((s) => s.id)).toEqual(['sk1']);
+    expect(doc.skills[0].versions.map((v) => v.id)).toEqual(['sv1']);
+    expect(doc.agents.map((a) => a.id)).toEqual(['ag1']);
+    expect(doc.agents[0].tools).toEqual(['tool1']);
+    expect(doc.agents[0].resources).toEqual([{ agent_id: 'ag1', credit_limit: 1000, credits_used: 5 }]);
+    expect(doc.agents[0].workflowLinks.map((l) => l.workflow_id)).toEqual(['wf1']);
+    expect(doc.workflows.map((w) => w.id)).toEqual(['wf1']);
+    expect(JSON.stringify(doc)).not.toContain('SECRET-OF-B');
+  });
+
+  it('narrows history by date but always carries your work whole', async () => {
+    const { doc } = await exportDoc({ categories: ['agents', 'memories'], since: '2030-01-01' });
+    expect(doc.agents.map((a) => a.id)).toEqual(['ag1']);
+    expect(doc.memories).toEqual([]);
+  });
+
+  it('lists your work first, in dependency order, each labelled with its group', async () => {
+    const counts = await Service.countExportCategories(A);
+    expect(counts.slice(0, 5).map((c) => [c.id, c.group])).toEqual([['tools', 'work'], ['skills', 'work'], ['workflows', 'work'], ['agents', 'work'], ['widgets', 'work']]);
+    expect(counts.slice(5).every((c) => c.group === 'history')).toBe(true);
   });
 
   it('nests children under their parent in order, and gives childless parents an empty list', async () => {
@@ -386,7 +444,7 @@ describe('MemoryRoutes — export endpoints', () => {
     expect(body.categories.map((c) => c.id)).toEqual(Service.EXPORT_CATEGORIES.map((c) => c.id));
   });
 
-  it('requires auth to mint a ticket, validates the body, and downloads once with the ticket alone', async () => {
+  it('requires auth to mint a ticket, validates the body, and downloads once, only as the same user', async () => {
     expect((await fetch(`${base}/export`, { method: 'POST' })).status).toBe(401);
 
     const bad = await fetch(`${base}/export`, {
@@ -401,15 +459,23 @@ describe('MemoryRoutes — export endpoints', () => {
     expect(minted.downloadUrl).toBe(`/api/memory/export/download/${minted.ticket}`);
     expect(minted.filename).toMatch(/^agnt-export-memories-/);
 
-    // No auth header on the download: the ticket is the credential.
-    const download = await fetch(`${base}/export/download/${minted.ticket}`);
+    // A ticket alone is not enough: the download must also be signed in...
+    expect((await fetch(`${base}/export/download/${minted.ticket}`)).status).toBe(401);
+    // ...as the SAME user. Someone else holding the ticket gets nothing, and it is spent.
+    const minted2 = await (await fetch(`${base}/export`, {
+      method: 'POST', headers: { 'x-test-user': A, 'content-type': 'application/json' }, body: JSON.stringify({ categories: ['memories'] }),
+    })).json();
+    expect((await fetch(`${base}/export/download/${minted2.ticket}`, { headers: { 'x-test-user': B } })).status).toBe(404);
+    expect((await fetch(`${base}/export/download/${minted2.ticket}`, { headers: { 'x-test-user': A } })).status).toBe(404);
+
+    const download = await fetch(`${base}/export/download/${minted.ticket}`, { headers: { 'x-test-user': A } });
     expect(download.status).toBe(200);
     expect(download.headers.get('content-disposition')).toMatch(/^attachment;/);
     const doc = JSON.parse(await download.text());
     expect(doc.complete).toBe(true);
     expect(doc.memories).toHaveLength(3);
 
-    const replay = await fetch(`${base}/export/download/${minted.ticket}`);
+    const replay = await fetch(`${base}/export/download/${minted.ticket}`, { headers: { 'x-test-user': A } });
     expect(replay.status).toBe(404);
   });
 });

@@ -217,12 +217,15 @@
         <!-- Backup Section -->
         <div v-else-if="activeSection === 'backup'" class="settings-content" data-section="backup">
           <div class="content-header">
-            <h2 class="content-title">Backup & Export</h2>
-            <p class="content-subtitle">Export memories, conversations, run traces and more</p>
+            <h2 class="content-title">Backup & Restore</h2>
+            <p class="content-subtitle">Save your agents, workflows, memory and history to a file, or bring them back from one</p>
           </div>
           <div class="settings-grid">
             <div class="settings-section full-width">
               <DataExportSection />
+            </div>
+            <div class="settings-section full-width">
+              <DataRestoreSection />
             </div>
           </div>
         </div>
@@ -256,13 +259,12 @@
         <!-- Reset Section -->
         <div v-else-if="activeSection === 'reset'" class="settings-content" data-section="reset">
           <div class="content-header">
-            <h2 class="content-title">Reset Settings</h2>
-            <p class="content-subtitle">Reset your system to default settings</p>
+            <h2 class="content-title">Reset</h2>
+            <p class="content-subtitle">Clear chats, history, memory, your work or preferences and start fresh</p>
           </div>
           <div class="settings-grid">
-            <div class="settings-section">
-              <h3>Reset Options</h3>
-              <p>Reset functionality will be implemented here.</p>
+            <div class="settings-section full-width">
+              <DataResetSection />
             </div>
           </div>
         </div>
@@ -338,6 +340,8 @@ import PhoneAccessSection from './components/PhoneAccessSection/PhoneAccessSecti
 import ConnectionSection from './components/ConnectionSection/ConnectionSection.vue';
 import LeaderboardSection from './components/LeaderboardSection/LeaderboardSection.vue';
 import DataExportSection from './components/DataExportSection/DataExportSection.vue';
+import DataRestoreSection from './components/DataExportSection/DataRestoreSection.vue';
+import DataResetSection from './components/DataExportSection/DataResetSection.vue';
 import { useSettingsTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
@@ -368,6 +372,8 @@ export default {
     PhoneAccessSection,
     ConnectionSection,
     DataExportSection,
+    DataRestoreSection,
+    DataResetSection,
     PopupTutorial,
   },
   emits: ['screen-change', 'start-tour'],

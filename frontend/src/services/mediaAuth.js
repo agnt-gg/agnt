@@ -42,6 +42,7 @@ export const MEDIA_COOKIE_PATHS = Object.freeze([
   '/api/local-preview', // prepared saved HTML, nested documents and stylesheets
   '/api/filesystem/raw', // workspace-relative bytes (Artifacts image/video/audio/PDF preview)
   '/api/images', // generated images by id, once the in-memory base64 cache is gone
+  '/api/memory/export/download', // backup downloads: a navigation cannot carry a header; a ticket is ALSO required
 ]);
 
 /** @deprecated Kept for callers that predate multi-path scoping. */

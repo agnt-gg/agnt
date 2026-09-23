@@ -2,6 +2,10 @@ import express from 'express';
 import MemorySearchService from '../services/MemorySearchService.js';
 import DataExportService from '../services/DataExportService.js';
 import { authenticateToken } from './Middleware.js';
+import { requireAuth } from '../utils/authGuard.js';
+
+// Header or the path-scoped session cookie; never a token in the query string.
+const requireAuthForDownload = requireAuth({ allowCookie: true });
 
 const MemoryRoutes = express.Router();
 
@@ -150,12 +154,15 @@ MemoryRoutes.post('/export', authenticateToken, (req, res) => {
 
 /**
  * GET /api/memory/export/download/:ticket
- *   Authenticated by the ticket alone (single use, expires in a minute).
+ *   Two locks: the caller must be signed in (the path-scoped session cookie, since a native
+ *   download cannot send a header), AND hold a single-use, one-minute ticket minted for that
+ *   same user. A leaked ticket is useless to anyone else; a stolen cookie alone downloads nothing.
  *   Streams the export as an attachment.
  */
-MemoryRoutes.get('/export/download/:ticket', async (req, res) => {
+MemoryRoutes.get('/export/download/:ticket', requireAuthForDownload, async (req, res) => {
   const redeemed = DataExportService.consumeExportTicket(req.params.ticket);
-  if (!redeemed) {
+  const callerId = req.user?.userId || req.user?.id;
+  if (!redeemed || redeemed.userId !== callerId) {
     return res.status(404).json({ success: false, error: 'This export link has expired or was already used. Start the export again.' });
   }
   try {

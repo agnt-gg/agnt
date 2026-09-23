@@ -113,14 +113,14 @@ export const settingsDirectory = [
       {
         "id": "backup",
         "icon": "fas fa-database",
-        "label": "Backup & Export",
+        "label": "Backup & Restore",
         "description": "Data management"
       },
       {
         "id": "reset",
         "icon": "fas fa-undo",
         "label": "Reset",
-        "description": "Reset options"
+        "description": "Clear data and start fresh"
       }
     ]
   },
