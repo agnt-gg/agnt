@@ -36,7 +36,13 @@ const MODULES = {
   workflows,
 };
 
-const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'SystemOverviewPanel.vue'), 'utf8');
+const here = dirname(fileURLToPath(import.meta.url));
+// The hydration list lives in services/accountInventory.js (shared with the
+// navigation onion), so the panel's bindings are the panel plus that module.
+const source = [
+  readFileSync(join(here, 'SystemOverviewPanel.vue'), 'utf8'),
+  readFileSync(join(here, '../../../../../services/accountInventory.js'), 'utf8'),
+].join('\n');
 
 const matchAll = (pattern) => [...source.matchAll(pattern)].map((m) => m[1]);
 

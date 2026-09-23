@@ -146,6 +146,8 @@
                 </span>
                 <!-- Badge lookup stays keyed by the registry section id; the preference layer only changes presentation. -->
                 <span v-if="railBadges[item.id]" class="cv-sb-badge" :class="{ 'is-warn': item.id === 'apps' }">{{ railBadges[item.id] }}</span>
+                <!-- Just unlocked and not yet visited. A live count outranks it. -->
+                <span v-else-if="item.fresh" class="cv-sb-badge is-new">NEW</span>
               </button>
             </Tooltip>
           </template>
@@ -341,6 +343,7 @@ import { useMobileOverlay } from '@/composables/useMobileOverlay.js';
 import PanelBackdrop from './PanelBackdrop.vue';
 import { screenHasFrame } from '@/views/Terminal/CenterPanel/screenRegistry.js';
 import { customNavigationPages, groupedNavigation, NAVIGATION_CHANGED_EVENT } from '@/services/navigationPreferences.js';
+import { useNavigationOnion } from '@/composables/useNavigationOnion.js';
 
 // Directive: when the label text overflows its container, expose the
 // overflow amount via a CSS variable so a hover animation can scroll it.
@@ -397,7 +400,8 @@ export default {
     const navigationElement = ref(null);
     const { active: navigationOpen, open: openNavigation, close: closeMobileNavigation } = useMobileOverlay(compactLayout, () => navigationElement.value);
     const openMobileNavigation = () => openNavigation('navigation');
-    function openMobileNavigationItem(item) { closeMobileNavigation({ restoreFocus: false }); openNavigationItem(item); }
+    // Visiting a row is what makes it no longer new.
+    function openMobileNavigationItem(item) { navigationOnion.seen(item.id); closeMobileNavigation({ restoreFocus: false }); openNavigationItem(item); }
     function navigateMobileSection(section) { closeMobileNavigation({ restoreFocus: false }); navigateToSection(section); }
     function startMobileAddPage() { closeMobileNavigation({ restoreFocus: false }); startAddPage(); }
     function openMobilePrimary(id) { closeMobileNavigation({ restoreFocus: false }); openPrimary(id); }
@@ -500,6 +504,17 @@ export default {
     const selectedTeamId = ref(activeTeamId.value);
     const workspaceTeams = ref([]);
     const workspaceError = ref('');
+    // Teams is an onion fact too; it is only known once this canvas' own team
+    // request has succeeded (a failed load is "unknown", never "none").
+    const teamsLoaded = ref(false);
+    // The rail grows with the account: see services/navigationOnion.js. An
+    // unlock is announced only where the new row can actually be pointed at —
+    // never over onboarding, never into a closed mobile drawer.
+    const navigationOnion = useNavigationOnion(store, {
+      teams: workspaceTeams,
+      teamsKnown: teamsLoaded,
+      canAnnounce: computed(() => !compactLayout.value && !store.getters['userAuth/shouldShowOnboarding']),
+    });
     const teamNavigationTab = ref('Members');
     const workspaceLabel = computed(() => workspaceTeams.value.find(t=>t.id===activeTeamId.value)?.name || (activeTeamId.value ? 'Team' : 'Personal'));
     let workspaceGeneration = 0;
@@ -588,7 +603,7 @@ export default {
       return !onCustomPage.value && activeSection.value?.id === item.id;
     }
     function syncWorkspaceTeams(teams) {
-      workspaceTeams.value=teams;workspaceError.value='';
+      workspaceTeams.value=teams;workspaceError.value='';teamsLoaded.value=true;
       if(selectedTeamId.value&&!teams.some(t=>t.id===selectedTeamId.value))selectedTeamId.value='';
       // The desktop keeps one space per team; this list is the full membership, so a removed team's space closes.
       window.electron?.spaces?.syncTeams(teams.filter(t=>t.tenantUrl).map(t=>({id:t.id,name:t.name,tenantUrl:t.tenantUrl})),{replace:true})
@@ -1749,6 +1764,12 @@ export default {
 }
 .cv-sb-badge.is-warn {
   color: var(--color-yellow, #ffd700);
+}
+/* A row the account just unlocked. Same slot and size as a live count, so the
+   rail never reflows; its own colour, so it is never mistaken for one. */
+.cv-sb-badge.is-new {
+  color: var(--color-blue, #12e0ff);
+  letter-spacing: 0.08em;
 }
 .cv-sidebar.expanded .cv-sb-badge {
   display: inline-block;

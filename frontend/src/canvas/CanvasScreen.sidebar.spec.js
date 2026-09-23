@@ -5,9 +5,13 @@ import CanvasScreen from './CanvasScreen.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import TeamWorkspace from '@/views/_components/one/TeamWorkspace.vue';
 import { NAVIGATION_CHANGED_EVENT, updateNavigationItem } from '@/services/navigationPreferences.js';
+import { ONION_STORAGE_KEY } from '@/services/navigationOnion.js';
 const mounted=[];
+// The account under test has already earned these rows (see navigationOnion.js);
+// what is asserted below is how the rail renders and routes them.
+const EARNED=['goals','artifacts','library','teams'];
 const teams=[{id:'engineering',name:'Engineering',role:'owner',tenantUrl:'https://engineering.agnt.gg'},{id:'research',name:'Research',role:'member',tenantUrl:'https://research.agnt.gg'}];
-beforeEach(()=>{vi.stubGlobal('ResizeObserver',class{observe(){} disconnect(){}});localStorage.clear();vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>teams})));});
+beforeEach(()=>{vi.stubGlobal('ResizeObserver',class{observe(){} disconnect(){}});localStorage.clear();localStorage.setItem(ONION_STORAGE_KEY,JSON.stringify({version:1,unlocked:EARNED,seeded:EARNED,fresh:[]}));vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>teams})));});
 afterEach(()=>{mounted.splice(0).forEach(w=>w.unmount());vi.unstubAllGlobals();document.body.innerHTML='';delete window.electron;sessionStorage.clear();});
 function spaceHost(){const host={list:vi.fn(async()=>({spaces:[],activeId:'primary'})),switch:vi.fn(async()=>({ok:true})),syncTeams:vi.fn(async()=>({ok:true})),onChanged:vi.fn(()=>()=>{})};window.electron={spaces:host};return host;}
 function setup(planType='free'){const pages=[{id:'chat',name:'Chat',route:'ChatScreen'},{id:'goal',name:'Goals',route:'GoalsScreen'},{id:'custom',name:'Scratch',route:'custom:scratch'}];const store=createStore({modules:{

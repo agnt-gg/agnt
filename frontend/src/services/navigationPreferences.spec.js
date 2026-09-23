@@ -8,23 +8,53 @@ import {
   renameNavigationGroup,
   reorderNavigationItem,
   resetNavigationPreferences,
+  showAllNavigation,
   updateNavigationItem,
 } from './navigationPreferences.js';
+import { ONION_STORAGE_KEY } from './navigationOnion.js';
+
+const unlock = (...ids) =>
+  localStorage.setItem(ONION_STORAGE_KEY, JSON.stringify({ version: 1, unlocked: ids, seeded: ids, fresh: [] }));
 
 describe('navigation preferences', () => {
   beforeEach(() => localStorage.clear());
 
-  it('starts with a minimal rail while keeping all sections configurable', () => {
+  it('starts a new account on Chat alone while keeping every section configurable', () => {
     const items = groupedNavigation().flatMap((group) => group.items);
-    expect(items[0].id).toBe('chat');
-    expect(items.map(item=>item.id)).toEqual(['chat','goals','artifacts','library','teams']);
-    expect(groupedNavigation([], {includeHidden:true}).flatMap(g=>g.items).some(i=>i.id==='store')).toBe(true);
-    expect(items.every((item) => item.visible)).toBe(true);
+    expect(items.map((item) => item.id)).toEqual(['chat']);
+    const all = groupedNavigation([], { includeHidden: true }).flatMap((g) => g.items);
+    expect(all.some((i) => i.id === 'store')).toBe(true);
+    expect(all.find((i) => i.id === 'store')).toMatchObject({ visible: false, unlocked: false, explicit: false });
+  });
+
+  it('puts a row on the rail once the account unlocks it, in its registry group and order', () => {
+    unlock('apps', 'workflows');
+    const items = groupedNavigation().flatMap((group) => group.items);
+    expect(items.map((item) => item.id)).toEqual(['chat', 'workflows', 'apps']);
+    expect(groupedNavigation().map((g) => g.name)).toEqual(['TODAY', 'ASSETS', 'CONNECTORS']);
+  });
+
+  it('lets an explicit choice in Settings beat the onion in both directions', () => {
+    unlock('apps');
+    updateNavigationItem('section:apps', { visible: false });
+    updateNavigationItem('section:store', { visible: true });
+    const ids = groupedNavigation().flatMap((group) => group.items).map((item) => item.id);
+    expect(ids).not.toContain('apps');
+    expect(ids).toContain('store');
+  });
+
+  it('shows everything in one step, and reset hands the rail back to the onion', () => {
+    showAllNavigation();
+    const shown = groupedNavigation().flatMap((group) => group.items);
+    expect(shown.length).toBe(groupedNavigation([], { includeHidden: true }).flatMap((g) => g.items).length);
+    resetNavigationPreferences();
+    expect(groupedNavigation().flatMap((group) => group.items).map((item) => item.id)).toEqual(['chat']);
   });
 
   it('lists Library and Teams as configurable rows, not rail hardcoding', () => {
     // They own no screen, so they are not in MAIN_SECTIONS — but they are rows
     // the user sees, and the rail may not carry a row Settings cannot reach.
+    unlock('library', 'teams');
     const library = groupedNavigation([], { includeHidden: true }).flatMap((group) => group.items).find((item) => item.id === 'library');
     expect(library).toMatchObject({ type: 'virtual', key: 'virtual:library', group: 'ASSETS', label: 'Library' });
 
@@ -47,6 +77,7 @@ describe('navigation preferences', () => {
   });
 
   it('hides a built-in page without removing its route ownership', () => {
+    unlock('goals');
     updateNavigationItem(navigationItemKey('section', 'goals'), { visible: false });
     expect(groupedNavigation().flatMap((group) => group.items).some((item) => item.id === 'goals')).toBe(false);
     expect(groupedNavigation([], { includeHidden: true }).flatMap((group) => group.items).find((item) => item.id === 'goals').visible).toBe(false);

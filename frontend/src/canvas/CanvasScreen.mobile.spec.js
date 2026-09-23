@@ -4,6 +4,10 @@ import { createStore } from 'vuex';
 import { nextTick } from 'vue';
 vi.mock('@/composables/useElectron', () => ({ useElectron: () => ({ isElectron: { value: false } }), electronUtils: { window: { minimize: vi.fn(), maximize: vi.fn(), close: vi.fn() } } }));
 import CanvasScreen from './CanvasScreen.vue';
+import { ONION_STORAGE_KEY } from '@/services/navigationOnion.js';
+
+// An account that has already earned these rows (see navigationOnion.js).
+const EARNED = ['goals', 'artifacts', 'library', 'teams'];
 
 function setup(width = 390) {
   let listener;
@@ -19,7 +23,10 @@ function setup(width = 390) {
   return { wrapper, resize: async value => { listener({ matches: value <= 800 }); await nextTick(); } };
 }
 describe('AGNT-One mobile navigation', () => {
- beforeEach(() => localStorage.clear());
+ beforeEach(() => {
+   localStorage.clear();
+   localStorage.setItem(ONION_STORAGE_KEY, JSON.stringify({ version: 1, unlocked: EARNED, seeded: EARNED, fresh: [] }));
+ });
  it('uses the source navigation including custom pages and Settings', async () => {
    const { wrapper } = setup(); expect(wrapper.find('.cv-mobile-menu').exists()).toBe(true);
    expect(wrapper.find('.cv-sidebar').attributes('inert')).toBeDefined(); await wrapper.find('.cv-mobile-menu').trigger('click');

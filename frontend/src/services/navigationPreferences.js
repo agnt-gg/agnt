@@ -1,4 +1,5 @@
 import { MAIN_SECTIONS, SECTION_ROUTES } from '@/canvas/sections.js';
+import { isUnlocked, loadOnionState } from '@/services/navigationOnion.js';
 
 export const NAVIGATION_STORAGE_KEY = 'agnt:sidebarNavigation:v1';
 export const NAVIGATION_CHANGED_EVENT = 'agnt:navigation-changed';
@@ -37,7 +38,10 @@ const BUILT_IN_ITEMS = [
   })),
 ];
 
-const DEFAULT_VISIBLE = new Set(['chat','goals','artifacts','library','teams']);
+// No static default list. A built-in row with no explicit Shown/Hidden from
+// Settings is on the rail when the account has unlocked it (see
+// navigationOnion.js): Chat from the first second, everything else the first
+// time the thing it manages exists.
 const DEFAULT_GROUPS = [...new Set(BUILT_IN_ITEMS.map((item) => item.group))];
 
 function cleanGroup(value, fallback = PERSONAL_GROUP) {
@@ -96,14 +100,20 @@ export function customNavigationPages(pages = []) {
 
 export function navigationItems(customPages = []) {
   const preferences = loadNavigationPreferences();
+  const onion = loadOnionState();
   const builtIn = BUILT_IN_ITEMS.map((item, index) => {
     const key = navigationItemKey(item.type, item.id);
     const saved = preferences.items[key] || {};
+    const explicit = typeof saved.visible === 'boolean';
     return {
       ...item,
       key,
       group: cleanGroup(saved.group, item.group),
-      visible: typeof saved.visible === 'boolean' ? saved.visible : DEFAULT_VISIBLE.has(item.id),
+      visible: explicit ? saved.visible : isUnlocked(item.id, onion),
+      // Settings shows WHY a row is where it is: chosen by you, or earned.
+      unlocked: isUnlocked(item.id, onion),
+      explicit,
+      fresh: onion.fresh.includes(item.id),
       order: Number.isFinite(saved.order) ? saved.order : index,
     };
   });
@@ -203,6 +213,20 @@ export function moveNavigationGroup(name, direction) {
 export function removeNavigationItemPreference(key) {
   const preferences = loadNavigationPreferences();
   delete preferences.items[key];
+  return persist(preferences);
+}
+
+/**
+ * Every built-in row on, in one step, for the person who already knows what
+ * they want. Written as explicit choices so it survives any later unlock
+ * logic; "Reset defaults" hands the rail back to the onion.
+ */
+export function showAllNavigation() {
+  const preferences = loadNavigationPreferences();
+  for (const item of BUILT_IN_ITEMS) {
+    const key = navigationItemKey(item.type, item.id);
+    preferences.items[key] = { ...(preferences.items[key] || {}), visible: true };
+  }
   return persist(preferences);
 }
 

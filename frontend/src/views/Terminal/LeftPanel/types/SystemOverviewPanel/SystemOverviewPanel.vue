@@ -55,28 +55,11 @@
 import { computed, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
+// The getter/action list is shared with the navigation onion, so the rail and
+// this overview can never disagree about what the account has.
+import { HYDRATION, len } from '@/services/accountInventory.js';
 
 const RUNNING = new Set(['running', 'executing', 'in_progress']);
-const len = (v) => (Array.isArray(v) ? v.length : v && typeof v === 'object' ? Object.keys(v).length : 0);
-
-// [getter that proves the module is populated, action that populates it].
-// Dispatched only when the getter is still empty, so opening the dashboard
-// after any other screen costs nothing. Chats deliberately asks for a single
-// row: the server returns the real totalCount with it, and leaving
-// hasLoadedAll false keeps the chat sidebar's own full load on mount intact.
-const HYDRATION = [
-  ['goals/allGoals', 'goals/fetchGoals'],
-  ['agents/allAgents', 'agents/fetchAgents'],
-  ['workflows/allWorkflows', 'workflows/fetchWorkflows'],
-  ['tools/customTools', 'tools/fetchTools'],
-  ['skills/allSkills', 'skills/fetchSkills'],
-  ['schedules/allSchedules', 'schedules/fetchSchedules'],
-  ['widgetDefinitions/allDefinitions', 'widgetDefinitions/fetchDefinitions'],
-  ['insights/agentMemories', 'insights/fetchAllMemories'],
-  ['insights/allInsights', 'insights/fetchInsights'],
-  ['executionHistory/getExecutions', 'executionHistory/fetchExecutions'],
-  ['contentOutputs/outputs', 'contentOutputs/fetchOutputs', { limit: 1, offset: 0, loadAll: false, force: true }],
-];
 
 // Plugins have no store module, and the tools-derived `installedPlugins` getter
 // groups plugin TOOLS by plugin_name — so a plugin that ships only agents,

@@ -4,10 +4,11 @@
       <div class="card-heading">
         <div>
           <h3>Sidebar pages</h3>
-          <p>Choose what appears, arrange pages, and collect them into groups.</p>
+          <p>Pages appear as you start using them. Choose what appears, arrange pages, and collect them into groups.</p>
         </div>
         <div class="heading-actions">
           <button type="button" @click="addPage">Add page</button>
+          <button class="quiet-button" type="button" @click="showAll">Show all</button>
           <button class="quiet-button" type="button" @click="resetAll">Reset defaults</button>
         </div>
       </div>
@@ -38,7 +39,7 @@
           <i :class="item.icon"></i>
           <div class="item-copy">
             <strong>{{ item.label }}</strong>
-            <span>{{ item.type === 'page' ? 'Custom page' : 'Built-in page' }}</span>
+            <span>{{ rowNote(item) }}</span>
           </div>
           <CustomSelect
             class="group-select"
@@ -77,8 +78,17 @@ import {
   renameNavigationGroup,
   reorderNavigationItem,
   resetNavigationPreferences,
+  showAllNavigation,
   updateNavigationItem,
 } from '@/services/navigationPreferences.js';
+
+// Why a row is where it is. A hidden built-in the person never switched off
+// has not been earned yet — say so, or it reads as a missing feature.
+function rowNote(item) {
+  if (item.type === 'page') return 'Custom page';
+  if (!item.explicit && !item.unlocked) return 'Built-in page · appears once you use it';
+  return 'Built-in page';
+}
 
 export default {
   name: 'NavigationSettings',
@@ -114,6 +124,7 @@ export default {
     };
     const addPage = () => window.dispatchEvent(new CustomEvent('agnt:new-page'));
     const resetAll = () => { resetNavigationPreferences(); refresh(); };
+    const showAll = () => { showAllNavigation(); refresh(); };
     const removePage = async (item) => {
       if (!window.confirm(`Remove “${item.label}” and its widgets?`)) return;
       await store.dispatch('widgetLayout/deletePage', item.id);
@@ -121,7 +132,7 @@ export default {
       refresh();
     };
 
-    return { groups, groupOptions, newGroup, setVisible, setGroup, moveItem, moveGroup, renameGroup, createGroup, addPage, resetAll, removePage };
+    return { groups, groupOptions, newGroup, setVisible, setGroup, moveItem, moveGroup, renameGroup, createGroup, addPage, resetAll, showAll, removePage, rowNote };
   },
 };
 </script>
