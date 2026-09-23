@@ -113,10 +113,11 @@ function evictIfFull() {
   if (oldest !== undefined) cache.delete(oldest);
 }
 
-/** True when this install should ask the issuer rather than verify locally. */
-export function isRemoteVerifyMode() {
-  return String(process.env.AGNT_AUTH_MODE || '').trim().toLowerCase() === 'verify-remote';
-}
+// The mode parse lives in authMode.js because tenantOwnership.js needs it too
+// and this module already imports tenantSlug from there. Re-exported so the
+// existing call sites keep their import.
+import { isRemoteVerifyMode } from './authMode.js';
+export { isRemoteVerifyMode };
 
 /**
  * Is this token genuine, according to the party that issued it?

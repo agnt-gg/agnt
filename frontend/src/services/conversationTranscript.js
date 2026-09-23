@@ -65,6 +65,10 @@ export function toStoredMessage(msg = {}) {
   if (msg.agentId) stored.agentId = msg.agentId;
   if (msg.agentName) stored.agentName = msg.agentName;
   if (msg.agentIcon) stored.agentIcon = msg.agentIcon;
+  // A compaction marker is the fold line between the visible transcript and
+  // what the model is sent. Dropping it on save would silently un-compress
+  // the conversation on reload.
+  if (msg.compaction) stored.compaction = msg.compaction;
   return stored;
 }
 

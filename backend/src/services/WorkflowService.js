@@ -271,6 +271,12 @@ class WorkflowService {
         res.json({
           id: workflow.id,
           user_id: workflow.user_id,
+          // F4: list/detail share the authoritative status. The workflows.status
+          // column is what every list endpoint returns and what the engine
+          // writes; the workflow JSON never carries one (saveWorkflow strips
+          // it), so without this field the detail response has no status at
+          // all and can never agree with the list.
+          status: workflow.status,
           workflow: JSON.parse(workflow.workflow_data),
           created_at: workflow.created_at,
           updated_at: workflow.updated_at,

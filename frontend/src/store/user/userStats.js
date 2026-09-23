@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
+import { syncActivation } from './activationSync.js';
 import { isEqual } from 'lodash-es'; // Import isEqual for deep comparison// Track active timeouts for cleanup
 const activeTimeouts = new Set();
 
@@ -1429,6 +1430,9 @@ export default {
           console.log('No token found, skipping stats sync');
           return;
         }
+
+        // The backend derives milestones from persisted successful executions, not these cumulative counters.
+        await syncActivation({ axios, baseUrl: API_CONFIG.BASE_URL, token, storage: localStorage, navigator: globalThis.navigator });
 
         // Get all the data we need to sync
         const allGoals = rootGetters['goals/allGoals'] || [];

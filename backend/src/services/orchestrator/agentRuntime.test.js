@@ -33,7 +33,7 @@ vi.mock('../../models/UserModel.js', () => ({
 }));
 vi.mock('../../models/AgentMemoryModel.js', () => ({
   default: {
-    findRelevant: vi.fn(async () => []),
+    searchRelevant: vi.fn(async () => []),
     findByAgentId: vi.fn(async () => []),
     findByUserId: vi.fn(async () => []),
   },
@@ -98,8 +98,8 @@ beforeEach(() => {
     created_by: USER_ID,
   });
 
-  AgentMemoryModel.findRelevant.mockReset();
-  AgentMemoryModel.findRelevant.mockResolvedValue([
+  AgentMemoryModel.searchRelevant.mockReset();
+  AgentMemoryModel.searchRelevant.mockResolvedValue([
     { id: 'm1', memory_type: 'fact', content: 'The client runs Prometheus on port 9090.', agent_id: AGENT_ID },
   ]);
 

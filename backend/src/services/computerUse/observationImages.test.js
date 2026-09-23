@@ -31,6 +31,23 @@ describe('bounded model image contract',()=>{
   const next=appendComputerImages(messages,observationImages(png),format);
   expect(next).toHaveLength(3);expect(messages).toHaveLength(2);expect(JSON.stringify(next[2])).toContain(png);
  });
+ it('anthropic folds the observation into its own tool_result when the carrier is already Anthropic-shaped',()=>{
+  const messages=[
+   {role:'user',content:'task'},
+   {role:'assistant',content:[{type:'tool_use',id:'other',name:'x',input:{}},{type:'tool_use',id:'shot',name:'computer_observe',input:{}}]},
+   {role:'user',content:[{type:'tool_result',tool_use_id:'other',content:'x'},{type:'tool_result',tool_use_id:'shot',content:'{"success":true}'}]},
+  ];
+  const images=observationImages(png).map(image=>({...image,toolCallId:'shot'}));
+  const next=appendComputerImages(messages,images,'anthropic');
+  expect(next).toHaveLength(3);expect(messages[2].content[1].content).toBe('{"success":true}');
+  const carrier=next[2];
+  expect(carrier.content.map(block=>block.type)).toEqual(['tool_result','tool_result']);
+  expect(carrier.content[0].content).toBe('x');
+  const folded=carrier.content[1].content;
+  expect(folded[0]).toEqual({type:'text',text:'{"success":true}'});
+  expect(folded[1].text).toContain('Computer observation');
+  expect(folded[2]).toEqual({type:'image',source:{type:'base64',media_type:'image/png',data:png}});
+ });
  it('Claude rejects oversized images locally with an actionable warning',()=>{
   const image={mimeType:'image/png',data:'A'.repeat(7_000_000),width:2000,height:1000};
   const messages=appendComputerImages([],[image],'anthropic');

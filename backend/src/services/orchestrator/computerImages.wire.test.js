@@ -41,13 +41,20 @@ describe('actual next-model request carries computer pixels', {timeout:30000},()
   expect(seen[0].messages.at(-1).content).toContainEqual({type:'image_url',image_url:{url:`data:image/png;base64,${png}`}});
   expect(seen[0].messages.at(-2).tool_call_id).toBe('shot');
  });
- it('Anthropic nonstreaming carries an image after the matching tool result',async()=>{
+ it('Anthropic nonstreaming carries the image INSIDE the matching tool result',async()=>{
   const seen=[];const adapter=await createLlmAdapter('anthropic',{messages:{create:async params=>{seen.push(params);return {content:[{type:'text',text:'ok'}],stop_reason:'end_turn',usage:{input_tokens:1,output_tokens:1}};}}},'claude-sonnet-4-5-20250929');
   const {context,result}=contextWithToolResult();await adapter.call([...anthropicHistory,...adapter.formatToolResults([result])],[],context);
   expect(JSON.stringify(seen[0].messages)).toContain(png);
   const blocks=seen[0].messages.flatMap(message=>Array.isArray(message.content)?message.content:[]);
-  expect(blocks.find(block=>block.type==='image')?.source).toEqual({type:'base64',media_type:'image/png',data:png});
-  expect(blocks.some(block=>block.type==='tool_result'&&block.tool_use_id==='shot')).toBe(true);
+  const toolResult=blocks.find(block=>block.type==='tool_result'&&block.tool_use_id==='shot');
+  expect(toolResult).toBeTruthy();
+  // The screenshot is the observation tool's output: it lives in that
+  // tool_result (Anthropic's computer-use shape), never as a trailing user
+  // block, and never behind a fabricated assistant turn.
+  expect(toolResult.content.find(block=>block.type==='image')?.source).toEqual({type:'base64',media_type:'image/png',data:png});
+  expect(blocks.filter(block=>block.type==='image')).toHaveLength(0);
+  expect(seen[0].messages.filter(message=>message.role==='assistant')).toHaveLength(1);
+  expect(JSON.stringify(seen[0].messages)).not.toContain('(Continuing.)');
  });
  it('Gemini nonstreaming forwards actual inlineData rather than JSON',async()=>{
   const seen=[];const adapter=await createLlmAdapter('gemini',{models:{generateContent:async params=>{seen.push(params);return {text:'ok',candidates:[{content:{parts:[{text:'ok'}]},finishReason:'STOP'}],usageMetadata:{}};}}},'gemini-2.5-pro');
