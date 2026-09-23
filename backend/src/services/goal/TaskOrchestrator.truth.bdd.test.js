@@ -44,6 +44,15 @@ describe('goal outcome regressions',()=>{
   await TaskOrchestrator.processTaskResult('t',{content:'The requested summary.',tool_executions:[]});
   expect(TaskModel.updateStatus.mock.calls[0][1]).toBe('completed');
  });
+ it('Given the provider was unreachable, Then the task is not completed with the error notice as output',async()=>{
+  buildAgentRuntime.mockResolvedValue({systemPrompt:'x',toolSchemas:[],context:{}});
+  const notice='⚠️ **API Error:** Connection error.\n\nPlease check your API configuration or try a different provider.';
+  service.executeWithTools.mockResolvedValue({content:notice,toolExecutions:[],usage:null,recoveredFromError:true,recoveredError:'Connection error.'});
+  const response=await TaskOrchestrator.executeTaskViaAgentChat({id:'a',isBuiltIn:true,name:'Task Executor'},'task','u','openai','test');
+  expect(response.success).toBe(false);expect(response.error).toBe('Connection error.');expect(response.content).toBe(notice);
+  await expect(TaskOrchestrator.processTaskResult('t',response)).rejects.toThrow();
+  expect(TaskModel.updateStatus.mock.calls.some(c=>c[1]==='completed')).toBe(false);
+ });
  it('Given built-in executor, Then pass trusted virtual config not just a missing saved ID',async()=>{
   buildAgentRuntime.mockResolvedValue({systemPrompt:'x',toolSchemas:[],context:{}});
   const agent={id:'built-in-task-executor',isBuiltIn:true,assignedTools:['read_file'],name:'Task Executor'};

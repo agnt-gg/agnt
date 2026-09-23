@@ -25,3 +25,18 @@ it('Accessor on thrown exception cannot forge host measurements',async()=>{
  send.mockRejectedValue(fake);
  try {await run(false);throw Error('must fail');}catch(error){const t=takeFailureTelemetry(error);expect(t.outcome).toBe('failed');expect(t.requestMetrics.requests).toHaveLength(1);}
 });
+
+// A transport that exhausts retries returns an error notice as assistant text
+// with recoveredFromError. The caller must be able to tell it from a reply.
+const notice={role:'assistant',content:'⚠️ **API Error:** Connection error.\n\nPlease check your API configuration or try a different provider.',tool_calls:[]};
+for(const stream of [false,true]){
+ it(`Given ${stream?'stream':'plain'} final reply is a recovered provider error Then report it, not a normal reply`,async()=>{
+  send.mockReset();send.mockResolvedValue({responseMessage:notice,toolCalls:[],recoveredFromError:true,recoveredError:'Connection error.'});
+  const r=await run(stream);
+  expect(r.recoveredFromError).toBe(true);expect(r.recoveredError).toBe('Connection error.');expect(r.content).toBe(notice.content);
+ });
+ it(`Given ${stream?'stream':'plain'} a normal final reply Then no recovered-error flag`,async()=>{
+  const r=await run(stream);
+  expect(r.recoveredFromError).toBeUndefined();expect(r.recoveredError).toBeUndefined();
+ });
+}
