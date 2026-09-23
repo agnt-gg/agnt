@@ -1,0 +1,21 @@
+import { describe,it,expect,afterEach } from 'vitest';
+import sqlite3 from 'sqlite3';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createImageSettingsStore } from './imageSettingsStore.js';
+import { reviseSettings, bindImageRequest } from './imageSettingsContract.js';
+const handles=[];
+const open=file=>new Promise((resolve,reject)=>{const db=new sqlite3.Database(file,e=>e?reject(e):resolve(db));handles.push(db);});
+afterEach(async()=>{await Promise.all(handles.splice(0).map(db=>new Promise((resolve,reject)=>db.close(e=>e?reject(e):resolve()))));});
+const connection={id:'one',ownerId:'user',provider:'openai',binding:'account1',connected:true,operations:['generate'],requiresConsent:false};
+const next=s=>reviseSettings(s,{expectedRevision:s.revision,selectedConnectionId:'one'},{userId:'user',resolveConnection:()=>connection});
+describe('Feature: real SQLite image-settings compare-and-swap',()=>{
+ it('Given default options for Gemini, Then save/read/bind retains provider default',async()=>{const store=createImageSettingsStore(await open(':memory:'));await store.initialize();const c={...connection,provider:'gemini'};const state=reviseSettings(await store.read('user'),{expectedRevision:0,selectedConnectionId:'one',options:{connectionId:'one',value:{}}},{userId:'user',resolveConnection:()=>c});await store.compareAndSwap('user',0,state);expect(bindImageRequest(await store.read('user'),{userId:'user',source:'interactive',operation:'generate',resolveConnection:()=>c}).model).toBeNull();});
+ it('Given mutable save input, Then receipt equals committed snapshot',async()=>{const store=createImageSettingsStore(await open(':memory:'));await store.initialize();const state=structuredClone(next(await store.read('user')));const pending=store.compareAndSwap('user',0,state);state.selectedConnectionId='changed';expect((await pending).selectedConnectionId).toBe('one');expect((await store.read('user')).selectedConnectionId).toBe('one');});
+ it('Given no record, Then reads are unconfigured and do not create user defaults',async()=>{const store=createImageSettingsStore(await open(':memory:'));await store.initialize();expect((await store.read('user')).selectedConnectionId).toBeNull();});
+ it('Given two separate connections with the same revision, Then only one first writer commits',async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'image-cas-'));const a=createImageSettingsStore(await open(dir+'/test.db')),b=createImageSettingsStore(await open(dir+'/test.db'));await a.initialize();const original=await a.read('user');const result=await Promise.allSettled([a.compareAndSwap('user',0,next(original)),b.compareAndSwap('user',0,next(original))]);expect(result.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(result.find(r=>r.status==='rejected').reason.code).toBe('IMAGE_SETTINGS_CONFLICT');expect((await b.read('user')).revision).toBe(1);});
+ it('Given an existing revision, Then stale writes cannot erase newer consent/options',async()=>{const s=createImageSettingsStore(await open(':memory:'));await s.initialize();const one=next(await s.read('user'));await s.compareAndSwap('user',0,one);await s.compareAndSwap('user',1,next(one));await expect(s.compareAndSwap('user',1,next(one))).rejects.toMatchObject({code:'IMAGE_SETTINGS_CONFLICT'});expect((await s.read('user')).revision).toBe(2);});
+ it('Given two users, Then records remain separate',async()=>{const s=createImageSettingsStore(await open(':memory:'));await s.initialize();await s.compareAndSwap('user',0,next(await s.read('user')));expect((await s.read('other')).revision).toBe(0);});
+ it('Given invalid next revision or state, Then reject before storage',async()=>{const s=createImageSettingsStore(await open(':memory:'));await s.initialize();await expect(s.compareAndSwap('user',0,{revision:1})).rejects.toThrow();await expect(s.compareAndSwap('user',2,next(await s.read('user')))).rejects.toThrow(/revision/);});
+});

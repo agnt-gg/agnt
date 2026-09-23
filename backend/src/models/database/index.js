@@ -1,5 +1,6 @@
 import { initializeGoalLifecycleVersions } from './goalLifecycleVersions.js';
 import sqlite3 from 'sqlite3';
+import { createImageSettingsStore } from '../../services/images/imageSettingsStore.js';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -2270,6 +2271,7 @@ const dbReady = skipSchemaInit
   .then(async () => {
     await initializeGoalLifecycleVersions(db);
     console.log('All indexes ready');
+    await createImageSettingsStore(db).initialize();
   })
   .then(async () => {
     // Heal duplicate widget_layouts route pages and make (user_id, route)

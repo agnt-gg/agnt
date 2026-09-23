@@ -98,6 +98,8 @@
             <button type="button" class="voice-end-btn" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
           </div>
 
+          <ImageSettings compact />
+          <ImageReferencePicker :collection="imageReferenceCollection" :scope-key="conversationId" :disabled="isStreaming || isInputDisabled" @attach-files="attachImageReference" />
           <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
             <!-- File preview chips -->
@@ -286,10 +288,12 @@ import { getDraft, setDraft, clearDraft } from '@/services/chatDrafts';
 import { useCommandMenu } from '@/composables/useCommandMenu';
 import annieAvatar from '@/assets/images/annie-avatar.png';
 import { resolvePanel, resolveInput } from './screenRegistry.js';
+import ImageReferencePicker from '@/views/_components/chat/ImageReferencePicker.vue';
+import ImageSettings from '@/components/common/ImageSettings.vue';
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu },
+  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu, ImageReferencePicker, ImageSettings },
   props: {
     // Layout defaults live in screenRegistry.js, keyed by screenId. An
     // explicitly passed prop always wins (screens with dynamic panels).
@@ -332,6 +336,7 @@ export default {
       type: String,
       default: '',
     },
+    imageReferenceCollection: { type: Object, default: () => ({ scopeKey: '', messages: [] }) },
     // Optional prop to control if the input line should be shown at all.
     // Default comes from screenRegistry (historically true).
     showInput: {
@@ -499,6 +504,10 @@ export default {
     const isInputDisabled = ref(disableInputInitially.value);
     const showPrompt = ref(true);
     const selectedFiles = ref([]);
+    const referenceAttachments = new WeakSet();
+    watch(() => props.conversationId, () => {
+      selectedFiles.value = selectedFiles.value.filter(file => !referenceAttachments.has(file));
+    }, { flush: 'sync' });
     const isTextareaExpanded = ref(false);
 
     // --- OS drag-and-drop for file attach ---
@@ -832,6 +841,11 @@ export default {
       }
     };
 
+    const attachImageReference = (files, scope) => {
+      if (scope !== props.conversationId || isStreaming.value || isInputDisabled.value || !Array.isArray(files)) return;
+      for (const file of files) referenceAttachments.add(file);
+      selectedFiles.value = [...selectedFiles.value, ...files];
+    };
     const handleFileSelect = (event) => {
       const files = Array.from(event.target.files || []);
       selectedFiles.value = [...selectedFiles.value, ...files];
@@ -1630,6 +1644,7 @@ export default {
       onCancelSteer,
       stopStreaming,
       // File handling
+      attachImageReference,
       selectedFiles,
       triggerFileInput,
       handleFileSelect,
