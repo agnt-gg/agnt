@@ -209,6 +209,14 @@ jobs:
         env:
           PR145_CONTROL_ROOT: ${{ runner.temp }}/pr145-observer-controls
         run: python3 scripts/pr145-observer-test.py
+      # Playwright's pinned extractor stalls on large entries under Node 26.
+      # Provision with the proven Node 22 CLI; never infer install success from
+      # extracted files. Restore the matrix runtime before exercising browsers.
+      - name: Select supported Chromium installer runtime
+        if: matrix.node == '26'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Download pinned Chromium
         timeout-minutes: 10
         env:
@@ -229,6 +237,16 @@ jobs:
             ${{ runner.temp }}/pr145-chromium/archive.json
             ${{ runner.temp }}/pr145-chromium/chromium-145.0.7632.6.zip
           retention-days: 7
+
+      - name: Restore browser test runtime
+        if: matrix.node == '26'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify browser test runtime
+        env:
+          EXPECTED_NODE_MAJOR: ${{ matrix.node }}
+        run: node -e "require('node:assert/strict').equal(process.versions.node.split('.')[0], process.env.EXPECTED_NODE_MAJOR)"
 
       - name: Run the tagged browser suite
         run: npx playwright test --grep @ci

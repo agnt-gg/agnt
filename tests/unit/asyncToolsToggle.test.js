@@ -24,6 +24,7 @@ let getAvailableToolSchemas;
 let buildUnifiedSystemPrompt;
 let ASYNC_EXECUTION_GUIDANCE;
 let processManager;
+let database;
 const importedIntervals = [];
 const realSetInterval = globalThis.setInterval;
 
@@ -37,6 +38,18 @@ before(async () => {
   ({ buildUnifiedSystemPrompt } = await import('../../backend/src/services/orchestrator/system-prompts/buildUnifiedPrompt.js'));
   ({ ASYNC_EXECUTION_GUIDANCE } = await import('../../backend/src/services/orchestrator/system-prompts/async-execution.js'));
   ({ default: processManager } = await import('../../backend/src/workflow/ProcessManager.js'));
+  const storage = await import('../../backend/src/models/database/index.js');
+  database = storage.default;
+  // Schema callbacks must settle while the worker reporter is still active.
+  await storage.dbReady;
+});
+
+it('fixture awaits a usable synthetic database before executing assertions', async () => {
+  assert.equal(database.open, true);
+  const row = await new Promise((resolve, reject) => {
+    database.get('SELECT 1 AS ready', (error, value) => error ? reject(error) : resolve(value));
+  });
+  assert.equal(row.ready, 1);
 });
 
 const ASYNC_PARAM_KEYS = [
@@ -171,4 +184,12 @@ after(async () => {
   for (const interval of importedIntervals) clearInterval(interval);
   processManager.EmailReceiver.stopPolling();
   processManager.WebhookReceiver.shutdown();
+  await new Promise((resolve, reject) => database.close(error => error ? reject(error) : resolve()));
+});
+
+// Given this fixture imports SQLite, when its cleanup finishes, then no
+// connection may outlive the test worker's reporting lifecycle.
+after(async () => {
+  const { default: database } = await import('../../backend/src/models/database/index.js');
+  assert.equal(database.open, false, 'fixture must close its imported SQLite connection before worker teardown');
 });
