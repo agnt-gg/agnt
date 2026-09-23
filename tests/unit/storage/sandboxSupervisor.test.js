@@ -47,9 +47,14 @@ process.on('exit', () => { for (const p of cleanup) {
   try { fs.rmSync(p, { recursive: true, force: true }); } catch {}
 } });
 
-const fdAdversary = String.raw`for fd in 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do eval "printf '%s\n' '{\"code\":0,\"signal\":null,\"forged\":true}' >&$fd" 2>/dev/null || true; eval "exec $fd>&-" 2>/dev/null || true; done; exit 23`;
+// Forge and close every descriptor the shell can address. dash (Ubuntu's
+// /bin/sh) only addresses fds 0-9, and a multi-digit redirection aborts it, so
+// fds 10-16 are attacked only when bash runs the script.
+const fdAdversary = String.raw`attack() { for fd in "$@"; do eval "printf '%s\n' '{\"code\":0,\"signal\":null,\"forged\":true}' >&$fd" 2>/dev/null || true; eval "exec $fd>&-" 2>/dev/null || true; done; }; attack 3 4 5 6 7 8 9; if [ -n "$BASH_VERSION" ]; then attack 10 11 12 13 14 15 16; fi; exit 23`;
+// Commands run inside the /usr-only namespace; the runner provides /usr/bin/node.
+const SANDBOX_NODE = '/usr/bin/node';
 test('D-RV-2 control: an all-green plan preserves exit 0', async () => {
-  const r = await runRunner({ commands: [{ name: 'green', argv: [process.execPath, '-e', 'process.exit(0)'] }] }, 'drv2-green');
+  const r = await runRunner({ commands: [{ name: 'green', argv: [SANDBOX_NODE, '-e', 'process.exit(0)'] }] }, 'drv2-green');
   assert.equal(r.code, 0, `green runner exit must remain 0, stdout=${r.out} stderr=${r.err}`);
   assert.equal(r.signal, null);
   assert.deepEqual(r.manifest.commands[0].innerExit, { code: 0, signal: null });
@@ -74,8 +79,8 @@ test('D-RV-2: signal is fail-fast and no later command launches or writes', asyn
   const marker = path.join(os.tmpdir(), `pr145-forbidden-marker-${process.pid}-${Date.now()}`);
   cleanup.push(marker);
   const r = await runRunner({ commands: [
-    { name: 'signal-first', argv: [process.execPath, '-e', "process.kill(process.pid,'SIGTERM')"] },
-    { name: 'must-not-run', argv: [process.execPath, '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'BAD')`] },
+    { name: 'signal-first', argv: [SANDBOX_NODE, '-e', "process.kill(process.pid,'SIGTERM')"] },
+    { name: 'must-not-run', argv: [SANDBOX_NODE, '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'BAD')`] },
   ] }, 'drv2-signal');
   assert.equal(r.signal, 'SIGTERM', `outer runner must preserve SIGTERM, code=${r.code} stdout=${r.out} stderr=${r.err}`);
   assert.equal(fs.existsSync(marker), false, 'downstream marker command must not execute');
@@ -87,8 +92,8 @@ test('D-RV-2: numeric nonzero is fail-fast and preserves exact status', async ()
   const marker = path.join(os.tmpdir(), `pr145-forbidden-marker-${process.pid}-${Date.now()}-nz`);
   cleanup.push(marker);
   const r = await runRunner({ commands: [
-    { name: 'nonzero-first', argv: [process.execPath, '-e', 'process.exit(37)'] },
-    { name: 'must-not-run', argv: [process.execPath, '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'BAD')`] },
+    { name: 'nonzero-first', argv: [SANDBOX_NODE, '-e', 'process.exit(37)'] },
+    { name: 'must-not-run', argv: [SANDBOX_NODE, '-e', `require('fs').writeFileSync(${JSON.stringify(marker)},'BAD')`] },
   ] }, 'drv2-nonzero');
   assert.equal(r.code, 37, `outer runner must preserve numeric status, stdout=${r.out} stderr=${r.err}`);
   assert.equal(r.signal, null);
