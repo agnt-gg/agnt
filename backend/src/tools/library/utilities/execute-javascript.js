@@ -1,7 +1,8 @@
 import BaseAction from '../BaseAction.js';
 import { fork } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { sharedStoreChildEnv } from '../../../utils/syntheticChild.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,9 +44,15 @@ class ExecuteJavaScript extends BaseAction {
     console.log('Executing JavaScript code:', params.code);
 
     return new Promise((resolve) => {
-      const child = fork(path.join(__dirname, 'execute-javascript-child.js'), [], {
-        env: { ...process.env, AGNT_JS_EXECUTOR_CHILD: '1' },
-      });
+      // Production: unchanged env, no preload. Test mode: the child imports
+      // auth/storage modules, so it adopts the parent's synthetic store via
+      // the same explicit descriptor + preload as the workflow child.
+      const isTestMode = process.env.VITEST || process.env.NODE_ENV === 'test';
+      const env = { ...process.env, AGNT_JS_EXECUTOR_CHILD: '1', ...(isTestMode ? sharedStoreChildEnv() : {}) };
+      const execArgv = isTestMode
+        ? [...process.execArgv, '--import', pathToFileURL(path.join(__dirname, '../../../utils/syntheticChild.mjs')).href]
+        : undefined;
+      const child = fork(path.join(__dirname, 'execute-javascript-child.js'), [], { env, ...(execArgv ? { execArgv } : {}) });
 
       let hasResolved = false;
 
