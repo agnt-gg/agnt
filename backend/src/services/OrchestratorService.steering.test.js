@@ -149,7 +149,7 @@ const toolResults = () => [
 ];
 
 describe('applySteerAsUserTurn — reaches the model on every provider shape', () => {
-  it('Anthropic: bridges so the steer is its own user turn, not a trailing text block', () => {
+  it('Anthropic: rides inside the tool result, never a trailing text block or a fabricated turn', () => {
     const adapter = new AnthropicAdapter({}, 'claude-opus-5', 'claude-code', {});
     const messages = [
       { role: 'user', content: 'Research the pricing page.' },
@@ -163,9 +163,14 @@ describe('applySteerAsUserTurn — reaches the model on every provider shape', (
       ...adapter.formatToolResults(toolResults()),
     ];
 
-    expect(applySteerAsUserTurn(messages, STEER)).toBe('anthropic-bridged');
+    expect(applySteerAsUserTurn(messages, STEER)).toBe('anthropic-tool-result');
+    // No message was added: the steer lives in the carrier that was already there.
+    expect(messages).toHaveLength(3);
 
     const wire = adapter._normalizeHistoryMessages(messages);
+
+    // No fabricated assistant turn for the model to imitate.
+    expect(wire.filter((m) => m.role === 'assistant')).toHaveLength(1);
 
     // THE REGRESSION: a text block must never trail tool_result blocks.
     for (const msg of wire) {

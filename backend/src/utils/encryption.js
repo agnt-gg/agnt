@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 import { resolveSecret } from './secretResolver.js';
-import { LEGACY_ENCRYPTION_KEY, hasLegacyKey } from './legacySecrets.js';
+import { LEGACY_ENCRYPTION_KEY, hasLegacyKey, legacyEncryptionKeys, PLACEHOLDER_SECRETS } from './legacySecrets.js';
 
 /**
  * Symmetric encryption for credentials stored in the local database.
@@ -141,14 +141,31 @@ export function encrypt(text) {
  * @throws propagates CryptoJS's 'Malformed UTF-8 data' for undecryptable input
  */
 export function decrypt(encryptedText) {
-  // Written by this version: the prefix says so, so there is nothing to guess.
+  // Written by a version that uses per-install keys: the prefix says so.
   if (isCurrentGeneration(encryptedText)) {
-    return CryptoJS.AES.decrypt(encryptedText.slice(CIPHERTEXT_PREFIX.length), installKey()).toString(
-      CryptoJS.enc.Utf8
-    );
+    const body = encryptedText.slice(CIPHERTEXT_PREFIX.length);
+    const own = attempt(body, installKey());
+    if (own !== null) return own;
+
+    // Prefixed, but not ours. A 0.6.6 container whose ENCRYPTION_KEY was the
+    // compose placeholder wrote exactly this: resolveSecret let the
+    // environment win, so the "per-install" key was a public string. Those
+    // rows must stay readable long enough to be re-encrypted.
+    for (const key of PLACEHOLDER_SECRETS) {
+      const plain = attempt(body, key);
+      if (plain !== null) return plain;
+    }
+
+    // Nothing opens it (or the plaintext is empty). Original contract.
+    return CryptoJS.AES.decrypt(body, installKey()).toString(CryptoJS.enc.Utf8);
   }
 
-  // Unprefixed: written by <= 0.6.5, which only ever used the published key.
+  // Unprefixed: written by <= 0.6.5 under the published key, or by a 0.6.5
+  // container under the compose placeholder.
+  for (const key of legacyEncryptionKeys()) {
+    const plain = attempt(encryptedText, key);
+    if (plain !== null) return plain;
+  }
   if (hasLegacyKey()) {
     return CryptoJS.AES.decrypt(encryptedText, LEGACY_ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
   }
@@ -170,7 +187,16 @@ export function decrypt(encryptedText) {
  * @returns {'current'|'legacy'|null}
  */
 export function keyGenerationOf(encryptedText) {
-  if (isCurrentGeneration(encryptedText)) return 'current';
-  if (hasLegacyKey() && attempt(encryptedText, LEGACY_ENCRYPTION_KEY) !== null) return 'legacy';
+  if (isCurrentGeneration(encryptedText)) {
+    const body = encryptedText.slice(CIPHERTEXT_PREFIX.length);
+    if (attempt(body, installKey()) !== null) return 'current';
+    // Prefixed under a placeholder key: readable, and must be moved.
+    if (PLACEHOLDER_SECRETS.some((key) => attempt(body, key) !== null)) return 'legacy';
+    // Prefixed and nothing opens it. Empty plaintext looks like this too, so
+    // keep the original reading: the prefix says current, the migration
+    // leaves it alone.
+    return 'current';
+  }
+  if (legacyEncryptionKeys().some((key) => attempt(encryptedText, key) !== null)) return 'legacy';
   return null;
 }

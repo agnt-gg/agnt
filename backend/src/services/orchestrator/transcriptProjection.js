@@ -67,6 +67,7 @@ export function toStoredMessage(msg = {}) {
   if (msg.agentId) stored.agentId = msg.agentId;
   if (msg.agentName) stored.agentName = msg.agentName;
   if (msg.agentIcon) stored.agentIcon = msg.agentIcon;
+  if (msg.compaction) stored.compaction = msg.compaction;
   return stored;
 }
 

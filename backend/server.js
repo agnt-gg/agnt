@@ -34,6 +34,8 @@ if (!tenantBinding.ok) {
   process.exit(78); // EX_CONFIG
 }
 import cors from 'cors';
+import { attachBrowserViewerSocket, revokeBrowserViewerIdentity } from './src/services/browserViewerSocket.js';
+import { releaseSocketViewers } from './src/services/BrowserViewerLeaseService.js';
 import express from 'express';
 import compression from 'compression';
 import bodyParser from 'body-parser';
@@ -87,7 +89,7 @@ import InsightRoutes from './src/routes/InsightRoutes.js';
 import MemoryRoutes from './src/routes/MemoryRoutes.js';
 import GroupRoutes from './src/routes/GroupRoutes.js';
 import ImageRoutes from './src/routes/ImageRoutes.js';
-import LocalFileRoutes from './src/routes/LocalFileRoutes.js';
+import LocalFileRoutes, { LocalPreviewRoutes } from './src/routes/LocalFileRoutes.js';
 import AdminClientVersionRoutes from './src/routes/AdminClientVersionRoutes.js';
 import ConversationSettingsRoutes from './src/routes/ConversationSettingsRoutes.js';
 import RoutingRoutes from './src/routes/RoutingRoutes.js';
@@ -279,6 +281,7 @@ app.use('/api/groups', GroupRoutes);
 app.use('/api/filesystem', FileSystemRoutes);
 app.use('/api/images', ImageRoutes);
 app.use('/api/local-file', LocalFileRoutes);
+app.use('/api/local-preview', LocalPreviewRoutes);
 app.use('/api/admin', AdminClientVersionRoutes);
 app.use('/api/conversations', ConversationSettingsRoutes);
 app.use('/api/schedules', ScheduleRoutes);
@@ -714,6 +717,7 @@ function startServer() {
         const identity = resolveSocketIdentity(data);
 
         if (!identity.ok) {
+          revokeBrowserViewerIdentity(socket);
           console.warn(`[Socket.IO] Authentication rejected for ${socket.id}: ${identity.reason}`);
           socket.emit('authenticated', { success: false, error: identity.reason });
           return;
@@ -724,6 +728,7 @@ function startServer() {
         // Re-authenticating as someone else must not leave the socket in the
         // previous user's room — otherwise identity switching leaks backwards.
         if (socket.userId && socket.userId !== userId) {
+          releaseSocketViewers(socket.id);
           socket.leave(`user:${socket.userId}`);
         }
 
@@ -809,14 +814,8 @@ function startServer() {
       // the authenticate handler above from the bearer token, and the service
       // re-checks ownership on every call.
 
-      // The client has PAINTED a frame and is ready for the next one. This is
-      // the flow control: acking on render is what makes a slow viewer throttle
-      // itself instead of drowning. See BrowserScreencastService.
-      socket.on('browser:ack', async ({ instanceId, frameId } = {}) => {
-        if (!socket.userId || !instanceId) return;
-        const { acknowledgeFrame } = await import('./src/services/BrowserScreencastService.js');
-        acknowledgeFrame(instanceId, frameId);
-      });
+      // Shared capture ACKs, bounded viewer leases, and volatile frame delivery.
+      attachBrowserViewerSocket(socket);
 
       // A viewer clicked, typed or scrolled on the streamed page.
       socket.on('browser:input', async ({ instanceId, method, params } = {}, ack) => {
@@ -826,29 +825,6 @@ function startServer() {
           userId: socket.userId, instanceId, method, params,
         });
         return ack?.(result);
-      });
-
-      socket.on('disconnect', async () => {
-        // A tab that closed without a DELETE would otherwise hold its viewer
-        // ref-count forever, and the screencast would run against a browser
-        // nobody is watching. Closing the laptop lid is the normal case here,
-        // not the exceptional one.
-        if (socket.userId && socket.browserViews?.size) {
-          const { stopViewing } = await import('./src/services/BrowserScreencastService.js');
-          for (const instanceId of socket.browserViews) stopViewing(instanceId);
-          socket.browserViews.clear();
-        }
-      });
-
-      // Registered so the disconnect sweep above has something to sweep.
-      socket.on('browser:watching', ({ instanceId } = {}) => {
-        if (!socket.userId || !instanceId) return;
-        if (!socket.browserViews) socket.browserViews = new Set();
-        socket.browserViews.add(instanceId);
-      });
-
-      socket.on('browser:unwatching', ({ instanceId } = {}) => {
-        socket.browserViews?.delete(instanceId);
       });
 
       socket.on('disconnect', () => {

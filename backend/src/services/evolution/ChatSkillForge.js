@@ -4,42 +4,7 @@ import db from '../../models/database/index.js';
 import { shouldExtract, chatSignature } from './ExtractionGate.js';
 import { broadcastToUser } from '../../utils/realtimeSync.js';
 
-/**
- * ChatSkillForge — the missing seam between normal chat and skill evolution.
- *
- * ── THE PROBLEM ───────────────────────────────────────────────────────────
- * Skills could only ever be forged from a completed Goal. That was never a UX
- * oversight, it was a MEASUREMENT DEPENDENCY: SkillEvolver needs a fitness
- * number to decide whether a candidate earned its place, and a goal evaluation
- * was the only fitness number in the system. Chat produces none, so chat could
- * not reach the forge — and ~99% of real usage is chat. Users saw memories
- * accumulate, never a skill, and reasonably concluded the product does not
- * learn.
- *
- * ── THE FIX: RECURRENCE IS THE FITNESS SIGNAL ─────────────────────────────
- * Deciding "is this worth turning into a procedure?" does not actually require
- * a quality score. It requires evidence of REUSE, and reuse is a count. The
- * third time a turn has the same tool-shape it is a procedure rather than an
- * occurrence. ExtractionGate already counts signature recurrence for workflows;
- * this reuses that table verbatim under a different source_type.
- *
- * That threshold is also the whole safety argument. Writing a skill on the
- * FIRST sighting — the obvious implementation, and the one competing agent
- * products ship — produces skill sprawl: dozens of unvalidated procedures
- * extracted from one-off tasks, which look like learning and rot silently.
- * Waiting for the third sighting means every skill is born with evidence
- * attached, and it is what keeps this cheap: the expensive LLM judge runs once
- * per recurring procedure, not once per turn.
- *
- * ── WHY THIS IS NOT BEHIND `insightsEnabled` ──────────────────────────────
- * The insight master switch gates a per-turn LLM extraction, which is why it
- * defaults off. This path is inherently rare — it costs nothing until the user
- * has genuinely repeated themselves three times — so gating it behind a switch
- * nobody can find would reproduce the exact problem it exists to solve. It has
- * its own opt-out (`chatSkillForge`) and is on by default.
- *
- * Fire-and-forget throughout: nothing here may affect chat execution.
- */
+/** Recurrence proposes a procedure; it does not establish correctness or permission to replace one. */
 
 /**
  * A turn with fewer than this many tool calls is a conversation, not a
@@ -81,6 +46,11 @@ class ChatSkillForge {
       if (details.status !== 'completed') return null;
 
       const toolExecutions = details.toolExecutions || [];
+      if (toolExecutions.some(tool => (tool.toolName || tool.tool_name) === 'record_memory_use')) {
+        const LessonSkillBridge = (await import('./LessonSkillBridge.js')).default;
+        const bridge = await LessonSkillBridge.consider(details, userId, context);
+        if (bridge.handled) return bridge;
+      }
       if (toolExecutions.length < MIN_TOOL_CALLS) return null;
 
       const signature = chatSignature(details, toolExecutions);
@@ -105,7 +75,7 @@ class ChatSkillForge {
 
       console.log(`[ChatSkillForge] Recurring procedure detected (${gate.occurrences}x) on ${scopeId} — analyzing ${executionId}`);
 
-      const conversationLog = await this._loadConversationLog(details.conversationId);
+      const conversationLog = await this._loadConversationLog(details.conversationId, userId);
 
       const TraceAnalyzer = (await import('../goal/TraceAnalyzer.js')).default;
       const analysis = await TraceAnalyzer.analyzeChatTrace(details, userId, {
@@ -157,12 +127,12 @@ class ChatSkillForge {
    * FOR. Failure is non-fatal — a toolshape-only analysis is worse, not broken.
    * @private
    */
-  static _loadConversationLog(conversationId) {
+  static _loadConversationLog(conversationId, userId) {
     if (!conversationId) return Promise.resolve(null);
     return new Promise((resolve) => {
       db.get(
-        'SELECT * FROM conversation_logs WHERE conversation_id = ?',
-        [conversationId],
+        'SELECT * FROM conversation_logs WHERE conversation_id = ? AND user_id = ?',
+        [conversationId, userId],
         (err, row) => resolve(err ? null : (row || null))
       );
     });

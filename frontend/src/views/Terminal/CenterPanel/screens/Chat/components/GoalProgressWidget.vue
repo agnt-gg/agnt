@@ -57,7 +57,8 @@
 
     <!-- Completed / Error state -->
     <div class="gpw-footer" v-if="isTerminal">
-      <div v-if="isCompleted" class="gpw-completed">Completed — {{ finalScore }}% score</div>
+      <div v-if="isNeedsReview">Execution stopped for review. Completed tasks do not imply acceptance.</div>
+      <div v-else-if="isCompleted" class="gpw-completed">Completed — {{ finalScore }}% score</div>
       <div v-else-if="isError" class="gpw-error">
         {{ errorMessage }}
       </div>
@@ -97,6 +98,8 @@ export default {
 
     // Get live iteration data from goals store
     const liveData = computed(() => {
+      const status = store.getters['goals/getGoalById']?.(props.goalId)?.status;
+      if (['needs_review','validated','completed','failed','error','stopped','paused','planning','pending'].includes(status)) return null;
       return store.getters['goals/getLiveIteration']?.(props.goalId) || null;
     });
 
@@ -137,6 +140,8 @@ export default {
 
     // Current phase label based on task state
     const currentPhase = computed(() => {
+      if (isNeedsReview.value) return 'Needs review — execution stopped';
+      if (isTerminal.value) return '';
       const tp = taskProgress.value;
       if (tp && tp.running > 0) return `${tp.running} running...`;
       if (tp && tp.failed > 0 && tp.completed < tp.total) return `${tp.failed} failed`;
@@ -166,18 +171,23 @@ export default {
       return finalScore.value > 0;
     });
 
+    const isNeedsReview = computed(() => goal.value?.status === 'needs_review');
+    const isStopped = computed(() => ['stopped','paused'].includes(goal.value?.status));
     const isCompleted = computed(() => {
+      if (isNeedsReview.value || isStopped.value || ['failed','error'].includes(goal.value?.status)) return false;
       const status = goal.value?.status;
       const loopStatus = goal.value?.loop_status;
       return status === 'validated' || status === 'completed' || loopStatus === 'completed';
     });
 
     const isError = computed(() => {
+      if (isNeedsReview.value || isStopped.value) return false;
+      if (['failed','error'].includes(goal.value?.status)) return true;
       const loopStatus = goal.value?.loop_status;
       return loopStatus === 'error' || loopStatus === 'stuck' || loopStatus === 'max_iterations';
     });
 
-    const isTerminal = computed(() => isCompleted.value || isError.value);
+    const isTerminal = computed(() => isNeedsReview.value || isStopped.value || isCompleted.value || isError.value);
 
     const isRunning = computed(() => {
       if (isTerminal.value) return false;
@@ -186,6 +196,7 @@ export default {
     });
 
     const statusClass = computed(() => {
+      if (isNeedsReview.value || isStopped.value) return 'pending';
       if (isCompleted.value) return 'completed';
       if (isError.value) return 'error';
       if (isRunning.value) return 'running';
@@ -193,6 +204,8 @@ export default {
     });
 
     const statusIcon = computed(() => {
+      if (isNeedsReview.value) return '\u26A0';
+      if (isStopped.value) return '\u23F8';
       if (isCompleted.value) return '\u2705';
       if (isError.value) return '\u274C';
       if (isRunning.value) return '\u26A1';
@@ -200,6 +213,8 @@ export default {
     });
 
     const statusLabel = computed(() => {
+      if (isNeedsReview.value) return 'NEEDS REVIEW';
+      if (isStopped.value) return goal.value.status.toUpperCase();
       if (isCompleted.value) return 'PASSED';
       if (isError.value) return goal.value?.loop_status?.toUpperCase() || 'ERROR';
       if (isRunning.value) return 'RUNNING';
@@ -270,6 +285,8 @@ export default {
       bestScore,
       finalScore,
       errorMessage,
+      isNeedsReview,
+      isStopped,
       isCompleted,
       isError,
       isTerminal,
