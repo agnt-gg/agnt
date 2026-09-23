@@ -114,6 +114,10 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
 Every Annie chat surface is functionally the same assistant. The current page context is a soft signal: prefer tools and interpretations relevant to that page, but you may use any available tool when the user's request crosses domains.`);
   }
 
+  // A clock read belongs in the append-only tool results, never in cached
+  // system/history text. Keep this guidance independent of wall-clock time.
+  parts.push('When an answer depends on the current date or time, verify it using an available clock-capable tool. Do not treat dates in older conversation messages as the current date. Respect tool restrictions; if the clock cannot be verified, state that limitation rather than inventing a date.');
+
   // Workspace path is environment context — every surface should know it
   // before reasoning about file-related tool calls.
   if (workspaceSection) parts.push(workspaceSection);

@@ -103,6 +103,19 @@ describe('media cookie scope covers every media route', () => {
     expect([...fePaths].sort()).toEqual([...MEDIA_ROUTE_PREFIXES].sort());
   });
 
+  it('registers every server mount of a media-guarded router, including aliases', () => {
+    // Comparing two hand-maintained lists misses a mount omitted from BOTH.
+    const server = read('../../server.js');
+    const mediaRouters = ['LocalFileRoutes', 'LocalPreviewRoutes', 'ImageRoutes'];
+    const mounts = [...server.matchAll(/app\.use\('([^']+)',\s*(\w+)\)/g)]
+      .filter(([, , router]) => mediaRouters.includes(router));
+    expect(mounts.map(([, , router]) => router).sort()).toEqual([...mediaRouters].sort());
+    for (const [, prefix, router] of mounts) {
+      expect(MEDIA_ROUTE_PREFIXES, `${router} is mounted at ${prefix} but browser cookies cannot reach it`).toContain(prefix);
+    }
+    expect(read('LocalFileRoutes.js')).toContain('LocalPreviewRoutes.use(requireAuthMedia)');
+  });
+
   it('scopes each cookie to one route, never to all of /api', () => {
     // `path=/api` would be prefix-matched onto POST /api/filesystem/file and
     // every other mutating endpoint — a CSRF carrier we have no reason to make.

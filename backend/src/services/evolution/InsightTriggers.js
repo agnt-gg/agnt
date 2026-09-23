@@ -35,6 +35,7 @@ class InsightTriggers {
       const insightIds = await InsightEngine.extract('agent_chat', executionId, userId, {
         agentId,
         conversationId,
+        latestUserMessage: context.latestUserMessage,
         provider,
         model,
       });

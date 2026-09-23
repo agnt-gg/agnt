@@ -105,7 +105,7 @@ async function fakeBrowser() {
 const view = (body = {}) => fetch(`${base}/api/browser-agent/view`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
+  body: JSON.stringify({protocolVersion:2,...body}),
 });
 
 beforeAll(async () => {
@@ -334,4 +334,14 @@ describe('opening a browser when there is nothing to watch', () => {
     expect(response.status).toBe(503);
     expect(body.error).toMatch(/no Chrome, Chromium or Edge/);
   });
+});
+
+describe('Given coordinated live-view protocol rollout',()=>{
+ it('When an old client subscribes, Then reject before launch or acquisition',async()=>{
+  const r=await view({protocolVersion:1});expect(r.status).toBe(426);
+  expect(ensureFallbackSurface).not.toHaveBeenCalled();
+ });
+ it('When a new client checks capabilities, Then version two is advertised',async()=>{
+  const r=await fetch(base+'/api/browser-agent/view-capabilities');expect(await r.json()).toEqual({protocolVersion:2});
+ });
 });

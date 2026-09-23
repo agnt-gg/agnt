@@ -1,3 +1,5 @@
+import { skillIdentity, isDefaultSkill } from '../../utils/skillTrust.js';
+import { LESSON_SCHEMA, prepareMemoryWrite } from '../../utils/memoryLesson.js';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
@@ -4654,87 +4656,65 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           properties: {
             skill_name: {
               type: 'string',
-              description: 'The name of the skill to activate (from the available-skills catalog)',
+              description: 'Skill name, or omit when using an exact skill_id.',
             },
+            skill_id: { type: 'string', description: 'Exact database skill ID, preferred for linked procedures.' },
+            allow_draft: { type: 'boolean', description: 'Explicitly load an unverified draft for review/testing, not as a trusted default.' },
+            version_id: { type: 'string', description: 'Exact draft version to review/test; requires allow_draft.' },
           },
-          required: ['skill_name'],
+
         },
       },
     },
-    execute: async ({ skill_name }, authToken, context) => {
+    execute: async ({ skill_name, skill_id, allow_draft = false, version_id }, authToken, context) => {
       try {
-        // Track activations to avoid duplicate loads
+        if ((!skill_name && !skill_id) || (skill_name && skill_id)) throw new Error('Use skill_name OR skill_id');
+        if (version_id && (!skill_id || !allow_draft)) throw new Error('Draft version requires skill_id and allow_draft');
+        if (!context?.userId) throw new Error('User context required');
         if (!context.activatedSkills) context.activatedSkills = new Set();
-        if (context.activatedSkills.has(skill_name)) {
-          return JSON.stringify({
-            success: true,
-            already_activated: true,
-            message: `Skill "${skill_name}" is already activated in this session. Its instructions are already in your context.`,
-          });
-        }
-
-        // Try filesystem-discovered skills first
-        let skillContent = null;
-        let resources = null;
-        let source = null;
-
-        try {
-          const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
-          skillContent = SkillDiscoveryService.getSkillContent(skill_name);
+        let skillContent = null, resources = null, source = null, identity = null;
+        if (!skill_id) {
+          const Discovery = (await import('../SkillDiscoveryService.js')).default;
+          skillContent = Discovery.getSkillContent(skill_name);
           if (skillContent) {
             source = 'filesystem';
-            resources = await SkillDiscoveryService.listResources(skill_name);
-          }
-        } catch (e) {
-          // SkillDiscoveryService may not be initialized yet
-        }
-
-        // Fall back to database skills (lookup by slug first, then name)
-        if (!skillContent) {
-          try {
-            const SkillModel = (await import('../../models/SkillModel.js')).default;
-            // Try slug-based lookup first (fast, indexed)
-            let match = await SkillModel.findBySlug(skill_name);
-            // Fall back to scanning by name (for user-created skills without slugs)
-            if (!match && context.userId) {
-              const dbSkills = await SkillModel.findAll(context.userId);
-              match = dbSkills.find(
-                (s) => s.name === skill_name || s.slug === skill_name
-              );
-            }
-            if (match) {
-              skillContent = {
-                name: match.slug || match.name,
-                description: match.description,
-                instructions: match.instructions,
-                frontmatter: {
-                  license: match.license,
-                  compatibility: match.compatibility,
-                  'allowed-tools': match.allowed_tools,
-                  metadata: match.metadata || null,
-                },
-              };
-              source = 'database';
-            }
-          } catch (e) {
-            console.error('[activate_skill] DB lookup error:', e.message);
+            if (!isDefaultSkill({metadata:skillContent.frontmatter?.metadata}) && !allow_draft) throw new Error('Draft requires allow_draft for explicit review');
+            resources = await Discovery.listResources(skill_name);
+            identity = skillIdentity({ ...skillContent, metadata:skillContent.frontmatter?.metadata }, source);
           }
         }
-
         if (!skillContent) {
-          return JSON.stringify({
-            success: false,
-            error: `Skill "${skill_name}" not found. Check the available-skills catalog for valid skill names.`,
-          });
+          const SkillModel = (await import('../../models/SkillModel.js')).default;
+          const owned = await SkillModel.findAll(context.userId);
+          const match = owned.find(skill => skill_id ? skill.id === skill_id : skill.name === skill_name || skill.slug === skill_name);
+          if (match) {
+            if (!isDefaultSkill(match) && !allow_draft) throw new Error('Draft requires allow_draft for explicit review');
+            let instructions = match.instructions;
+            identity = skillIdentity(match);
+            if (version_id) {
+              const Version = (await import('../../models/SkillVersionModel.js')).default;
+              const version = await Version.findById(version_id);
+              if (!version || version.skill_id !== match.id || version.user_id !== context.userId || version.status !== 'draft') throw new Error('Draft version not found');
+              instructions = version.instructions;
+              identity = { ...skillIdentity(match, 'database', instructions), version:version.version, version_id, verification_status:'draft' };
+            }
+            skillContent = { name:match.slug || match.name, instructions,
+              frontmatter:{license:match.license,compatibility:match.compatibility,'allowed-tools':match.allowed_tools,metadata:match.metadata} };
+            source = 'database';
+          }
         }
-
-        // Mark as activated
-        context.activatedSkills.add(skill_name);
+        if (!skillContent) throw new Error('Skill not found');
+        const activationKey = identity.skill_id + ':' + identity.content_hash;
+        const already = context.activatedSkills.has(activationKey);
+        context.activatedSkills.add(activationKey);
+        context.activatedSkills.add(skillContent.name);
+        if (already) return JSON.stringify({success:true,already_activated:true,...identity,skill_name:skillContent.name});
 
         // Build structured response with skill content
         const result = {
           success: true,
           skill_name: skillContent.name,
+          ...identity,
           source,
           instructions: skillContent.instructions || '',
         };
@@ -4798,106 +4778,98 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
   },
 
   save_agent_memory: {
-    schema: {
-      type: 'function',
-      function: {
-        name: 'save_agent_memory',
-        description: 'Save a memory about the user or conversation to your persistent memory. Memories persist across conversations. Use this to remember user preferences, facts, corrections, or important context.',
-        parameters: {
-          type: 'object',
-          properties: {
-            memory_type: {
-              type: 'string',
-              enum: ['fact', 'preference', 'correction', 'context', 'pattern', 'tool_insight', 'workflow_insight', 'prompt_guidance'],
-              description: 'Type of memory: fact (about the user), preference (how they like things), correction (they corrected you), context (background info), pattern (successful patterns), tool_insight (tool usage learnings), workflow_insight (workflow optimizations), prompt_guidance (prompt improvements)',
-            },
-            content: {
-              type: 'string',
-              description: 'The memory content to store. Be concise and specific.',
-            },
-          },
-          required: ['memory_type', 'content'],
-        },
-      },
-    },
+    schema: { type: 'function', function: {
+      name: 'save_agent_memory',
+      description: 'Search get_agent_memories(query) first. Reuse an existing lesson or retain nothing unless there is new evidence. Behavioral learning requires lesson {when, action, boundary, evidence}. Explicit user facts/preferences/corrections require user_statement quoting this episode. Do not save episode summaries.',
+      parameters: { type: 'object', properties: {
+        memory_type: { type: 'string', enum: ['fact', 'preference', 'correction', 'context', 'pattern', 'tool_insight', 'workflow_insight', 'prompt_guidance'] },
+        content: { type: 'string', description: 'Concise memory; structured lesson fields are authoritative for lessons.' },
+        lesson: LESSON_SCHEMA,
+        user_statement: { type: 'string', description: 'Exact supporting words from the current user message.' },
+      }, required: ['memory_type', 'content'] },
+    } },
     execute: async (args, authToken, context) => {
       try {
-        const { memory_type, content } = args;
-        const agentId = context?.agentId || 'orchestrator';
-        const userId = context?.userId;
-        const conversationId = context?.conversationId;
-
-        if (!userId) {
-          return JSON.stringify({ success: false, error: 'User context required for memory storage' });
-        }
-
-        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
-
-        // Check for duplicate
-        const existing = await AgentMemoryModel.findDuplicate(agentId, content);
-        if (existing) {
-          await AgentMemoryModel.update(existing.id, userId, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
-          return JSON.stringify({ success: true, message: 'Memory already exists, reinforced', id: existing.id });
-        }
-
-        const id = await AgentMemoryModel.create({
-          agentId,
-          userId,
-          memoryType: memory_type,
-          content,
-          sourceConversationId: conversationId,
+        const write = prepareMemoryWrite(args, {
+          userId: context?.userId, agentId: !context?.agentId || context.agentId === 'agent-chat' ? 'orchestrator' : context.agentId,
+          executionId: context?.executionId, conversationId: context?.conversationId, userText: context?.latestUserMessage,
         });
-
-        return JSON.stringify({ success: true, message: 'Memory saved successfully', id });
+        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
+        const id = await AgentMemoryModel.create(write);
+        return JSON.stringify({ success: true, message: 'Memory retained (new or exact existing lesson)', id });
       } catch (error) {
-        console.error('[save_agent_memory] Error:', error);
+        console.warn('[save_agent_memory] Not retained:', error.message);
         return JSON.stringify({ success: false, error: error.message });
       }
     },
   },
 
   get_agent_memories: {
-    schema: {
-      type: 'function',
-      function: {
-        name: 'get_agent_memories',
-        description: 'Retrieve your stored memories about the user. Use this to recall what you know from previous conversations.',
-        parameters: {
-          type: 'object',
-          properties: {
-            memory_type: {
-              type: 'string',
-              enum: ['fact', 'preference', 'correction', 'context', 'pattern', 'tool_insight', 'workflow_insight', 'prompt_guidance'],
-              description: 'Optional filter by memory type',
-            },
-          },
-        },
-      },
-    },
+    schema: { type: 'function', function: {
+      name: 'get_agent_memories',
+      description: 'Search the full authorized memory index with query, fetch one full record with memory_id, or list recent memories. query and memory_id are mutually exclusive.',
+      parameters: { type: 'object', properties: {
+        memory_type: { type: 'string', enum: ['fact', 'preference', 'correction', 'context', 'pattern', 'tool_insight', 'workflow_insight', 'prompt_guidance'] },
+        memory_id: { type: 'string' }, query: { type: 'string' },
+      } },
+    } },
     execute: async (args, authToken, context) => {
       try {
-        const { memory_type } = args;
-        const agentId = context?.agentId || 'orchestrator';
-
+        if (args.memory_id !== undefined && args.query !== undefined) throw new Error('Use memory_id OR query, not both');
+        if (args.memory_id !== undefined && !args.memory_id?.trim()) throw new Error('memory_id must be nonempty');
         const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
-        // Tiered, not flat: auto-extracted insights outnumber user-set
-        // memories ~5:1 and sort by the same relevance score, so a flat read
-        // returned almost entirely machine noise. See findTiered.
-        const memories = await AgentMemoryModel.findTiered(agentId, { memoryType: memory_type, limit: 30 });
-
-        return JSON.stringify({
-          success: true,
-          count: memories.length,
-          memories: memories.map(m => ({
-            id: m.id,
-            type: m.memory_type,
-            content: m.content,
-            relevance: m.relevance_score,
-            created: m.created_at,
-          })),
-        });
+        const scope = { userId: context?.userId, agentId: context?.agentId, memoryType: args.memory_type, limit: 30 };
+        const memories = args.query !== undefined
+          ? await AgentMemoryModel.searchRelevant({ ...scope, query: args.query })
+          : await AgentMemoryModel.findAuthorized({ ...scope, memoryId: args.memory_id });
+        return JSON.stringify({ success: true, count: memories.length, memories: memories.map(memory => ({
+          id: memory.id, type: memory.memory_type, content: memory.content,
+          relevance: memory.relevance_score, created: memory.created_at,
+        })) });
       } catch (error) {
-        console.error('[get_agent_memories] Error:', error);
+        console.warn('[get_agent_memories] Failed:', error.message);
+        return JSON.stringify({ success: false, error: error.message });
+      }
+    },
+  },
+
+  record_memory_use: {
+    schema: { type: 'function', function: {
+      name: 'record_memory_use',
+      description: 'Record once when a prior memory materially changed an action. State the application and optionally cite completed tool_call_ids from this execution. This logs reported application, not verified success. It creates no memory and changes no score.',
+      parameters: { type: 'object', properties: {
+        memory_id: { type: 'string' }, application: { type: 'string', minLength: 1, maxLength: 1000 },
+        evidence_tool_call_ids: { type: 'array', maxItems: 20, items: { type: 'string' } },
+      }, required: ['memory_id', 'application'] },
+    } },
+    execute: async (args, authToken, context) => {
+      try {
+        if (!context?.userId || !context?.executionId) throw new Error('An authenticated execution is required');
+        if (typeof args.memory_id !== 'string' || !args.memory_id.trim()) throw new Error('memory_id required');
+        if (typeof args.application !== 'string' || !args.application.trim() || args.application.length > 1000) throw new Error('application must contain 1-1000 characters');
+        const evidence = args.evidence_tool_call_ids ?? [];
+        if (!Array.isArray(evidence) || evidence.length > 20 || evidence.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid evidence_tool_call_ids');
+        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
+        const [memory] = await AgentMemoryModel.findAuthorized({ userId: context.userId, agentId: context.agentId, memoryId: args.memory_id });
+        if (!memory) throw new Error('Memory not found');
+        const db = (await import('../../models/database/index.js')).default;
+        const execution = await new Promise((resolve, reject) => db.get(
+          'SELECT id FROM agent_executions WHERE id = ? AND user_id = ?', [context.executionId, context.userId],
+          (err, row) => err ? reject(err) : resolve(row)));
+        if (!execution) throw new Error('Execution not found');
+        const ids = [...new Set(evidence)];
+        if (ids.length) {
+          const rows = await new Promise((resolve, reject) => db.all(
+            `SELECT tool_call_id FROM agent_tool_executions WHERE execution_id = ? AND status = 'completed'
+             AND tool_name != 'record_memory_use' AND tool_call_id IN (${ids.map(() => '?').join(',')})`,
+            [context.executionId, ...ids], (err, rows) => err ? reject(err) : resolve(rows || [])));
+          if (new Set(rows.map(row => row.tool_call_id)).size !== ids.length) throw new Error('Evidence must reference completed tool calls in this execution');
+        }
+        // The ordinary tool-execution logger persists this receipt, including inputs and output.
+        return JSON.stringify({ success: true, status: 'reported_application', memory_id: memory.id,
+          execution_id: context.executionId, application: args.application.trim(), evidence_tool_call_ids: ids });
+      } catch (error) {
+        console.warn('[record_memory_use] Rejected:', error.message);
         return JSON.stringify({ success: false, error: error.message });
       }
     },

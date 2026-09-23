@@ -341,10 +341,10 @@
       "stream": {
         "ok": true,
         "surface": "messages.stream",
-        "canonical": "{\"body\":{\"max_tokens\":128000,\"messages\":[{\"content\":\"Read package.json and tell me the version.\",\"role\":\"user\"},{\"content\":[{\"id\":\"call_oracle_1\",\"input\":{\"path\":\"package.json\"},\"name\":\"read_file\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"content\":\"{\\\"version\\\":\\\"0.6.6\\\"}\",\"tool_use_id\":\"call_oracle_1\",\"type\":\"tool_result\"}],\"role\":\"user\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"(Continuing.)\",\"type\":\"text\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"Thanks. Now summarise it.\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"claude-opus-5\",\"system\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"type\":\"text\"}],\"tools\":[{\"description\":\"Read a file from the workspace.\",\"input_schema\":{\"properties\":{\"limit\":{\"description\":\"Max lines\",\"type\":\"integer\"},\"path\":{\"description\":\"Path to the file\",\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"name\":\"read_file\"},{\"description\":\"Search the web.\",\"input_schema\":{\"properties\":{\"num\":{\"default\":5,\"type\":\"number\"},\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"type\":\"object\"},\"name\":\"web_search\"},{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"description\":\"Exercises nested/array/enum schema translation.\",\"input_schema\":{\"properties\":{\"items\":{\"items\":{\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"],\"type\":\"object\"},\"type\":\"array\"},\"meta\":{\"additionalProperties\":true,\"properties\":{},\"type\":\"object\"},\"mode\":{\"enum\":[\"fast\",\"slow\"],\"type\":\"string\"}},\"required\":[\"mode\"],\"type\":\"object\"},\"name\":\"nested_schema_tool\"}]},\"options\":null}",
-        "canonicalHash": "c8807fa161494c54",
-        "orderHash": "5fdf50ec943924fc",
-        "bytes": 1678,
+        "canonical": "{\"body\":{\"max_tokens\":128000,\"messages\":[{\"content\":\"Read package.json and tell me the version.\",\"role\":\"user\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"id\":\"call_oracle_1\",\"input\":{\"path\":\"package.json\"},\"name\":\"read_file\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"content\":[{\"text\":\"{\\\"version\\\":\\\"0.6.6\\\"}\",\"type\":\"text\"},{\"text\":\"[Message from the user, received after this tool result. This is user input, not tool output, and takes priority over the result above.]\",\"type\":\"text\"},{\"text\":\"Thanks. Now summarise it.\",\"type\":\"text\"}],\"tool_use_id\":\"call_oracle_1\",\"type\":\"tool_result\"}],\"role\":\"user\"}],\"model\":\"claude-opus-5\",\"system\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"type\":\"text\"}],\"tools\":[{\"description\":\"Read a file from the workspace.\",\"input_schema\":{\"properties\":{\"limit\":{\"description\":\"Max lines\",\"type\":\"integer\"},\"path\":{\"description\":\"Path to the file\",\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"name\":\"read_file\"},{\"description\":\"Search the web.\",\"input_schema\":{\"properties\":{\"num\":{\"default\":5,\"type\":\"number\"},\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"type\":\"object\"},\"name\":\"web_search\"},{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"description\":\"Exercises nested/array/enum schema translation.\",\"input_schema\":{\"properties\":{\"items\":{\"items\":{\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"],\"type\":\"object\"},\"type\":\"array\"},\"meta\":{\"additionalProperties\":true,\"properties\":{},\"type\":\"object\"},\"mode\":{\"enum\":[\"fast\",\"slow\"],\"type\":\"string\"}},\"required\":[\"mode\"],\"type\":\"object\"},\"name\":\"nested_schema_tool\"}]},\"options\":null}",
+        "canonicalHash": "b630ae5eae2525a1",
+        "orderHash": "f53e3c8c7ba409d1",
+        "bytes": 1765,
         "wire": {
           "body": {
             "model": "claude-opus-5",
@@ -372,26 +372,7 @@
                     "name": "read_file",
                     "input": {
                       "path": "package.json"
-                    }
-                  }
-                ]
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "tool_result",
-                    "tool_use_id": "call_oracle_1",
-                    "content": "{\"version\":\"0.6.6\"}"
-                  }
-                ]
-              },
-              {
-                "role": "assistant",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": "(Continuing.)",
+                    },
                     "cache_control": {
                       "type": "ephemeral",
                       "ttl": "1h"
@@ -403,8 +384,22 @@
                 "role": "user",
                 "content": [
                   {
-                    "type": "text",
-                    "text": "Thanks. Now summarise it.",
+                    "type": "tool_result",
+                    "tool_use_id": "call_oracle_1",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "{\"version\":\"0.6.6\"}"
+                      },
+                      {
+                        "type": "text",
+                        "text": "[Message from the user, received after this tool result. This is user input, not tool output, and takes priority over the result above.]"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Thanks. Now summarise it."
+                      }
+                    ],
                     "cache_control": {
                       "type": "ephemeral",
                       "ttl": "1h"
@@ -504,10 +499,10 @@
       "nonStream": {
         "ok": true,
         "surface": "messages.create",
-        "canonical": "{\"body\":{\"max_tokens\":128000,\"messages\":[{\"content\":\"Read package.json and tell me the version.\",\"role\":\"user\"},{\"content\":[{\"id\":\"call_oracle_1\",\"input\":{\"path\":\"package.json\"},\"name\":\"read_file\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"content\":\"{\\\"version\\\":\\\"0.6.6\\\"}\",\"tool_use_id\":\"call_oracle_1\",\"type\":\"tool_result\"}],\"role\":\"user\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"(Continuing.)\",\"type\":\"text\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"Thanks. Now summarise it.\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"claude-opus-5\",\"system\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"type\":\"text\"}],\"tools\":[{\"description\":\"Read a file from the workspace.\",\"input_schema\":{\"properties\":{\"limit\":{\"description\":\"Max lines\",\"type\":\"integer\"},\"path\":{\"description\":\"Path to the file\",\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"name\":\"read_file\"},{\"description\":\"Search the web.\",\"input_schema\":{\"properties\":{\"num\":{\"default\":5,\"type\":\"number\"},\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"type\":\"object\"},\"name\":\"web_search\"},{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"description\":\"Exercises nested/array/enum schema translation.\",\"input_schema\":{\"properties\":{\"items\":{\"items\":{\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"],\"type\":\"object\"},\"type\":\"array\"},\"meta\":{\"additionalProperties\":true,\"properties\":{},\"type\":\"object\"},\"mode\":{\"enum\":[\"fast\",\"slow\"],\"type\":\"string\"}},\"required\":[\"mode\"],\"type\":\"object\"},\"name\":\"nested_schema_tool\"}]},\"options\":null}",
-        "canonicalHash": "c8807fa161494c54",
-        "orderHash": "23abe17702768a4b",
-        "bytes": 1678,
+        "canonical": "{\"body\":{\"max_tokens\":128000,\"messages\":[{\"content\":\"Read package.json and tell me the version.\",\"role\":\"user\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"id\":\"call_oracle_1\",\"input\":{\"path\":\"package.json\"},\"name\":\"read_file\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"content\":[{\"text\":\"{\\\"version\\\":\\\"0.6.6\\\"}\",\"type\":\"text\"},{\"text\":\"[Message from the user, received after this tool result. This is user input, not tool output, and takes priority over the result above.]\",\"type\":\"text\"},{\"text\":\"Thanks. Now summarise it.\",\"type\":\"text\"}],\"tool_use_id\":\"call_oracle_1\",\"type\":\"tool_result\"}],\"role\":\"user\"}],\"model\":\"claude-opus-5\",\"system\":[{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"text\":\"You are AGNT, a helpful assistant. Follow the user's instructions exactly.\",\"type\":\"text\"}],\"tools\":[{\"description\":\"Read a file from the workspace.\",\"input_schema\":{\"properties\":{\"limit\":{\"description\":\"Max lines\",\"type\":\"integer\"},\"path\":{\"description\":\"Path to the file\",\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"name\":\"read_file\"},{\"description\":\"Search the web.\",\"input_schema\":{\"properties\":{\"num\":{\"default\":5,\"type\":\"number\"},\"query\":{\"type\":\"string\"}},\"required\":[\"query\"],\"type\":\"object\"},\"name\":\"web_search\"},{\"cache_control\":{\"ttl\":\"1h\",\"type\":\"ephemeral\"},\"description\":\"Exercises nested/array/enum schema translation.\",\"input_schema\":{\"properties\":{\"items\":{\"items\":{\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"],\"type\":\"object\"},\"type\":\"array\"},\"meta\":{\"additionalProperties\":true,\"properties\":{},\"type\":\"object\"},\"mode\":{\"enum\":[\"fast\",\"slow\"],\"type\":\"string\"}},\"required\":[\"mode\"],\"type\":\"object\"},\"name\":\"nested_schema_tool\"}]},\"options\":null}",
+        "canonicalHash": "b630ae5eae2525a1",
+        "orderHash": "e07be124f57a9366",
+        "bytes": 1765,
         "wire": {
           "body": {
             "model": "claude-opus-5",
@@ -525,26 +520,7 @@
                     "name": "read_file",
                     "input": {
                       "path": "package.json"
-                    }
-                  }
-                ]
-              },
-              {
-                "role": "user",
-                "content": [
-                  {
-                    "type": "tool_result",
-                    "tool_use_id": "call_oracle_1",
-                    "content": "{\"version\":\"0.6.6\"}"
-                  }
-                ]
-              },
-              {
-                "role": "assistant",
-                "content": [
-                  {
-                    "type": "text",
-                    "text": "(Continuing.)",
+                    },
                     "cache_control": {
                       "type": "ephemeral",
                       "ttl": "1h"
@@ -556,8 +532,22 @@
                 "role": "user",
                 "content": [
                   {
-                    "type": "text",
-                    "text": "Thanks. Now summarise it.",
+                    "type": "tool_result",
+                    "tool_use_id": "call_oracle_1",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "{\"version\":\"0.6.6\"}"
+                      },
+                      {
+                        "type": "text",
+                        "text": "[Message from the user, received after this tool result. This is user input, not tool output, and takes priority over the result above.]"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Thanks. Now summarise it."
+                      }
+                    ],
                     "cache_control": {
                       "type": "ephemeral",
                       "ttl": "1h"

@@ -2880,7 +2880,7 @@ body.dark .form-actions {
   text-align: center;
 }
 
-::v-deep .col-actions {
+:deep(.col-actions) {
   gap: 8px;
   justify-content: flex-end;
 }

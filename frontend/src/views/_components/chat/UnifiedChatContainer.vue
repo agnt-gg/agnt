@@ -63,7 +63,7 @@
         this the user cannot tell whether it is hearing them, thinking, or
         broken — and a hands-free mode you cannot read is one you cannot trust.
       -->
-      <div v-if="voiceActive" class="voice-status-strip" :class="'voice-' + voiceState">
+      <div v-if="voiceActive || voiceError" class="voice-status-strip" :class="'voice-' + voiceState">
         <span class="voice-dot"></span>
         <span class="voice-status-text">
           <template v-if="voiceError">{{ voiceError }}</template>
@@ -73,9 +73,9 @@
           <template v-else-if="voiceState === 'thinking'">Thinking…</template>
           <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
           <template v-else>Voice ready</template>
-          <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
+          <span v-if="voiceNatural" class="voice-engine-badge">{{ voiceMetered ? 'natural · API key' : 'natural' }}</span>
         </span>
-        <button class="voice-end-btn" type="button" @click="toggleVoice">End</button>
+        <button class="voice-end-btn" type="button" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
       </div>
       <ImageSettings compact />
       <ImageReferencePicker v-if="showAttachments" :collection="imageReferenceCollection" :scope-key="imageReferenceCollection.scopeKey" :disabled="isProcessing" @attach-files="onAttachImageReference" />
@@ -572,6 +572,7 @@ export default {
       voicePartial,
       voiceError,
       voiceNatural,
+      voiceMetered,
       voiceLevel,
       toggleVoice,
     } = useVoiceEngines({
@@ -832,6 +833,7 @@ export default {
       voiceError,
       voicePartial,
       voiceNatural,
+      voiceMetered,
       toggleVoice,
       // Provider/Tool selectors
       isProviderSelectorOpen,
