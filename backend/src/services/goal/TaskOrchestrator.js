@@ -189,7 +189,7 @@ class TaskOrchestrator {
 
       for (const orderIndex of sortedGroupKeys) {
         const owner=this.runningGoals.get(goalId)?.runLease;
-        if(owner)await GoalRunRecovery.waitRemote(owner,signal);
+        if(owner)await GoalRunRecovery.waitRemote(owner,signal,getNodeId());
         // Remote results may have committed since the initial task snapshot.
         const group = owner
           ? (await TaskModel.findByGoalId(goalId)).filter(t=>(t.order_index||0)===orderIndex)
@@ -376,7 +376,7 @@ class TaskOrchestrator {
       }
 
       const owner=this.runningGoals.get(goalId)?.runLease;
-      if(owner)await GoalRunRecovery.waitRemote(owner,signal);
+      if(owner)await GoalRunRecovery.waitRemote(owner,signal,getNodeId());
       // Check if all tasks are complete
       // Skip completeGoal if running inside the autonomous loop — the loop handles its own completion
       const goalData = this.runningGoals.get(goalId);
@@ -514,6 +514,10 @@ class TaskOrchestrator {
           try{await GoalRunRecovery.recordFailure(attemptLease,task.id,error)}
           catch{console.error('[Goal recovery] Could not persist attempt diagnostic; original error and unknown barrier retained.');}
         }
+        // This node has stopped working on the task. The admitted attempt, not
+        // the claim, is the uncertainty barrier, so releasing it grants no retry.
+        // A release failure must never replace the original error.
+        try{await TaskModel.releaseClaim(task.id, getNodeId())}catch{/* lease expires on its own */}
         throw error; // Do not convert unknown effects to retryable work.
       }
       if (this._isCancellation(error)) {
