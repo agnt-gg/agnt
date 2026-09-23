@@ -6,6 +6,7 @@ import { authenticateToken } from './Middleware.js';
 import multer from 'multer';
 
 import universalChatHandler, { getAvailableTools } from '../services/OrchestratorService.js';
+import { handleCompaction } from '../services/orchestrator/compactionHandler.js';
 import { attachSubscriber, cancelRun, getRunStatus, listRunsForUser } from '../services/orchestrator/activeRuns.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import ContentOutputModel from '../models/ContentOutputModel.js';
@@ -39,6 +40,10 @@ router.post('/widget-chat', authenticateToken, upload.array('files'), universalC
 router.post('/goal-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/suggestions', authenticateToken, universalChatHandler);
 router.post('/artifact-chat', authenticateToken, upload.array('files'), universalChatHandler);
+
+// Distil a conversation's history into one summary (Context & Cost panel →
+// Compress). JSON in, JSON out; the client folds its own transcript.
+router.post('/compress', authenticateToken, handleCompaction);
 
 /*
  * ---------------------------------------------------------------------------

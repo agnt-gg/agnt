@@ -14,6 +14,29 @@
  */
 
 import { API_CONFIG } from '@/tt.config.js';
+import { fileURLToPreviewURL, rewritePreviewCSS } from '../../../backend/src/utils/artifactPreviewUrls.js';
+
+export function buildLocalPreviewUrl(absPath, cacheBust) {
+  const normalized = String(absPath || '').replace(/\\/g, '/');
+  const fileURL = 'file:///' + normalized.replace(/^\//, '').split('/').map((part, index) =>
+    index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part)
+  ).join('/');
+  const url = fileURLToPreviewURL(fileURL, `${API_CONFIG.BASE_URL}/local-preview/`);
+  return url + (cacheBust ? `?_=${encodeURIComponent(cacheBust)}` : '');
+}
+
+export function toLocalPreviewUrl(value) {
+  try {
+    const url = new URL(value, API_CONFIG.BASE_URL);
+    const api = new URL(API_CONFIG.BASE_URL);
+    if (url.origin !== api.origin) return value;
+    const rawPrefix = api.pathname.replace(/\/$/, '') + '/local-file/';
+    if (url.pathname.startsWith(rawPrefix)) {
+      url.pathname = url.pathname.replace(rawPrefix, rawPrefix.replace('/local-file/', '/local-preview/'));
+    }
+    return url.href;
+  } catch { return value; }
+}
 
 /**
  * Attribute that carries the ORIGINAL absolute filesystem path on an anchor
@@ -159,7 +182,10 @@ export function rewriteLocalFileURLsInHTML(html, { baseDir, interceptsLinkClicks
       const val = el.getAttribute(attr);
       if (val && /^file:\/\//i.test(val)) {
         tryCaptureDir(val);
-        el.setAttribute(attr, fileUrlToLocalFileUrl(val));
+        const isDocument = el.tagName === 'IFRAME' && attr === 'src';
+        el.setAttribute(attr, isDocument
+          ? fileURLToPreviewURL(val, `${API_CONFIG.BASE_URL}/local-preview/`)
+          : fileUrlToLocalFileUrl(val));
       }
     };
 
@@ -178,6 +204,21 @@ export function rewriteLocalFileURLsInHTML(html, { baseDir, interceptsLinkClicks
         rewriteAttr(el, attr);
       });
     }
+
+    const resolveCSS = (value) => {
+      if (!/^file:\/\//i.test(value)) return value;
+      tryCaptureDir(value);
+      return fileURLToPreviewURL(value, `${API_CONFIG.BASE_URL}/local-preview/`);
+    };
+    doc.querySelectorAll('style').forEach(el => { el.textContent = rewritePreviewCSS(el.textContent, resolveCSS); });
+    doc.querySelectorAll('[style]').forEach(el => {
+      el.setAttribute('style', rewritePreviewCSS(el.getAttribute('style'), resolveCSS));
+    });
+    // Stylesheets and nested HTML need the same preparation as the parent.
+    doc.querySelectorAll('iframe[src], link[rel="stylesheet"][href]').forEach(el => {
+      const attr = el.tagName === 'IFRAME' ? 'src' : 'href';
+      el.setAttribute(attr, toLocalPreviewUrl(el.getAttribute(attr)));
+    });
 
     // Pick base dir: explicit override (from a tool call's known output dir)
     // takes priority, then the first absolute file:// we saw.

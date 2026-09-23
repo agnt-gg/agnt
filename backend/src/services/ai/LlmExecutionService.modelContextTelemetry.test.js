@@ -1,0 +1,25 @@
+import {it,expect,vi,beforeEach} from 'vitest';
+vi.mock('./LlmService.js',()=>({createLlmClient:vi.fn(async()=>({}))}));
+vi.mock('../orchestrator/llmAdapters.js',()=>({createLlmAdapter:vi.fn()}));
+vi.mock('../orchestrator/tools.js',()=>({executeTool:vi.fn(),getAvailableToolSchemas:vi.fn(async()=>[])}));
+vi.mock('../execution/LedgerRecorder.js',()=>({recordLlmCall:vi.fn(async()=>{})}));
+vi.mock('../auth/sessionTokenCache.js',()=>({getSessionToken:()=>null,getSessionUserId:()=>null}));
+import service from './LlmExecutionService.js';
+import {createLlmAdapter} from '../orchestrator/llmAdapters.js';
+import {manageContext} from '../../utils/contextManager.js';
+import {getModelMetadata} from './providerConfigs.js';
+let sent;
+beforeEach(()=>{vi.clearAllMocks();service.cacheEnabled=false;sent=[];const call=async(messages,schemas)=>{sent.push({messages,schemas});return {responseMessage:{role:'assistant',content:'fixture'},toolCalls:[]};};createLlmAdapter.mockResolvedValue({call,callStream:call});});
+for(const streaming of [false,true])it(`Given request above former128KiB limit When ${streaming?'streaming':'plain'} dispatch uses model handling Then telemetry remains`,async()=>{
+ const model='gpt-4o',provider='openai';
+ const messages=[{role:'system',content:'Keep task constraints.'},{role:'user',content:'bounded model-aware fixture '.repeat(6000)}];
+ expect(Buffer.byteLength(JSON.stringify(messages))).toBeGreaterThan(131072);
+ const expected=manageContext(structuredClone(messages),model,[],provider);
+ const config={provider,model,userId:'fixture',messages,toolSchemas:[]};
+ const result=streaming?await service.executeWithToolsStreaming(config,()=>{}):await service.executeWithTools(config);
+ expect(sent).toHaveLength(1);expect(sent[0].messages.slice(0,expected.messages.length)).toEqual(expected.messages);
+ expect(Object.hasOwn(result.requestMetrics,'limitBytes')).toBe(false);expect(result.requestMetrics.requests).toHaveLength(1);
+ expect(result.requestMetrics.requests[0].totalBytes).toBeGreaterThan(131072);
+ expect(result.requestMetrics.requests[0].totalBytes).toBe(result.requestMetrics.requests[0].messageBytes+result.requestMetrics.requests[0].schemaBytes);
+ expect(getModelMetadata(provider,model).contextWindow).toBeGreaterThan(0);
+});

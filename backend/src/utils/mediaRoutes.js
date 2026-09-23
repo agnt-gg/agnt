@@ -37,7 +37,7 @@
  * Scope note: each prefix is narrow on purpose. The cookie is set once per
  * prefix rather than once at `/api`, so it is never attached to a mutating
  * endpoint — a cookie that reaches POST /api/filesystem/file would be a CSRF
- * carrier, whereas these three are read-only byte streams.
+ * carrier, whereas these routes are read-only byte streams.
  */
 
 /**
@@ -48,6 +48,8 @@ export const MEDIA_ROUTE_PREFIXES = Object.freeze([
   // Arbitrary absolute path on disk, Range-enabled. Used by chat, widgets and
   // artifact HTML previews via the file:/// → /api/local-file rewrite.
   '/api/local-file',
+  // Prepared HTML/CSS with nested local assets; same read-only media guard.
+  '/api/local-preview',
   // Workspace-relative raw file bytes. Strictly narrower than local-file:
   // validatePath() confines it to the workspace root and rejects traversal.
   '/api/filesystem/raw',
