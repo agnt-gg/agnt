@@ -999,6 +999,7 @@ export default {
           enabledTools: resolvedEnabledTools,
           reasoningValue: resolvedReasoningValue,
           reasoningEnabled: resolvedReasoningEnabled,
+          codexPriority: rootState.aiProvider?.codexPriority === true || undefined,
           files,
           signal: controller.signal,
           onEvent: (eventName, data) => {
