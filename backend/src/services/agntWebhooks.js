@@ -63,19 +63,55 @@ export async function pullEvents(endpointId, since, limit = 50) {
   return full;
 }
 
-/** Parse an event body by its content type into the shape workflows expect. */
-export function eventToTrigger(event) {
-  let body = event.body;
-  if (typeof body === 'string' && /json/i.test(event.contentType || '')) {
-    try { body = JSON.parse(body); } catch { /* leave as text */ }
+/** `a=1&t=x&t=y` -> { a: '1', t: ['x', 'y'] }, the shape Express gave workflows on the relay. */
+function parseQuery(raw) {
+  const out = {};
+  for (const [key, value] of new URLSearchParams(raw || '')) {
+    if (!(key in out)) out[key] = value;
+    else out[key] = [].concat(out[key], value);
   }
+  return out;
+}
+
+function lowerCaseKeys(headers) {
+  const out = {};
+  if (headers && typeof headers === 'object') for (const [k, v] of Object.entries(headers)) out[k.toLowerCase()] = v;
+  return out;
+}
+
+/**
+ * The body as workflows received it on the relay: parsed JSON or form as an
+ * object, anything else (text, arrays, unparseable JSON) as `{ data }`, and `{}`
+ * for a bodyless request.
+ */
+function normaliseBody(raw, contentType) {
+  if (raw == null || raw === '') return {};
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    if (/json/i.test(contentType || '')) {
+      try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+    } else if (/x-www-form-urlencoded/i.test(contentType || '')) {
+      parsed = parseQuery(raw);
+    }
+  }
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { data: parsed };
+}
+
+/**
+ * A stored hosted event as the trigger payload workflows expect: the real
+ * method, query and headers the sender used, so the node's method filter, header
+ * auth and `{{webhook.query}}` behave as they did on the relay. Events stored
+ * before the service kept the request envelope read as the bare POST they were.
+ */
+export function eventToTrigger(event) {
   return {
     id: event.id,
     receivedAt: event.receivedAt,
     contentType: event.contentType,
-    headers: event.headers || {},
-    body,
-    method: 'POST',
+    method: String(event.method || 'POST').toUpperCase(),
+    headers: lowerCaseKeys(event.headers),
+    query: parseQuery(event.query),
+    body: normaliseBody(event.body, event.contentType),
     source: event.source,
   };
 }
