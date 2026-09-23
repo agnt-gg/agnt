@@ -1,3 +1,6 @@
+import { getVirtualAgent } from './agentRuntime.js';
+import { isDefaultSkill } from '../../utils/skillTrust.js';
+import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 import { getAvailableToolSchemas } from './tools.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS, CORE_PRIMITIVES, DYNAMIC_GROUP_MATCHERS } from './toolSelector.js';
 import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
@@ -10,7 +13,6 @@ import { loadWorkspaceContextSection } from './workspaceContext.js';
 import { isCanvasTurn } from './pageContext.js';
 import { estimateTokens, estimateToolTokens } from '../../utils/contextManager.js';
 import { buildVoiceRegisterSection } from './system-prompts/voiceRegister.js';
-import { buildMemoryDigest } from '../../utils/memoryDigest.js';
 
 export const AGENT_DEFAULT_TOOLS = new Set([
   'discover_tools',
@@ -28,6 +30,7 @@ export const AGENT_DEFAULT_TOOLS = new Set([
   'activate_skill',
   'save_agent_memory',
   'get_agent_memories',
+  'record_memory_use',
 ]);
 
 const CHAT_OVERRIDES = {
@@ -39,49 +42,6 @@ const CHAT_OVERRIDES = {
   goal: { maxToolRounds: 100, contextKey: 'goalContext' },
   artifact: { maxToolRounds: 25, contextKey: 'codeContext' },
 };
-
-async function loadMemorySection(userId, query, agentId = null) {
-  try {
-    if (!userId) return '';
-    const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
-    let memories;
-    if (query) {
-      memories = await AgentMemoryModel.findRelevant(agentId, userId, query, 15);
-    } else if (agentId) {
-      // Agent's own memories first; backfill from the user-wide pool so a
-      // freshly created agent isn't born amnesiac (it inherits the global
-      // context the orchestrator has accumulated).
-      const own = await AgentMemoryModel.findByAgentId(agentId, { limit: 15 });
-      memories = own;
-      if (own.length < 15) {
-        const seen = new Set(own.map((m) => m.id));
-        const global = await AgentMemoryModel.findByUserId(userId, { limit: 15 });
-        for (const m of global) {
-          if (memories.length >= 15) break;
-          if (!seen.has(m.id)) memories.push(m);
-        }
-      }
-    } else {
-      memories = await AgentMemoryModel.findByUserId(userId, { limit: 15 });
-    }
-    if (!memories.length) return '';
-    // BUDGETED. The ranking above is respected verbatim; entries that do not
-    // fit are gisted rather than dropped, and remain readable in full via
-    // get_agent_memories. See utils/memoryDigest.js for the measurement that
-    // motivated the cap.
-    const digest = buildMemoryDigest(memories, { estimate: estimateTokens });
-    if (digest.gistCount > 0) {
-      console.log(
-        `[chatConfigs] Memory section: ${digest.fullCount} full + ${digest.gistCount} gisted ` +
-        `(budget ${estimateTokens(digest.text)} tok)`
-      );
-    }
-    return digest.text;
-  } catch (e) {
-    console.warn('[chatConfigs] Failed to load memories:', e.message);
-    return '';
-  }
-}
 
 async function loadSkillsCatalogSection(context) {
   if (context._frozenSkillsCatalog !== undefined) return context._frozenSkillsCatalog;
@@ -128,21 +88,28 @@ async function loadSkillsCatalogSection(context) {
   return skillsCatalogSection;
 }
 
-async function loadFrozenMemorySection(context, agentId = null) {
+async function loadFrozenMemorySection(context) {
+  // The digest sits in the system block, and the system block is a cache
+  // prefix — so it is resolved ONCE per conversation and then frozen. Recall
+  // stays relevance-scoped (searchRelevant, 5 records) rather than the old
+  // recency dump, but the bytes never move again once a conversation starts.
+  //
+  // Opt out only by setting memoryInSystemPrompt === false. Nothing does today:
+  // the alternative — appending the digest to the newest user message — rewrites
+  // that turn's bytes, so the NEXT request (which rebuilds history without the
+  // digest) no longer matches the cached prefix. That is the exact regression
+  // OrchestratorService.historyCacheStability.test.js was written to prevent.
   if (context._frozenMemorySection !== undefined) return context._frozenMemorySection;
-
-  let memorySection = '';
-  try {
-    memorySection = await loadMemorySection(context.userId, context.latestUserMessage, agentId);
-    if (agentId && memorySection) {
-      memorySection += '\n\nUse these memories to provide personalized responses. If you learn new facts or receive corrections, use save_agent_memory to store them.';
-    }
-  } catch (e) {
-    console.warn('[chatConfigs] Failed to load memories:', e.message);
+  context._frozenMemorySection = '';
+  if (context.memoryInSystemPrompt !== false && context.userId) {
+    try {
+      const Memory = (await import('../../models/AgentMemoryModel.js')).default;
+      const memories = await Memory.searchRelevant({ userId: context.userId, agentId: context.agentId,
+        query: context.latestUserMessage || '', limit: 5 });
+      context._frozenMemorySection = buildMemoryDigest(memories, { estimate: estimateTokens }).text;
+    } catch (error) { console.warn('[chatConfigs] Runtime memory unavailable:', error.message); }
   }
-
-  context._frozenMemorySection = memorySection;
-  return memorySection;
+  return context._frozenMemorySection;
 }
 
 // Workspace context is read from disk. Frozen per conversation for the same
@@ -255,6 +222,7 @@ async function buildSpecialtySkillsSection(assignedSkills) {
       if (SkillDiscoveryService.initialized) {
         for (const ds of SkillDiscoveryService.getSkillCatalog()) {
           if (assignedSet.has(ds.name) || assignedSet.has(ds.slug)) {
+            if (!isDefaultSkill(ds)) continue;
             entries.push({ name: ds.name, description: ds.description });
             seenNames.add(ds.name);
           }
@@ -266,7 +234,7 @@ async function buildSpecialtySkillsSection(assignedSkills) {
 
     const SkillModel = (await import('../../models/SkillModel.js')).default;
     const records = await SkillModel.findByIds(assignedSkills);
-    for (const s of records) {
+    for (const s of records.filter(isDefaultSkill)) {
       const key = s.slug || s.name;
       if (!seenNames.has(key)) {
         entries.push({ name: key, description: s.description });
@@ -294,7 +262,7 @@ async function loadAgentOverride(context) {
   // preferring the DB row keeps the persona clean regardless of caller.
   try {
     const AgentModel = (await import('../../models/AgentModel.js')).default;
-    const agent = await AgentModel.findOne(context.agentId);
+    const agent = getVirtualAgent(context) || await AgentModel.findOne(context.agentId);
     if (agent) {
       context.agentContext = {
         ...context.agentContext,
@@ -610,7 +578,7 @@ function detectSidebarSpecialty(context) {
 
 async function getSavedAgentToolSchemas(context, allSchemas) {
   const AgentModel = (await import('../../models/AgentModel.js')).default;
-  const agent = await AgentModel.findOne(context.agentId);
+  const agent = getVirtualAgent(context) || await AgentModel.findOne(context.agentId);
   const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
 
   // RESTRICTED mode (the DEFAULT): assignedTools are the ceiling — the agent

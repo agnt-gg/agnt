@@ -1,3 +1,5 @@
+import { createExecutionTelemetry, retainFailureTelemetry } from './executionTelemetry.js';
+import { retainFailureReceipts } from '../orchestrator/runAgentResult.js';
 import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { stripProviderIncompatibleTools } from '../orchestrator/providerToolCompat.js';
@@ -198,6 +200,23 @@ class LlmExecutionService {
    * @returns {Promise<Object>} { responseMessage, toolExecutions, messages }
    */
   async executeWithTools(config) {
+    const telemetry = createExecutionTelemetry();
+    const observedReceipts = [];
+    try {
+      const result = await this._executeWithToolsMeasured({...config, _executionTelemetry:telemetry, _observedReceipts:observedReceipts});
+      return {...result,executionTelemetry:telemetry.snapshot('completed'),requestMetrics:telemetry.snapshot('completed').requestMetrics};
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error('Execution failed');
+      const measured = telemetry.snapshot(['AbortError','GoalCancelledError'].includes(error.name) ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      retainFailureTelemetry(error,measured);
+      retainFailureReceipts(error, observedReceipts, measured);
+      // Compatibility projection only: it is never read back as host evidence.
+      try { error.executionTelemetry = measured; } catch { /* frozen/accessor error */ }
+      throw error;
+    }
+  }
+
+  async _executeWithToolsMeasured(config) {
     const startTime = Date.now();
     const {
       provider, model, userId, messages: inputMessages, toolSchemas = [],
@@ -218,7 +237,18 @@ class LlmExecutionService {
 
     // Create LLM client and adapter
     const client = await createLlmClient(provider, userId);
-    const adapter = await createLlmAdapter(provider, client, model);
+    const originalAdapter = await createLlmAdapter(provider, client, model);
+    // Instrument actual adapter requests without changing the shared adapter.
+    const telemetry = config._executionTelemetry;
+    const adapter = new Proxy(originalAdapter, { get(target,key) {
+      if (key === 'call' || key === 'callStream') return async (...args) => {
+        telemetry.request(args[0],args[1]);
+        const response = await target[key](...args);
+        telemetry.usage(response?.usage);
+        return response;
+      };
+      const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
 
     // Prepare messages
     let messages = JSON.parse(JSON.stringify(inputMessages));
@@ -290,7 +320,7 @@ class LlmExecutionService {
 
     // Tool execution loop
     let currentRound = 0;
-    const allToolExecutions = [];
+    const allToolExecutions = config._observedReceipts;
 
     while (toolCalls && toolCalls.length > 0 && currentRound < maxToolRounds) {
       currentRound++;
@@ -314,16 +344,19 @@ class LlmExecutionService {
           };
         }
 
-        console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
+        console.log('[LlmExecutionService] Executing tool');
 
         try {
-          let functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          telemetry.toolStarted();
+          let functionResponse;
+          try { functionResponse = await executeTool(functionName, functionArgs, null, executionContext); } finally { telemetry.toolFinished(); }
           if (/^computer[-_]input$/.test(functionName)) executionContext.computerImages = [];
           functionResponse = captureComputerImages(functionResponse, functionName, toolCall.id, executionContext);
 
           // Store execution details
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: functionResponse,
           });
@@ -335,18 +368,19 @@ class LlmExecutionService {
             content: functionResponse,
           };
         } catch (error) {
-          console.error(`Tool execution error for ${functionName}:`, error);
+          console.error('[LlmExecutionService] Tool execution failed');
 
           const errorResponse = JSON.stringify({
             success: false,
-            error: `Tool execution failed: ${error.message}`,
+            error: 'Tool execution failed',
           });
 
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: errorResponse,
-            error: error.message,
+            error: 'Tool execution failed',
           });
 
           return {
@@ -453,11 +487,39 @@ class LlmExecutionService {
    * @returns {Promise<Object>} { responseMessage, toolExecutions, messages }
    */
   async executeWithToolsStreaming(config, onChunk) {
+    const telemetry = createExecutionTelemetry();
+    const observedReceipts = [];
+    try {
+      const result = await this._executeWithToolsStreamingMeasured({...config, _executionTelemetry:telemetry, _observedReceipts:observedReceipts}, onChunk);
+      return {...result,executionTelemetry:telemetry.snapshot('completed'),requestMetrics:telemetry.snapshot('completed').requestMetrics};
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error('Execution failed');
+      const measured = telemetry.snapshot(['AbortError','GoalCancelledError'].includes(error.name) ? 'cancelled' : error.code === 'TASK_CONTEXT_BUDGET' ? 'blocked' : 'failed');
+      retainFailureTelemetry(error,measured);
+      retainFailureReceipts(error, observedReceipts, measured);
+      // Compatibility projection only: it is never read back as host evidence.
+      try { error.executionTelemetry = measured; } catch { /* frozen/accessor error */ }
+      throw error;
+    }
+  }
+
+  async _executeWithToolsStreamingMeasured(config, onChunk) {
     const { provider, model, userId, messages: inputMessages, toolSchemas = [], systemPrompt = null, context = {}, maxToolRounds = 10 } = config;
 
     // Create LLM client and adapter
     const client = await createLlmClient(provider, userId);
-    const adapter = await createLlmAdapter(provider, client, model);
+    const originalAdapter = await createLlmAdapter(provider, client, model);
+    // Instrument actual adapter requests without changing the shared adapter.
+    const telemetry = config._executionTelemetry;
+    const adapter = new Proxy(originalAdapter, { get(target,key) {
+      if (key === 'call' || key === 'callStream') return async (...args) => {
+        telemetry.request(args[0],args[1]);
+        const response = await target[key](...args);
+        telemetry.usage(response?.usage);
+        return response;
+      };
+      const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
 
     // Prepare messages
     let messages = JSON.parse(JSON.stringify(inputMessages));
@@ -519,7 +581,7 @@ class LlmExecutionService {
 
     // Tool execution loop
     let currentRound = 0;
-    const allToolExecutions = [];
+    const allToolExecutions = config._observedReceipts;
 
     while (toolCalls && toolCalls.length > 0 && currentRound < maxToolRounds) {
       currentRound++;
@@ -543,16 +605,19 @@ class LlmExecutionService {
           };
         }
 
-        console.log(`[LlmExecutionService] Executing tool: ${functionName}`, functionArgs);
+        console.log('[LlmExecutionService] Executing tool');
 
         try {
-          let functionResponse = await executeTool(functionName, functionArgs, null, executionContext);
+          telemetry.toolStarted();
+          let functionResponse;
+          try { functionResponse = await executeTool(functionName, functionArgs, null, executionContext); } finally { telemetry.toolFinished(); }
           if (/^computer[-_]input$/.test(functionName)) executionContext.computerImages = [];
           functionResponse = captureComputerImages(functionResponse, functionName, toolCall.id, executionContext);
 
           // Store execution details
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: functionResponse,
           });
@@ -564,18 +629,19 @@ class LlmExecutionService {
             content: functionResponse,
           };
         } catch (error) {
-          console.error(`Tool execution error for ${functionName}:`, error);
+          console.error('[LlmExecutionService] Tool execution failed');
 
           const errorResponse = JSON.stringify({
             success: false,
-            error: `Tool execution failed: ${error.message}`,
+            error: 'Tool execution failed',
           });
 
           allToolExecutions.push({
             name: functionName,
+            callId: toolCall.id ?? null,
             arguments: functionArgs,
             response: errorResponse,
-            error: error.message,
+            error: 'Tool execution failed',
           });
 
           return {

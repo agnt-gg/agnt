@@ -394,15 +394,19 @@ export function hydrateMessage(raw = {}) {
     ? raw.contentParts
     : flat.contentParts;
 
-  return {
+  const hydrated = {
     id: raw.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    role: raw.role === 'user' ? 'user' : 'assistant',
+    // 'compaction' is the fold marker (conversationCompaction.js). Every
+    // other non-user role collapses to assistant, as it always has.
+    role: raw.role === 'user' ? 'user' : (raw.role === 'compaction' ? 'compaction' : 'assistant'),
     content: flat.text,
     contentParts: explicitParts,
     toolCalls: flat.toolCalls,
     reasoning: raw.reasoning || flat.reasoning || '',
     timestamp: raw.timestamp || Date.now(),
   };
+  if (raw.compaction && typeof raw.compaction === 'object') hydrated.compaction = raw.compaction;
+  return hydrated;
 }
 
 /**

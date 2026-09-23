@@ -1,3 +1,5 @@
+import { foldBlocksIntoLastToolResult } from '../orchestrator/turnContinuity.js';
+
 // Screenshots are model input, not HTML. Kept separately from text offloading.
 // Preserve native pixels: coordinate scaling must never be implicit.
 export function observationImages(base64, { mimeType = 'image/png', coordinateSpace = 'window', ...target } = {}) {
@@ -57,6 +59,19 @@ export function appendComputerImages(messages, images, format, supportsVision = 
       if (decodedBytes > 5 * 1024 * 1024 || (image.width || 0) > 8000 || (image.height || 0) > 8000) {
         content.push({type:'text',text:'VISUAL INPUT UNAVAILABLE: screenshot exceeds this provider\'s image limit. Use computer-observe mode=zoom or accessibility targets. Do not guess pixels.'});
       } else content.push({type:'image',source:{type:'base64',media_type:image.mimeType,data:image.data}});
+    }
+    // The screenshot IS the observation tool's output, so on Anthropic it
+    // belongs inside that tool_result - the documented computer-use shape.
+    // A trailing user message here would be merged into the carrier as
+    // [tool_result, text, image] (the PRD-082 anti-pattern) and, before the
+    // fold repair, was split back out behind a fabricated "(Continuing.)"
+    // turn on EVERY observation round - the model learned to end turns on it.
+    const carrier = messages[messages.length - 1];
+    const hasToolResult = carrier?.role === 'user' && Array.isArray(carrier.content) &&
+      carrier.content.some(block => block?.type === 'tool_result');
+    if (hasToolResult) {
+      const folded = foldBlocksIntoLastToolResult(carrier, content, {label:false, toolUseId: selected[0]?.toolCallId});
+      return [...messages.slice(0, -1), folded];
     }
     return [...messages, {role:'user',content}];
   }

@@ -1,3 +1,4 @@
+import { userMessageText } from './orchestrator/taskMemory.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -35,6 +36,13 @@ import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
 import { stripProviderIncompatibleTools } from './orchestrator/providerToolCompat.js';
 import { pickPageContext } from './orchestrator/pageContext.js';
 import { findBlockingMissingParams, formatMissingParamsError } from './orchestrator/toolArgGuard.js';
+import {
+  foldBlocksIntoLastToolResult,
+  isNonTerminalStatus,
+  continuationGuardsApply,
+  CONTINUATION_NUDGE_TEXT,
+  MAX_CONTINUATION_NUDGES,
+} from './orchestrator/turnContinuity.js';
 import log from '../utils/logger.js';
 import OpenAI from 'openai';
 import AuthManager from './auth/AuthManager.js';
@@ -100,11 +108,6 @@ export function clearSteer(conversationId) {
   return pendingSteers.delete(conversationId);
 }
 
-// Minimal synthetic assistant turn used to restore strict user/assistant
-// alternation on Anthropic before the steer lands as its own user turn.
-// Deliberately states only what it is — it must not put reasoning or content
-// into the model's mouth.
-const STEER_BRIDGE_TEXT = '(Mid-run instruction received from the user.)';
 
 /**
  * Deliver a mid-run steer as a first-class USER turn, shaped for whichever
@@ -128,6 +131,15 @@ const STEER_BRIDGE_TEXT = '(Mid-run instruction received from the user.)';
  * end_turn responses. Net effect: the steer rendered correctly in the UI but
  * never actually steered the model.
  *
+ * WHY THE ANTHROPIC SHAPE IS A FOLD, NOT A BRIDGED USER TURN
+ * ----------------------------------------------------------
+ * The first fix kept the steer a separate user turn by pushing a fabricated
+ * assistant turn in front of it. The model imitated that turn - a short
+ * parenthetical with no tool call - and started ending real tool rounds the
+ * same way. Folding the steer into the tool_result it follows, behind a
+ * user-input label, keeps every wire rule and puts nothing in the assistant
+ * side of the transcript for the model to copy. See turnContinuity.js.
+ *
  * Returns a short tag describing the shape used (for logs + tests).
  */
 function applySteerAsUserTurn(messages, steerText) {
@@ -135,15 +147,19 @@ function applySteerAsUserTurn(messages, steerText) {
   const last = messages[messages.length - 1];
 
   // Anthropic: tool results are a user message of tool_result blocks. A second
-  // user message would be merged into it, so bridge with a minimal assistant
-  // turn to keep the steer a separate, first-class user turn.
+  // user message would be merged into it as [tool_result..., text], so the
+  // steer rides inside the last tool_result instead. The text already carries
+  // its own provenance label.
   if (
     last && last.role === 'user' && Array.isArray(last.content) &&
     last.content.some((b) => b && b.type === 'tool_result')
   ) {
-    messages.push({ role: 'assistant', content: [{ type: 'text', text: STEER_BRIDGE_TEXT }] });
-    messages.push({ role: 'user', content: text });
-    return 'anthropic-bridged';
+    messages[messages.length - 1] = foldBlocksIntoLastToolResult(
+      last,
+      [{ type: 'text', text }],
+      { label: false },
+    );
+    return 'anthropic-tool-result';
   }
 
   // Gemini: parts-based history. A `content` field would be dropped on
@@ -174,7 +190,7 @@ function applySteerAsUserTurn(messages, steerText) {
 // Callers MUST assign the return value to the live assistantMessageId so that
 // all later content_delta / tool_start / tool_end / final_content events
 // address the continuation bubble instead of the sealed one.
-export { applySteerAsUserTurn, STEER_BRIDGE_TEXT };
+export { applySteerAsUserTurn };
 
 export function openSteerContinuation(sendEvent, { round, agentMeta = {} } = {}) {
   const id = `msg-asst-${Date.now()}-s${round}`;
@@ -192,27 +208,7 @@ export function openSteerContinuation(sendEvent, { round, agentMeta = {} } = {})
 }
 
 
-/**
- * Inject the current date into the latest user message.
- *
- * Cache-safe: only mutates the trailing user turn (already below Anthropic's
- * cache breakpoint), system prompt stays frozen.
- *
- * Format intent: tiny + unobtrusive. The previous verbose `Date.toString()`
- * prefix at the top of every user message biased the LLM toward
- * time/date-themed responses. Now we use a compact ISO date footer so the
- * model still has the info if asked, but the user's actual prompt sits at
- * the very top of the message where it belongs.
- */
-function injectDateIntoLastUserMessage(messages) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user' && typeof messages[i].content === 'string') {
-      const isoDate = new Date().toISOString().slice(0, 10); // "2024-11-09"
-      messages[i].content = `${messages[i].content}\n\n<context date="${isoDate}" />`;
-      return;
-    }
-  }
-}
+
 
 /**
  * Extract images from tool results and replace with references
@@ -1333,8 +1329,8 @@ async function universalChatHandler(req, res, context = {}) {
     if (messageInput && messageInput.length > 0) {
       for (let i = messageInput.length - 1; i >= 0; i--) {
         const msg = messageInput[i];
-        if (msg && msg.role === 'user' && typeof msg.content === 'string') {
-          return msg.content;
+        if (msg && msg.role === 'user') {
+          return userMessageText(msg);
         }
       }
     }
@@ -1558,6 +1554,7 @@ async function universalChatHandler(req, res, context = {}) {
             );
 
             agentExecutionId = execId;
+            conversationContext.executionId = execId;
 
             sendEvent('agent_execution_started', {
               executionId: agentExecutionId,
@@ -1968,9 +1965,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
         });
       });
     }
-
-    // Inject current date into the latest user message (keeps system prompt stable for caching)
-    injectDateIntoLastUserMessage(messages);
 
     // Retroactively compact any bloated tool messages in the history before
     // counting tokens. Catches bloat from per-tool paths that skipped
@@ -3289,6 +3283,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // forced follow-up summary. The frontend dispatches the mentioned
     // agent's turn when it sees the tool_end.
     let floorPassed = false;
+    // A round that ends on a bare status line ("Continuing.") with no tool
+    // call is a pause the model learned from history, not a finish. Bounded so
+    // a model that truly has nothing more to do cannot be nudged forever.
+    let continuationNudges = 0;
 
     // Gate on an EXPLICIT cancel, not on transport health. A closed socket used
     // to stop the tool loop here, which is why refreshing mid-run killed the
@@ -3611,6 +3609,75 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       safePushAssistantMessage(messages, responseMessage);
 
+      // Pause, not finish: no tool calls, but the text is a status line rather
+      // than an answer. Send the nudge WITH tools so the model can resume the
+      // work; if it answers in full instead, the loop ends on real content.
+      // Each nudge is another model call, so it counts as a round.
+      while (
+        continuationGuardsApply(normalizedProvider) &&
+        (!toolCalls || toolCalls.length === 0) &&
+        !floorPassed &&
+        !streamAbortController.signal.aborted &&
+        continuationNudges < MAX_CONTINUATION_NUDGES &&
+        currentRound < config.maxToolRounds &&
+        isNonTerminalStatus(scrubEmptyPlaceholder(extractDisplayText(responseMessage.content)))
+      ) {
+        continuationNudges++;
+        currentRound++;
+        console.log(
+          `[Tool Loop] Round ${currentRound}: response was a status line with no tool call; ` +
+          `nudging to continue (${continuationNudges}/${MAX_CONTINUATION_NUDGES})`
+        );
+        messages.push({ role: 'user', content: CONTINUATION_NUDGE_TEXT });
+
+        const nudgeCompacted = compactMessageHistory(messages, conversationContext);
+        if (nudgeCompacted.compactedCount > 0) {
+          messages = nudgeCompacted.messages;
+        }
+        const nudgeContext = manageContext(messages, model, finalToolSchemas, normalizedProvider, {
+          calibration: conversationContext._estimateCalibration || 1,
+          evictedUnits: conversationContext._evictedUnits || 0,
+        });
+        conversationContext._evictedUnits = nudgeContext.evictedUnits || 0;
+
+        const { result: nudgedResponse } = await streamAcrossChain(
+          nudgeContext.messages,
+          finalToolSchemas,
+          (chunk) => {
+            if (chunk.type === 'content') {
+              sendEvent('content_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            } else if (chunk.type === 'reasoning') {
+              sendEvent('reasoning_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            } else {
+              announceToolCallChunk(chunk);
+            }
+          },
+        );
+
+        responseMessage = nudgedResponse.responseMessage;
+        toolCalls = nudgedResponse.toolCalls;
+        accumulateUsage(nudgedResponse.usage);
+        {
+          const residual = computeResidualDrift(
+            conversationContext._estimateCalibration, nudgedResponse.usage, nudgeContext.totalRequestTokens);
+          if (residual != null) {
+            conversationContext._residualDrift =
+              conversationContext._residualDrift == null
+                ? residual
+                : conversationContext._residualDrift * 0.5 + residual * 0.5;
+          }
+        }
+        conversationContext._estimateCalibration = updateEstimateCalibration(
+          conversationContext._estimateCalibration,
+          nudgedResponse.usage,
+          nudgeContext.totalRequestTokens
+        );
+        if (conversationContext._estimateCalibration > 0) {
+          recordCalibration(normalizedProvider, model, conversationContext._estimateCalibration);
+        }
+        safePushAssistantMessage(messages, responseMessage);
+      }
+
       // Log what happened in this round
       if (toolCalls && toolCalls.length > 0) {
         console.log(`[Tool Loop] Round ${currentRound}: LLM made ${toolCalls.length} more tool call(s), continuing loop`);
@@ -3668,13 +3735,23 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // NOT when the floor was passed — the turn deliberately ends on the
     // handoff; forcing a summary here would give the speaker an extra turn
     // and defeat the terminal-tool contract.
-    if (currentRound > 0 && !finalContentForLogging && !floorPassed) {
-      console.log('[Tool Loop] Final response had no text content after tool execution, requesting follow-up');
+    // A status line that survived the in-loop nudges is treated the same as
+    // no text: the user must get a real summary, never "(Continuing.)".
+    // Scoped like the nudge - other providers' round-end logic is unchanged.
+    const finalIsStatusOnly = continuationGuardsApply(normalizedProvider) && isNonTerminalStatus(finalContentForLogging);
+    if (currentRound > 0 && (!finalContentForLogging || finalIsStatusOnly) && !floorPassed) {
+      console.log(
+        finalIsStatusOnly
+          ? '[Tool Loop] Final response was a status line with no tool call, requesting a real summary'
+          : '[Tool Loop] Final response had no text content after tool execution, requesting follow-up'
+      );
       try {
         // Add a nudge message to prompt the LLM to summarize
         messages.push({
           role: 'user',
-          content: '[System: Your previous response contained only tool calls with no text. Please provide a brief summary of what you found/did based on the tool results above.]',
+          content: finalIsStatusOnly
+            ? '[System: Your previous message was a status line, not a result. Please state, in full, what you found/did based on the tool results above and what remains.]'
+            : '[System: Your previous response contained only tool calls with no text. Please provide a brief summary of what you found/did based on the tool results above.]',
         });
 
         const followUpCompacted = compactMessageHistory(messages, conversationContext);
@@ -4019,6 +4096,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         InsightTriggers.onChatCompleted(agentExecutionId, userId, {
           agentId,
           conversationId,
+          latestUserMessage: conversationContext.latestUserMessage,
           provider: normalizedProvider,
           model,
         }).catch(err => {

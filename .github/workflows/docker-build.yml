@@ -140,9 +140,51 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # ==========================================================================
+  # SMOKE: start the image the way an operator does and prove its auth boundary.
+  # A container that boots without an owner, boots with a placeholder secret,
+  # or accepts a forged bearer token never gets a tag. This is the step whose
+  # absence let GitHub issue #144 ship. See scripts/docker-smoke.mjs.
+  # ==========================================================================
+  smoke-full:
+    name: Smoke Docker Full (linux/amd64)
+    needs: [prep, build-full]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prep.outputs.build_ref }}
+
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          name: digests-full-linux-amd64
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the amd64 image by digest
+        id: pull
+        env:
+          IMG: ${{ env.GHCR_IMAGE }}
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          DIGEST=$(ls | head -n 1)
+          echo "ref=$IMG@sha256:$DIGEST" >> "$GITHUB_OUTPUT"
+          docker pull "$IMG@sha256:$DIGEST"
+
+      - name: Boot, refuse, forge, verify
+        run: node scripts/docker-smoke.mjs "${{ steps.pull.outputs.ref }}"
+
   merge-full:
     name: Publish Docker Full manifest
-    needs: [prep, build-full]
+    needs: [prep, build-full, smoke-full]
     runs-on: ubuntu-latest
     steps:
       - name: Download digests

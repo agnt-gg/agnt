@@ -194,25 +194,25 @@ export default {
   overflow-wrap: break-word;
 }
 
-.markdown-preview >>> h1 {
+.markdown-preview :deep(h1) {
   /* font-size: 2em; */
   /* margin: 0 0 0.67em; */
   font-weight: 600;
 }
 
-.markdown-preview >>> h2 {
+.markdown-preview :deep(h2) {
   /* font-size: 1.5em; */
   /* margin: 0.75em 0; */
   font-weight: 600;
 }
 
-.markdown-preview >>> h3 {
+.markdown-preview :deep(h3) {
   /* font-size: 1.17em; */
   /* margin: 0.83em 0; */
   font-weight: 600;
 }
 
-.markdown-preview >>> code {
+.markdown-preview :deep(code) {
   /* background: #f5f5f5; */
   padding: 2px 6px;
   border-radius: 3px;
@@ -220,41 +220,41 @@ export default {
   /* font-size: 0.9em; */
 }
 
-.markdown-preview >>> pre {
+.markdown-preview :deep(pre) {
   /* background: #f5f5f5; */
   padding: 12px;
   border-radius: 4px;
   overflow-x: auto;
 }
 
-.markdown-preview >>> pre code {
+.markdown-preview :deep(pre code) {
   background: none;
   padding: 0;
 }
 
-.markdown-preview >>> a {
+.markdown-preview :deep(a) {
   color: var(--color-blue);
   text-decoration: none;
 }
 
-.markdown-preview >>> a:hover {
+.markdown-preview :deep(a:hover) {
   text-decoration: underline;
 }
 
-.markdown-preview >>> ul {
+.markdown-preview :deep(ul) {
   padding-left: 20px;
 }
 
-.markdown-preview >>> li {
+.markdown-preview :deep(li) {
   /* margin: 4px 0; */
 }
 
-.markdown-preview >>> img {
+.markdown-preview :deep(img) {
   max-width: 100%;
   height: auto;
 }
 
-.markdown-preview >>> p {
+.markdown-preview :deep(p) {
   margin-bottom: 16px;
 }
 

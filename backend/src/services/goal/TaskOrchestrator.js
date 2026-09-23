@@ -1,3 +1,4 @@
+import { taskFailureReason, goalEvaluationPasses } from './taskOutcome.js';
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
@@ -359,6 +360,10 @@ class TaskOrchestrator {
         const isComplete = await this.checkGoalCompletion(goalId);
         if (isComplete) {
           await this.completeGoal(goalId);
+        } else if (this.runningGoals.has(goalId)) {
+          await GoalModel.updateStatus(goalId, 'needs_review');
+          broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {id:goalId,status:'needs_review'});
+          this.runningGoals.delete(goalId);
         }
       }
     } catch (error) {
@@ -585,6 +590,7 @@ Begin working on this task now.`;
       // provider that will actually serve the turn.
       const { systemPrompt, toolSchemas: availableTools, context: runtimeContext } = await buildAgentRuntime({
         agentId: agent.id,
+        ...(agent.isBuiltIn === true ? {builtInAgent:agent} : {}),
         userId,
         latestUserMessage: taskMessage,
         provider,
@@ -623,15 +629,18 @@ Begin working on this task now.`;
       // Format response to match expected structure
       return {
         content: result.content,
+        ...(result.error || result.success === false ? {success:false,error:result.error || 'Execution failed'} : {}),
         tool_executions: result.toolExecutions.map((execution) => ({
           name: execution.name,
+          callId: execution.callId ?? null,
           arguments: execution.arguments,
           response: execution.response,
         })),
         usage: result.usage || null,
+        ...(result.executionTelemetry ? {executionTelemetry:result.executionTelemetry,requestMetrics:result.executionTelemetry.requestMetrics} : {}),
       };
     } catch (error) {
-      console.error(`[TaskOrchestrator] Error executing task via agent chat:`, error);
+      console.error('[TaskOrchestrator] Error executing task via agent chat');
       throw error;
     }
   }
@@ -646,6 +655,13 @@ Begin working on this task now.`;
       timestamp: new Date().toISOString(),
       usage: agentResponse.usage || null,
     };
+
+    const failure = taskFailureReason(agentResponse);
+    if (failure) {
+      outputs.outcome = 'blocked';
+      await TaskModel.updateStatus(taskId, 'failed', 0, null, outputs.timestamp, null, outputs);
+      throw Object.assign(new Error(failure), {code:'TASK_BLOCKED'});
+    }
 
     // Mark task as completed with output data
     await TaskModel.updateStatus(taskId, 'completed', 100, null, outputs.timestamp, null, outputs);
@@ -732,68 +748,39 @@ Begin working on this task now.`;
     return completedTasks.length === tasks.length && tasks.length > 0;
   }
   static async completeGoal(goalId) {
-    const goalData = this.runningGoals.get(goalId);
-    const userId = goalData?.userId;
-    const provider = goalData?.provider || null;
-    const model = goalData?.model || null;
-    const conversationId = goalData?.conversationId || null;
-
-    await GoalModel.updateStatus(goalId, 'completed', new Date().toISOString());
-    console.log(`Goal ${goalId} completed successfully`);
-
-    // Broadcast completion to frontend immediately
-    if (userId) {
-      broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
-        id: goalId,
-        status: 'completed',
-      });
-    }
-
-    // Trigger automatic evaluation
-    if (userId) {
-      console.log(`[TaskOrchestrator] Starting automatic evaluation for goal ${goalId}`);
+    const entry = this.runningGoals.get(goalId);
+    if (!entry) return;
+    const {userId,provider=null,model=null,conversationId=null} = entry;
+    const isCurrent = () => this.runningGoals.get(goalId) === entry && !entry.abortController?.signal.aborted;
+    const assertCurrent = () => { if (!isCurrent()) throw Object.assign(new Error('Superseded goal execution'),{code:'STALE_GOAL_EVALUATION'}); };
+    const notify = data => { try { broadcastToUser(userId,RealtimeEvents.GOAL_UPDATED,data); } catch(error) { console.warn('Goal notification failed after state persistence:',error.message); } };
+    try {
+      assertCurrent();
+      const snapshot = await GoalModel.findOne(goalId);
+      assertCurrent();
+      if (!snapshot || ['paused','stopped'].includes(snapshot.status)) return;
+      const changed = await GoalModel.updateStatus(goalId,'needs_review',null,{userId,revision:snapshot.lifecycle_revision});
+      if (changed !== 1) return;
+      assertCurrent();
+      notify({id:goalId,status:'needs_review'});
+      let evaluation;
       try {
-        const evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model);
-        console.log(`[TaskOrchestrator] Evaluation complete: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'} (${evaluation.scores.overall}%)`);
-
-        // Broadcast the final status (validated or needs_review) set by evaluator
-        broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
-          id: goalId,
-          status: evaluation.status,
-          evaluation: {
-            passed: evaluation.passed,
-            scores: evaluation.scores,
-            feedback: evaluation.feedback,
-          },
-        });
-
-        // Auto-merge: send results summary back to the originating conversation
-        if (conversationId) {
-          this._sendGoalResultsToChat(goalId, conversationId, evaluation).catch(err => {
-            console.error('[TaskOrchestrator] Auto-merge to chat failed (non-critical):', err.message);
-          });
-        }
-
-        // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
-        InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
-          console.error('[TaskOrchestrator] Insight/SkillForge analysis failed (non-critical):', err.message);
-        });
-
-        // Fire-and-forget: notify ExperimentService if this goal is part of an experiment
-        if (goalData?.experimentContext) {
-          import('../ExperimentService.js').then(mod => {
-            mod.default.onRunCompleted(goalId, goalData.experimentContext, evaluation).catch(err => {
-              console.error('[TaskOrchestrator] Experiment notification failed (non-critical):', err.message);
-            });
-          }).catch(() => {});
-        }
-      } catch (error) {
-        console.error(`[TaskOrchestrator] Evaluation failed for goal ${goalId}:`, error);
-        // Don't fail the goal completion if evaluation fails
+        evaluation = await GoalEvaluator.evaluateGoal(goalId,userId,'automatic',provider,model,{assertCurrent});
+      } catch(error) {
+        // needs_review was set before grading. Never overwrite a pause, corrected
+        // evidence, or committed/uncertain evaluation with an unconditional write.
+        console.warn('Goal evaluation not committed:',error.message);
+        return;
       }
+      if (!isCurrent()) return;
+      notify({id:goalId,status:evaluation.status,evaluation:{passed:evaluation.passed,scores:evaluation.scores,feedback:evaluation.feedback}});
+      // Notification/insight errors do not downgrade a committed decision.
+      if (conversationId) { try { Promise.resolve(this._sendGoalResultsToChat(goalId,conversationId,evaluation)).catch(error=>console.warn(error.message)); } catch(error) { console.warn(error.message); } }
+      if (evaluation.passed) { try { Promise.resolve(InsightTriggers.onGoalCompleted(goalId,userId,provider,model)).catch(error=>console.warn(error.message)); } catch(error) { console.warn(error.message); } }
+      if (entry.experimentContext) import('../ExperimentService.js').then(mod=>mod.default.onRunCompleted(goalId,entry.experimentContext,evaluation)).catch(error=>console.warn(error.message));
+    } finally {
+      if (this.runningGoals.get(goalId) === entry) this.runningGoals.delete(goalId);
     }
-
-    this.runningGoals.delete(goalId);
   }
 
   /**
@@ -824,7 +811,7 @@ Begin working on this task now.`;
       role: 'user',
       content: `[System: Goal completed — synthesize results for user]
 
-✅ GOAL COMPLETED: "${goal.title}"
+${evaluation.passed ? '✅ GOAL VALIDATED' : '⚠️ GOAL NEEDS REVIEW'}: "${goal.title}"
 
 Score: ${evaluation.scores?.overall || 0}% | Status: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'}
 ${evaluation.feedback ? `Evaluation: ${evaluation.feedback}` : ''}
@@ -1136,36 +1123,40 @@ The goal you delegated did not fully pass. Let the user know:
           phase: 'evaluating',
         });
 
+        const gradingEntry = this.runningGoals.get(goalId);
+        const gradingCurrent = () => this.runningGoals.get(goalId) === gradingEntry && !gradingEntry?.abortController?.signal.aborted;
+        const assertGradingCurrent = () => { if (!gradingCurrent()) throw Object.assign(new Error('Superseded goal execution'),{code:'STALE_GOAL_EVALUATION'}); };
         let evaluation;
         let evaluationFailed = false;
         try {
           evaluation = await raceWithAbort(
-            GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model),
+            GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model, {assertCurrent:assertGradingCurrent}),
             this._getGoalSignal(goalId)
           );
         } catch (error) {
-          if (this._isCancellation(error)) {
+          if (!gradingCurrent() || this._isCancellation(error)) {
             console.log(`[AGI Loop] Goal ${goalId} cancelled during evaluation at iteration ${iteration}`);
-            await GoalModel.updateLoopStatus(goalId, 'stopped');
             return { goalId, status: 'stopped', iteration };
+          }
+          if (['STALE_GOAL_EVALUATION','EVALUATION_COMMIT_UNKNOWN'].includes(error.code)) {
+            if (this.runningGoals.get(goalId) === gradingEntry) this.runningGoals.delete(goalId);
+            return {goalId,status:'needs_review',reason:error.code,iteration};
           }
           console.error(`[AGI Loop] Evaluation error at iteration ${iteration}:`, error);
           evaluationFailed = true;
           evaluation = { passed: false, scores: { overall: 0 }, feedback: error.message };
         }
 
-        // If all tasks completed but evaluation itself failed (LLM error, no provider, etc.),
-        // treat the goal as passed — the work is done, don't fail because the evaluator broke
-        const allTasksComplete = await this.checkGoalCompletion(goalId);
-        if (allTasksComplete && (evaluationFailed || !evaluation.passed)) {
-          const failedTasks = (await TaskModel.findByGoalId(goalId)).filter(t => t.status === 'failed');
-          if (failedTasks.length === 0) {
-            console.log(`[AGI Loop] All tasks completed for goal ${goalId} — treating as passed${evaluationFailed ? ' (evaluator failed)' : ' (all work done)'}`);
-            evaluation.passed = true;
-            if (evaluation.scores.overall === 0) {
-              evaluation.scores.overall = 100;
-            }
-          }
+        if (!gradingCurrent()) return {goalId,status:'stopped',iteration};
+        // Counters never overrule negative/unknown evaluation or failed evidence.
+        const evaluatedTasks = await TaskModel.findByGoalId(goalId);
+        evaluation.passed = goalEvaluationPasses(evaluation, evaluatedTasks, evaluationFailed);
+        if (evaluationFailed || (evaluation.taskEvaluations || []).some(t => t.criteriaMet?.error === true || t.criteriaMet?.evaluated === false)) {
+          await GoalModel.updateLoopStatus(goalId, 'stopped');
+          await GoalModel.updateStatus(goalId, 'needs_review');
+          broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {id:goalId,status:'needs_review'});
+          this.runningGoals.delete(goalId);
+          return {goalId,status:'needs_review',reason:'evaluation_failed',iteration};
         }
 
         const iterationDuration = Date.now() - iterationStart;
@@ -1198,7 +1189,7 @@ The goal you delegated did not fully pass. Let the user know:
           console.log(`[AGI Loop] Goal ${goalId} PASSED at iteration ${iteration} (${evaluation.scores.overall}%)`);
 
           await GoalModel.updateLoopStatus(goalId, 'completed');
-          await GoalModel.updateStatus(goalId, 'validated');
+          // Validation was committed atomically by GoalEvaluator; do not republish stale status.
 
           // Record iteration (non-fatal if this fails)
           try {

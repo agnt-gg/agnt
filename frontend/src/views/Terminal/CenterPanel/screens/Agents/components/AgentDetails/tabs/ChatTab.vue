@@ -32,7 +32,7 @@
         <QuickActions :suggestions="suggestions" :is-loading="isLoadingSuggestions" @execute="executeSuggestion" />
       </div>
       <div class="chat-input-container">
-        <div v-if="voiceActive" class="voice-status-strip" :class="'voice-' + voiceState">
+        <div v-if="voiceActive || voiceError" class="voice-status-strip" :class="'voice-' + voiceState">
           <span class="voice-dot"></span>
           <span class="voice-status-text">
             <template v-if="voiceError">{{ voiceError }}</template>
@@ -40,9 +40,9 @@
             <template v-else-if="voiceState === 'thinking'">Thinking…</template>
             <template v-else-if="voiceState === 'speaking'">Speaking — talk any time to interrupt</template>
             <template v-else>Voice ready</template>
-            <span v-if="voiceNatural" class="voice-engine-badge">natural</span>
+            <span v-if="voiceNatural" class="voice-engine-badge">{{ voiceMetered ? 'natural · API key' : 'natural' }}</span>
           </span>
-          <button type="button" class="voice-end-btn" @click="toggleVoice">End</button>
+          <button type="button" class="voice-end-btn" @click="toggleVoice">{{ voiceActive ? 'End' : 'Retry' }}</button>
         </div>
         <div class="chat-input-wrapper">
           <input
@@ -197,6 +197,7 @@ const {
   voicePartial,
   voiceError,
   voiceNatural,
+  voiceMetered,
   toggleVoice,
 } = useVoiceEngines({
   surface: 'agent',
