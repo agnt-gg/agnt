@@ -10,6 +10,7 @@
     <div class="card-status" v-if="getStatusColumn">
       <div :class="['status-indicator', item.status?.toLowerCase()]">[{{ item.status || 'N/A' }}]</div>
     </div>
+    <ShareButton v-if="shareKind" class="card-share" :kind="shareKind" :id="item.id" :name="getTitleValue(item) || 'This item'" />
 
     <div class="card-header">
       <slot name="title" :item="item">
@@ -52,11 +53,13 @@
 <script>
 import { computed, inject } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 
 export default {
   name: 'Card',
   components: {
     SvgIcon,
+    ShareButton,
   },
   props: {
     item: { type: Object, required: true },
@@ -64,6 +67,8 @@ export default {
     selectedId: { type: [String, Number], default: null },
     titleKey: { type: String, default: 'title' },
     index: { type: Number, default: 0 },
+    /** When set, the card carries a share button for this kind (see useShare.js). */
+    shareKind: { type: String, default: '' },
   },
   emits: ['card-click'],
   setup(props, { emit }) {
@@ -137,6 +142,19 @@ export default {
 }
 .card-item.selected {
   background: rgba(var(--green-rgb), 0.15);
+}
+/* Share: a quiet corner icon, revealed with the card's other hover affordances. */
+.card-share {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.card-item:hover .card-share,
+.card-item.selected .card-share,
+.card-share:focus-visible {
+  opacity: 1;
 }
 .card-status {
   position: absolute;

@@ -31,8 +31,10 @@ export function shareIdFrom(value, origin = shareOrigin()) {
   let url = null;
   try { url = new URL(text); } catch { /* refused below */ }
   if (url?.protocol === 'agnt:') {
+    // Only the `shared` verb names a share link; the verb may arrive as the host or the path (see electron/deepLink.js).
+    const verb = (url.hostname || url.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
     const id = url.searchParams.get('id');
-    if (id && SHARE_ID.test(id)) return id;
+    if (verb === 'shared' && id && SHARE_ID.test(id)) return id;
   }
   if (url && url.origin === new URL(origin).origin) {
     const match = url.pathname.match(/^\/s\/([A-Za-z0-9_-]{6,64})\/?$/);
@@ -52,7 +54,9 @@ export function publicShareClient({ fetchImpl = fetch, origin = shareOrigin() } 
     });
     const result = await response.json().catch(() => ({}));
     if (response.status === 401) refuse(401, 'Sign in to AGNT to create share links');
-    if (!response.ok) refuse(response.status === 404 ? 404 : response.status >= 500 ? 502 : response.status, response.status === 404 ? 'This share link no longer exists' : result.error || 'The share service refused the request');
+    // A 404 with a code is the service explaining itself (e.g. a conversation link is not installable); a bare 404 is a dead link.
+    if (response.status === 404) refuse(404, result.code ? result.error : 'This share link no longer exists', { code: result.code });
+    if (!response.ok) refuse(response.status >= 500 ? 502 : response.status, result.error || 'The share service refused the request', { code: result.code });
     return result;
   };
   return {

@@ -91,6 +91,8 @@
               :search-keys="['name', 'title', 'status', 'category']"
               :no-results-text="'No workflows found.'"
               :title-key="'name'"
+              share-kind="workflow"
+              :share-filter="() => activeTab !== 'marketplace'"
               @row-click="handleWorkflowClick"
               @search="handleSearch"
             >
@@ -256,7 +258,10 @@
                               </div>
                               <span class="workflow-name">{{ workflow.name || workflow.title }}</span>
                             </div>
-                            <span class="workflow-status" :class="workflow.status.toLowerCase()">{{ workflow.status }}</span>
+                            <div class="workflow-header-end">
+                              <ShareButton class="workflow-share" kind="workflow" :id="workflow.id" :name="workflow.name || workflow.title" />
+                              <span class="workflow-status" :class="workflow.status.toLowerCase()">{{ workflow.status }}</span>
+                            </div>
                           </div>
 
                           <div class="workflow-description" :class="{ 'no-tools': !hasToolsOrUptime(workflow) }">
@@ -324,13 +329,14 @@ import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, MobileCollection, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
+  components: { BaseScreen, MobileCollection, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));
@@ -1809,6 +1815,22 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--font-size-md);
+}
+
+.workflow-header-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.workflow-share {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.workflow-card:hover .workflow-share,
+.workflow-card.selected .workflow-share,
+.workflow-share:focus-visible {
+  opacity: 1;
 }
 
 .workflow-status {

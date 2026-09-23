@@ -123,6 +123,7 @@
                 </div>
                 <!-- Actions for custom widgets -->
                 <div v-if="widget._isCustom" class="wm-card-actions" @click.stop>
+                  <ShareButton plain kind="widget" :id="widget.id" :name="widget.name" :export-item="() => exportWidget(widget)" />
                   <Tooltip text="Edit"><button @click="openEditor(widget)"><i class="fas fa-pen"></i></button></Tooltip>
                   <Tooltip text="Capture preview">
                     <button @click="captureWidgetPreview(widget)" :disabled="capturingId === widget.id">
@@ -266,13 +267,14 @@ import { API_CONFIG } from '@/tt.config.js';
 import MobileCollection from '@/mobile/MobileCollection.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
 
 export default {
   name: 'WidgetManagerScreen',
-  components: { BaseScreen, MobileCollection, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
+  components: { BaseScreen, MobileCollection, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));

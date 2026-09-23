@@ -7,6 +7,7 @@
     :show-search="false"
     :no-results-text="'No agents found.'"
     title-key="name"
+    share-kind="agent"
     @row-click="(item) => emit('row-click', item)"
   >
     <template #avatar="{ item }">
@@ -45,6 +46,7 @@
     search-placeholder="Search agents..."
     :search-keys="['name', 'status', 'category']"
     :no-results-text="'No agents found.'"
+    share-kind="agent"
     @row-click="(item) => emit('row-click', item)"
     @search="(query) => emit('search', query)"
   >

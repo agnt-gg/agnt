@@ -30,14 +30,15 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { shareRequest } from '@/utils/teamClient.js';
+import { kindLabel, isBundleKind } from '@/services/share/shareKinds.js';
 import '@/views/_components/team/team.css';
 
 const props = defineProps({ team: { type: Object, required: true } });
 const emit = defineEmits(['close', 'copied']);
 const items = ref([]), chosen = ref([]), loading = ref(true), busy = ref(false), error = ref(''), done = ref(0);
-const kindLabel = kind => ({ agent: 'Agent', workflow: 'Workflow', tool: 'Tool', skill: 'Skill' })[kind] || kind;
+// Every kind the backend can share (it filters to its own registry); only conversations are never a team item.
 onMounted(async () => {
-  try { items.value = (await shareRequest('/team/' + encodeURIComponent(props.team.id) + '/items')).items.filter(item => ['agent', 'workflow', 'tool', 'skill'].includes(item.kind)); }
+  try { items.value = (await shareRequest('/team/' + encodeURIComponent(props.team.id) + '/items')).items.filter(item => isBundleKind(item.kind)); }
   catch (e) { error.value = e.message; } finally { loading.value = false; }
 });
 async function copy() {

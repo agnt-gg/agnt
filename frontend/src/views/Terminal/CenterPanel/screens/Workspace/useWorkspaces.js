@@ -636,27 +636,40 @@ let allowPush = !SYNC_ENABLED;
 function pushAll() {
   if (!SYNC_ENABLED || !allowPush) return;
   if (pushTimer) clearTimeout(pushTimer);
-  pushTimer = setTimeout(async () => {
-    pushTimer = null;
-    const stamp = Date.now();
-    const payload = {
-      workspaces: workspaces.value.map((w, i) => ({
-        id: w.id, name: w.name, order: i,
-        widgets: w.widgets, ai: w.ai || null,
-        channelConversations: w.channelConversations || {},
-        updatedAt: w.updatedAt || stamp,
-      })),
-      deletedIds: [...deletedIds],
-    };
-    try {
-      await apiFetch('', { method: 'PUT', body: JSON.stringify(payload) });
-      deletedIds.clear();
-      for (const w of workspaces.value) syncedIds.add(w.id);
-    } catch (e) {
-      // Offline / server down: keep local state; retry on next save.
-      console.warn('[useWorkspaces] sync push failed:', e.message);
-    }
-  }, 400);
+  pushTimer = setTimeout(() => { pushTimer = null; pushNow(); }, 400);
+}
+
+/**
+ * Push right now and wait for it. For anything that reads workspaces back from
+ * the server immediately (sharing one reads its server row), where the
+ * debounced push could still be pending.
+ */
+export async function flushSync() {
+  if (!SYNC_ENABLED || !allowPush) return;
+  if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+  stampChangedWorkspaces();
+  await pushNow();
+}
+
+async function pushNow() {
+  const stamp = Date.now();
+  const payload = {
+    workspaces: workspaces.value.map((w, i) => ({
+      id: w.id, name: w.name, order: i,
+      widgets: w.widgets, ai: w.ai || null,
+      channelConversations: w.channelConversations || {},
+      updatedAt: w.updatedAt || stamp,
+    })),
+    deletedIds: [...deletedIds],
+  };
+  try {
+    await apiFetch('', { method: 'PUT', body: JSON.stringify(payload) });
+    deletedIds.clear();
+    for (const w of workspaces.value) syncedIds.add(w.id);
+  } catch (e) {
+    // Offline / server down: keep local state; retry on next save.
+    console.warn('[useWorkspaces] sync push failed:', e.message);
+  }
 }
 
 /**

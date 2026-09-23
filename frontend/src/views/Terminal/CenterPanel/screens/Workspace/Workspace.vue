@@ -47,6 +47,9 @@
           <span v-else class="ws-tab-name">{{ ws.name }}</span>
           <span class="ws-count">{{ ws.widgets.length }}</span>
           <button v-if="compact" class="ws-mobile-rename" :aria-label="'Rename workspace ' + ws.name" @click.stop="beginRename(ws)"><i class="fas fa-pen"></i></button>
+          <button v-if="ws.id === activeId" class="ws-tab-share" v-tooltip="'Share workspace'" :aria-label="'Share workspace ' + ws.name" @click.stop="shareWorkspace(ws)">
+            <i class="fas fa-share-alt"></i>
+          </button>
           <button v-if="workspaces.length > 1" class="ws-tab-x" v-tooltip="'Close workspace'" @click.stop="onCloseWorkspace(ws)">
             <i class="fas fa-times"></i>
           </button>
@@ -290,7 +293,8 @@ import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { getWidget, getAllWidgets } from '@/canvas/widgetRegistry.js';
 import { calculateCellDimensions, gridToPixel, GRID_COLS, GRID_ROWS, GRID_GAP } from '@/canvas/gridUtils.js';
-import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor } from './useWorkspaces.js';
+import { useWorkspaces, chatChannelFor, canGoBack, canGoForward, largestFreeRect, emptyTierFor, flushSync } from './useWorkspaces.js';
+import { openShare } from '@/composables/useShare.js';
 import { widgetForToolCall, SCREEN_WIDGET_MAP } from './surfaceRegistry.js';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
@@ -929,6 +933,12 @@ export default {
     // ── destructive actions ──────────────────────────────────────
     const confirmModalRef = ref(null);
 
+    // Sharing reads the workspace back from the server, so a pending sync push goes out first.
+    const shareWorkspace = async (ws) => {
+      await flushSync().catch((error) => console.warn('[Workspace] sync before share:', error.message));
+      openShare({ kind: 'workspace', id: ws.id, name: ws.name });
+    };
+
     const onCloseWorkspace = async (ws) => {
       const windows = ws.widgets?.length || 0;
       // No confirm host mounted => no destructive action. Never close silently.
@@ -1331,6 +1341,7 @@ export default {
       onTabDragEnd,
       confirmModalRef,
       onCloseWorkspace,
+      shareWorkspace,
       // palette
       paletteOpen,
       paletteQuery,
@@ -1650,6 +1661,20 @@ body.custom-bg .ws-root {
 }
 .ws-tab-x:hover {
   color: var(--color-pink, #e53d8f);
+}
+
+/* Same footprint as the close button; primary on hover, because sharing is not destructive. */
+.ws-tab-share {
+  background: transparent;
+  border: 0;
+  color: var(--text-quaternary);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.ws-tab-share:hover {
+  color: var(--color-primary);
 }
 
 .ws-tab-add {

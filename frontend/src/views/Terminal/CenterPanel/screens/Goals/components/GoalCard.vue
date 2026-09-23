@@ -71,6 +71,7 @@
               <i class="fas fa-play"></i>
             </button>
           </Tooltip>
+          <ShareButton button-class="action-btn" kind="goal" :id="goal.id" :name="goal.title" />
           <Tooltip :text="scheduleCount > 0 ? `Schedule (${scheduleCount} active)` : 'Schedule'" width="auto">
             <button @click.stop="$emit('schedule', goal)" class="action-btn schedule-btn" :class="{ 'has-schedule': scheduleCount > 0 }">
               <i class="fas fa-clock"></i>
@@ -91,6 +92,7 @@
 import { computed } from 'vue';
 import { useStore } from 'vuex';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 import { serverAge } from '@/utils/serverTime.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import { getGoalColumn } from '../goalBoard.js';
@@ -105,7 +107,7 @@ const TERMINAL_STATUSES = ['completed', 'validated', 'failed', 'error', 'stopped
 
 export default {
   name: 'GoalCard',
-  components: { Tooltip, BaseButton },
+  components: { Tooltip, BaseButton, ShareButton },
   props: {
     goal: { type: Object, required: true },
     isSelected: { type: Boolean, default: false },

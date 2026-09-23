@@ -26,6 +26,7 @@
           :selectedId="selectedId"
           :titleKey="titleKey"
           :index="index"
+          :share-kind="shareKind && (!shareFilter || shareFilter(item)) ? shareKind : ''"
           @card-click="handleCardClick"
         >
           <template #title="slotProps">
@@ -85,6 +86,9 @@ export default {
       type: String,
       default: 'No results found',
     },
+    /** Share: give every card a share button for this kind, optionally only where shareFilter(item) is true. */
+    shareKind: { type: String, default: '' },
+    shareFilter: { type: Function, default: null },
   },
   emits: ['row-click', 'search'],
   components: { CustomSelect, Card },

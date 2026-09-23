@@ -76,6 +76,7 @@
                 </div>
                 <div class="card-actions">
                   <template v-if="!skill.is_filesystem">
+                    <ShareButton v-if="!skill.is_builtin" button-class="card-btn" kind="skill" :id="skill.id" :name="toTitleCase(skill.name)" />
                     <Tooltip text="Edit"
                       ><button class="card-btn edit" @click.stop="openEditModal(skill)"><i class="fas fa-pen"></i></button
                     ></Tooltip>
@@ -471,6 +472,7 @@ import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 
 const SKILL_ICONS = [
   'fas fa-puzzle-piece',

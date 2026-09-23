@@ -258,6 +258,8 @@
                             <span v-if="tool.source && !tool.isPlugin" class="tool-source" :class="(tool.source || '').toLowerCase()">{{
                               tool.source
                             }}</span>
+                            <!-- Only your own tools are yours to share; system and plugin tools ship with AGNT. -->
+                            <ShareButton v-if="tool.source === 'custom' && !tool.isPlugin" kind="tool" :id="tool.id" :name="tool.title || tool.type" />
                             <button
                               v-if="tool.authProvider"
                               class="tool-auth-badge"
@@ -314,6 +316,7 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import MarketplaceShelf from '@/views/Terminal/_components/MarketplaceShelf.vue';
 import FilterTabs from '@/views/Terminal/_components/FilterTabs.vue';
@@ -330,7 +333,7 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, MobileCollection, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs },
+  components: { BaseScreen, MobileCollection, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar, MarketplaceShelf, FilterTabs, ShareButton },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const mobileView = inject('isMobile', ref(false));

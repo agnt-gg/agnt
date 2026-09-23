@@ -296,6 +296,10 @@
                 <i class="fas fa-archive"></i>
                 <span>{{ getOutputById(activeMenu)?.archived_at ? 'Unarchive' : 'Archive' }}</span>
               </button>
+              <button v-if="getOutputById(activeMenu)?.content_type === 'conversation'" @click="shareOutput(getOutputById(activeMenu))" class="menu-item">
+                <i class="fas fa-share-alt"></i>
+                <span>Share…</span>
+              </button>
               <!-- Move to group submenu -->
               <button class="menu-item" @click.stop="showMoveSubmenu = !showMoveSubmenu">
                 <i class="fas fa-folder"></i>
@@ -370,6 +374,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { sortOutputs } from './outputSort.js';
 import { groupUnreadCount, notifiableUnreadIds, formatListDate } from '@/utils/conversationAttention.js';
 import ConversationMetaLine from './ConversationMetaLine.vue';
+import { openShare } from '@/composables/useShare.js';
 
 export default {
   name: 'OutputList',
@@ -1401,30 +1406,12 @@ export default {
       }
     }
 
-    async function shareOutput(output) {
+    // A conversation is private until its owner shares it, one at a time, as a read-only snapshot link.
+    function shareOutput(output) {
+      if (!output) return;
       playSound('buttonClick');
-      // Create a shareable link
-      const shareUrl = `${window.location.origin}/chat?content-id=${output.id}`;
-
-      // Copy to clipboard
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        await simpleModal.value.showModal({
-          title: 'Success',
-          message: 'Link copied to clipboard!',
-          confirmText: 'OK',
-          showCancel: false,
-        });
-        activeMenu.value = null;
-      } catch (err) {
-        console.error('Failed to copy:', err);
-        await simpleModal.value.showModal({
-          title: 'Error',
-          message: 'Failed to copy link',
-          confirmText: 'OK',
-          showCancel: false,
-        });
-      }
+      activeMenu.value = null;
+      openShare({ kind: 'conversation', id: output.id, name: output.title || 'Conversation' });
     }
 
     function openInToolForge(output) {

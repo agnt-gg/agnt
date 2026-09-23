@@ -41,6 +41,13 @@
               {{ getColumnValue(item, column) }}
             </slot>
           </div>
+          <ShareButton
+            v-if="shareKind && (!shareFilter || shareFilter(item))"
+            class="row-share"
+            :kind="shareKind"
+            :id="item.id"
+            :name="String(item[titleKey] || item.name || item.title || 'This item')"
+          />
         </div>
 
         <!-- Empty State -->
@@ -58,10 +65,11 @@
 import { ref, computed, watch, inject, onMounted, onUnmounted, nextTick } from 'vue';
 import { useCleanup } from '@/composables/useCleanup';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import ShareButton from '@/views/_components/share/ShareButton.vue';
 
 export default {
   name: 'BaseTable',
-  components: { CustomSelect },
+  components: { CustomSelect, ShareButton },
   props: {
     items: {
       type: Array,
@@ -120,6 +128,9 @@ export default {
       type: String,
       default: '',
     },
+    /** Share: give every row a share button for this kind, optionally only where shareFilter(item) is true. */
+    shareKind: { type: String, default: '' },
+    shareFilter: { type: Function, default: null },
   },
   emits: ['row-click', 'row-double-click', 'search'],
   setup(props, { emit }) {
@@ -449,6 +460,25 @@ export default {
 .table-row:hover {
   background: rgba(var(--green-rgb), 0.06);
   border-color: rgba(var(--green-rgb), 0.2);
+}
+
+/* Share: floats at the row's end on hover, outside the column grid so no layout shifts. */
+.table-row {
+  position: relative;
+}
+.row-share {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: var(--color-darker-0);
+}
+.table-row:hover .row-share,
+.table-row.selected .row-share,
+.row-share:focus-visible {
+  opacity: 1;
 }
 
 .table-row.selected {
